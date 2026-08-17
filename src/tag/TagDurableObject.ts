@@ -27,6 +27,8 @@ interface AcquireInput extends EpochInput {
 
 interface ReservationInput extends EpochInput {
   reservationToken?: string;
+  /** Internal recovery-only cancel barrier. Never part of the V1 wire. */
+  forceTombstone?: boolean;
 }
 
 interface AppendCandidate {
@@ -177,7 +179,16 @@ function reservationFrom(value: unknown): { value?: ReservationInput; error?: st
   if (value.reservationToken !== undefined && !isNonEmptyString(value.reservationToken)) {
     return { error: "reservationToken must be a non-empty string when present" };
   }
-  return { value: { ...epoch.value, reservationToken: value.reservationToken } };
+  if (value.forceTombstone !== undefined && typeof value.forceTombstone !== "boolean") {
+    return { error: "forceTombstone must be a boolean when present" };
+  }
+  return {
+    value: {
+      ...epoch.value,
+      reservationToken: value.reservationToken,
+      forceTombstone: value.forceTombstone,
+    },
+  };
 }
 
 function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?: string } {
@@ -586,6 +597,22 @@ export class TagDurableObject implements DurableObject {
       const holdsReservation =
         record.activeReservation?.attemptId === input.attemptId &&
         record.activeReservation?.epoch === input.epoch;
+      if (input.forceTombstone === true) {
+        if (!holdsReservation && tombstone !== undefined && tombstone >= input.epoch) {
+          record = await this.commitExpiryIfNeeded(txn, expiry);
+          return { status: 200, body: { status: "cancelled", idempotent: true, version: record.version } };
+        }
+
+        // The cancel barrier owns only its (attemptId, epoch) tuple. An
+        // unrelated active reservation must survive a delayed cancellation.
+        record = advanceEpoch(record, input.attemptId, input.epoch);
+        const updated = await this.commit(txn, record, {
+          activeReservation: holdsReservation ? null : record.activeReservation,
+          alarmDueAt: holdsReservation ? null : record.alarmDueAt,
+          tombstones: withMaxEpoch(record.tombstones, input.attemptId, input.epoch),
+        });
+        return { status: 200, body: { status: "cancelled", idempotent: false, version: updated.version } };
+      }
       if (!holdsReservation && tombstone === input.epoch) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
         return { status: 200, body: { status: "cancelled", idempotent: true, version: record.version } };
@@ -692,6 +719,11 @@ export class TagDurableObject implements DurableObject {
         }
 
         const active = record.activeReservation;
+        const confirmsReservation =
+          active !== null &&
+          active.attemptId === input.attemptId &&
+          active.epoch === input.epoch &&
+          active.token === input.reservationToken;
         if (
           active !== null &&
           (active.attemptId !== input.attemptId ||
@@ -751,7 +783,9 @@ export class TagDurableObject implements DurableObject {
           outbox: [...record.outbox, ...outboxRows],
           activeReservation: null,
           alarmDueAt: null,
-          confirmations: withMaxEpoch(record.confirmations, input.attemptId, input.epoch),
+          confirmations: confirmsReservation
+            ? withMaxEpoch(record.confirmations, input.attemptId, input.epoch)
+            : record.confirmations,
         });
         await this.write(txn, updated);
         return {

@@ -1,4 +1,5 @@
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { handleSerializedCommit } from "./commit/CommitWorker";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
@@ -13,6 +14,9 @@ export interface Env {
 const worker: ExportedHandler<Env> = {
   async fetch(request, env): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === "/api/sekiban/serialized/commit") {
+      return handleSerializedCommit(request, env);
+    }
     if (url.pathname === "/allocator" || url.pathname.startsWith("/allocator/")) {
       url.pathname = url.pathname.slice("/allocator".length) || "/state";
       const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName("service-wide-allocator"));
