@@ -59,6 +59,7 @@ export const ALARM_FAULT_POINTS = [
   "after-rearm-before-seal",
   "after-partial-seal",
   "after-full-seal-before-requery",
+  "after-fence-before-cancel",
   "before-outcome-cas",
 ] as const;
 
@@ -70,6 +71,8 @@ export interface CommitAttemptContext {
   serviceId: string;
   /** Private commit.test hook that makes partial-write fence installation unavailable. */
   testFenceNotDurable?: boolean;
+  /** Private commit.test hook that interrupts immediately after one durable fence install. */
+  testFenceInstallFaultOnce?: boolean;
 }
 
 export interface RequeriedRecord {

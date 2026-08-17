@@ -357,10 +357,17 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     ) {
       return { error: "commitContext testFenceNotDurable must be a boolean" };
     }
+    if (
+      value.commitContext.testFenceInstallFaultOnce !== undefined &&
+      typeof value.commitContext.testFenceInstallFaultOnce !== "boolean"
+    ) {
+      return { error: "commitContext testFenceInstallFaultOnce must be a boolean" };
+    }
     commitContext = {
       attemptId: value.commitContext.attemptId,
       serviceId: value.commitContext.serviceId,
       ...(value.commitContext.testFenceNotDurable === true ? { testFenceNotDurable: true } : {}),
+      ...(value.commitContext.testFenceInstallFaultOnce === true ? { testFenceInstallFaultOnce: true } : {}),
     };
   }
 
@@ -1187,6 +1194,10 @@ export class JournalDurableObject implements DurableObject {
       }
       fences = installedFences;
     }
+    const afterFenceFault = await this.consumeNamedAlarmFault(current, "after-fence-before-cancel");
+    if (afterFenceFault !== undefined) {
+      return afterFenceFault;
+    }
     if (!(await this.cancelConsistencyBarrier(current, current.ownerEpoch))) {
       return this.readRecord();
     }
@@ -1395,8 +1406,46 @@ export class JournalDurableObject implements DurableObject {
         return undefined;
       }
       fences.push({ tag, fenced: true });
+      if (
+        context.testFenceInstallFaultOnce === true &&
+        await this.consumeTestFenceInstallFault(record)
+      ) {
+        return undefined;
+      }
     }
     return fences;
+  }
+
+  /** Consumes the private post-fence crash hook without changing normal recovery. */
+  private async consumeTestFenceInstallFault(expected: JournalRecord): Promise<boolean> {
+    const result = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
+      if (record === undefined) {
+        return { ok: false, status: 404, error: "Journal has not been admitted" };
+      }
+      if (
+        record.state !== expected.state ||
+        record.version !== expected.version ||
+        record.ownerEpoch !== expected.ownerEpoch ||
+        record.commitContext?.testFenceInstallFaultOnce !== true
+      ) {
+        return { ok: false, status: 409, error: "Journal changed while the test fence fault was handled" };
+      }
+      const commitContext: CommitAttemptContext = {
+        attemptId: record.commitContext.attemptId,
+        serviceId: record.commitContext.serviceId,
+        ...(record.commitContext.testFenceNotDurable === true ? { testFenceNotDurable: true } : {}),
+      };
+      const updated: JournalRecord = {
+        ...record,
+        commitContext,
+        version: record.version + 1,
+        updatedAt: nowIso(),
+      };
+      await txn.put(JOURNAL_KEY, updated);
+      return { ok: true, record: updated };
+    });
+    return result.ok;
   }
 
   private async tagRequest(

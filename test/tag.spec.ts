@@ -74,6 +74,14 @@ async function rejectionReason(response: Response): Promise<string> {
   return (await responseJson<Rejection>(response)).reason;
 }
 
+async function internalError(response: Response): Promise<void> {
+  expect(response.status).toBe(500);
+  expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  const body = await responseJson<{ error: string; code: string }>(response);
+  expect(body.code).toBe("internal_error");
+  expect(body.error.length).toBeGreaterThan(0);
+}
+
 describe("TagDurableObject", () => {
   it("AC1: reads the SQLite head for observed consistency tags and reserves only those tags", async () => {
     const scope = newScope();
@@ -348,56 +356,157 @@ describe("TagDurableObject", () => {
     expect((await acquire(cancelScope, "cancel-race", 2)).status).toBe(201);
   });
 
-  it("AC8: persists exact-key fences and invokes the minimal gate hook in both paths", async () => {
+  it("G5: treats fences as an exact-key durable set and gates acquire and append in the specified order", async () => {
     const scope = newScope();
+    const original = candidate(scope, "event-1", "suid-00000000000000000000000000000001");
+    expect((await post(scope, "/append", {
+      attemptId: "writer",
+      epoch: 0,
+      candidates: [original],
+    })).status).toBe(201);
+
     expect((await post(scope, "/fence/install", {
-      reason: "operator",
-      attemptId: "fence-owner",
+      reason: "repair-a",
+      attemptId: "fence-owner-a",
+      epoch: 1,
+    })).status).toBe(201);
+    const firstFence = await state(scope);
+    expect((await post(scope, "/fence/install", {
+      reason: "repair-a",
+      attemptId: "fence-owner-a",
+      epoch: 1,
+    })).status).toBe(200);
+    expect((await state(scope)).version).toBe(firstFence.version);
+    expect((await post(scope, "/fence/install", {
+      reason: "repair-b",
+      attemptId: "fence-owner-b",
       epoch: 1,
     })).status).toBe(201);
     const installed = await state(scope);
-    expect(installed.fences).toContainEqual({ reason: "operator", attemptId: "fence-owner", epoch: 1 });
-    expect((await post(scope, "/fence/install", {
-      reason: "operator",
-      attemptId: "fence-owner",
-      epoch: 1,
-    })).status).toBe(200);
-    expect((await state(scope)).version).toBe(installed.version);
+    expect(installed.fences).toEqual(expect.arrayContaining([
+      { reason: "repair-a", attemptId: "fence-owner-a", epoch: 1 },
+      { reason: "repair-b", attemptId: "fence-owner-b", epoch: 1 },
+    ]));
 
-    expect((await post(scope, "/fence/clear", {
-      reason: "operator",
-      attemptId: "fence-owner",
-      epoch: 1,
+    // Exact duplicate precedes epoch and fence authorization. It cannot make
+    // a new write while the set gate is closed.
+    const beforeDuplicate = await state(scope);
+    expect((await post(scope, "/append", {
+      attemptId: "writer",
+      epoch: 0,
+      candidates: [original],
     })).status).toBe(200);
-    const cleared = await state(scope);
-    expect(cleared.fences).toEqual([]);
-    expect(cleared.clearedFences).toContainEqual({ reason: "operator", attemptId: "fence-owner", epoch: 1 });
-    expect((await post(scope, "/fence/clear", {
-      reason: "operator",
-      attemptId: "fence-owner",
-      epoch: 1,
-    })).status).toBe(200);
-    expect((await state(scope)).version).toBe(cleared.version);
+    expect(await state(scope)).toEqual(beforeDuplicate);
 
-    expect((await post(scope, "/fence/install", {
-      reason: "gate-observation",
-      attemptId: "gated-writer",
+    // A non-duplicate gets the fence result before token/admission or guard.
+    await internalError(await post(scope, "/append", {
+      attemptId: "foreign",
+      epoch: 0,
+      candidates: [candidate(scope, "blocked", "suid-00000000000000000000000000000002")],
+    }));
+    await internalError(await acquire(scope, "blocked-acquire", 0, "suid-00000000000000000000000000000001"));
+
+    // Clearing a key never clears another key, so the gate remains closed.
+    expect((await post(scope, "/fence/clear", {
+      reason: "repair-a",
+      attemptId: "fence-owner-a",
+      epoch: 1,
+    })).status).toBe(200);
+    const afterExactClear = await state(scope);
+    expect(afterExactClear.fences).toEqual([{ reason: "repair-b", attemptId: "fence-owner-b", epoch: 1 }]);
+    expect((await post(scope, "/fence/clear", {
+      reason: "repair-a",
+      attemptId: "fence-owner-a",
+      epoch: 1,
+    })).status).toBe(200);
+    expect((await state(scope)).version).toBe(afterExactClear.version);
+    await internalError(await post(scope, "/append", {
+      attemptId: "still-blocked",
+      epoch: 0,
+      candidates: [candidate(scope, "still-blocked", "suid-00000000000000000000000000000002")],
+    }));
+    expect((await post(scope, "/fence/clear", {
+      reason: "repair-b",
+      attemptId: "fence-owner-b",
+      epoch: 1,
+    })).status).toBe(200);
+    expect((await post(scope, "/append", {
+      attemptId: "open-again",
+      epoch: 0,
+      candidates: [candidate(scope, "open-again", "suid-00000000000000000000000000000002")],
+    })).status).toBe(201);
+
+    const expiryScope = newScope();
+    const held = await reservation(await acquire(expiryScope, "expired-owner", 1));
+    expect((await post(expiryScope, "/fence/install", {
+      reason: "repair",
+      attemptId: "repair-owner",
       epoch: 1,
     })).status).toBe(201);
-    const acquired = await acquire(scope, "gated-writer", 1);
-    expect(acquired.status).toBe(201);
-    const reservationResult = await responseJson<{ reservation: TagReservation; fenceGate: { checked: boolean } }>(
-      acquired,
-    );
-    expect(reservationResult.fenceGate.checked).toBe(true);
-    const appended = await post(scope, "/append", {
-      attemptId: "gated-writer",
+    expect((await post(expiryScope, "/debug/clock", { nowMs: held.expiresAt + 1 })).status).toBe(200);
+    await internalError(await acquire(expiryScope, "later-owner", 1));
+    expect((await state(expiryScope)).activeReservation).toBeNull();
+
+    const rotationScope = newScope();
+    expect((await post(rotationScope, "/fence/install", {
+      reason: "segment_rotation",
+      attemptId: "rotation-owner",
       epoch: 1,
-      reservationToken: reservationResult.reservation.token,
-      candidates: [candidate(scope, "gate-event", "suid-00000000000000000000000000000001")],
-    });
-    expect(appended.status).toBe(201);
-    expect((await responseJson<{ fenceGate: { checked: boolean } }>(appended)).fenceGate.checked).toBe(true);
+    })).status).toBe(201);
+    expect(await rejectionReason(await post(rotationScope, "/fence/install", {
+      reason: "partial_write",
+      attemptId: "partial-owner",
+      epoch: 1,
+    }))).toBe("fence_overlap_blocked");
+    expect((await post(rotationScope, "/fence/clear", {
+      reason: "segment_rotation",
+      attemptId: "rotation-owner",
+      epoch: 1,
+    })).status).toBe(200);
+    expect((await post(rotationScope, "/fence/install", {
+      reason: "partial_write",
+      attemptId: "partial-owner",
+      epoch: 1,
+    })).status).toBe(201);
+    expect(await rejectionReason(await post(rotationScope, "/fence/install", {
+      reason: "segment_rotation",
+      attemptId: "rotation-owner-2",
+      epoch: 1,
+    }))).toBe("fence_overlap_blocked");
     expect((await post(scope, "/fence/install", { reason: "missing-epoch", attemptId: "x" })).status).toBe(400);
+  });
+
+  it("G5: serializes fence install/clear races with normal operations and preserves every unrelated fence", async () => {
+    const scope = newScope();
+    const [installed, appended] = await Promise.all([
+      post(scope, "/fence/install", { reason: "race-a", attemptId: "fence-a", epoch: 1 }),
+      post(scope, "/append", {
+        attemptId: "writer",
+        epoch: 0,
+        candidates: [candidate(scope, "race-event", "suid-00000000000000000000000000000001")],
+      }),
+    ]);
+    expect(installed.status).toBe(201);
+    expect([201, 500]).toContain(appended.status);
+    if (appended.status === 500) {
+      await internalError(appended);
+    }
+
+    expect((await post(scope, "/fence/install", {
+      reason: "race-b",
+      attemptId: "fence-b",
+      epoch: 1,
+    })).status).toBe(201);
+    const [cleared, stillBlocked] = await Promise.all([
+      post(scope, "/fence/clear", { reason: "race-a", attemptId: "fence-a", epoch: 1 }),
+      post(scope, "/append", {
+        attemptId: "second-writer",
+        epoch: 0,
+        candidates: [candidate(scope, "blocked-event", "suid-0000000000000000000000000000000002")],
+      }),
+    ]);
+    expect(cleared.status).toBe(200);
+    await internalError(stillBlocked);
+    expect((await state(scope)).fences).toEqual([{ reason: "race-b", attemptId: "fence-b", epoch: 1 }]);
   });
 });

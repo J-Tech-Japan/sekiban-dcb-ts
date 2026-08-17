@@ -1,4 +1,6 @@
 export const RESERVATION_WINDOW_MS = 30_000;
+export const PARTIAL_WRITE_FENCE_REASON = "partial_write";
+export const SEGMENT_ROTATION_FENCE_REASON = "segment_rotation";
 
 export interface TagEpoch {
   attemptId: string;
