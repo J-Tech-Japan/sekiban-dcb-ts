@@ -28,6 +28,7 @@ export type CommitTestFault =
   | "journal-cas-after-allocator"
   | "tag-append-always"
   | "tag-append-last"
+  | "fence-install-partial"
   | "fence-not-durable"
   | "tag-state-unavailable"
   | "sealing-after-cas"
@@ -39,6 +40,7 @@ export const COMMIT_TEST_FAULTS: readonly CommitTestFault[] = [
   "journal-cas-after-allocator",
   "tag-append-always",
   "tag-append-last",
+  "fence-install-partial",
   "fence-not-durable",
   "tag-state-unavailable",
   "sealing-after-cas",

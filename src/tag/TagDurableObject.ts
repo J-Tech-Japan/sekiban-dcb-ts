@@ -1,5 +1,7 @@
 import {
+  PARTIAL_WRITE_FENCE_REASON,
   RESERVATION_WINDOW_MS,
+  SEGMENT_ROTATION_FENCE_REASON,
   type TagConsistencyEntry,
   type TagEpoch,
   type TagEvent,
@@ -280,6 +282,19 @@ function withoutFence(entries: TagFence[], reason: string, attemptId: string): T
   return entries.filter((entry) => entry.reason !== reason || entry.attemptId !== attemptId);
 }
 
+function latestFenceEpoch(record: TagRecord, reason: string, attemptId: string): number | undefined {
+  const epochs = [
+    fenceFor(record.fences, reason, attemptId)?.epoch,
+    fenceFor(record.clearedFences, reason, attemptId)?.epoch,
+  ].filter((epoch): epoch is number => epoch !== undefined);
+  return epochs.length === 0 ? undefined : Math.max(...epochs);
+}
+
+function fenceEpochRejection(record: TagRecord, reason: string, attemptId: string, epoch: number): string | undefined {
+  const latest = latestFenceEpoch(record, reason, attemptId);
+  return latest !== undefined && epoch < latest ? "stale_epoch" : undefined;
+}
+
 function newRecord(tag: string): TagRecord {
   const timestamp = nowIso();
   return {
@@ -385,16 +400,46 @@ function monotonicityViolation(head: string, candidates: AppendCandidate[]): boo
   return false;
 }
 
-/**
- * G3 exposes the durable fence table and invokes this hook transactionally in
- * both reservation and append paths. It deliberately does not block anything:
- * the policy that turns fences into a gate is SDT-G5's scope.
- */
+/** Retained control-plane observability from G3; it never substitutes for the gate. */
 function inspectFenceGate(record: TagRecord, attemptId: string): FenceGateObservation {
   return {
     checked: true,
     activeFenceCount: record.fences.filter((fence) => fence.attemptId === attemptId).length,
   };
+}
+
+/** The gate is closed by any durable fence, regardless of its owner. */
+function isFenceGateClosed(record: TagRecord): boolean {
+  return record.fences.length > 0;
+}
+
+function fenceGateRejected(): OperationResult {
+  return {
+    status: 500,
+    body: {
+      error: "Tag writes are unavailable while a durable repair fence is held",
+      code: "internal_error",
+    },
+  };
+}
+
+/**
+ * Rotation is intentionally only a fence-level interface in SDT-G5. A
+ * partial repair cannot jump an earlier rotation fence, and a held partial
+ * repair lease prevents a new rotation start. SDT-G6 owns rotation itself.
+ */
+function overlappingFenceReason(record: TagRecord, reason: string): string | undefined {
+  if (reason === PARTIAL_WRITE_FENCE_REASON && record.fences.some((fence) =>
+    fence.reason === SEGMENT_ROTATION_FENCE_REASON,
+  )) {
+    return SEGMENT_ROTATION_FENCE_REASON;
+  }
+  if (reason === SEGMENT_ROTATION_FENCE_REASON && record.fences.some((fence) =>
+    fence.reason === PARTIAL_WRITE_FENCE_REASON,
+  )) {
+    return PARTIAL_WRITE_FENCE_REASON;
+  }
+  return undefined;
 }
 
 export class TagDurableObject implements DurableObject {
@@ -508,31 +553,30 @@ export class TagDurableObject implements DurableObject {
     const input = parsed.value;
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
-      const expiry = expireReservation(loaded.record);
-      let record = expiry.record;
+      let record = loaded.record;
 
       const observed = input.expectedHead !== null;
       const isEventTag = input.eventTags.includes(tag);
+      const epochError = operationEpochRejection(record, input.attemptId, input.epoch);
+      if (epochError !== undefined) {
+        return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version: record.version } };
+      }
+
+      // Acquire ordering is deliberate: epoch, expired cleanup, fence, then
+      // authoritative head comparison/reservation creation.
+      const expiry = expireReservation(record);
+      record = await this.commitExpiryIfNeeded(txn, expiry);
       if (!observed || !isEventTag) {
-        const epochError = operationEpochRejection(record, input.attemptId, input.epoch);
-        if (epochError !== undefined) {
-          record = await this.commitExpiryIfNeeded(txn, expiry);
-          return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version: record.version } };
-        }
-        record = await this.commitExpiryIfNeeded(txn, expiry);
         return {
           status: 200,
           body: { status: "omitted", reservation: null, fenceGateChecked: false, version: record.version },
         };
       }
 
-      const epochError = operationEpochRejection(record, input.attemptId, input.epoch);
-      if (epochError !== undefined) {
-        record = await this.commitExpiryIfNeeded(txn, expiry);
-        return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version: record.version } };
+      if (isFenceGateClosed(record)) {
+        return fenceGateRejected();
       }
       if (record.head !== input.expectedHead) {
-        record = await this.commitExpiryIfNeeded(txn, expiry);
         return {
           ...rejected("consistency_head_mismatch"),
           body: { ...rejected("consistency_head_mismatch").body as JsonObject, version: record.version },
@@ -542,7 +586,6 @@ export class TagDurableObject implements DurableObject {
       const active = record.activeReservation;
       if (active !== null) {
         if (active.attemptId === input.attemptId && active.epoch === input.epoch) {
-          record = await this.commitExpiryIfNeeded(txn, expiry);
           return {
             status: 200,
             body: {
@@ -553,14 +596,13 @@ export class TagDurableObject implements DurableObject {
             },
           };
         }
-        record = await this.commitExpiryIfNeeded(txn, expiry);
         return {
           ...rejected("active_reservation_conflict"),
           body: { ...rejected("active_reservation_conflict").body as JsonObject, version: record.version },
         };
       }
 
-      const gate = inspectFenceGate(record, input.attemptId);
+      const fenceGate = inspectFenceGate(record, input.attemptId);
       record = advanceEpoch(record, input.attemptId, input.epoch);
       const now = logicalNow(record);
       const reservation: TagReservation = {
@@ -577,7 +619,7 @@ export class TagDurableObject implements DurableObject {
       });
       return {
         status: 201,
-        body: { status: "reserved", reservation, fenceGate: gate, version: updated.version },
+        body: { status: "reserved", reservation, fenceGate, version: updated.version },
       };
     });
     return json(result.body, result.status);
@@ -703,19 +745,27 @@ export class TagDurableObject implements DurableObject {
     try {
       const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
         const loaded = await this.recordFor(txn, tag);
-        const expiry = expireReservation(loaded.record);
-        let record = expiry.record;
+        let record = loaded.record;
 
         // Required order begins here: exact duplicate is before any epoch or token check.
         if (batchIsExactDuplicate(record, input)) {
-          record = await this.commitExpiryIfNeeded(txn, expiry);
           return { status: 200, body: { status: "duplicate", version: record.version } };
         }
 
+        const expiry = expireReservation(record);
+        record = expiry.record;
         const epochError = operationEpochRejection(record, input.attemptId, input.epoch);
         if (epochError !== undefined) {
           record = await this.commitExpiryIfNeeded(txn, expiry);
           return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version: record.version } };
+        }
+
+        // Exact duplicates are intentionally above the epoch check. Every
+        // non-duplicate append checks the set gate before ownership/token or
+        // content guards, so a fence cannot be bypassed by a stale caller.
+        if (isFenceGateClosed(record)) {
+          await this.commitExpiryIfNeeded(txn, expiry);
+          return fenceGateRejected();
         }
 
         const active = record.activeReservation;
@@ -862,10 +912,22 @@ export class TagDurableObject implements DurableObject {
         record = await this.commitExpiryIfNeeded(txn, expiry);
         return { status: 200, body: { status: "fence-installed", idempotent: true, version: record.version } };
       }
-      const epochError = basicEpochRejection(record, input.attemptId, input.epoch);
+      const epochError = fenceEpochRejection(record, input.reason, input.attemptId, input.epoch);
       if (epochError !== undefined) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
         return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version: record.version } };
+      }
+      const overlap = overlappingFenceReason(record, input.reason);
+      if (overlap !== undefined) {
+        record = await this.commitExpiryIfNeeded(txn, expiry);
+        return {
+          ...rejected("fence_overlap_blocked"),
+          body: {
+            ...rejected("fence_overlap_blocked").body as JsonObject,
+            error: `Fence authorization is blocked by ${overlap}`,
+            version: record.version,
+          },
+        };
       }
       record = advanceEpoch(record, input.attemptId, input.epoch);
       const fence: TagFence = { reason: input.reason, attemptId: input.attemptId, epoch: input.epoch };
@@ -888,12 +950,15 @@ export class TagDurableObject implements DurableObject {
       const loaded = await this.recordFor(txn, tag);
       const expiry = expireReservation(loaded.record);
       let record = expiry.record;
+      const existing = fenceFor(record.fences, input.reason, input.attemptId);
       const alreadyCleared = fenceFor(record.clearedFences, input.reason, input.attemptId);
-      if (alreadyCleared?.epoch === input.epoch) {
+      if (alreadyCleared !== undefined && alreadyCleared.epoch >= input.epoch) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
         return { status: 200, body: { status: "fence-cleared", idempotent: true, version: record.version } };
       }
-      const epochError = basicEpochRejection(record, input.attemptId, input.epoch);
+      const epochError = existing !== undefined && input.epoch < existing.epoch
+        ? "stale_epoch"
+        : fenceEpochRejection(record, input.reason, input.attemptId, input.epoch);
       if (epochError !== undefined) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
         return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version: record.version } };

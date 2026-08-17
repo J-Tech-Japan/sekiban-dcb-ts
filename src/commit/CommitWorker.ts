@@ -230,6 +230,7 @@ export class CommitWorker {
         attemptId,
         serviceId: COMMIT_SERVICE_ID,
         ...(fault === "fence-not-durable" ? { testFenceNotDurable: true } : {}),
+        ...(fault === "fence-install-partial" ? { testFenceInstallFaultOnce: true } : {}),
       },
     });
     if (admitted.response.status !== 201 || admitted.body === undefined) {
@@ -406,6 +407,15 @@ export class CommitWorker {
         successes.set(tag, { tag, reservationToken: reservation.token });
         continue;
       }
+      const code = isObject(body) && typeof body.code === "string" ? body.code : undefined;
+      if (response.status === 500 && code === "internal_error") {
+        failure ??= {
+          outcome: "FAILED",
+          failureCause: "guard-rejection",
+          reason: "a consistency tag is fenced while its durable state is reconciled",
+        };
+        continue;
+      }
       const reason = isObject(body) && typeof body.reason === "string" ? body.reason : "reservation provider rejected the attempt";
       const logical = reason === "consistency_head_mismatch" || reason === "active_reservation_conflict";
       failure ??= logical
@@ -491,7 +501,9 @@ export class CommitWorker {
         pending.map(async (tag) => {
           const injectFault =
             fault === "tag-append-always" ||
-            ((fault === "tag-append-last" || fault === "fence-not-durable") &&
+            ((fault === "tag-append-last" ||
+              fault === "fence-not-durable" ||
+              fault === "fence-install-partial") &&
               tag === input.allTags[input.allTags.length - 1]);
           const response = await this.tagRequest(tag, "/append", {
             attemptId,

@@ -75,6 +75,17 @@ async function tagState(tag: string): Promise<TagRecord> {
   return responseJson<TagRecord>(response);
 }
 
+async function tagPost(tag: string, path: string, body: unknown): Promise<Response> {
+  return SELF.fetch(
+    `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(tag)}${path}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+}
+
 async function allocatorState(): Promise<AllocatorState> {
   const response = await SELF.fetch("https://commit.test/allocator/state");
   expect(response.status).toBe(200);
@@ -151,6 +162,69 @@ async function prepareSealingAttempt(
   });
   expect(sealing.status).toBe(200);
   return { attemptId, tags, record: await responseJson<JournalRecord>(sealing) };
+}
+
+async function preparePartialFenceAttempt(
+  prefix: string,
+  options: { alarmFault?: AlarmFaultPoint; testFenceInstallFaultOnce?: boolean } = {},
+): Promise<{ attemptId: string; writtenTag: string; missingTag: string; record: JournalRecord }> {
+  const attemptId = crypto.randomUUID();
+  const writtenTag = newTag(`${prefix}-written`);
+  const missingTag = newTag(`${prefix}-missing`);
+  const eventId = `${attemptId}-event`;
+  const tags = [writtenTag, missingTag];
+  const admitted = await journalPost(attemptId, "/admit", {
+    candidates: [{ eventId, payload: "cGFydGlhbA==", tags }],
+    consistencyTags: tags.map((tag) => ({ tag, lastSortableUniqueId: "" })),
+    commitContext: {
+      attemptId,
+      serviceId: SERVICE_ID,
+      ...(options.testFenceInstallFaultOnce === true ? { testFenceInstallFaultOnce: true } : {}),
+    },
+  });
+  expect(admitted.status).toBe(201);
+  let record = await responseJson<JournalRecord>(admitted);
+  record = await journalTransition(attemptId, record, "RESERVED");
+
+  const tokens = new Map<string, string>();
+  for (const tag of tags) {
+    const acquired = await tagPost(tag, "/acquire", {
+      attemptId,
+      epoch: 0,
+      eventTags: tags,
+      consistencyTags: tags.map((entry) => ({ tag: entry, lastSortableUniqueId: "" })),
+    });
+    expect(acquired.status).toBe(201);
+    tokens.set(tag, (await responseJson<{ reservation: { token: string } }>(acquired)).reservation.token);
+  }
+  record = await journalTransition(attemptId, record, "ALLOCATED");
+  record = await journalTransition(attemptId, record, "WRITING");
+  const partialAppend = await tagPost(writtenTag, "/append", {
+    attemptId,
+    epoch: 0,
+    reservationToken: tokens.get(writtenTag),
+    candidates: [{
+      eventId,
+      suid: "suid-00000000000000000000000000000001",
+      payload: "cGFydGlhbA==",
+      eventTags: tags,
+    }],
+  });
+  expect(partialAppend.status).toBe(201);
+  const sealing = await journalPost(attemptId, "/transition", {
+    expectedState: record.state,
+    expectedVersion: record.version,
+    expectedOwnerEpoch: record.ownerEpoch,
+    nextState: "SEALING",
+    ...(options.alarmFault === undefined ? {} : { alarmFaults: [options.alarmFault] }),
+  });
+  expect(sealing.status).toBe(200);
+  return {
+    attemptId,
+    writtenTag,
+    missingTag,
+    record: await responseJson<JournalRecord>(sealing),
+  };
 }
 
 describe("Serialized V1 commit worker", () => {
@@ -385,6 +459,52 @@ describe("Serialized V1 commit worker", () => {
     expect((mapping?.body as { partial: { retryable: boolean } }).partial.retryable).toBe(false);
   });
 
+  it("G5: an ordinary commit to a fenced tag with zero durable records returns Section 6 internal_error", async () => {
+    const fencedTag = newTag("ordinary-fenced");
+    expect((await tagPost(fencedTag, "/fence/install", {
+      reason: "partial_write",
+      attemptId: "repair-owner",
+      epoch: 1,
+    })).status).toBe(201);
+
+    const response = await commit({
+      version: 1,
+      eventCandidates: [candidate("ZmVuY2Vk", "Blocked", [fencedTag])],
+      consistencyTags: [{ tag: fencedTag, lastSortableUniqueId: "" }],
+    });
+    await expectSection6Error(response, 500, "internal_error");
+    expect((await tagState(fencedTag)).events).toEqual([]);
+  });
+
+  it("G5 boundary 6: HTTP returns the Section 7 partial report only after the durable PARTIAL(FENCED) outcome", async () => {
+    const writtenTag = newTag("http-partial-written");
+    const missingTag = newTag("http-partial-missing");
+    const attemptId = crypto.randomUUID();
+    const response = await commit({
+      version: 1,
+      eventCandidates: [candidate("aHR0cC1wYXJ0aWFs", "HttpPartial", [writtenTag, missingTag])],
+      consistencyTags: [
+        { tag: writtenTag, lastSortableUniqueId: "" },
+        { tag: missingTag, lastSortableUniqueId: "" },
+      ],
+    }, "fence-install-partial", attemptId);
+
+    const body = await expectSection6Error<{
+      error: string;
+      code: string;
+      partial: { writtenTags: string[]; missingTags: string[] };
+    }>(response, 500, "partial_write");
+    expect(body.partial).toMatchObject({ writtenTags: [writtenTag], missingTags: [missingTag] });
+    const terminal = await journalState(attemptId);
+    expect(terminal.state).toBe("PARTIAL");
+    expect(terminal.takeover?.fencedTags).toEqual([missingTag]);
+    expect((await tagState(missingTag)).fences).toContainEqual({
+      reason: "partial_write",
+      attemptId,
+      epoch: terminal.ownerEpoch,
+    });
+  });
+
   it("AC4: each named alarm crash point is re-armed, idempotent, and converges to one immutable outcome", async () => {
     const points: AlarmFaultPoint[] = [
       "handler-entry",
@@ -518,6 +638,87 @@ describe("Serialized V1 commit worker", () => {
     const terminalWake = await journalPost(attemptId, "/debug/alarm", {});
     expect(terminalWake.status).toBe(200);
     expect((await responseJson<JournalRecord>(terminalWake)).state).toBe("PARTIAL");
+  });
+
+  it("G5 boundary 1: a crash after one durable fence install stays SEALING, re-arms, and resumes to PARTIAL(FENCED)", async () => {
+    const prepared = await preparePartialFenceAttempt("partial-fence", { testFenceInstallFaultOnce: true });
+
+    const afterPartialFence = await journalPost(prepared.attemptId, "/debug/alarm", {});
+    expect(afterPartialFence.status).toBe(200);
+    const sealing = await responseJson<JournalRecord>(afterPartialFence);
+    expect(sealing.state).toBe("SEALING");
+    expect(sealing.terminalResponse).toBeNull();
+    expect(sealing.alarm).not.toBeNull();
+    expect(sealing.takeover?.fencedTags).toEqual([]);
+    expect((await tagState(prepared.missingTag)).fences).toContainEqual({
+      reason: "partial_write",
+      attemptId: prepared.attemptId,
+      epoch: sealing.ownerEpoch,
+    });
+
+    const resumed = await journalPost(prepared.attemptId, "/debug/alarm", {});
+    expect(resumed.status).toBe(200);
+    const terminal = await responseJson<JournalRecord>(resumed);
+    expect(terminal.state).toBe("PARTIAL");
+    expect(terminal.takeover?.fencedTags).toEqual([prepared.missingTag]);
+  });
+
+  it("G5 boundaries 2 and 3: fence-before-cancel and pre-CAS faults cannot publish a partial outcome", async () => {
+    for (const alarmFault of ["after-fence-before-cancel", "before-outcome-cas"] as const) {
+      const prepared = await preparePartialFenceAttempt(`ordered-${alarmFault}`, { alarmFault });
+      const interrupted = await journalPost(prepared.attemptId, "/debug/alarm", {});
+      expect(interrupted.status).toBe(200);
+      const sealing = await responseJson<JournalRecord>(interrupted);
+      expect(sealing.state).toBe("SEALING");
+      expect(sealing.terminalResponse).toBeNull();
+      expect(sealing.alarm).not.toBeNull();
+      expect((await tagState(prepared.missingTag)).fences).toContainEqual({
+        reason: "partial_write",
+        attemptId: prepared.attemptId,
+        epoch: sealing.ownerEpoch,
+      });
+
+      const resumed = await journalPost(prepared.attemptId, "/debug/alarm", {});
+      expect(resumed.status).toBe(200);
+      const terminal = await responseJson<JournalRecord>(resumed);
+      expect(terminal.state).toBe("PARTIAL");
+      expect(terminal.takeover?.fencedTags).toEqual([prepared.missingTag]);
+    }
+  });
+
+  it("G5 rotation fixture: a segment fence blocks partial repair until it is exactly cleared", async () => {
+    const prepared = await preparePartialFenceAttempt("rotation-overlap");
+    const rotationFence = await tagPost(prepared.missingTag, "/fence/install", {
+      reason: "segment_rotation",
+      attemptId: "rotation-owner",
+      epoch: 1,
+    });
+    expect(rotationFence.status).toBe(201);
+
+    const blocked = await journalPost(prepared.attemptId, "/debug/alarm", {});
+    expect(blocked.status).toBe(200);
+    const sealing = await responseJson<JournalRecord>(blocked);
+    expect(sealing.state).toBe("SEALING");
+    expect(sealing.terminalResponse).toBeNull();
+    expect(sealing.alarm).not.toBeNull();
+    const blockedTag = await tagState(prepared.missingTag);
+    expect(blockedTag.fences).toContainEqual({ reason: "segment_rotation", attemptId: "rotation-owner", epoch: 1 });
+    expect(blockedTag.fences).not.toContainEqual({
+      reason: "partial_write",
+      attemptId: prepared.attemptId,
+      epoch: sealing.ownerEpoch,
+    });
+
+    expect((await tagPost(prepared.missingTag, "/fence/clear", {
+      reason: "segment_rotation",
+      attemptId: "rotation-owner",
+      epoch: 1,
+    })).status).toBe(200);
+    const resumed = await journalPost(prepared.attemptId, "/debug/alarm", {});
+    expect(resumed.status).toBe(200);
+    const terminal = await responseJson<JournalRecord>(resumed);
+    expect(terminal.state).toBe("PARTIAL");
+    expect(terminal.takeover?.fencedTags).toEqual([prepared.missingTag]);
   });
 
   it("AC5/AC6: a fence-not-durable attempt returns an undetermined timeout and its alarm keeps terminalizing", async () => {
