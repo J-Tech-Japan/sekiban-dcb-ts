@@ -47,6 +47,49 @@ export interface TagFence {
 }
 
 /**
+ * SDT-G6 repair authority is deliberately held by the Tag DO rather than by
+ * a Journal observation.  A scope item is the exact candidate that a repair
+ * lease is permitted to touch.
+ */
+export interface RepairScopeItem {
+  attemptId: string;
+  eventId: string;
+  suid: string;
+  payload: string;
+  eventTags: string[];
+}
+
+export type RepairBranch = "ROLLED_FORWARD" | "EXCLUDED_AUDITED" | "FAILED_CLOSED";
+
+/** Durable fact written by the Tag DO after it has made a branch decision. */
+export interface RepairResolution {
+  attemptId: string;
+  eventId: string;
+  suid: string;
+  branch: RepairBranch;
+  epoch: number;
+  owner: string;
+  recordedAt: string;
+}
+
+/** An audit is intentionally separate from the original commit outcome. */
+export interface RepairAudit {
+  attemptId: string;
+  eventId: string;
+  suid: string;
+  branch: Exclude<RepairBranch, "FAILED_CLOSED">;
+  actor: string;
+  epoch: number;
+  owner: string;
+  recordedAt: string;
+}
+
+export interface RepairFacts {
+  resolutions: RepairResolution[];
+  audits: RepairAudit[];
+}
+
+/**
  * The per-tag durable authority. Its `head` is read from SQLite inside every
  * consistency comparison; there is no in-memory cache of the head.
  */
@@ -64,6 +107,13 @@ export interface TagRecord {
   confirmations: TagEpoch[];
   fences: TagFence[];
   clearedFences: TagFence[];
+  /** SDT-G6 repair fencing-token lease. */
+  repairOwner: string | null;
+  repairLeaseUntil: number | null;
+  highestRepairEpoch: number;
+  /** Durable, set-based authorization scope for the currently held lease. */
+  repairScope: RepairScopeItem[];
+  repairScopeVersion: number;
   clockOffsetMs: number;
   clockNowMs: number | null;
   version: number;

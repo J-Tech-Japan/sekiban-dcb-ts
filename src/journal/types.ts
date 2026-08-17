@@ -103,6 +103,24 @@ export interface TerminalResponse {
   reason: string;
 }
 
+/**
+ * SDT-G6 repair progress is an observation log only.  It is never consulted
+ * to authorize a Tag mutation, clear a fence, or change the original outcome.
+ */
+export type RepairObservationPhase = "PREPARED" | "VERIFIED" | "CLEARED";
+
+export interface RepairObservation {
+  owner: string;
+  epoch: number;
+  tag: string;
+  attemptId: string;
+  eventId: string;
+  suid: string;
+  phase: RepairObservationPhase;
+  branch?: "ROLLED_FORWARD" | "EXCLUDED_AUDITED" | "FAILED_CLOSED";
+  observedAt: string;
+}
+
 /** Durable classification recorded before the reservation cancel barrier. */
 export interface ReservationFailure {
   outcome: Extract<JournalTerminalState, "REFUSED" | "FAILED">;
@@ -127,6 +145,7 @@ export interface JournalRecord {
   faultsRemaining: number;
   alarmFaults: AlarmFaultPoint[];
   terminalResponse: TerminalResponse | null;
+  repairObservations: RepairObservation[];
   createdAt: string;
   updatedAt: string;
 }

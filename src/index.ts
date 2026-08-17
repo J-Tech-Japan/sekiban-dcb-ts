@@ -1,4 +1,5 @@
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
@@ -10,6 +11,9 @@ export interface Env {
   ALLOCATOR: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
+  /** Secret binding; deployment must configure this rather than a public var. */
+  REPAIR_OPERATOR_TOKEN: string;
+  REPAIR_EXCLUSION_LOOKUP?: Fetcher;
 }
 
 const worker: ExportedHandler<Env> = {
@@ -17,6 +21,9 @@ const worker: ExportedHandler<Env> = {
     const url = new URL(request.url);
     if (url.pathname === "/api/sekiban/serialized/commit") {
       return handleSerializedCommit(request, env);
+    }
+    if (url.pathname === "/operator/repair") {
+      return handleOperatorRepair(request, env);
     }
     if (
       url.pathname === "/api/sekiban/serialized/tag-latest-sortable" ||
