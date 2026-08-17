@@ -12,6 +12,10 @@
       {
         "name": "ALLOCATOR",
         "class_name": "AllocatorDurableObject"
+      },
+      {
+        "name": "TAG",
+        "class_name": "TagDurableObject"
       }
     ]
   },
@@ -23,6 +27,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["AllocatorDurableObject"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["TagDurableObject"]
     }
   ]
 }
