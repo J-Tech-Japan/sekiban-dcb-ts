@@ -81,6 +81,29 @@ async function reconcile(
   });
 }
 
+async function triggerAlarm(attemptId: string): Promise<JournalRecord> {
+  const response = await request(attemptId, "/debug/alarm", {});
+  expect(response.status).toBe(200);
+  return responseJson<JournalRecord>(response);
+}
+
+async function provideTakeoverEvidence(
+  attemptId: string,
+  record: JournalRecord,
+  reconciliation: ReconciliationInput,
+  sealedTags = record.allTags,
+): Promise<JournalRecord> {
+  const response = await request(attemptId, "/takeover", {
+    expectedState: record.state,
+    expectedVersion: record.version,
+    expectedOwnerEpoch: record.ownerEpoch,
+    seals: sealedTags.map((tag) => ({ tag, sealed: true })),
+    reconciliation,
+  });
+  expect(response.status).toBe(202);
+  return (await responseJson<{ journal: JournalRecord }>(response)).journal;
+}
+
 async function advanceTo(
   attemptId: string,
   record: JournalRecord,
@@ -141,7 +164,7 @@ describe("JournalDurableObject", () => {
     expect((await responseJson<JournalRecord>(resumed)).state).toBe("ABANDONED");
   });
 
-  it("uses CAS to fix one terminal outcome under competing worker and alarm activity", async () => {
+  it("makes the competing worker/alarm winner and one-time terminalization observable", async () => {
     const attemptId = newAttempt();
     const interruptedAdmission = await request(attemptId, "/admit", {
       candidates: candidates(),
@@ -149,24 +172,46 @@ describe("JournalDurableObject", () => {
       faultInjection: "after-admission-commit",
     });
     expect(interruptedAdmission.status).toBe(503);
-    const admitted = await state(attemptId);
-    const reservedResponse = await transition(attemptId, admitted, "RESERVED");
-    expect(reservedResponse.status).toBe(200);
-    const reserved = await responseJson<JournalRecord>(reservedResponse);
+
+    const allocatedResponse = await reconcile(attemptId, await state(attemptId), {
+      allocatorVector: ["allocator-1"],
+      records: [],
+      failureCause: "write-failure",
+    });
+    const allocated = await responseJson<JournalRecord>(allocatedResponse);
+    expect(allocated.state).toBe("ALLOCATED");
+
+    const absentSnapshot: ReconciliationInput = {
+      allocatorVector: ["allocator-1"],
+      records: [{ eventId: "event-1", payload: "payload-1", present: false }],
+      failureCause: "write-failure",
+    };
+    const sealingResponse = await reconcile(attemptId, allocated, absentSnapshot);
+    const sealing = await responseJson<JournalRecord>(sealingResponse);
+    expect(sealing).toMatchObject({ state: "SEALING", ownerEpoch: 0, takeover: null });
+
+    const alarmOwner = await triggerAlarm(attemptId);
+    expect(alarmOwner).toMatchObject({ state: "SEALING", ownerEpoch: 1 });
+    const ready = await provideTakeoverEvidence(attemptId, alarmOwner, absentSnapshot);
 
     const [worker, alarm] = await Promise.all([
-      transition(attemptId, reserved, "FAILED"),
+      transition(attemptId, ready, "COMPLETE"),
       request(attemptId, "/debug/alarm", {}),
     ]);
-    expect([200, 409]).toContain(worker.status);
     expect(alarm.status).toBe(200);
 
     const terminal = await state(attemptId);
-    expect(terminal.state).toBe("FAILED");
+    if (worker.status === 200) {
+      expect(terminal.state).toBe("COMPLETE");
+    } else {
+      expect(worker.status).toBe(409);
+      expect(terminal.state).toBe("FAILED");
+    }
     expect(terminal.alarm).toBeNull();
 
-    const staleWrite = await transition(attemptId, reserved, "FAILED");
+    const staleWrite = await transition(attemptId, ready, "COMPLETE");
     expect(staleWrite.status).toBe(409);
+    expect((await triggerAlarm(attemptId)).state).toBe(terminal.state);
 
     const result = await request(attemptId, "/result");
     expect(result.status).toBe(200);
@@ -182,32 +227,24 @@ describe("JournalDurableObject", () => {
     expect((await responseJson<JournalRecord>(abandoned)).state).toBe("ABANDONED");
 
     const admittedWithVector = newAttempt();
-    const reserved = await reconcile(admittedWithVector, await admit(admittedWithVector), {
+    const allocatedFromAdmission = await reconcile(admittedWithVector, await admit(admittedWithVector), {
       allocatorVector: ["allocator-1"],
       records: [],
       failureCause: "write-failure",
     });
-    expect((await responseJson<JournalRecord>(reserved)).state).toBe("RESERVED");
+    expect((await responseJson<JournalRecord>(allocatedFromAdmission)).state).toBe("ALLOCATED");
 
-    const reservationRefusedAttempt = newAttempt();
-    const reservationRefusedRecord = await admit(reservationRefusedAttempt);
-    const reservationRefusedStep = await transition(reservationRefusedAttempt, reservationRefusedRecord, "RESERVED");
-    const reservationRefused = await reconcile(
-      reservationRefusedAttempt,
-      await responseJson<JournalRecord>(reservationRefusedStep),
-      { records: [], failureCause: "reservation-conflict" },
-    );
-    expect((await responseJson<JournalRecord>(reservationRefused)).state).toBe("REFUSED");
-
-    const reservationFailedAttempt = newAttempt();
-    const reservationFailedRecord = await admit(reservationFailedAttempt);
-    const reservationFailedStep = await transition(reservationFailedAttempt, reservationFailedRecord, "RESERVED");
-    const reservationFailed = await reconcile(
-      reservationFailedAttempt,
-      await responseJson<JournalRecord>(reservationFailedStep),
-      { records: [], failureCause: "allocator-failure" },
-    );
-    expect((await responseJson<JournalRecord>(reservationFailed)).state).toBe("FAILED");
+    for (const failureCause of ["reservation-conflict", "allocator-failure"] as const) {
+      const reservedWithoutVector = newAttempt();
+      const admitted = await admit(reservedWithoutVector);
+      const reservedStep = await transition(reservedWithoutVector, admitted, "RESERVED");
+      const abandonedReservation = await reconcile(
+        reservedWithoutVector,
+        await responseJson<JournalRecord>(reservedStep),
+        { records: [], failureCause },
+      );
+      expect((await responseJson<JournalRecord>(abandonedReservation)).state).toBe("ABANDONED");
+    }
 
     const reservedWithVectorAttempt = newAttempt();
     const reservedWithVectorRecord = await admit(reservedWithVectorAttempt);
@@ -251,64 +288,104 @@ describe("JournalDurableObject", () => {
         ],
       ] as const) {
         const attemptId = newAttempt();
-        const phaseRecord = await advanceTo(attemptId, await admit(attemptId, candidates(2)), phase);
-        const outcome = await reconcile(attemptId, phaseRecord, {
+        let phaseRecord = await advanceTo(attemptId, await admit(attemptId, candidates(2)), phase);
+        phaseRecord = await state(attemptId);
+        const reconciliation: ReconciliationInput = {
           allocatorVector: ["allocator-1"],
           records: records.map((record) => ({ ...record })),
           failureCause: "write-failure",
-        });
-        expect((await responseJson<JournalRecord>(outcome)).state, `${phase}/${label}`).toBe(expected);
+        };
+        let outcome = await reconcile(attemptId, phaseRecord, reconciliation);
+        if (outcome.status === 409) {
+          phaseRecord = await state(attemptId);
+          outcome = await reconcile(attemptId, phaseRecord, reconciliation);
+        }
+        expect(outcome.status).toBe(200);
+        const firstResult = await responseJson<JournalRecord>(outcome);
+        if (expected === "COMPLETE") {
+          expect(firstResult.state, `${phase}/${label}`).toBe("COMPLETE");
+          continue;
+        }
+
+        expect(firstResult.state, `${phase}/${label}`).toBe("SEALING");
+        let alarmOwner = await state(attemptId);
+        if (alarmOwner.takeover === null) {
+          alarmOwner = await triggerAlarm(attemptId);
+        }
+        expect(alarmOwner).toMatchObject({ state: "SEALING", ownerEpoch: 1 });
+        await provideTakeoverEvidence(attemptId, alarmOwner, reconciliation);
+        expect((await triggerAlarm(attemptId)).state, `${phase}/${label}`).toBe(expected);
+      }
+    }
+
+    for (const phase of ["ALLOCATED", "WRITING"] as const) {
+      for (const absenceOutcome of ["REFUSED", "FAILED", "PARTIAL"] as const) {
+        const attemptId = newAttempt();
+        const phaseRecord = await advanceTo(attemptId, await admit(attemptId), phase);
+        expect((await transition(attemptId, phaseRecord, absenceOutcome)).status).toBe(422);
       }
     }
   });
 
-  it("increments the owner epoch before seals and blocks terminal failure until the absence barrier", async () => {
+  it("requires alarm-owned epoch handoff, seals, and a full requery before absence outcomes", async () => {
     const attemptId = newAttempt();
     const batch = candidates(2);
     const admitted = await admit(attemptId, batch);
+    const allocatedResponse = await reconcile(attemptId, admitted, {
+      allocatorVector: ["allocator-1"],
+      records: [],
+      failureCause: "write-failure",
+    });
+    const allocated = await responseJson<JournalRecord>(allocatedResponse);
 
-    const incomplete = await request(attemptId, "/takeover", {
-      expectedState: admitted.state,
-      expectedVersion: admitted.version,
-      expectedOwnerEpoch: admitted.ownerEpoch,
+    const partialSnapshot: ReconciliationInput = {
+      allocatorVector: ["allocator-1"],
+      records: [
+        { eventId: "event-1", payload: "payload-1", present: true },
+        { eventId: "event-2", payload: "payload-2", present: false },
+      ],
+      failureCause: "write-failure",
+    };
+    const sealingResponse = await reconcile(attemptId, allocated, partialSnapshot);
+    const sealing = await responseJson<JournalRecord>(sealingResponse);
+    expect(sealing).toMatchObject({ state: "SEALING", ownerEpoch: 0, takeover: null });
+
+    const beforeAlarm = await request(attemptId, "/takeover", {
+      expectedState: sealing.state,
+      expectedVersion: sealing.version,
+      expectedOwnerEpoch: sealing.ownerEpoch,
       seals: [{ tag: "tag-1", sealed: true }],
       reconciliation: {
         records: [{ eventId: "event-1", payload: "payload-1", present: true }],
         failureCause: "write-failure",
       },
     });
-    expect(incomplete.status).toBe(202);
-    const sealing = await state(attemptId);
-    expect(sealing).toMatchObject({ state: "SEALING", ownerEpoch: 1, terminalResponse: null });
-    expect(sealing.takeover?.sealedTags).toEqual(["tag-1"]);
+    expect(beforeAlarm.status).toBe(409);
 
-    const blocked = await reconcile(attemptId, sealing, {
-      records: [{ eventId: "event-1", payload: "payload-1", present: true }],
-      failureCause: "write-failure",
-    });
-    expect((await responseJson<JournalRecord>(blocked)).state).toBe("SEALING");
+    const alarmOwner = await triggerAlarm(attemptId);
+    expect(alarmOwner).toMatchObject({ state: "SEALING", ownerEpoch: 1, terminalResponse: null });
+    expect(alarmOwner.takeover?.sealedTags).toEqual([]);
 
-    const waiting = await state(attemptId);
-    const completeEvidence = await request(attemptId, "/takeover", {
-      expectedState: waiting.state,
-      expectedVersion: waiting.version,
-      expectedOwnerEpoch: waiting.ownerEpoch,
-      seals: [{ tag: "tag-2", sealed: true }],
-      reconciliation: {
-        records: [
-          { eventId: "event-1", payload: "payload-1", present: true },
-          { eventId: "event-2", payload: "payload-2", present: false },
-        ],
+    await provideTakeoverEvidence(
+      attemptId,
+      alarmOwner,
+      {
+        records: [{ eventId: "event-1", payload: "payload-1", present: true }],
         failureCause: "write-failure",
       },
-    });
-    expect(completeEvidence.status).toBe(202);
+      ["tag-1"],
+    );
 
-    const ready = await state(attemptId);
+    const blocked = await triggerAlarm(attemptId);
+    expect(blocked).toMatchObject({ state: "SEALING", ownerEpoch: 1, terminalResponse: null });
+    expect(blocked.takeover?.sealedTags).toEqual(["tag-1"]);
+
+    const ready = await provideTakeoverEvidence(attemptId, blocked, partialSnapshot, ["tag-2"]);
     expect(ready.ownerEpoch).toBe(1);
     expect(ready.takeover?.sealedTags).toEqual(["tag-1", "tag-2"]);
-    const partial = await reconcile(attemptId, ready, ready.reconciliation!);
-    expect((await responseJson<JournalRecord>(partial)).state).toBe("PARTIAL");
+    const workerReconcile = await reconcile(attemptId, ready, partialSnapshot);
+    expect((await responseJson<JournalRecord>(workerReconcile)).state).toBe("SEALING");
+    expect((await triggerAlarm(attemptId)).state).toBe("PARTIAL");
   });
 
   it("re-arms before reconciliation, tolerates more than six failures, and clears terminal alarms", async () => {

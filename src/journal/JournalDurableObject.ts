@@ -112,6 +112,14 @@ function nextAlarm(previous: AlarmSchedule | null, initial = false): AlarmSchedu
   return { attempt, delayMs, dueAt: Date.now() + delayMs };
 }
 
+function immediateAlarm(previous: AlarmSchedule | null): AlarmSchedule {
+  return {
+    attempt: previous?.attempt ?? 0,
+    delayMs: 0,
+    dueAt: Date.now(),
+  };
+}
+
 function terminalResponse(
   state: JournalTerminalState,
   record: JournalRecord,
@@ -131,6 +139,10 @@ function hasAllocatorVector(input: ReconciliationInput): boolean {
 
 function failureState(cause: ReconciliationFailureCause): JournalTerminalState {
   return cause === "reservation-conflict" ? "REFUSED" : "FAILED";
+}
+
+function isAbsenceBearingTerminalState(state: JournalState): state is JournalTerminalState {
+  return state === "REFUSED" || state === "FAILED" || state === "PARTIAL";
 }
 
 function hasFullRequery(record: JournalRecord, input: ReconciliationInput): boolean {
@@ -158,33 +170,32 @@ function requeryCount(record: JournalRecord, input: ReconciliationInput): number
 }
 
 function takeoverBarrierSatisfied(record: JournalRecord, input: ReconciliationInput): boolean {
-  if (record.takeover === null) {
-    return true;
+  const takeover = record.takeover;
+  if (takeover === null) {
+    return false;
   }
 
   return (
-    record.allTags.every((tag) => record.takeover?.sealedTags.includes(tag)) &&
+    record.allTags.every((tag) => takeover.sealedTags.includes(tag)) &&
     hasFullRequery(record, input)
   );
 }
 
-function decideReconciliation(record: JournalRecord, input: ReconciliationInput): ReconciliationDecision {
-  if (!takeoverBarrierSatisfied(record, input)) {
-    return { nextState: record.state, reason: "takeover absence barrier is incomplete" };
-  }
-
-  switch (record.state) {
+function decideReconciliation(
+  record: JournalRecord,
+  input: ReconciliationInput,
+  authority: "worker" | "alarm",
+): ReconciliationDecision {
+  const decision: ReconciliationDecision = (() => {
+    switch (record.state) {
     case "ADMITTED":
       return hasAllocatorVector(input)
-        ? { nextState: "RESERVED", reason: "allocator vector is durable" }
+        ? { nextState: "ALLOCATED", reason: "allocator vector is durable" }
         : { nextState: "ABANDONED", reason: "no allocator vector was ever admitted" };
     case "RESERVED":
       return hasAllocatorVector(input)
         ? { nextState: "ALLOCATED", reason: "allocator vector is durable" }
-        : {
-            nextState: failureState(input.failureCause),
-            reason: "reservation has no allocator vector",
-          };
+        : { nextState: "ABANDONED", reason: "reservation has no allocator vector to retain" };
     case "ALLOCATED":
     case "WRITING":
     case "SEALING": {
@@ -202,7 +213,20 @@ function decideReconciliation(record: JournalRecord, input: ReconciliationInput)
     }
     default:
       return { nextState: record.state, reason: "journal is already terminal" };
+    }
+  })();
+
+  if (
+    isAbsenceBearingTerminalState(decision.nextState) &&
+    (authority !== "alarm" || !takeoverBarrierSatisfied(record, input))
+  ) {
+    return {
+      nextState: "SEALING",
+      reason: "absence-bearing outcome awaits alarm-owned takeover, seals, and full requery",
+    };
   }
+
+  return decision;
 }
 
 function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string } {
@@ -527,8 +551,12 @@ export class JournalDurableObject implements DurableObject {
       if (!isAllowedTransition(record.state, input.nextState)) {
         return { ok: false, status: 422, error: "Transition is not permitted by the Journal state machine" };
       }
-      if (isTerminalState(input.nextState) && !takeoverBarrierSatisfied(record, record.reconciliation ?? emptyReconciliation())) {
-        return { ok: false, status: 409, error: "Takeover absence barrier must complete before terminal state" };
+      if (isAbsenceBearingTerminalState(input.nextState)) {
+        return {
+          ok: false,
+          status: 422,
+          error: "Only alarm reconciliation may fix an absence-bearing terminal outcome",
+        };
       }
 
       const updated: JournalRecord = {
@@ -543,6 +571,10 @@ export class JournalDurableObject implements DurableObject {
         await txn.put(JOURNAL_KEY, updated);
         await txn.deleteAlarm();
       } else {
+        if (updated.state === "SEALING" && updated.takeover === null) {
+          updated.alarm = immediateAlarm(record.alarm);
+          await txn.setAlarm(updated.alarm.dueAt);
+        }
         await txn.put(JOURNAL_KEY, updated);
       }
       return { ok: true, record: updated };
@@ -567,7 +599,7 @@ export class JournalDurableObject implements DurableObject {
       );
     }
 
-    const result = await this.applyReconciliation(expectation.value, reconciliation.value);
+    const result = await this.applyReconciliation(expectation.value, reconciliation.value, "worker");
     return result.ok
       ? json(result.record)
       : error(result.status, "journal_reconciliation_rejected", result.error);
@@ -592,7 +624,7 @@ export class JournalDurableObject implements DurableObject {
       return error(400, "invalid_journal_takeover", "Takeover evidence does not match the admitted batch");
     }
 
-    const handoff = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+    const evidence = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const record = await txn.get<JournalRecord>(JOURNAL_KEY);
       if (record === undefined) {
         return { ok: false, status: 404, error: "Journal has not been admitted" };
@@ -603,39 +635,16 @@ export class JournalDurableObject implements DurableObject {
       if (isTerminalState(record.state)) {
         return { ok: false, status: 409, error: "Terminal Journal states are immutable" };
       }
-
-      const takeover = record.takeover ?? { active: true as const, sealedTags: [] };
-      const updated: JournalRecord = {
-        ...record,
-        ownerEpoch: record.takeover === null ? record.ownerEpoch + 1 : record.ownerEpoch,
-        state: "SEALING",
-        version: record.version + 1,
-        takeover,
-        updatedAt: nowIso(),
-      };
-      await txn.put(JOURNAL_KEY, updated);
-      return { ok: true, record: updated };
-    });
-
-    if (!handoff.ok) {
-      return error(handoff.status, "journal_takeover_rejected", handoff.error);
-    }
-
-    const evidence = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
-      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
-      if (record === undefined) {
-        return { ok: false, status: 404, error: "Journal disappeared during takeover" };
-      }
-      if (
-        record.state !== handoff.record.state ||
-        record.version !== handoff.record.version ||
-        record.ownerEpoch !== handoff.record.ownerEpoch
-      ) {
-        return { ok: false, status: 409, error: "Journal changed before seal evidence could be stored" };
+      if (record.state !== "SEALING" || record.takeover === null) {
+        return {
+          ok: false,
+          status: 409,
+          error: "Alarm-owned takeover must increment the epoch before seal evidence is accepted",
+        };
       }
 
       const sealedTags = unique([
-        ...record.takeover!.sealedTags,
+        ...record.takeover.sealedTags,
         ...input.seals.filter((seal) => seal.sealed).map((seal) => seal.tag),
       ]);
       const updated: JournalRecord = {
@@ -686,6 +695,7 @@ export class JournalDurableObject implements DurableObject {
   private async applyReconciliation(
     expectation: CasExpectation,
     reconciliation: ReconciliationInput,
+    authority: "worker" | "alarm",
   ): Promise<MutationResult> {
     return this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const record = await txn.get<JournalRecord>(JOURNAL_KEY);
@@ -699,7 +709,7 @@ export class JournalDurableObject implements DurableObject {
         return { ok: false, status: 409, error: "Terminal Journal states are immutable" };
       }
 
-      const decision = decideReconciliation(record, reconciliation);
+      const decision = decideReconciliation(record, reconciliation, authority);
       if (decision.nextState !== record.state && !isAllowedTransition(record.state, decision.nextState)) {
         return { ok: false, status: 422, error: "Reconciler selected an invalid state transition" };
       }
@@ -717,12 +727,48 @@ export class JournalDurableObject implements DurableObject {
         await txn.put(JOURNAL_KEY, updated);
         await txn.deleteAlarm();
       } else {
-        if (updated.alarm === null) {
+        if (updated.state === "SEALING" && updated.takeover === null) {
+          updated.alarm = immediateAlarm(record.alarm);
+          await txn.setAlarm(updated.alarm.dueAt);
+        } else if (updated.alarm === null) {
           updated.alarm = nextAlarm(null, true);
           await txn.setAlarm(updated.alarm.dueAt);
         }
         await txn.put(JOURNAL_KEY, updated);
       }
+      return { ok: true, record: updated };
+    });
+  }
+
+  private async beginAlarmTakeover(expected: JournalRecord): Promise<MutationResult> {
+    return this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
+      if (record === undefined) {
+        return { ok: false, status: 404, error: "Journal has not been admitted" };
+      }
+      if (
+        record.state !== expected.state ||
+        record.version !== expected.version ||
+        record.ownerEpoch !== expected.ownerEpoch
+      ) {
+        return { ok: false, status: 409, error: "Journal changed before alarm takeover" };
+      }
+      if (isTerminalState(record.state)) {
+        return { ok: false, status: 409, error: "Terminal Journal states are immutable" };
+      }
+      if (record.takeover !== null) {
+        return { ok: true, record };
+      }
+
+      const updated: JournalRecord = {
+        ...record,
+        state: "SEALING",
+        ownerEpoch: record.ownerEpoch + 1,
+        version: record.version + 1,
+        takeover: { active: true, sealedTags: [] },
+        updatedAt: nowIso(),
+      };
+      await txn.put(JOURNAL_KEY, updated);
       return { ok: true, record: updated };
     });
   }
@@ -759,18 +805,27 @@ export class JournalDurableObject implements DurableObject {
       if (isTerminalState(rearmed.record.state)) {
         return rearmed.record;
       }
-      if (rearmed.record.faultsRemaining > 0) {
-        return this.consumeFault(rearmed.record);
+      let alarmRecord = rearmed.record;
+      if (alarmRecord.takeover === null && ["ALLOCATED", "WRITING", "SEALING"].includes(alarmRecord.state)) {
+        const handoff = await this.beginAlarmTakeover(alarmRecord);
+        if (!handoff.ok) {
+          return this.readRecord();
+        }
+        alarmRecord = handoff.record;
+      }
+      if (alarmRecord.faultsRemaining > 0) {
+        return this.consumeFault(alarmRecord);
       }
 
-      const reconciliation = rearmed.record.reconciliation ?? emptyReconciliation();
+      const reconciliation = alarmRecord.reconciliation ?? emptyReconciliation();
       const reconciled = await this.applyReconciliation(
         {
-          expectedState: rearmed.record.state,
-          expectedVersion: rearmed.record.version,
-          expectedOwnerEpoch: rearmed.record.ownerEpoch,
+          expectedState: alarmRecord.state,
+          expectedVersion: alarmRecord.version,
+          expectedOwnerEpoch: alarmRecord.ownerEpoch,
         },
         reconciliation,
+        "alarm",
       );
       return reconciled.ok ? reconciled.record : this.readRecord();
     } catch {

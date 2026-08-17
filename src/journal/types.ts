@@ -105,10 +105,10 @@ export function isJournalState(value: unknown): value is JournalState {
 
 export function isAllowedTransition(from: JournalState, to: JournalState): boolean {
   const allowed: Record<JournalState, readonly JournalState[]> = {
-    ADMITTED: ["RESERVED", "SEALING", "ABANDONED"],
-    RESERVED: ["ALLOCATED", "SEALING", "REFUSED", "FAILED"],
-    ALLOCATED: ["WRITING", "SEALING", "COMPLETE", "REFUSED", "FAILED", "PARTIAL"],
-    WRITING: ["SEALING", "COMPLETE", "REFUSED", "FAILED", "PARTIAL"],
+    ADMITTED: ["RESERVED", "ALLOCATED", "SEALING", "ABANDONED"],
+    RESERVED: ["ALLOCATED", "SEALING", "REFUSED", "FAILED", "ABANDONED"],
+    ALLOCATED: ["WRITING", "SEALING", "COMPLETE"],
+    WRITING: ["SEALING", "COMPLETE"],
     SEALING: ["COMPLETE", "REFUSED", "FAILED", "PARTIAL"],
     COMPLETE: [],
     REFUSED: [],
