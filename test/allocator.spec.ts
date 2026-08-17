@@ -1,0 +1,227 @@
+import { abortAllDurableObjects, SELF } from "cloudflare:test";
+import { describe, expect, it } from "vitest";
+
+import type {
+  AllocationCandidate,
+  AllocationVector,
+  AllocatorState,
+} from "../src/allocator/types";
+
+interface JournalState {
+  state: string;
+  version: number;
+  ownerEpoch: number;
+  candidates: Array<{ eventId: string }>;
+  reconciliation: { allocatorVector?: string[] } | null;
+}
+
+async function allocatorRequest(path: string, body?: unknown): Promise<Response> {
+  const init =
+    body === undefined
+      ? undefined
+      : {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        };
+  return SELF.fetch(`https://allocator.test/allocator${path}`, init);
+}
+
+async function journalRequest(attemptId: string, path: string, body?: unknown): Promise<Response> {
+  const init =
+    body === undefined
+      ? undefined
+      : {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        };
+  return SELF.fetch(`https://allocator.test/journals/${encodeURIComponent(attemptId)}${path}`, init);
+}
+
+async function responseJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function newAttempt(): string {
+  return crypto.randomUUID();
+}
+
+function allocationCandidates(attemptId: string, count = 3): AllocationCandidate[] {
+  return Array.from({ length: count }, (_, candidateIndex) => ({
+    candidateIndex,
+    eventId: `${attemptId}-event-${candidateIndex + 1}`,
+  }));
+}
+
+async function allocatorState(): Promise<AllocatorState> {
+  const response = await allocatorRequest("/state");
+  expect(response.status).toBe(200);
+  return responseJson<AllocatorState>(response);
+}
+
+async function allocation(attemptId: string): Promise<AllocationVector> {
+  const response = await allocatorRequest(`/attempts/${encodeURIComponent(attemptId)}`);
+  expect(response.status).toBe(200);
+  return responseJson<AllocationVector>(response);
+}
+
+async function allocate(
+  attemptId: string,
+  candidates = allocationCandidates(attemptId),
+  faultInjection?: "between-vector-and-watermark",
+): Promise<Response> {
+  return allocatorRequest("/allocate", { attemptId, candidates, faultInjection });
+}
+
+function expectOrderedVector(vector: AllocationVector, expected: AllocationCandidate[]): void {
+  expect(vector.attemptId).toBeDefined();
+  expect(vector.candidates.map(({ candidateIndex, eventId }) => ({ candidateIndex, eventId }))).toEqual(expected);
+  const suids = vector.candidates.map((candidate) => candidate.suid);
+  expect(new Set(suids).size).toBe(suids.length);
+  expect(suids).toEqual([...suids].sort());
+}
+
+describe("AllocatorDurableObject", () => {
+  it("commits each complete ordered vector and its watermark in one transaction", async () => {
+    const before = await allocatorState();
+    const interruptedAttempt = newAttempt();
+    const interrupted = await allocate(
+      interruptedAttempt,
+      allocationCandidates(interruptedAttempt),
+      "between-vector-and-watermark",
+    );
+    expect(interrupted.status).toBe(503);
+    expect((await allocatorRequest(`/attempts/${interruptedAttempt}`)).status).toBe(404);
+    expect(await allocatorState()).toEqual(before);
+
+    const attemptId = newAttempt();
+    const requested = allocationCandidates(attemptId);
+    const response = await allocate(attemptId, [...requested].reverse());
+    expect(response.status).toBe(201);
+    const vector = await responseJson<AllocationVector>(response);
+    expectOrderedVector(vector, requested);
+    if (before.allocatedWatermark !== null) {
+      expect(vector.candidates[0]!.suid > before.allocatedWatermark).toBe(true);
+    }
+
+    const after = await allocatorState();
+    expect(after.allocatedWatermark).toBe(vector.candidates[vector.candidates.length - 1]!.suid);
+    expect(await allocation(attemptId)).toEqual(vector);
+  });
+
+  it("returns the exact durable vector for a repeated attempt without advancing the watermark", async () => {
+    const attemptId = newAttempt();
+    const initial = await allocate(attemptId);
+    expect(initial.status).toBe(201);
+    const first = await responseJson<AllocationVector>(initial);
+    const stateAfterFirst = await allocatorState();
+
+    const replay = await allocate(attemptId, allocationCandidates(newAttempt(), 1));
+    expect(replay.status).toBe(200);
+    expect(await responseJson<AllocationVector>(replay)).toEqual(first);
+    expect(await allocation(attemptId)).toEqual(first);
+    expect(await allocatorState()).toEqual(stateAfterFirst);
+
+    const concurrentAttempt = newAttempt();
+    const concurrentCandidates = allocationCandidates(concurrentAttempt);
+    const [left, right] = await Promise.all([
+      allocate(concurrentAttempt, concurrentCandidates),
+      allocate(concurrentAttempt, [...concurrentCandidates].reverse()),
+    ]);
+    expect([left.status, right.status].sort()).toEqual([200, 201]);
+    expect(await responseJson<AllocationVector>(left)).toEqual(await responseJson<AllocationVector>(right));
+  });
+
+  it("serializes concurrent attempts into unique, monotonic SUID ranges", async () => {
+    const before = await allocatorState();
+    const requests = Array.from({ length: 12 }, async () => {
+      const attemptId = newAttempt();
+      const response = await allocate(attemptId, allocationCandidates(attemptId));
+      expect(response.status).toBe(201);
+      return responseJson<AllocationVector>(response);
+    });
+    const vectors = await Promise.all(requests);
+    const suids = vectors.flatMap((vector) => vector.candidates.map((candidate) => candidate.suid));
+    const ordered = [...suids].sort();
+
+    expect(new Set(suids).size).toBe(suids.length);
+    if (before.allocatedWatermark !== null) {
+      expect(ordered[0]! > before.allocatedWatermark).toBe(true);
+    }
+    for (const vector of vectors) {
+      expectOrderedVector(vector, allocationCandidates(vector.attemptId));
+    }
+    expect((await allocatorState()).allocatedWatermark).toBe(ordered[ordered.length - 1]);
+  });
+
+  it("continues from the persisted watermark and lets a Journal reconciler recover the full vector", async () => {
+    const beforeRestartAttempt = newAttempt();
+    const beforeRestart = await allocate(beforeRestartAttempt, allocationCandidates(beforeRestartAttempt, 1));
+    expect(beforeRestart.status).toBe(201);
+    const persistedWatermark = (await allocatorState()).allocatedWatermark;
+    expect(persistedWatermark).not.toBeNull();
+
+    await abortAllDurableObjects();
+
+    const afterRestartAttempt = newAttempt();
+    const afterRestart = await allocate(afterRestartAttempt, allocationCandidates(afterRestartAttempt, 2));
+    expect(afterRestart.status).toBe(201);
+    const afterRestartVector = await responseJson<AllocationVector>(afterRestart);
+    for (const candidate of afterRestartVector.candidates) {
+      expect(candidate.suid > persistedWatermark!).toBe(true);
+    }
+
+    const crashAttempt = newAttempt();
+    const journalCandidates = [
+      { candidateIndex: 0, eventId: `${crashAttempt}-event-1` },
+      { candidateIndex: 1, eventId: `${crashAttempt}-event-2` },
+    ];
+    const allocated = await allocate(crashAttempt, journalCandidates);
+    expect(allocated.status).toBe(201);
+    const durableVector = await responseJson<AllocationVector>(allocated);
+
+    const interruptedAdmission = await journalRequest(crashAttempt, "/admit", {
+      candidates: durableVector.candidates.map((candidate) => ({
+        eventId: candidate.eventId,
+        payload: `payload-${candidate.candidateIndex + 1}`,
+        tags: [`tag-${candidate.candidateIndex + 1}`],
+      })),
+      consistencyTags: [],
+      faultInjection: "after-admission-commit",
+    });
+    expect(interruptedAdmission.status).toBe(503);
+
+    const admittedResponse = await journalRequest(crashAttempt, "/state");
+    expect(admittedResponse.status).toBe(200);
+    const admitted = await responseJson<JournalState>(admittedResponse);
+    expect(admitted.state).toBe("ADMITTED");
+
+    const recovered = await allocation(crashAttempt);
+    expect(recovered).toEqual(durableVector);
+    expect(recovered.candidates.map((candidate) => candidate.eventId)).toEqual(
+      admitted.candidates.map((candidate) => candidate.eventId),
+    );
+
+    const reconciledResponse = await journalRequest(crashAttempt, "/reconcile", {
+      expectedState: admitted.state,
+      expectedVersion: admitted.version,
+      expectedOwnerEpoch: admitted.ownerEpoch,
+      reconciliation: {
+        allocatorVector: recovered.candidates.map((candidate) => candidate.suid),
+        records: [],
+        failureCause: "write-failure",
+      },
+    });
+    expect(reconciledResponse.status).toBe(200);
+    const reconciled = await responseJson<JournalState>(reconciledResponse);
+    expect(reconciled.state).toBe("ALLOCATED");
+    expect(reconciled.reconciliation?.allocatorVector).toEqual(
+      recovered.candidates.map((candidate) => candidate.suid),
+    );
+
+    const replay = await allocate(crashAttempt, allocationCandidates(newAttempt(), 1));
+    expect(replay.status).toBe(200);
+    expect(await responseJson<AllocationVector>(replay)).toEqual(durableVector);
+  });
+});
