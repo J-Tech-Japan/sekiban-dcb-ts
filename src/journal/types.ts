@@ -46,7 +46,29 @@ export interface AlarmSchedule {
 export type ReconciliationFailureCause =
   | "reservation-conflict"
   | "allocator-failure"
-  | "write-failure";
+  | "write-failure"
+  | "reservation-timeout"
+  | "guard-rejection";
+
+/**
+ * Persisted fault points used by the commit-worker recovery tests. They are
+ * consumed one at a time, so an at-least-once alarm can resume safely.
+ */
+export const ALARM_FAULT_POINTS = [
+  "handler-entry",
+  "after-rearm-before-seal",
+  "after-partial-seal",
+  "after-full-seal-before-requery",
+  "before-outcome-cas",
+] as const;
+
+export type AlarmFaultPoint = (typeof ALARM_FAULT_POINTS)[number];
+
+/** Information the Journal needs to recover an externally visible commit. */
+export interface CommitAttemptContext {
+  attemptId: string;
+  serviceId: string;
+}
 
 export interface RequeriedRecord {
   eventId: string;
@@ -58,11 +80,15 @@ export interface ReconciliationInput {
   allocatorVector?: string[];
   records: RequeriedRecord[];
   failureCause: ReconciliationFailureCause;
+  /** Tags for which at least one requested candidate is still absent. */
+  missingTags?: string[];
 }
 
 export interface TakeoverProgress {
   active: true;
   sealedTags: string[];
+  /** Missing tags whose partial-write fence is durably installed. */
+  fencedTags: string[];
 }
 
 export interface TerminalResponse {
@@ -72,18 +98,29 @@ export interface TerminalResponse {
   reason: string;
 }
 
+/** Durable classification recorded before the reservation cancel barrier. */
+export interface ReservationFailure {
+  outcome: Extract<JournalTerminalState, "REFUSED" | "FAILED">;
+  reason: string;
+  failureCause: ReconciliationFailureCause;
+}
+
 export interface JournalRecord {
   schemaVersion: 1;
   candidates: JournalCandidate[];
   consistencyTags: ConsistencyTag[];
   allTags: string[];
+  /** Present only for the V1 commit worker; legacy Journal controls omit it. */
+  commitContext?: CommitAttemptContext;
   ownerEpoch: number;
   state: JournalState;
   version: number;
   alarm: AlarmSchedule | null;
   reconciliation: ReconciliationInput | null;
+  reservationFailure: ReservationFailure | null;
   takeover: TakeoverProgress | null;
   faultsRemaining: number;
+  alarmFaults: AlarmFaultPoint[];
   terminalResponse: TerminalResponse | null;
   createdAt: string;
   updatedAt: string;
