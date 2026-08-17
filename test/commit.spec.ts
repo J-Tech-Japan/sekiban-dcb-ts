@@ -21,14 +21,36 @@ interface CommitResponse {
   duration: string;
 }
 
+interface Section6Error {
+  error: string;
+  code: string;
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function commit(body: unknown, fault?: string): Promise<Response> {
+async function expectSection6Error<T extends Section6Error>(
+  response: Response,
+  status: number,
+  code: string,
+): Promise<T> {
+  expect(response.status).toBe(status);
+  expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+  const body = await responseJson<T>(response);
+  expect(typeof body.error).toBe("string");
+  expect(body.error.length).toBeGreaterThan(0);
+  expect(body.code).toBe(code);
+  return body;
+}
+
+async function commit(body: unknown, fault?: string, testAttemptId?: string): Promise<Response> {
   const headers = new Headers({ "content-type": "application/json" });
   if (fault !== undefined) {
     headers.set("x-sdt-g4-test-fault", fault);
+  }
+  if (testAttemptId !== undefined) {
+    headers.set("x-sdt-g4-test-attempt-id", testAttemptId);
   }
   return SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
     method: "POST",
@@ -142,8 +164,7 @@ describe("Serialized V1 commit worker", () => {
       eventCandidates: [candidate("%%%", "BadPayload", [observed])],
       consistencyTags: [{ tag: observed, lastSortableUniqueId: "" }],
     });
-    expect(malformed.status).toBe(400);
-    expect((await responseJson<{ code: string }>(malformed)).code).toBe("malformed_commit_envelope");
+    await expectSection6Error(malformed, 400, "malformed_commit_envelope");
     expect((await SELF.fetch(
       `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(observed)}/state`,
     )).status).toBe(404);
@@ -154,8 +175,10 @@ describe("Serialized V1 commit worker", () => {
       eventCandidates: [candidate("cGF5bG9hZA==", "Event", [observed])],
       consistencyTags: [{ tag: observed, lastSortableUniqueId: null }],
     });
-    expect(nullExpectation.status).toBe(400);
-    expect((await responseJson<{ code: string }>(nullExpectation)).code).toBe("malformed_commit_envelope");
+    await expectSection6Error(nullExpectation, 400, "malformed_commit_envelope");
+
+    const wrongMethod = await SELF.fetch("https://commit.test/api/sekiban/serialized/commit");
+    await expectSection6Error(wrongMethod, 404, "commit_route_not_found");
 
     const response = await commit({
       version: 1,
@@ -210,7 +233,7 @@ describe("Serialized V1 commit worker", () => {
         { tag: delayedB, lastSortableUniqueId: "" },
       ],
     }, "reservation-delayed-success");
-    expect(delayed.status).toBe(504);
+    await expectSection6Error(delayed, 504, "timeout");
     const delayedAttempt = delayed.headers.get("x-sdt-g4-attempt-id");
     expect(delayedAttempt).not.toBeNull();
     const failed = await journalState(delayedAttempt!);
@@ -253,8 +276,7 @@ describe("Serialized V1 commit worker", () => {
         { tag: releasedTag, lastSortableUniqueId: "" },
       ],
     });
-    expect(conflict.status).toBe(400);
-    expect((await responseJson<{ code: string }>(conflict)).code).toBe("consistency_conflict");
+    await expectSection6Error(conflict, 400, "consistency_conflict");
     expect(await allocatorState()).toEqual(allocatorBeforeConflict);
     const released = await tagState(releasedTag);
     expect(released.activeReservation).toBeNull();
@@ -320,15 +342,15 @@ describe("Serialized V1 commit worker", () => {
         { tag: missingTag, lastSortableUniqueId: "" },
       ],
     }, "tag-append-last");
-    expect(partial.status).toBe(500);
     const partialAttempt = partial.headers.get("x-sdt-g4-attempt-id");
     expect(partialAttempt).not.toBeNull();
     const terminal = await journalState(partialAttempt!);
     expect(terminal.state).toBe("PARTIAL");
-    const partialBody = await responseJson<{
+    const partialBody = await expectSection6Error<{
+      error: string;
       code: string;
       partial: { retryable: boolean; writtenTags: string[]; missingTags: string[]; eventsDeleted: boolean };
-    }>(partial);
+    }>(partial, 500, "partial_write");
     expect(partialBody).toMatchObject({
       code: "partial_write",
       partial: {
@@ -498,20 +520,20 @@ describe("Serialized V1 commit worker", () => {
     expect((await responseJson<JournalRecord>(terminalWake)).state).toBe("PARTIAL");
   });
 
-  it("AC7: allocator/Journal, tombstone/outcome, and append/alarm boundaries leave no double allocation or mutable terminal", async () => {
+  it("AC7: nonterminal faults emit no application response while recovery preserves allocator and Journal invariants", async () => {
     const allocationTag = newTag("allocator-journal");
     const allocatorBefore = await allocatorState();
-    const interrupted = await commit({
+    const allocationAttempt = crypto.randomUUID();
+    // No terminal Journal outcome exists yet, so this is a Fetch failure rather
+    // than an application-produced bodyless 500 response.
+    await expect(commit({
       version: 1,
       eventCandidates: [candidate("YWxsb2M=", "Allocated", [allocationTag])],
       consistencyTags: [{ tag: allocationTag, lastSortableUniqueId: "" }],
-    }, "journal-cas-after-allocator");
-    expect(interrupted.status).toBe(500);
-    const allocationAttempt = interrupted.headers.get("x-sdt-g4-attempt-id");
-    expect(allocationAttempt).not.toBeNull();
-    expect((await journalState(allocationAttempt!)).state).toBe("RESERVED");
+    }, "journal-cas-after-allocator", allocationAttempt)).rejects.toThrow(/error response/);
+    expect((await journalState(allocationAttempt)).state).toBe("RESERVED");
     const allocatedVectorResponse = await SELF.fetch(
-      `https://commit.test/allocator/attempts/${encodeURIComponent(allocationAttempt!)}`,
+      `https://commit.test/allocator/attempts/${encodeURIComponent(allocationAttempt)}`,
     );
     expect(allocatedVectorResponse.status).toBe(200);
     const vector = await responseJson<{ candidates: Array<{ eventId: string; suid: string }> }>(allocatedVectorResponse);
@@ -519,10 +541,10 @@ describe("Serialized V1 commit worker", () => {
 
     const afterAllocatorCommit = await allocatorState();
     expect(afterAllocatorCommit.allocatedWatermark).not.toBe(allocatorBefore.allocatedWatermark);
-    expect((await journalPost(allocationAttempt!, "/debug/alarm", {})).status).toBe(200);
-    expect((await journalState(allocationAttempt!)).state).toBe("ALLOCATED");
-    expect((await journalPost(allocationAttempt!, "/debug/alarm", {})).status).toBe(200);
-    const recoveredAllocation = await journalState(allocationAttempt!);
+    expect((await journalPost(allocationAttempt, "/debug/alarm", {})).status).toBe(200);
+    expect((await journalState(allocationAttempt)).state).toBe("ALLOCATED");
+    expect((await journalPost(allocationAttempt, "/debug/alarm", {})).status).toBe(200);
+    const recoveredAllocation = await journalState(allocationAttempt);
     expect(recoveredAllocation.state).toBe("FAILED");
     expect(await allocatorState()).toEqual(afterAllocatorCommit);
     const sealedTag = await tagState(allocationTag);
@@ -536,35 +558,33 @@ describe("Serialized V1 commit worker", () => {
       eventCandidates: [candidate("c2VlZA==", "Seed", [conflictTag])],
       consistencyTags: [{ tag: conflictTag, lastSortableUniqueId: "" }],
     })).status).toBe(200);
-    const afterTombstone = await commit({
+    const tombstoneAttempt = crypto.randomUUID();
+    await expect(commit({
       version: 1,
       eventCandidates: [candidate("bGF0ZQ==", "Late", [conflictTag, lateTag])],
       consistencyTags: [
         { tag: conflictTag, lastSortableUniqueId: "" },
         { tag: lateTag, lastSortableUniqueId: "" },
       ],
-    }, "tombstone-after-durable");
-    expect(afterTombstone.status).toBe(500);
-    const tombstoneAttempt = afterTombstone.headers.get("x-sdt-g4-attempt-id");
-    expect(tombstoneAttempt).not.toBeNull();
-    const pending = await journalState(tombstoneAttempt!);
+    }, "tombstone-after-durable", tombstoneAttempt)).rejects.toThrow(/error response/);
+    const pending = await journalState(tombstoneAttempt);
     expect(pending.state).toBe("RESERVED");
     expect(pending.reservationFailure).toMatchObject({ outcome: "REFUSED" });
     const lateState = await tagState(lateTag);
     expect(lateState.activeReservation).toBeNull();
     expect(lateState.tombstones).toContainEqual({ attemptId: tombstoneAttempt, epoch: 0 });
 
-    expect((await journalPost(tombstoneAttempt!, "/debug/alarm", {})).status).toBe(200);
-    const refused = await journalState(tombstoneAttempt!);
+    expect((await journalPost(tombstoneAttempt, "/debug/alarm", {})).status).toBe(200);
+    const refused = await journalState(tombstoneAttempt);
     expect(refused.state).toBe("REFUSED");
-    const staleTerminalWrite = await journalPost(tombstoneAttempt!, "/transition", {
+    const staleTerminalWrite = await journalPost(tombstoneAttempt, "/transition", {
       expectedState: "RESERVED",
       expectedVersion: pending.version,
       expectedOwnerEpoch: pending.ownerEpoch,
       nextState: "FAILED",
     });
     expect(staleTerminalWrite.status).toBe(409);
-    expect((await journalState(tombstoneAttempt!)).terminalResponse).toEqual(refused.terminalResponse);
+    expect((await journalState(tombstoneAttempt)).terminalResponse).toEqual(refused.terminalResponse);
 
     const allocationFailureTag = newTag("allocator-failure");
     const allocationStateBeforeFailure = await allocatorState();
@@ -573,12 +593,24 @@ describe("Serialized V1 commit worker", () => {
       eventCandidates: [candidate("ZmFpbA==", "AllocatorFault", [allocationFailureTag])],
       consistencyTags: [{ tag: allocationFailureTag, lastSortableUniqueId: "" }],
     }, "allocator-commit");
-    expect(allocationFailure.status).toBe(500);
+    await expectSection6Error(allocationFailure, 500, "internal_error");
     expect(await allocatorState()).toEqual(allocationStateBeforeFailure);
     const failedAttempt = allocationFailure.headers.get("x-sdt-g4-attempt-id");
     expect((await journalState(failedAttempt!)).state).toBe("FAILED");
     const failedTag = await tagState(allocationFailureTag);
     expect(failedTag.events).toHaveLength(0);
     expect(failedTag.activeReservation).toBeNull();
+  });
+
+  it("returns Section 6 JSON when a completed commit cannot prepare its success response", async () => {
+    const attemptId = crypto.randomUUID();
+    const response = await commit({
+      version: 1,
+      eventCandidates: [candidate("c3RhdGU=", "ResponseRead", [newTag("response-read")])],
+      consistencyTags: [],
+    }, "tag-state-unavailable", attemptId);
+
+    await expectSection6Error(response, 500, "internal_error");
+    expect((await journalState(attemptId)).state).toBe("COMPLETE");
   });
 });

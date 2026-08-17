@@ -90,6 +90,14 @@ function faultFromRequest(request: Request): CommitTestFault | undefined {
     : undefined;
 }
 
+function testAttemptIdFromRequest(request: Request): string | undefined {
+  if (new URL(request.url).hostname !== "commit.test") {
+    return undefined;
+  }
+  const candidate = request.headers.get("x-sdt-g4-test-attempt-id");
+  return candidate !== null && isNonEmptyString(candidate) ? candidate : undefined;
+}
+
 function responseWithAttempt(response: Response, attemptId: string, expose: boolean): Response {
   if (!expose) {
     return response;
@@ -208,7 +216,9 @@ export class CommitWorker {
     }
 
     const fault = faultFromRequest(request);
-    const attemptId = crypto.randomUUID();
+    const attemptId = fault === undefined
+      ? crypto.randomUUID()
+      : testAttemptIdFromRequest(request) ?? crypto.randomUUID();
     const candidates = input.eventCandidates.map((candidate) => ({ ...candidate, eventId: crypto.randomUUID() }));
     const journal = this.journalFor(attemptId);
     const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
@@ -224,7 +234,7 @@ export class CommitWorker {
     // pre-allocation REFUSED/FAILED only after the cancel barrier completes.
     const reserved = await this.transition(journal, admitted.body, "RESERVED");
     if (reserved === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
 
     const reservations = await this.acquireReservations(input, attemptId, fault);
@@ -256,19 +266,19 @@ export class CommitWorker {
     }
     const allocatedCandidates = this.withAllocatedSuids(candidates, allocation);
     if (allocatedCandidates === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
     if (fault === "journal-cas-after-allocator") {
-      return this.noApplicationOutcome(attemptId, true);
+      return this.noApplicationOutcome();
     }
 
     const allocated = await this.transition(journal, reserved, "ALLOCATED");
     if (allocated === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
     const writing = await this.transition(journal, allocated, "WRITING");
     if (writing === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
 
     const writesSucceeded = await this.appendAllTags(
@@ -284,10 +294,18 @@ export class CommitWorker {
 
     const complete = await this.transition(journal, writing, "COMPLETE");
     if (complete === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
-    const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt);
-    return responseWithAttempt(json(success, 200), attemptId, fault !== undefined);
+    try {
+      const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault);
+      return responseWithAttempt(json(success, 200), attemptId, fault !== undefined);
+    } catch {
+      return responseWithAttempt(
+        error(500, "internal_error", "Committed records could not be read while preparing the response"),
+        attemptId,
+        fault !== undefined,
+      );
+    }
   }
 
   private journalFor(attemptId: string): DurableObjectStub {
@@ -505,10 +523,10 @@ export class CommitWorker {
       },
     });
     if (sealing.response.status !== 200 || sealing.body?.state !== "SEALING") {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
     if (fault === "sealing-after-cas") {
-      return this.noApplicationOutcome(attemptId, true);
+      return this.noApplicationOutcome();
     }
 
     // The state transition itself sets an immediate durable alarm. Triggering
@@ -523,7 +541,7 @@ export class CommitWorker {
         }
       }
     }
-    return this.noApplicationOutcome(attemptId, fault !== undefined);
+    return this.noApplicationOutcome();
   }
 
   private async finishReservationFailure(
@@ -543,7 +561,7 @@ export class CommitWorker {
       reason: failure.reason,
     });
     if (classified.response.status !== 200 || classified.body === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
     const cancelled = await Promise.allSettled(
       consistencyTags.map(async ({ tag }) => {
@@ -556,18 +574,18 @@ export class CommitWorker {
       }),
     );
     if (!cancelled.every((result) => result.status === "fulfilled" && result.value)) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
     if (fault === "tombstone-after-durable") {
-      return this.noApplicationOutcome(attemptId, true);
+      return this.noApplicationOutcome();
     }
     const terminal = await this.transition(journal, classified.body, failure.outcome, failure.reason);
     if (terminal === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+      return this.noApplicationOutcome();
     }
     const mapped = mapTerminalCommitOutcome(terminal);
     return mapped === undefined
-      ? this.noApplicationOutcome(attemptId, fault !== undefined)
+      ? this.noApplicationOutcome()
       : responseWithAttempt(json(mapped.body, mapped.status), attemptId, fault !== undefined);
   }
 
@@ -576,8 +594,12 @@ export class CommitWorker {
     candidates: AllocatedCommitCandidate[],
     attemptId: string,
     startedAt: number,
+    fault: CommitTestFault | undefined,
   ): Promise<CompleteCommitResponse> {
     const tagWriteResults = await Promise.all(input.allTags.map(async (tag): Promise<TagWriteResultResponse> => {
+      if (fault === "tag-state-unavailable") {
+        throw new Error("Test fault made the committed tag state unavailable");
+      }
       const response = await this.tagRequest(tag, "/state");
       if (response.status !== 200) {
         throw new Error("Committed tag state was unavailable while preparing the response");
@@ -606,9 +628,10 @@ export class CommitWorker {
     };
   }
 
-  /** A blank response is intentionally not a terminal application outcome. */
-  private noApplicationOutcome(attemptId: string, exposeAttempt: boolean): Response {
-    return responseWithAttempt(new Response(null, { status: 500 }), attemptId, exposeAttempt);
+  /** No terminal outcome means the application emits no HTTP response. */
+  private noApplicationOutcome(): Response {
+    // An error response is a Fetch network error, not an HTTP status/body.
+    return Response.error();
   }
 }
 
