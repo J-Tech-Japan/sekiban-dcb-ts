@@ -5,10 +5,13 @@ export interface TagEpoch {
   epoch: number;
 }
 
-/** V1 wire spelling is intentionally `lastSortedUniqueId`. */
+/**
+ * §3.1 consistency-entry spelling. F-001 preserves `lastSortedUniqueId`
+ * only for the §5.3 tag-state response, not for this request entry.
+ */
 export interface TagConsistencyEntry {
   tag: string;
-  lastSortedUniqueId: string | null;
+  lastSortableUniqueId: string | null;
 }
 
 export interface TagReservation {

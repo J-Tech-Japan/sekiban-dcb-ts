@@ -127,16 +127,16 @@ function consistencyTagsFrom(value: unknown): { value?: TagConsistencyEntry[]; e
     if (!isObject(rawEntry) || !isNonEmptyString(rawEntry.tag)) {
       return { error: "each consistency tag needs a non-empty tag" };
     }
-    if (!("lastSortedUniqueId" in rawEntry)) {
-      return { error: "each consistency tag needs lastSortedUniqueId" };
+    if (!("lastSortableUniqueId" in rawEntry)) {
+      return { error: "each consistency tag needs lastSortableUniqueId" };
     }
-    if (rawEntry.lastSortedUniqueId === null) {
-      return { error: "lastSortedUniqueId must not be null" };
+    if (rawEntry.lastSortableUniqueId === null) {
+      return { error: "lastSortableUniqueId must not be null" };
     }
-    if (typeof rawEntry.lastSortedUniqueId !== "string") {
-      return { error: "lastSortedUniqueId must be a string" };
+    if (typeof rawEntry.lastSortableUniqueId !== "string") {
+      return { error: "lastSortableUniqueId must be a string" };
     }
-    entries.push({ tag: rawEntry.tag, lastSortedUniqueId: rawEntry.lastSortedUniqueId });
+    entries.push({ tag: rawEntry.tag, lastSortableUniqueId: rawEntry.lastSortableUniqueId });
   }
   if (new Set(entries.map((entry) => entry.tag)).size !== entries.length) {
     return { error: "consistency tag values must be unique" };
@@ -164,7 +164,7 @@ function acquireFrom(value: unknown, tag: string): { value?: AcquireInput; error
       ...epoch.value,
       eventTags: eventTags.value,
       consistencyTags: consistencyTags.value,
-      expectedHead: matchingEntry?.lastSortedUniqueId ?? null,
+      expectedHead: matchingEntry?.lastSortableUniqueId ?? null,
     },
   };
 }

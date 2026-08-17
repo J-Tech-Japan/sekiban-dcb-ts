@@ -60,7 +60,7 @@ async function acquire(
     epoch,
     eventTags: options.eventTags ?? [scope.tag],
     consistencyTags:
-      options.consistencyTags ?? [{ tag: scope.tag, lastSortedUniqueId: expectedHead }],
+      options.consistencyTags ?? [{ tag: scope.tag, lastSortableUniqueId: expectedHead }],
   });
 }
 
@@ -77,17 +77,32 @@ async function rejectionReason(response: Response): Promise<string> {
 describe("TagDurableObject", () => {
   it("AC1: reads the SQLite head for observed consistency tags and reserves only those tags", async () => {
     const scope = newScope();
+    const wrongField = await acquire(scope, "wrong-field", 1, "", {
+      consistencyTags: [{ tag: scope.tag, lastSortedUniqueId: "" }],
+    });
+    expect(wrongField.status).toBe(400);
+    expect((await responseJson<{ error: string }>(wrongField)).error).toBe(
+      "each consistency tag needs lastSortableUniqueId",
+    );
+    const absentAfterWrongField = await SELF.fetch(
+      `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
+    );
+    expect(absentAfterWrongField.status).toBe(404);
+
     const nullHead = await acquire(scope, "null-head", 1, "", {
-      consistencyTags: [{ tag: scope.tag, lastSortedUniqueId: null }],
+      consistencyTags: [{ tag: scope.tag, lastSortableUniqueId: null }],
     });
     expect(nullHead.status).toBe(400);
+    expect((await responseJson<{ error: string }>(nullHead)).error).toBe(
+      "lastSortableUniqueId must not be null",
+    );
     const absent = await SELF.fetch(
       `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
     );
     expect(absent.status).toBe(404);
 
     const omitted = await acquire(scope, "omitted", 1, "", {
-      consistencyTags: [{ tag: "other", lastSortedUniqueId: "unrelated" }],
+      consistencyTags: [{ tag: "other", lastSortableUniqueId: "unrelated" }],
     });
     expect(omitted.status).toBe(200);
     expect((await responseJson<{ status: string }>(omitted)).status).toBe("omitted");
