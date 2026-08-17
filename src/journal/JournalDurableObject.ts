@@ -351,9 +351,16 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     ) {
       return { error: "commitContext needs non-empty attemptId and serviceId" };
     }
+    if (
+      value.commitContext.testFenceNotDurable !== undefined &&
+      typeof value.commitContext.testFenceNotDurable !== "boolean"
+    ) {
+      return { error: "commitContext testFenceNotDurable must be a boolean" };
+    }
     commitContext = {
       attemptId: value.commitContext.attemptId,
       serviceId: value.commitContext.serviceId,
+      ...(value.commitContext.testFenceNotDurable === true ? { testFenceNotDurable: true } : {}),
     };
   }
 
@@ -621,6 +628,9 @@ export class JournalDurableObject implements DurableObject {
       return this.setFaults(body);
     }
     if (request.method === "POST" && path === "/debug/alarm") {
+      if (isObject(body) && body.clearTestFenceNotDurable === true) {
+        await this.clearTestFenceNotDurableFault();
+      }
       const record = await this.runAlarm();
       return record === undefined ? error(404, "journal_not_found", "Journal has not been admitted") : json(record);
     }
@@ -634,6 +644,26 @@ export class JournalDurableObject implements DurableObject {
 
   private async readRecord(): Promise<JournalRecord | undefined> {
     return this.ctx.storage.get<JournalRecord>(JOURNAL_KEY);
+  }
+
+  /** Releases the private fence fault after the response-boundary oracle has observed it. */
+  private async clearTestFenceNotDurableFault(): Promise<void> {
+    await this.ctx.storage.transaction(async (txn) => {
+      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
+      if (record?.commitContext?.testFenceNotDurable !== true) {
+        return;
+      }
+      const commitContext: CommitAttemptContext = {
+        attemptId: record.commitContext.attemptId,
+        serviceId: record.commitContext.serviceId,
+      };
+      await txn.put(JOURNAL_KEY, {
+        ...record,
+        commitContext,
+        version: record.version + 1,
+        updatedAt: nowIso(),
+      });
+    });
   }
 
   private async jsonBody(request: Request): Promise<unknown | undefined> {
@@ -1351,7 +1381,7 @@ export class JournalDurableObject implements DurableObject {
     missingTags: string[],
   ): Promise<Array<{ tag: string; fenced: boolean }> | undefined> {
     const context = record.commitContext;
-    if (context === undefined) {
+    if (context === undefined || context.testFenceNotDurable === true) {
       return undefined;
     }
     const fences: Array<{ tag: string; fenced: boolean }> = [];

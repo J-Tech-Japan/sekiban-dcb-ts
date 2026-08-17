@@ -520,17 +520,47 @@ describe("Serialized V1 commit worker", () => {
     expect((await responseJson<JournalRecord>(terminalWake)).state).toBe("PARTIAL");
   });
 
-  it("AC7: nonterminal faults emit no application response while recovery preserves allocator and Journal invariants", async () => {
+  it("AC5/AC6: a fence-not-durable attempt returns an undetermined timeout and its alarm keeps terminalizing", async () => {
+    const writtenTag = newTag("timeout-written");
+    const missingTag = newTag("timeout-missing");
+    const attemptId = crypto.randomUUID();
+    const response = await commit({
+      version: 1,
+      eventCandidates: [candidate("dGltZW91dA==", "Timeout", [writtenTag, missingTag])],
+      consistencyTags: [],
+    }, "fence-not-durable", attemptId);
+
+    const timeout = await expectSection6Error(response, 504, "timeout");
+    expect(timeout.error).toContain("outcome is undetermined");
+    expect(timeout.error).toContain("reread tag heads and event/query state before retrying");
+    expect(timeout.error).toContain("blind retry may create duplicate events");
+    expect(timeout).not.toHaveProperty("partial");
+    expect(timeout).not.toHaveProperty("writtenEvents");
+
+    const sealing = await journalState(attemptId);
+    expect(sealing.state).toBe("SEALING");
+    expect(sealing.alarm).not.toBeNull();
+    expect(sealing.commitContext?.testFenceNotDurable).toBe(true);
+    expect(sealing.takeover?.fencedTags).toEqual([]);
+
+    const terminalWake = await journalPost(attemptId, "/debug/alarm", { clearTestFenceNotDurable: true });
+    expect(terminalWake.status).toBe(200);
+    const terminal = await responseJson<JournalRecord>(terminalWake);
+    expect(terminal.state).toBe("PARTIAL");
+    expect(terminal.commitContext?.testFenceNotDurable).toBeUndefined();
+    expect(terminal.takeover?.fencedTags).toEqual([missingTag]);
+  });
+
+  it("AC7: nonterminal faults return timeout JSON while recovery preserves allocator and Journal invariants", async () => {
     const allocationTag = newTag("allocator-journal");
     const allocatorBefore = await allocatorState();
     const allocationAttempt = crypto.randomUUID();
-    // No terminal Journal outcome exists yet, so this is a Fetch failure rather
-    // than an application-produced bodyless 500 response.
-    await expect(commit({
+    const interrupted = await commit({
       version: 1,
       eventCandidates: [candidate("YWxsb2M=", "Allocated", [allocationTag])],
       consistencyTags: [{ tag: allocationTag, lastSortableUniqueId: "" }],
-    }, "journal-cas-after-allocator", allocationAttempt)).rejects.toThrow(/error response/);
+    }, "journal-cas-after-allocator", allocationAttempt);
+    await expectSection6Error(interrupted, 504, "timeout");
     expect((await journalState(allocationAttempt)).state).toBe("RESERVED");
     const allocatedVectorResponse = await SELF.fetch(
       `https://commit.test/allocator/attempts/${encodeURIComponent(allocationAttempt)}`,
@@ -559,14 +589,15 @@ describe("Serialized V1 commit worker", () => {
       consistencyTags: [{ tag: conflictTag, lastSortableUniqueId: "" }],
     })).status).toBe(200);
     const tombstoneAttempt = crypto.randomUUID();
-    await expect(commit({
+    const afterTombstone = await commit({
       version: 1,
       eventCandidates: [candidate("bGF0ZQ==", "Late", [conflictTag, lateTag])],
       consistencyTags: [
         { tag: conflictTag, lastSortableUniqueId: "" },
         { tag: lateTag, lastSortableUniqueId: "" },
       ],
-    }, "tombstone-after-durable", tombstoneAttempt)).rejects.toThrow(/error response/);
+    }, "tombstone-after-durable", tombstoneAttempt);
+    await expectSection6Error(afterTombstone, 504, "timeout");
     const pending = await journalState(tombstoneAttempt);
     expect(pending.state).toBe("RESERVED");
     expect(pending.reservationFailure).toMatchObject({ outcome: "REFUSED" });

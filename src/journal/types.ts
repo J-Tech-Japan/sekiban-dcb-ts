@@ -68,6 +68,8 @@ export type AlarmFaultPoint = (typeof ALARM_FAULT_POINTS)[number];
 export interface CommitAttemptContext {
   attemptId: string;
   serviceId: string;
+  /** Private commit.test hook that makes partial-write fence installation unavailable. */
+  testFenceNotDurable?: boolean;
 }
 
 export interface RequeriedRecord {

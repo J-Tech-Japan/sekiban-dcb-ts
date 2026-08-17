@@ -16,6 +16,8 @@ import {
 const COMMIT_SERVICE_ID = "serialized-dcb-v1";
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
+const OUTCOME_UNDETERMINED_ERROR =
+  "Commit outcome is undetermined; reread tag heads and event/query state before retrying because blind retry may create duplicate events.";
 
 type JsonObject = Record<string, unknown>;
 
@@ -224,7 +226,11 @@ export class CommitWorker {
     const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
       candidates: candidates.map(({ eventId, payload, tags }) => ({ eventId, payload, tags })),
       consistencyTags: input.consistencyTags,
-      commitContext: { attemptId, serviceId: COMMIT_SERVICE_ID },
+      commitContext: {
+        attemptId,
+        serviceId: COMMIT_SERVICE_ID,
+        ...(fault === "fence-not-durable" ? { testFenceNotDurable: true } : {}),
+      },
     });
     if (admitted.response.status !== 201 || admitted.body === undefined) {
       return responseWithAttempt(error(500, "internal_error", "Commit Journal admission failed"), attemptId, fault !== undefined);
@@ -234,7 +240,7 @@ export class CommitWorker {
     // pre-allocation REFUSED/FAILED only after the cancel barrier completes.
     const reserved = await this.transition(journal, admitted.body, "RESERVED");
     if (reserved === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
 
     const reservations = await this.acquireReservations(input, attemptId, fault);
@@ -266,19 +272,19 @@ export class CommitWorker {
     }
     const allocatedCandidates = this.withAllocatedSuids(candidates, allocation);
     if (allocatedCandidates === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     if (fault === "journal-cas-after-allocator") {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, true);
     }
 
     const allocated = await this.transition(journal, reserved, "ALLOCATED");
     if (allocated === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     const writing = await this.transition(journal, allocated, "WRITING");
     if (writing === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
 
     const writesSucceeded = await this.appendAllTags(
@@ -294,7 +300,7 @@ export class CommitWorker {
 
     const complete = await this.transition(journal, writing, "COMPLETE");
     if (complete === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     try {
       const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault);
@@ -485,7 +491,8 @@ export class CommitWorker {
         pending.map(async (tag) => {
           const injectFault =
             fault === "tag-append-always" ||
-            (fault === "tag-append-last" && tag === input.allTags[input.allTags.length - 1]);
+            ((fault === "tag-append-last" || fault === "fence-not-durable") &&
+              tag === input.allTags[input.allTags.length - 1]);
           const response = await this.tagRequest(tag, "/append", {
             attemptId,
             epoch: INITIAL_OWNER_EPOCH,
@@ -523,10 +530,10 @@ export class CommitWorker {
       },
     });
     if (sealing.response.status !== 200 || sealing.body?.state !== "SEALING") {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     if (fault === "sealing-after-cas") {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, true);
     }
 
     // The state transition itself sets an immediate durable alarm. Triggering
@@ -541,7 +548,7 @@ export class CommitWorker {
         }
       }
     }
-    return this.noApplicationOutcome();
+    return this.noApplicationOutcome(attemptId, fault !== undefined);
   }
 
   private async finishReservationFailure(
@@ -561,7 +568,7 @@ export class CommitWorker {
       reason: failure.reason,
     });
     if (classified.response.status !== 200 || classified.body === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     const cancelled = await Promise.allSettled(
       consistencyTags.map(async ({ tag }) => {
@@ -574,18 +581,18 @@ export class CommitWorker {
       }),
     );
     if (!cancelled.every((result) => result.status === "fulfilled" && result.value)) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     if (fault === "tombstone-after-durable") {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, true);
     }
     const terminal = await this.transition(journal, classified.body, failure.outcome, failure.reason);
     if (terminal === undefined) {
-      return this.noApplicationOutcome();
+      return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     const mapped = mapTerminalCommitOutcome(terminal);
     return mapped === undefined
-      ? this.noApplicationOutcome()
+      ? this.noApplicationOutcome(attemptId, fault !== undefined)
       : responseWithAttempt(json(mapped.body, mapped.status), attemptId, fault !== undefined);
   }
 
@@ -628,10 +635,9 @@ export class CommitWorker {
     };
   }
 
-  /** No terminal outcome means the application emits no HTTP response. */
-  private noApplicationOutcome(): Response {
-    // An error response is a Fetch network error, not an HTTP status/body.
-    return Response.error();
+  /** The request lifetime ended before the Journal made an authoritative outcome durable. */
+  private noApplicationOutcome(attemptId: string, exposeAttempt: boolean): Response {
+    return responseWithAttempt(error(504, "timeout", OUTCOME_UNDETERMINED_ERROR), attemptId, exposeAttempt);
   }
 }
 
