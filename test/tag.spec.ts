@@ -208,6 +208,37 @@ describe("TagDurableObject", () => {
     expect((await acquire(scope, "cancel-owner", 2)).status).toBe(201);
   });
 
+  it("AC4: retries a tombstone-cancel by attempt and epoch without changing another reservation", async () => {
+    const scope = newScope();
+    const first = await reservation(await acquire(scope, "cancel-owner-a", 1));
+    expect((await post(scope, "/cancel", {
+      attemptId: "cancel-owner-a",
+      epoch: 1,
+      reservationToken: first.token,
+    })).status).toBe(200);
+
+    const unrelated = await reservation(await acquire(scope, "cancel-owner-b", 1));
+    const beforeRetry = await state(scope);
+    expect(beforeRetry.activeReservation).toEqual(unrelated);
+
+    const retried = await post(scope, "/cancel", {
+      attemptId: "cancel-owner-a",
+      epoch: 1,
+      reservationToken: first.token,
+    });
+    expect(retried.status).toBe(200);
+    expect(await responseJson<{ status: string; idempotent: boolean; version: number }>(retried)).toEqual({
+      status: "cancelled",
+      idempotent: true,
+      version: beforeRetry.version,
+    });
+
+    const afterRetry = await state(scope);
+    expect(afterRetry).toEqual(beforeRetry);
+    expect(await rejectionReason(await acquire(scope, "cancel-owner-a", 1))).toBe("tombstoned_epoch");
+    expect(await state(scope)).toEqual(beforeRetry);
+  });
+
   it("AC5: checks exact duplicates before epoch, then reservation ownership, then monotonicity", async () => {
     const duplicateScope = newScope();
     const owned = await reservation(await acquire(duplicateScope, "ordered", 1));

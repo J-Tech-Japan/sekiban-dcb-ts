@@ -583,7 +583,10 @@ export class TagDurableObject implements DurableObject {
       const expiry = expireReservation(loaded.record);
       let record = expiry.record;
       const tombstone = epochFor(record.tombstones, input.attemptId);
-      if (record.activeReservation === null && tombstone === input.epoch) {
+      const holdsReservation =
+        record.activeReservation?.attemptId === input.attemptId &&
+        record.activeReservation?.epoch === input.epoch;
+      if (!holdsReservation && tombstone === input.epoch) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
         return { status: 200, body: { status: "cancelled", idempotent: true, version: record.version } };
       }
