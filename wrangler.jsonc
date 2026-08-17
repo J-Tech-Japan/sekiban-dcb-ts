@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "serialized-dcb-v1-runtime",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-16",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "JOURNAL",
+        "class_name": "JournalDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["JournalDurableObject"]
+    }
+  ]
+}

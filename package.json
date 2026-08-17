@@ -1,0 +1,27 @@
+{
+  "name": "serialized-dcb-v1-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Serialized DCB V1 5-endpoint runtime Journal Durable Object bootstrap.",
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "check": "npm run lint && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.21.3",
+    "@cloudflare/workers-types": "5.20260817.1",
+    "@eslint/js": "9.39.2",
+    "eslint": "9.39.2",
+    "globals": "16.5.0",
+    "miniflare": "5.20260811.1-alpha",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.50.1",
+    "vitest": "4.1.10",
+    "wrangler": "4.123.0"
+  }
+}
