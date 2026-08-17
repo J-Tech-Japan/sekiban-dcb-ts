@@ -208,6 +208,45 @@ describe("SDT-G6 operator repair vertical slice", () => {
     expect((await responseJson<{ reason: string }>(blocked)).reason).toBe("segment_rotation_fence_held");
   });
 
+  it("rejects a stale stable-snapshot clear without removing either partial-write fence", async () => {
+    const target = tag("stable-snapshot");
+    const firstAttempt = "stable-snapshot-first";
+    const secondAttempt = "stable-snapshot-second";
+    const first = item(firstAttempt, target, "stable-snapshot-first-event");
+    const second = item(secondAttempt, target, "stable-snapshot-second-event", "suid-00000000000000000000000000000002");
+    await installPartial(target, firstAttempt);
+    await installPartial(target, secondAttempt);
+
+    const acquired = await tagPost(target, "/repair/acquire", { owner: "snapshot-owner", scope: [first] });
+    expect(acquired.status).toBe(201);
+    const lease = await responseJson<{ epoch: number }>(acquired);
+    const applied = await tagPost(target, "/repair/apply", { owner: "snapshot-owner", epoch: lease.epoch, item: first });
+    expect(applied.status).toBe(200);
+    expect((await responseJson<{ status: string }>(applied)).status).toBe("ROLLED_FORWARD");
+    expect((await tagPost(target, "/repair/audit", {
+      owner: "snapshot-owner", epoch: lease.epoch, item: first, actor: "snapshot-auditor",
+    })).status).toBe(200);
+
+    const stableScopeVersion = (await tagFacts(target)).repairScopeVersion;
+    expect((await tagPost(target, "/repair/scope-union", {
+      owner: "snapshot-owner", epoch: lease.epoch, scope: [second],
+    })).status).toBe(200);
+    expect((await tagFacts(target)).repairScopeVersion).toBeGreaterThan(stableScopeVersion);
+
+    const staleClear = await tagPost(target, "/repair/clear", {
+      owner: "snapshot-owner", epoch: lease.epoch, attemptId: firstAttempt, scopeVersion: stableScopeVersion,
+    });
+    expect(staleClear.status).toBe(409);
+    expect(await responseJson<{ reason: string }>(staleClear)).toMatchObject({ reason: "repair_scope_snapshot_changed" });
+    const afterStaleClear = await tagFacts(target);
+    expect(afterStaleClear.fences).toContainEqual(
+      expect.objectContaining({ reason: "partial_write", attemptId: firstAttempt }),
+    );
+    expect(afterStaleClear.fences).toContainEqual(
+      expect.objectContaining({ reason: "partial_write", attemptId: secondAttempt }),
+    );
+  });
+
   it("makes Branch A a durable outbox repair, preserves PARTIAL, and keeps dry-run mutation-free", async () => {
     const prepared = await partialAttempt("branch-a");
     const unrelatedAttempt = "unrelated-partial-fence";

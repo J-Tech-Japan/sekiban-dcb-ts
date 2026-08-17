@@ -24,6 +24,19 @@ HTTP endpoints. It owns one durable record per commit attempt and provides:
 Allocator, tag Durable Objects, public HTTP endpoints, fencing, repair, and
 retention/GC are deliberately outside this first slice.
 
+## Operator repair CLI
+
+`POST /operator/repair` is an authenticated operator-only surface. Start with
+the mandatory dry run: `mode` defaults to `dry-run`, and a dry run makes no
+durable writes. Use `mode: "execute"` only after reviewing that plan.
+
+Repair auditing and unfencing are per tag, never an attempt-wide batch action.
+A durable Tag outbox proves the repair was persisted for that tag; it is not a
+downstream acknowledgement. `EXCLUDED_AUDITED` means the Tag head is ahead of
+the repair SUID (`head > s`) and the exclusion was durably audited. It is a
+permanent exclusion rather than a complete repair, so the original Journal
+outcome remains `PARTIAL` and never becomes `COMPLETE`.
+
 ## Local development
 
 Use Node.js 24 or newer.
