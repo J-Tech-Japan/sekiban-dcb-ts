@@ -1,4 +1,4 @@
-import { PARTIAL_WRITE_FENCE_REASON, type TagEvent, type TagRecord } from "../tag/types";
+import { type TagEvent, type TagRecord } from "../tag/types";
 
 const SERVICE_ID = "serialized-dcb-v1";
 export const TEST_TAG_STATE_PROJECTOR = "test-projector";
@@ -89,15 +89,6 @@ function tagStateIdentityFrom(value: unknown): { value?: TagStateIdentity; error
 }
 
 /**
- * Read determinacy is a property of the fence's durable reason, never merely
- * of fence presence. A partial-write fence represents a known missing write;
- * a rotation fence can still expose an already-determinate snapshot.
- */
-function isIndeterminateFencedState(record: TagRecord | undefined): boolean {
-  return record?.fences.some((fence) => fence.reason === PARTIAL_WRITE_FENCE_REASON) ?? false;
-}
-
-/**
  * Minimal V1 read surface for the registered test projector. It intentionally
  * has no catch-up, query, list-query, or wait semantics; SDT-G6 owns those.
  */
@@ -117,10 +108,10 @@ export class SerializedReadWorker {
     }
     try {
       if (path === "/api/sekiban/serialized/tag-latest-sortable") {
-        return this.latestSortable(body);
+        return await this.latestSortable(body);
       }
       if (path === "/api/sekiban/serialized/tag-state") {
-        return this.tagState(body);
+        return await this.tagState(body);
       }
       return error(404, "read_route_not_found", "Read route was not found");
     } catch {
@@ -134,9 +125,6 @@ export class SerializedReadWorker {
       return error(400, "validation_error", parsed.error ?? "Invalid tag-latest-sortable request");
     }
     const record = await this.readTag(parsed.value);
-    if (isIndeterminateFencedState(record)) {
-      return error(500, "internal_error", "Tag head is indeterminate while a repair fence is held");
-    }
     return json({
       exists: record !== undefined && record.head.length > 0,
       lastSortableUniqueId: record?.head ?? "",
@@ -150,9 +138,6 @@ export class SerializedReadWorker {
     }
     const identity = parsed.value;
     const record = await this.readTag(identity.tag);
-    if (isIndeterminateFencedState(record)) {
-      return error(500, "internal_error", "Tag state is indeterminate while a repair fence is held");
-    }
     const projector = PROJECTORS.get(identity.tagProjector)!;
     return json({
       payload: projector.payload(record?.events ?? []),
