@@ -90,7 +90,7 @@ async function journalTransition(
 
 async function prepareSealingAttempt(
   prefix: string,
-  alarmFault: AlarmFaultPoint,
+  alarmFault?: AlarmFaultPoint,
 ): Promise<{ attemptId: string; tags: string[]; record: JournalRecord }> {
   const attemptId = crypto.randomUUID();
   const tags = [newTag(`${prefix}-a`), newTag(`${prefix}-b`)];
@@ -125,7 +125,7 @@ async function prepareSealingAttempt(
     expectedVersion: record.version,
     expectedOwnerEpoch: record.ownerEpoch,
     nextState: "SEALING",
-    alarmFaults: [alarmFault],
+    ...(alarmFault === undefined ? {} : { alarmFaults: [alarmFault] }),
   });
   expect(sealing.status).toBe(200);
   return { attemptId, tags, record: await responseJson<JournalRecord>(sealing) };
@@ -398,6 +398,23 @@ describe("Serialized V1 commit worker", () => {
       const replayed = await responseJson<JournalRecord>(replay);
       expect(replayed.state).toBe(terminal.state);
       expect(replayed.terminalResponse).toEqual(terminal.terminalResponse);
+    }
+  });
+
+  it("F-G4-1: zero-durable recovery fails without installing partial-write fences", async () => {
+    const prepared = await prepareSealingAttempt("zero-durable");
+
+    const recovered = await journalPost(prepared.attemptId, "/debug/alarm", {});
+    expect(recovered.status).toBe(200);
+    const terminal = await responseJson<JournalRecord>(recovered);
+    expect(terminal.state).toBe("FAILED");
+
+    for (const tag of prepared.tags) {
+      const state = await tagState(tag);
+      expect(state.events).toHaveLength(0);
+      expect(state.fences).toEqual([]);
+      expect(state.activeReservation).toBeNull();
+      expect(state.tombstones).toContainEqual({ attemptId: prepared.attemptId, epoch: terminal.ownerEpoch });
     }
   });
 

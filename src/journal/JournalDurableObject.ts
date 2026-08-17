@@ -1149,9 +1149,13 @@ export class JournalDurableObject implements DurableObject {
     }
 
     const reconciliation = await this.requeryCommitRecords(current);
-    const fences = await this.installMissingTagFences(current, reconciliation.missingTags ?? []);
-    if (fences === undefined) {
-      return this.readRecord();
+    let fences: Array<{ tag: string; fenced: boolean }> = [];
+    if (reconciliation.records.some((entry) => entry.present)) {
+      const installedFences = await this.installMissingTagFences(current, reconciliation.missingTags ?? []);
+      if (installedFences === undefined) {
+        return this.readRecord();
+      }
+      fences = installedFences;
     }
     if (!(await this.cancelConsistencyBarrier(current, current.ownerEpoch))) {
       return this.readRecord();
