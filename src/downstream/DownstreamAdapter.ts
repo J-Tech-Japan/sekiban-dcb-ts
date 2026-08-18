@@ -3,8 +3,6 @@ import { InconsistencyDetector } from "./InconsistencyDetector";
 import { isDownstreamOutboxMessage, systemPipelineClock, type PipelineClock } from "./types";
 import { PostgresEventStore } from "../store/PostgresEventStore";
 import type { PipelineStore } from "../store/types";
-import { pollLiveProjections } from "../projection/LiveProjectionWorker";
-import { safeWindowMs } from "../projection/ProjectionRuntime";
 
 export interface DownstreamAdapterEnv {
   POSTGRES_URL?: string;
@@ -43,10 +41,6 @@ async function withStore<T>(
   return operation(store, options.clock ?? systemPipelineClock);
 }
 
-function sleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
 /** Processes one at-least-once Queue delivery with idempotent EventId storage. */
 export async function processDownstreamDelivery(
   message: unknown,
@@ -77,8 +71,6 @@ export async function handleDownstreamQueue(
 ): Promise<void> {
   await withStore(env, options, async (store, clock) => {
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
-    const deliveredServices = new Set<string>();
-    const deliveredTags = new Map<string, Set<string>>();
     for (const queued of batch.messages) {
       try {
         if (!isDownstreamOutboxMessage(queued.body)) {
@@ -88,30 +80,9 @@ export async function handleDownstreamQueue(
         await store.recordDelivery(queued.body, arrivedAt);
         const lagBound = await store.currentLagBound(queued.body.serviceId, arrivedAt);
         await detector.observe(queued.body, arrivedAt, lagBound);
-        deliveredServices.add(queued.body.serviceId);
-        const tags = deliveredTags.get(queued.body.serviceId) ?? new Set<string>();
-        tags.add(queued.body.tag);
-        deliveredTags.set(queued.body.serviceId, tags);
         queued.ack();
       } catch {
         queued.retry();
-      }
-    }
-    // Queue delivery is the first durable read-side fact. Poll with the same
-    // request-scoped Postgres client so deployed query/tag-state reads
-    // converge without a second cross-request I/O object. Unit tests that
-    // inject a store keep explicit poll control.
-    if (options.store === undefined && store instanceof PostgresEventStore) {
-      for (const serviceId of deliveredServices) {
-        // A queue delivery is the first durable arrival fact. Hold this
-        // consumer until that fact is inside the current SafeWindow, then
-        // poll the matching service scope so a fresh deployment-verification
-        // serviceId converges without weakening the read-side boundary.
-        const dynamicLagBoundMs = await store.currentLagBound(serviceId, Date.now());
-        await sleep(safeWindowMs(dynamicLagBoundMs) + 25);
-        for (const tag of deliveredTags.get(serviceId) ?? []) {
-          await pollLiveProjections(env, { store, serviceId, tag });
-        }
       }
     }
   });
