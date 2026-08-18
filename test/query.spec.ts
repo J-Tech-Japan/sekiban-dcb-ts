@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { handleSerializedQuery } from "../src/http/SerializedQueryWorker";
+import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest, TEST_SERVICE_ID_HEADER } from "../src/http/testServiceId";
 import type { Env as WorkerEnv } from "../src/index";
 import { processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
 import { drainTagOutbox } from "../src/downstream/OutboxDrain";
@@ -36,6 +37,13 @@ function queryRequest(path: "query" | "list-query", body: unknown): Request {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function testServiceHeaders(serviceId: string): HeadersInit {
+  return {
+    "content-type": "application/json",
+    [TEST_SERVICE_ID_HEADER]: serviceId,
+  };
 }
 
 function weatherIdentity(tag: string) {
@@ -138,6 +146,16 @@ function collectingQueue(messages: DownstreamOutboxMessage[]): Queue<DownstreamO
 }
 
 describe("SDT-G9 serialized V1 query and list-query", () => {
+  it("keeps the production service identity fixed while allowing only Miniflare test isolation", () => {
+    const testServiceId = unique("g9-test-service");
+    expect(serviceIdForRequest(new Request("https://query.test/", {
+      headers: { [TEST_SERVICE_ID_HEADER]: testServiceId },
+    }))).toBe(testServiceId);
+    expect(serviceIdForRequest(new Request("https://api.example.com/", {
+      headers: { [TEST_SERVICE_ID_HEADER]: testServiceId },
+    }))).toBe(SERIALIZED_DCB_SERVICE_ID);
+  });
+
   it("pins the exact 5.4/5.5 empty-success shapes and distinguishes unavailable projections", async () => {
     const store = new FakeQueryStore();
     const scalar = await handleSerializedQuery(queryRequest("query", {
@@ -250,12 +268,13 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
   });
 
   it("runs commit through durable projection and every V1 endpoint on Miniflare plus Docker PostgreSQL", async () => {
+    const serviceId = unique("g9-query-e2e-service");
     const forecastId = unique("g9-weather");
     const tag = `weather:${forecastId}`;
     const [tagGroup, tagContent] = tag.split(":");
     const commitResponse = await SELF.fetch("https://query.test/api/sekiban/serialized/commit", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: testServiceHeaders(serviceId),
       body: JSON.stringify({
         version: 1,
         eventCandidates: [{
@@ -274,7 +293,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
     const latest = await SELF.fetch("https://query.test/api/sekiban/serialized/tag-latest-sortable", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: testServiceHeaders(serviceId),
       body: JSON.stringify({ tag }),
     });
     expect(latest.status).toBe(200);
@@ -283,7 +302,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
     const tagState = await SELF.fetch("https://query.test/api/sekiban/serialized/tag-state", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: testServiceHeaders(serviceId),
       body: JSON.stringify({ tagStateId: `${tag}:${WEATHER_FORECAST_PROJECTOR}` }),
     });
     expect(tagState.status).toBe(200);
@@ -299,7 +318,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const clock: PipelineClock = { now: () => clockNow };
     const queued: DownstreamOutboxMessage[] = [];
     const workerEnv = env as unknown as WorkerEnv;
-    expect((await drainTagOutbox({ serviceId: SERVICE_ID, tag }, {
+    expect((await drainTagOutbox({ serviceId, tag }, {
       TAG: workerEnv.TAG,
       DOWNSTREAM_QUEUE: collectingQueue(queued),
     }, clock)).delivered).toBe(1);
@@ -310,12 +329,12 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     await processDownstreamDelivery(queued[0]!, { POSTGRES_URL: workerEnv.POSTGRES_URL }, { store, clock });
     await pollLiveProjections(
       { POSTGRES_URL: workerEnv.POSTGRES_URL },
-      { store, clock: { now: () => clockNow + 20_000 } },
+      { store, clock: { now: () => clockNow + 20_000 }, serviceId },
     );
 
     const scalar = await SELF.fetch("https://query.test/api/sekiban/serialized/query", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: testServiceHeaders(serviceId),
       body: JSON.stringify({
         queryType: "GetWeatherForecastCountQuery",
         queryParamsJson: "{}",
@@ -330,7 +349,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
     const list = await SELF.fetch("https://query.test/api/sekiban/serialized/list-query", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: testServiceHeaders(serviceId),
       body: JSON.stringify({
         queryType: "GetWeatherForecastListQuery",
         queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
@@ -349,5 +368,16 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(Object.keys(listBody).sort()).toEqual(["currentPage", "itemsJson", "pageSize", "totalCount", "totalPages"]);
     expect(JSON.parse(listBody.itemsJson)).toContainEqual(expect.objectContaining({ forecastId }));
     expect(listBody).toMatchObject({ currentPage: 1, pageSize: 20 });
+
+    // If the test accidentally falls back to the production fixed service ID,
+    // this exact tag is visible without the Miniflare-only header. That makes
+    // the isolation regression observable before the second local run.
+    const defaultLatest = await SELF.fetch("https://query.test/api/sekiban/serialized/tag-latest-sortable", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tag }),
+    });
+    expect(defaultLatest.status).toBe(200);
+    expect(await defaultLatest.json()).toEqual({ exists: false, lastSortableUniqueId: "" });
   });
 });

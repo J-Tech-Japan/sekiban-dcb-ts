@@ -16,8 +16,7 @@ import {
   type QueryRegistry,
 } from "../query/QueryRegistry";
 import { PostgresEventStore } from "../store/PostgresEventStore";
-
-const SERVICE_ID = "serialized-dcb-v1";
+import { serviceIdForRequest } from "./testServiceId";
 
 export interface QueryWorkerEnv {
   POSTGRES_URL?: string;
@@ -136,17 +135,18 @@ function realSleep(milliseconds: number): Promise<void> {
 
 async function waitForProjection(
   store: QueryProjectionStore,
+  serviceId: string,
   definition: QueryDefinition,
   requestedSuid: string,
   options: QueryExecutionOptions,
 ): Promise<boolean> {
   const now = options.now ?? Date.now;
-  const deadline = now() + safeWindowMs(await store.currentLagBound(SERVICE_ID));
+  const deadline = now() + safeWindowMs(await store.currentLagBound(serviceId));
   const sleep = options.sleep ?? realSleep;
   const pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 25);
 
   while (now() < deadline) {
-    if (await projectionHasObserved(store, SERVICE_ID, definition, requestedSuid)) {
+    if (await projectionHasObserved(store, serviceId, definition, requestedSuid)) {
       return true;
     }
     await sleep(Math.min(pollIntervalMs, deadline - now()));
@@ -190,6 +190,7 @@ export async function handleSerializedQuery(
   options: QueryExecutionOptions = {},
 ): Promise<Response> {
   const endpoint = endpointFromPath(new URL(request.url).pathname);
+  const serviceId = serviceIdForRequest(request);
   if (endpoint === undefined || request.method !== "POST") {
     return error(404, "query_route_not_found", "Query routes require POST");
   }
@@ -223,11 +224,11 @@ export async function handleSerializedQuery(
     }
     if (
       parsed.value.waitForSortableUniqueId !== undefined &&
-      !(await waitForProjection(store, definition, parsed.value.waitForSortableUniqueId, options))
+      !(await waitForProjection(store, serviceId, definition, parsed.value.waitForSortableUniqueId, options))
     ) {
       return error(504, "timeout", "Projection outcome is undetermined before the query wait bound expired");
     }
-    return resultResponse(endpoint, await readProjectedEntries(store, SERVICE_ID, definition), pagination.value);
+    return resultResponse(endpoint, await readProjectedEntries(store, serviceId, definition), pagination.value);
   } catch {
     return error(503, "projection_unavailable", "The mapped query projection is unavailable");
   }
