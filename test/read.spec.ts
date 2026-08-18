@@ -2,8 +2,10 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { Env as WorkerEnv } from "../src/index";
+import { G11_SERVICE_ID_HEADER } from "../src/http/testServiceId";
 import { WEATHER_FORECAST_PROJECTOR } from "../src/projection/ProjectorRegistry";
 import { TEST_TAG_STATE_PROJECTOR } from "../src/read/SerializedReadWorker";
+import { PostgresEventStore } from "../src/store/PostgresEventStore";
 
 const SERVICE_ID = "serialized-dcb-v1";
 
@@ -292,6 +294,40 @@ describe("Serialized V1 reads", () => {
     await expectInternalError(await read("tag-state", {
       tagStateId: `${tagGroup}:${tagContent}:${TEST_TAG_STATE_PROJECTOR}`,
     }));
+  });
+
+  it("fails closed with Section 6 JSON when a current lag estimate exceeds 120 seconds", async () => {
+    const serviceId = `g11-ceiling-${crypto.randomUUID().replaceAll("-", "")}`;
+    const tag = tagFor("ceiling");
+    const now = Date.now();
+    const url = (env as unknown as WorkerEnv).POSTGRES_URL;
+    if (url === undefined) {
+      throw new Error("POSTGRES_URL binding is required for the SafeWindow ceiling oracle");
+    }
+    const store = new PostgresEventStore(url);
+    await store.initialize();
+    await store.recordDelivery({
+      version: 1,
+      serviceId,
+      tag,
+      attemptId: crypto.randomUUID(),
+      eventId: crypto.randomUUID(),
+      suid: "suid-ceiling-00000000000000000000000000000001",
+      payload: "e30=",
+      eventTags: [tag],
+      enqueuedAt: now - 121_000,
+    }, now);
+    expect(await store.currentLagBound(serviceId, now)).toBeGreaterThan(120_000);
+
+    const response = await SELF.fetch("https://read.test/api/sekiban/serialized/tag-latest-sortable", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        [G11_SERVICE_ID_HEADER]: serviceId,
+      },
+      body: JSON.stringify({ tag }),
+    });
+    await expectInternalError(response);
   });
 
   it("keeps valid empty reads determinate and rejects malformed fixture requests without query semantics", async () => {

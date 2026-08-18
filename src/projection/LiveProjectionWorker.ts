@@ -22,10 +22,9 @@ export interface ProjectionPollOptions {
   registry?: ProjectorRegistry;
   /** Test-only service isolation; production scheduled polls use the V1 default. */
   serviceId?: string;
+  /** Optional single tag scope for queue/HTTP operator catch-up. */
+  tag?: string;
 }
-
-/** One Worker isolate retains its own Postgres socket between scheduled polls. */
-const sharedStores = new Map<string, PostgresEventStore>();
 
 function connectionStringFrom(env: LiveProjectionEnv): string {
   const connectionString = env.HYPERDRIVE?.connectionString ?? env.POSTGRES_URL;
@@ -37,12 +36,9 @@ function connectionStringFrom(env: LiveProjectionEnv): string {
 
 function sharedStore(env: LiveProjectionEnv): PostgresEventStore {
   const connectionString = connectionStringFrom(env);
-  let store = sharedStores.get(connectionString);
-  if (store === undefined) {
-    store = new PostgresEventStore(connectionString);
-    sharedStores.set(connectionString, store);
-  }
-  return store;
+  // Hyperdrive/Postgres sockets are request-scoped in workerd. A retained
+  // client can otherwise be used by a later cron/Queue request.
+  return new PostgresEventStore(connectionString);
 }
 
 function json(body: unknown, status = 200): Response {
@@ -67,6 +63,21 @@ export async function pollLiveProjections(
   const store = options.store ?? sharedStore(env);
   await store.initialize();
   const runtime = new ProjectionRuntime(store, options.registry ?? DEPLOYED_PROJECTOR_REGISTRY);
+  if (options.tag !== undefined) {
+    const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
+    const results: CatchUpResult[] = [];
+    for (const projector of registry.registered()) {
+      const identity = tagStateIdentityFrom(`${options.tag}:${projector.id}`, registry);
+      if (identity.value !== undefined) {
+        results.push(await runtime.catchUp(
+          options.serviceId ?? SERVICE_ID,
+          identity.value,
+          (options.clock ?? systemPipelineClock).now(),
+        ));
+      }
+    }
+    return results;
+  }
   return runtime.pollRegistered(options.serviceId ?? SERVICE_ID, (options.clock ?? systemPipelineClock).now());
 }
 
@@ -78,7 +89,10 @@ export async function handleProjectionLag(request: Request, env: LiveProjectionE
   if (request.method !== "GET") {
     return error(405, "validation_error", "Projection lag requires GET");
   }
-  const tagStateId = new URL(request.url).searchParams.get("tagStateId");
+  const query = new URL(request.url).searchParams;
+  const tagStateId = query.get("tagStateId");
+  const serviceId = query.get("serviceId") || SERVICE_ID;
+  const pollRequested = query.get("poll") === "1";
   if (tagStateId === null || tagStateId.length === 0) {
     return error(400, "validation_error", "tagStateId is required");
   }
@@ -89,10 +103,17 @@ export async function handleProjectionLag(request: Request, env: LiveProjectionE
   try {
     const store = sharedStore(env);
     await store.initialize();
+    if (pollRequested) {
+      // The operator probe names one tag-state. Catch up only that identity;
+      // polling every registered tag here can exceed an HTTP request lifetime
+      // on a large service-scoped conformance run.
+      const runtime = new ProjectionRuntime(store);
+      await runtime.catchUp(serviceId, parsed.value, Date.now());
+    }
     const projectionId = projectionIdFor(parsed.value);
     const [lag, dynamicLagBoundMs] = await Promise.all([
-      store.projectionLag(SERVICE_ID, projectionId, parsed.value.tag),
-      store.currentLagBound(SERVICE_ID),
+      store.projectionLag(serviceId, projectionId, parsed.value.tag),
+      store.currentLagBound(serviceId, Date.now()),
     ]);
     return json({
       tagStateId,

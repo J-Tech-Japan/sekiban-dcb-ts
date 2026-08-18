@@ -228,6 +228,21 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     await expectSection6(response, 504, "timeout");
   });
 
+  it("returns timeout JSON immediately when the dynamic estimate exceeds the published ceiling", async () => {
+    const store = new FakeQueryStore();
+    store.lagBoundMs = 120_001;
+    const response = await handleSerializedQuery(queryRequest("query", {
+      queryType: "GetWeatherForecastCountQuery",
+      queryParamsJson: "{}",
+      waitForSortableUniqueId: "suid-ceiling",
+    }), {}, { store, now: () => 1_000 });
+    const body = await response.clone().json<{ error: string }>();
+    await expectSection6(response, 504, "timeout");
+    expect(body.error).toContain("Outcome is undetermined");
+    expect(body.error).toContain("reread tag heads and event/query state");
+    expect(body.error).toContain("blind retry may create duplicate events");
+  });
+
   it("keeps list pages SUID-ordered and stable while an unsafe concurrent append arrives", async () => {
     const store = new FakeQueryStore();
     const stableTag = "weather:stable-page";

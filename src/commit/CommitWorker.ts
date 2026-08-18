@@ -346,6 +346,7 @@ export class CommitWorker {
   private async tagRequest(tag: string, path: string, body?: unknown): Promise<Response> {
     const url = new URL(`https://commit-worker.internal${path}`);
     url.searchParams.set("__tag", tag);
+    url.searchParams.set("__serviceId", this.serviceId);
     return this.tagFor(tag).fetch(
       new Request(url.toString(), body === undefined ? undefined : {
         method: "POST",

@@ -20,6 +20,8 @@ export interface Env {
   REPAIR_OPERATOR_TOKEN: string;
   /** Queue producer/consumer for durable Tag outbox rows. */
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
+  /** Deployment-only handoff; local tests retain explicit drain control. */
+  AUTO_DRAIN_OUTBOX?: string;
   /** Local Docker/CI connection; deployed Workers normally use HYPERDRIVE. */
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;

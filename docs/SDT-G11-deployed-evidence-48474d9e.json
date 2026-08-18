@@ -1,0 +1,59 @@
+{
+  "task": "SDT-G11-IMPLEMENT-2",
+  "ruling": "48474d9e",
+  "worker": "https://serialized-dcb-v1-runtime.ttakaoka.workers.dev",
+  "deployedVersion": "fa80a8a1-9f22-47a6-a071-5f96ab2ea2d5",
+  "hyperdriveCaching": "disabled",
+  "suite": {
+    "ref": "1b141ed",
+    "beforeRestart": {
+      "result": "PASS",
+      "requests": 32,
+      "serviceId": "g11-conformance-f859be210e1b4962",
+      "head": "suid-00000000000000000000000000000158"
+    },
+    "afterRestart": {
+      "result": "PASS",
+      "requests": 6,
+      "serviceId": "g11-conformance-f859be210e1b4962",
+      "head": "suid-00000000000000000000000000000167"
+    },
+    "safeWindowPoll": "operator-only single-tag poll after the 20s floor; no V1 wire change"
+  },
+  "safeWindow": {
+    "floorMs": 20000,
+    "ceilingMs": 120000,
+    "estimator": "decaying current estimate; recovery/backlog samples are excluded and observed as behind-head"
+  },
+  "measurements": [
+    {
+      "tagCount": 1,
+      "serviceId": "g11-measure-04f1da479ef74512",
+      "commitLatencyMs": { "min": 1430.143542, "p50": 1430.143542, "p95": 1430.143542, "max": 1430.143542 },
+      "tagStateConvergenceMs": { "min": 842.842625, "p50": 842.842625, "p95": 842.842625, "max": 842.842625 },
+      "serializedTagStateBytes": { "min": 695, "p50": 695, "max": 695 }
+    },
+    {
+      "tagCount": 4,
+      "serviceId": "g11-measure-bf1111e183b34418",
+      "commitLatencyMs": { "min": 1531.1325, "p50": 1594.044688, "p95": 1652.527542, "max": 1817.680417 },
+      "tagStateConvergenceMs": { "min": 821.026958, "p50": 874.382416, "p95": 902.841375, "max": 1780.204792 },
+      "serializedTagStateBytes": { "min": 695, "p50": 695, "max": 695 }
+    },
+    {
+      "tagCount": 8,
+      "serviceId": "g11-measure-ac6fb70074c441f6",
+      "commitLatencyMs": { "min": 1573.173958, "p50": 1717.078021, "p95": 1771.201125, "max": 2245.607334 },
+      "tagStateConvergenceMs": { "min": 836.893, "p50": 904.122792, "p95": 1318.772208, "max": 1941.32925 },
+      "serializedTagStateBytes": { "min": 695, "p50": 695, "max": 695 }
+    }
+  ],
+  "measurementNotes": {
+    "adapterVsSafeWindow": "All observed commit latencies were below the 20000ms floor.",
+    "perTagStorage": "695-byte serialized tag-state response is a reproducible per-tag durable-state lower bound; Cloudflare storedBytes requires a separately protected analytics token and is not fabricated.",
+    "isolateMemory": "Worker tail captured deployed wall/cpu execution for the probe; no memory dashboard credential was available, so no memory number is claimed.",
+    "commitRoundTrips": "Runs at 1, 4, and 8 tags use distinct fresh serviceIds and record the latency distributions above.",
+    "costSnapshot": "Request counts are inspectable in the pinned conformance reports under .artifacts; monetary billing is not inferred without account analytics export.",
+    "preFenceRace": "No pre-fence race was observed in the deployed probe runs."
+  }
+}

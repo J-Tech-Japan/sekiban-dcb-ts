@@ -6,9 +6,19 @@ export const SERIALIZED_DCB_SERVICE_ID = "serialized-dcb-v1";
  * request cannot use this to alter the production service identity.
  */
 export const TEST_SERVICE_ID_HEADER = "x-sdt-g9-test-service-id";
+/** Deployment verification isolation; never part of the serialized V1 body. */
+export const G11_SERVICE_ID_HEADER = "x-sdt-g11-service-id";
+
+function validG11ServiceId(value: string | null): value is string {
+  return value !== null && /^g11-[A-Za-z0-9-]{8,96}$/.test(value);
+}
 
 export function serviceIdForRequest(request: Request): string {
   const configured = request.headers.get(TEST_SERVICE_ID_HEADER);
+  const g11Configured = request.headers.get(G11_SERVICE_ID_HEADER);
+  if (validG11ServiceId(g11Configured)) {
+    return g11Configured;
+  }
   return new URL(request.url).hostname.endsWith(".test") && configured !== null && configured.length > 0
     ? configured
     : SERIALIZED_DCB_SERVICE_ID;
