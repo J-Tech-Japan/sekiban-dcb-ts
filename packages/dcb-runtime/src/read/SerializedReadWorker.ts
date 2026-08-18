@@ -1,6 +1,7 @@
 import { catchUpDurableTagState } from "../projection/ProjectionRuntime";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
+  type ProjectorRegistry,
   tagStateIdentityFrom,
   type TagStateIdentity,
 } from "../projection/ProjectorRegistry";
@@ -17,6 +18,8 @@ interface ReadWorkerEnv {
   TAG: DurableObjectNamespace;
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Set only by an authenticated deployment-verification lane. */
+  G11_VERIFICATION_ENABLED?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -44,11 +47,14 @@ function tagFromBody(value: unknown): { value?: string; error?: string } {
     : { error: "tag must be a non-empty string" };
 }
 
-function tagStateIdentityFromBody(value: unknown): { value?: TagStateIdentity; error?: string } {
+function tagStateIdentityFromBody(
+  value: unknown,
+  registry: ProjectorRegistry,
+): { value?: TagStateIdentity; error?: string } {
   if (!isObject(value) || !isNonEmptyString(value.tagStateId)) {
     return { error: "tagStateId must be a non-empty string" };
   }
-  return tagStateIdentityFrom(value.tagStateId);
+  return tagStateIdentityFrom(value.tagStateId, registry);
 }
 
 /**
@@ -60,6 +66,7 @@ export class SerializedReadWorker {
   constructor(
     private readonly env: ReadWorkerEnv,
     private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+    private readonly registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
   ) {}
 
   async handle(request: Request): Promise<Response> {
@@ -100,12 +107,12 @@ export class SerializedReadWorker {
   }
 
   private async tagState(body: unknown): Promise<Response> {
-    const parsed = tagStateIdentityFromBody(body);
+    const parsed = tagStateIdentityFromBody(body, this.registry);
     if (parsed.value === undefined) {
       return error(400, "validation_error", parsed.error ?? "Invalid tag-state request");
     }
     const identity = parsed.value;
-    const projector = DEPLOYED_PROJECTOR_REGISTRY.resolve(identity.tagProjector);
+    const projector = this.registry.resolve(identity.tagProjector);
     // tagStateIdentityFrom validates the same registry. Keep the guard so a
     // future registry implementation cannot turn a client mistake into 500.
     if (projector === undefined) {
@@ -160,6 +167,12 @@ export class SerializedReadWorker {
   }
 }
 
-export async function handleSerializedRead(request: Request, env: ReadWorkerEnv): Promise<Response> {
-  return new SerializedReadWorker(env, serviceIdForRequest(request)).handle(request);
+export async function handleSerializedRead(
+  request: Request,
+  env: ReadWorkerEnv,
+  registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
+): Promise<Response> {
+  return new SerializedReadWorker(env, serviceIdForRequest(request, {
+    allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+  }), registry).handle(request);
 }

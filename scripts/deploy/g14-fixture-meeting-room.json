@@ -1,0 +1,18 @@
+{
+  "eventPayloadName": "RoomCreated",
+  "payloadTemplate": "{\"eventType\":\"RoomCreated\",\"roomId\":\"{id}\",\"name\":\"G14 room\"}",
+  "tagTemplate": "room:{id}",
+  "tagGroupTemplate": "room",
+  "tagContentTemplate": "{id}",
+  "tagProjector": "RoomProjector",
+  "tagStateIdTemplate": "room:{id}:RoomProjector",
+  "tagStateLastIdKey": "lastSortedUniqueId",
+  "scalarQuery": {
+    "queryType": "GetRoomStateQuery",
+    "queryParamsJson": "{}"
+  },
+  "listQuery": {
+    "queryType": "GetReservationListQuery",
+    "queryParamsJson": "{\"PageNumber\":1,\"PageSize\":20}"
+  }
+}

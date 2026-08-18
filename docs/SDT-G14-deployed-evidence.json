@@ -1,0 +1,64 @@
+{
+  "probe": "SDT-G14",
+  "worker": "sekiban-dcb-meeting-room",
+  "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
+  "deployedVersion": "911ef480-052c-41fa-91fa-4836cdd7aa20",
+  "sourceCommit": "f56207bdce11b741d60c07453ed52970d2db64d6",
+  "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
+  "hyperdriveCaching": "disabled",
+  "conformance": {
+    "beforeRestart": {
+      "artifact": ".artifacts/g14-fix/conformance-before.json",
+      "serviceId": "g11-g14-fd1956f520e04f38",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "unauthenticatedRawV1": [404, 404, 404, 404, 404],
+      "unauthenticatedCommandG11": {
+        "command": 200,
+        "attackerServiceId": "g11-g14-unauth-cb009928fae54633",
+        "attackerRoomId": "unauth-room-365d575092c5",
+        "attackerNamespaceLatest": 200,
+        "attackerNamespaceExists": false,
+        "fixedNamespaceLatest": 200,
+        "fixedNamespaceExists": true
+      }
+    },
+    "afterRestart": {
+      "artifact": ".artifacts/g14-fix/conformance-after.json",
+      "serviceId": "g11-g14-fd1956f520e04f38",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "unauthenticatedRawV1": [404, 404, 404, 404, 404],
+      "unauthenticatedCommandG11": {
+        "command": 200,
+        "attackerServiceId": "g11-g14-unauth-456ef4ef463a45aa",
+        "attackerRoomId": "unauth-room-c0b3f92d385d",
+        "attackerNamespaceLatest": 200,
+        "attackerNamespaceExists": false,
+        "fixedNamespaceLatest": 200,
+        "fixedNamespaceExists": true
+      }
+    },
+    "auth": "Bearer token supplied from protected secret; token value omitted"
+  },
+  "readCost": {
+    "artifact": ".artifacts/g14/measure-final.json",
+    "serviceId": "g11-g14-measure-b3da028f82c04ffd",
+    "sampleCount": 5,
+    "commandPathReadCostProxyMs": {
+      "min": 1974.616875,
+      "p50": 2381.089958,
+      "p95": 2414.017292,
+      "max": 2749.700333
+    },
+    "g11BaselineMs": { "min": 1400, "max": 1800 },
+    "billingAndStoredBytes": "not measured; no claim"
+  },
+  "secretScan": "No secret values are present in source, config, reports, or this evidence record"
+}

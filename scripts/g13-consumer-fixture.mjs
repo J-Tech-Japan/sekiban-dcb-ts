@@ -18,6 +18,25 @@ for (const packageDirectory of packageNames) {
   await import(packageName);
 }
 
+const sampleSource = `${root}samples/meeting-room/src`;
+const sampleEntries = await (async function collect(directory) {
+  const entries = await (await import("node:fs/promises")).readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) files.push(...await collect(path));
+    else if (entry.name.endsWith(".ts")) files.push(path);
+  }
+  return files;
+})(sampleSource);
+for (const file of sampleEntries) {
+  const source = await readFile(file, "utf8");
+  assert.doesNotMatch(source, /\.\.\/\.\.\/packages\/|packages\/[^/]+\/src\//, `sample must not deep-import workspace sources: ${file}`);
+  assert.doesNotMatch(source, /from\s+["'][^"']*packages\/[^"']*["']/, `sample must use package entrypoints: ${file}`);
+}
+const runtimeModule = await import("@sekiban/dcb-runtime");
+assert.equal(typeof runtimeModule.createRuntimeWorker, "function", "runtime public registration API is required");
+
 const bundled = await build({
   stdin: {
     contents: 'import { defineTag } from "@sekiban/dcb-core"; console.log(defineTag("g", "c").id);',
@@ -33,4 +52,4 @@ const bundled = await build({
 const output = bundled.outputFiles?.[0]?.text ?? "";
 assert.match(output, /g.*c/);
 assert.ok(!output.includes("Cyclic JSON value"), "unused core validation code should be tree-shaken");
-console.log("SDT-G13 consumer fixtures passed: public entrypoints, declarations, deep-import rejection, tree shaking");
+console.log("SDT-G13/G14 consumer fixtures passed: public entrypoints, registration API, deep-import rejection, tree shaking");

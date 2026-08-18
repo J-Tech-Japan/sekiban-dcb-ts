@@ -234,7 +234,7 @@ describe("SDT-G8 live projection", () => {
       clock.set(21_000);
       const runtime = new ProjectionRuntime(store);
       const results = await runtime.pollRegistered(serviceId, clock.clock.now());
-      expect(results).toHaveLength(4);
+      expect(results).toHaveLength(2);
       expect(stateEvents((await store.readProjectionCheckpoint(serviceId, projectionIdFor(firstIdentity)))!)
         .map((entry) => entry.eventId)).toEqual([firstEvent.eventId]);
       expect(stateEvents((await store.readProjectionCheckpoint(serviceId, projectionIdFor(secondIdentity)))!)
@@ -314,10 +314,11 @@ describe("SDT-G8 live projection", () => {
   });
 
   it("exposes behind-head projection lag without advancing a projection", async () => {
+    const serviceId = SERVICE_ID;
     const tag = `orders:${unique("projection-lag")}`;
     const identity = identityFor(tag);
     const event = message(
-      SERVICE_ID,
+      serviceId,
       unique("projection-lag-event"),
       `suid-lag-${crypto.randomUUID()}`,
       tag,
@@ -345,11 +346,12 @@ describe("SDT-G8 live projection", () => {
   });
 
   it("runs the scheduled polling entry point through every registered projection", async () => {
+    const serviceId = unique("scheduled-poll-service");
     const tag = `orders:${unique("scheduled-poll")}`;
     const identity = identityFor(tag);
     const clock = mutableClock(Date.now());
     const event = message(
-      SERVICE_ID,
+      serviceId,
       unique("scheduled-poll-event"),
       `suid-scheduled-${crypto.randomUUID()}`,
       tag,
@@ -361,14 +363,14 @@ describe("SDT-G8 live projection", () => {
       clock.set(clock.clock.now() + 1_000_000);
       const results = await pollLiveProjections(
         { POSTGRES_URL: (env as unknown as WorkerEnv).POSTGRES_URL },
-        { store, clock: clock.clock },
+        { store, clock: clock.clock, serviceId },
       );
       const target = results.find((result) => result.checkpoint?.projectionId === projectionIdFor(identity));
       expect(target).toMatchObject({ appliedEvents: 1 });
       // A checkpoint covers the service-wide SUID source, so an older test
       // delivery for another tag may advance its SUID beyond this event. The
       // registered reducer state is the tag-specific oracle.
-      const checkpoint = await store.readProjectionCheckpoint(SERVICE_ID, projectionIdFor(identity));
+      const checkpoint = await store.readProjectionCheckpoint(serviceId, projectionIdFor(identity));
       expect(checkpoint).toMatchObject({ version: 1 });
       expect(stateEvents(checkpoint!).map(({ eventId, suid }) => ({ eventId, suid }))).toEqual([
         { eventId: event.eventId, suid: event.suid },

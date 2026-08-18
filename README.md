@@ -55,6 +55,18 @@ alarm behavior. `wrangler.jsonc` declares the Journal binding and SQLite
 Durable Object migration; the GitHub Actions workflow runs lint, typecheck,
 tests, and a Wrangler dry-run build.
 
+## Meeting-room consumer sample
+
+`samples/meeting-room` is the SDT-G14 consumer backend. It imports only the
+public `@sekiban/dcb-core`, `@sekiban/dcb-client`, and `@sekiban/dcb-runtime`
+entrypoints. A consumer composes its domain into the runtime with
+`createRuntimeWorker({ domain, config })`; the runtime's projector/query
+registries remain private. The sample exposes its application command API and
+keeps raw V1 routes behind the authenticated `/conformance/v1` lane. Run
+`npm run deploy:g14` with a protected `G14_CONFORMANCE_TOKEN_FILE` when
+deploying, then use `npm run conformance:g14` and `npm run measure:g14` for
+redacted evidence. Hyperdrive caching is disabled by the deployment script.
+
 ## License
 
 This project is licensed under the Elastic License 2.0 (ELv2). See

@@ -85,7 +85,11 @@ export async function pollLiveProjections(
  * Internal operational surface; it is deliberately outside the five V1
  * endpoints and does not advance a projection or write event data.
  */
-export async function handleProjectionLag(request: Request, env: LiveProjectionEnv): Promise<Response> {
+export async function handleProjectionLag(
+  request: Request,
+  env: LiveProjectionEnv,
+  registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
+): Promise<Response> {
   if (request.method !== "GET") {
     return error(405, "validation_error", "Projection lag requires GET");
   }
@@ -96,7 +100,7 @@ export async function handleProjectionLag(request: Request, env: LiveProjectionE
   if (tagStateId === null || tagStateId.length === 0) {
     return error(400, "validation_error", "tagStateId is required");
   }
-  const parsed = tagStateIdentityFrom(tagStateId);
+  const parsed = tagStateIdentityFrom(tagStateId, registry);
   if (parsed.value === undefined) {
     return error(400, "validation_error", parsed.error ?? "Invalid tagStateId");
   }
@@ -107,7 +111,7 @@ export async function handleProjectionLag(request: Request, env: LiveProjectionE
       // The operator probe names one tag-state. Catch up only that identity;
       // polling every registered tag here can exceed an HTTP request lifetime
       // on a large service-scoped conformance run.
-      const runtime = new ProjectionRuntime(store);
+      const runtime = new ProjectionRuntime(store, registry);
       await runtime.catchUp(serviceId, parsed.value, Date.now());
     }
     const projectionId = projectionIdFor(parsed.value);

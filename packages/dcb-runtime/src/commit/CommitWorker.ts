@@ -25,6 +25,8 @@ export interface CommitWorkerEnv {
   ALLOCATOR: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
+  /** Set only by an authenticated deployment-verification lane. */
+  G11_VERIFICATION_ENABLED?: string;
 }
 
 interface ReservationSuccess {
@@ -658,5 +660,7 @@ export class CommitWorker {
 }
 
 export async function handleSerializedCommit(request: Request, env: CommitWorkerEnv): Promise<Response> {
-  return new CommitWorker(env, serviceIdForRequest(request)).handle(request);
+  return new CommitWorker(env, serviceIdForRequest(request, {
+    allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+  })).handle(request);
 }

@@ -1,7 +1,6 @@
 import type { TagEvent } from "../tag/types";
 
 export const TEST_TAG_STATE_PROJECTOR = "test-projector";
-export const WEATHER_FORECAST_PROJECTOR = "WeatherForecastProjector";
 
 export interface ProjectionEvent {
   eventId: string;
@@ -100,8 +99,6 @@ function eventHistoryProjector(id: string, tagPayloadName: string): TagStateProj
 }
 
 const TEST_PROJECTOR = eventHistoryProjector(TEST_TAG_STATE_PROJECTOR, "SerializedDcbTestTagState");
-const WEATHER_FORECAST_STATE_PROJECTOR = eventHistoryProjector(WEATHER_FORECAST_PROJECTOR, "WeatherForecastState");
-
 export class ProjectorRegistry {
   private readonly projectors: ReadonlyMap<string, TagStateProjector>;
 
@@ -125,10 +122,9 @@ export class ProjectorRegistry {
   }
 }
 
-/** The complete deploy-time registry for the V1 TagState surface. */
+/** The test-only default registry; production consumers compose their own domain. */
 export const DEPLOYED_TAG_STATE_PROJECTORS: readonly TagStateProjector[] = [
   TEST_PROJECTOR,
-  WEATHER_FORECAST_STATE_PROJECTOR,
 ];
 export const DEPLOYED_PROJECTOR_REGISTRY = new ProjectorRegistry(DEPLOYED_TAG_STATE_PROJECTORS);
 

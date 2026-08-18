@@ -73,7 +73,7 @@ function request(path: string, body: unknown): Request {
 
 function tagReadEnvironment(): ConstructorParameters<typeof SerializedReadWorker>[0] {
   const record = {
-    tag: "weather:g13-wire",
+    tag: "test:g13-wire",
     head: "suid-00000000000000000000000000000001",
     events: [],
   };
@@ -110,20 +110,20 @@ async function captureTranscript(): Promise<unknown> {
   }), {} as CommitWorkerEnv);
 
   const reader = new SerializedReadWorker(tagReadEnvironment());
-  const latestSuccess = await reader.handle(request("/api/sekiban/serialized/tag-latest-sortable", { tag: "weather:g13-wire" }));
+  const latestSuccess = await reader.handle(request("/api/sekiban/serialized/tag-latest-sortable", { tag: "test:g13-wire" }));
   const latestFailure = await reader.handle(request("/api/sekiban/serialized/tag-latest-sortable", {}));
   const stateSuccess = await reader.handle(request("/api/sekiban/serialized/tag-state", {
-    tagStateId: "weather:g13-wire:test-projector",
+    tagStateId: "test:g13-wire:test-projector",
   }));
   const stateFailure = await reader.handle(request("/api/sekiban/serialized/tag-state", {}));
 
   const querySuccess = await handleSerializedQuery(request("/api/sekiban/serialized/query", {
-    queryType: "GetWeatherForecastCountQuery",
+    queryType: "GetTestCountQuery",
     queryParamsJson: "{}",
   }), {}, { store: queryStore() });
   const queryFailure = await handleSerializedQuery(request("/api/sekiban/serialized/query", {}), {}, { store: queryStore() });
   const listSuccess = await handleSerializedQuery(request("/api/sekiban/serialized/list-query", {
-    queryType: "GetWeatherForecastListQuery",
+    queryType: "GetTestListQuery",
     queryParamsJson: "{}",
   }), {}, { store: queryStore() });
   const listFailure = await handleSerializedQuery(request("/api/sekiban/serialized/list-query", {}), {}, { store: queryStore() });
@@ -131,12 +131,12 @@ async function captureTranscript(): Promise<unknown> {
   const queuePayload: DownstreamOutboxMessage = {
     version: 1,
     serviceId: "g13-wire-service",
-    tag: "weather:g13-wire",
+    tag: "test:g13-wire",
     attemptId: "attempt",
     eventId: "event",
     suid: "suid-00000000000000000000000000000001",
     payload: "",
-    eventTags: ["weather:g13-wire"],
+    eventTags: ["test:g13-wire"],
     enqueuedAt: 0,
   };
 

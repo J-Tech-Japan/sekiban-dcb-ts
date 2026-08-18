@@ -60,23 +60,41 @@ function tagIdentity(tag: string, definition: QueryDefinition): {
   };
 }
 
+function base64Json(value: unknown): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 function stateEntries(checkpoint: ProjectionCheckpoint): SerializedEventHistoryEntry[] {
   const decoded: unknown = JSON.parse(checkpoint.stateJson);
-  if (
-    !Array.isArray(decoded) ||
-    !decoded.every((entry) =>
+  if (Array.isArray(decoded)) {
+    if (!decoded.every((entry) =>
       isObject(entry) &&
       isNonEmptyString(entry.eventId) &&
       isNonEmptyString(entry.suid) &&
-      typeof entry.payload === "string")
-  ) {
-    throw new Error("Projected event-history state was malformed");
+      typeof entry.payload === "string")) {
+      throw new Error("Projected event-history state was malformed");
+    }
+    return decoded.map((entry) => ({
+      eventId: (entry as Record<string, unknown>).eventId as string,
+      suid: (entry as Record<string, unknown>).suid as string,
+      payload: (entry as Record<string, unknown>).payload as string,
+    }));
   }
-  return decoded.map((entry) => ({
-    eventId: entry.eventId as string,
-    suid: entry.suid as string,
-    payload: entry.payload as string,
-  }));
+  // A composed consumer may register a domain projector whose durable state
+  // is not the test event-history array. Preserve the fixed V1 query shape by
+  // exposing one deterministic snapshot entry for that tag projection; the
+  // source SUID remains the checkpoint's opaque ordering fact.
+  if (isObject(decoded)) {
+    return [{
+      eventId: `projection:${checkpoint.projectionId}`,
+      suid: checkpoint.lastSuid,
+      payload: base64Json(decoded),
+    }];
+  }
+  throw new Error("Projected state was malformed");
 }
 
 function sameEntry(left: ProjectedQueryEntry, right: ProjectedQueryEntry): boolean {
