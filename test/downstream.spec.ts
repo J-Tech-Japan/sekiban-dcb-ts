@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import { handleSerializedCommit, type CommitWorkerEnv } from "../src/commit/CommitWorker";
 import { handleDownstreamQueue, processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
-import { type ExclusionLedgerPort, InconsistencyDetector } from "../src/downstream/InconsistencyDetector";
+import {
+  type ExclusionLedgerPort,
+  InconsistencyDetector,
+  MIN_STABILITY_HORIZON_MS,
+} from "../src/downstream/InconsistencyDetector";
 import { drainTagOutbox } from "../src/downstream/OutboxDrain";
 import type { DownstreamOutboxMessage, PipelineClock } from "../src/downstream/types";
 import type { Env as WorkerEnv } from "../src/index";
@@ -103,7 +107,7 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
   it("drains durable Tag outboxes to Queue, survives duplicate/reordered retry storms, scans by service/SUID, and keeps commit downstream-read-free", async () => {
     const serviceId = unique("downstream-service");
     const tags = [unique("downstream-a"), unique("downstream-b")];
-    const eventId = unique("downstream-event");
+    const eventId = unique("z-downstream-event");
     const attemptId = unique("downstream-attempt");
     const clock = mutableClock(1_000);
     for (const tag of tags) {
@@ -175,7 +179,7 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
 
       const second = message(
         serviceId,
-        unique("scan-second"),
+        unique("a-scan-second"),
         "suid-00000000000000000000000000000002",
         tags[0]!,
         [tags[0]!],
@@ -227,6 +231,39 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
       }), instrumented);
       expect(commitResponse.status, await commitResponse.clone().text()).toBe(200);
       expect(downstreamReads).toEqual([]);
+    });
+  });
+
+  it("holds a low-lag missing arrival until the 20 second stability floor", async () => {
+    const serviceId = unique("stability-floor-service");
+    const tags = [unique("stability-floor-a"), unique("stability-floor-b")];
+    const clock = mutableClock(10_000);
+    await withPostgresStore(async (store) => {
+      const detector = new InconsistencyDetector(store, { isExcludedAudited: async () => false });
+      const lowLagMissing = message(
+        serviceId,
+        unique("low-lag-missing"),
+        "suid-low-lag-missing",
+        tags[0]!,
+        tags,
+        9_900,
+      );
+      await store.recordDelivery(lowLagMissing, clock.clock.now());
+      await detector.observe(lowLagMissing, clock.clock.now(), await store.currentLagBound(serviceId));
+
+      const pending = (await store.listPending(serviceId)).find((entry) => entry.eventId === lowLagMissing.eventId)!;
+      expect(MIN_STABILITY_HORIZON_MS).toBe(20_000);
+      expect(pending.lagBoundMs).toBe(20_000);
+
+      clock.set(pending.firstObservedAt + pending.lagBoundMs - 1);
+      await detector.stabilize(clock.clock, serviceId);
+      expect(await store.listFindings(serviceId, lowLagMissing.eventId)).toEqual([]);
+
+      clock.set(pending.firstObservedAt + pending.lagBoundMs);
+      await detector.stabilize(clock.clock, serviceId);
+      expect(await store.listFindings(serviceId, lowLagMissing.eventId)).toMatchObject([
+        { path: tags[1], classification: "MISSING_STABLE" },
+      ]);
     });
   });
 
