@@ -2,21 +2,21 @@
   "task": "SDT-G11-IMPLEMENT-2",
   "ruling": "48474d9e",
   "worker": "https://serialized-dcb-v1-runtime.ttakaoka.workers.dev",
-  "deployedVersion": "fa80a8a1-9f22-47a6-a071-5f96ab2ea2d5",
+  "deployedVersion": "0ad6c115-7f72-4d3f-8b3c-4b2a21b3289f",
   "hyperdriveCaching": "disabled",
   "suite": {
     "ref": "1b141ed",
     "beforeRestart": {
       "result": "PASS",
       "requests": 32,
-      "serviceId": "g11-conformance-f859be210e1b4962",
-      "head": "suid-00000000000000000000000000000158"
+      "serviceId": "g11-conformance-2500b648badf4237",
+      "head": "suid-00000000000000000000000000000183"
     },
     "afterRestart": {
       "result": "PASS",
       "requests": 6,
-      "serviceId": "g11-conformance-f859be210e1b4962",
-      "head": "suid-00000000000000000000000000000167"
+      "serviceId": "g11-conformance-2500b648badf4237",
+      "head": "suid-00000000000000000000000000000192"
     },
     "safeWindowPoll": "operator-only single-tag poll after the 20s floor; no V1 wire change"
   },
