@@ -21,6 +21,8 @@ import { serviceIdForRequest } from "./testServiceId";
 export interface QueryWorkerEnv {
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Set only by an authenticated deployment-verification lane. */
+  G11_VERIFICATION_ENABLED?: string;
 }
 
 export interface QueryExecutionOptions {
@@ -196,7 +198,9 @@ export async function handleSerializedQuery(
   options: QueryExecutionOptions = {},
 ): Promise<Response> {
   const endpoint = endpointFromPath(new URL(request.url).pathname);
-  const serviceId = serviceIdForRequest(request);
+  const serviceId = serviceIdForRequest(request, {
+    allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+  });
   if (endpoint === undefined || request.method !== "POST") {
     return error(404, "query_route_not_found", "Query routes require POST");
   }

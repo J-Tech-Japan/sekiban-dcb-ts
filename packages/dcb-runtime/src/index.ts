@@ -31,6 +31,8 @@ export interface Env {
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
+  /** Only an authenticated deployment-verification lane may set this. */
+  G11_VERIFICATION_ENABLED?: string;
 }
 
 export interface RuntimeWorkerOptions {

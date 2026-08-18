@@ -18,6 +18,8 @@ interface ReadWorkerEnv {
   TAG: DurableObjectNamespace;
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Set only by an authenticated deployment-verification lane. */
+  G11_VERIFICATION_ENABLED?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -170,5 +172,7 @@ export async function handleSerializedRead(
   env: ReadWorkerEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
 ): Promise<Response> {
-  return new SerializedReadWorker(env, serviceIdForRequest(request), registry).handle(request);
+  return new SerializedReadWorker(env, serviceIdForRequest(request, {
+    allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+  }), registry).handle(request);
 }

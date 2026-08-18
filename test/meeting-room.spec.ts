@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createRuntimeWorker } from "@sekiban/dcb-runtime";
+import { createMeetingRoomWorker, type MeetingRoomEnv } from "../samples/meeting-room/src/worker";
 import { createV1Transport } from "../samples/meeting-room/src/transport";
 import { bookRoomWorkflow } from "../samples/meeting-room/src/workflow";
 import {
@@ -82,5 +83,44 @@ describe("SDT-G14 meeting-room consumer", () => {
     expect(body.eventCandidates).toEqual([
       expect.objectContaining({ eventPayloadName: "RoomCreated", tags: ["room:r-1"], payload: expect.any(String) }),
     ]);
+  });
+
+  it("does not forward a client g11 namespace from the unauthenticated command API", async () => {
+    const calls: Request[] = [];
+    const runtimeFetcher = {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        calls.push(request);
+        if (new URL(request.url).pathname.endsWith("/tag-state")) {
+          return new Response(JSON.stringify({
+            payload: { status: "empty" },
+            version: 0,
+            lastSortedUniqueId: "",
+            tagGroup: "room",
+            tagContent: "r-unauthenticated",
+            tagProjector: "RoomProjector",
+            tagPayloadName: "RoomState",
+            projectorVersion: "1",
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    };
+    const worker = createMeetingRoomWorker();
+    const fetch = worker.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
+    const response = await fetch(new Request("https://sample.test/api/commands/create-room", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-sdt-g11-service-id": "g11-attacker-namespace",
+      },
+      body: JSON.stringify({ roomId: "r-unauthenticated", name: "Room" }),
+    }), { RUNTIME: runtimeFetcher } as unknown as MeetingRoomEnv, {} as ExecutionContext);
+    expect(response.status).toBe(200);
+    expect(calls.length).toBe(2);
+    expect(calls.every((request) => !request.headers.has("x-sdt-g11-service-id"))).toBe(true);
   });
 });

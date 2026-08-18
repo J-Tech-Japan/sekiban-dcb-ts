@@ -13,13 +13,23 @@ function validG11ServiceId(value: string | null): value is string {
   return value !== null && /^g11-[A-Za-z0-9-]{8,96}$/.test(value);
 }
 
-export function serviceIdForRequest(request: Request): string {
+export interface ServiceIdRequestOptions {
+  /**
+   * Explicitly enabled only by an authenticated deployment-verification
+   * lane. The default is fail-closed for production/public requests.
+   */
+  readonly allowG11Verification?: boolean;
+}
+
+export function serviceIdForRequest(request: Request, options: ServiceIdRequestOptions = {}): string {
+  const hostname = new URL(request.url).hostname;
   const configured = request.headers.get(TEST_SERVICE_ID_HEADER);
   const g11Configured = request.headers.get(G11_SERVICE_ID_HEADER);
-  if (validG11ServiceId(g11Configured)) {
+  const g11Allowed = hostname.endsWith(".test") || options.allowG11Verification === true;
+  if (g11Allowed && validG11ServiceId(g11Configured)) {
     return g11Configured;
   }
-  return new URL(request.url).hostname.endsWith(".test") && configured !== null && configured.length > 0
+  return hostname.endsWith(".test") && configured !== null && configured.length > 0
     ? configured
     : SERIALIZED_DCB_SERVICE_ID;
 }

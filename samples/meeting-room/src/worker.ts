@@ -79,7 +79,6 @@ async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: Execut
   const result = await executeMeetingRoomCommand(commandId, input, {
     RUNTIME: commandRuntime,
     localRuntime: commandRuntime,
-    serviceId: request.headers.get("x-sdt-g11-service-id") ?? undefined,
   });
   return resultResponse(result);
 }
@@ -92,7 +91,12 @@ async function conformanceRequest(request: Request, env: MeetingRoomEnv, ctx: Ex
   }
   const url = new URL(request.url);
   url.pathname = url.pathname.slice("/conformance/v1".length) || "/";
-  return invokeRuntime(new Request(url.toString(), request), env, ctx);
+  // Only this bearer-authenticated lane may enable deployment verification's
+  // fresh g11-* namespace. Public app commands never receive this context.
+  return invokeRuntime(new Request(url.toString(), request), {
+    ...env,
+    G11_VERIFICATION_ENABLED: "true",
+  }, ctx);
 }
 
 export function createMeetingRoomWorker(): ExportedHandler<MeetingRoomEnv> {

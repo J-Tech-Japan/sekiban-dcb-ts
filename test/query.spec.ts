@@ -154,6 +154,12 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(serviceIdForRequest(new Request("https://api.example.com/", {
       headers: { [TEST_SERVICE_ID_HEADER]: testServiceId },
     }))).toBe(SERIALIZED_DCB_SERVICE_ID);
+    expect(serviceIdForRequest(new Request("https://api.example.com/", {
+      headers: { "x-sdt-g11-service-id": "g11-attacker-namespace" },
+    }))).toBe(SERIALIZED_DCB_SERVICE_ID);
+    expect(serviceIdForRequest(new Request("https://runtime.internal/", {
+      headers: { "x-sdt-g11-service-id": "g11-verification-namespace" },
+    }), { allowG11Verification: true })).toBe("g11-verification-namespace");
   });
 
   it("pins the exact 5.4/5.5 empty-success shapes and distinguishes unavailable projections", async () => {

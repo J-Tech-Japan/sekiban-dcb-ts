@@ -73,6 +73,45 @@ def main() -> None:
             raise RuntimeError(f"unauthenticated raw {endpoint} returned HTTP {status}")
         checks[f"unauthenticated_{endpoint}"] = status
 
+    # The app command API is intentionally public, but a client cannot use it
+    # to select a g11-* namespace. The command must fall back to the fixed
+    # production service while an authenticated conformance read using the
+    # attacker namespace remains empty.
+    attacker_service_id = f"g11-g14-unauth-{uuid.uuid4().hex[:16]}"
+    attacker_room_id = f"unauth-room-{uuid.uuid4().hex[:12]}"
+    attacker_tag = f"room:{attacker_room_id}"
+    command_status, command_body = request(args.base_url, "/api/commands/create-room", {
+        "roomId": attacker_room_id,
+        "name": "unauthenticated-header-probe",
+    }, None, attacker_service_id)
+    if command_status != 200 or command_body.get("kind") != "committed":
+        raise RuntimeError(f"unauthenticated command probe failed HTTP {command_status}: {command_body}")
+    attacker_latest_status, attacker_latest = request(
+        args.base_url,
+        f"{lane}/api/sekiban/serialized/tag-latest-sortable",
+        {"tag": attacker_tag},
+        token,
+        attacker_service_id,
+    )
+    default_latest_status, default_latest = request(
+        args.base_url,
+        f"{lane}/api/sekiban/serialized/tag-latest-sortable",
+        {"tag": attacker_tag},
+        token,
+        "serialized-dcb-v1",
+    )
+    if attacker_latest_status != 200 or attacker_latest.get("exists") is not False or attacker_latest.get("lastSortableUniqueId") != "":
+        raise RuntimeError(f"unauthenticated command selected attacker namespace: {attacker_latest}")
+    if default_latest_status != 200 or default_latest.get("exists") is not True or default_latest.get("lastSortableUniqueId") == "":
+        raise RuntimeError(f"unauthenticated command did not use fixed production namespace: {default_latest}")
+    checks["unauthenticatedCommandG11"] = {
+        "command": command_status,
+        "attackerNamespaceLatest": attacker_latest_status,
+        "attackerNamespaceExists": attacker_latest.get("exists"),
+        "fixedNamespaceLatest": default_latest_status,
+        "fixedNamespaceExists": default_latest.get("exists"),
+    }
+
     commit_status, commit_body = request(args.base_url, f"{lane}/api/sekiban/serialized/commit", {
         "version": 1,
         "eventCandidates": [{"payload": encoded, "eventPayloadName": "RoomCreated", "tags": [tag]}],
