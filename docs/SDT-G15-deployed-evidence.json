@@ -1,0 +1,62 @@
+{
+  "probe": "SDT-G15",
+  "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
+  "worker": "sekiban-dcb-meeting-room",
+  "deployedVersion": "71a0df9a-095c-4a0a-b7c0-647526d6d585",
+  "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
+  "hyperdriveCaching": "disabled",
+  "runId": "26b9cf2a0bf64bddb10ce383cafd64c7",
+  "roomId": "g15-room-26b9cf2a0bf64bdd",
+  "reservationId": "g15-reservation-26b9cf2a0bf64bdd",
+  "uiSafeWindowBoundMs": 120000,
+  "harnessGraceMs": 5000,
+  "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
+  "visibilityOracle": {
+    "headBelowCommit": "pending",
+    "headEqualOrAboveCommit": "visible",
+    "timeoutAtMs": 120000
+  },
+  "rawV1Unauthenticated": {
+    "commit": 404,
+    "tag-latest-sortable": 404,
+    "tag-state": 404,
+    "query": 404,
+    "list-query": 404
+  },
+  "commands": {
+    "create": {
+      "status": 200,
+      "requestMs": 2799.308,
+      "suid": "suid-00000000000000000000000000000034"
+    },
+    "reserve": {
+      "status": 200,
+      "requestMs": 2658.325,
+      "suid": "suid-00000000000000000000000000000035"
+    },
+    "cancel": {
+      "status": 200,
+      "requestMs": 1932.165,
+      "suid": "suid-00000000000000000000000000000036"
+    },
+    "rejected": {
+      "status": 400,
+      "kind": "invalid",
+      "code": "invalid_command_input"
+    }
+  },
+  "projection": {
+    "createVisible": true,
+    "createCommitToVisibleMs": 921.739,
+    "createObservations": [
+      {
+        "head": "suid-00000000000000000000000000000034",
+        "requestMs": 921.438
+      }
+    ],
+    "reservationVisible": true
+  },
+  "freshRunIds": true,
+  "secret": "no bearer token or credential used by app-layer E2E",
+  "recordedAt": "2026-08-18T23:33:34Z"
+}

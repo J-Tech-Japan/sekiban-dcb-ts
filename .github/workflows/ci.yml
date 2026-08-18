@@ -40,3 +40,4 @@ jobs:
       - run: npm run test:boundaries
       - run: npm run test:consumer
       - run: npm run build
+      - run: npm run e2e:g15:local

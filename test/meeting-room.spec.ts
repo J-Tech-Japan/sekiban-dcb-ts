@@ -123,4 +123,38 @@ describe("SDT-G14 meeting-room consumer", () => {
     expect(calls.length).toBe(2);
     expect(calls.every((request) => !request.headers.has("x-sdt-g11-service-id"))).toBe(true);
   });
+
+  it("keeps an application rejection distinct from a committed command", async () => {
+    const payload = { version: 1, status: "created", roomId: "r-existing", name: "Existing" };
+    const runtimeFetcher = {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        if (new URL(request.url).pathname.endsWith("/tag-state")) {
+          return new Response(JSON.stringify({
+            payload,
+            version: 1,
+            lastSortedUniqueId: "suid-1",
+            tagGroup: "room",
+            tagContent: "r-existing",
+            tagProjector: "RoomProjector",
+            tagPayloadName: "RoomState",
+            projectorVersion: "1",
+          }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        throw new Error("commit should not be called for an existing room");
+      },
+    };
+    const worker = createMeetingRoomWorker();
+    const fetch = worker.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
+    const response = await fetch(new Request("https://sample.test/api/commands/create-room", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId: "r-existing", name: "Duplicate" }),
+    }), { RUNTIME: runtimeFetcher } as unknown as MeetingRoomEnv, {} as ExecutionContext);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ kind: "rejected", code: "room_exists" });
+  });
 });

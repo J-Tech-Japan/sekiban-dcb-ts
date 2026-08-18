@@ -57,15 +57,18 @@ tests, and a Wrangler dry-run build.
 
 ## Meeting-room consumer sample
 
-`samples/meeting-room` is the SDT-G14 consumer backend. It imports only the
+`samples/meeting-room` is the SDT-G14/G15 consumer sample. It imports only the
 public `@sekiban/dcb-core`, `@sekiban/dcb-client`, and `@sekiban/dcb-runtime`
 entrypoints. A consumer composes its domain into the runtime with
 `createRuntimeWorker({ domain, config })`; the runtime's projector/query
 registries remain private. The sample exposes its application command API and
-keeps raw V1 routes behind the authenticated `/conformance/v1` lane. Run
-`npm run deploy:g14` with a protected `G14_CONFORMANCE_TOKEN_FILE` when
-deploying, then use `npm run conformance:g14` and `npm run measure:g14` for
-redacted evidence. Hyperdrive caching is disabled by the deployment script.
+keeps raw V1 routes behind the authenticated `/conformance/v1` lane. Its
+framework-free `public/` frontend calls only the application command/read API
+and uses the V1 sortable-id head to report pending, visible, conflict,
+rejected, and partial outcomes honestly. Run `npm run deploy:g15` to deploy
+the Worker and its static assets, then use `npm run e2e:g15 -- --base-url
+<deployed-url> --report <path>` for redacted command-to-visible evidence.
+Hyperdrive caching is disabled by the deployment script.
 
 ## License
 
