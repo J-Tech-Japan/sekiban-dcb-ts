@@ -1,5 +1,3 @@
-import { WEATHER_FORECAST_PROJECTOR } from "../projection/ProjectorRegistry";
-
 export type QueryEndpoint = "query" | "list-query";
 
 /**
@@ -37,20 +35,20 @@ export class QueryRegistry {
   }
 }
 
-/** The deployed V1 query mapping used by the compatibility fixture. */
+/** The test-only default query mapping; production consumers compose their own domain. */
 export const DEPLOYED_QUERY_REGISTRY = new QueryRegistry([
   {
-    queryType: "GetWeatherForecastCountQuery",
+    queryType: "GetTestCountQuery",
     endpoint: "query",
-    tagGroup: "weather",
-    tagProjector: WEATHER_FORECAST_PROJECTOR,
+    tagGroup: "test",
+    tagProjector: "test-projector",
     enabled: true,
   },
   {
-    queryType: "GetWeatherForecastListQuery",
+    queryType: "GetTestListQuery",
     endpoint: "list-query",
-    tagGroup: "weather",
-    tagProjector: WEATHER_FORECAST_PROJECTOR,
+    tagGroup: "test",
+    tagProjector: "test-projector",
     enabled: true,
   },
 ]);

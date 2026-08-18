@@ -3,8 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { G11_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
-import { WEATHER_FORECAST_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
-import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
+import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 
 const SERVICE_ID = "serialized-dcb-v1";
@@ -191,18 +190,18 @@ describe("Serialized V1 reads", () => {
     ]);
   });
 
-  it("accepts the linked weather conformance tag-state identity from the deploy-time registry", async () => {
+  it("accepts the test tag-state identity from the deploy-time registry", async () => {
     const tagContent = crypto.randomUUID();
-    const tag = `weather:${tagContent}`;
+    const tag = `test:${tagContent}`;
     const suid = "suid-00000000000000000000000000000001";
     expect((await tagPost(tag, "/append", {
-      attemptId: "weather-conformance-attempt",
+      attemptId: "test-conformance-attempt",
       epoch: 0,
-      candidates: [{ eventId: "weather-conformance-event", suid, payload: "e30=", eventTags: [tag] }],
+      candidates: [{ eventId: "test-conformance-event", suid, payload: "e30=", eventTags: [tag] }],
     })).status).toBe(201);
 
     const response = await read("tag-state", {
-      tagStateId: `${tag}:${WEATHER_FORECAST_PROJECTOR}`,
+      tagStateId: `${tag}:${TEST_TAG_STATE_PROJECTOR}`,
     });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
@@ -210,10 +209,10 @@ describe("Serialized V1 reads", () => {
     expect(body).toMatchObject({
       version: 1,
       lastSortedUniqueId: suid,
-      tagGroup: "weather",
+      tagGroup: "test",
       tagContent,
-      tagProjector: WEATHER_FORECAST_PROJECTOR,
-      tagPayloadName: "WeatherForecastState",
+      tagProjector: TEST_TAG_STATE_PROJECTOR,
+      tagPayloadName: "SerializedDcbTestTagState",
       projectorVersion: "1",
     });
     expect(() => atob(body.payload as string)).not.toThrow();

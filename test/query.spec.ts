@@ -8,7 +8,7 @@ import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstrea
 import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
 import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
 import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
-import { WEATHER_FORECAST_PROJECTOR, ProjectorRegistry } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import { TEST_TAG_STATE_PROJECTOR as TEST_PROJECTOR, ProjectorRegistry } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import { QueryRegistry } from "../packages/dcb-runtime/src/query/QueryRegistry";
@@ -46,20 +46,20 @@ function testServiceHeaders(serviceId: string): HeadersInit {
   };
 }
 
-function weatherIdentity(tag: string) {
+function testIdentity(tag: string) {
   const parts = tag.split(":");
   return {
     tag,
     tagGroup: parts[0]!,
     tagContent: parts[1]!,
-    tagProjector: WEATHER_FORECAST_PROJECTOR,
+    tagProjector: TEST_PROJECTOR,
   };
 }
 
 function checkpoint(tag: string, entries: unknown[], lastSuid: string): ProjectionCheckpoint {
   return {
     serviceId: SERVICE_ID,
-    projectionId: projectionIdFor(weatherIdentity(tag)),
+    projectionId: projectionIdFor(testIdentity(tag)),
     lastSuid,
     stateJson: JSON.stringify(entries),
     version: entries.length,
@@ -159,7 +159,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
   it("pins the exact 5.4/5.5 empty-success shapes and distinguishes unavailable projections", async () => {
     const store = new FakeQueryStore();
     const scalar = await handleSerializedQuery(queryRequest("query", {
-      queryType: "GetWeatherForecastCountQuery",
+      queryType: "GetTestCountQuery",
       queryParamsJson: "{}",
     }), {}, { store });
     expect(scalar.status).toBe(200);
@@ -167,7 +167,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(await scalar.json()).toEqual({ resultJson: JSON.stringify({ count: 0 }) });
 
     const list = await handleSerializedQuery(queryRequest("list-query", {
-      queryType: "GetWeatherForecastListQuery",
+      queryType: "GetTestListQuery",
       queryParamsJson: "{}",
     }), {}, { store });
     expect(list.status).toBe(200);
@@ -181,26 +181,26 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     });
 
     const disabledRegistry = new QueryRegistry([{
-      queryType: "GetWeatherForecastCountQuery",
+      queryType: "GetTestCountQuery",
       endpoint: "query",
-      tagGroup: "weather",
-      tagProjector: WEATHER_FORECAST_PROJECTOR,
+      tagGroup: "test",
+      tagProjector: TEST_PROJECTOR,
       enabled: false,
     }]);
     await expectSection6(await handleSerializedQuery(queryRequest("query", {
-      queryType: "GetWeatherForecastCountQuery",
+      queryType: "GetTestCountQuery",
       queryParamsJson: "{}",
     }), {}, { store, registry: disabledRegistry }), 503, "projection_unavailable");
 
     await expectSection6(await handleSerializedQuery(queryRequest("list-query", {
-      queryType: "GetWeatherForecastListQuery",
+      queryType: "GetTestListQuery",
       queryParamsJson: "{}",
     }), {}, { store, projectors: new ProjectorRegistry([]) }), 503, "projection_unavailable");
   });
 
   it("times out exactly at the SafeWindow boundary instead of fabricating an empty success", async () => {
     const store = new FakeQueryStore();
-    const tag = "weather:wait-boundary";
+    const tag = "test:wait-boundary";
     const requestedSuid = "suid-00000000000000000000000000000001";
     store.events = [storedEvent(requestedSuid, "wait-event", tag)];
     store.tags = [tag];
@@ -209,7 +209,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const sleeps: number[] = [];
 
     const response = await handleSerializedQuery(queryRequest("query", {
-      queryType: "GetWeatherForecastCountQuery",
+      queryType: "GetTestCountQuery",
       queryParamsJson: "{}",
       waitForSortableUniqueId: requestedSuid,
     }), {}, {
@@ -232,7 +232,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const store = new FakeQueryStore();
     store.lagBoundMs = 120_001;
     const response = await handleSerializedQuery(queryRequest("query", {
-      queryType: "GetWeatherForecastCountQuery",
+      queryType: "GetTestCountQuery",
       queryParamsJson: "{}",
       waitForSortableUniqueId: "suid-ceiling",
     }), {}, { store, now: () => 1_000 });
@@ -245,8 +245,8 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
   it("keeps list pages SUID-ordered and stable while an unsafe concurrent append arrives", async () => {
     const store = new FakeQueryStore();
-    const stableTag = "weather:stable-page";
-    const unsafeTag = "weather:concurrent-page";
+    const stableTag = "test:stable-page";
+    const unsafeTag = "test:concurrent-page";
     store.tags = [stableTag];
     const stableEntries = [
       { eventId: "z-event", suid: "suid-00000000000000000000000000000001", payload: base64Json({ forecastId: "one" }) },
@@ -257,7 +257,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       checkpoint(stableTag, stableEntries, stableEntries[2]!.suid));
 
     const first = await handleSerializedQuery(queryRequest("list-query", {
-      queryType: "GetWeatherForecastListQuery",
+      queryType: "GetTestListQuery",
       queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 2 }),
     }), {}, { store });
     expect(first.status).toBe(200);
@@ -269,7 +269,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     store.events.push(storedEvent("suid-00000000000000000000000000000004", "0-event", unsafeTag));
     store.tags.push(unsafeTag);
     const second = await handleSerializedQuery(queryRequest("list-query", {
-      queryType: "GetWeatherForecastListQuery",
+      queryType: "GetTestListQuery",
       queryParamsJson: JSON.stringify({ PageNumber: 2, PageSize: 2 }),
     }), {}, { store });
     expect(second.status).toBe(200);
@@ -284,8 +284,8 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
   it("runs commit through durable projection and every V1 endpoint on Miniflare plus Docker PostgreSQL", async () => {
     const serviceId = unique("g9-query-e2e-service");
-    const forecastId = unique("g9-weather");
-    const tag = `weather:${forecastId}`;
+    const forecastId = unique("g9-test");
+    const tag = `test:${forecastId}`;
     const [tagGroup, tagContent] = tag.split(":");
     const commitResponse = await SELF.fetch("https://query.test/api/sekiban/serialized/commit", {
       method: "POST",
@@ -294,7 +294,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
         version: 1,
         eventCandidates: [{
           payload: base64Json({ forecastId, location: "Tokyo", temperatureC: 21, summary: "SDT-G9" }),
-          eventPayloadName: "WeatherForecastCreated",
+          eventPayloadName: "TestEventCreated",
           tags: [tag],
         }],
         consistencyTags: [{ tag, lastSortableUniqueId: "" }],
@@ -318,7 +318,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const tagState = await SELF.fetch("https://query.test/api/sekiban/serialized/tag-state", {
       method: "POST",
       headers: testServiceHeaders(serviceId),
-      body: JSON.stringify({ tagStateId: `${tag}:${WEATHER_FORECAST_PROJECTOR}` }),
+      body: JSON.stringify({ tagStateId: `${tag}:${TEST_PROJECTOR}` }),
     });
     expect(tagState.status).toBe(200);
     expect(tagState.headers.get("content-type")).toBe(JSON_CONTENT_TYPE);
@@ -326,7 +326,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       lastSortedUniqueId: written.sortableUniqueIdValue,
       tagGroup,
       tagContent,
-      tagProjector: WEATHER_FORECAST_PROJECTOR,
+      tagProjector: TEST_PROJECTOR,
     });
 
     const clockNow = 1_000_000;
@@ -351,7 +351,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       method: "POST",
       headers: testServiceHeaders(serviceId),
       body: JSON.stringify({
-        queryType: "GetWeatherForecastCountQuery",
+        queryType: "GetTestCountQuery",
         queryParamsJson: "{}",
         waitForSortableUniqueId: written.sortableUniqueIdValue,
       }),
@@ -366,7 +366,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       method: "POST",
       headers: testServiceHeaders(serviceId),
       body: JSON.stringify({
-        queryType: "GetWeatherForecastListQuery",
+        queryType: "GetTestListQuery",
         queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
         waitForSortableUniqueId: written.sortableUniqueIdValue,
       }),
