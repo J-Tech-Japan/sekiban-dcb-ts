@@ -77,6 +77,45 @@ async function injectDelivery(
 }
 
 describe("SDT-G8 live projection", () => {
+  it("rejects a stale durable checkpoint CAS without overwriting projection state", async () => {
+    const serviceId = unique("checkpoint-cas-service");
+    const projectionId = unique("checkpoint-cas-projection");
+    const first = {
+      serviceId,
+      projectionId,
+      expectedLastSuid: null,
+      lastSuid: "suid-00000000000000000000000000000001",
+      stateJson: JSON.stringify({ applied: ["first"] }),
+      version: 1,
+      updatedAt: 1_000,
+    };
+    const stale = {
+      ...first,
+      lastSuid: "suid-00000000000000000000000000000002",
+      stateJson: JSON.stringify({ applied: ["first", "stale"] }),
+      version: 2,
+      updatedAt: 2_000,
+    };
+
+    await withPostgresStore(async (store) => {
+      expect(await store.advanceProjectionCheckpoint(first)).toBe(true);
+      const beforeStaleAdvance = await store.readProjectionCheckpoint(serviceId, projectionId);
+      expect(beforeStaleAdvance).toMatchObject({
+        lastSuid: first.lastSuid,
+        stateJson: first.stateJson,
+      });
+
+      // This writer observed no checkpoint before the first writer committed,
+      // so its null expected position is now stale.
+      expect(await store.advanceProjectionCheckpoint(stale)).toBe(false);
+      const afterStaleAdvance = await store.readProjectionCheckpoint(serviceId, projectionId);
+      expect(afterStaleAdvance).toMatchObject({
+        lastSuid: beforeStaleAdvance!.lastSuid,
+        stateJson: beforeStaleAdvance!.stateJson,
+      });
+    });
+  });
+
   it("holds out-of-order adapter deliveries behind SafeWindow, then applies each SUID once", async () => {
     const serviceId = unique("safe-window-service");
     const tag = `orders:${unique("safe-window")}`;
