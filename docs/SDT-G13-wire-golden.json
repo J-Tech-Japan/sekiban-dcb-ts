@@ -1,0 +1,41 @@
+{
+  "capturedFrom": "origin/main@5225e8080898791332b0d9d1f83b2395e0550d2b",
+  "recapture": {
+    "test": "test/g13-wire-invariance.spec.ts",
+    "comparison": "normalized transcript equals capturedFrom"
+  },
+  "endpoints": {
+    "commit": {
+      "success": { "status": 200, "contentType": "application/json; charset=utf-8", "keys": ["duration", "tagWriteResults", "writtenEvents"] },
+      "failure": { "status": 400, "contentType": "application/json; charset=utf-8", "keys": ["code", "error"] }
+    },
+    "tagLatestSortable": {
+      "success": { "status": 200, "contentType": "application/json; charset=utf-8", "keys": ["exists", "lastSortableUniqueId"] },
+      "failure": { "status": 400, "contentType": "application/json; charset=utf-8", "keys": ["code", "error"] }
+    },
+    "tagState": {
+      "success": { "status": 200, "contentType": "application/json; charset=utf-8", "keys": ["lastSortedUniqueId", "payload", "projectorVersion", "tagContent", "tagGroup", "tagPayloadName", "tagProjector", "version"] },
+      "failure": { "status": 400, "contentType": "application/json; charset=utf-8", "keys": ["code", "error"] }
+    },
+    "query": {
+      "success": { "status": 200, "contentType": "application/json; charset=utf-8", "keys": ["resultJson"] },
+      "failure": { "status": 400, "contentType": "application/json; charset=utf-8", "keys": ["code", "error"] }
+    },
+    "listQuery": {
+      "success": { "status": 200, "contentType": "application/json; charset=utf-8", "keys": ["currentPage", "itemsJson", "pageSize", "totalCount", "totalPages"] },
+      "failure": { "status": 400, "contentType": "application/json; charset=utf-8", "keys": ["code", "error"] }
+    }
+  },
+  "queuePayloadKeys": ["attemptId", "enqueuedAt", "eventId", "eventTags", "payload", "serviceId", "suid", "tag", "version"],
+  "storageSchema": {
+    "sqliteDurableObjectKeys": ["allocator-state", "attempt:*", "journal", "outbox-deliveries", "repair-facts", "tag"],
+    "postgresTables": {
+      "serialized_dcb_events": ["service_id", "event_id", "suid", "payload", "event_tags", "first_arrived_at", "last_arrived_at", "max_delivery_lag_ms"],
+      "serialized_dcb_event_arrivals": ["service_id", "event_id", "tag", "enqueued_at", "arrived_at", "lag_ms"],
+      "serialized_dcb_lag_estimates": ["service_id", "estimate_ms", "observed_at"],
+      "serialized_dcb_pending_arrivals": ["service_id", "event_id", "attempt_id", "suid", "expected_paths", "observed_paths", "first_observed_at", "lag_bound_ms"],
+      "serialized_dcb_inconsistency_findings": ["sequence", "service_id", "event_id", "path", "classification", "first_observed_at", "lag_bound_ms", "observed_at"],
+      "serialized_dcb_projection_checkpoints": ["service_id", "projection_id", "last_suid", "state_json", "version", "updated_at"]
+    }
+  }
+}

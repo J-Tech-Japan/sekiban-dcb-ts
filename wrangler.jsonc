@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "serialized-dcb-v1-runtime",
-  "main": "src/index.ts",
+  "main": "worker.ts",
   "compatibility_date": "2026-08-16",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {

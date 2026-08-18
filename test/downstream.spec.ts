@@ -1,17 +1,17 @@
 import { createExecutionContext, createMessageBatch, env, getQueueResult, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { handleSerializedCommit, type CommitWorkerEnv } from "../src/commit/CommitWorker";
-import { handleDownstreamQueue, processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
+import { handleSerializedCommit, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { handleDownstreamQueue, processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import {
   type ExclusionLedgerPort,
   InconsistencyDetector,
   MIN_STABILITY_HORIZON_MS,
-} from "../src/downstream/InconsistencyDetector";
-import { drainTagOutbox } from "../src/downstream/OutboxDrain";
-import type { DownstreamOutboxMessage, PipelineClock } from "../src/downstream/types";
-import type { Env as WorkerEnv } from "../src/index";
-import { PostgresEventStore } from "../src/store/PostgresEventStore";
+} from "../packages/dcb-runtime/src/downstream/InconsistencyDetector";
+import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
+import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
+import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 
 const PAYLOAD = "cGF5bG9hZA==";
 

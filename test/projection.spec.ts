@@ -1,14 +1,14 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
-import type { DownstreamOutboxMessage, PipelineClock } from "../src/downstream/types";
-import { pollLiveProjections } from "../src/projection/LiveProjectionWorker";
-import { tagStateIdentityFrom, TEST_TAG_STATE_PROJECTOR } from "../src/projection/ProjectorRegistry";
-import { PUBLISHED_SAFE_WINDOW_MS, ProjectionRuntime, projectionIdFor, safeWindowMs } from "../src/projection/ProjectionRuntime";
-import type { Env as WorkerEnv } from "../src/index";
-import { PostgresEventStore } from "../src/store/PostgresEventStore";
-import type { ProjectionCheckpoint } from "../src/store/types";
+import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
+import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
+import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
+import { tagStateIdentityFrom, TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import { PUBLISHED_SAFE_WINDOW_MS, ProjectionRuntime, projectionIdFor, safeWindowMs } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import type { ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
 
 const SERVICE_ID = "serialized-dcb-v1";
 const PAYLOAD = "cGF5bG9hZA==";

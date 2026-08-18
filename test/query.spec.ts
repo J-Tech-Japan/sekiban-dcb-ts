@@ -1,19 +1,19 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { handleSerializedQuery } from "../src/http/SerializedQueryWorker";
-import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest, TEST_SERVICE_ID_HEADER } from "../src/http/testServiceId";
-import type { Env as WorkerEnv } from "../src/index";
-import { processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
-import { drainTagOutbox } from "../src/downstream/OutboxDrain";
-import type { DownstreamOutboxMessage, PipelineClock } from "../src/downstream/types";
-import { pollLiveProjections } from "../src/projection/LiveProjectionWorker";
-import { WEATHER_FORECAST_PROJECTOR, ProjectorRegistry } from "../src/projection/ProjectorRegistry";
-import { projectionIdFor } from "../src/projection/ProjectionRuntime";
-import type { QueryProjectionStore } from "../src/query/ProjectionQueryStore";
-import { QueryRegistry } from "../src/query/QueryRegistry";
-import { PostgresEventStore } from "../src/store/PostgresEventStore";
-import type { ProjectionCheckpoint, StoredEvent } from "../src/store/types";
+import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
+import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
+import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
+import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
+import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
+import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
+import { WEATHER_FORECAST_PROJECTOR, ProjectorRegistry } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
+import { QueryRegistry } from "../packages/dcb-runtime/src/query/QueryRegistry";
+import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import type { ProjectionCheckpoint, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 
 const SERVICE_ID = "serialized-dcb-v1";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";

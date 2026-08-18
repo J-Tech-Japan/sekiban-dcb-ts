@@ -1,18 +1,18 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
-import type { DownstreamOutboxMessage, PipelineClock } from "../src/downstream/types";
+import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
+import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
 import {
   MaterializedViewOperationError,
   MaterializedViewRuntime,
   type MaterializedViewDefinition,
   materializedViewId,
-} from "../src/mv";
-import { PUBLISHED_SAFE_WINDOW_MS } from "../src/projection/ProjectionRuntime";
-import type { Env as WorkerEnv } from "../src/index";
-import { PostgresEventStore } from "../src/store/PostgresEventStore";
-import type { ProjectionStore } from "../src/store/types";
+} from "../packages/dcb-runtime/src/mv";
+import { PUBLISHED_SAFE_WINDOW_MS } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import type { ProjectionStore } from "../packages/dcb-runtime/src/store/types";
 
 const PAYLOAD = "cGF5bG9hZA==";
 

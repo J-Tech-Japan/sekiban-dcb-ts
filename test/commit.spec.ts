@@ -1,10 +1,10 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import type { AllocatorState } from "../src/allocator/types";
-import { type AlarmFaultPoint, type JournalRecord } from "../src/journal/types";
-import type { TagRecord } from "../src/tag/types";
-import { mapTerminalCommitOutcome, requeryFactsFromTagRecords } from "../src/http/commitResponse";
+import type { AllocatorState } from "../packages/dcb-runtime/src/allocator/types";
+import { type AlarmFaultPoint, type JournalRecord } from "../packages/dcb-runtime/src/journal/types";
+import type { TagRecord } from "../packages/dcb-runtime/src/tag/types";
+import { mapTerminalCommitOutcome, requeryFactsFromTagRecords } from "../packages/dcb-runtime/src/http/commitResponse";
 
 const SERVICE_ID = "serialized-dcb-v1";
 

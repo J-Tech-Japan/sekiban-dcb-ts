@@ -1,11 +1,11 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import type { Env as WorkerEnv } from "../src/index";
-import { G11_SERVICE_ID_HEADER } from "../src/http/testServiceId";
-import { WEATHER_FORECAST_PROJECTOR } from "../src/projection/ProjectorRegistry";
-import { TEST_TAG_STATE_PROJECTOR } from "../src/read/SerializedReadWorker";
-import { PostgresEventStore } from "../src/store/PostgresEventStore";
+import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { G11_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
+import { WEATHER_FORECAST_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
+import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 
 const SERVICE_ID = "serialized-dcb-v1";
 

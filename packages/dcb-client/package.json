@@ -1,0 +1,23 @@
+{
+  "name": "@sekiban/dcb-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Typed Serialized DCB V1 client and claim-ledger executor.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "dependencies": {
+    "@sekiban/dcb-core": "file:../dcb-core"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

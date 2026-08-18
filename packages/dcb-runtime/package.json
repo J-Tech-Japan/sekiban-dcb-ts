@@ -1,0 +1,23 @@
+{
+  "name": "@sekiban/dcb-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Durable Object and HTTP runtime for Serialized DCB V1.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:postgres --outfile=dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sekiban/dcb-core": "file:../dcb-core"
+  }
+}

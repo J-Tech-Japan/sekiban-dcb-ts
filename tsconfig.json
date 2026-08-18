@@ -13,5 +13,12 @@
       "vitest/globals"
     ]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+  "include": [
+    "packages/dcb-core/src/**/*.ts",
+    "packages/dcb-runtime/src/**/*.ts",
+    "packages/dcb-client/src/**/*.ts",
+    "test/**/*.ts",
+    "vitest.config.ts",
+    "worker.ts"
+  ]
 }
