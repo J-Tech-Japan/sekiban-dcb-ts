@@ -26,4 +26,12 @@ const clientPackage = JSON.parse(await readFile(`${root}packages/dcb-client/pack
 assert.deepEqual(Object.keys(corePackage.dependencies ?? {}), [], "dcb-core must have no runtime dependencies");
 assert.deepEqual(Object.keys(runtimePackage.dependencies ?? {}), ["@sekiban/dcb-core"], "runtime may depend only on core");
 assert.deepEqual(Object.keys(clientPackage.dependencies ?? {}), ["@sekiban/dcb-core"], "client may depend only on core");
-console.log("SDT-G13 package-boundary fixture passed: core is platform independent and dependency direction is core <- runtime/client");
+const runtimeIndex = await readFile(`${root}packages/dcb-runtime/src/index.ts`, "utf8");
+assert.match(runtimeIndex, /export function createRuntimeWorker/, "runtime must expose the public registration API");
+assert.doesNotMatch(runtimeIndex, /export .*ProjectorRegistry|export .*QueryRegistry/, "runtime registries must remain private");
+const sampleFiles = await sourceFiles(`${root}samples/meeting-room/src`);
+for (const file of sampleFiles) {
+  const source = await readFile(file, "utf8");
+  assert.doesNotMatch(source, /\.\.\/\.\.\/packages\/|packages\/[^/]+\/src\//, `sample deep import boundary: ${file}`);
+}
+console.log("SDT-G13/G14 package-boundary fixture passed: core is platform independent, runtime registration stays private, and sample consumes public entrypoints");

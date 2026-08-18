@@ -126,7 +126,7 @@ function normalizeSnapshot(value: unknown, requestedTagStateId?: string): TagSta
   if (typeof body.version !== "number" || !Number.isSafeInteger(body.version) || body.version < 0) {
     throw new ClientError("invalid_read_snapshot", "Tag-state response had an invalid version");
   }
-  if (!nonEmptyString(body.lastSortedUniqueId)) {
+  if (typeof body.lastSortedUniqueId !== "string") {
     throw new ClientError("invalid_read_snapshot", "Tag-state response omitted lastSortedUniqueId");
   }
   const response = body as unknown as ReadonlyTagStateResponse;
@@ -480,7 +480,11 @@ export class ClaimLedgerExecutor {
           state: async (tagStateId, signal) => (await ledger.readTagState(tagStateId, signal)).payload,
           assertEmpty: async (tagStateId, signal) => {
             const snapshot = await ledger.readTagState(tagStateId, signal);
-            if (snapshot.payload !== null && snapshot.payload !== undefined && !(isRecord(snapshot.payload) && Object.keys(snapshot.payload).length === 0)) {
+            const emptyPayload = snapshot.payload === null || snapshot.payload === undefined ||
+              (isRecord(snapshot.payload) && Object.keys(snapshot.payload).length === 0) ||
+              (isRecord(snapshot.payload) && snapshot.payload.status === "empty") ||
+              (Array.isArray(snapshot.payload) && snapshot.payload.length === 0);
+            if (!emptyPayload) {
               throw new ClientError("assert_empty_failed", `Tag-state ${tagStateId} is not empty`);
             }
           },

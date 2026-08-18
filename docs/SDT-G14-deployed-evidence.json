@@ -1,0 +1,45 @@
+{
+  "probe": "SDT-G14",
+  "worker": "sekiban-dcb-meeting-room",
+  "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
+  "deployedVersion": "b86cb590-a3b9-4112-879e-9bed782c4f74",
+  "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
+  "hyperdriveCaching": "disabled",
+  "conformance": {
+    "beforeRestart": {
+      "artifact": ".artifacts/g14/conformance-final-before.json",
+      "serviceId": "g11-g14-13bdaa01b30d4779",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "unauthenticatedRawV1": [404, 404, 404, 404, 404]
+    },
+    "afterRestart": {
+      "artifact": ".artifacts/g14/conformance-final-after.json",
+      "serviceId": "g11-g14-13bdaa01b30d4779",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "unauthenticatedRawV1": [404, 404, 404, 404, 404]
+    },
+    "auth": "Bearer token supplied from protected secret; token value omitted"
+  },
+  "readCost": {
+    "artifact": ".artifacts/g14/measure-final.json",
+    "serviceId": "g11-g14-measure-b3da028f82c04ffd",
+    "sampleCount": 5,
+    "commandPathReadCostProxyMs": {
+      "min": 1974.616875,
+      "p50": 2381.089958,
+      "p95": 2414.017292,
+      "max": 2749.700333
+    },
+    "g11BaselineMs": { "min": 1400, "max": 1800 },
+    "billingAndStoredBytes": "not measured; no claim"
+  },
+  "secretScan": "No secret values are present in source, config, reports, or this evidence record"
+}
