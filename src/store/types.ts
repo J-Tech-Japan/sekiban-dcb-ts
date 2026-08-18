@@ -14,10 +14,46 @@ export interface StoredEvent {
   eventId: string;
   suid: string;
   payload: string;
+  /** Complete durable tag membership, retained from the outbox envelope. */
+  eventTags: string[];
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;
   arrivals: DeliveryLagRecord[];
+}
+
+/**
+ * A projection checkpoint stores both its opaque projector state and its
+ * source SUID position. They advance atomically so a restarted poller cannot
+ * double-apply an event that was already reflected in durable state.
+ */
+export interface ProjectionCheckpoint {
+  serviceId: string;
+  projectionId: string;
+  lastSuid: string;
+  stateJson: string;
+  version: number;
+  updatedAt: number;
+}
+
+export interface ProjectionCheckpointAdvance {
+  serviceId: string;
+  projectionId: string;
+  /** Null means this is the first checkpoint for the projection. */
+  expectedLastSuid: string | null;
+  lastSuid: string;
+  stateJson: string;
+  version: number;
+  updatedAt: number;
+}
+
+export interface ProjectionLag {
+  serviceId: string;
+  projectionId: string;
+  tag: string;
+  checkpointSuid: string;
+  headSuid: string;
+  behindEvents: number;
 }
 
 export interface PendingArrivalRecord {
@@ -69,4 +105,18 @@ export interface DetectorStore {
   listFindings(serviceId?: string, eventId?: string): Promise<InconsistencyFinding[]>;
 }
 
-export type PipelineStore = EventStore & DetectorStore;
+/**
+ * Read-only event consumption plus durable checkpoint operations. This port
+ * intentionally omits recordDelivery, keeping SafeWindow projection unable to
+ * write event data by construction.
+ */
+export interface ProjectionStore {
+  readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
+  currentLagBound(serviceId: string): Promise<number>;
+  listProjectionTags(serviceId: string): Promise<string[]>;
+  readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;
+  advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean>;
+  projectionLag(serviceId: string, projectionId: string, tag: string): Promise<ProjectionLag>;
+}
+
+export type PipelineStore = EventStore & DetectorStore & ProjectionStore;

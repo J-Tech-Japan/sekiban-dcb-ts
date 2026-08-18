@@ -1,25 +1,19 @@
-import { type TagEvent, type TagRecord } from "../tag/types";
+import { catchUpDurableTagState } from "../projection/ProjectionRuntime";
+import {
+  DEPLOYED_PROJECTOR_REGISTRY,
+  tagStateIdentityFrom,
+  type TagStateIdentity,
+} from "../projection/ProjectorRegistry";
+import type { TagRecord } from "../tag/types";
 
 const SERVICE_ID = "serialized-dcb-v1";
-export const TEST_TAG_STATE_PROJECTOR = "test-projector";
+
+export { TEST_TAG_STATE_PROJECTOR } from "../projection/ProjectorRegistry";
 
 type JsonObject = Record<string, unknown>;
 
 interface ReadWorkerEnv {
   TAG: DurableObjectNamespace;
-}
-
-interface TagStateIdentity {
-  tag: string;
-  tagGroup: string;
-  tagContent: string;
-  tagProjector: string;
-}
-
-interface TagStateProjector {
-  tagPayloadName: string;
-  projectorVersion: string;
-  payload(events: TagEvent[]): string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -41,56 +35,23 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function base64Json(value: unknown): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
-}
-
-const TEST_PROJECTOR: TagStateProjector = {
-  tagPayloadName: "SerializedDcbTestTagState",
-  projectorVersion: "1",
-  payload(events): string {
-    return base64Json(events.map(({ eventId, payload, suid }) => ({ eventId, payload, suid })));
-  },
-};
-
-const PROJECTORS = new Map<string, TagStateProjector>([[TEST_TAG_STATE_PROJECTOR, TEST_PROJECTOR]]);
-
 function tagFromBody(value: unknown): { value?: string; error?: string } {
   return isObject(value) && isNonEmptyString(value.tag)
     ? { value: value.tag }
     : { error: "tag must be a non-empty string" };
 }
 
-function tagStateIdentityFrom(value: unknown): { value?: TagStateIdentity; error?: string } {
+function tagStateIdentityFromBody(value: unknown): { value?: TagStateIdentity; error?: string } {
   if (!isObject(value) || !isNonEmptyString(value.tagStateId)) {
     return { error: "tagStateId must be a non-empty string" };
   }
-  const parts = value.tagStateId.split(":");
-  if (parts.length !== 3 || !parts.every(isNonEmptyString)) {
-    return { error: "tagStateId must be group:content:projector" };
-  }
-  const [tagGroup, tagContent, tagProjector] = parts;
-  if (!PROJECTORS.has(tagProjector!)) {
-    return { error: "tagStateId names an unregistered projector" };
-  }
-  return {
-    value: {
-      tag: `${tagGroup}:${tagContent}`,
-      tagGroup: tagGroup!,
-      tagContent: tagContent!,
-      tagProjector: tagProjector!,
-    },
-  };
+  return tagStateIdentityFrom(value.tagStateId);
 }
 
 /**
- * Minimal V1 read surface for the registered test projector. It intentionally
- * has no catch-up, query, list-query, or wait semantics; SDT-G6 owns those.
+ * V1 read surface. Tag-state validates a deploy-time projector and performs a
+ * deterministic catch-up from the Tag DO's durable history. Its read decision
+ * remains based on durable-state determinacy, never on fence presence/reason.
  */
 export class SerializedReadWorker {
   constructor(private readonly env: ReadWorkerEnv) {}
@@ -132,16 +93,22 @@ export class SerializedReadWorker {
   }
 
   private async tagState(body: unknown): Promise<Response> {
-    const parsed = tagStateIdentityFrom(body);
+    const parsed = tagStateIdentityFromBody(body);
     if (parsed.value === undefined) {
       return error(400, "validation_error", parsed.error ?? "Invalid tag-state request");
     }
     const identity = parsed.value;
+    const projector = DEPLOYED_PROJECTOR_REGISTRY.resolve(identity.tagProjector);
+    // tagStateIdentityFrom validates the same registry. Keep the guard so a
+    // future registry implementation cannot turn a client mistake into 500.
+    if (projector === undefined) {
+      return error(400, "validation_error", "tagStateId names an unregistered projector");
+    }
     const record = await this.readTag(identity.tag);
-    const projector = PROJECTORS.get(identity.tagProjector)!;
+    const projected = catchUpDurableTagState(projector, record?.events ?? []);
     return json({
-      payload: projector.payload(record?.events ?? []),
-      version: record?.events.length ?? 0,
+      payload: projected.payload,
+      version: projected.version,
       lastSortedUniqueId: record?.head ?? "",
       tagGroup: identity.tagGroup,
       tagContent: identity.tagContent,
