@@ -8,9 +8,16 @@ import {
   type TagStateIdentity,
   type TagStateProjector,
 } from "./ProjectorRegistry";
+import {
+  decayedLagEstimateMs,
+  MAX_PUBLISHED_SAFE_WINDOW_MS,
+  PUBLISHED_SAFE_WINDOW_MS,
+  safeWindowCeilingExceeded,
+  safeWindowMs,
+} from "../safeWindow";
 
 /** Published V1 read-side SafeWindow. It never authorizes a commit. */
-export const PUBLISHED_SAFE_WINDOW_MS = 20_000;
+export { MAX_PUBLISHED_SAFE_WINDOW_MS, PUBLISHED_SAFE_WINDOW_MS, safeWindowCeilingExceeded, safeWindowMs };
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
 
@@ -31,6 +38,8 @@ export interface CatchUpResult {
   checkpoint: ProjectionCheckpoint | undefined;
   dynamicLagBoundMs: number;
   safeWindowMs: number;
+  /** True means the published 120s ceiling was exceeded; no source event was advanced. */
+  indeterminate: boolean;
   advancedSourceEvents: number;
   appliedEvents: number;
 }
@@ -83,9 +92,7 @@ export function projectionIdFor(identity: TagStateIdentity): string {
   return `tag-state:${identity.tagGroup}:${identity.tagContent}:${identity.tagProjector}`;
 }
 
-export function safeWindowMs(dynamicLagBoundMs: number): number {
-  return Math.max(PUBLISHED_SAFE_WINDOW_MS, dynamicLagBoundMs);
-}
+export { decayedLagEstimateMs };
 
 /**
  * Deterministically rebuilds one tag-state from the Tag DO's authoritative
@@ -131,8 +138,19 @@ export class ProjectionRuntime {
     if (projector === undefined) {
       throw new Error(`Projector ${identity.tagProjector} is not registered`);
     }
-    const dynamicLagBoundMs = await this.store.currentLagBound(serviceId);
+    const dynamicLagBoundMs = await this.store.currentLagBound(serviceId, nowMs);
     const windowMs = safeWindowMs(dynamicLagBoundMs);
+    if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
+      const projectionId = projectionIdFor(identity);
+      return {
+        checkpoint: await this.store.readProjectionCheckpoint(serviceId, projectionId),
+        dynamicLagBoundMs,
+        safeWindowMs: windowMs,
+        indeterminate: true,
+        advancedSourceEvents: 0,
+        appliedEvents: 0,
+      };
+    }
     const safeThrough = nowMs - windowMs;
     const projectionId = projectionIdFor(identity);
 
@@ -152,7 +170,7 @@ export class ProjectionRuntime {
         // Stop at the first unsafe source event. Because the source is SUID
         // ordered, advancing past it could skip a delayed lower SUID.
         if (event.lastArrivedAt > safeThrough) {
-          return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, advancedSourceEvents, appliedEvents };
+          return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
         }
 
         const appliesToTag = event.eventTags.includes(identity.tag);
@@ -178,7 +196,7 @@ export class ProjectionRuntime {
       }
 
       if (!casConflict) {
-        return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, advancedSourceEvents, appliedEvents };
+        return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
       }
     }
     throw new Error("Projection checkpoint did not converge after concurrent updates");

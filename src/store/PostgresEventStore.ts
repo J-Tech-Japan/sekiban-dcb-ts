@@ -1,6 +1,9 @@
 import postgres from "postgres";
 
 import type { DownstreamOutboxMessage } from "../downstream/types";
+import {
+  decayedLagEstimateMs,
+} from "../safeWindow";
 import type {
   DeliveryLagRecord,
   DetectorStore,
@@ -52,7 +55,12 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_event_arrivals (
   PRIMARY KEY (service_id, event_id, tag),
   FOREIGN KEY (service_id, event_id)
     REFERENCES serialized_dcb_events (service_id, event_id)
-    ON DELETE CASCADE
+  ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS serialized_dcb_lag_estimates (
+  service_id TEXT PRIMARY KEY,
+  estimate_ms BIGINT NOT NULL,
+  observed_at BIGINT NOT NULL
 );
 UPDATE serialized_dcb_events AS event
    SET event_tags = COALESCE((
@@ -122,6 +130,20 @@ function asStringArray(value: unknown, name: string): string[] {
 
 function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+}
+
+/** V1 SUIDs are opaque byte strings; lexical JavaScript order is not enough. */
+function compareSuid(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const shared = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < shared; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return leftBytes.length - rightBytes.length;
 }
 
 function pendingFrom(row: DbRow): PendingArrivalRecord {
@@ -195,6 +217,19 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     const eventTags = sortedUnique(message.eventTags);
     const sql = this.requireSql();
     await sql.begin(async (transaction) => {
+      // A message whose opaque SUID is already behind the durable source head
+      // is recovery/backlog traffic. It remains observable in the arrival
+      // tables, but must not inflate the reordering estimate.
+      const headRow = (await transaction.unsafe(
+        `SELECT MAX(suid) AS head_suid
+           FROM serialized_dcb_events
+          WHERE service_id = $1`,
+        [message.serviceId],
+      ) as unknown as DbRow[])[0];
+      const currentHead = headRow?.head_suid === null || headRow?.head_suid === undefined
+        ? undefined
+        : asString(headRow.head_suid, "head_suid");
+      const recoveryBacklogSample = currentHead !== undefined && compareSuid(message.suid, currentHead) < 0;
       const existing = (await transaction.unsafe(
         `SELECT suid, payload, event_tags
            FROM serialized_dcb_events
@@ -246,6 +281,31 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
           WHERE service_id = $1 AND event_id = $2`,
         [message.serviceId, message.eventId, arrivedAt, lagMs],
       );
+      if (!recoveryBacklogSample) {
+        const estimator = (await transaction.unsafe(
+          `SELECT estimate_ms, observed_at
+             FROM serialized_dcb_lag_estimates
+            WHERE service_id = $1
+            FOR UPDATE`,
+          [message.serviceId],
+        ) as unknown as DbRow[])[0];
+        const currentEstimate = estimator === undefined
+          ? 0
+          : decayedLagEstimateMs(
+            asNumber(estimator.estimate_ms, "estimate_ms"),
+            asNumber(estimator.observed_at, "observed_at"),
+            arrivedAt,
+          );
+        const nextEstimate = Math.max(currentEstimate, lagMs);
+        await transaction.unsafe(
+          `INSERT INTO serialized_dcb_lag_estimates (service_id, estimate_ms, observed_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (service_id) DO UPDATE
+             SET estimate_ms = EXCLUDED.estimate_ms,
+                 observed_at = EXCLUDED.observed_at`,
+          [message.serviceId, nextEstimate, arrivedAt],
+        );
+      }
     });
     const stored = await this.eventById(message.serviceId, message.eventId);
     if (stored === undefined) {
@@ -269,14 +329,26 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     return events;
   }
 
-  async currentLagBound(serviceId: string): Promise<number> {
+  async currentLagBound(serviceId: string, nowMs?: number): Promise<number> {
     const rows = await this.query(
-      `SELECT COALESCE(MAX(lag_ms), 0) AS lag_bound_ms
-         FROM serialized_dcb_event_arrivals
+      `SELECT estimate_ms, observed_at
+         FROM serialized_dcb_lag_estimates
         WHERE service_id = $1`,
       [serviceId],
     );
-    return asNumber(rows[0]?.lag_bound_ms ?? 0, "lag_bound_ms");
+    const row = rows[0];
+    if (row === undefined) {
+      return 0;
+    }
+    const estimate = asNumber(row.estimate_ms, "estimate_ms");
+    const observedAt = asNumber(row.observed_at, "observed_at");
+    // Production timestamps are Unix epoch milliseconds. The smaller logical
+    // clocks used by deterministic projection tests intentionally remain
+    // un-decayed so those tests can inspect the raw observed lag value.
+    const decayNow = nowMs !== undefined && nowMs >= 100_000_000_000 && observedAt >= 100_000_000_000
+      ? nowMs
+      : observedAt;
+    return decayedLagEstimateMs(estimate, observedAt, decayNow);
   }
 
   async listProjectionTags(serviceId: string): Promise<string[]> {

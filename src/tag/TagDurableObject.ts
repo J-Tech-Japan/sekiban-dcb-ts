@@ -16,6 +16,7 @@ import {
   type RepairResolution,
   type RepairScopeItem,
 } from "./types";
+import type { DownstreamOutboxMessage } from "../downstream/types";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -94,6 +95,11 @@ interface OutboxPendingInput {
 interface OutboxMarkInput {
   deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt">>;
   nowMs: number;
+}
+
+interface TagDurableObjectEnv {
+  DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>;
+  AUTO_DRAIN_OUTBOX?: string;
 }
 
 interface OperationResult {
@@ -752,7 +758,10 @@ function overlappingFenceReason(record: TagRecord, reason: string): string | und
 }
 
 export class TagDurableObject implements DurableObject {
-  constructor(private readonly ctx: DurableObjectState) {}
+  constructor(
+    private readonly ctx: DurableObjectState,
+    private readonly env: TagDurableObjectEnv,
+  ) {}
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -791,7 +800,7 @@ export class TagDurableObject implements DurableObject {
       return this.seal(tag, body);
     }
     if (request.method === "POST" && url.pathname === "/append") {
-      return this.append(tag, body);
+      return this.append(tag, body, url.searchParams.get("__serviceId"));
     }
     if (request.method === "POST" && url.pathname === "/outbox/pending") {
       return this.pendingOutbox(tag, url.searchParams.get("__serviceId"), body);
@@ -1072,7 +1081,7 @@ export class TagDurableObject implements DurableObject {
     return json(result.body, result.status);
   }
 
-  private async append(tag: string, body: unknown): Promise<Response> {
+  private async append(tag: string, body: unknown, serviceId: string | null): Promise<Response> {
     const parsed = appendFrom(body, tag);
     if (parsed.value === undefined) {
       return error(400, "invalid_tag_append", parsed.error ?? "Invalid append request");
@@ -1179,7 +1188,21 @@ export class TagDurableObject implements DurableObject {
           body: { status: "appended", fenceGate, version: updated.version },
         };
       });
-      return json(result.body, result.status);
+      const response = json(result.body, result.status);
+      if (
+        result.status === 201 &&
+        serviceId !== null && serviceId.length > 0 &&
+        this.env.AUTO_DRAIN_OUTBOX === "true" &&
+        this.env.DOWNSTREAM_QUEUE !== undefined
+      ) {
+        // The append transaction is already durable. Queue delivery is an
+        // asynchronous handoff of the same durable outbox row; failures leave
+        // the row available to the explicit operator drain/retry path. Keep
+        // the send off the application response lifetime so queue backpressure
+        // cannot turn a committed append into a Worker timeout.
+        this.ctx.waitUntil(this.autoDrainOutbox(tag, serviceId).catch(() => undefined));
+      }
+      return response;
     } catch (failure) {
       if (failure instanceof AppendTransactionFault) {
         return error(
@@ -1189,6 +1212,34 @@ export class TagDurableObject implements DurableObject {
         );
       }
       return error(500, "tag_append_failure", "Tag append could not be persisted");
+    }
+  }
+
+  private async autoDrainOutbox(tag: string, serviceId: string): Promise<void> {
+    const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now() });
+    if (!pending.ok) {
+      throw new Error(`automatic outbox pending read failed with ${pending.status}`);
+    }
+    const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+    const rows = body.rows ?? [];
+    for (const row of rows) {
+      await this.env.DOWNSTREAM_QUEUE!.send(row, { contentType: "json" });
+    }
+    if (rows.length === 0) {
+      return;
+    }
+    const mark = await this.markOutboxDelivered(tag, {
+      deliveries: rows.map(({ attemptId, eventId, suid, payload, enqueuedAt }) => ({
+        attemptId,
+        eventId,
+        suid,
+        payload,
+        enqueuedAt,
+      })),
+      nowMs: Date.now(),
+    });
+    if (!mark.ok) {
+      throw new Error(`automatic outbox delivery mark failed with ${mark.status}`);
     }
   }
 

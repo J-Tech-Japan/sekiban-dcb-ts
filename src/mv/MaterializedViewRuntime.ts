@@ -1,4 +1,4 @@
-import { safeWindowMs } from "../projection/ProjectionRuntime";
+import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
@@ -304,7 +304,7 @@ export class MaterializedViewRuntime {
     operation: MaterializedViewOperation,
     hooks: MaterializedViewFollowHooks,
   ): Promise<MaterializedViewFollowResult<State>> {
-    const dynamicLagBoundMs = await this.store.currentLagBound(serviceId);
+    const dynamicLagBoundMs = await this.store.currentLagBound(serviceId, nowMs);
     const windowMs = safeWindowMs(dynamicLagBoundMs);
     const safeThrough = nowMs - windowMs;
 
@@ -312,6 +312,15 @@ export class MaterializedViewRuntime {
       const checkpoint = await this.store.readProjectionCheckpoint(serviceId, viewId);
       if (checkpoint === undefined) {
         throw this.failure("follow", "MV_FOLLOW_CHECKPOINT_UNAVAILABLE", "Materialized-view checkpoint disappeared during follow");
+      }
+      if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
+        return {
+          ...this.snapshot(serviceId, viewId, checkpoint, definition, operation),
+          dynamicLagBoundMs,
+          safeWindowMs: windowMs,
+          advancedSourceEvents: 0,
+          appliedEvents: 0,
+        };
       }
       let currentCheckpoint = checkpoint;
       let state = this.stateFrom(definition, checkpoint, operation);

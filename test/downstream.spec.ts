@@ -234,6 +234,40 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
     });
   });
 
+  it("returns after Queue persistence without waiting for read-side convergence", async () => {
+    const serviceId = unique("queue-consumer-no-convergence-wait");
+    const tag = unique("queue-consumer-tag");
+    const body = message(
+      serviceId,
+      unique("queue-consumer-event"),
+      "suid-queue-consumer-no-convergence-wait",
+      tag,
+      [tag],
+      Date.now(),
+    );
+    const batch = createMessageBatch("serialized-dcb-v1-outbox", [{
+      id: unique("queue-consumer-delivery"),
+      timestamp: new Date(),
+      attempts: 1,
+      body,
+    }]);
+
+    // Omitting AdapterOptions.store deliberately exercises the production
+    // Postgres Queue-consumer path. The consumer persists/observes delivery
+    // and returns; cron/operator projection polling owns convergence.
+    const startedAt = performance.now();
+    await handleDownstreamQueue(batch, {
+      POSTGRES_URL: (env as unknown as WorkerEnv).POSTGRES_URL,
+    });
+    const elapsedMs = performance.now() - startedAt;
+    const queueResult = await getQueueResult(batch, createExecutionContext());
+    expect(queueResult.retryMessages).toEqual([]);
+    expect(queueResult.explicitAcks).toHaveLength(1);
+    // The removed SafeWindow sleep was at least 20,025ms at the floor. Keep
+    // this budget comfortably below that block while allowing DB bootstrap.
+    expect(elapsedMs).toBeLessThan(10_000);
+  }, 15_000);
+
   it("holds a low-lag missing arrival until the 20 second stability floor", async () => {
     const serviceId = unique("stability-floor-service");
     const tags = [unique("stability-floor-a"), unique("stability-floor-b")];

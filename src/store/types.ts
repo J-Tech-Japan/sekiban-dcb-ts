@@ -84,7 +84,7 @@ export interface EventStore {
   initialize(): Promise<void>;
   recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<StoredEvent>;
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
-  currentLagBound(serviceId: string): Promise<number>;
+  currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
 }
 
 /** Detector-only persistence port. It cannot write event rows by construction. */
@@ -112,7 +112,7 @@ export interface DetectorStore {
  */
 export interface ProjectionStore {
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
-  currentLagBound(serviceId: string): Promise<number>;
+  currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   listProjectionTags(serviceId: string): Promise<string[]>;
   readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;
   advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean>;

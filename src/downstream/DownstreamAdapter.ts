@@ -15,9 +15,6 @@ export interface AdapterOptions {
   store?: PipelineStore;
 }
 
-/** One workerd isolate retains its own database sockets between Queue batches. */
-const sharedStores = new Map<string, PostgresEventStore>();
-
 function connectionStringFrom(env: DownstreamAdapterEnv): string {
   const connectionString = env.HYPERDRIVE?.connectionString ?? env.POSTGRES_URL;
   if (connectionString === undefined || connectionString.length === 0) {
@@ -28,12 +25,10 @@ function connectionStringFrom(env: DownstreamAdapterEnv): string {
 
 function sharedStore(env: DownstreamAdapterEnv): PostgresEventStore {
   const connectionString = connectionStringFrom(env);
-  let store = sharedStores.get(connectionString);
-  if (store === undefined) {
-    store = new PostgresEventStore(connectionString);
-    sharedStores.set(connectionString, store);
-  }
-  return store;
+  // Hyperdrive/Postgres sockets are request-scoped in workerd. Never retain a
+  // client across Queue or scheduled invocations, or a later handler can
+  // attempt I/O on a stream owned by an earlier request.
+  return new PostgresEventStore(connectionString);
 }
 
 async function withStore<T>(
@@ -58,7 +53,7 @@ export async function processDownstreamDelivery(
   await withStore(env, options, async (store, clock) => {
     const arrivedAt = clock.now();
     await store.recordDelivery(message, arrivedAt);
-    const lagBound = await store.currentLagBound(message.serviceId);
+    const lagBound = await store.currentLagBound(message.serviceId, arrivedAt);
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     await detector.observe(message, arrivedAt, lagBound);
   });
@@ -83,7 +78,7 @@ export async function handleDownstreamQueue(
         }
         const arrivedAt = clock.now();
         await store.recordDelivery(queued.body, arrivedAt);
-        const lagBound = await store.currentLagBound(queued.body.serviceId);
+        const lagBound = await store.currentLagBound(queued.body.serviceId, arrivedAt);
         await detector.observe(queued.body, arrivedAt, lagBound);
         queued.ack();
       } catch {

@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "build": "wrangler deploy --dry-run",
+    "deploy:g11": "bash scripts/deploy/g11-deploy.sh",
+    "conformance:g11": "bash scripts/deploy/g11-conformance.sh",
+    "measure:g11": "python3 scripts/deploy/g11-measure.py",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",

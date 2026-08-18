@@ -2,7 +2,7 @@ import {
   DEPLOYED_PROJECTOR_REGISTRY,
   type ProjectorRegistry,
 } from "../projection/ProjectorRegistry";
-import { safeWindowMs } from "../projection/ProjectionRuntime";
+import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import {
   projectionHasObserved,
   readProjectedEntries,
@@ -141,7 +141,13 @@ async function waitForProjection(
   options: QueryExecutionOptions,
 ): Promise<boolean> {
   const now = options.now ?? Date.now;
-  const deadline = now() + safeWindowMs(await store.currentLagBound(serviceId));
+  const dynamicLagBoundMs = await store.currentLagBound(serviceId, now());
+  // A bound above the published ceiling is indeterminate. Do not turn that
+  // state into an empty success by clamping it and waiting forever.
+  if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
+    return false;
+  }
+  const deadline = now() + safeWindowMs(dynamicLagBoundMs);
   const sleep = options.sleep ?? realSleep;
   const pollIntervalMs = Math.max(1, options.pollIntervalMs ?? 25);
 
@@ -226,7 +232,11 @@ export async function handleSerializedQuery(
       parsed.value.waitForSortableUniqueId !== undefined &&
       !(await waitForProjection(store, serviceId, definition, parsed.value.waitForSortableUniqueId, options))
     ) {
-      return error(504, "timeout", "Projection outcome is undetermined before the query wait bound expired");
+      return error(
+        504,
+        "timeout",
+        "Outcome is undetermined: reread tag heads and event/query state before retrying; blind retry may create duplicate events",
+      );
     }
     return resultResponse(endpoint, await readProjectedEntries(store, serviceId, definition), pagination.value);
   } catch {

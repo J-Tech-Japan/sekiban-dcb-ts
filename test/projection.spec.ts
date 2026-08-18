@@ -5,7 +5,7 @@ import { processDownstreamDelivery } from "../src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage, PipelineClock } from "../src/downstream/types";
 import { pollLiveProjections } from "../src/projection/LiveProjectionWorker";
 import { tagStateIdentityFrom, TEST_TAG_STATE_PROJECTOR } from "../src/projection/ProjectorRegistry";
-import { PUBLISHED_SAFE_WINDOW_MS, ProjectionRuntime, projectionIdFor } from "../src/projection/ProjectionRuntime";
+import { PUBLISHED_SAFE_WINDOW_MS, ProjectionRuntime, projectionIdFor, safeWindowMs } from "../src/projection/ProjectionRuntime";
 import type { Env as WorkerEnv } from "../src/index";
 import { PostgresEventStore } from "../src/store/PostgresEventStore";
 import type { ProjectionCheckpoint } from "../src/store/types";
@@ -182,6 +182,39 @@ describe("SDT-G8 live projection", () => {
       const afterDynamicWindow = await runtime.catchUp(serviceId, identity, clock.clock.now());
       expect(afterDynamicWindow.appliedEvents).toBe(1);
       expect(afterDynamicWindow.checkpoint).toMatchObject({ lastSuid: delayed.suid, version: 1 });
+    });
+  });
+
+  it("decays the current lag estimate and excludes a lower-SUID recovery backlog sample", async () => {
+    const serviceId = unique("lag-estimator-service");
+    const tag = `orders:${unique("lag-estimator")}`;
+    const observedAt = Date.now();
+    const first = message(
+      serviceId,
+      unique("lag-estimator-head"),
+      "suid-00000000000000000000000000000002",
+      tag,
+      observedAt - 60_000,
+    );
+    const recoveryBacklog = message(
+      serviceId,
+      unique("lag-estimator-backlog"),
+      "suid-00000000000000000000000000000001",
+      tag,
+      observedAt - 119_000,
+    );
+
+    await withPostgresStore(async (store) => {
+      await store.recordDelivery(first, observedAt);
+      expect(await store.currentLagBound(serviceId, observedAt)).toBe(60_000);
+      const decayed = await store.currentLagBound(serviceId, observedAt + 50_000);
+      expect(decayed).toBe(10_000);
+      expect(safeWindowMs(decayed)).toBe(PUBLISHED_SAFE_WINDOW_MS);
+
+      await store.recordDelivery(recoveryBacklog, observedAt + 50_001);
+      // The old SUID arrived during recovery, so its 119s lag is observable
+      // in arrivals but cannot inflate the reordering estimate.
+      expect(await store.currentLagBound(serviceId, observedAt + 50_001)).toBe(9_999);
     });
   });
 

@@ -4,6 +4,8 @@ import {
   tagStateIdentityFrom,
   type TagStateIdentity,
 } from "../projection/ProjectorRegistry";
+import { safeWindowCeilingExceeded } from "../projection/ProjectionRuntime";
+import { PostgresEventStore } from "../store/PostgresEventStore";
 import type { TagRecord } from "../tag/types";
 import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
 
@@ -13,6 +15,8 @@ type JsonObject = Record<string, unknown>;
 
 interface ReadWorkerEnv {
   TAG: DurableObjectNamespace;
+  POSTGRES_URL?: string;
+  HYPERDRIVE?: Hyperdrive;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -87,6 +91,7 @@ export class SerializedReadWorker {
     if (parsed.value === undefined) {
       return error(400, "validation_error", parsed.error ?? "Invalid tag-latest-sortable request");
     }
+    await this.ensureWindowDeterminate();
     const record = await this.readTag(parsed.value);
     return json({
       exists: record !== undefined && record.head.length > 0,
@@ -106,6 +111,7 @@ export class SerializedReadWorker {
     if (projector === undefined) {
       return error(400, "validation_error", "tagStateId names an unregistered projector");
     }
+    await this.ensureWindowDeterminate();
     const record = await this.readTag(identity.tag);
     const projected = catchUpDurableTagState(projector, record?.events ?? []);
     return json({
@@ -118,6 +124,21 @@ export class SerializedReadWorker {
       tagPayloadName: projector.tagPayloadName,
       projectorVersion: projector.projectorVersion,
     });
+  }
+
+  private async ensureWindowDeterminate(): Promise<void> {
+    const connectionString = this.env.HYPERDRIVE?.connectionString ?? this.env.POSTGRES_URL;
+    // Direct unit tests can exercise Tag DO determinacy with only TAG. The
+    // deployed Worker has HYPERDRIVE and must fail closed above the 120s
+    // published ceiling before returning a tag read that looks successful.
+    if (connectionString === undefined || connectionString.length === 0) {
+      return;
+    }
+    const store = new PostgresEventStore(connectionString);
+    await store.initialize();
+    if (safeWindowCeilingExceeded(await store.currentLagBound(this.serviceId, Date.now()))) {
+      throw new Error("Read-side SafeWindow ceiling exceeded; durable state is indeterminate");
+    }
   }
 
   private async readTag(tag: string): Promise<TagRecord | undefined> {
