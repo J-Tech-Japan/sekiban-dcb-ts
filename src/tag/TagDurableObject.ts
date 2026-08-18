@@ -6,6 +6,7 @@ import {
   type TagEpoch,
   type TagEvent,
   type TagFence,
+  type TagOutboxDelivery,
   type TagOutboxRow,
   type TagRecord,
   type TagReservation,
@@ -18,6 +19,7 @@ import {
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
+const OUTBOX_DELIVERIES_KEY = "outbox-deliveries";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
 const DEFAULT_REPAIR_LEASE_MS = 30_000;
 const MAX_REPAIR_LEASE_MS = 5 * 60_000;
@@ -83,6 +85,15 @@ interface RepairAuditInput extends RepairApplyInput {
 interface RepairClearInput extends RepairLeaseInput {
   attemptId: string;
   scopeVersion: number;
+}
+
+interface OutboxPendingInput {
+  nowMs: number;
+}
+
+interface OutboxMarkInput {
+  deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt">>;
+  nowMs: number;
 }
 
 interface OperationResult {
@@ -400,6 +411,51 @@ function repairClearFrom(value: unknown): { value?: RepairClearInput; error?: st
   return { value: { ...lease.value, attemptId: value.attemptId, scopeVersion: value.scopeVersion } };
 }
 
+function outboxPendingFrom(value: unknown): { value?: OutboxPendingInput; error?: string } {
+  if (!isObject(value)) {
+    return { error: "outbox pending request must be an object" };
+  }
+  const nowMs = value.nowMs ?? Date.now();
+  if (!isSafeInteger(nowMs)) {
+    return { error: "nowMs must be a safe integer when present" };
+  }
+  return { value: { nowMs } };
+}
+
+function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: string } {
+  if (!isObject(value) || !Array.isArray(value.deliveries) || value.deliveries.length === 0) {
+    return { error: "deliveries must be a non-empty array" };
+  }
+  const deliveries: OutboxMarkInput["deliveries"] = [];
+  for (const raw of value.deliveries) {
+    if (
+      !isObject(raw) ||
+      !isNonEmptyString(raw.attemptId) ||
+      !isNonEmptyString(raw.eventId) ||
+      !isNonEmptyString(raw.suid) ||
+      typeof raw.payload !== "string" ||
+      !isSafeInteger(raw.enqueuedAt)
+    ) {
+      return { error: "each delivery needs attemptId, eventId, suid, payload, and enqueuedAt" };
+    }
+    deliveries.push({
+      attemptId: raw.attemptId,
+      eventId: raw.eventId,
+      suid: raw.suid,
+      payload: raw.payload,
+      enqueuedAt: raw.enqueuedAt,
+    });
+  }
+  if (new Set(deliveries.map(outboxRowKey)).size !== deliveries.length) {
+    return { error: "deliveries must be unique" };
+  }
+  const nowMs = value.nowMs ?? Date.now();
+  if (!isSafeInteger(nowMs)) {
+    return { error: "nowMs must be a safe integer when present" };
+  }
+  return { value: { deliveries, nowMs } };
+}
+
 function epochFor(entries: TagEpoch[], attemptId: string): number | undefined {
   return entries.find((entry) => entry.attemptId === attemptId)?.epoch;
 }
@@ -431,6 +487,10 @@ function withFence(entries: TagFence[], fence: TagFence): TagFence[] {
 
 function withoutFence(entries: TagFence[], reason: string, attemptId: string): TagFence[] {
   return entries.filter((entry) => entry.reason !== reason || entry.attemptId !== attemptId);
+}
+
+function outboxRowKey(row: TagOutboxRow): string {
+  return `${row.attemptId}\u0000${row.eventId}\u0000${row.suid}\u0000${row.payload}`;
 }
 
 function repairScopeKey(item: RepairScopeItem): string {
@@ -732,6 +792,12 @@ export class TagDurableObject implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/append") {
       return this.append(tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/outbox/pending") {
+      return this.pendingOutbox(tag, url.searchParams.get("__serviceId"), body);
+    }
+    if (request.method === "POST" && url.pathname === "/outbox/mark-delivered") {
+      return this.markOutboxDelivered(tag, body);
     }
     if (request.method === "POST" && url.pathname === "/confirm") {
       return this.confirm(tag, body);
@@ -1277,6 +1343,128 @@ export class TagDurableObject implements DurableObject {
           facts,
         },
       };
+    });
+    return json(result.body, result.status);
+  }
+
+  /**
+   * Internal outbox handoff: enqueuedAt is persisted before any Queue send so
+   * a crash after send but before delivered marking replays the same clock
+   * fact. It never changes the immutable event/outbox row.
+   */
+  private async pendingOutbox(tag: string, serviceId: string | null, body: unknown): Promise<Response> {
+    const parsed = outboxPendingFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_outbox_pending", parsed.error ?? "Invalid outbox pending request");
+    }
+    if (!isNonEmptyString(serviceId)) {
+      return error(400, "outbox_service_identity_required", "Outbox delivery requires a service identity");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const record = await txn.get<TagRecord>(TAG_KEY);
+      if (record === undefined) {
+        return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+      }
+      if (record.tag !== tag) {
+        return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
+      }
+      const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? [];
+      const byRow = new Map(deliveries.map((delivery) => [outboxRowKey(delivery), delivery]));
+      let changedDeliveries = deliveries;
+      const rows: Array<{
+        version: 1;
+        serviceId: string;
+        tag: string;
+        attemptId: string;
+        eventId: string;
+        suid: string;
+        payload: string;
+        eventTags: string[];
+        enqueuedAt: number;
+      }> = [];
+      for (const row of record.outbox) {
+        const key = outboxRowKey(row);
+        let delivery = byRow.get(key);
+        if (delivery === undefined) {
+          delivery = { ...row, enqueuedAt: input.nowMs, deliveredAt: null };
+          changedDeliveries = [...changedDeliveries, delivery];
+          byRow.set(key, delivery);
+        }
+        if (delivery.deliveredAt !== null) {
+          continue;
+        }
+        const event = record.events.find((candidate) =>
+          candidate.attemptId === row.attemptId &&
+          candidate.eventId === row.eventId &&
+          candidate.suid === row.suid &&
+          candidate.payload === row.payload,
+        );
+        if (event === undefined) {
+          return {
+            status: 409,
+            body: { error: "Outbox row has no matching durable event", code: "outbox_event_missing" },
+          };
+        }
+        rows.push({
+          version: 1,
+          serviceId,
+          tag,
+          attemptId: row.attemptId,
+          eventId: row.eventId,
+          suid: row.suid,
+          payload: row.payload,
+          eventTags: event.eventTags,
+          enqueuedAt: delivery.enqueuedAt,
+        });
+      }
+      if (changedDeliveries !== deliveries) {
+        await txn.put(OUTBOX_DELIVERIES_KEY, changedDeliveries);
+      }
+      return { status: 200, body: { rows } };
+    });
+    return json(result.body, result.status);
+  }
+
+  /** Marks only a previously enqueued row; repeating a mark is harmless. */
+  private async markOutboxDelivered(tag: string, body: unknown): Promise<Response> {
+    const parsed = outboxMarkFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_outbox_delivery_mark", parsed.error ?? "Invalid outbox delivery mark");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const record = await txn.get<TagRecord>(TAG_KEY);
+      if (record === undefined) {
+        return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+      }
+      if (record.tag !== tag) {
+        return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
+      }
+      const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? [];
+      const requested = new Map(input.deliveries.map((delivery) => [outboxRowKey(delivery), delivery]));
+      for (const [key, delivery] of requested) {
+        if (!record.outbox.some((row) => outboxRowKey(row) === key)) {
+          return { status: 409, body: { error: "Outbox row is not durable", code: "outbox_row_not_found" } };
+        }
+        const persisted = deliveries.find((candidate) => outboxRowKey(candidate) === key);
+        if (persisted === undefined || persisted.enqueuedAt !== delivery.enqueuedAt) {
+          return { status: 409, body: { error: "Outbox row was not enqueued", code: "outbox_delivery_not_enqueued" } };
+        }
+      }
+      let marked = 0;
+      const updated = deliveries.map((delivery) => {
+        const requestedDelivery = requested.get(outboxRowKey(delivery));
+        if (requestedDelivery === undefined || delivery.deliveredAt !== null) {
+          return delivery;
+        }
+        marked += 1;
+        return { ...delivery, deliveredAt: input.nowMs };
+      });
+      if (marked > 0) {
+        await txn.put(OUTBOX_DELIVERIES_KEY, updated);
+      }
+      return { status: 200, body: { marked, idempotent: marked === 0 } };
     });
     return json(result.body, result.status);
   }

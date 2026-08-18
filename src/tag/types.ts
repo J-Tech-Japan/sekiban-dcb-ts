@@ -40,6 +40,16 @@ export interface TagOutboxRow {
   payload: string;
 }
 
+/**
+ * Separate from the immutable outbox row so an append remains a commit-path
+ * write only. A drain records its first queue-attempt clock fact and delivery
+ * acknowledgement here.
+ */
+export interface TagOutboxDelivery extends TagOutboxRow {
+  enqueuedAt: number;
+  deliveredAt: number | null;
+}
+
 export interface TagFence {
   reason: string;
   attemptId: string;

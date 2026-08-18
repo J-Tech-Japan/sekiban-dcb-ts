@@ -11,6 +11,22 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

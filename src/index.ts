@@ -1,6 +1,9 @@
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
+import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
+import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
+import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
@@ -13,6 +16,11 @@ export interface Env {
   TAG: DurableObjectNamespace;
   /** Secret binding; deployment must configure this rather than a public var. */
   REPAIR_OPERATOR_TOKEN: string;
+  /** Queue producer/consumer for durable Tag outbox rows. */
+  DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
+  /** Local Docker/CI connection; deployed Workers normally use HYPERDRIVE. */
+  POSTGRES_URL?: string;
+  HYPERDRIVE?: Hyperdrive;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
 }
 
@@ -24,6 +32,9 @@ const worker: ExportedHandler<Env> = {
     }
     if (url.pathname === "/operator/repair") {
       return handleOperatorRepair(request, env);
+    }
+    if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
+      return handleOutboxDrainRequest(request, env);
     }
     if (
       url.pathname === "/api/sekiban/serialized/tag-latest-sortable" ||
@@ -52,6 +63,7 @@ const worker: ExportedHandler<Env> = {
       }
       url.pathname = tagMatch[3] ?? "/state";
       url.searchParams.set("__tag", tag);
+      url.searchParams.set("__serviceId", serviceId);
       const tagObject = env.TAG.get(env.TAG.idFromName(`${serviceId}|${tag}`));
       return tagObject.fetch(new Request(url.toString(), request));
     }
@@ -69,6 +81,14 @@ const worker: ExportedHandler<Env> = {
     url.pathname = match[2] ?? "/state";
     const journal = env.JOURNAL.get(env.JOURNAL.idFromName(attemptId));
     return journal.fetch(new Request(url.toString(), request));
+  },
+
+  async queue(batch, env): Promise<void> {
+    await handleDownstreamQueue(batch, env);
+  },
+
+  async scheduled(_controller, env): Promise<void> {
+    await stabilizeDownstream(env);
   },
 };
 

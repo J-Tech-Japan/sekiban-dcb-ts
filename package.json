@@ -9,6 +9,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:local-pg": "docker compose up --wait postgres && npm test",
     "test:watch": "vitest --config vitest.config.ts",
     "check": "npm run lint && npm run typecheck && npm test"
   },
@@ -23,5 +24,8 @@
     "typescript-eslint": "8.50.1",
     "vitest": "4.1.10",
     "wrangler": "4.123.0"
+  },
+  "dependencies": {
+    "postgres": "^3.4.9"
   }
 }

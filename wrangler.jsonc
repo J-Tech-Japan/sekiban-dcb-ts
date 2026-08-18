@@ -3,6 +3,20 @@
   "name": "serialized-dcb-v1-runtime",
   "main": "src/index.ts",
   "compatibility_date": "2026-08-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "queues": {
+    "producers": [
+      {
+        "binding": "DOWNSTREAM_QUEUE",
+        "queue": "serialized-dcb-v1-outbox"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "serialized-dcb-v1-outbox"
+      }
+    ]
+  },
   "durable_objects": {
     "bindings": [
       {
