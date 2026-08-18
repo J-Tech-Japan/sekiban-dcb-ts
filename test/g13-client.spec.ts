@@ -1,4 +1,5 @@
 import { defineEvent, type JsonValue } from "../packages/dcb-core/src/index";
+import { handleSerializedCommit, validateCommitEnvelope, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
 import {
   ClaimLedger,
   ClaimLedgerExecutor,
@@ -49,7 +50,7 @@ describe("SDT-G13 claim-ledger client", () => {
   it("preflights claim coverage and duplicate consistency entries before transport", () => {
     expect(() => preflightCommit({
       candidates: [{ tags: ["group:content"] }],
-      consistency: [{ tag: "group:content", lastSortedUniqueId: "s-1" }, { tag: "group:content", lastSortedUniqueId: "s-1" }],
+      consistency: [{ tag: "group:content", lastSortableUniqueId: "s-1" }, { tag: "group:content", lastSortableUniqueId: "s-1" }],
       claims: [],
     })).toThrowError(new ClientError("duplicate_consistency_entry", "More than one consistency entry was supplied for group:content"));
     expect(() => preflightCommit({
@@ -57,6 +58,70 @@ describe("SDT-G13 claim-ledger client", () => {
       consistency: [],
       claims: [{ tag: "group:content", lastSortedUniqueId: "s-1" }],
     })).toThrowError(/not covered/);
+  });
+
+  it("emits the §3.1 consistency spelling accepted by the real commit runtime", async () => {
+    let captured: CommitEnvelope | undefined;
+    const event = defineEvent("Added");
+    const executor = new ClaimLedgerExecutor({
+      transport: transportFor(
+        () => snapshot("group", "content", "projector", "s-1"),
+        (envelope) => {
+          captured = envelope;
+          return { status: 200, body: { writtenEvents: [] } };
+        },
+      ),
+    });
+    const result = await executor.execute(async (context) => {
+      await context.readTagState("group:content:projector");
+      context.append(event, { value: 1 }, ["group:content"]);
+      return { kind: "committed" };
+    });
+    expect(result.kind).toBe("committed");
+    expect(captured?.consistency).toEqual([{ tag: "group:content", lastSortableUniqueId: "s-1" }]);
+
+    const clientEnvelope = captured!;
+    const runtimeEnvelope = {
+      version: 1,
+      eventCandidates: clientEnvelope.candidates.map((candidate) => ({
+        payload: "eA==",
+        eventPayloadName: candidate.eventPayloadName,
+        tags: [...candidate.tags],
+      })),
+      consistencyTags: clientEnvelope.consistency,
+    };
+    expect(validateCommitEnvelope(runtimeEnvelope)).toHaveProperty("value");
+
+    const runtimeEnv = {
+      JOURNAL: {
+        idFromName: () => ({}),
+        get: () => ({ fetch: async () => new Response("{}", { status: 500 }) }),
+      },
+    } as unknown as CommitWorkerEnv;
+    const response = await handleSerializedCommit(new Request("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(runtimeEnvelope),
+    }), runtimeEnv);
+    const body = await response.json<{ code?: string }>();
+    expect(body.code).not.toBe("malformed_commit_envelope");
+
+    // Mutation proof: restoring the historical §5.3 spelling makes the real
+    // validator reject the envelope before any durable actor is contacted.
+    const spellingMutation = {
+      ...runtimeEnvelope,
+      consistencyTags: runtimeEnvelope.consistencyTags.map((entry) => ({
+        tag: entry.tag,
+        lastSortedUniqueId: entry.lastSortableUniqueId,
+      })),
+    };
+    const mutated = await handleSerializedCommit(new Request("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(spellingMutation),
+    }), runtimeEnv);
+    expect(mutated.status).toBe(400);
+    expect(await mutated.json()).toMatchObject({ code: "malformed_commit_envelope" });
   });
 
   it("re-executes a conflict once only when opted in, with fresh decision context", async () => {

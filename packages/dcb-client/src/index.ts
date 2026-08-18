@@ -34,7 +34,8 @@ export interface CommitCandidate {
 
 export interface ConsistencyEntry {
   readonly tag: string;
-  readonly lastSortedUniqueId: string;
+  /** §3.1 commit-envelope spelling; §5.3 tag-state keeps lastSortedUniqueId. */
+  readonly lastSortableUniqueId: string;
 }
 
 export interface CommitEnvelope {
@@ -508,11 +509,19 @@ export class ClaimLedgerExecutor {
         if (decision.kind === "invalid") return { kind: "invalid", attempts, error: decision.error, code: decision.code };
         const candidates = context.candidates;
         if (candidates.length === 0) return { kind: "noop", attempts, reason: "command appended no events" };
-        const consistency = decision.envelope?.consistency ?? context.claims.map((claim) => ({ tag: claim.tag, lastSortedUniqueId: claim.lastSortedUniqueId }));
+        // Claims retain the §5.3 tag-state spelling internally, but the commit
+        // envelope is a §3.1 wire value and must use lastSortableUniqueId.
+        const consistency = decision.envelope?.consistency ?? context.claims.map((claim) => ({
+          tag: claim.tag,
+          lastSortableUniqueId: claim.lastSortedUniqueId,
+        }));
         const envelope: CommitEnvelope = Object.freeze({
           ...(decision.envelope ?? {}),
           candidates,
-          consistency: Object.freeze(consistency.map((entry) => ({ tag: normalizeTag(entry.tag), lastSortedUniqueId: entry.lastSortedUniqueId }))),
+          consistency: Object.freeze(consistency.map((entry) => ({
+            tag: normalizeTag(entry.tag),
+            lastSortableUniqueId: entry.lastSortableUniqueId,
+          }))),
         });
         preflightCommit({ candidates, consistency: envelope.consistency, claims: context.claims });
         const signal = options.signal;

@@ -19,7 +19,7 @@
     "typecheck": "npm run build:packages && tsc --noEmit",
     "test": "npm run build:packages && vitest run --config vitest.config.ts",
     "test:local-pg": "docker compose up --wait postgres && npm test",
-    "test:consumer": "node scripts/g13-consumer-fixture.mjs",
+    "test:consumer": "npm run build:packages && node scripts/g13-consumer-fixture.mjs",
     "test:boundaries": "node scripts/g13-boundary-check.mjs",
     "test:watch": "vitest --config vitest.config.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:boundaries && npm run test:consumer"
