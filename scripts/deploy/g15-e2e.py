@@ -70,14 +70,14 @@ def commit_suid(body: dict[str, Any]) -> str:
     return first["sortableUniqueIdValue"]
 
 
-def read_until_visible(base_url: str, room_id: str, commit_id: str) -> tuple[dict[str, Any], float]:
+def read_until_visible(base_url: str, kind: str, parameter: str, value: str, commit_id: str) -> tuple[dict[str, Any], float]:
     started = time.perf_counter()
     deadline = started + UI_SAFE_WINDOW_BOUND_MS / 1000
     observations: list[dict[str, Any]] = []
     while time.perf_counter() < deadline:
         status, body, elapsed_ms = request(
             base_url,
-            f"/api/read/room?roomId={urllib.parse.quote(room_id)}",
+            f"/api/read/{kind}?{parameter}={urllib.parse.quote(value)}",
             method="GET",
         )
         require(status == 200 and isinstance(body, dict), f"room read returned HTTP {status}: {body}")
@@ -145,7 +145,7 @@ def main() -> None:
     )
     require(create_status == 200 and isinstance(create_body, dict) and create_body.get("kind") == "committed", f"create-room failed HTTP {create_status}: {create_body}")
     create_suid = commit_suid(create_body)
-    created_read, created_visible_ms = read_until_visible(args.base_url, room_id, create_suid)
+    created_read, created_visible_ms = read_until_visible(args.base_url, "room", "roomId", room_id, create_suid)
     require(isinstance(created_read.get("state"), dict) and created_read["state"].get("status") == "created", f"room projection did not update: {created_read}")
 
     reserve_status, reserve_body, reserve_ms = request(
@@ -156,23 +156,9 @@ def main() -> None:
     )
     require(reserve_status == 200 and isinstance(reserve_body, dict) and reserve_body.get("kind") == "committed", f"reserve-room failed HTTP {reserve_status}: {reserve_body}")
     reserve_suid = commit_suid(reserve_body)
-    reserve_read_started = time.perf_counter()
-    reserve_deadline = reserve_read_started + UI_SAFE_WINDOW_BOUND_MS / 1000
-    reservation_read: dict[str, Any] | None = None
-    while time.perf_counter() < reserve_deadline:
-        read_status, read_body, _ = request(
-            args.base_url,
-            f"/api/read/reservation?reservationId={urllib.parse.quote(reservation_id)}",
-            method="GET",
-        )
-        require(read_status == 200 and isinstance(read_body, dict), f"reservation read failed HTTP {read_status}: {read_body}")
-        head = read_body.get("lastSortedUniqueId")
-        require(isinstance(head, str), f"reservation read omitted head: {read_body}")
-        if compare_v1_ordinal(head, reserve_suid) >= 0:
-            reservation_read = read_body
-            break
-        time.sleep(min(0.25, max(0.0, reserve_deadline - time.perf_counter())))
-    require(reservation_read is not None, f"reservation projection did not become visible within {UI_SAFE_WINDOW_BOUND_MS}ms")
+    reservation_read, reservation_visible_ms = read_until_visible(
+        args.base_url, "reservation", "reservationId", reservation_id, reserve_suid,
+    )
     require(isinstance(reservation_read.get("state"), dict) and reservation_read["state"].get("status") == "reserved", f"reservation projection did not update: {reservation_read}")
 
     cancel_status, cancel_body, cancel_ms = request(
@@ -183,6 +169,10 @@ def main() -> None:
     )
     require(cancel_status == 200 and isinstance(cancel_body, dict) and cancel_body.get("kind") == "committed", f"cancel-reservation failed HTTP {cancel_status}: {cancel_body}")
     cancel_suid = commit_suid(cancel_body)
+    cancelled_read, cancelled_visible_ms = read_until_visible(
+        args.base_url, "reservation", "reservationId", reservation_id, cancel_suid,
+    )
+    require(isinstance(cancelled_read.get("state"), dict) and cancelled_read["state"].get("status") == "cancelled", f"cancel projection did not update: {cancelled_read}")
 
     rejected_status, rejected_body, _ = request(
         args.base_url,
@@ -214,6 +204,9 @@ def main() -> None:
             "createCommitToVisibleMs": round(created_visible_ms, 3),
             "createObservations": created_read["observations"],
             "reservationVisible": True,
+            "reservationCommitToVisibleMs": round(reservation_visible_ms, 3),
+            "cancelVisible": True,
+            "cancelCommitToVisibleMs": round(cancelled_visible_ms, 3),
         },
         "freshRunIds": True,
         "secret": "no bearer token or credential used by app-layer E2E",

@@ -6,9 +6,9 @@
   "sourceCommit": "70f4e41c2a440331c911809659984c1348300e6b",
   "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
   "hyperdriveCaching": "disabled",
-  "runId": "26b9cf2a0bf64bddb10ce383cafd64c7",
-  "roomId": "g15-room-26b9cf2a0bf64bdd",
-  "reservationId": "g15-reservation-26b9cf2a0bf64bdd",
+  "runId": "0a1127daf6e9431eb853c4edf6274652",
+  "roomId": "g15-room-0a1127daf6e9431e",
+  "reservationId": "g15-reservation-0a1127daf6e9431e",
   "uiSafeWindowBoundMs": 120000,
   "harnessGraceMs": 5000,
   "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
@@ -27,18 +27,18 @@
   "commands": {
     "create": {
       "status": 200,
-      "requestMs": 2799.308,
-      "suid": "suid-00000000000000000000000000000034"
+      "requestMs": 2786.195,
+      "suid": "suid-00000000000000000000000000000037"
     },
     "reserve": {
       "status": 200,
-      "requestMs": 2658.325,
-      "suid": "suid-00000000000000000000000000000035"
+      "requestMs": 2471.756,
+      "suid": "suid-00000000000000000000000000000038"
     },
     "cancel": {
       "status": 200,
-      "requestMs": 1932.165,
-      "suid": "suid-00000000000000000000000000000036"
+      "requestMs": 1895.213,
+      "suid": "suid-00000000000000000000000000000039"
     },
     "rejected": {
       "status": 400,
@@ -48,16 +48,19 @@
   },
   "projection": {
     "createVisible": true,
-    "createCommitToVisibleMs": 921.739,
+    "createCommitToVisibleMs": 865.931,
     "createObservations": [
       {
-        "head": "suid-00000000000000000000000000000034",
-        "requestMs": 921.438
+        "head": "suid-00000000000000000000000000000037",
+        "requestMs": 865.629
       }
     ],
-    "reservationVisible": true
+    "reservationVisible": true,
+    "reservationCommitToVisibleMs": 929.949,
+    "cancelVisible": true,
+    "cancelCommitToVisibleMs": 1018.641
   },
   "freshRunIds": true,
   "secret": "no bearer token or credential used by app-layer E2E",
-  "recordedAt": "2026-08-18T23:33:34Z"
+  "recordedAt": "2026-08-18T23:39:03Z"
 }
