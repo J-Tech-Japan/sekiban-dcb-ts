@@ -5,8 +5,7 @@ import {
   type TagStateIdentity,
 } from "../projection/ProjectorRegistry";
 import type { TagRecord } from "../tag/types";
-
-const SERVICE_ID = "serialized-dcb-v1";
+import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
 
 export { TEST_TAG_STATE_PROJECTOR } from "../projection/ProjectorRegistry";
 
@@ -54,7 +53,10 @@ function tagStateIdentityFromBody(value: unknown): { value?: TagStateIdentity; e
  * remains based on durable-state determinacy, never on fence presence/reason.
  */
 export class SerializedReadWorker {
-  constructor(private readonly env: ReadWorkerEnv) {}
+  constructor(
+    private readonly env: ReadWorkerEnv,
+    private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+  ) {}
 
   async handle(request: Request): Promise<Response> {
     const path = new URL(request.url).pathname;
@@ -121,7 +123,7 @@ export class SerializedReadWorker {
   private async readTag(tag: string): Promise<TagRecord | undefined> {
     const url = new URL("https://serialized-read.internal/state");
     url.searchParams.set("__tag", tag);
-    const tagObject = this.env.TAG.get(this.env.TAG.idFromName(`${SERVICE_ID}|${tag}`));
+    const tagObject = this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
     const response = await tagObject.fetch(new Request(url));
     if (response.status === 404) {
       return undefined;
@@ -138,5 +140,5 @@ export class SerializedReadWorker {
 }
 
 export async function handleSerializedRead(request: Request, env: ReadWorkerEnv): Promise<Response> {
-  return new SerializedReadWorker(env).handle(request);
+  return new SerializedReadWorker(env, serviceIdForRequest(request)).handle(request);
 }

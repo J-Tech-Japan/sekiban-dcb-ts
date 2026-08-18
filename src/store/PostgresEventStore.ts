@@ -19,6 +19,9 @@ type DbRow = Record<string, unknown>;
 type SqlParameter = string | number;
 type SqlClient = ReturnType<typeof postgres>;
 
+/** Coordinates first-use DDL across independently scheduled Worker isolates. */
+const SCHEMA_BOOTSTRAP_LOCK = 84_736_291;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS serialized_dcb_events (
   service_id TEXT NOT NULL,
@@ -176,7 +179,10 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     }
     const sql = postgres(this.connectionString, { fetch_types: false, max: 1, prepare: true });
     try {
-      await sql.unsafe(SCHEMA, [], { prepare: false });
+      await sql.begin(async (transaction) => {
+        await transaction.unsafe("SELECT pg_advisory_xact_lock($1)", [SCHEMA_BOOTSTRAP_LOCK]);
+        await transaction.unsafe(SCHEMA, [], { prepare: false });
+      });
       this.sql = sql;
     } catch (error) {
       await sql.end({ timeout: 1 });

@@ -6,6 +6,7 @@ import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
+import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
@@ -30,6 +31,12 @@ const worker: ExportedHandler<Env> = {
     const url = new URL(request.url);
     if (url.pathname === "/api/sekiban/serialized/commit") {
       return handleSerializedCommit(request, env);
+    }
+    if (
+      url.pathname === "/api/sekiban/serialized/query" ||
+      url.pathname === "/api/sekiban/serialized/list-query"
+    ) {
+      return handleSerializedQuery(request, env);
     }
     if (url.pathname === "/operator/repair") {
       return handleOperatorRepair(request, env);

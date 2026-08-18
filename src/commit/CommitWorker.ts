@@ -12,8 +12,8 @@ import {
   type CommitTestFault,
   type ValidatedCommitEnvelope,
 } from "./types";
+import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
 
-const COMMIT_SERVICE_ID = "serialized-dcb-v1";
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
 const OUTCOME_UNDETERMINED_ERROR =
@@ -193,7 +193,10 @@ export function validateCommitEnvelope(value: unknown):
  * actor that owns it; this class retains only one request's generated IDs.
  */
 export class CommitWorker {
-  constructor(private readonly env: CommitWorkerEnv) {}
+  constructor(
+    private readonly env: CommitWorkerEnv,
+    private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+  ) {}
 
   async handle(request: Request): Promise<Response> {
     if (request.method !== "POST") {
@@ -228,7 +231,7 @@ export class CommitWorker {
       consistencyTags: input.consistencyTags,
       commitContext: {
         attemptId,
-        serviceId: COMMIT_SERVICE_ID,
+        serviceId: this.serviceId,
         ...(fault === "fence-not-durable" ? { testFenceNotDurable: true } : {}),
         ...(fault === "fence-install-partial" ? { testFenceInstallFaultOnce: true } : {}),
       },
@@ -320,7 +323,7 @@ export class CommitWorker {
   }
 
   private tagFor(tag: string): DurableObjectStub {
-    return this.env.TAG.get(this.env.TAG.idFromName(`${COMMIT_SERVICE_ID}|${tag}`));
+    return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
   }
 
   private async postJson<T>(stub: DurableObjectStub, path: string, body: unknown): Promise<{ response: Response; body?: T }> {
@@ -654,5 +657,5 @@ export class CommitWorker {
 }
 
 export async function handleSerializedCommit(request: Request, env: CommitWorkerEnv): Promise<Response> {
-  return new CommitWorker(env).handle(request);
+  return new CommitWorker(env, serviceIdForRequest(request)).handle(request);
 }

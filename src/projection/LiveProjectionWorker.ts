@@ -7,8 +7,9 @@ import {
   type ProjectorRegistry,
 } from "./ProjectorRegistry";
 import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
+import { SERIALIZED_DCB_SERVICE_ID } from "../http/testServiceId";
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = SERIALIZED_DCB_SERVICE_ID;
 
 export interface LiveProjectionEnv {
   POSTGRES_URL?: string;
@@ -19,6 +20,8 @@ export interface ProjectionPollOptions {
   clock?: PipelineClock;
   store?: PostgresEventStore;
   registry?: ProjectorRegistry;
+  /** Test-only service isolation; production scheduled polls use the V1 default. */
+  serviceId?: string;
 }
 
 /** One Worker isolate retains its own Postgres socket between scheduled polls. */
@@ -64,7 +67,7 @@ export async function pollLiveProjections(
   const store = options.store ?? sharedStore(env);
   await store.initialize();
   const runtime = new ProjectionRuntime(store, options.registry ?? DEPLOYED_PROJECTOR_REGISTRY);
-  return runtime.pollRegistered(SERVICE_ID, (options.clock ?? systemPipelineClock).now());
+  return runtime.pollRegistered(options.serviceId ?? SERVICE_ID, (options.clock ?? systemPipelineClock).now());
 }
 
 /**
