@@ -11,6 +11,7 @@ import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
 export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
+export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 
 export interface Env {
   ALLOCATOR: DurableObjectNamespace;

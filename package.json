@@ -4,13 +4,19 @@
   "private": true,
   "description": "Serialized DCB V1 5-endpoint runtime Journal Durable Object bootstrap.",
   "type": "module",
+  "workspaces": [
+    "packages/dcb-core",
+    "packages/dcb-runtime",
+    "packages/dcb-client"
+  ],
   "scripts": {
-    "build": "wrangler deploy --dry-run",
+    "build:packages": "npm run build --workspaces --if-present",
+    "build": "npm run build:packages && wrangler deploy --dry-run",
     "deploy:g11": "bash scripts/deploy/g11-deploy.sh",
     "conformance:g11": "bash scripts/deploy/g11-conformance.sh",
     "measure:g11": "python3 scripts/deploy/g11-measure.py",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "npm run build:packages && tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:local-pg": "docker compose up --wait postgres && npm test",
     "test:watch": "vitest --config vitest.config.ts",

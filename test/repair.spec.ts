@@ -1,10 +1,10 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { handleOperatorRepair, type OperatorRepairEnv } from "../src/cli/OperatorRepairCli";
-import type { Env as WorkerEnv } from "../src/index";
-import type { JournalRecord } from "../src/journal/types";
-import type { RepairScopeItem, TagRecord } from "../src/tag/types";
+import { handleOperatorRepair, type OperatorRepairEnv } from "../packages/dcb-runtime/src/cli/OperatorRepairCli";
+import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
+import type { RepairScopeItem, TagRecord } from "../packages/dcb-runtime/src/tag/types";
 
 const SERVICE_ID = "serialized-dcb-v1";
 const OPERATOR_TOKEN = "test-repair-operator-token";

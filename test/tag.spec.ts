@@ -1,12 +1,12 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { MAX_EPOCH } from "../src/tag/TagDurableObject";
+import { MAX_EPOCH } from "../packages/dcb-runtime/src/tag/TagDurableObject";
 import {
   RESERVATION_WINDOW_MS,
   type TagRecord,
   type TagReservation,
-} from "../src/tag/types";
+} from "../packages/dcb-runtime/src/tag/types";
 
 interface Scope {
   serviceId: string;

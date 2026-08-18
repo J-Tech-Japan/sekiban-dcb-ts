@@ -1,13 +1,13 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
-import { MAX_ALARM_BACKOFF_MS } from "../src/journal/JournalDurableObject";
+import { MAX_ALARM_BACKOFF_MS } from "../packages/dcb-runtime/src/journal/JournalDurableObject";
 import type {
   JournalCandidate,
   JournalRecord,
   JournalState,
   ReconciliationInput,
-} from "../src/journal/types";
+} from "../packages/dcb-runtime/src/journal/types";
 
 async function request(attemptId: string, path: string, body?: unknown): Promise<Response> {
   const init =

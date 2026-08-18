@@ -5,7 +5,7 @@ import type {
   AllocationCandidate,
   AllocationVector,
   AllocatorState,
-} from "../src/allocator/types";
+} from "../packages/dcb-runtime/src/allocator/types";
 
 interface JournalState {
   state: string;

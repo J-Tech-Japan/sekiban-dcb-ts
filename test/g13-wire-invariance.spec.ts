@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { handleSerializedCommit, type CommitWorkerEnv } from "../src/commit/CommitWorker";
-import { handleSerializedQuery } from "../src/http/SerializedQueryWorker";
-import { SerializedReadWorker } from "../src/read/SerializedReadWorker";
-import type { QueryProjectionStore } from "../src/query/ProjectionQueryStore";
-import type { DownstreamOutboxMessage } from "../src/downstream/types";
+import { handleSerializedCommit, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
+import { SerializedReadWorker } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
+import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
+import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 
 /**
  * Captured on the pre-split base commit. Keep this normalized transcript
