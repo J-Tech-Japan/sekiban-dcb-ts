@@ -106,6 +106,8 @@ def main() -> None:
         raise RuntimeError(f"unauthenticated command did not use fixed production namespace: {default_latest}")
     checks["unauthenticatedCommandG11"] = {
         "command": command_status,
+        "attackerServiceId": attacker_service_id,
+        "attackerRoomId": attacker_room_id,
         "attackerNamespaceLatest": attacker_latest_status,
         "attackerNamespaceExists": attacker_latest.get("exists"),
         "fixedNamespaceLatest": default_latest_status,
