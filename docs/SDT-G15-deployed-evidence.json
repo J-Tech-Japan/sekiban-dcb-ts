@@ -3,6 +3,7 @@
   "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
   "worker": "sekiban-dcb-meeting-room",
   "deployedVersion": "71a0df9a-095c-4a0a-b7c0-647526d6d585",
+  "sourceCommit": "70f4e41c2a440331c911809659984c1348300e6b",
   "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
   "hyperdriveCaching": "disabled",
   "runId": "26b9cf2a0bf64bddb10ce383cafd64c7",
