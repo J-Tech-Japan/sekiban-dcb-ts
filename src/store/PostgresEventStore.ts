@@ -8,6 +8,10 @@ import type {
   InconsistencyClassification,
   InconsistencyFinding,
   PendingArrivalRecord,
+  ProjectionCheckpoint,
+  ProjectionCheckpointAdvance,
+  ProjectionLag,
+  ProjectionStore,
   StoredEvent,
 } from "./types";
 
@@ -21,11 +25,17 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_events (
   event_id TEXT NOT NULL,
   suid TEXT NOT NULL,
   payload TEXT NOT NULL,
+  event_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
   first_arrived_at BIGINT NOT NULL,
   last_arrived_at BIGINT NOT NULL,
   max_delivery_lag_ms BIGINT NOT NULL,
   PRIMARY KEY (service_id, event_id)
 );
+ALTER TABLE serialized_dcb_events
+  ADD COLUMN IF NOT EXISTS event_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+UPDATE serialized_dcb_events
+   SET event_tags = (event_tags #>> '{}')::jsonb
+ WHERE jsonb_typeof(event_tags) = 'string';
 CREATE INDEX IF NOT EXISTS serialized_dcb_events_service_suid_idx
   ON serialized_dcb_events (service_id, suid, event_id);
 
@@ -41,6 +51,13 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_event_arrivals (
     REFERENCES serialized_dcb_events (service_id, event_id)
     ON DELETE CASCADE
 );
+UPDATE serialized_dcb_events AS event
+   SET event_tags = COALESCE((
+     SELECT jsonb_agg(arrival.tag ORDER BY arrival.tag)
+       FROM serialized_dcb_event_arrivals AS arrival
+      WHERE arrival.service_id = event.service_id AND arrival.event_id = event.event_id
+   ), '[]'::jsonb)
+ WHERE event.event_tags = '[]'::jsonb;
 
 CREATE TABLE IF NOT EXISTS serialized_dcb_pending_arrivals (
   service_id TEXT NOT NULL,
@@ -64,6 +81,16 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_inconsistency_findings (
   lag_bound_ms BIGINT NOT NULL,
   observed_at BIGINT NOT NULL,
   UNIQUE (service_id, event_id, path, classification)
+);
+
+CREATE TABLE IF NOT EXISTS serialized_dcb_projection_checkpoints (
+  service_id TEXT NOT NULL,
+  projection_id TEXT NOT NULL,
+  last_suid TEXT NOT NULL,
+  state_json TEXT NOT NULL,
+  version BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (service_id, projection_id)
 );
 `;
 
@@ -123,11 +150,22 @@ function findingFrom(row: DbRow): InconsistencyFinding {
   };
 }
 
+function projectionCheckpointFrom(row: DbRow): ProjectionCheckpoint {
+  return {
+    serviceId: asString(row.service_id, "service_id"),
+    projectionId: asString(row.projection_id, "projection_id"),
+    lastSuid: asString(row.last_suid, "last_suid"),
+    stateJson: asString(row.state_json, "state_json"),
+    version: asNumber(row.version, "version"),
+    updatedAt: asNumber(row.updated_at, "updated_at"),
+  };
+}
+
 /**
  * `postgres` exposes an ESM/workerd build. The deployed Worker passes a
  * Hyperdrive connection string; local Miniflare passes Docker PostgreSQL.
  */
-export class PostgresEventStore implements EventStore, DetectorStore {
+export class PostgresEventStore implements EventStore, DetectorStore, ProjectionStore {
   private sql: SqlClient | undefined;
 
   constructor(private readonly connectionString: string) {}
@@ -148,10 +186,11 @@ export class PostgresEventStore implements EventStore, DetectorStore {
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<StoredEvent> {
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
+    const eventTags = sortedUnique(message.eventTags);
     const sql = this.requireSql();
     await sql.begin(async (transaction) => {
       const existing = (await transaction.unsafe(
-        `SELECT suid, payload
+        `SELECT suid, payload, event_tags
            FROM serialized_dcb_events
           WHERE service_id = $1 AND event_id = $2
           FOR UPDATE`,
@@ -160,12 +199,28 @@ export class PostgresEventStore implements EventStore, DetectorStore {
       if (existing === undefined) {
         await transaction.unsafe(
           `INSERT INTO serialized_dcb_events
-             (service_id, event_id, suid, payload, first_arrived_at, last_arrived_at, max_delivery_lag_ms)
-           VALUES ($1, $2, $3, $4, $5, $5, $6)`,
-          [message.serviceId, message.eventId, message.suid, message.payload, arrivedAt, lagMs],
+             (service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms)
+           VALUES ($1, $2, $3, $4, ($5::text)::jsonb, $6, $6, $7)`,
+          [message.serviceId, message.eventId, message.suid, message.payload, JSON.stringify(eventTags), arrivedAt, lagMs],
         );
-      } else if (asString(existing.suid, "suid") !== message.suid || asString(existing.payload, "payload") !== message.payload) {
-        throw new Error(`EventId ${message.eventId} conflicts with its durable PostgreSQL row`);
+      } else {
+        if (asString(existing.suid, "suid") !== message.suid || asString(existing.payload, "payload") !== message.payload) {
+          throw new Error(`EventId ${message.eventId} conflicts with its durable PostgreSQL row`);
+        }
+        const storedTags = asStringArray(existing.event_tags, "event_tags");
+        if (storedTags.length === 0) {
+          // Backfill G7 rows lazily on their first replay. Event tags are
+          // non-empty in the outbox envelope, so [] can only be the migration
+          // default rather than a valid historical membership set.
+          await transaction.unsafe(
+            `UPDATE serialized_dcb_events
+                SET event_tags = ($3::text)::jsonb
+              WHERE service_id = $1 AND event_id = $2`,
+            [message.serviceId, message.eventId, JSON.stringify(eventTags)],
+          );
+        } else if (JSON.stringify(storedTags) !== JSON.stringify(eventTags)) {
+          throw new Error(`EventId ${message.eventId} conflicts with its durable tag membership`);
+        }
       }
       await transaction.unsafe(
         `INSERT INTO serialized_dcb_event_arrivals
@@ -195,7 +250,7 @@ export class PostgresEventStore implements EventStore, DetectorStore {
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
     const rows = await this.query(
-      `SELECT service_id, event_id, suid, payload, first_arrived_at, last_arrived_at, max_delivery_lag_ms
+      `SELECT service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
          FROM serialized_dcb_events
         WHERE service_id = $1 AND suid > $2
         ORDER BY suid ASC, event_id ASC`,
@@ -216,6 +271,105 @@ export class PostgresEventStore implements EventStore, DetectorStore {
       [serviceId],
     );
     return asNumber(rows[0]?.lag_bound_ms ?? 0, "lag_bound_ms");
+  }
+
+  async listProjectionTags(serviceId: string): Promise<string[]> {
+    const rows = await this.query(
+      `SELECT DISTINCT memberships.tag AS tag
+         FROM serialized_dcb_events
+         CROSS JOIN LATERAL jsonb_array_elements_text(event_tags) AS memberships(tag)
+        WHERE service_id = $1
+        ORDER BY memberships.tag ASC`,
+      [serviceId],
+    );
+    return rows.map((row) => asString(row.tag, "tag"));
+  }
+
+  async readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined> {
+    const rows = await this.query(
+      `SELECT service_id, projection_id, last_suid, state_json, version, updated_at
+         FROM serialized_dcb_projection_checkpoints
+        WHERE service_id = $1 AND projection_id = $2`,
+      [serviceId, projectionId],
+    );
+    const row = rows[0];
+    return row === undefined ? undefined : projectionCheckpointFrom(row);
+  }
+
+  async advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean> {
+    const sql = this.requireSql();
+    let advanced = false;
+    await sql.begin(async (transaction) => {
+      const existing = (await transaction.unsafe(
+        `SELECT last_suid
+           FROM serialized_dcb_projection_checkpoints
+          WHERE service_id = $1 AND projection_id = $2
+          FOR UPDATE`,
+        [input.serviceId, input.projectionId],
+      ) as unknown as DbRow[])[0];
+      if (existing === undefined) {
+        if (input.expectedLastSuid !== null) {
+          return;
+        }
+        await transaction.unsafe(
+          `INSERT INTO serialized_dcb_projection_checkpoints
+             (service_id, projection_id, last_suid, state_json, version, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            input.serviceId,
+            input.projectionId,
+            input.lastSuid,
+            input.stateJson,
+            input.version,
+            input.updatedAt,
+          ],
+        );
+        advanced = true;
+        return;
+      }
+      if (asString(existing.last_suid, "last_suid") !== input.expectedLastSuid) {
+        return;
+      }
+      await transaction.unsafe(
+        `UPDATE serialized_dcb_projection_checkpoints
+            SET last_suid = $3,
+                state_json = $4,
+                version = $5,
+                updated_at = $6
+          WHERE service_id = $1 AND projection_id = $2`,
+        [
+          input.serviceId,
+          input.projectionId,
+          input.lastSuid,
+          input.stateJson,
+          input.version,
+          input.updatedAt,
+        ],
+      );
+      advanced = true;
+    });
+    return advanced;
+  }
+
+  async projectionLag(serviceId: string, projectionId: string, tag: string): Promise<ProjectionLag> {
+    const checkpoint = await this.readProjectionCheckpoint(serviceId, projectionId);
+    const checkpointSuid = checkpoint?.lastSuid ?? "";
+    const rows = await this.query(
+      `SELECT COALESCE(MAX(suid), '') AS head_suid,
+              COUNT(*) FILTER (WHERE suid > $3) AS behind_events
+         FROM serialized_dcb_events
+        WHERE service_id = $1 AND event_tags ? $2`,
+      [serviceId, tag, checkpointSuid],
+    );
+    const row = rows[0] ?? {};
+    return {
+      serviceId,
+      projectionId,
+      tag,
+      checkpointSuid,
+      headSuid: asString(row.head_suid ?? "", "head_suid"),
+      behindEvents: asNumber(row.behind_events ?? 0, "behind_events"),
+    };
   }
 
   async upsertPending(
@@ -360,7 +514,7 @@ export class PostgresEventStore implements EventStore, DetectorStore {
 
   private async eventById(serviceId: string, eventId: string): Promise<StoredEvent | undefined> {
     const rows = await this.query(
-      `SELECT service_id, event_id, suid, payload, first_arrived_at, last_arrived_at, max_delivery_lag_ms
+      `SELECT service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
          FROM serialized_dcb_events
         WHERE service_id = $1 AND event_id = $2`,
       [serviceId, eventId],
@@ -384,6 +538,7 @@ export class PostgresEventStore implements EventStore, DetectorStore {
       eventId,
       suid: asString(row.suid, "suid"),
       payload: asString(row.payload, "payload"),
+      eventTags: asStringArray(row.event_tags, "event_tags"),
       firstArrivedAt: asNumber(row.first_arrived_at, "first_arrived_at"),
       lastArrivedAt: asNumber(row.last_arrived_at, "last_arrived_at"),
       maxDeliveryLagMs: asNumber(row.max_delivery_lag_ms, "max_delivery_lag_ms"),

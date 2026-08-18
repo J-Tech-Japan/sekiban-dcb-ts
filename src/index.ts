@@ -5,6 +5,7 @@ import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/Downstr
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
+import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
@@ -35,6 +36,9 @@ const worker: ExportedHandler<Env> = {
     }
     if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
       return handleOutboxDrainRequest(request, env);
+    }
+    if (url.pathname === "/internal/projection/lag") {
+      return handleProjectionLag(request, env);
     }
     if (
       url.pathname === "/api/sekiban/serialized/tag-latest-sortable" ||
@@ -89,6 +93,7 @@ const worker: ExportedHandler<Env> = {
 
   async scheduled(_controller, env): Promise<void> {
     await stabilizeDownstream(env);
+    await pollLiveProjections(env);
   },
 };
 

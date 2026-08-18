@@ -2,6 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { Env as WorkerEnv } from "../src/index";
+import { WEATHER_FORECAST_PROJECTOR } from "../src/projection/ProjectorRegistry";
 import { TEST_TAG_STATE_PROJECTOR } from "../src/read/SerializedReadWorker";
 
 const SERVICE_ID = "serialized-dcb-v1";
@@ -14,6 +15,12 @@ interface PartialWriteResponse {
 
 async function responseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
+}
+
+function payloadJson<T>(payload: string): T {
+  const binary = atob(payload);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes)) as T;
 }
 
 function tagFor(prefix: string): string {
@@ -84,7 +91,7 @@ async function expectInternalError(response: Response): Promise<void> {
   });
 }
 
-describe("Serialized V1 minimal reads", () => {
+describe("Serialized V1 reads", () => {
   it("returns the existing latest-sortable and tag-state wire shapes for determinate fenced tags", async () => {
     const tag = tagFor("orders");
     const [tagGroup, tagContent] = tag.split(":");
@@ -136,6 +143,78 @@ describe("Serialized V1 minimal reads", () => {
     expect(typeof body.payload).toBe("string");
     expect(body).not.toHaveProperty("fences");
     expect(body).not.toHaveProperty("code");
+  });
+
+  it("catches up the complete durable tag history into the exact V1 tag-state wire", async () => {
+    const tag = tagFor("full-history");
+    const [tagGroup, tagContent] = tag.split(":");
+    const first = { eventId: "full-history-first", suid: "suid-00000000000000000000000000000001", payload: "Zmlyc3Q=" };
+    const second = { eventId: "full-history-second", suid: "suid-00000000000000000000000000000002", payload: "c2Vjb25k" };
+    for (const [attemptId, candidate] of [["full-history-first-attempt", first], ["full-history-second-attempt", second]] as const) {
+      expect((await tagPost(tag, "/append", {
+        attemptId,
+        epoch: 0,
+        candidates: [{ ...candidate, eventTags: [tag] }],
+      })).status).toBe(201);
+    }
+
+    const response = await read("tag-state", {
+      tagStateId: `${tagGroup}:${tagContent}:${TEST_TAG_STATE_PROJECTOR}`,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    const body = await responseJson<Record<string, unknown>>(response);
+    expect(Object.keys(body).sort()).toEqual([
+      "lastSortedUniqueId",
+      "payload",
+      "projectorVersion",
+      "tagContent",
+      "tagGroup",
+      "tagPayloadName",
+      "tagProjector",
+      "version",
+    ]);
+    expect(body).toMatchObject({
+      version: 2,
+      lastSortedUniqueId: second.suid,
+      tagGroup,
+      tagContent,
+      tagProjector: TEST_TAG_STATE_PROJECTOR,
+      tagPayloadName: "SerializedDcbTestTagState",
+      projectorVersion: "1",
+    });
+    expect(payloadJson<Array<{ eventId: string; payload: string; suid: string }>>(body.payload as string)).toEqual([
+      first,
+      second,
+    ]);
+  });
+
+  it("accepts the linked weather conformance tag-state identity from the deploy-time registry", async () => {
+    const tagContent = crypto.randomUUID();
+    const tag = `weather:${tagContent}`;
+    const suid = "suid-00000000000000000000000000000001";
+    expect((await tagPost(tag, "/append", {
+      attemptId: "weather-conformance-attempt",
+      epoch: 0,
+      candidates: [{ eventId: "weather-conformance-event", suid, payload: "e30=", eventTags: [tag] }],
+    })).status).toBe(201);
+
+    const response = await read("tag-state", {
+      tagStateId: `${tag}:${WEATHER_FORECAST_PROJECTOR}`,
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    const body = await responseJson<Record<string, unknown>>(response);
+    expect(body).toMatchObject({
+      version: 1,
+      lastSortedUniqueId: suid,
+      tagGroup: "weather",
+      tagContent,
+      tagProjector: WEATHER_FORECAST_PROJECTOR,
+      tagPayloadName: "WeatherForecastState",
+      projectorVersion: "1",
+    });
+    expect(() => atob(body.payload as string)).not.toThrow();
   });
 
   it("makes the exact Section 7 missing tag immediately readable after a real PARTIAL(FENCED)", async () => {
@@ -234,6 +313,10 @@ describe("Serialized V1 minimal reads", () => {
 
     const malformed = await read("tag-state", { tagStateId: `${tagGroup}:${tagContent}:unknown-projector` });
     expect(malformed.status).toBe(400);
-    expect(await responseJson<{ code: string }>(malformed)).toMatchObject({ code: "validation_error" });
+    expect(malformed.headers.get("content-type")).toBe("application/json; charset=utf-8");
+    expect(await responseJson<{ error: string; code: string }>(malformed)).toMatchObject({
+      error: expect.any(String),
+      code: "validation_error",
+    });
   });
 });
