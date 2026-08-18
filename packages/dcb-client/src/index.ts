@@ -49,6 +49,33 @@ export interface CommitHttpResult {
   readonly body?: unknown;
 }
 
+export interface TagLatestSortableResponse {
+  readonly exists: boolean;
+  readonly lastSortableUniqueId: string;
+}
+
+export interface QueryRequest {
+  readonly queryType: string;
+  readonly queryParamsJson: string;
+  readonly waitForSortableUniqueId?: string;
+}
+
+export interface QueryResponse {
+  readonly resultJson: string;
+}
+
+export interface ListQueryRequest extends QueryRequest {
+  readonly queryParamsJson: string;
+}
+
+export interface ListQueryResponse {
+  readonly itemsJson: string;
+  readonly totalCount: number;
+  readonly totalPages: number;
+  readonly currentPage: number;
+  readonly pageSize: number;
+}
+
 export interface SerializedDcbTransport {
   readonly readTagState: (
     request: { readonly tagStateId: string },
@@ -147,6 +174,42 @@ export class SerializedDcbClient implements SerializedDcbTransport {
     });
     return this.readResponse(response, request.tagStateId) as Promise<ReadonlyTagStateResponse>;
   }
+
+  async readTagLatestSortable(
+    request: { readonly tag: string },
+    signal?: AbortSignal,
+  ): Promise<TagLatestSortableResponse> {
+    const response = await this.fetchImpl(`${this.baseUrl}/api/sekiban/serialized/tag-latest-sortable`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    return this.readResponse(response) as Promise<TagLatestSortableResponse>;
+  }
+
+  async query(request: QueryRequest, signal?: AbortSignal): Promise<QueryResponse> {
+    const response = await this.fetchImpl(`${this.baseUrl}/api/sekiban/serialized/query`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    return this.readResponse(response) as Promise<QueryResponse>;
+  }
+
+  async listQuery(request: ListQueryRequest, signal?: AbortSignal): Promise<ListQueryResponse> {
+    const response = await this.fetchImpl(`${this.baseUrl}/api/sekiban/serialized/list-query`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+      signal,
+    });
+    return this.readResponse(response) as Promise<ListQueryResponse>;
+  }
+
+  readonly tagLatestSortable = this.readTagLatestSortable.bind(this);
+  readonly tagState = this.readTagState.bind(this);
 
   async commit(request: CommitEnvelope, signal?: AbortSignal): Promise<unknown> {
     const response = await this.fetchImpl(`${this.baseUrl}/api/sekiban/serialized/commit`, {
