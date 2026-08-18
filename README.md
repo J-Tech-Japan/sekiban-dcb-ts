@@ -43,6 +43,7 @@ Use Node.js 24 or newer.
 
 ```sh
 npm install
+docker compose up --wait postgres
 npm run check
 npm run build
 ```
