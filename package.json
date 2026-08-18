@@ -17,10 +17,12 @@
     "measure:g11": "python3 scripts/deploy/g11-measure.py",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build:packages && tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "npm run build:packages && vitest run --config vitest.config.ts",
     "test:local-pg": "docker compose up --wait postgres && npm test",
+    "test:consumer": "node scripts/g13-consumer-fixture.mjs",
+    "test:boundaries": "node scripts/g13-boundary-check.mjs",
     "test:watch": "vitest --config vitest.config.ts",
-    "check": "npm run lint && npm run typecheck && npm test"
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:boundaries && npm run test:consumer"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.21.3",

@@ -18,6 +18,7 @@
     "packages/dcb-runtime/src/**/*.ts",
     "packages/dcb-client/src/**/*.ts",
     "test/**/*.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "worker.ts"
   ]
 }

@@ -12,5 +12,9 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist"]
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
 }

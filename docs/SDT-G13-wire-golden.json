@@ -1,5 +1,9 @@
 {
   "capturedFrom": "origin/main@5225e8080898791332b0d9d1f83b2395e0550d2b",
+  "recapture": {
+    "test": "test/g13-wire-invariance.spec.ts",
+    "comparison": "normalized transcript equals capturedFrom"
+  },
   "endpoints": {
     "commit": {
       "success": { "status": 200, "contentType": "application/json; charset=utf-8", "keys": ["duration", "tagWriteResults", "writtenEvents"] },
