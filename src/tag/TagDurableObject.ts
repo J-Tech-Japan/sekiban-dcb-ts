@@ -9,10 +9,18 @@ import {
   type TagOutboxRow,
   type TagRecord,
   type TagReservation,
+  type RepairAudit,
+  type RepairBranch,
+  type RepairFacts,
+  type RepairResolution,
+  type RepairScopeItem,
 } from "./types";
 
 const TAG_KEY = "tag";
+const REPAIR_FACTS_KEY = "repair-facts";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
+const DEFAULT_REPAIR_LEASE_MS = 30_000;
+const MAX_REPAIR_LEASE_MS = 5 * 60_000;
 
 type JsonObject = Record<string, unknown>;
 
@@ -47,6 +55,34 @@ interface AppendInput extends ReservationInput {
 
 interface FenceInput extends EpochInput {
   reason: string;
+}
+
+interface RepairAcquireInput {
+  owner: string;
+  leaseMs: number;
+  scope: RepairScopeItem[];
+}
+
+interface RepairLeaseInput {
+  owner: string;
+  epoch: number;
+}
+
+interface RepairScopeUnionInput extends RepairLeaseInput {
+  scope: RepairScopeItem[];
+}
+
+interface RepairApplyInput extends RepairLeaseInput {
+  item: RepairScopeItem;
+}
+
+interface RepairAuditInput extends RepairApplyInput {
+  actor: string;
+}
+
+interface RepairClearInput extends RepairLeaseInput {
+  attemptId: string;
+  scopeVersion: number;
 }
 
 interface OperationResult {
@@ -84,6 +120,13 @@ function rejected(reason: string, status = 409): OperationResult {
   };
 }
 
+function repairRejected(reason: string, status = 409): OperationResult {
+  return {
+    status,
+    body: { code: "repair_operation_rejected", error: reason, reason },
+  };
+}
+
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -98,6 +141,10 @@ function isEpoch(value: unknown): value is number {
 
 function isSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return isSafeInteger(value) && value >= 0;
 }
 
 function nowIso(): string {
@@ -249,6 +296,110 @@ function fenceFrom(value: unknown): { value?: FenceInput; error?: string } {
   return { value: { ...epoch.value, reason: value.reason } };
 }
 
+function repairScopeItemFrom(value: unknown, tag: string): { value?: RepairScopeItem; error?: string } {
+  if (
+    !isObject(value) ||
+    !isNonEmptyString(value.attemptId) ||
+    !isNonEmptyString(value.eventId) ||
+    !isNonEmptyString(value.suid) ||
+    typeof value.payload !== "string"
+  ) {
+    return { error: "each repair scope item needs attemptId, eventId, suid, and payload" };
+  }
+  const eventTags = stringArrayFrom(value.eventTags, "repair eventTags");
+  if (eventTags.value === undefined || !eventTags.value.includes(tag)) {
+    return { error: eventTags.error ?? "each repair scope item must include this tag" };
+  }
+  return {
+    value: {
+      attemptId: value.attemptId,
+      eventId: value.eventId,
+      suid: value.suid,
+      payload: value.payload,
+      eventTags: eventTags.value,
+    },
+  };
+}
+
+function repairScopeFrom(value: unknown, tag: string): { value?: RepairScopeItem[]; error?: string } {
+  if (!Array.isArray(value) || value.length === 0) {
+    return { error: "repair scope must be a non-empty array" };
+  }
+  const scope: RepairScopeItem[] = [];
+  for (const raw of value) {
+    const parsed = repairScopeItemFrom(raw, tag);
+    if (parsed.value === undefined) {
+      return { error: parsed.error };
+    }
+    scope.push(parsed.value);
+  }
+  const keys = scope.map(repairScopeKey);
+  if (new Set(keys).size !== keys.length) {
+    return { error: "repair scope items must be unique" };
+  }
+  return { value: sortRepairScope(scope) };
+}
+
+function repairLeaseFrom(value: unknown): { value?: RepairLeaseInput; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.owner) || !isEpoch(value.epoch)) {
+    return { error: "repair owner and non-negative safe-integer epoch are required" };
+  }
+  return { value: { owner: value.owner, epoch: value.epoch } };
+}
+
+function repairAcquireFrom(value: unknown, tag: string): { value?: RepairAcquireInput; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.owner)) {
+    return { error: "repair owner is required" };
+  }
+  const leaseMs = value.leaseMs ?? DEFAULT_REPAIR_LEASE_MS;
+  if (!isSafeInteger(leaseMs) || leaseMs <= 0 || leaseMs > MAX_REPAIR_LEASE_MS) {
+    return { error: `leaseMs must be a positive safe integer no greater than ${MAX_REPAIR_LEASE_MS}` };
+  }
+  const scope = repairScopeFrom(value.scope, tag);
+  return scope.value === undefined
+    ? { error: scope.error }
+    : { value: { owner: value.owner, leaseMs, scope: scope.value } };
+}
+
+function repairScopeUnionFrom(value: unknown, tag: string): { value?: RepairScopeUnionInput; error?: string } {
+  const lease = repairLeaseFrom(value);
+  if (lease.value === undefined || !isObject(value)) {
+    return { error: lease.error };
+  }
+  const scope = repairScopeFrom(value.scope, tag);
+  return scope.value === undefined ? { error: scope.error } : { value: { ...lease.value, scope: scope.value } };
+}
+
+function repairApplyFrom(value: unknown, tag: string): { value?: RepairApplyInput; error?: string } {
+  const lease = repairLeaseFrom(value);
+  if (lease.value === undefined || !isObject(value)) {
+    return { error: lease.error };
+  }
+  const item = repairScopeItemFrom(value.item, tag);
+  return item.value === undefined ? { error: item.error } : { value: { ...lease.value, item: item.value } };
+}
+
+function repairAuditFrom(value: unknown, tag: string): { value?: RepairAuditInput; error?: string } {
+  const apply = repairApplyFrom(value, tag);
+  if (apply.value === undefined || !isObject(value) || !isNonEmptyString(value.actor)) {
+    return { error: apply.error ?? "audit actor is required" };
+  }
+  return { value: { ...apply.value, actor: value.actor } };
+}
+
+function repairClearFrom(value: unknown): { value?: RepairClearInput; error?: string } {
+  const lease = repairLeaseFrom(value);
+  if (
+    lease.value === undefined ||
+    !isObject(value) ||
+    !isNonEmptyString(value.attemptId) ||
+    !isNonNegativeInteger(value.scopeVersion)
+  ) {
+    return { error: lease.error ?? "attemptId and scopeVersion are required" };
+  }
+  return { value: { ...lease.value, attemptId: value.attemptId, scopeVersion: value.scopeVersion } };
+}
+
 function epochFor(entries: TagEpoch[], attemptId: string): number | undefined {
   return entries.find((entry) => entry.attemptId === attemptId)?.epoch;
 }
@@ -282,6 +433,87 @@ function withoutFence(entries: TagFence[], reason: string, attemptId: string): T
   return entries.filter((entry) => entry.reason !== reason || entry.attemptId !== attemptId);
 }
 
+function repairScopeKey(item: RepairScopeItem): string {
+  return `${item.attemptId}\u0000${item.eventId}\u0000${item.suid}`;
+}
+
+function sortRepairScope(scope: RepairScopeItem[]): RepairScopeItem[] {
+  return [...scope].sort((left, right) => {
+    if (left.suid !== right.suid) {
+      return left.suid < right.suid ? -1 : 1;
+    }
+    const leftKey = repairScopeKey(left);
+    const rightKey = repairScopeKey(right);
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+}
+
+function unionRepairScope(existing: RepairScopeItem[], incoming: RepairScopeItem[]): RepairScopeItem[] {
+  const byKey = new Map(existing.map((item) => [repairScopeKey(item), item]));
+  for (const item of incoming) {
+    const key = repairScopeKey(item);
+    const previous = byKey.get(key);
+    if (previous !== undefined && (
+      previous.payload !== item.payload ||
+      previous.eventTags.join("\u0000") !== item.eventTags.join("\u0000")
+    )) {
+      // A scope cannot silently change the durable candidate it authorizes.
+      throw new Error("Repair scope candidate identity conflict");
+    }
+    byKey.set(key, item);
+  }
+  return sortRepairScope([...byKey.values()]);
+}
+
+function repairScopeContains(scope: RepairScopeItem[], item: RepairScopeItem): boolean {
+  return scope.some((candidate) =>
+    repairScopeKey(candidate) === repairScopeKey(item) &&
+    candidate.payload === item.payload &&
+    candidate.eventTags.join("\u0000") === item.eventTags.join("\u0000"),
+  );
+}
+
+function repairFactsDefault(): RepairFacts {
+  return { resolutions: [], audits: [] };
+}
+
+function repairResolutionFor(
+  facts: RepairFacts,
+  item: RepairScopeItem,
+): RepairResolution | undefined {
+  return facts.resolutions.find((resolution) =>
+    resolution.attemptId === item.attemptId &&
+    resolution.eventId === item.eventId &&
+    resolution.suid === item.suid,
+  );
+}
+
+function repairAuditFor(facts: RepairFacts, item: RepairScopeItem): RepairAudit | undefined {
+  return facts.audits.find((audit) =>
+    audit.attemptId === item.attemptId && audit.eventId === item.eventId && audit.suid === item.suid,
+  );
+}
+
+function hasSegmentRotationFence(record: TagRecord): boolean {
+  return record.fences.some((fence) => fence.reason === SEGMENT_ROTATION_FENCE_REASON);
+}
+
+function repairLeaseRejection(record: TagRecord, owner: string, epoch: number): string | undefined {
+  if (hasSegmentRotationFence(record)) {
+    return "segment_rotation_fence_held";
+  }
+  if (record.repairOwner !== owner) {
+    return "repair_owner_mismatch";
+  }
+  if (record.highestRepairEpoch !== epoch) {
+    return epoch < record.highestRepairEpoch ? "stale_repair_epoch" : "repair_epoch_mismatch";
+  }
+  if (record.repairLeaseUntil === null || logicalNow(record) >= record.repairLeaseUntil) {
+    return "repair_lease_expired";
+  }
+  return undefined;
+}
+
 function latestFenceEpoch(record: TagRecord, reason: string, attemptId: string): number | undefined {
   const epochs = [
     fenceFor(record.fences, reason, attemptId)?.epoch,
@@ -311,11 +543,28 @@ function newRecord(tag: string): TagRecord {
     confirmations: [],
     fences: [],
     clearedFences: [],
+    repairOwner: null,
+    repairLeaseUntil: null,
+    highestRepairEpoch: 0,
+    repairScope: [],
+    repairScopeVersion: 0,
     clockOffsetMs: 0,
     clockNowMs: null,
     version: 0,
     createdAt: timestamp,
     updatedAt: timestamp,
+  };
+}
+
+/** Older G5 records are normalized lazily without widening their public wire. */
+function normalizeRepairRecord(record: TagRecord): TagRecord {
+  return {
+    ...record,
+    repairOwner: record.repairOwner ?? null,
+    repairLeaseUntil: record.repairLeaseUntil ?? null,
+    highestRepairEpoch: record.highestRepairEpoch ?? 0,
+    repairScope: record.repairScope ?? [],
+    repairScopeVersion: record.repairScopeVersion ?? 0,
   };
 }
 
@@ -457,8 +706,11 @@ export class TagDurableObject implements DurableObject {
         return error(404, "tag_not_found", "Tag has no durable state yet");
       }
       return record.tag === tag
-        ? json(record)
+        ? json(normalizeRepairRecord(record))
         : error(409, "tag_identity_conflict", "Tag Durable Object identity changed");
+    }
+    if (request.method === "GET" && url.pathname === "/repair/facts") {
+      return this.repairFacts(tag);
     }
     if (request.method === "POST" && url.pathname === "/debug/alarm") {
       const record = await this.runAlarm();
@@ -490,6 +742,24 @@ export class TagDurableObject implements DurableObject {
     if (request.method === "POST" && url.pathname === "/fence/clear") {
       return this.clearFence(tag, body);
     }
+    if (request.method === "POST" && url.pathname === "/repair/acquire") {
+      return this.acquireRepairLease(tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/repair/renew") {
+      return this.renewRepairLease(tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/repair/scope-union") {
+      return this.unionRepairScope(tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/repair/apply") {
+      return this.applyRepair(tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/repair/audit") {
+      return this.auditRepair(tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/repair/clear") {
+      return this.clearRepairFence(tag, body);
+    }
     if (request.method === "POST" && url.pathname === "/debug/clock") {
       return this.setClockOffset(tag, body);
     }
@@ -516,7 +786,7 @@ export class TagDurableObject implements DurableObject {
     if (existing !== undefined && existing.tag !== tag) {
       throw new Error("Tag Durable Object identity changed");
     }
-    return { record: existing ?? newRecord(tag), exists: existing !== undefined };
+    return { record: normalizeRepairRecord(existing ?? newRecord(tag)), exists: existing !== undefined };
   }
 
   private async write(txn: DurableObjectTransaction, record: TagRecord): Promise<void> {
@@ -970,6 +1240,339 @@ export class TagDurableObject implements DurableObject {
         clearedFences: withFence(record.clearedFences, fence),
       });
       return { status: 200, body: { status: "fence-cleared", idempotent: false, version: updated.version } };
+    });
+    return json(result.body, result.status);
+  }
+
+  /**
+   * Returns Tag-side repair facts only.  Journal observations are deliberately
+   * absent: they are progress telemetry and can never grant repair authority.
+   */
+  private async repairFacts(tag: string): Promise<Response> {
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const record = await txn.get<TagRecord>(TAG_KEY);
+      if (record === undefined) {
+        return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+      }
+      const normalized = normalizeRepairRecord(record);
+      if (normalized.tag !== tag) {
+        return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
+      }
+      const facts = (await txn.get<RepairFacts>(REPAIR_FACTS_KEY)) ?? repairFactsDefault();
+      return {
+        status: 200,
+        body: {
+          tag: normalized.tag,
+          head: normalized.head,
+          version: normalized.version,
+          events: normalized.events,
+          outbox: normalized.outbox,
+          fences: normalized.fences,
+          clearedFences: normalized.clearedFences,
+          repairOwner: normalized.repairOwner,
+          repairLeaseUntil: normalized.repairLeaseUntil,
+          highestRepairEpoch: normalized.highestRepairEpoch,
+          repairScope: normalized.repairScope,
+          repairScopeVersion: normalized.repairScopeVersion,
+          facts,
+        },
+      };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async acquireRepairLease(tag: string, body: unknown): Promise<Response> {
+    const parsed = repairAcquireFrom(body, tag);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_acquire", parsed.error ?? "Invalid repair acquire request");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag);
+      const record = loaded.record;
+      if (hasSegmentRotationFence(record)) {
+        return repairRejected("segment_rotation_fence_held");
+      }
+      if (input.scope.some((item) =>
+        fenceFor(record.fences, PARTIAL_WRITE_FENCE_REASON, item.attemptId) === undefined,
+      )) {
+        return repairRejected("partial_write_fence_required");
+      }
+      const leaseIsLive =
+        record.repairOwner !== null &&
+        record.repairLeaseUntil !== null &&
+        logicalNow(record) < record.repairLeaseUntil;
+      if (leaseIsLive) {
+        return repairRejected("repair_lease_live");
+      }
+      if (record.highestRepairEpoch >= MAX_EPOCH) {
+        return repairRejected("repair_epoch_exhausted", 422);
+      }
+      let scope: RepairScopeItem[];
+      try {
+        scope = unionRepairScope(record.repairScope, input.scope);
+      } catch {
+        return repairRejected("repair_scope_identity_conflict");
+      }
+      const epoch = record.highestRepairEpoch + 1;
+      const updated = await this.commit(txn, record, {
+        repairOwner: input.owner,
+        repairLeaseUntil: logicalNow(record) + input.leaseMs,
+        highestRepairEpoch: epoch,
+        repairScope: scope,
+        repairScopeVersion: record.repairScopeVersion + 1,
+      });
+      return {
+        status: 201,
+        body: {
+          status: "repair-lease-acquired",
+          owner: updated.repairOwner,
+          epoch: updated.highestRepairEpoch,
+          leaseUntil: updated.repairLeaseUntil,
+          scopeVersion: updated.repairScopeVersion,
+        },
+      };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async renewRepairLease(tag: string, body: unknown): Promise<Response> {
+    const parsed = repairLeaseFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_renew", parsed.error ?? "Invalid repair renew request");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag);
+      const record = loaded.record;
+      const leaseError = repairLeaseRejection(record, input.owner, input.epoch);
+      if (leaseError !== undefined) {
+        return repairRejected(leaseError);
+      }
+      const updated = await this.commit(txn, record, {
+        repairLeaseUntil: logicalNow(record) + DEFAULT_REPAIR_LEASE_MS,
+      });
+      return {
+        status: 200,
+        body: {
+          status: "repair-lease-renewed",
+          owner: updated.repairOwner,
+          epoch: updated.highestRepairEpoch,
+          leaseUntil: updated.repairLeaseUntil,
+          scopeVersion: updated.repairScopeVersion,
+        },
+      };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async unionRepairScope(tag: string, body: unknown): Promise<Response> {
+    const parsed = repairScopeUnionFrom(body, tag);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_scope_union", parsed.error ?? "Invalid repair scope union request");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag);
+      const record = loaded.record;
+      const leaseError = repairLeaseRejection(record, input.owner, input.epoch);
+      if (leaseError !== undefined) {
+        return repairRejected(leaseError);
+      }
+      if (input.scope.some((item) =>
+        fenceFor(record.fences, PARTIAL_WRITE_FENCE_REASON, item.attemptId) === undefined,
+      )) {
+        return repairRejected("partial_write_fence_required");
+      }
+      let scope: RepairScopeItem[];
+      try {
+        scope = unionRepairScope(record.repairScope, input.scope);
+      } catch {
+        return repairRejected("repair_scope_identity_conflict");
+      }
+      if (scope.length === record.repairScope.length) {
+        return {
+          status: 200,
+          body: { status: "repair-scope-unchanged", scopeVersion: record.repairScopeVersion },
+        };
+      }
+      const updated = await this.commit(txn, record, {
+        repairScope: scope,
+        repairScopeVersion: record.repairScopeVersion + 1,
+      });
+      return {
+        status: 200,
+        body: { status: "repair-scope-unioned", scopeVersion: updated.repairScopeVersion, scope: updated.repairScope },
+      };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async applyRepair(tag: string, body: unknown): Promise<Response> {
+    const parsed = repairApplyFrom(body, tag);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_apply", parsed.error ?? "Invalid repair apply request");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag);
+      const record = loaded.record;
+      const leaseError = repairLeaseRejection(record, input.owner, input.epoch);
+      if (leaseError !== undefined) {
+        return repairRejected(leaseError);
+      }
+      if (!repairScopeContains(record.repairScope, input.item)) {
+        return repairRejected("repair_scope_required");
+      }
+      if (fenceFor(record.fences, PARTIAL_WRITE_FENCE_REASON, input.item.attemptId) === undefined) {
+        return repairRejected("partial_write_fence_required");
+      }
+
+      const facts = (await txn.get<RepairFacts>(REPAIR_FACTS_KEY)) ?? repairFactsDefault();
+      const prior = repairResolutionFor(facts, input.item);
+      if (prior !== undefined) {
+        return {
+          status: 200,
+          body: { status: prior.branch, idempotent: true, head: record.head, version: record.version },
+        };
+      }
+
+      const existing = record.events.find((event) => event.eventId === input.item.eventId);
+      let branch: RepairBranch;
+      let updatedRecord: TagRecord | undefined;
+      if (existing !== undefined) {
+        branch = existing.payload === input.item.payload && existing.suid === input.item.suid
+          ? "ROLLED_FORWARD"
+          : "FAILED_CLOSED";
+      } else if (record.head < input.item.suid) {
+        branch = "ROLLED_FORWARD";
+        updatedRecord = changed(record, {
+          head: input.item.suid,
+          events: [...record.events, {
+            attemptId: input.item.attemptId,
+            eventId: input.item.eventId,
+            suid: input.item.suid,
+            payload: input.item.payload,
+            eventTags: input.item.eventTags,
+          }],
+          outbox: [...record.outbox, {
+            attemptId: input.item.attemptId,
+            eventId: input.item.eventId,
+            suid: input.item.suid,
+            payload: input.item.payload,
+          }],
+        });
+      } else if (record.head > input.item.suid) {
+        // The exclusion audit is stored separately so Branch B cannot advance
+        // head or version merely by recording its durable decision.
+        branch = "EXCLUDED_AUDITED";
+      } else {
+        branch = "FAILED_CLOSED";
+      }
+
+      const resolution: RepairResolution = {
+        attemptId: input.item.attemptId,
+        eventId: input.item.eventId,
+        suid: input.item.suid,
+        branch,
+        epoch: input.epoch,
+        owner: input.owner,
+        recordedAt: nowIso(),
+      };
+      await txn.put(REPAIR_FACTS_KEY, {
+        ...facts,
+        resolutions: [...facts.resolutions, resolution],
+      } satisfies RepairFacts);
+      if (updatedRecord !== undefined) {
+        await this.write(txn, updatedRecord);
+      }
+      return {
+        status: 200,
+        body: { status: branch, idempotent: false, head: (updatedRecord ?? record).head, version: (updatedRecord ?? record).version },
+      };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async auditRepair(tag: string, body: unknown): Promise<Response> {
+    const parsed = repairAuditFrom(body, tag);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_audit", parsed.error ?? "Invalid repair audit request");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag);
+      const record = loaded.record;
+      const leaseError = repairLeaseRejection(record, input.owner, input.epoch);
+      if (leaseError !== undefined) {
+        return repairRejected(leaseError);
+      }
+      const facts = (await txn.get<RepairFacts>(REPAIR_FACTS_KEY)) ?? repairFactsDefault();
+      const resolution = repairResolutionFor(facts, input.item);
+      if (resolution === undefined || resolution.branch === "FAILED_CLOSED") {
+        return repairRejected("repair_resolution_not_auditable");
+      }
+      if (resolution.branch === "ROLLED_FORWARD" && !record.outbox.some((row) =>
+        row.attemptId === input.item.attemptId &&
+        row.eventId === input.item.eventId &&
+        row.suid === input.item.suid &&
+        row.payload === input.item.payload,
+      )) {
+        return repairRejected("durable_outbox_required");
+      }
+      const prior = repairAuditFor(facts, input.item);
+      if (prior !== undefined) {
+        return { status: 200, body: { status: "repair-audited", idempotent: true, branch: prior.branch } };
+      }
+      const audit: RepairAudit = {
+        attemptId: input.item.attemptId,
+        eventId: input.item.eventId,
+        suid: input.item.suid,
+        branch: resolution.branch,
+        actor: input.actor,
+        epoch: input.epoch,
+        owner: input.owner,
+        recordedAt: nowIso(),
+      };
+      await txn.put(REPAIR_FACTS_KEY, { ...facts, audits: [...facts.audits, audit] } satisfies RepairFacts);
+      return { status: 200, body: { status: "repair-audited", idempotent: false, branch: audit.branch } };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async clearRepairFence(tag: string, body: unknown): Promise<Response> {
+    const parsed = repairClearFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_clear", parsed.error ?? "Invalid repair clear request");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag);
+      const record = loaded.record;
+      const leaseError = repairLeaseRejection(record, input.owner, input.epoch);
+      if (leaseError !== undefined) {
+        return repairRejected(leaseError);
+      }
+      if (record.repairScopeVersion !== input.scopeVersion) {
+        return repairRejected("repair_scope_snapshot_changed");
+      }
+      const exactFence = fenceFor(record.fences, PARTIAL_WRITE_FENCE_REASON, input.attemptId);
+      if (exactFence === undefined) {
+        return { status: 200, body: { status: "repair-fence-cleared", idempotent: true, version: record.version } };
+      }
+      const facts = (await txn.get<RepairFacts>(REPAIR_FACTS_KEY)) ?? repairFactsDefault();
+      const attemptScope = record.repairScope.filter((item) => item.attemptId === input.attemptId);
+      if (attemptScope.length === 0 || attemptScope.some((item) => {
+        const resolution = repairResolutionFor(facts, item);
+        return resolution === undefined || resolution.branch === "FAILED_CLOSED" || repairAuditFor(facts, item) === undefined;
+      })) {
+        return repairRejected("repair_scope_not_durably_resolved");
+      }
+      const updated = await this.commit(txn, record, {
+        fences: withoutFence(record.fences, PARTIAL_WRITE_FENCE_REASON, input.attemptId),
+        clearedFences: withFence(record.clearedFences, exactFence),
+      });
+      return { status: 200, body: { status: "repair-fence-cleared", idempotent: false, version: updated.version } };
     });
     return json(result.body, result.status);
   }

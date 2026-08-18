@@ -15,6 +15,8 @@ import {
   type ReconciliationFailureCause,
   type ReconciliationInput,
   type RequeriedRecord,
+  type RepairObservation,
+  type RepairObservationPhase,
   type ReservationFailure,
 } from "./types";
 
@@ -51,6 +53,8 @@ interface FaultInput extends CasExpectation {
 }
 
 interface ReservationFailureInput extends CasExpectation, ReservationFailure {}
+
+type RepairObservationInput = Omit<RepairObservation, "observedAt">;
 
 interface CommitRecoveryEnv {
   ALLOCATOR: DurableObjectNamespace;
@@ -583,6 +587,41 @@ function faultFrom(value: unknown): { value?: FaultInput; error?: string } {
   return { value: { ...expectation.value, faultsRemaining: value.faultsRemaining, alarmFaults } };
 }
 
+function repairObservationFrom(value: unknown): { value?: RepairObservationInput; error?: string } {
+  if (
+    !isObject(value) ||
+    !isNonEmptyString(value.owner) ||
+    !isNonNegativeInteger(value.epoch) ||
+    !isNonEmptyString(value.tag) ||
+    !isNonEmptyString(value.attemptId) ||
+    !isNonEmptyString(value.eventId) ||
+    !isNonEmptyString(value.suid) ||
+    (value.phase !== "PREPARED" && value.phase !== "VERIFIED" && value.phase !== "CLEARED")
+  ) {
+    return { error: "repair observation needs owner, epoch, tag, attemptId, eventId, suid, and phase" };
+  }
+  if (
+    value.branch !== undefined &&
+    value.branch !== "ROLLED_FORWARD" &&
+    value.branch !== "EXCLUDED_AUDITED" &&
+    value.branch !== "FAILED_CLOSED"
+  ) {
+    return { error: "repair observation branch is not recognized" };
+  }
+  return {
+    value: {
+      owner: value.owner,
+      epoch: value.epoch,
+      tag: value.tag,
+      attemptId: value.attemptId,
+      eventId: value.eventId,
+      suid: value.suid,
+      phase: value.phase as RepairObservationPhase,
+      ...(value.branch === undefined ? {} : { branch: value.branch }),
+    },
+  };
+}
+
 /**
  * Per-commit-attempt durable state machine. Its HTTP surface is an internal
  * test/control boundary; the five Serialized DCB V1 HTTP endpoints remain a
@@ -610,6 +649,12 @@ export class JournalDurableObject implements DurableObject {
       }
       return json(record.terminalResponse);
     }
+    if (request.method === "GET" && path === "/repair/workset") {
+      return this.repairWorkset();
+    }
+    if (request.method === "GET" && path === "/repair/observations") {
+      return this.repairObservations();
+    }
 
     const body = await this.jsonBody(request);
     if (body === undefined) {
@@ -634,6 +679,9 @@ export class JournalDurableObject implements DurableObject {
     if (request.method === "POST" && path === "/fault") {
       return this.setFaults(body);
     }
+    if (request.method === "POST" && path === "/repair/observation") {
+      return this.recordRepairObservation(body);
+    }
     if (request.method === "POST" && path === "/debug/alarm") {
       if (isObject(body) && body.clearTestFenceNotDurable === true) {
         await this.clearTestFenceNotDurableFault();
@@ -651,6 +699,33 @@ export class JournalDurableObject implements DurableObject {
 
   private async readRecord(): Promise<JournalRecord | undefined> {
     return this.ctx.storage.get<JournalRecord>(JOURNAL_KEY);
+  }
+
+  private async repairWorkset(): Promise<Response> {
+    const record = await this.readRecord();
+    if (record === undefined) {
+      return error(404, "journal_not_found", "Journal has not been admitted");
+    }
+    if (record.state !== "PARTIAL") {
+      return error(409, "journal_not_partial", "Repair work is available only for a PARTIAL Journal outcome");
+    }
+    const vector = record.reconciliation?.allocatorVector;
+    if (vector === undefined || vector.length !== record.candidates.length) {
+      return error(409, "repair_workset_indeterminate", "PARTIAL Journal lacks its durable allocator vector");
+    }
+    return json({
+      attemptId: record.commitContext?.attemptId,
+      missingTags: record.reconciliation?.missingTags ?? [],
+      candidates: record.candidates.map((candidate, index) => ({ ...candidate, suid: vector[index]! })),
+    });
+  }
+
+  private async repairObservations(): Promise<Response> {
+    const record = await this.readRecord();
+    if (record === undefined) {
+      return error(404, "journal_not_found", "Journal has not been admitted");
+    }
+    return json({ observations: record.repairObservations ?? [] });
   }
 
   /** Releases the private fence fault after the response-boundary oracle has observed it. */
@@ -714,6 +789,7 @@ export class JournalDurableObject implements DurableObject {
         faultsRemaining: 0,
         alarmFaults: [],
         terminalResponse: null,
+        repairObservations: [],
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -731,6 +807,62 @@ export class JournalDurableObject implements DurableObject {
       return error(503, "simulated_admission_crash", "Simulated interruption after durable admission");
     }
     return json(result.record, 201);
+  }
+
+  private async recordRepairObservation(body: unknown): Promise<Response> {
+    const parsed = repairObservationFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_repair_observation", parsed.error ?? "Invalid repair observation");
+    }
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
+      if (record === undefined) {
+        return { ok: false, status: 404, error: "Journal has not been admitted" };
+      }
+      if (record.state !== "PARTIAL") {
+        return { ok: false, status: 409, error: "Repair observations are valid only for a PARTIAL Journal outcome" };
+      }
+      // The Journal only records observations for its admitted candidate and
+      // durable SUID.  This keeps progress useful without making it authority.
+      const candidateIndex = record.candidates.findIndex((candidate) =>
+        candidate.eventId === input.eventId && candidate.payload !== undefined && candidate.tags.includes(input.tag),
+      );
+      const vector = record.reconciliation?.allocatorVector;
+      if (
+        input.attemptId !== record.commitContext?.attemptId ||
+        candidateIndex < 0 ||
+        vector === undefined ||
+        vector[candidateIndex] !== input.suid
+      ) {
+        return { ok: false, status: 422, error: "Repair observation does not match the durable PARTIAL workset" };
+      }
+      const observations = record.repairObservations ?? [];
+      const alreadyRecorded = observations.some((observation) =>
+        observation.owner === input.owner &&
+        observation.epoch === input.epoch &&
+        observation.tag === input.tag &&
+        observation.attemptId === input.attemptId &&
+        observation.eventId === input.eventId &&
+        observation.suid === input.suid &&
+        observation.phase === input.phase &&
+        observation.branch === input.branch,
+      );
+      if (alreadyRecorded) {
+        return { ok: true, record };
+      }
+      const updated: JournalRecord = {
+        ...record,
+        repairObservations: [...observations, { ...input, observedAt: nowIso() }],
+        version: record.version + 1,
+        updatedAt: nowIso(),
+      };
+      await txn.put(JOURNAL_KEY, updated);
+      return { ok: true, record: updated };
+    });
+    return result.ok
+      ? json({ status: "repair-observation-recorded", observations: result.record.repairObservations ?? [] })
+      : error(result.status, "repair_observation_rejected", result.error);
   }
 
   private async transition(body: unknown): Promise<Response> {
