@@ -250,6 +250,75 @@ describe("SDT-G10 materialized views", () => {
     });
   });
 
+  it("rejects a second reset as a typed no-op and leaves durable state unchanged", async () => {
+    const serviceId = unique("mv-reset-noop-service");
+    const clock = mutableClock(1_000);
+    const event = message(
+      serviceId,
+      unique("mv-reset-noop-event"),
+      "suid-00000000000000000000000000000001",
+      `orders:${unique("mv-reset-noop")}`,
+      900,
+    );
+
+    await withPostgresStore(async (store) => {
+      await injectDelivery(store, event, clock.clock);
+      const runtime = new MaterializedViewRuntime(store);
+      await runtime.build(serviceId, EVENT_LIST_VIEW, 21_000);
+      await runtime.reset(serviceId, EVENT_LIST_VIEW, 21_001);
+
+      const viewId = materializedViewId(EVENT_LIST_VIEW.id);
+      const beforeRejectedReset = await store.readProjectionCheckpoint(serviceId, viewId);
+      const stateBeforeRejectedReset = await runtime.read(serviceId, EVENT_LIST_VIEW);
+      expect(beforeRejectedReset).toMatchObject({ lastSuid: "", version: 0 });
+      expect(stateBeforeRejectedReset?.state).toEqual({ eventIds: [], suids: [] });
+
+      await expect(runtime.reset(serviceId, EVENT_LIST_VIEW, 21_002)).rejects.toMatchObject({
+        name: MaterializedViewOperationError.name,
+        operation: "reset",
+        code: "MV_RESET_NOTHING_TO_RESET",
+      });
+      expect(await store.readProjectionCheckpoint(serviceId, viewId)).toEqual(beforeRejectedReset);
+      expect(await runtime.read(serviceId, EVENT_LIST_VIEW)).toEqual(stateBeforeRejectedReset);
+    });
+  });
+
+  it("rejects a second promote as a typed no-op and leaves the promoted checkpoint unchanged", async () => {
+    const serviceId = unique("mv-promote-noop-service");
+    const tag = `orders:${unique("mv-promote-noop")}`;
+    const clock = mutableClock(1_000);
+    const first = message(serviceId, unique("mv-promote-first"), "suid-00000000000000000000000000000001", tag, 900);
+    const second = message(serviceId, unique("mv-promote-second"), "suid-00000000000000000000000000000002", tag, 900);
+
+    await withPostgresStore(async (store) => {
+      await injectDelivery(store, first, clock.clock);
+      const runtime = new MaterializedViewRuntime(store);
+      await runtime.build(serviceId, EVENT_LIST_VIEW, 21_000);
+
+      clock.set(1_001);
+      await injectDelivery(store, second, clock.clock);
+      await runtime.rebuild(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_001);
+      await runtime.promote(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_002);
+
+      const viewId = materializedViewId(EVENT_LIST_VIEW.id);
+      const beforeRejectedPromote = await store.readProjectionCheckpoint(serviceId, viewId);
+      const stateBeforeRejectedPromote = await runtime.read(serviceId, EVENT_LIST_VIEW);
+      expect(beforeRejectedPromote).toMatchObject({ lastSuid: second.suid, version: 2 });
+      expect(stateBeforeRejectedPromote?.state).toEqual({
+        eventIds: [first.eventId, second.eventId],
+        suids: [first.suid, second.suid],
+      });
+
+      await expect(runtime.promote(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_003)).rejects.toMatchObject({
+        name: MaterializedViewOperationError.name,
+        operation: "promote",
+        code: "MV_PROMOTE_NOTHING_TO_PROMOTE",
+      });
+      expect(await store.readProjectionCheckpoint(serviceId, viewId)).toEqual(beforeRejectedPromote);
+      expect(await runtime.read(serviceId, EVENT_LIST_VIEW)).toEqual(stateBeforeRejectedPromote);
+    });
+  });
+
   it("fails closed with typed errors rather than acknowledging unavailable build, rebuild, reset, or promote operations", async () => {
     const serviceId = unique("mv-fail-closed-service");
     await withPostgresStore(async (store) => {
