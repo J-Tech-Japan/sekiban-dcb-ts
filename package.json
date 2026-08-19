@@ -30,7 +30,7 @@
     "typecheck": "npm run build:packages && tsc --noEmit",
     "test": "npm run build:packages && vitest run --config vitest.config.ts",
     "test:store-contract": "npm run build:packages && node scripts/store-contract.mjs",
-    "test:d1": "npm run build:packages && vitest run --config vitest.config.ts test/d1-pipeline.spec.ts",
+    "test:d1": "npm run build:packages && vitest run --config vitest.config.ts test/d1-pipeline.spec.ts && node scripts/d1-forced-failure.mjs",
     "test:cosmos": "npm run build:packages && node scripts/store-contract.mjs --require-real-cosmos",
     "test:cosmos-wiring": "node scripts/cosmos-ci-wiring-check.mjs",
     "test:local-pg": "docker compose up --wait postgres && npm test",
