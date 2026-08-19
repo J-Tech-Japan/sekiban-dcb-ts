@@ -15,7 +15,8 @@ import {
   type QueryEndpoint,
   type QueryRegistry,
 } from "../query/QueryRegistry";
-import { PostgresEventStore } from "../store/PostgresEventStore";
+import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
+import type { PipelineStore } from "../store/types";
 import { serviceIdForRequest } from "./testServiceId";
 
 export interface QueryWorkerEnv {
@@ -28,6 +29,7 @@ export interface QueryWorkerEnv {
 export interface QueryExecutionOptions {
   /** A read-only fake store keeps wait and paging tests deterministic. */
   store?: QueryProjectionStore;
+  storeProvider?: StoreProvider;
   registry?: QueryRegistry;
   projectors?: ProjectorRegistry;
   now?: () => number;
@@ -65,20 +67,12 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function connectionStringFrom(env: QueryWorkerEnv): string {
-  const connectionString = env.HYPERDRIVE?.connectionString ?? env.POSTGRES_URL;
-  if (connectionString === undefined || connectionString.length === 0) {
-    throw new Error("A Hyperdrive binding or POSTGRES_URL is required for serialized queries");
-  }
-  return connectionString;
-}
-
-function requestStore(env: QueryWorkerEnv): PostgresEventStore {
+function requestStore(env: QueryWorkerEnv, provider: StoreProvider): PipelineStore {
   // A postgres client is a request-scoped I/O object in workerd. Retaining it
   // across fetch handlers turns a later list-query into a cross-request I/O
   // violation, so the read-only query path intentionally creates one per HTTP
   // request rather than sharing the projection worker's scheduled-poll store.
-  return new PostgresEventStore(connectionStringFrom(env));
+  return provider.create(env);
 }
 
 function parseRequest(value: unknown): { value?: QueryRequest; error?: string } {
@@ -228,9 +222,12 @@ export async function handleSerializedQuery(
   }
 
   try {
-    const store = options.store ?? requestStore(env);
-    if (options.store === undefined) {
-      await (store as PostgresEventStore).initialize();
+    const requestStoreValue = options.store === undefined
+      ? requestStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER)
+      : undefined;
+    const store: QueryProjectionStore = options.store ?? requestStoreValue!;
+    if (requestStoreValue !== undefined) {
+      await requestStoreValue.initialize();
     }
     if (
       parsed.value.waitForSortableUniqueId !== undefined &&

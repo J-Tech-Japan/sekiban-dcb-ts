@@ -26,12 +26,17 @@ const clientPackage = JSON.parse(await readFile(`${root}packages/dcb-client/pack
 assert.deepEqual(Object.keys(corePackage.dependencies ?? {}), [], "dcb-core must have no runtime dependencies");
 assert.deepEqual(Object.keys(runtimePackage.dependencies ?? {}), ["@sekiban/dcb-core"], "runtime may depend only on core");
 assert.deepEqual(Object.keys(clientPackage.dependencies ?? {}), ["@sekiban/dcb-core"], "client may depend only on core");
+assert.ok(runtimePackage.exports?.["./cosmos"], "Cosmos must be an explicit runtime export subpath");
 const runtimeIndex = await readFile(`${root}packages/dcb-runtime/src/index.ts`, "utf8");
 assert.match(runtimeIndex, /export function createRuntimeWorker/, "runtime must expose the public registration API");
 assert.doesNotMatch(runtimeIndex, /export .*ProjectorRegistry|export .*QueryRegistry/, "runtime registries must remain private");
+const cosmosSource = await readFile(`${root}packages/dcb-runtime/src/store/CosmosEventStore.ts`, "utf8");
+assert.doesNotMatch(cosmosSource, /x-sdt-g11-service-id|x-sdt-g9-test-service-id|x-sdt-g4-test-service-id/, "Cosmos storage cannot select a namespace through internal headers");
+const cosmosProvider = await readFile(`${root}packages/dcb-runtime/src/cosmos.ts`, "utf8");
+assert.doesNotMatch(cosmosProvider, /Request|headers|serviceId.*header/i, "Cosmos provider selection must be composition-only, never request-header driven");
 const sampleFiles = await sourceFiles(`${root}samples/meeting-room/src`);
 for (const file of sampleFiles) {
   const source = await readFile(file, "utf8");
   assert.doesNotMatch(source, /\.\.\/\.\.\/packages\/|packages\/[^/]+\/src\//, `sample deep import boundary: ${file}`);
 }
-console.log("SDT-G13/G14 package-boundary fixture passed: core is platform independent, runtime registration stays private, and sample consumes public entrypoints");
+console.log("SDT-G13/G14/G12 package-boundary fixture passed: core is platform independent, runtime registration stays private, Cosmos is opt-in, and sample consumes public entrypoints");

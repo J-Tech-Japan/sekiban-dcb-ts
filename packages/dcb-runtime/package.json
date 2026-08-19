@@ -9,12 +9,16 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./cosmos": {
+      "types": "./dist/cosmos.d.ts",
+      "import": "./dist/cosmos.js"
     }
   },
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:postgres --outfile=dist/index.js",
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:postgres --outfile=dist/index.js && esbuild src/cosmos.ts --bundle --format=esm --platform=neutral --external:postgres --outfile=dist/cosmos.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

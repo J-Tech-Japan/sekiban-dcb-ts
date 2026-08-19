@@ -1,6 +1,7 @@
 import type { PipelineClock } from "../downstream/types";
 import { systemPipelineClock } from "../downstream/types";
-import { PostgresEventStore } from "../store/PostgresEventStore";
+import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
+import type { PipelineStore } from "../store/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
   tagStateIdentityFrom,
@@ -18,7 +19,8 @@ export interface LiveProjectionEnv {
 
 export interface ProjectionPollOptions {
   clock?: PipelineClock;
-  store?: PostgresEventStore;
+  store?: PipelineStore;
+  storeProvider?: StoreProvider;
   registry?: ProjectorRegistry;
   /** Test-only service isolation; production scheduled polls use the V1 default. */
   serviceId?: string;
@@ -26,19 +28,10 @@ export interface ProjectionPollOptions {
   tag?: string;
 }
 
-function connectionStringFrom(env: LiveProjectionEnv): string {
-  const connectionString = env.HYPERDRIVE?.connectionString ?? env.POSTGRES_URL;
-  if (connectionString === undefined || connectionString.length === 0) {
-    throw new Error("A Hyperdrive binding or POSTGRES_URL is required for live projections");
-  }
-  return connectionString;
-}
-
-function sharedStore(env: LiveProjectionEnv): PostgresEventStore {
-  const connectionString = connectionStringFrom(env);
-  // Hyperdrive/Postgres sockets are request-scoped in workerd. A retained
-  // client can otherwise be used by a later cron/Queue request.
-  return new PostgresEventStore(connectionString);
+function sharedStore(env: LiveProjectionEnv, provider: StoreProvider): PipelineStore {
+  // Provider clients are request-scoped in workerd; a retained client can
+  // otherwise be used by a later cron/Queue request.
+  return provider.create(env);
 }
 
 function json(body: unknown, status = 200): Response {
@@ -60,7 +53,7 @@ export async function pollLiveProjections(
   env: LiveProjectionEnv,
   options: ProjectionPollOptions = {},
 ): Promise<CatchUpResult[]> {
-  const store = options.store ?? sharedStore(env);
+  const store = options.store ?? sharedStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER);
   await store.initialize();
   const runtime = new ProjectionRuntime(store, options.registry ?? DEPLOYED_PROJECTOR_REGISTRY);
   if (options.tag !== undefined) {
@@ -89,6 +82,7 @@ export async function handleProjectionLag(
   request: Request,
   env: LiveProjectionEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
+  storeProvider: StoreProvider = POSTGRES_STORE_PROVIDER,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return error(405, "validation_error", "Projection lag requires GET");
@@ -105,7 +99,7 @@ export async function handleProjectionLag(
     return error(400, "validation_error", parsed.error ?? "Invalid tagStateId");
   }
   try {
-    const store = sharedStore(env);
+    const store = sharedStore(env, storeProvider);
     await store.initialize();
     if (pollRequested) {
       // The operator probe names one tag-state. Catch up only that identity;

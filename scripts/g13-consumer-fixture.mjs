@@ -16,6 +16,12 @@ for (const packageDirectory of packageNames) {
   await readFile(`${root}packages/${packageDirectory}/${packageJson.types}`, "utf8");
   await assert.rejects(import(`${packageName}/dist/index.js`), /not exported|ERR_PACKAGE_PATH_NOT_EXPORTED/);
   await import(packageName);
+  if (packageName === "@sekiban/dcb-runtime") {
+    assert.ok(packageJson.exports?.["./cosmos"], "runtime Cosmos provider must use an explicit public subpath");
+    await readFile(`${root}packages/${packageDirectory}/${packageJson.exports["./cosmos"].types}`, "utf8");
+    await import(`${packageName}/cosmos`);
+    await assert.rejects(import(`${packageName}/dist/cosmos.js`), /not exported|ERR_PACKAGE_PATH_NOT_EXPORTED/);
+  }
 }
 
 const sampleSource = `${root}samples/meeting-room/src`;
@@ -36,6 +42,8 @@ for (const file of sampleEntries) {
 }
 const runtimeModule = await import("@sekiban/dcb-runtime");
 assert.equal(typeof runtimeModule.createRuntimeWorker, "function", "runtime public registration API is required");
+assert.equal(runtimeModule.CosmosEventStore, undefined, "default runtime entrypoint must not pull Cosmos into the Postgres composition");
+assert.equal(runtimeModule.CosmosRestClient, undefined, "Cosmos REST client must remain explicit-subpath opt-in");
 
 const bundled = await build({
   stdin: {
@@ -52,4 +60,4 @@ const bundled = await build({
 const output = bundled.outputFiles?.[0]?.text ?? "";
 assert.match(output, /g.*c/);
 assert.ok(!output.includes("Cyclic JSON value"), "unused core validation code should be tree-shaken");
-console.log("SDT-G13/G14 consumer fixtures passed: public entrypoints, registration API, deep-import rejection, tree shaking");
+console.log("SDT-G13/G14/G12 consumer fixtures passed: public entrypoints, Cosmos subpath, registration API, deep-import rejection, tree shaking");
