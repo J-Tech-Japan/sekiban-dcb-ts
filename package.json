@@ -31,6 +31,7 @@
     "test": "npm run build:packages && vitest run --config vitest.config.ts",
     "test:store-contract": "npm run build:packages && node scripts/store-contract.mjs",
     "test:d1": "npm run build:packages && vitest run --config vitest.config.ts test/d1-pipeline.spec.ts",
+    "test:mv": "npm run build:packages && vitest run --config vitest.config.ts test/g19-materializer.spec.ts test/d1-mv.spec.ts",
     "test:cosmos": "npm run build:packages && node scripts/store-contract.mjs --require-real-cosmos",
     "test:cosmos-wiring": "node scripts/cosmos-ci-wiring-check.mjs",
     "test:local-pg": "docker compose up --wait postgres && npm test",
@@ -39,7 +40,7 @@
     "test:g17": "npm run build:packages && vitest run --config vitest.config.ts test/g17-lineage.spec.ts",
     "test:g17:rollout-order": "node scripts/g17-rollout-order-fixture.mjs",
     "test:watch": "vitest --config vitest.config.ts",
-    "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer"
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.21.3",

@@ -28,6 +28,8 @@ assert.deepEqual(Object.keys(runtimePackage.dependencies ?? {}), ["@sekiban/dcb-
 assert.deepEqual(Object.keys(clientPackage.dependencies ?? {}), ["@sekiban/dcb-core"], "client may depend only on core");
 assert.ok(runtimePackage.exports?.["./cosmos"], "Cosmos must be an explicit runtime export subpath");
 assert.ok(runtimePackage.exports?.["./d1"], "D1 must be an explicit runtime export subpath");
+assert.ok(runtimePackage.exports?.["./d1-mv"], "D1 MV must be an explicit runtime export subpath");
+assert.ok(runtimePackage.exports?.["./mv"], "MV runtime types must be an explicit runtime export subpath");
 const runtimeIndex = await readFile(`${root}packages/dcb-runtime/src/index.ts`, "utf8");
 assert.match(runtimeIndex, /export function createRuntimeWorker/, "runtime must expose the public registration API");
 assert.doesNotMatch(runtimeIndex, /export .*ProjectorRegistry|export .*QueryRegistry/, "runtime registries must remain private");
