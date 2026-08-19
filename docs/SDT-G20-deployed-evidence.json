@@ -1,20 +1,135 @@
 {
   "task": "SDT-G20",
   "variant": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
-  "status": "candidate-awaiting-deployed-verification",
-  "secrets": "redacted",
+  "candidateCommit": "685f0098448f098814afe3c3de57c881e8d5f7a0",
+  "sourceCommit": "685f0098448f098814afe3c3de57c881e8d5f7a0",
+  "status": "verified",
+  "candidateDeployment": {
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "candidateVersion": "2bf19d80-c2b8-4af0-abe1-26d245fad3a6",
+    "restartVersion": "33add072-abbe-4271-bcbe-2ce1fa90102e",
+    "pipelineD1": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+    "materializedViewD1": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+    "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+    "externalDatabaseBindings": 0,
+    "hyperdriveCaching": "disabled"
+  },
+  "serviceIdentities": {
+    "configuredDeployment": "g20-c602ae96-bb70-47db-aaf2-c76862880629",
+    "authenticatedConformance": "g11-g14-db73bd6d892c4304",
+    "queryUiE2e": "g20-c602ae96-bb70-47db-aaf2-c76862880629",
+    "negativeOracleLineage": "g11-g20-neg-lineage-224d1e691a03",
+    "negativeOracleCollision": "g11-g20-neg-collision-a7fd7fcc9ec4",
+    "freshPerProbe": true
+  },
   "verification": {
-    "freshServiceId": "pending",
-    "authenticatedConformance": "pending",
-    "rawV1Authority": "pending",
-    "queryUiE2e": "pending",
-    "restartRerun": "pending",
-    "g17NegativeOracles": "pending"
+    "localRequiredLane": {
+      "command": "npm run test:g20",
+      "result": "pass",
+      "tests": 2,
+      "bothD1Bindings": true
+    },
+    "zeroExternalDbGate": {
+      "command": "npm run test:g20:gate",
+      "result": "pass",
+      "layers": ["bindingConfig", "importGraphMetafile", "builtOutput"],
+      "mutationProof": "each deliberate layer violation failed the gate"
+    },
+    "authenticatedConformance": {
+      "beforeRestart": "pass",
+      "afterRestart": "pass",
+      "rawV1Unauthenticated": {
+        "commit": 404,
+        "tag-latest-sortable": 404,
+        "tag-state": 404,
+        "query": 404,
+        "list-query": 404
+      },
+      "authenticatedV1": {
+        "commit": 200,
+        "tag-latest-sortable": 200,
+        "tag-state": 200,
+        "query": 200,
+        "list-query": 200
+      },
+      "tagStateWireKeys": [
+        "lastSortedUniqueId",
+        "payload",
+        "projectorVersion",
+        "tagContent",
+        "tagGroup",
+        "tagPayloadName",
+        "tagProjector",
+        "version"
+      ],
+      "authorityProbe": {
+        "unauthenticatedCommandStatus": 200,
+        "attackerG11NamespaceExists": false,
+        "configuredNamespaceExists": true,
+        "clientHeaderForwarded": false
+      }
+    },
+    "queryUiE2e": {
+      "command": "npm run e2e:g20",
+      "result": "pass",
+      "reservationListStatus": 200,
+      "roomQueryStatus": 200,
+      "reservationCommitToVisibleMs": 33741.854,
+      "safeWindowBoundMs": 120000,
+      "pendingAtBoundMinusOne": "pending",
+      "timeoutAtBound": "timeout",
+      "visibleAtBoundWithEqualHead": "visible",
+      "rawV1Unauthenticated": "404 for all five paths"
+    },
+    "restartRerun": {
+      "method": "same candidate redeployed as a new Worker version",
+      "result": "pass",
+      "beforeReport": "authenticated conformance before-restart",
+      "afterReport": "authenticated conformance after-restart",
+      "samePersistentD1": true
+    },
+    "g17NegativeOracles": {
+      "method": "authenticated commit through a second candidate DO namespace; incident facts read from the shared pipeline D1",
+      "lineageMismatch": {
+        "result": "pass",
+        "classification": "LINEAGE_MISMATCH",
+        "serviceId": "g11-g20-neg-lineage-224d1e691a03",
+        "boundLineageId": "e640f036-cf33-42d2-87cc-801d54d1425f",
+        "incomingLineageId": "ff57bcd6-8786-40e9-8bef-67d6630d3413"
+      },
+      "suidCollision": {
+        "result": "pass",
+        "classification": "SUID_COLLISION",
+        "serviceId": "g11-g20-neg-collision-a7fd7fcc9ec4",
+        "suid": "suid-00000000000000000000000000000011",
+        "incomingEventId": "dcfa8778-ec0b-4ca5-8fef-0e4949e579ea"
+      },
+      "isolatedFreshServiceIds": true,
+      "duplicateIncidentCount": 0
+    },
+    "secretHandling": "pass-redacted",
+    "noExternalDatabaseSecretOrValueRecorded": true
   },
   "treeDigests": {
-    "runtime": "pending",
-    "configuration": "pending"
-  }
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "584a0a974b7538f6ee1a1ea197cbc571f658374175c327267bc7c986712195b1",
+    "runtimeRoots": ["packages/dcb-runtime/src", "packages/dcb-runtime/package.json"],
+    "configuration": "b80298eed790cfad652a5a286d23717f76b469fad1d893e43d33924081249bcb",
+    "configurationRoots": [
+      "samples/meeting-room/src/worker.cloudflare-only.ts",
+      "samples/meeting-room/src/d1-mv.ts",
+      "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+      "samples/meeting-room/README.md",
+      "README.md",
+      "package.json",
+      ".github/workflows/ci.yml",
+      "scripts/g20-cloudflare-gate.mjs",
+      "scripts/g20-candidate-check.mjs",
+      "scripts/deploy/g20-deploy.sh",
+      "scripts/deploy/g20-conformance.sh",
+      "scripts/deploy/g20-query-e2e.sh"
+    ]
+  },
+  "secrets": "redacted"
 }
