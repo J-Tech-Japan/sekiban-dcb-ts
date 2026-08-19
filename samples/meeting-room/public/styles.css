@@ -1,0 +1,14 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f5f7fb; color: #172033; }
+main { max-width: 64rem; margin: 0 auto; padding: 2rem 1rem 4rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+section { background: white; border: 1px solid #d9dfeb; border-radius: .75rem; padding: 1rem; box-shadow: 0 1px 3px #17203318; }
+label { display: block; margin-top: .65rem; font-size: .9rem; }
+input, button { box-sizing: border-box; width: 100%; padding: .6rem; margin-top: .25rem; border: 1px solid #aab4c6; border-radius: .4rem; font: inherit; }
+button { background: #2558a8; border-color: #2558a8; color: white; cursor: pointer; margin-top: 1rem; }
+button:hover { background: #1a4383; }
+#status { margin: 1rem 0; padding: .8rem; border-radius: .5rem; background: #e7edf7; }
+#status[data-kind="success"] { background: #dcf5e5; }
+#status[data-kind="pending"] { background: #fff2c7; }
+#status[data-kind="error"], #status[data-kind="timeout"] { background: #fde1e1; }
+#projection { min-height: 8rem; overflow: auto; white-space: pre-wrap; background: #101827; color: #d9e4f5; padding: 1rem; border-radius: .5rem; }

@@ -1,5 +1,47 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8"><title>Meeting room</title></head>
-  <body><main><h1>Meeting room sample</h1><p>Use the application command API to create and reserve a room.</p></main></body>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Meeting room · Serialized DCB</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main>
+      <h1>Meeting-room sample</h1>
+      <p>Commands use the application API. Projection visibility is decided by the V1 sortable-id head, not by a fixed delay.</p>
+      <div id="status" role="status" aria-live="polite">Ready</div>
+      <div class="grid">
+        <section>
+          <h2>Register a room</h2>
+          <form id="room-form">
+            <label>Room ID <input name="roomId" required autocomplete="off"></label>
+            <label>Name <input name="name" required autocomplete="off"></label>
+            <button type="submit">Create room</button>
+          </form>
+        </section>
+        <section>
+          <h2>Create / confirm reservation</h2>
+          <form id="reservation-form">
+            <label>Room ID <input name="roomId" required autocomplete="off"></label>
+            <label>Reservation ID <input name="reservationId" required autocomplete="off"></label>
+            <label>User ID <input name="userId" required autocomplete="off"></label>
+            <button type="submit">Create / confirm reservation</button>
+          </form>
+        </section>
+        <section>
+          <h2>Cancel reservation</h2>
+          <form id="cancel-form">
+            <label>Reservation ID <input name="reservationId" required autocomplete="off"></label>
+            <button type="submit">Cancel reservation</button>
+          </form>
+        </section>
+      </div>
+      <section>
+        <h2>Projected state</h2>
+        <pre id="projection">No command yet.</pre>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
 </html>

@@ -7,7 +7,12 @@ import {
   type Env as RuntimeEnv,
 } from "@sekiban/dcb-runtime";
 import { executeMeetingRoomCommand } from "./transport";
-import { meetingRoomDomain, meetingRoomRuntimeConfig } from "./domain";
+import {
+  meetingRoomDomain,
+  meetingRoomRuntimeConfig,
+  reservationTag,
+  roomTag,
+} from "./domain";
 
 export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
 
@@ -56,6 +61,68 @@ function resultResponse(result: ExecuteResult): Response {
     case "transport":
       return json({ error: result.error ?? "Command transport failed", code: result.code ?? "transport", ...body }, 502);
   }
+}
+
+function decodeProjectionPayload(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    const binary = atob(value);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return value;
+  }
+}
+
+async function readApplicationProjection(
+  request: Request,
+  env: MeetingRoomEnv,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  if (request.method !== "GET") return json({ error: "Projection routes require GET", code: "validation_error" }, 400);
+  const url = new URL(request.url);
+  const isRoom = url.pathname === "/api/read/room";
+  const isReservation = url.pathname === "/api/read/reservation";
+  if (!isRoom && !isReservation) return json({ error: "Projection route was not found", code: "not_found" }, 404);
+  const parameter = isRoom ? "roomId" : "reservationId";
+  const value = url.searchParams.get(parameter);
+  if (value === null || value.length === 0) return json({ error: `${parameter} is required`, code: "validation_error" }, 400);
+
+  const tag = isRoom ? roomTag(value) : reservationTag(value);
+  const tagProjector = isRoom ? "RoomProjector" : "ReservationProjector";
+  const runtimeFetcher = env.RUNTIME ?? {
+    fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => {
+      const inner = inputValue instanceof Request ? inputValue : new Request(inputValue, init);
+      return invokeRuntime(inner, env, ctx);
+    },
+  };
+  const response = await runtimeFetcher.fetch("https://runtime.internal/api/sekiban/serialized/tag-state", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ tagStateId: `${tag.id}:${tagProjector}` }),
+  });
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return json({ error: `Projection read returned HTTP ${response.status}`, code: "transport" }, 502);
+  }
+  if (response.status < 200 || response.status >= 300) return json(body, response.status);
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return json({ error: "Projection read returned an invalid body", code: "transport" }, 502);
+  }
+  const record = body as Record<string, unknown>;
+  if (typeof record.lastSortedUniqueId !== "string") {
+    return json({ error: "Projection read omitted lastSortedUniqueId", code: "transport" }, 502);
+  }
+  return json({
+    projection: isRoom ? "room" : "reservation",
+    [parameter]: value,
+    tagStateId: `${tag.id}:${tagProjector}`,
+    state: decodeProjectionPayload(record.payload),
+    version: record.version,
+    lastSortedUniqueId: record.lastSortedUniqueId,
+  });
 }
 
 async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext): Promise<Response> {
@@ -108,6 +175,9 @@ export function createMeetingRoomWorker(): ExportedHandler<MeetingRoomEnv> {
       }
       if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) {
         return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
+      }
+      if (path === "/api/read/room" || path === "/api/read/reservation") {
+        return readApplicationProjection(request, env, ctx);
       }
       if (path.startsWith("/api/commands/")) return commandRequest(request, env, ctx);
       if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
