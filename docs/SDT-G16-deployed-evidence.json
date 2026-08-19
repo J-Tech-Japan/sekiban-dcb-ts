@@ -18,8 +18,8 @@
     "roomQueryStatus": 200,
     "rawV1Unauthenticated": [404, 404, 404, 404, 404],
     "g17Isolation": "fresh PostgreSQL database; no retained allocator binding",
-    "ciExactHead": "7221754fd83c29b0714460cb5143afa13eb106",
-    "ciRun": "32264151634",
+    "ciExactHead": "580619f034e83e21b9cdc072048d9bd9a4002f89",
+    "ciRun": "32264507721",
     "ciVerify": "SUCCESS",
     "ciCosmosEmulator": "SUCCESS"
   },
