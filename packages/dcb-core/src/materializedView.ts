@@ -23,6 +23,21 @@ export interface MaterializedViewRowDelete {
   readonly rowKey: string;
 }
 
+/**
+ * A declarative partial-row mutation. The runtime applies `patch` with a
+ * database JSON function; it must not read/merge the row in TypeScript.
+ * When index entries are supplied, they replace this row's index entries in
+ * the same atomic batch. An empty list preserves existing entries.
+ */
+export interface MaterializedViewRowPatch {
+  readonly kind: "json_patch";
+  readonly rowKey: string;
+  readonly patch: JsonValue;
+  readonly rowVersion: number;
+  readonly sourceSuid: string;
+  readonly indexEntries: readonly MaterializedViewIndexEntryMutation[];
+}
+
 export interface MaterializedViewIndexEntryMutation {
   readonly indexId: string;
   readonly valueType: MaterializedViewIndexValueType;
@@ -43,6 +58,7 @@ export interface MaterializedViewIndexEntryDelete {
 export interface MaterializedViewMutationPlan {
   readonly rowUpserts: readonly MaterializedViewRowUpsert[];
   readonly rowDeletes: readonly MaterializedViewRowDelete[];
+  readonly rowPatches: readonly MaterializedViewRowPatch[];
   readonly indexEntries: readonly MaterializedViewIndexEntryMutation[];
   readonly indexDeletes: readonly MaterializedViewIndexEntryDelete[];
 }
@@ -63,6 +79,8 @@ export type MaterializedViewMaterializeResult =
       readonly upserts?: readonly MaterializedViewRowInput[];
       readonly rowDeletes?: readonly (string | MaterializedViewRowDelete)[];
       readonly deletes?: readonly (string | MaterializedViewRowDelete)[];
+      readonly rowPatches?: readonly MaterializedViewRowPatchInput[];
+      readonly patches?: readonly MaterializedViewRowPatchInput[];
       readonly indexEntries?: readonly MaterializedViewIndexEntryInput[];
       readonly indexDeletes?: readonly MaterializedViewIndexEntryDelete[];
     }
@@ -73,6 +91,15 @@ export interface MaterializedViewRowInput {
   readonly value: unknown;
   readonly rowVersion?: number;
   readonly sourceSuid?: string;
+}
+
+export interface MaterializedViewRowPatchInput {
+  readonly kind: "json_patch";
+  readonly rowKey: string;
+  readonly patch: unknown;
+  readonly rowVersion?: number;
+  readonly sourceSuid?: string;
+  readonly indexEntries?: readonly MaterializedViewIndexEntryInput[];
 }
 
 export interface MaterializedViewIndexEntryInput {
@@ -154,6 +181,62 @@ function normalizeRowDeletes(values: readonly (string | MaterializedViewRowDelet
   return Object.freeze([...keys].map((rowKey) => Object.freeze({ rowKey })));
 }
 
+function normalizeIndexEntries<TEvent>(
+  values: readonly MaterializedViewIndexEntryInput[],
+  descriptors: readonly MaterializedViewIndexDescriptor<TEvent>[],
+  rowKey?: string,
+): readonly MaterializedViewIndexEntryMutation[] {
+  const descriptorById = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
+  return Object.freeze(values.map((entry) => {
+    nonEmpty(entry.indexId, "MV_INDEX_ID_REQUIRED", "Index entry id is required");
+    const descriptor = descriptorById.get(entry.indexId);
+    if (descriptor === undefined) throw new Error(`MV_INDEX_UNDECLARED: ${entry.indexId}`);
+    nonEmpty(entry.rowKey, "MV_ROW_KEY_REQUIRED", "Index entry row key is required");
+    if (rowKey !== undefined && entry.rowKey !== rowKey) {
+      throw new Error(`MV_INDEX_ROW_KEY_MISMATCH: ${entry.indexId}`);
+    }
+    const valueType = entry.valueType ?? descriptor.valueType;
+    if (valueType !== descriptor.valueType) throw new Error(`MV_INDEX_VALUE_TYPE_MISMATCH: ${entry.indexId}`);
+    return Object.freeze({
+      indexId: entry.indexId,
+      valueType,
+      value: descriptorValue(descriptor, entry.value),
+      rowKey: entry.rowKey,
+    });
+  }));
+}
+
+function normalizeRowPatches<TEvent>(
+  values: readonly MaterializedViewRowPatchInput[],
+  descriptors: readonly MaterializedViewIndexDescriptor<TEvent>[],
+  event: TEvent,
+): readonly MaterializedViewRowPatch[] {
+  return Object.freeze(values.map((input) => {
+    nonEmpty(input.rowKey, "MV_ROW_KEY_REQUIRED", "Row patch key is required");
+    if (input.kind !== "json_patch") throw new Error(`MV_PATCH_KIND_INVALID: ${input.rowKey}`);
+    const patch = assertJsonValue(input.patch, "state-persistence");
+    if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+      throw new Error(`MV_PATCH_OBJECT_REQUIRED: ${input.rowKey}`);
+    }
+    const rowVersion = input.rowVersion ?? 1;
+    if (!Number.isSafeInteger(rowVersion) || rowVersion < 0) throw new Error(`MV_ROW_VERSION_INVALID: ${input.rowKey}`);
+    const sourceSuid = input.sourceSuid ?? (
+      typeof event === "object" && event !== null && "suid" in event && typeof (event as { suid?: unknown }).suid === "string"
+        ? (event as { suid: string }).suid
+        : ""
+    );
+    nonEmpty(sourceSuid, "MV_SOURCE_SUID_REQUIRED", `Source SUID is required for ${input.rowKey}`);
+    return Object.freeze({
+      kind: "json_patch" as const,
+      rowKey: input.rowKey,
+      patch,
+      rowVersion,
+      sourceSuid,
+      indexEntries: normalizeIndexEntries(input.indexEntries ?? [], descriptors, input.rowKey),
+    });
+  }));
+}
+
 function normalizePlan<TEvent>(
   result: MaterializedViewMaterializeResult,
   descriptors: readonly MaterializedViewIndexDescriptor<TEvent>[],
@@ -162,8 +245,10 @@ function normalizePlan<TEvent>(
   const value = result as Record<string, unknown>;
   const rawUpserts = (value.rowUpserts ?? value.upserts ?? []) as readonly MaterializedViewRowInput[];
   const rawDeletes = (value.rowDeletes ?? value.deletes ?? []) as readonly (string | MaterializedViewRowDelete)[];
+  const rawPatches = (value.rowPatches ?? value.patches ?? []) as readonly MaterializedViewRowPatchInput[];
   const rowUpserts = rawUpserts.map((row) => normalizeRowInput(row, event));
   const rowDeletes = normalizeRowDeletes(rawDeletes);
+  const rowPatches = normalizeRowPatches(rawPatches, descriptors, event);
   const descriptorById = new Map(descriptors.map((descriptor) => [descriptor.id, descriptor]));
   const explicitEntries = (value.indexEntries ?? []) as readonly MaterializedViewIndexEntryInput[];
   const generatedEntries: MaterializedViewIndexEntryMutation[] = [];
@@ -184,20 +269,7 @@ function normalizePlan<TEvent>(
       }));
     }
   }
-  for (const entry of explicitEntries) {
-    nonEmpty(entry.indexId, "MV_INDEX_ID_REQUIRED", "Index entry id is required");
-    const descriptor = descriptorById.get(entry.indexId);
-    if (descriptor === undefined) throw new Error(`MV_INDEX_UNDECLARED: ${entry.indexId}`);
-    nonEmpty(entry.rowKey, "MV_ROW_KEY_REQUIRED", "Index entry row key is required");
-    const valueType = entry.valueType ?? descriptor.valueType;
-    if (valueType !== descriptor.valueType) throw new Error(`MV_INDEX_VALUE_TYPE_MISMATCH: ${entry.indexId}`);
-    generatedEntries.push(Object.freeze({
-      indexId: entry.indexId,
-      valueType,
-      value: descriptorValue(descriptor, entry.value),
-      rowKey: entry.rowKey,
-    }));
-  }
+  generatedEntries.push(...normalizeIndexEntries(explicitEntries, descriptors));
   const indexDeletes = Object.freeze(((value.indexDeletes ?? []) as readonly MaterializedViewIndexEntryDelete[]).map((entry) => {
     nonEmpty(entry.rowKey, "MV_ROW_KEY_REQUIRED", "Index delete row key is required");
     if (entry.indexId !== undefined) {
@@ -209,6 +281,7 @@ function normalizePlan<TEvent>(
   return Object.freeze({
     rowUpserts: Object.freeze(rowUpserts),
     rowDeletes,
+    rowPatches,
     indexEntries: Object.freeze(generatedEntries),
     indexDeletes,
   });

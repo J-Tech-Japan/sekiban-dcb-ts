@@ -1,7 +1,7 @@
 import { BindingExclusionLedgerClient } from "./ExclusionLookup";
 import { InconsistencyDetector } from "./InconsistencyDetector";
 import { isDownstreamOutboxMessage, systemPipelineClock, type PipelineClock } from "./types";
-import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
+import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 
 export interface DownstreamAdapterEnv {
@@ -30,7 +30,10 @@ async function withStore<T>(
   options: AdapterOptions,
   operation: (store: PipelineStore, clock: PipelineClock) => Promise<T>,
 ): Promise<T> {
-  const store = options.store ?? sharedStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER);
+  if (options.store === undefined && options.storeProvider === undefined) {
+    throw new Error("A downstream store provider is not configured");
+  }
+  const store = options.store ?? sharedStore(env, options.storeProvider!);
   await store.initialize();
   return operation(store, options.clock ?? systemPipelineClock);
 }

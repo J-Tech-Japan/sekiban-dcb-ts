@@ -70,6 +70,35 @@ the Worker and its static assets, then use `npm run e2e:g15 -- --base-url
 <deployed-url> --report <path>` for redacted command-to-visible evidence.
 Hyperdrive caching is disabled by the deployment script.
 
+### Cloudflare-only quickstart (recommended)
+
+The named `cloudflare-only` sample composes the public runtime entrypoint with
+one D1 binding for the PipelineStore (`D1`) and a separate D1 binding for the
+materialized-view rows/checkpoints (`D1_MV`). Durable Objects and the outbox
+Queue remain part of the composition; there is no Hyperdrive, Postgres, or
+Cosmos binding in this variant. Its G16 reservation/room query UI reads the
+`D1_MV` backing after the SafeWindow-aware catch-up worker runs.
+
+```sh
+npm run test:g20
+npm run test:g20:gate
+npm run build:g20
+wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
+```
+
+The PG sample remains available as the alternative via
+`samples/meeting-room/wrangler.jsonc`; the library's default provider is still
+Postgres and is never selected by an HTTP request. Set the non-secret
+`SDT_SERVICE_ID` Wrangler var per deployment lifecycle (a new Durable Object
+namespace requires a fresh service identity). The authenticated conformance
+lane and the app-layer UI/e2e harness use that configured identity; internal
+test headers are never forwarded by the sample.
+
+G20 uses a candidate-commit protocol: the runtime, variant config, and this
+quickstart switch are committed together, deployed and verified at one exact
+candidate. Any later PR commit may change only redacted JSON evidence under
+`docs/`; `npm run test:g20:candidate` machine-checks that boundary.
+
 ## License
 
 This project is licensed under the Elastic License 2.0 (ELv2). See

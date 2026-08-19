@@ -20,10 +20,13 @@
     "conformance:g14": "bash scripts/deploy/g14-conformance.sh",
     "measure:g14": "python3 scripts/deploy/g14-measure.py",
     "deploy:g15": "bash scripts/deploy/g15-deploy.sh",
+    "deploy:g20": "bash scripts/deploy/g20-deploy.sh",
     "e2e:g15": "python3 scripts/deploy/g15-e2e.py",
     "e2e:g15:local": "bash scripts/deploy/g15-local-e2e.sh",
     "e2e:g16": "python3 scripts/deploy/g15-e2e.py --include-query-views",
     "e2e:g16:local": "G15_INCLUDE_QUERY_VIEWS=true G15_LOCAL_REPORT=.artifacts/g16-local-e2e.json bash scripts/deploy/g15-local-e2e.sh",
+    "conformance:g20": "bash scripts/deploy/g20-conformance.sh",
+    "e2e:g20": "bash scripts/deploy/g20-query-e2e.sh",
     "test:g15": "npm run build:packages && vitest run --config vitest.config.ts test/g15-frontend.spec.ts test/meeting-room.spec.ts",
     "test:g16": "npm run build:packages && vitest run --config vitest.config.ts test/g16-query.spec.ts test/g16-frontend.spec.ts && node scripts/g16-ui-check.mjs",
     "lint": "eslint . --max-warnings=0",
@@ -39,8 +42,12 @@
     "test:boundaries": "node scripts/g13-boundary-check.mjs",
     "test:g17": "npm run build:packages && vitest run --config vitest.config.ts test/g17-lineage.spec.ts",
     "test:g17:rollout-order": "node scripts/g17-rollout-order-fixture.mjs",
+    "test:g20:gate": "node scripts/g20-cloudflare-gate.mjs",
+    "test:g20": "npm run build:packages && vitest run --config vitest.g20.config.ts test/g20-cloudflare.spec.ts",
+    "test:g20:candidate": "node scripts/g20-candidate-check.mjs",
+    "build:g20": "npm run build:packages && wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/g20-cloudflare-build --outfile .artifacts/g20-cloudflare-build/worker.js --metafile .artifacts/g20-cloudflare-build/bundle-meta.json",
     "test:watch": "vitest --config vitest.config.ts",
-    "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer"
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g20:candidate"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.21.3",

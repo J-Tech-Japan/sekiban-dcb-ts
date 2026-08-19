@@ -12,6 +12,7 @@ import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDra
 import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import { createPostgresStoreProvider } from "../packages/dcb-runtime/src/store/provider";
 
 const PAYLOAD = "cGF5bG9hZA==";
 
@@ -259,7 +260,7 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
     const startedAt = performance.now();
     await handleDownstreamQueue(batch, {
       POSTGRES_URL: (env as unknown as WorkerEnv).POSTGRES_URL,
-    });
+    }, { storeProvider: createPostgresStoreProvider() });
     const elapsedMs = performance.now() - startedAt;
     const queueResult = await getQueueResult(batch, createExecutionContext());
     expect(queueResult.retryMessages).toEqual([]);

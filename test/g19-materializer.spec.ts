@@ -42,6 +42,31 @@ describe("SDT-G19 row materializer definitions", () => {
     expect(() => MATERIALIZER.plan({ ...event, count: Number.NaN })).toThrow(JsonValidationError);
   });
 
+  it("normalizes a pure declarative json_patch and its optional index replacement set", () => {
+    const materializer = defineRowMaterializer({
+      id: "patch-materializer",
+      indexDescriptors: [{ id: "status", valueType: "text", value: (row) => (row as { status?: unknown }).status }],
+      materialize: (event: Event) => ({
+        rowPatches: [{
+          kind: "json_patch",
+          rowKey: event.eventId,
+          patch: { status: "cancelled" },
+          indexEntries: [{ indexId: "status", value: "cancelled", rowKey: event.eventId }],
+        }],
+      }),
+    });
+    expect(materializer.plan({ suid: "suid-2", eventId: "event-1", count: 1 })).toEqual(expect.objectContaining({
+      rowPatches: [{
+        kind: "json_patch",
+        rowKey: "event-1",
+        patch: { status: "cancelled" },
+        rowVersion: 1,
+        sourceSuid: "suid-2",
+        indexEntries: [{ indexId: "status", valueType: "text", value: "cancelled", rowKey: "event-1" }],
+      }],
+    }));
+  });
+
   it("rejects undeclared or non-finite index values instead of creating SQL shape", () => {
     expect(() => defineRowMaterializer({
       id: "bad-index",

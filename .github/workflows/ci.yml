@@ -29,6 +29,8 @@ jobs:
           - 5432:5432
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -80,6 +82,8 @@ jobs:
       COSMOS_DATABASE: sdt_g12_ci_${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -106,3 +110,9 @@ jobs:
         run: npm run test:cosmos
       - name: Verify Cosmos lane remains wired
         run: npm run test:cosmos-wiring
+      - name: Run required G20 Cloudflare-only D1 composition lane
+        run: npm run test:g20
+      - name: Run G20 three-layer zero-external-database gate
+        run: npm run test:g20:gate
+      - name: Verify G20 candidate/evidence protocol
+        run: npm run test:g20:candidate

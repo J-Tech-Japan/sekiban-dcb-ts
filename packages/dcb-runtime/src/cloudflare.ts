@@ -1,3 +1,12 @@
+/**
+ * Cloudflare-only runtime composition.
+ *
+ * This entrypoint is deliberately separate from the default runtime entrypoint:
+ * it imports the D1 provider directly and never imports the Postgres/Cosmos
+ * provider graph. A Worker using this surface therefore has an auditable
+ * zero-external-database bundle while the ordinary entrypoint remains the
+ * unchanged Postgres composition.
+ */
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
@@ -7,95 +16,37 @@ import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
+import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
-import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
-import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
-export {
-  D1MaterializedViewStore,
-  MaterializedViewCasError,
-  MaterializedViewPatchError,
-  MaterializedViewPromotionCasError,
-  MaterializedViewStoreError,
-} from "./mv/MaterializedViewStore";
-export type {
-  MaterializedViewApplyInput,
-  MaterializedViewApplyResult,
-  MaterializedViewCandidateInput,
-  MaterializedViewCreateInput,
-  MaterializedViewIndexEntry,
-  MaterializedViewInstance,
-  MaterializedViewPromoteInput,
-  MaterializedViewQueryOptions,
-  MaterializedViewRow,
-  MaterializedViewStore,
-  MaterializedViewStoreErrorCode,
-  MaterializedViewStoreOperation,
-} from "./mv/MaterializedViewStore";
 
-export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
-export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
-export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
-export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
-export { POSTGRES_STORE_PROVIDER, createPostgresStoreProvider } from "./store/provider";
-export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
-export {
-  chooseQueryBacking,
-  selectQueryBacking,
-} from "./query/ProjectionQueryStore";
-export type {
-  MaterializedViewQueryPort,
-  QueryBacking,
-  QueryBackingOptions,
-  QueryBackingSelection,
-} from "./query/ProjectionQueryStore";
-
-export interface Env {
+export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
-  /** Secret binding; deployment must configure this rather than a public var. */
-  REPAIR_OPERATOR_TOKEN: string;
-  /** Queue producer/consumer for durable Tag outbox rows. */
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
-  /** Deployment-only handoff; local tests retain explicit drain control. */
+  D1: D1Database;
+  D1_MV: D1Database;
   AUTO_DRAIN_OUTBOX?: string;
-  /** Local Docker/CI connection; deployed Workers normally use HYPERDRIVE. */
-  POSTGRES_URL?: string;
-  HYPERDRIVE?: Hyperdrive;
+  REPAIR_OPERATOR_TOKEN: string;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
-  /** Only an authenticated deployment-verification lane may set this. */
   G11_VERIFICATION_ENABLED?: string;
-  /** Non-secret service identity configured per deployment; local defaults to V1. */
   SDT_SERVICE_ID?: string;
-  /** Explicit opt-in D1 PipelineStore binding; default composition remains Postgres. */
-  D1?: D1Database;
-  /** Separate D1 binding for row-backed materialized views. */
-  D1_MV?: D1Database;
 }
 
-export interface RuntimeWorkerOptions {
+export interface CloudflareOnlyWorkerOptions {
   readonly domain?: DomainDefinition;
   readonly config?: RuntimeWorkerConfig;
-  /** Explicitly opt into a non-Postgres provider; default is Postgres. */
-  readonly storeProvider?: StoreProvider;
-  /** Deploy-time query backing; defaults to the existing memory projection. */
-  readonly queryBacking?: QueryBacking;
-  /** Optional injected D1-MV query port for explicit composition/tests. */
-  readonly materializedViewQueryPort?: MaterializedViewQueryPort;
 }
 
-/**
- * Compose a Worker from dcb-core domain values. Projector/query registries are
- * intentionally private implementation details; callers only receive the
- * ordinary Worker handler and can therefore use the same public package
- * surface in consumer applications and local Miniflare tests.
- */
-export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): ExportedHandler<Env> {
+/** Compose the named two-D1 Cloudflare-only Worker. */
+export function createCloudflareOnlyRuntimeWorker(
+  options: CloudflareOnlyWorkerOptions = {},
+): ExportedHandler<CloudflareOnlyEnv> {
   const composition = composeRuntime(options.domain, options.config);
-  const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
+  const storeProvider = createD1StoreProvider();
   return {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
@@ -110,8 +61,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           registry: composition.queries,
           projectors: composition.projectors,
           storeProvider,
-          queryBacking: options.queryBacking,
-          materializedViewQueryPort: options.materializedViewQueryPort,
+          queryBacking: "d1-mv",
         });
       }
       if (url.pathname === "/operator/repair") {
@@ -159,12 +109,10 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       if (match === null) {
         return new Response("Journal control route not found", { status: 404 });
       }
-
       const attemptId = decodeURIComponent(match[1]);
       if (attemptId.length === 0) {
         return new Response("Journal attempt id is required", { status: 400 });
       }
-
       url.pathname = match[2] ?? "/state";
       const journal = env.JOURNAL.get(env.JOURNAL.idFromName(attemptId));
       return journal.fetch(new Request(url.toString(), request));
@@ -181,6 +129,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
   };
 }
 
-const worker = createRuntimeWorker();
+export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
 
-export default worker;
+const cloudflareOnlyRuntime = createCloudflareOnlyRuntimeWorker();
+export default cloudflareOnlyRuntime;

@@ -2,6 +2,7 @@ export {
   createD1MaterializedViewStore,
   D1MaterializedViewStore,
   MaterializedViewCasError,
+  MaterializedViewPatchError,
   MaterializedViewPromotionCasError,
   MaterializedViewStoreError,
 } from "./d1";

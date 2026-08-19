@@ -1,0 +1,39 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sekiban-dcb-meeting-room-cloudflare-only",
+  "main": "src/worker.cloudflare-only.ts",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "AUTO_DRAIN_OUTBOX": "true",
+    "SDT_SERVICE_ID": "serialized-dcb-v1"
+  },
+  "assets": { "directory": "public" },
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+      "database_id": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "migrations_dir": "../../migrations/d1"
+    },
+    {
+      "binding": "D1_MV",
+      "database_name": "sekiban-dcb-meeting-room-cloudflare-mv",
+      "database_id": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "migrations_dir": "../../migrations/mv"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-meeting-room-cloudflare-outbox" }],
+    "consumers": [{ "queue": "sekiban-dcb-meeting-room-cloudflare-outbox" }]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
+      { "name": "JOURNAL", "class_name": "JournalDurableObject" },
+      { "name": "TAG", "class_name": "TagDurableObject" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] }]
+}

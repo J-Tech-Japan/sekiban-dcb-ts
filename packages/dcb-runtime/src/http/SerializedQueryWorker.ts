@@ -20,7 +20,7 @@ import {
   type QueryEndpoint,
   type QueryRegistry,
 } from "../query/QueryRegistry";
-import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
+import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 import { serviceIdForRequest } from "./testServiceId";
 
@@ -253,13 +253,19 @@ export async function handleSerializedQuery(
       // Waiting still needs the durable source/checkpoint facts. Only create
       // the normal source store when the request actually asks to wait.
       if (parsed.value.waitForSortableUniqueId !== undefined && waitStore === undefined) {
-        requestStoreValue = requestStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER);
+        if (options.storeProvider === undefined) {
+          return error(503, "projection_unavailable", "A query projection store is not configured");
+        }
+        requestStoreValue = requestStore(env, options.storeProvider);
         await requestStoreValue.initialize();
         waitStore = requestStoreValue;
       }
     } else {
+      if (options.store === undefined && options.storeProvider === undefined) {
+        return error(503, "projection_unavailable", "A query projection store is not configured");
+      }
       requestStoreValue = options.store === undefined
-        ? requestStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER)
+        ? requestStore(env, options.storeProvider!)
         : undefined;
       waitStore = options.store ?? requestStoreValue!;
       if (requestStoreValue !== undefined) {

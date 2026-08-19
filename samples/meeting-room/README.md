@@ -23,3 +23,24 @@ The five serialized V1 paths are available only under `/conformance/v1/*` and
 require `Authorization: Bearer <CONFORMANCE_TOKEN>`. Bare V1 paths are not a
 public fallback. `CONFORMANCE_TOKEN` is a Wrangler secret, and Hyperdrive
 query caching is disabled before conformance and measurement runs.
+
+## Cloudflare-only variant
+
+`wrangler.cloudflare-only.jsonc` is the named composition for the G20 slice.
+It has two independent D1 bindings (`D1` for the PipelineStore and `D1_MV` for
+materialized-view rows/checkpoints), the same Journal/Allocator/Tag Durable
+Objects, and a Queue for durable outbox delivery. It deliberately has no
+Hyperdrive, Postgres, or Cosmos binding. The scheduled catch-up path feeds the
+G16 reservation list and room query from `D1_MV`; the existing PG config stays
+available as the alternative.
+
+The Cloudflare-only deployment uses the non-secret `SDT_SERVICE_ID` Wrangler
+var as part of its deployment lifecycle. Change it when replacing the DO
+namespace; no client/internal header can select a namespace. Apply the two
+versioned migrations before the first deployment:
+
+```sh
+wrangler d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+wrangler d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc
+```
