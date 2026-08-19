@@ -1,6 +1,6 @@
 import type { PipelineClock } from "../downstream/types";
 import { systemPipelineClock } from "../downstream/types";
-import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
+import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
@@ -55,7 +55,10 @@ export async function pollLiveProjections(
   env: LiveProjectionEnv,
   options: ProjectionPollOptions = {},
 ): Promise<CatchUpResult[]> {
-  const store = options.store ?? sharedStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER);
+  if (options.store === undefined && options.storeProvider === undefined) {
+    throw new Error("A projection store provider is not configured");
+  }
+  const store = options.store ?? sharedStore(env, options.storeProvider!);
   await store.initialize();
   const runtime = new ProjectionRuntime(store, options.registry ?? DEPLOYED_PROJECTOR_REGISTRY);
   if (options.tag !== undefined) {
@@ -84,7 +87,7 @@ export async function handleProjectionLag(
   request: Request,
   env: LiveProjectionEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
-  storeProvider: StoreProvider = POSTGRES_STORE_PROVIDER,
+  storeProvider?: StoreProvider,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return error(405, "validation_error", "Projection lag requires GET");
@@ -101,6 +104,9 @@ export async function handleProjectionLag(
     return error(400, "validation_error", parsed.error ?? "Invalid tagStateId");
   }
   try {
+    if (storeProvider === undefined) {
+      return error(503, "projection_unavailable", "A projection store provider is not configured");
+    }
     const store = sharedStore(env, storeProvider);
     await store.initialize();
     if (pollRequested) {

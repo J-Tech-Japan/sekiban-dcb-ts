@@ -22,10 +22,26 @@ export interface MeetingRoomEnv extends RuntimeEnv {
   readonly CONFORMANCE_TOKEN?: string;
 }
 
+export interface MeetingRoomRuntimeHandler {
+  fetch?: (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Response | Promise<Response>;
+  queue?: (batch: MessageBatch<unknown>, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<void>;
+  scheduled?: (controller: ScheduledController, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<void>;
+}
+
+export interface MeetingRoomWorkerOptions {
+  readonly runtime?: MeetingRoomRuntimeHandler;
+  readonly afterScheduled?: (env: MeetingRoomEnv) => Promise<void>;
+}
+
 const runtime = createRuntimeWorker({ domain: meetingRoomDomain, config: meetingRoomRuntimeConfig });
 
-function invokeRuntime(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext): Promise<Response> {
-  const handler = runtime.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
+function invokeRuntime(
+  request: Request,
+  env: MeetingRoomEnv,
+  ctx: ExecutionContext,
+  runtimeHandler: MeetingRoomRuntimeHandler,
+): Promise<Response> {
+  const handler = runtimeHandler.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
   return handler(request, env, ctx);
 }
 
@@ -33,11 +49,11 @@ interface RuntimeFetcher {
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
 }
 
-function runtimeFetcher(env: MeetingRoomEnv, ctx: ExecutionContext): RuntimeFetcher {
+function runtimeFetcher(env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): RuntimeFetcher {
   return env.RUNTIME ?? {
     fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => {
       const inner = inputValue instanceof Request ? inputValue : new Request(inputValue, init);
-      return invokeRuntime(inner, env, ctx);
+      return invokeRuntime(inner, env, ctx, runtimeHandler);
     },
   };
 }
@@ -91,6 +107,7 @@ async function readApplicationProjection(
   request: Request,
   env: MeetingRoomEnv,
   ctx: ExecutionContext,
+  runtimeHandler: MeetingRoomRuntimeHandler,
 ): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Projection routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
@@ -103,7 +120,7 @@ async function readApplicationProjection(
 
   const tag = isRoom ? roomTag(value) : reservationTag(value);
   const tagProjector = isRoom ? "RoomProjector" : "ReservationProjector";
-  const response = await runtimeFetcher(env, ctx).fetch("https://runtime.internal/api/sekiban/serialized/tag-state", {
+  const response = await runtimeFetcher(env, ctx, runtimeHandler).fetch("https://runtime.internal/api/sekiban/serialized/tag-state", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ tagStateId: `${tag.id}:${tagProjector}` }),
@@ -155,6 +172,7 @@ async function readApplicationQuery(
   request: Request,
   env: MeetingRoomEnv,
   ctx: ExecutionContext,
+  runtimeHandler: MeetingRoomRuntimeHandler,
 ): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
@@ -177,7 +195,7 @@ async function readApplicationQuery(
   const queryType = isReservations ? "GetReservationListQuery" : "GetRoomStateQuery";
   // Construct a fresh internal request. In particular, never copy incoming
   // headers: namespace selectors and conformance credentials are client input.
-  const response = await runtimeFetcher(env, ctx).fetch("https://runtime.internal/api/sekiban/serialized/" + (isReservations ? "list-query" : "query"), {
+  const response = await runtimeFetcher(env, ctx, runtimeHandler).fetch("https://runtime.internal/api/sekiban/serialized/" + (isReservations ? "list-query" : "query"), {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ queryType, queryParamsJson: JSON.stringify(queryParams) }),
@@ -185,7 +203,7 @@ async function readApplicationQuery(
   return relayRuntimeJson(response);
 }
 
-async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext): Promise<Response> {
+async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Command route requires POST", code: "validation_error" }, 400);
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
   let input: unknown;
@@ -194,7 +212,7 @@ async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: Execut
   } catch {
     return json({ error: "Command request must be JSON", code: "validation_error" }, 400);
   }
-  const runtime = runtimeFetcher(env, ctx);
+  const runtime = runtimeFetcher(env, ctx, runtimeHandler);
   const commandRuntime: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> } = {
     fetch: async (inputValue, init) => runtime.fetch(inputValue, init),
   };
@@ -205,7 +223,7 @@ async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: Execut
   return resultResponse(result);
 }
 
-async function conformanceRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext): Promise<Response> {
+async function conformanceRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): Promise<Response> {
   const expected = env.CONFORMANCE_TOKEN;
   const supplied = request.headers.get("authorization");
   if (expected === undefined || supplied !== `Bearer ${expected}`) {
@@ -218,35 +236,37 @@ async function conformanceRequest(request: Request, env: MeetingRoomEnv, ctx: Ex
   return invokeRuntime(new Request(url.toString(), request), {
     ...env,
     G11_VERIFICATION_ENABLED: "true",
-  }, ctx);
+  }, ctx, runtimeHandler);
 }
 
-export function createMeetingRoomWorker(): ExportedHandler<MeetingRoomEnv> {
+export function createMeetingRoomWorker(options: MeetingRoomWorkerOptions = {}): ExportedHandler<MeetingRoomEnv> {
+  const runtimeHandler = (options.runtime ?? runtime) as unknown as MeetingRoomRuntimeHandler;
   return {
     async fetch(request, env, ctx): Promise<Response> {
       const path = new URL(request.url).pathname;
       if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) {
-        return conformanceRequest(request, env, ctx);
+        return conformanceRequest(request, env, ctx, runtimeHandler);
       }
       if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) {
         return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
       }
       if (path === "/api/read/room" || path === "/api/read/reservation") {
-        return readApplicationProjection(request, env, ctx);
+        return readApplicationProjection(request, env, ctx, runtimeHandler);
       }
       if (path === "/api/read/reservations" || path === "/api/read/room-query") {
-        return readApplicationQuery(request, env, ctx);
+        return readApplicationQuery(request, env, ctx, runtimeHandler);
       }
-      if (path.startsWith("/api/commands/")) return commandRequest(request, env, ctx);
+      if (path.startsWith("/api/commands/")) return commandRequest(request, env, ctx, runtimeHandler);
       if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
       if (path === "/" || path === "/index.html") return new Response("Meeting-room sample", { headers: { "content-type": "text/html; charset=utf-8" } });
       return new Response("Not found", { status: 404 });
     },
     async queue(batch, env, ctx): Promise<void> {
-      await runtime.queue?.(batch, env, ctx);
+      await runtimeHandler.queue?.(batch, env, ctx);
     },
     async scheduled(controller, env, ctx): Promise<void> {
-      await runtime.scheduled?.(controller, env, ctx);
+      await runtimeHandler.scheduled?.(controller, env, ctx);
+      await options.afterScheduled?.(env);
     },
   };
 }

@@ -6,7 +6,7 @@ import {
   type TagStateIdentity,
 } from "../projection/ProjectorRegistry";
 import { safeWindowCeilingExceeded } from "../projection/ProjectionRuntime";
-import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
+import type { StoreProvider } from "../store/provider";
 import type { TagRecord } from "../tag/types";
 import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
 
@@ -71,7 +71,7 @@ export class SerializedReadWorker {
     private readonly env: ReadWorkerEnv,
     private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
     private readonly registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
-    private readonly storeProvider: StoreProvider = POSTGRES_STORE_PROVIDER,
+    private readonly storeProvider?: StoreProvider,
   ) {}
 
   async handle(request: Request): Promise<Response> {
@@ -142,7 +142,7 @@ export class SerializedReadWorker {
     // Direct unit tests can exercise Tag DO determinacy with only TAG. The
     // default provider has no backing store in that fixture. An explicit
     // provider (including Cosmos) is always checked when it is configured.
-    if (this.storeProvider.isConfigured?.(this.env) === false) {
+    if (this.storeProvider === undefined || this.storeProvider.isConfigured?.(this.env) === false) {
       return;
     }
     const store = this.storeProvider.create(this.env);
@@ -175,7 +175,7 @@ export async function handleSerializedRead(
   request: Request,
   env: ReadWorkerEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
-  storeProvider: StoreProvider = POSTGRES_STORE_PROVIDER,
+  storeProvider?: StoreProvider,
 ): Promise<Response> {
   return new SerializedReadWorker(env, serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",

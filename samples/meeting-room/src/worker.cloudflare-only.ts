@@ -1,0 +1,164 @@
+import type { ExecuteResult } from "@sekiban/dcb-client";
+import {
+  createCloudflareOnlyRuntimeWorker,
+  AllocatorDurableObject,
+  JournalDurableObject,
+  TagDurableObject,
+  type CloudflareOnlyEnv,
+} from "@sekiban/dcb-runtime/cloudflare";
+import { executeMeetingRoomCommand } from "./transport";
+import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
+import { catchUpMeetingRoomMaterializedViews } from "./d1-mv";
+
+export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
+
+interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
+  readonly ASSETS?: Fetcher;
+  readonly CONFORMANCE_TOKEN?: string;
+}
+
+const runtime = createCloudflareOnlyRuntimeWorker({ domain: meetingRoomDomain, config: meetingRoomRuntimeConfig });
+const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
+function resultBody(result: ExecuteResult): Record<string, unknown> {
+  const body = { ...result } as Record<string, unknown>;
+  delete body.cause;
+  return body;
+}
+
+function resultResponse(result: ExecuteResult): Response {
+  const body = resultBody(result);
+  switch (result.kind) {
+    case "committed":
+    case "noop":
+      return json(body, 200);
+    case "rejected":
+    case "invalid":
+    case "conflict":
+      return json({ error: result.error ?? "Command was rejected", code: result.code ?? result.kind, ...body }, result.kind === "conflict" ? 409 : 400);
+    case "partial":
+      return json({ error: result.error ?? "Commit was partial", code: result.code ?? "partial_write", ...body }, 500);
+    case "timeout":
+      return json({ error: result.error ?? "Command outcome is undetermined", code: result.code ?? "timeout", ...body }, 504);
+    case "unavailable":
+      return json({ error: result.error ?? "Projection is unavailable", code: result.code ?? "projection_unavailable", ...body }, 503);
+    case "transport":
+      return json({ error: result.error ?? "Command transport failed", code: result.code ?? "transport", ...body }, 502);
+  }
+}
+
+function decodeProjectionPayload(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    const binary = atob(value);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return value;
+  }
+}
+
+function positiveInteger(value: string | null, name: string, fallback: number): number | Response {
+  if (value === null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return json({ error: `${name} must be a positive integer`, code: "validation_error" }, 400);
+  return parsed;
+}
+
+async function readProjection(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  if (request.method !== "GET") return json({ error: "Projection routes require GET", code: "validation_error" }, 400);
+  const url = new URL(request.url);
+  const isRoom = url.pathname === "/api/read/room";
+  const isReservation = url.pathname === "/api/read/reservation";
+  if (!isRoom && !isReservation) return json({ error: "Projection route was not found", code: "not_found" }, 404);
+  const parameter = isRoom ? "roomId" : "reservationId";
+  const value = url.searchParams.get(parameter);
+  if (value === null || value.length === 0) return json({ error: `${parameter} is required`, code: "validation_error" }, 400);
+  const tag = isRoom ? roomTag(value) : reservationTag(value);
+  const tagProjector = isRoom ? "RoomProjector" : "ReservationProjector";
+  const response = await runtimeFetch(new Request("https://runtime.internal/api/sekiban/serialized/tag-state", {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ tagStateId: `${tag.id}:${tagProjector}` }),
+  }), env, ctx);
+  let body: unknown;
+  try { body = await response.json(); } catch { return json({ error: `Projection read returned HTTP ${response.status}`, code: "transport" }, 502); }
+  if (response.status < 200 || response.status >= 300) return json(body, response.status);
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "Projection read returned an invalid body", code: "transport" }, 502);
+  const record = body as Record<string, unknown>;
+  if (typeof record.lastSortedUniqueId !== "string") return json({ error: "Projection read omitted lastSortedUniqueId", code: "transport" }, 502);
+  return json({ projection: isRoom ? "room" : "reservation", [parameter]: value, tagStateId: `${tag.id}:${tagProjector}`, state: decodeProjectionPayload(record.payload), version: record.version, lastSortedUniqueId: record.lastSortedUniqueId });
+}
+
+async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
+  const url = new URL(request.url);
+  const isReservations = url.pathname === "/api/read/reservations";
+  const isRoomQuery = url.pathname === "/api/read/room-query";
+  if (!isReservations && !isRoomQuery) return json({ error: "Query route was not found", code: "not_found" }, 404);
+  let queryParams: Record<string, unknown>;
+  if (isReservations) {
+    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
+    if (pageNumber instanceof Response) return pageNumber;
+    const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
+    if (pageSize instanceof Response) return pageSize;
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize };
+  } else {
+    const roomId = url.searchParams.get("roomId");
+    queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
+  }
+  const response = await runtimeFetch(new Request(`https://runtime.internal/api/sekiban/serialized/${isReservations ? "list-query" : "query"}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ queryType: isReservations ? "GetReservationListQuery" : "GetRoomStateQuery", queryParamsJson: JSON.stringify(queryParams) }),
+  }), env, ctx);
+  let body: unknown;
+  try { body = await response.json(); } catch { return json({ error: `Query read returned HTTP ${response.status}`, code: "transport" }, 502); }
+  return json(body, response.status);
+}
+
+async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  if (request.method !== "POST") return json({ error: "Command route requires POST", code: "validation_error" }, 400);
+  const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
+  let input: unknown;
+  try { input = await request.json(); } catch { return json({ error: "Command request must be JSON", code: "validation_error" }, 400); }
+  const commandRuntime = { fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => runtimeFetch(inputValue instanceof Request ? inputValue : new Request(inputValue, init), env, ctx) };
+  const result = await executeMeetingRoomCommand(commandId, input, { RUNTIME: commandRuntime, localRuntime: commandRuntime });
+  return resultResponse(result);
+}
+
+async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  const supplied = request.headers.get("authorization");
+  if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
+  const url = new URL(request.url);
+  url.pathname = url.pathname.slice("/conformance/v1".length) || "/";
+  return runtimeFetch(new Request(url.toString(), request), { ...env, G11_VERIFICATION_ENABLED: "true" }, ctx);
+}
+
+const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
+  async fetch(request, env, ctx) {
+    const path = new URL(request.url).pathname;
+    if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
+    if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
+    if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx);
+    if (path === "/api/read/reservations" || path === "/api/read/room-query") return readQuery(request, env, ctx);
+    if (path.startsWith("/api/commands/")) return command(request, env, ctx);
+    if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
+    if (path === "/" || path === "/index.html") return new Response("Meeting-room sample", { headers: { "content-type": "text/html; charset=utf-8" } });
+    return new Response("Not found", { status: 404 });
+  },
+  async queue(batch, env, ctx) { await runtime.queue?.(batch, env, ctx); },
+  async scheduled(controller, env, ctx) {
+    await runtime.scheduled?.(controller, env, ctx);
+    await catchUpMeetingRoomMaterializedViews(env);
+  },
+};
+
+export default worker;

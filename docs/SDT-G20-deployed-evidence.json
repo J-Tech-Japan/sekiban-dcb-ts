@@ -1,0 +1,20 @@
+{
+  "task": "SDT-G20",
+  "variant": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "status": "candidate-awaiting-deployed-verification",
+  "secrets": "redacted",
+  "verification": {
+    "freshServiceId": "pending",
+    "authenticatedConformance": "pending",
+    "rawV1Authority": "pending",
+    "queryUiE2e": "pending",
+    "restartRerun": "pending",
+    "g17NegativeOracles": "pending"
+  },
+  "treeDigests": {
+    "runtime": "pending",
+    "configuration": "pending"
+  }
+}
