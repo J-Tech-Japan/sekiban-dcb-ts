@@ -5,6 +5,8 @@ import type { PipelineStore } from "./types";
 export interface StoreProviderEnvironment {
   readonly POSTGRES_URL?: string;
   readonly HYPERDRIVE?: { readonly connectionString?: string };
+  /** Explicit opt-in D1 binding; the default provider never requires it. */
+  readonly D1?: D1Database;
 }
 
 /** Typed composition seam shared by the default Postgres and opt-in adapters. */

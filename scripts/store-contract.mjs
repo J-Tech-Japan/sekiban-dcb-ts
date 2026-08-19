@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
 
 import { POSTGRES_STORE_PROVIDER } from "@sekiban/dcb-runtime";
 import {
@@ -134,7 +135,7 @@ MemoryCosmosClient.prototype.replace = async function replace(container, documen
   return memoryReplace.call(this, container, { ...document, __container: container }, partitionKey, etag);
 };
 
-async function runPipelineContract(label, makeStore) {
+export async function runPipelineContract(label, makeStore) {
   const serviceId = unique(`${label}-service`);
   const tagA = `${label}:a:${randomUUID()}`;
   const tagB = `${label}:b:${randomUUID()}`;
@@ -232,7 +233,7 @@ async function runPipelineContract(label, makeStore) {
   return { store, serviceId, first, second };
 }
 
-async function runFaultSuite() {
+export async function runFaultSuite() {
   const boundaries = [
     ["event", DEFAULT_COSMOS_CONTAINERS.events],
     ["lag", DEFAULT_COSMOS_CONTAINERS.lagEstimates],
@@ -351,10 +352,12 @@ async function main() {
   }
 
   await runFaultSuite();
-  console.log(`SDT-G12 shared PipelineStore contract passed${requireRealCosmos ? " (emulator lane)" : " (Postgres + memory Cosmos)"}`);
+  console.log(`SDT-G18 shared PipelineStore contract passed${requireRealCosmos ? " (emulator lane)" : " (Postgres + memory Cosmos)"}`);
 }
 
-await main();
-// Postgres keeps an idle connection open by design; this script is a finite
-// verification command, so terminate only after every assertion has completed.
-process.exit(0);
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+  // Postgres keeps an idle connection open by design; this script is a finite
+  // verification command, so terminate only after every assertion has completed.
+  process.exit(0);
+}

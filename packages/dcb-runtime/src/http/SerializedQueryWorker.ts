@@ -22,6 +22,8 @@ import { serviceIdForRequest } from "./testServiceId";
 export interface QueryWorkerEnv {
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Optional explicit D1 provider binding; Postgres remains the default. */
+  D1?: D1Database;
   /** Set only by an authenticated deployment-verification lane. */
   G11_VERIFICATION_ENABLED?: string;
   /** Non-secret service identity configured per deployment. */

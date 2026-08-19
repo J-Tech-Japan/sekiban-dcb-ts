@@ -40,6 +40,8 @@ jobs:
       - run: npm run test:g17
       - run: npm run test:g17:rollout-order
       - run: npm run test:store-contract
+      - name: Run required Miniflare D1 contract and fault lane
+        run: npm run test:d1
       - run: npm run test:boundaries
       - run: npm run test:consumer
       - run: npm run build
