@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 import { POSTGRES_STORE_PROVIDER } from "@sekiban/dcb-runtime";
 import {
@@ -11,6 +12,12 @@ import {
 
 const POSTGRES_URL = process.env.POSTGRES_URL ?? "postgresql://postgres:postgres@127.0.0.1:54329/serialized_dcb";
 const requireRealCosmos = process.argv.includes("--require-real-cosmos");
+
+async function configuredCosmosKey() {
+  const keyFile = process.env.COSMOS_KEY_FILE;
+  if (keyFile !== undefined) return (await readFile(keyFile, "utf8")).trim();
+  return process.env.COSMOS_KEY;
+}
 
 function unique(prefix) {
   return `${prefix}-${randomUUID()}`;
@@ -319,7 +326,7 @@ async function main() {
   });
 
   const endpoint = process.env.COSMOS_ENDPOINT;
-  const key = process.env.COSMOS_KEY;
+  const key = await configuredCosmosKey();
   const database = process.env.COSMOS_DATABASE;
   if (requireRealCosmos && (endpoint === undefined || key === undefined || database === undefined)) {
     throw new Error("COSMOS_ENDPOINT, COSMOS_KEY, and COSMOS_DATABASE are required for the emulator lane");

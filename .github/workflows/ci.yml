@@ -67,7 +67,6 @@ jobs:
           key_file="$RUNNER_TEMP/sdt-g12-cosmos.key"
           openssl rand -base64 64 | tr -d '\n' > "$key_file"
           chmod 600 "$key_file"
-          printf 'COSMOS_KEY=%s\n' "$(<"$key_file")" >> "$GITHUB_ENV"
           printf 'COSMOS_KEY_FILE=%s\n' "$key_file" >> "$GITHUB_ENV"
       - name: Start pinned Linux vNext Cosmos emulator
         run: >-
