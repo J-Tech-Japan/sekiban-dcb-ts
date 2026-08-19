@@ -233,6 +233,9 @@ def main() -> None:
     parser.add_argument("--include-query-views", action="store_true")
     args = parser.parse_args()
     require(args.harness_grace_ms >= 0, "harnessGraceMs must be non-negative")
+    configured_service_id = os.environ.get("G15_EXPECTED_SERVICE_ID", "serialized-dcb-v1")
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", configured_service_id) is not None,
+            "G15_EXPECTED_SERVICE_ID must be a non-secret deployment service identity")
     safe_window_bound_ms, bound_sources = published_safe_window_bound()
 
     run_id = uuid.uuid4().hex
@@ -346,6 +349,11 @@ def main() -> None:
         "safeWindowBoundSources": bound_sources,
         "harnessGraceMs": args.harness_grace_ms,
         "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
+        "serviceIdentity": {
+            "configuredServiceId": configured_service_id,
+            "source": "G15_EXPECTED_SERVICE_ID" if "G15_EXPECTED_SERVICE_ID" in os.environ else "local compatibility default",
+            "clientHeaderForwarded": False,
+        },
         "visibilityOracle": measurements["visibilityOracle"],
         "rawV1Unauthenticated": raw_checks,
         "commands": {

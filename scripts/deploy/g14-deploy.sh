@@ -6,8 +6,13 @@ readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 readonly WORKER_NAME="sekiban-dcb-meeting-room"
 readonly HYPERDRIVE_ID="c236b7b51ed24bf4b312bc370c61a231"
+readonly DEPLOY_SERVICE_ID="${G14_SERVICE_ID:-}"
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
+if [[ -z "${DEPLOY_SERVICE_ID}" ]]; then
+  printf 'G14_SERVICE_ID is required: deploy each environment with a fresh non-secret service identity\n' >&2
+  exit 2
+fi
 
 # G14 reads are catch-up-sensitive; leave Hyperdrive query caching disabled
 # for every deployment and measurement run.
@@ -20,5 +25,6 @@ if [[ -n "${G14_CONFORMANCE_TOKEN_FILE:-}" ]]; then
   "${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "${WORKER_NAME}" < "${G14_CONFORMANCE_TOKEN_FILE}"
 fi
 
-"${WRANGLER_BIN}" deploy --config samples/meeting-room/wrangler.jsonc --keep-vars --strict --message "SDT-G14 meeting-room sample"
+"${WRANGLER_BIN}" deploy --config samples/meeting-room/wrangler.jsonc --keep-vars --strict \
+  --var "SDT_SERVICE_ID:${DEPLOY_SERVICE_ID}" --message "SDT-G14 meeting-room sample"
 "${WRANGLER_BIN}" deployments list --name "${WORKER_NAME}"

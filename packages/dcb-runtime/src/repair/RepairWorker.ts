@@ -1,7 +1,6 @@
 import type { RepairBranch, RepairFacts, RepairScopeItem, TagFence } from "../tag/types";
 import type { ExclusionLookupPort } from "../downstream/ExclusionLookup";
-
-const SERVICE_ID = "serialized-dcb-v1";
+import { configuredServiceIdOrDefault } from "../http/testServiceId";
 
 type JsonObject = Record<string, unknown>;
 
@@ -18,6 +17,7 @@ export type RepairFault =
 export interface RepairWorkerEnv {
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
+  SDT_SERVICE_ID?: string;
 }
 
 export interface RepairExecutionInput {
@@ -137,6 +137,7 @@ export class RepairWorker {
   constructor(
     private readonly env: RepairWorkerEnv,
     private readonly exclusions: ExclusionLookupPort,
+    private readonly serviceId = configuredServiceIdOrDefault(env.SDT_SERVICE_ID),
   ) {}
 
   async execute(input: RepairExecutionInput): Promise<RepairExecutionResult> {
@@ -449,7 +450,7 @@ export class RepairWorker {
   }
 
   private tagFor(tag: string): DurableObjectStub {
-    return this.env.TAG.get(this.env.TAG.idFromName(`${SERVICE_ID}|${tag}`));
+    return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
   }
 
   private journalGet(attemptId: string, path: string): Promise<Response> {

@@ -8,6 +8,7 @@ export interface OperatorRepairEnv {
   TAG: DurableObjectNamespace;
   REPAIR_OPERATOR_TOKEN: string;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
+  SDT_SERVICE_ID?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -109,7 +110,11 @@ export async function handleOperatorRepair(request: Request, env: OperatorRepair
     return error(400, "invalid_operator_repair_request", parsed.error ?? "Invalid operator repair request");
   }
   try {
-    const worker = new RepairWorker(env, new BindingExclusionLookupClient(env.REPAIR_EXCLUSION_LOOKUP));
+    const worker = new RepairWorker(
+      env,
+      new BindingExclusionLookupClient(env.REPAIR_EXCLUSION_LOOKUP),
+      env.SDT_SERVICE_ID,
+    );
     const result = await worker.execute(parsed.value);
     return json(result, result.interrupted === undefined ? 200 : 202);
   } catch (failure) {

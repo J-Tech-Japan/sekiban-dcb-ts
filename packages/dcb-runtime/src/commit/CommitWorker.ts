@@ -27,6 +27,8 @@ export interface CommitWorkerEnv {
   TAG: DurableObjectNamespace;
   /** Set only by an authenticated deployment-verification lane. */
   G11_VERIFICATION_ENABLED?: string;
+  /** Non-secret service identity configured per deployment. */
+  SDT_SERVICE_ID?: string;
 }
 
 interface ReservationSuccess {
@@ -673,5 +675,6 @@ export class CommitWorker {
 export async function handleSerializedCommit(request: Request, env: CommitWorkerEnv): Promise<Response> {
   return new CommitWorker(env, serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+    configuredServiceId: env.SDT_SERVICE_ID,
   })).handle(request);
 }

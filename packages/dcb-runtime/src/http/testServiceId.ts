@@ -1,4 +1,4 @@
-/** The production V1 service identity is fixed by the compatibility contract. */
+/** The local/compatibility fallback when no deployment identity is configured. */
 export const SERIALIZED_DCB_SERVICE_ID = "serialized-dcb-v1";
 
 /**
@@ -19,6 +19,16 @@ export interface ServiceIdRequestOptions {
    * lane. The default is fail-closed for production/public requests.
    */
   readonly allowG11Verification?: boolean;
+  /** Server-side deployment identity; never sourced from a request header. */
+  readonly configuredServiceId?: string;
+}
+
+function validConfiguredServiceId(value: string | undefined): value is string {
+  return value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(value);
+}
+
+export function configuredServiceIdOrDefault(value: string | undefined): string {
+  return validConfiguredServiceId(value) ? value : SERIALIZED_DCB_SERVICE_ID;
 }
 
 export function serviceIdForRequest(request: Request, options: ServiceIdRequestOptions = {}): string {
@@ -29,7 +39,8 @@ export function serviceIdForRequest(request: Request, options: ServiceIdRequestO
   if (g11Allowed && validG11ServiceId(g11Configured)) {
     return g11Configured;
   }
-  return hostname.endsWith(".test") && configured !== null && configured.length > 0
-    ? configured
-    : SERIALIZED_DCB_SERVICE_ID;
+  if (hostname.endsWith(".test") && configured !== null && configured.length > 0) {
+    return configured;
+  }
+  return configuredServiceIdOrDefault(options.configuredServiceId);
 }

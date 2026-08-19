@@ -8,13 +8,13 @@ import {
   type ProjectorRegistry,
 } from "./ProjectorRegistry";
 import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
-import { SERIALIZED_DCB_SERVICE_ID } from "../http/testServiceId";
-
-const SERVICE_ID = SERIALIZED_DCB_SERVICE_ID;
+import { configuredServiceIdOrDefault } from "../http/testServiceId";
 
 export interface LiveProjectionEnv {
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Non-secret service identity configured per deployment. */
+  SDT_SERVICE_ID?: string;
 }
 
 export interface ProjectionPollOptions {
@@ -63,7 +63,7 @@ export async function pollLiveProjections(
       const identity = tagStateIdentityFrom(`${options.tag}:${projector.id}`, registry);
       if (identity.value !== undefined) {
         results.push(await runtime.catchUp(
-          options.serviceId ?? SERVICE_ID,
+          options.serviceId ?? configuredServiceIdOrDefault(env.SDT_SERVICE_ID),
           identity.value,
           (options.clock ?? systemPipelineClock).now(),
         ));
@@ -71,7 +71,7 @@ export async function pollLiveProjections(
     }
     return results;
   }
-  return runtime.pollRegistered(options.serviceId ?? SERVICE_ID, (options.clock ?? systemPipelineClock).now());
+  return runtime.pollRegistered(options.serviceId ?? configuredServiceIdOrDefault(env.SDT_SERVICE_ID), (options.clock ?? systemPipelineClock).now());
 }
 
 /**
@@ -89,7 +89,7 @@ export async function handleProjectionLag(
   }
   const query = new URL(request.url).searchParams;
   const tagStateId = query.get("tagStateId");
-  const serviceId = query.get("serviceId") || SERVICE_ID;
+  const serviceId = query.get("serviceId") || configuredServiceIdOrDefault(env.SDT_SERVICE_ID);
   const pollRequested = query.get("poll") === "1";
   if (tagStateId === null || tagStateId.length === 0) {
     return error(400, "validation_error", "tagStateId is required");
