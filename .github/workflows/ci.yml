@@ -37,7 +37,42 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:store-contract
       - run: npm run test:boundaries
       - run: npm run test:consumer
       - run: npm run build
       - run: npm run e2e:g15:local
+
+  # Required Phase 1.5 lane. The adapter uses only gateway-mode operations
+  # covered by the Linux vNext emulator: database/container bootstrap,
+  # parameterized queries, continuation reads, create-conflict idempotency,
+  # and If-Match conditional replacement. Missing readiness or credentials
+  # fail the job; this lane is never converted into a skipped green check.
+  cosmos-emulator:
+    runs-on: ubuntu-latest
+    env:
+      COSMOS_ENDPOINT: http://127.0.0.1:8081/
+      COSMOS_DATABASE: sdt_g12_ci_${{ github.run_id }}
+      COSMOS_KEY: ${{ secrets.COSMOS_EMULATOR_KEY }}
+    services:
+      cosmos:
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview@sha256:6ce44ed4ac69cf69a6cb7982d0536cfaa22696172168fc9fe9a722a189d38f99
+        ports:
+          - 8080:8080
+          - 8081:8081
+          - 1234:1234
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Require emulator secret boundary
+        run: test -n "${COSMOS_KEY:-}"
+      - name: Wait for required Cosmos emulator readiness
+        run: curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused http://127.0.0.1:8080/ready >/dev/null
+      - name: Execute Cosmos contract and fault lane
+        run: npm run test:cosmos
+      - name: Verify Cosmos lane remains wired
+        run: npm run test:cosmos-wiring
