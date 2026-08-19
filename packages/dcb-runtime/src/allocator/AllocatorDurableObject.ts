@@ -53,8 +53,14 @@ function attemptKey(attemptId: string): string {
   return `${ATTEMPT_KEY_PREFIX}${attemptId}`;
 }
 
-function currentState(): AllocatorState {
-  return { schemaVersion: 1, allocatedWatermark: null };
+function currentState(allocatorLineageId: string): AllocatorState {
+  return { schemaVersion: 2, allocatorLineageId, allocatedWatermark: null };
+}
+
+function newAllocatorLineageId(): string {
+  // A fresh token is generated when the allocator has no durable state, so a
+  // namespace recreation cannot silently reuse the previous lineage.
+  return crypto.randomUUID();
 }
 
 function nowIso(): string {
@@ -135,7 +141,19 @@ export class AllocatorDurableObject implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/state") {
-      return json((await this.ctx.storage.get<AllocatorState>(STATE_KEY)) ?? currentState());
+      const state = await this.ctx.storage.transaction(async (txn) => {
+        const stored = await txn.get<AllocatorState>(STATE_KEY);
+        if (stored !== undefined && typeof stored.allocatorLineageId === "string" && stored.allocatorLineageId.length > 0) {
+          return { ...stored, schemaVersion: 2 as const };
+        }
+        const initialized = {
+          ...currentState(newAllocatorLineageId()),
+          allocatedWatermark: stored?.allocatedWatermark ?? null,
+        };
+        await txn.put(STATE_KEY, initialized);
+        return initialized;
+      });
+      return json(state);
     }
     if (request.method === "GET" && url.pathname.startsWith("/attempts/")) {
       let attemptId: string;
@@ -148,9 +166,14 @@ export class AllocatorDurableObject implements DurableObject {
         return error(400, "invalid_attempt_id", "Attempt ID is required");
       }
       const vector = await this.ctx.storage.get<AllocationVector>(attemptKey(attemptId));
-      return vector === undefined
-        ? error(404, "allocation_not_found", "No durable allocation exists for this attempt")
-        : json(vector);
+      if (vector === undefined) {
+        return error(404, "allocation_not_found", "No durable allocation exists for this attempt");
+      }
+      if (vector.allocatorLineageId !== undefined && vector.allocatorLineageId.length > 0) {
+        return json(vector);
+      }
+      const state = await this.ctx.storage.get<AllocatorState>(STATE_KEY);
+      return json({ ...vector, allocatorLineageId: state?.allocatorLineageId || newAllocatorLineageId() });
     }
     if (request.method === "POST" && url.pathname === "/allocate") {
       return this.allocate(request);
@@ -174,11 +197,40 @@ export class AllocatorDurableObject implements DurableObject {
     try {
       const result = await this.ctx.storage.transaction(async (txn): Promise<AllocationSuccess> => {
         const existing = await txn.get<AllocationVector>(attemptKey(input.attemptId));
+        const persistedState = await txn.get<AllocatorState>(STATE_KEY);
+        const lineage = persistedState?.allocatorLineageId || newAllocatorLineageId();
         if (existing !== undefined) {
-          return { vector: existing, created: false };
+          // Upgrade pre-G17 vectors in the same transaction.  Returning a
+          // freshly generated token without persisting it would make a
+          // repeated request observe a different allocator lineage.
+          if (existing.allocatorLineageId === undefined || persistedState?.allocatorLineageId === undefined) {
+            const upgradedVector: AllocationVector = {
+              ...existing,
+              allocatorLineageId: existing.allocatorLineageId ?? lineage,
+            };
+            const upgradedState: AllocatorState = persistedState === undefined
+              ? {
+                ...currentState(upgradedVector.allocatorLineageId),
+                allocatedWatermark: existing.candidates.at(-1)?.suid ?? null,
+              }
+              : {
+                ...persistedState,
+                schemaVersion: 2,
+                allocatorLineageId: upgradedVector.allocatorLineageId,
+              };
+            await txn.put(attemptKey(input.attemptId), upgradedVector);
+            await txn.put(STATE_KEY, upgradedState);
+            return { vector: upgradedVector, created: false };
+          }
+          return {
+            vector: existing,
+            created: false,
+          };
         }
 
-        const state = (await txn.get<AllocatorState>(STATE_KEY)) ?? currentState();
+        const state = persistedState === undefined
+          ? currentState(lineage)
+          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 2 as const };
         const suids = nextSuids(state.allocatedWatermark, input.candidates.length);
         const candidates: AllocatedCandidate[] = input.candidates.map((candidate, index) => ({
           ...candidate,
@@ -186,11 +238,13 @@ export class AllocatorDurableObject implements DurableObject {
         }));
         const vector: AllocationVector = {
           attemptId: input.attemptId,
+          allocatorLineageId: lineage,
           candidates,
           allocatedAt: nowIso(),
         };
         const updatedState: AllocatorState = {
-          schemaVersion: 1,
+          schemaVersion: 2,
+          allocatorLineageId: lineage,
           allocatedWatermark: candidates[candidates.length - 1]!.suid,
         };
 

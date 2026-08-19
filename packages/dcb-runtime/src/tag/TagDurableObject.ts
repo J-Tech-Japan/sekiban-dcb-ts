@@ -16,7 +16,7 @@ import {
   type RepairResolution,
   type RepairScopeItem,
 } from "./types";
-import type { DownstreamOutboxMessage } from "../downstream/types";
+import { LEGACY_ALLOCATOR_LINEAGE_ID, type DownstreamOutboxMessage } from "../downstream/types";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -49,6 +49,7 @@ interface AppendCandidate {
   suid: string;
   payload: string;
   eventTags: string[];
+  allocatorLineageId: string;
 }
 
 interface AppendInput extends ReservationInput {
@@ -285,6 +286,9 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
       suid: rawCandidate.suid,
       payload: rawCandidate.payload,
       eventTags: eventTags.value,
+      allocatorLineageId: isNonEmptyString(rawCandidate.allocatorLineageId)
+        ? rawCandidate.allocatorLineageId
+        : LEGACY_ALLOCATOR_LINEAGE_ID,
     });
   }
   if (new Set(candidates.map((candidate) => candidate.eventId)).size !== candidates.length) {
@@ -334,6 +338,9 @@ function repairScopeItemFrom(value: unknown, tag: string): { value?: RepairScope
       suid: value.suid,
       payload: value.payload,
       eventTags: eventTags.value,
+      allocatorLineageId: isNonEmptyString(value.allocatorLineageId)
+        ? value.allocatorLineageId
+        : undefined,
     },
   };
 }
@@ -1154,12 +1161,14 @@ export class TagDurableObject implements DurableObject {
           suid: candidate.suid,
           payload: candidate.payload,
           eventTags: candidate.eventTags,
+          allocatorLineageId: candidate.allocatorLineageId,
         }));
         const outboxRows: TagOutboxRow[] = input.candidates.map((candidate) => ({
           attemptId: input.attemptId,
           eventId: candidate.eventId,
           suid: candidate.suid,
           payload: candidate.payload,
+          allocatorLineageId: candidate.allocatorLineageId,
         }));
         const head = input.candidates[input.candidates.length - 1]!.suid;
         const appendedOnly = changed(record, {
@@ -1431,6 +1440,7 @@ export class TagDurableObject implements DurableObject {
         eventId: string;
         suid: string;
         payload: string;
+        allocatorLineageId: string;
         eventTags: string[];
         enqueuedAt: number;
       }> = [];
@@ -1465,6 +1475,7 @@ export class TagDurableObject implements DurableObject {
           eventId: row.eventId,
           suid: row.suid,
           payload: row.payload,
+          allocatorLineageId: row.allocatorLineageId ?? event.allocatorLineageId ?? LEGACY_ALLOCATOR_LINEAGE_ID,
           eventTags: event.eventTags,
           enqueuedAt: delivery.enqueuedAt,
         });
@@ -1693,12 +1704,14 @@ export class TagDurableObject implements DurableObject {
             suid: input.item.suid,
             payload: input.item.payload,
             eventTags: input.item.eventTags,
+            allocatorLineageId: input.item.allocatorLineageId,
           }],
           outbox: [...record.outbox, {
             attemptId: input.item.attemptId,
             eventId: input.item.eventId,
             suid: input.item.suid,
             payload: input.item.payload,
+            allocatorLineageId: input.item.allocatorLineageId,
           }],
         });
       } else if (record.head > input.item.suid) {

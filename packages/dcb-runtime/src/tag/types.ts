@@ -31,6 +31,8 @@ export interface TagEvent {
   suid: string;
   payload: string;
   eventTags: string[];
+  /** Internal allocator lineage; absent only on pre-G17 durable rows. */
+  allocatorLineageId?: string;
 }
 
 export interface TagOutboxRow {
@@ -38,6 +40,7 @@ export interface TagOutboxRow {
   eventId: string;
   suid: string;
   payload: string;
+  allocatorLineageId?: string;
 }
 
 /**
@@ -67,6 +70,7 @@ export interface RepairScopeItem {
   suid: string;
   payload: string;
   eventTags: string[];
+  allocatorLineageId?: string;
 }
 
 export type RepairBranch = "ROLLED_FORWARD" | "EXCLUDED_AUDITED" | "FAILED_CLOSED";

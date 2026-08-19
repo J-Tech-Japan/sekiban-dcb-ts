@@ -32,6 +32,8 @@
     "test:local-pg": "docker compose up --wait postgres && npm test",
     "test:consumer": "npm run build:packages && node scripts/g13-consumer-fixture.mjs",
     "test:boundaries": "node scripts/g13-boundary-check.mjs",
+    "test:g17": "npm run build:packages && vitest run --config vitest.config.ts test/g17-lineage.spec.ts",
+    "test:g17:rollout-order": "node scripts/g17-rollout-order-fixture.mjs",
     "test:watch": "vitest --config vitest.config.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer"
   },

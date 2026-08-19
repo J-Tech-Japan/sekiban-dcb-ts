@@ -2,6 +2,9 @@ import type { DownstreamOutboxMessage } from "../downstream/types";
 import { decayedLagEstimateMs } from "../safeWindow";
 import type {
   DeliveryLagRecord,
+  DeliveryIncident,
+  DeliveryIncidentClassification,
+  DeliveryOutcome,
   DetectorStore,
   EventStore,
   InconsistencyClassification,
@@ -37,7 +40,7 @@ export interface CosmosDocumentClient {
   ): Promise<CosmosDocumentRecord<T>[]>;
 }
 
-export type CosmosWriteBoundary = "event" | "lag" | "pending" | "finding" | "checkpoint";
+export type CosmosWriteBoundary = "event" | "lag" | "pending" | "finding" | "checkpoint" | "incident" | "incident-projection";
 
 export interface CosmosContainerNames {
   readonly events: string;
@@ -204,6 +207,43 @@ function findingFrom(document: JsonObject): InconsistencyFinding {
     lagBoundMs: asNumber(document.lagBoundMs, "lagBoundMs"),
     observedAt: asNumber(document.observedAt, "observedAt"),
   };
+}
+
+function incidentClassification(value: unknown): DeliveryIncidentClassification {
+  const classification = asString(value, "classification");
+  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH") {
+    throw new Error("Cosmos delivery incident classification was invalid");
+  }
+  return classification;
+}
+
+function optionalString(value: unknown, name: string): string | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  return asString(value, name);
+}
+
+function incidentFrom(document: JsonObject): DeliveryIncident {
+  return {
+    serviceId: asString(document.serviceId, "serviceId"),
+    identityKey: asString(document.identityKey, "identityKey"),
+    classification: incidentClassification(document.classification),
+    suid: optionalString(document.suid, "suid"),
+    existingEventId: optionalString(document.existingEventId, "existingEventId"),
+    incomingEventId: optionalString(document.incomingEventId, "incomingEventId"),
+    eventId: optionalString(document.eventId, "eventId"),
+    boundLineageId: optionalString(document.boundLineageId, "boundLineageId"),
+    incomingLineageId: optionalString(document.incomingLineageId, "incomingLineageId"),
+    observedAt: asNumber(document.observedAt, "observedAt"),
+  };
+}
+
+function collisionIdentity(serviceId: string, suid: string, existingEventId: string, incomingEventId: string): string {
+  const [first, second] = [existingEventId, incomingEventId].sort((left, right) => left.localeCompare(right));
+  return `SUID_COLLISION|${serviceId}|${suid}|${first}|${second}`;
+}
+
+function lineageIdentity(serviceId: string, boundLineageId: string, incomingLineageId: string): string {
+  return `LINEAGE_MISMATCH|${serviceId}|${boundLineageId}|${incomingLineageId}`;
 }
 
 function checkpointFrom(document: JsonObject): ProjectionCheckpoint {
@@ -390,6 +430,7 @@ export class CosmosRestClient implements CosmosDocumentClient {
 interface EventDocument extends JsonObject {
   id: string;
   serviceId: string;
+  kind?: "event";
   eventId: string;
   suid: string;
   payload: string;
@@ -398,6 +439,37 @@ interface EventDocument extends JsonObject {
   lastArrivedAt: number;
   maxDeliveryLagMs: number;
   arrivals: DeliveryLagRecord[];
+}
+
+interface LineageBindingDocument extends JsonObject {
+  id: string;
+  serviceId: string;
+  kind: "allocator-lineage-binding";
+  allocatorLineageId: string;
+  boundAt: number;
+}
+
+interface SuidBindingDocument extends JsonObject {
+  id: string;
+  serviceId: string;
+  kind: "suid-binding";
+  suid: string;
+  eventId: string;
+}
+
+interface IncidentDocument extends JsonObject {
+  id: string;
+  serviceId: string;
+  kind: "delivery-incident";
+  identityKey: string;
+  classification: DeliveryIncidentClassification;
+  suid?: string;
+  existingEventId?: string;
+  incomingEventId?: string;
+  eventId?: string;
+  boundLineageId?: string;
+  incomingLineageId?: string;
+  observedAt: number;
 }
 
 interface LagDocument extends JsonObject {
@@ -471,17 +543,82 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     this.initialized = true;
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<StoredEvent> {
+  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome> {
     this.ready();
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const eventTags = sortedUnique(message.eventTags);
+    const binding = await this.readLineageBinding(message.serviceId);
+    if (binding !== undefined && binding.document.allocatorLineageId !== message.allocatorLineageId) {
+      const incident: DeliveryIncident = {
+        serviceId: message.serviceId,
+        identityKey: lineageIdentity(message.serviceId, binding.document.allocatorLineageId, message.allocatorLineageId),
+        classification: "LINEAGE_MISMATCH",
+        boundLineageId: binding.document.allocatorLineageId,
+        incomingLineageId: message.allocatorLineageId,
+        observedAt: arrivedAt,
+      };
+      await this.persistIncident(incident);
+      return { outcome: "lineage-mismatch", kind: "lineage-mismatch", incident };
+    }
+    if (binding === undefined) {
+      await this.bindLineage(message.serviceId, message.allocatorLineageId, arrivedAt);
+      const racedBinding = await this.readLineageBinding(message.serviceId);
+      if (racedBinding === undefined) {
+        throw new Error("Cosmos allocator lineage binding was not durable");
+      }
+      if (racedBinding.document.allocatorLineageId !== message.allocatorLineageId) {
+        const incident: DeliveryIncident = {
+          serviceId: message.serviceId,
+          identityKey: lineageIdentity(message.serviceId, racedBinding.document.allocatorLineageId, message.allocatorLineageId),
+          classification: "LINEAGE_MISMATCH",
+          boundLineageId: racedBinding.document.allocatorLineageId,
+          incomingLineageId: message.allocatorLineageId,
+          observedAt: arrivedAt,
+        };
+        await this.persistIncident(incident);
+        return { outcome: "lineage-mismatch", kind: "lineage-mismatch", incident };
+      }
+    }
     const currentEvents = await this.eventDocuments(message.serviceId);
+    const existingBySuid = currentEvents.find((entry) => entry.document.suid === message.suid);
+    if (existingBySuid !== undefined && existingBySuid.document.eventId !== message.eventId) {
+      const incident: DeliveryIncident = {
+        serviceId: message.serviceId,
+        identityKey: collisionIdentity(
+          message.serviceId,
+          message.suid,
+          existingBySuid.document.eventId,
+          message.eventId,
+        ),
+        classification: "SUID_COLLISION",
+        suid: message.suid,
+        existingEventId: existingBySuid.document.eventId,
+        incomingEventId: message.eventId,
+        observedAt: arrivedAt,
+      };
+      await this.persistIncident(incident);
+      return { outcome: "suid-collision", kind: "suid-collision", incident };
+    }
+    const reservedEventId = await this.reserveSuid(message.serviceId, message.suid, message.eventId);
+    if (reservedEventId !== undefined && reservedEventId !== message.eventId) {
+      const incident: DeliveryIncident = {
+        serviceId: message.serviceId,
+        identityKey: collisionIdentity(message.serviceId, message.suid, reservedEventId, message.eventId),
+        classification: "SUID_COLLISION",
+        suid: message.suid,
+        existingEventId: reservedEventId,
+        incomingEventId: message.eventId,
+        observedAt: arrivedAt,
+      };
+      await this.persistIncident(incident);
+      return { outcome: "suid-collision", kind: "suid-collision", incident };
+    }
     const currentHead = currentEvents.reduce<string | undefined>((head, entry) =>
       head === undefined || compareCosmosSuid(entry.document.suid, head) > 0 ? entry.document.suid : head, undefined);
     const recoveryBacklogSample = currentHead !== undefined && compareCosmosSuid(message.suid, currentHead) < 0;
     const event = await this.mutateEvent(message, arrivedAt, lagMs, eventTags);
     if (!recoveryBacklogSample) await this.updateLag(message.serviceId, lagMs, arrivedAt);
-    return eventFrom(event);
+    return { outcome: "stored", kind: "stored", event: eventFrom(event) };
   }
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
@@ -638,6 +775,141 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     }
   }
 
+  async appendDeliveryIncident(incident: DeliveryIncident): Promise<void> {
+    this.ready();
+    await this.persistIncident(incident);
+    await this.projectIncident(incident);
+  }
+
+  async hasDeliveryIncident(serviceId: string, identityKey: string): Promise<boolean> {
+    this.ready();
+    return (await this.client.read<IncidentDocument>(
+      this.containers.events,
+      safeId("incident", identityKey),
+      serviceId,
+    )) !== undefined;
+  }
+
+  async listDeliveryIncidents(serviceId?: string): Promise<DeliveryIncident[]> {
+    this.ready();
+    const rows = await this.client.query<IncidentDocument>(
+      this.containers.events,
+      serviceId === undefined ? "SELECT * FROM c" : "SELECT * FROM c WHERE c.serviceId = @serviceId",
+      serviceId === undefined ? [] : [{ name: "@serviceId", value: serviceId }],
+      serviceId,
+    );
+    return rows
+      .filter((row) => row.document.kind === "delivery-incident")
+      .map((row) => incidentFrom(row.document))
+      .sort((left, right) => left.observedAt - right.observedAt || left.identityKey.localeCompare(right.identityKey));
+  }
+
+  /** Retryable async projection from the same-partition incident landing. */
+  async projectDeliveryIncidents(serviceId?: string): Promise<number> {
+    const incidents = await this.listDeliveryIncidents(serviceId);
+    let projected = 0;
+    for (const incident of incidents) {
+      await this.projectIncident(incident);
+      projected += 1;
+    }
+    return projected;
+  }
+
+  private async readLineageBinding(serviceId: string): Promise<CosmosDocumentRecord<LineageBindingDocument> | undefined> {
+    return this.client.read<LineageBindingDocument>(
+      this.containers.events,
+      safeId("allocator-lineage-binding"),
+      serviceId,
+    );
+  }
+
+  private async bindLineage(serviceId: string, allocatorLineageId: string, boundAt: number): Promise<void> {
+    const document: LineageBindingDocument = {
+      id: safeId("allocator-lineage-binding"),
+      serviceId,
+      kind: "allocator-lineage-binding",
+      allocatorLineageId,
+      boundAt,
+    };
+    try {
+      await this.client.create(this.containers.events, document, serviceId);
+    } catch (error) {
+      if (!isStatus(error, 409)) throw error;
+    }
+  }
+
+  /**
+   * Cosmos has no cross-document unique index. A same-partition SUID binding
+   * is the equivalent guard: the first EventId reserves the opaque SUID and
+   * every later delivery reuses or rejects that reservation before event
+   * mutation. Historical rows are still checked by eventDocuments above.
+   */
+  private async reserveSuid(serviceId: string, suid: string, eventId: string): Promise<string | undefined> {
+    const id = safeId("suid-binding", suid);
+    const existing = await this.client.read<SuidBindingDocument>(this.containers.events, id, serviceId);
+    if (existing !== undefined) return existing.document.eventId;
+    const document: SuidBindingDocument = {
+      id,
+      serviceId,
+      kind: "suid-binding",
+      suid,
+      eventId,
+    };
+    await this.beforeWrite?.("event");
+    try {
+      await this.client.create(this.containers.events, document, serviceId);
+      return eventId;
+    } catch (error) {
+      if (!isStatus(error, 409)) throw error;
+      const raced = await this.client.read<SuidBindingDocument>(this.containers.events, id, serviceId);
+      return raced?.document.eventId;
+    }
+  }
+
+  private async persistIncident(incident: DeliveryIncident): Promise<void> {
+    const document: IncidentDocument = {
+      id: safeId("incident", incident.identityKey),
+      serviceId: incident.serviceId,
+      kind: "delivery-incident",
+      identityKey: incident.identityKey,
+      classification: incident.classification,
+      ...(incident.suid === undefined ? {} : { suid: incident.suid }),
+      ...(incident.existingEventId === undefined ? {} : { existingEventId: incident.existingEventId }),
+      ...(incident.incomingEventId === undefined ? {} : { incomingEventId: incident.incomingEventId }),
+      ...(incident.eventId === undefined ? {} : { eventId: incident.eventId }),
+      ...(incident.boundLineageId === undefined ? {} : { boundLineageId: incident.boundLineageId }),
+      ...(incident.incomingLineageId === undefined ? {} : { incomingLineageId: incident.incomingLineageId }),
+      observedAt: incident.observedAt,
+    };
+    await this.beforeWrite?.("incident");
+    try {
+      await this.client.create(this.containers.events, document, incident.serviceId);
+    } catch (error) {
+      if (!isStatus(error, 409)) throw error;
+    }
+  }
+
+  private async projectIncident(incident: DeliveryIncident): Promise<void> {
+    const document = {
+      id: safeId("incident", incident.identityKey),
+      serviceId: incident.serviceId,
+      eventId: incident.eventId ?? incident.incomingEventId ?? incident.identityKey,
+      path: incident.classification,
+      classification: incident.classification,
+      firstObservedAt: incident.observedAt,
+      lagBoundMs: 0,
+      observedAt: incident.observedAt,
+      kind: "delivery-incident" as const,
+      identityKey: incident.identityKey,
+    };
+    await this.beforeWrite?.("incident-projection");
+    try {
+      await this.client.create(this.containers.findings, document, incident.serviceId);
+    } catch (error) {
+      if (!isStatus(error, 409)) throw error;
+    }
+  }
+
   async hasFinding(serviceId: string, eventId: string, path: string, classification: InconsistencyClassification): Promise<boolean> {
     this.ready();
     return (await this.client.read<FindingDocument>(
@@ -665,17 +937,20 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       parameters,
       serviceId,
     );
-    return rows.map((row) => findingFrom(row.document)).sort((left, right) =>
+    return rows
+      .filter((row) => row.document.kind === undefined)
+      .map((row) => findingFrom(row.document)).sort((left, right) =>
       left.observedAt - right.observedAt || left.eventId.localeCompare(right.eventId) || left.path.localeCompare(right.path));
   }
 
   private async eventDocuments(serviceId: string): Promise<CosmosDocumentRecord<EventDocument>[]> {
-    return this.client.query<EventDocument>(
+    const rows = await this.client.query<EventDocument>(
       this.containers.events,
       "SELECT * FROM c WHERE c.serviceId = @serviceId",
       [{ name: "@serviceId", value: serviceId }],
       serviceId,
     );
+    return rows.filter((entry) => entry.document.kind === undefined || entry.document.kind === "event");
   }
 
   private async mutateEvent(
@@ -691,6 +966,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
         const document: EventDocument = {
           id,
           serviceId: message.serviceId,
+          kind: "event",
           eventId: message.eventId,
           suid: message.suid,
           payload: message.payload,

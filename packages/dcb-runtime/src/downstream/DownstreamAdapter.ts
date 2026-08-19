@@ -44,7 +44,13 @@ export async function processDownstreamDelivery(
   }
   await withStore(env, options, async (store, clock) => {
     const arrivedAt = clock.now();
-    await store.recordDelivery(message, arrivedAt);
+    const outcome = await store.recordDelivery(message, arrivedAt);
+    if (outcome.outcome !== "stored") {
+      // A durable Cosmos incident is enough to acknowledge the poison row;
+      // projection is retried here when the provider exposes that seam.
+      await store.projectDeliveryIncidents?.(message.serviceId);
+      return;
+    }
     const lagBound = await store.currentLagBound(message.serviceId, arrivedAt);
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     await detector.observe(message, arrivedAt, lagBound);
@@ -69,7 +75,12 @@ export async function handleDownstreamQueue(
           throw new Error("Downstream Queue contained an invalid outbox message");
         }
         const arrivedAt = clock.now();
-        await store.recordDelivery(queued.body, arrivedAt);
+        const outcome = await store.recordDelivery(queued.body, arrivedAt);
+        if (outcome.outcome !== "stored") {
+          await store.projectDeliveryIncidents?.(queued.body.serviceId);
+          queued.ack();
+          continue;
+        }
         const lagBound = await store.currentLagBound(queued.body.serviceId, arrivedAt);
         await detector.observe(queued.body, arrivedAt, lagBound);
         queued.ack();

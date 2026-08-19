@@ -1,5 +1,5 @@
 import type { TagEvent } from "../tag/types";
-import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
+import type { DeliveryIncident, ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
   type ProjectionEvent,
@@ -55,6 +55,17 @@ function compareSuid(left: string, right: string): number {
     }
   }
   return leftBytes.length - rightBytes.length;
+}
+
+function orderViolationIncident(serviceId: string, event: StoredEvent, previousSuid: string): DeliveryIncident {
+  return {
+    serviceId,
+    identityKey: `ORDER_VIOLATION|${serviceId}|${previousSuid}|${event.suid}|${event.eventId}`,
+    classification: "ORDER_VIOLATION",
+    suid: event.suid,
+    eventId: event.eventId,
+    observedAt: event.lastArrivedAt,
+  };
 }
 
 function stateFromCheckpoint(projector: TagStateProjector, checkpoint: ProjectionCheckpoint | undefined): unknown {
@@ -165,6 +176,7 @@ export class ProjectionRuntime {
 
       for (const event of sourceEvents) {
         if (previousSuid !== undefined && compareSuid(previousSuid, event.suid) >= 0) {
+          await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
         }
         // Stop at the first unsafe source event. Because the source is SUID

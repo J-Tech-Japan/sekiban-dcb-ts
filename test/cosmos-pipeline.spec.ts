@@ -105,6 +105,7 @@ function testMessage(): DownstreamOutboxMessage {
   return {
     version: 1,
     serviceId: SERVICE_ID,
+    allocatorLineageId: "test-cosmos-lineage",
     tag: "test:cosmos-provider",
     attemptId: "cosmos-provider-attempt",
     eventId: "cosmos-provider-event",

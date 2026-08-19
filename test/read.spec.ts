@@ -308,6 +308,7 @@ describe("Serialized V1 reads", () => {
     await store.recordDelivery({
       version: 1,
       serviceId,
+      allocatorLineageId: "test-read-lineage",
       tag,
       attemptId: crypto.randomUUID(),
       eventId: crypto.randomUUID(),

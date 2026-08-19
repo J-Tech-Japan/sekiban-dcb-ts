@@ -37,6 +37,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:g17
+      - run: npm run test:g17:rollout-order
       - run: npm run test:store-contract
       - run: npm run test:boundaries
       - run: npm run test:consumer

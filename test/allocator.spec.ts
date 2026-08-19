@@ -1,4 +1,4 @@
-import { abortAllDurableObjects, SELF } from "cloudflare:test";
+import { abortAllDurableObjects, env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -27,6 +27,20 @@ async function allocatorRequest(path: string, body?: unknown): Promise<Response>
   return SELF.fetch(`https://allocator.test/allocator${path}`, init);
 }
 
+async function namedAllocatorRequest(name: string, path: string, body?: unknown): Promise<Response> {
+  const init =
+    body === undefined
+      ? undefined
+      : {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        };
+  const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+  const stub = namespace.get(namespace.idFromName(name));
+  return stub.fetch(`https://${name}.allocator.test${path}`, init);
+}
+
 async function journalRequest(attemptId: string, path: string, body?: unknown): Promise<Response> {
   const init =
     body === undefined
@@ -45,6 +59,10 @@ async function responseJson<T>(response: Response): Promise<T> {
 
 function newAttempt(): string {
   return crypto.randomUUID();
+}
+
+function unique(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 function allocationCandidates(attemptId: string, count = 3): AllocationCandidate[] {
@@ -76,6 +94,7 @@ async function allocate(
 
 function expectOrderedVector(vector: AllocationVector, expected: AllocationCandidate[]): void {
   expect(vector.attemptId).toBeDefined();
+  expect(vector.allocatorLineageId.length).toBeGreaterThan(0);
   expect(vector.candidates.map(({ candidateIndex, eventId }) => ({ candidateIndex, eventId }))).toEqual(expected);
   const suids = vector.candidates.map((candidate) => candidate.suid);
   expect(new Set(suids).size).toBe(suids.length);
@@ -83,6 +102,22 @@ function expectOrderedVector(vector: AllocationVector, expected: AllocationCandi
 }
 
 describe("AllocatorDurableObject", () => {
+  it("generates distinct lineage tokens for independent namespaces and preserves one across restart", async () => {
+    const firstNamespace = unique("g17-lineage-first");
+    const secondNamespace = unique("g17-lineage-second");
+    const firstState = await responseJson<AllocatorState>(await namedAllocatorRequest(firstNamespace, "/state"));
+    const secondState = await responseJson<AllocatorState>(await namedAllocatorRequest(secondNamespace, "/state"));
+    expect(firstState.allocatorLineageId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(secondState.allocatorLineageId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(secondState.allocatorLineageId).not.toBe(firstState.allocatorLineageId);
+
+    const restartNamespace = unique("g17-lineage-restart");
+    const beforeRestart = await responseJson<AllocatorState>(await namedAllocatorRequest(restartNamespace, "/state"));
+    await abortAllDurableObjects();
+    const afterRestart = await responseJson<AllocatorState>(await namedAllocatorRequest(restartNamespace, "/state"));
+    expect(afterRestart.allocatorLineageId).toBe(beforeRestart.allocatorLineageId);
+  });
+
   it("commits each complete ordered vector and its watermark in one transaction", async () => {
     const before = await allocatorState();
     const interruptedAttempt = newAttempt();

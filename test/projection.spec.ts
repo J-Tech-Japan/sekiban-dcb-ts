@@ -32,6 +32,7 @@ function message(
   return {
     version: 1,
     serviceId,
+    allocatorLineageId: "test-projection-lineage",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,

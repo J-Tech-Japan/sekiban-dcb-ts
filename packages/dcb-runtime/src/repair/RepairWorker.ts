@@ -49,6 +49,7 @@ interface JournalCandidate {
   payload: string;
   tags: string[];
   suid: string;
+  allocatorLineageId?: string;
 }
 
 interface JournalWorkset {
@@ -61,8 +62,8 @@ interface TagRepairFacts {
   tag: string;
   head: string;
   version: number;
-  events: Array<{ attemptId: string; eventId: string; suid: string; payload: string }>;
-  outbox: Array<{ attemptId: string; eventId: string; suid: string; payload: string }>;
+  events: Array<{ attemptId: string; eventId: string; suid: string; payload: string; allocatorLineageId?: string }>;
+  outbox: Array<{ attemptId: string; eventId: string; suid: string; payload: string; allocatorLineageId?: string }>;
   fences: TagFence[];
   clearedFences: TagFence[];
   repairOwner: string | null;
@@ -323,6 +324,7 @@ export class RepairWorker {
               suid: candidate.suid,
               payload: candidate.payload,
               eventTags: candidate.tags,
+              allocatorLineageId: candidate.allocatorLineageId,
             },
           });
         }

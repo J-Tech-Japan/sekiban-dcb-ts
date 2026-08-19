@@ -38,6 +38,7 @@ interface AdmissionInput {
 interface TransitionInput extends CasExpectation {
   nextState: JournalState;
   terminalReason?: string;
+  allocatorLineageId?: string;
   alarmFaults?: AlarmFaultPoint[];
 }
 
@@ -367,9 +368,18 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     ) {
       return { error: "commitContext testFenceInstallFaultOnce must be a boolean" };
     }
+    if (
+      value.commitContext.allocatorLineageId !== undefined &&
+      !isNonEmptyString(value.commitContext.allocatorLineageId)
+    ) {
+      return { error: "commitContext allocatorLineageId must be a non-empty string" };
+    }
     commitContext = {
       attemptId: value.commitContext.attemptId,
       serviceId: value.commitContext.serviceId,
+      ...(isNonEmptyString(value.commitContext.allocatorLineageId)
+        ? { allocatorLineageId: value.commitContext.allocatorLineageId }
+        : {}),
       ...(value.commitContext.testFenceNotDurable === true ? { testFenceNotDurable: true } : {}),
       ...(value.commitContext.testFenceInstallFaultOnce === true ? { testFenceInstallFaultOnce: true } : {}),
     };
@@ -469,6 +479,9 @@ function transitionFrom(value: unknown): { value?: TransitionInput; error?: stri
   if (value.terminalReason !== undefined && !isNonEmptyString(value.terminalReason)) {
     return { error: "terminalReason must be a non-empty string when present" };
   }
+  if (value.allocatorLineageId !== undefined && !isNonEmptyString(value.allocatorLineageId)) {
+    return { error: "allocatorLineageId must be a non-empty string when present" };
+  }
   let alarmFaults: AlarmFaultPoint[] | undefined;
   if (value.alarmFaults !== undefined) {
     if (!Array.isArray(value.alarmFaults) || !value.alarmFaults.every((fault) =>
@@ -486,6 +499,7 @@ function transitionFrom(value: unknown): { value?: TransitionInput; error?: stri
       ...expectation.value,
       nextState: value.nextState,
       terminalReason: value.terminalReason,
+      allocatorLineageId: value.allocatorLineageId,
       alarmFaults,
     },
   };
@@ -716,7 +730,13 @@ export class JournalDurableObject implements DurableObject {
     return json({
       attemptId: record.commitContext?.attemptId,
       missingTags: record.reconciliation?.missingTags ?? [],
-      candidates: record.candidates.map((candidate, index) => ({ ...candidate, suid: vector[index]! })),
+      candidates: record.candidates.map((candidate, index) => ({
+        ...candidate,
+        suid: vector[index]!,
+        ...(record.commitContext?.allocatorLineageId === undefined
+          ? {}
+          : { allocatorLineageId: record.commitContext.allocatorLineageId }),
+      })),
     });
   }
 
@@ -738,6 +758,9 @@ export class JournalDurableObject implements DurableObject {
       const commitContext: CommitAttemptContext = {
         attemptId: record.commitContext.attemptId,
         serviceId: record.commitContext.serviceId,
+        ...(record.commitContext.allocatorLineageId === undefined
+          ? {}
+          : { allocatorLineageId: record.commitContext.allocatorLineageId }),
       };
       await txn.put(JOURNAL_KEY, {
         ...record,
@@ -899,6 +922,9 @@ export class JournalDurableObject implements DurableObject {
       const updated: JournalRecord = {
         ...record,
         state: input.nextState,
+        commitContext: input.allocatorLineageId === undefined || record.commitContext === undefined
+          ? record.commitContext
+          : { ...record.commitContext, allocatorLineageId: input.allocatorLineageId },
         alarmFaults: input.alarmFaults ?? record.alarmFaults,
         version: record.version + 1,
         updatedAt: nowIso(),
@@ -1566,6 +1592,9 @@ export class JournalDurableObject implements DurableObject {
       const commitContext: CommitAttemptContext = {
         attemptId: record.commitContext.attemptId,
         serviceId: record.commitContext.serviceId,
+        ...(record.commitContext.allocatorLineageId === undefined
+          ? {}
+          : { allocatorLineageId: record.commitContext.allocatorLineageId }),
         ...(record.commitContext.testFenceNotDurable === true ? { testFenceNotDurable: true } : {}),
       };
       const updated: JournalRecord = {

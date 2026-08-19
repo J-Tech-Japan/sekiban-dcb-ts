@@ -38,15 +38,17 @@ const PRE_SPLIT_GOLDEN = {
       failure: { status: 400, contentType: "application/json; charset=utf-8", keys: ["code", "error"] },
     },
   },
-  queuePayloadKeys: ["attemptId", "enqueuedAt", "eventId", "eventTags", "payload", "serviceId", "suid", "tag", "version"],
+  queuePayloadKeys: ["allocatorLineageId", "attemptId", "enqueuedAt", "eventId", "eventTags", "payload", "serviceId", "suid", "tag", "version"],
   storageSchema: {
     sqliteDurableObjectKeys: ["allocator-state", "attempt:*", "journal", "outbox-deliveries", "repair-facts", "tag"],
     postgresTables: {
-      serialized_dcb_events: ["service_id", "event_id", "suid", "payload", "event_tags", "first_arrived_at", "last_arrived_at", "max_delivery_lag_ms"],
+      serialized_dcb_events: ["service_id", "event_id", "suid", "payload", "allocator_lineage_id", "event_tags", "first_arrived_at", "last_arrived_at", "max_delivery_lag_ms"],
       serialized_dcb_event_arrivals: ["service_id", "event_id", "tag", "enqueued_at", "arrived_at", "lag_ms"],
       serialized_dcb_lag_estimates: ["service_id", "estimate_ms", "observed_at"],
       serialized_dcb_pending_arrivals: ["service_id", "event_id", "attempt_id", "suid", "expected_paths", "observed_paths", "first_observed_at", "lag_bound_ms"],
       serialized_dcb_inconsistency_findings: ["sequence", "service_id", "event_id", "path", "classification", "first_observed_at", "lag_bound_ms", "observed_at"],
+      serialized_dcb_allocator_bindings: ["service_id", "allocator_lineage_id", "bound_at"],
+      serialized_dcb_delivery_incidents: ["sequence", "service_id", "identity_key", "classification", "suid", "existing_event_id", "incoming_event_id", "event_id", "bound_lineage_id", "incoming_lineage_id", "observed_at"],
       serialized_dcb_projection_checkpoints: ["service_id", "projection_id", "last_suid", "state_json", "version", "updated_at"],
     },
   },
@@ -131,6 +133,7 @@ async function captureTranscript(): Promise<unknown> {
   const queuePayload: DownstreamOutboxMessage = {
     version: 1,
     serviceId: "g13-wire-service",
+    allocatorLineageId: "test-g13-lineage",
     tag: "test:g13-wire",
     attemptId: "attempt",
     eventId: "event",

@@ -13,12 +13,15 @@ export interface AllocatedCandidate extends AllocationCandidate {
  */
 export interface AllocationVector {
   attemptId: string;
+  /** Durable allocator lineage token; it changes when the allocator DO is recreated. */
+  allocatorLineageId: string;
   candidates: AllocatedCandidate[];
   allocatedAt: string;
 }
 
 /** The persisted service head; it is the allocated watermark. */
 export interface AllocatorState {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  allocatorLineageId: string;
   allocatedWatermark: string | null;
 }
