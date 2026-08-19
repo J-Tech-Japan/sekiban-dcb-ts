@@ -44,6 +44,15 @@ jobs:
       - run: npm run test:consumer
       - run: npm run build
       - run: npm run e2e:g15:local
+      - name: Isolate G16 E2E PostgreSQL database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          database="sdt_g16_${GITHUB_RUN_ID}"
+          psql --host 127.0.0.1 --username postgres --dbname postgres \
+            --command "CREATE DATABASE \"${database}\""
+          printf 'POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:5432/%s\n' "${database}" >> "${GITHUB_ENV}"
       - run: npm run test:g16
       - run: npm run e2e:g16:local
 

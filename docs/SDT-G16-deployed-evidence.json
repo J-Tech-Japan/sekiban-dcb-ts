@@ -10,12 +10,13 @@
   "safeWindowBoundMs": 120000,
   "localE2E": {
     "status": "PASS",
-    "artifact": ".artifacts/g16-local-e2e.json",
-    "database": "sdt_g16_e441176197134210892c1afde874c4e0",
+    "artifact": ".artifacts/g16-local-after-g17.json",
+    "database": "sdt_g16_verify_20260819",
     "reservationListVisibleWithinBound": true,
-    "reservationListCommitToVisibleMs": 21156.764,
+    "reservationListCommitToVisibleMs": 21167.489,
     "roomQueryStatus": 200,
-    "rawV1Unauthenticated": [404, 404, 404, 404, 404]
+    "rawV1Unauthenticated": [404, 404, 404, 404, 404],
+    "g17Isolation": "fresh PostgreSQL database; no retained allocator binding"
   },
   "deployedE2E": {
     "status": "BLOCKED",
