@@ -21,6 +21,8 @@ export type {
   MaterializedViewQueryOptions,
   MaterializedViewRow,
   MaterializedViewStore,
+  MaterializedViewStoreErrorCode,
+  MaterializedViewStoreOperation,
 } from "./MaterializedViewStore";
 export { MaterializedViewCatchUpRuntime } from "./MaterializedViewCatchUp";
 export type { MaterializedViewCatchUpHooks, MaterializedViewCatchUpResult } from "./MaterializedViewCatchUp";

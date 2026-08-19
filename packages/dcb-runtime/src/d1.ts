@@ -26,6 +26,8 @@ export type {
   MaterializedViewQueryOptions,
   MaterializedViewRow,
   MaterializedViewStore,
+  MaterializedViewStoreErrorCode,
+  MaterializedViewStoreOperation,
 } from "./mv/MaterializedViewStore";
 
 export interface D1StoreProviderConfig {

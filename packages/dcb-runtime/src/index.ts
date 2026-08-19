@@ -29,6 +29,8 @@ export type {
   MaterializedViewQueryOptions,
   MaterializedViewRow,
   MaterializedViewStore,
+  MaterializedViewStoreErrorCode,
+  MaterializedViewStoreOperation,
 } from "./mv/MaterializedViewStore";
 
 export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
