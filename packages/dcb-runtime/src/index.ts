@@ -38,6 +38,8 @@ export interface Env {
   G11_VERIFICATION_ENABLED?: string;
   /** Non-secret service identity configured per deployment; local defaults to V1. */
   SDT_SERVICE_ID?: string;
+  /** Explicit opt-in D1 PipelineStore binding; default composition remains Postgres. */
+  D1?: D1Database;
 }
 
 export interface RuntimeWorkerOptions {

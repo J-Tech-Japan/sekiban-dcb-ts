@@ -13,6 +13,8 @@ import { configuredServiceIdOrDefault } from "../http/testServiceId";
 export interface LiveProjectionEnv {
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Optional explicit D1 provider binding; Postgres remains the default. */
+  D1?: D1Database;
   /** Non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
 }

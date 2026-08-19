@@ -13,6 +13,14 @@
       "id": "c236b7b51ed24bf4b312bc370c61a231"
     }
   ],
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "serialized-dcb-v1-local",
+      "database_id": "00000000-0000-0000-0000-000000000018",
+      "migrations_dir": "migrations/d1"
+    }
+  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

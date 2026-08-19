@@ -7,6 +7,8 @@ import type { PipelineStore } from "../store/types";
 export interface DownstreamAdapterEnv {
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
+  /** Optional explicit D1 provider binding; Postgres remains the default. */
+  D1?: D1Database;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
 }
 
