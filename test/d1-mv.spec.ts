@@ -15,8 +15,12 @@ import {
   MaterializedViewPromotionCasError,
   MaterializedViewStoreError,
 } from "../packages/dcb-runtime/src/d1-mv";
+import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
 import { MaterializedViewCatchUpRuntime } from "../packages/dcb-runtime/src/mv/MaterializedViewCatchUp";
-import { readRowsFromBacking, selectQueryBacking } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
+import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import { readRowsFromBacking, selectQueryBacking, type QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import type { ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 
 interface Event {
@@ -24,6 +28,8 @@ interface Event {
   eventId: string;
   count: number;
 }
+
+const TEST_PROJECTOR = TEST_TAG_STATE_PROJECTOR;
 
 const MATERIALIZER: MaterializedViewRowMaterializer<Event> = defineRowMaterializer({
   id: "g19-d1-events-v1",
@@ -205,6 +211,67 @@ describe("SDT-G19 D1 materialized-view store", () => {
     if (selection.backing !== "d1-mv") throw new Error("D1 MV backing selection was not chosen");
     const page = await selection.store.queryRows(serviceId, MATERIALIZER.id, { indexId: "count", valueType: "integer", limit: 1, offset: 0 });
     expect(page.map((row) => row.rowKey)).toEqual(["event-a"]);
+  });
+
+  it("serves the V1 list-query shape from mv_rows identically to memory backing", async () => {
+    const serviceId = `g19-endpoint-${crypto.randomUUID()}`;
+    const tag = "test:g19-mv-endpoint";
+    const events = [event("suid-1", "z-event", 2), event("suid-2", "a-event", 1)];
+    const mv = store();
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: TEST_PROJECTOR, definitionVersion: 1, updatedAt: 3_100 });
+    for (const [index, incoming] of events.entries()) {
+      await mv.applyMutationsAndAdvanceCheckpoint({
+        serviceId,
+        viewId: TEST_PROJECTOR,
+        generation: 0,
+        expectedLastSuid: index === 0 ? null : events[index - 1]!.suid,
+        lastSuid: incoming.suid,
+        definitionVersion: 1,
+        updatedAt: 3_101 + index,
+        mutations: MATERIALIZER.plan(incoming),
+      });
+    }
+    const entries = events.map((incoming) => ({
+      eventId: incoming.eventId,
+      suid: incoming.suid,
+      payload: btoa(JSON.stringify({ eventId: incoming.eventId, count: incoming.count })),
+    }));
+    const projectionId = projectionIdFor({
+      tag,
+      tagGroup: "test",
+      tagContent: "g19-mv-endpoint",
+      tagProjector: TEST_PROJECTOR,
+    });
+    const memory: QueryProjectionStore = {
+      readAllEvents: async () => [],
+      currentLagBound: async () => 0,
+      listProjectionTags: async () => [tag],
+      readProjectionCheckpoint: async () => ({
+        serviceId,
+        projectionId,
+        lastSuid: events[1]!.suid,
+        stateJson: JSON.stringify(entries),
+        version: entries.length,
+        updatedAt: 3_102,
+      }),
+    };
+    const requestBody = JSON.stringify({
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
+    });
+    const request = () => new Request("https://query.test/api/sekiban/serialized/list-query", {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+      body: requestBody,
+    });
+    const memoryResponse = await handleSerializedQuery(request(), {}, { store: memory });
+    const mvResponse = await handleSerializedQuery(request(), {}, {
+      queryBacking: "d1-mv",
+      materializedViewQueryPort: mv,
+    });
+    expect(mvResponse.status).toBe(200);
+    expect(await mvResponse.json()).toEqual(await memoryResponse.json());
   });
 
   it("fails closed when the MV binding has not been initialized", async () => {

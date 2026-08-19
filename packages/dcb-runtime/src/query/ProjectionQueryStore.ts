@@ -14,6 +14,8 @@ export type QueryBacking = "memory" | "d1-mv";
 
 export interface MaterializedViewQueryPort {
   queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>;
+  /** D1-backed implementations may need to verify the versioned schema first. */
+  initialize?: () => Promise<void>;
 }
 
 export type QueryBackingSelection =
@@ -22,13 +24,16 @@ export type QueryBackingSelection =
 
 export interface QueryBackingOptions {
   readonly backing: QueryBacking;
-  readonly memory: QueryProjectionStore;
+  readonly memory?: QueryProjectionStore;
   readonly materializedView?: MaterializedViewQueryPort;
 }
 
 /** Select a query backing without allowing an HTTP request to provide a store. */
 export function selectQueryBacking(options: QueryBackingOptions): QueryBackingSelection {
-  if (options.backing === "memory") return { backing: "memory", store: options.memory };
+  if (options.backing === "memory") {
+    if (options.memory === undefined) throw new Error("A memory query backing is required when backing=memory");
+    return { backing: "memory", store: options.memory };
+  }
   if (options.materializedView === undefined) {
     throw new Error("A D1 materialized-view query backing is required when backing=d1-mv");
   }
@@ -202,7 +207,19 @@ export async function readRowsFromBacking(
   viewId: string,
   definition: QueryDefinition,
   options: MaterializedViewQueryOptions = {},
-): Promise<MaterializedViewRow[] | ProjectedQueryEntry[]> {
-  if (selection.backing === "d1-mv") return selection.store.queryRows(serviceId, viewId, options);
+): Promise<ProjectedQueryEntry[]> {
+  if (selection.backing === "d1-mv") {
+    const rows = await selection.store.queryRows(serviceId, viewId, options);
+    return rows.map((row) => {
+      const value = row.value;
+      const eventId = isObject(value) && typeof value.eventId === "string" && value.eventId.length > 0
+        ? value.eventId
+        : row.rowKey;
+      return { eventId, suid: row.sourceSuid, payload: base64Json(value) };
+    }).sort((left, right) => {
+      const bySuid = compareSuid(left.suid, right.suid);
+      return bySuid === 0 ? compareSuid(left.eventId, right.eventId) : bySuid;
+    });
+  }
   return readProjectedEntries(selection.store, serviceId, definition);
 }

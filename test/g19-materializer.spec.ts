@@ -59,5 +59,17 @@ describe("SDT-G19 row materializer definitions", () => {
     });
     expect(() => materializer.plan({ suid: "suid-1", eventId: "event-1", count: 1 })).toThrow(/MV_INDEX_UNDECLARED/);
   });
-});
 
+  it("rejects duplicate index descriptors at definition time", () => {
+    expect(() => defineRowMaterializer({
+      id: "duplicate-index",
+      indexDescriptors: [
+        { id: "same", valueType: "text", value: () => "first" },
+        { id: "same", valueType: "text", value: () => "second" },
+      ],
+      materialize: (event: Event) => ({
+        rowUpserts: [{ rowKey: event.eventId, value: { eventId: event.eventId } }],
+      }),
+    })).toThrow(/MV_INDEX_DUPLICATE/);
+  });
+});

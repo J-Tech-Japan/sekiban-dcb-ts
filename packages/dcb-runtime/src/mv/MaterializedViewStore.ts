@@ -124,7 +124,8 @@ export interface MaterializedViewQueryOptions {
   readonly generation?: number;
   readonly indexId?: string;
   readonly valueType?: MaterializedViewIndexValueType;
-  readonly limit?: number;
+  /** `null` means unbounded; omitted retains the port's 100-row default. */
+  readonly limit?: number | null;
   readonly offset?: number;
 }
 
@@ -314,22 +315,27 @@ export class D1MaterializedViewStore {
     this.ready("initialize");
     const selected = options.generation ?? (await this.readActive(serviceId, viewId))?.generation;
     if (selected === undefined) return [];
-    const limit = options.limit ?? 100;
+    const limit = options.limit === undefined ? 100 : options.limit;
     const offset = options.offset ?? 0;
-    if (!Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(offset) || offset < 0) {
+    if ((limit !== null && (!Number.isSafeInteger(limit) || limit < 0)) || !Number.isSafeInteger(offset) || offset < 0) {
       throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV query limit/offset must be non-negative integers");
     }
     if (options.indexId === undefined) {
+      const limitClause = limit === null ? "" : " LIMIT ? OFFSET ?";
+      const values: (string | number)[] = [serviceId, viewId, selected];
+      if (limit !== null) values.push(limit, offset);
       const result = await this.database.prepare(
         `SELECT service_id, view_id, generation, row_key, value_json, row_version, source_suid
            FROM mv_rows
           WHERE service_id = ? AND view_id = ? AND generation = ?
-          ORDER BY row_key COLLATE BINARY ASC
-          LIMIT ? OFFSET ?`,
-      ).bind(serviceId, viewId, selected, limit, offset).all<D1Row>();
+          ORDER BY row_key COLLATE BINARY ASC${limitClause}`,
+      ).bind(...values).all<D1Row>();
       return result.results.map((row) => this.rowFrom(row));
     }
     const valueType = options.valueType;
+    // COLLATE BINARY is meaningful for text and row-key tie breakers. SQLite
+    // keeps integer/real columns numerically ordered; the closed expression
+    // below remains static so request values never become SQL identifiers.
     const orderColumn = valueType === "text"
       ? "index_entry.text_value"
       : valueType === "integer"
@@ -342,7 +348,8 @@ export class D1MaterializedViewStore {
     const values: (string | number)[] = [serviceId, viewId, selected];
     if (options.indexId !== undefined) values.push(options.indexId);
     if (valueType !== undefined) values.push(valueType);
-    values.push(limit, offset);
+    if (limit !== null) values.push(limit, offset);
+    const limitClause = limit === null ? "" : " LIMIT ? OFFSET ?";
     const result = await this.database.prepare(
       `SELECT row.service_id, row.view_id, row.generation, row.row_key,
               row.value_json, row.row_version, row.source_suid
@@ -353,8 +360,7 @@ export class D1MaterializedViewStore {
           AND row.generation = index_entry.generation
           AND row.row_key = index_entry.row_key
         WHERE row.service_id = ? AND row.view_id = ? AND row.generation = ?${indexPredicate}${typePredicate}
-        ORDER BY ${orderColumn} COLLATE BINARY ASC, row.row_key COLLATE BINARY ASC
-        LIMIT ? OFFSET ?`,
+        ORDER BY ${orderColumn} COLLATE BINARY ASC, row.row_key COLLATE BINARY ASC${limitClause}`,
     ).bind(...values).all<D1Row>();
     return result.results.map((row) => this.rowFrom(row));
   }

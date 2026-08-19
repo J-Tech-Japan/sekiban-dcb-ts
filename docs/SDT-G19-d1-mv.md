@@ -36,4 +36,9 @@ indeterminate result when the lag estimate exceeds the published ceiling. A
 source order violation is recorded through the existing G17 delivery-incident
 port before catch-up fails closed. Composition chooses either the existing
 memory projection or the explicit D1 MV port with `selectQueryBacking`; that
-choice is deployment composition, never request data.
+choice is deployment composition, never request data. `createRuntimeWorker`
+accepts `queryBacking: "d1-mv"` (and the optional typed
+`materializedViewQueryPort` composition port); with the `D1_MV` binding this
+routes both serialized query endpoints through `readRowsFromBacking`. MV rows
+are converted to the existing V1 list/query result shape and ordered by their
+opaque source SUID, so selecting D1 MV does not add or rename wire fields.

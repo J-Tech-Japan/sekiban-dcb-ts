@@ -12,6 +12,7 @@ import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
+import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
@@ -79,6 +80,10 @@ export interface RuntimeWorkerOptions {
   readonly config?: RuntimeWorkerConfig;
   /** Explicitly opt into a non-Postgres provider; default is Postgres. */
   readonly storeProvider?: StoreProvider;
+  /** Deploy-time query backing; defaults to the existing memory projection. */
+  readonly queryBacking?: QueryBacking;
+  /** Optional injected D1-MV query port for explicit composition/tests. */
+  readonly materializedViewQueryPort?: MaterializedViewQueryPort;
 }
 
 /**
@@ -104,6 +109,8 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           registry: composition.queries,
           projectors: composition.projectors,
           storeProvider,
+          queryBacking: options.queryBacking,
+          materializedViewQueryPort: options.materializedViewQueryPort,
         });
       }
       if (url.pathname === "/operator/repair") {
