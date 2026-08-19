@@ -284,7 +284,7 @@ export class CommitWorker {
       return this.noApplicationOutcome(attemptId, true);
     }
 
-    const allocated = await this.transition(journal, reserved, "ALLOCATED");
+    const allocated = await this.transition(journal, reserved, "ALLOCATED", undefined, allocation.allocatorLineageId);
     if (allocated === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
@@ -297,6 +297,7 @@ export class CommitWorker {
       input,
       allocatedCandidates,
       attemptId,
+      allocation.allocatorLineageId,
       reservations.successes,
       fault,
     );
@@ -363,6 +364,7 @@ export class CommitWorker {
     record: JournalRecord,
     nextState: JournalRecord["state"],
     terminalReason?: string,
+    allocatorLineageId?: string,
   ): Promise<JournalRecord | undefined> {
     const result = await this.postJson<JournalRecord>(journal, "/transition", {
       expectedState: record.state,
@@ -370,6 +372,7 @@ export class CommitWorker {
       expectedOwnerEpoch: record.ownerEpoch,
       nextState,
       terminalReason,
+      ...(allocatorLineageId === undefined ? {} : { allocatorLineageId }),
     });
     return result.response.status === 200 ? result.body : undefined;
   }
@@ -498,6 +501,7 @@ export class CommitWorker {
     input: ValidatedCommitEnvelope,
     candidates: AllocatedCommitCandidate[],
     attemptId: string,
+    allocatorLineageId: string,
     reservations: Map<string, ReservationSuccess>,
     fault: CommitTestFault | undefined,
   ): Promise<boolean> {
@@ -514,10 +518,17 @@ export class CommitWorker {
           const response = await this.tagRequest(tag, "/append", {
             attemptId,
             epoch: INITIAL_OWNER_EPOCH,
+            allocatorLineageId,
             reservationToken: reservations.get(tag)?.reservationToken,
             candidates: candidates
               .filter((candidate) => candidate.tags.includes(tag))
-              .map(({ eventId, suid, payload, tags }) => ({ eventId, suid, payload, eventTags: tags })),
+              .map(({ eventId, suid, payload, tags }) => ({
+                eventId,
+                suid,
+                payload,
+                eventTags: tags,
+                allocatorLineageId,
+              })),
             faultInjection: injectFault ? "after-append-before-confirm" : undefined,
           });
           return { tag, success: response.status >= 200 && response.status < 300 };

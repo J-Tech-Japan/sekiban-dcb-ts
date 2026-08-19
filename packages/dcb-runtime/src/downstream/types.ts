@@ -1,7 +1,10 @@
 /** A queue payload is intentionally an internal envelope, never part of V1. */
+export const LEGACY_ALLOCATOR_LINEAGE_ID = "legacy-pre-g17" as const;
 export interface DownstreamOutboxMessage {
   version: 1;
   serviceId: string;
+  /** Stable identity of the allocator DO lineage that issued this delivery. */
+  allocatorLineageId: string;
   tag: string;
   attemptId: string;
   eventId: string;
@@ -44,6 +47,7 @@ export function isDownstreamOutboxMessage(value: unknown): value is DownstreamOu
   const candidate = value as Record<string, unknown>;
   return candidate.version === 1 &&
     typeof candidate.serviceId === "string" && candidate.serviceId.length > 0 &&
+    typeof candidate.allocatorLineageId === "string" && candidate.allocatorLineageId.length > 0 &&
     typeof candidate.tag === "string" && candidate.tag.length > 0 &&
     typeof candidate.attemptId === "string" && candidate.attemptId.length > 0 &&
     typeof candidate.eventId === "string" && candidate.eventId.length > 0 &&

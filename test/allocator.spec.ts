@@ -76,6 +76,7 @@ async function allocate(
 
 function expectOrderedVector(vector: AllocationVector, expected: AllocationCandidate[]): void {
   expect(vector.attemptId).toBeDefined();
+  expect(vector.allocatorLineageId.length).toBeGreaterThan(0);
   expect(vector.candidates.map(({ candidateIndex, eventId }) => ({ candidateIndex, eventId }))).toEqual(expected);
   const suids = vector.candidates.map((candidate) => candidate.suid);
   expect(new Set(suids).size).toBe(suids.length);

@@ -35,6 +35,7 @@ function message(
   return {
     version: 1,
     serviceId,
+    allocatorLineageId: "legacy-pre-g17",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,

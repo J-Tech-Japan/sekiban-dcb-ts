@@ -70,6 +70,7 @@ function message(
   return {
     version: 1,
     serviceId,
+    allocatorLineageId: "test-mv-lineage",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,

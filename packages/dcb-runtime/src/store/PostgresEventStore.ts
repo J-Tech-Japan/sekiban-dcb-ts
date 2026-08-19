@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import postgres, { type TransactionSql } from "postgres";
 
 import type { DownstreamOutboxMessage } from "../downstream/types";
 import {
@@ -6,6 +6,9 @@ import {
 } from "../safeWindow";
 import type {
   DeliveryLagRecord,
+  DeliveryIncident,
+  DeliveryIncidentClassification,
+  DeliveryOutcome,
   DetectorStore,
   EventStore,
   InconsistencyClassification,
@@ -19,7 +22,7 @@ import type {
 } from "./types";
 
 type DbRow = Record<string, unknown>;
-type SqlParameter = string | number;
+type SqlParameter = string | number | null;
 type SqlClient = ReturnType<typeof postgres>;
 
 /** Coordinates first-use DDL across independently scheduled Worker isolates. */
@@ -31,6 +34,7 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_events (
   event_id TEXT NOT NULL,
   suid TEXT NOT NULL,
   payload TEXT NOT NULL,
+  allocator_lineage_id TEXT,
   event_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
   first_arrived_at BIGINT NOT NULL,
   last_arrived_at BIGINT NOT NULL,
@@ -39,11 +43,29 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_events (
 );
 ALTER TABLE serialized_dcb_events
   ADD COLUMN IF NOT EXISTS event_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE serialized_dcb_events
+  ADD COLUMN IF NOT EXISTS allocator_lineage_id TEXT;
 UPDATE serialized_dcb_events
    SET event_tags = (event_tags #>> '{}')::jsonb
  WHERE jsonb_typeof(event_tags) = 'string';
 CREATE INDEX IF NOT EXISTS serialized_dcb_events_service_suid_idx
   ON serialized_dcb_events (service_id, suid, event_id);
+-- A poisoned pre-G17 database can still contain duplicate SUIDs. The staged
+-- rollout creates the full unique index after cleanup; this guarded attempt
+-- keeps first-use bootstrap fail-closed without hiding the duplicate rows.
+DO $$
+BEGIN
+  CREATE UNIQUE INDEX serialized_dcb_events_service_suid_unique_idx
+    ON serialized_dcb_events (service_id, suid);
+EXCEPTION WHEN duplicate_table OR unique_violation THEN
+  NULL;
+END $$;
+
+CREATE TABLE IF NOT EXISTS serialized_dcb_allocator_bindings (
+  service_id TEXT PRIMARY KEY,
+  allocator_lineage_id TEXT NOT NULL,
+  bound_at BIGINT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS serialized_dcb_event_arrivals (
   service_id TEXT NOT NULL,
@@ -92,6 +114,21 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_inconsistency_findings (
   lag_bound_ms BIGINT NOT NULL,
   observed_at BIGINT NOT NULL,
   UNIQUE (service_id, event_id, path, classification)
+);
+
+CREATE TABLE IF NOT EXISTS serialized_dcb_delivery_incidents (
+  sequence BIGSERIAL PRIMARY KEY,
+  service_id TEXT NOT NULL,
+  identity_key TEXT NOT NULL,
+  classification TEXT NOT NULL,
+  suid TEXT,
+  existing_event_id TEXT,
+  incoming_event_id TEXT,
+  event_id TEXT,
+  bound_lineage_id TEXT,
+  incoming_lineage_id TEXT,
+  observed_at BIGINT NOT NULL,
+  UNIQUE (service_id, identity_key)
 );
 
 CREATE TABLE IF NOT EXISTS serialized_dcb_projection_checkpoints (
@@ -175,6 +212,43 @@ function findingFrom(row: DbRow): InconsistencyFinding {
   };
 }
 
+function incidentClassification(value: unknown): DeliveryIncidentClassification {
+  const classification = asString(value, "classification");
+  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH") {
+    throw new Error("Postgres delivery incident classification was invalid");
+  }
+  return classification;
+}
+
+function optionalString(value: unknown, name: string): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  return asString(value, name);
+}
+
+function incidentFrom(row: DbRow): DeliveryIncident {
+  return {
+    serviceId: asString(row.service_id, "service_id"),
+    identityKey: asString(row.identity_key, "identity_key"),
+    classification: incidentClassification(row.classification),
+    suid: optionalString(row.suid, "suid"),
+    existingEventId: optionalString(row.existing_event_id, "existing_event_id"),
+    incomingEventId: optionalString(row.incoming_event_id, "incoming_event_id"),
+    eventId: optionalString(row.event_id, "event_id"),
+    boundLineageId: optionalString(row.bound_lineage_id, "bound_lineage_id"),
+    incomingLineageId: optionalString(row.incoming_lineage_id, "incoming_lineage_id"),
+    observedAt: asNumber(row.observed_at, "observed_at"),
+  };
+}
+
+function collisionIdentity(serviceId: string, suid: string, existingEventId: string, incomingEventId: string): string {
+  const [first, second] = [existingEventId, incomingEventId].sort((left, right) => left.localeCompare(right));
+  return `SUID_COLLISION|${serviceId}|${suid}|${first}|${second}`;
+}
+
+function lineageIdentity(serviceId: string, boundLineageId: string, incomingLineageId: string): string {
+  return `LINEAGE_MISMATCH|${serviceId}|${boundLineageId}|${incomingLineageId}`;
+}
+
 function projectionCheckpointFrom(row: DbRow): ProjectionCheckpoint {
   return {
     serviceId: asString(row.service_id, "service_id"),
@@ -212,11 +286,48 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     }
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<StoredEvent> {
+  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome> {
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const eventTags = sortedUnique(message.eventTags);
     const sql = this.requireSql();
+    let outcome: "stored" | "suid-collision" | "lineage-mismatch" = "stored";
+    let incident: DeliveryIncident | undefined;
     await sql.begin(async (transaction) => {
+      // Serialize all deliveries for a service. The unique index below is
+      // defense-in-depth, while this lock lets us persist the incident in the
+      // same transaction instead of leaking a unique-violation retry window.
+      await transaction.unsafe("SELECT pg_advisory_xact_lock(hashtext($1))", [message.serviceId]);
+      const binding = (await transaction.unsafe(
+        `SELECT allocator_lineage_id
+           FROM serialized_dcb_allocator_bindings
+          WHERE service_id = $1
+          FOR UPDATE`,
+        [message.serviceId],
+      ) as unknown as DbRow[])[0];
+      const boundLineageId = binding === undefined
+        ? undefined
+        : asString(binding.allocator_lineage_id, "allocator_lineage_id");
+      if (boundLineageId !== undefined && boundLineageId !== message.allocatorLineageId) {
+        outcome = "lineage-mismatch";
+        incident = {
+          serviceId: message.serviceId,
+          identityKey: lineageIdentity(message.serviceId, boundLineageId, message.allocatorLineageId),
+          classification: "LINEAGE_MISMATCH",
+          boundLineageId,
+          incomingLineageId: message.allocatorLineageId,
+          observedAt: arrivedAt,
+        };
+        await this.insertIncident(transaction, incident);
+        return;
+      }
+      if (boundLineageId === undefined) {
+        await transaction.unsafe(
+          `INSERT INTO serialized_dcb_allocator_bindings (service_id, allocator_lineage_id, bound_at)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (service_id) DO NOTHING`,
+          [message.serviceId, message.allocatorLineageId, arrivedAt],
+        );
+      }
       // A message whose opaque SUID is already behind the durable source head
       // is recovery/backlog traffic. It remains observable in the arrival
       // tables, but must not inflate the reordering estimate.
@@ -237,12 +348,38 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
           FOR UPDATE`,
         [message.serviceId, message.eventId],
       ) as unknown as DbRow[])[0];
+      const sameSuid = (await transaction.unsafe(
+        `SELECT event_id
+           FROM serialized_dcb_events
+          WHERE service_id = $1 AND suid = $2
+          FOR UPDATE`,
+        [message.serviceId, message.suid],
+      ) as unknown as DbRow[])[0];
+      if (sameSuid !== undefined && asString(sameSuid.event_id, "event_id") !== message.eventId) {
+        outcome = "suid-collision";
+        incident = {
+          serviceId: message.serviceId,
+          identityKey: collisionIdentity(
+            message.serviceId,
+            message.suid,
+            asString(sameSuid.event_id, "event_id"),
+            message.eventId,
+          ),
+          classification: "SUID_COLLISION",
+          suid: message.suid,
+          existingEventId: asString(sameSuid.event_id, "event_id"),
+          incomingEventId: message.eventId,
+          observedAt: arrivedAt,
+        };
+        await this.insertIncident(transaction, incident);
+        return;
+      }
       if (existing === undefined) {
         await transaction.unsafe(
           `INSERT INTO serialized_dcb_events
-             (service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms)
-           VALUES ($1, $2, $3, $4, ($5::text)::jsonb, $6, $6, $7)`,
-          [message.serviceId, message.eventId, message.suid, message.payload, JSON.stringify(eventTags), arrivedAt, lagMs],
+             (service_id, event_id, suid, payload, allocator_lineage_id, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms)
+           VALUES ($1, $2, $3, $4, $5, ($6::text)::jsonb, $7, $7, $8)`,
+          [message.serviceId, message.eventId, message.suid, message.payload, message.allocatorLineageId, JSON.stringify(eventTags), arrivedAt, lagMs],
         );
       } else {
         if (asString(existing.suid, "suid") !== message.suid || asString(existing.payload, "payload") !== message.payload) {
@@ -307,11 +444,16 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
         );
       }
     });
+    if (outcome !== "stored") {
+      return { outcome, kind: outcome, incident: incident! };
+    }
     const stored = await this.eventById(message.serviceId, message.eventId);
     if (stored === undefined) {
       throw new Error("PostgreSQL event upsert did not produce a durable row");
     }
-    return stored;
+    return outcome === "stored"
+      ? { outcome, kind: "stored", event: stored }
+      : { outcome, kind: outcome, incident: incident! };
   }
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
@@ -539,6 +681,77 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
         finding.firstObservedAt,
         finding.lagBoundMs,
         finding.observedAt,
+      ],
+    );
+  }
+
+  async appendDeliveryIncident(incident: DeliveryIncident): Promise<void> {
+    await this.query(
+      `INSERT INTO serialized_dcb_delivery_incidents
+         (service_id, identity_key, classification, suid, existing_event_id, incoming_event_id, event_id,
+          bound_lineage_id, incoming_lineage_id, observed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (service_id, identity_key) DO NOTHING`,
+      [
+        incident.serviceId,
+        incident.identityKey,
+        incident.classification,
+        incident.suid ?? null,
+        incident.existingEventId ?? null,
+        incident.incomingEventId ?? null,
+        incident.eventId ?? null,
+        incident.boundLineageId ?? null,
+        incident.incomingLineageId ?? null,
+        incident.observedAt,
+      ],
+    );
+  }
+
+  async hasDeliveryIncident(serviceId: string, identityKey: string): Promise<boolean> {
+    const rows = await this.query(
+      `SELECT 1 FROM serialized_dcb_delivery_incidents WHERE service_id = $1 AND identity_key = $2`,
+      [serviceId, identityKey],
+    );
+    return rows.length !== 0;
+  }
+
+  async listDeliveryIncidents(serviceId?: string): Promise<DeliveryIncident[]> {
+    const rows = serviceId === undefined
+      ? await this.query(
+        `SELECT service_id, identity_key, classification, suid, existing_event_id, incoming_event_id, event_id,
+                bound_lineage_id, incoming_lineage_id, observed_at
+           FROM serialized_dcb_delivery_incidents
+          ORDER BY sequence ASC`,
+      )
+      : await this.query(
+        `SELECT service_id, identity_key, classification, suid, existing_event_id, incoming_event_id, event_id,
+                bound_lineage_id, incoming_lineage_id, observed_at
+           FROM serialized_dcb_delivery_incidents
+          WHERE service_id = $1
+          ORDER BY sequence ASC`,
+        [serviceId],
+      );
+    return rows.map(incidentFrom);
+  }
+
+  private async insertIncident(transaction: TransactionSql, incident: DeliveryIncident): Promise<void> {
+    await transaction.unsafe(
+      `INSERT INTO serialized_dcb_delivery_incidents
+         (service_id, identity_key, classification, suid, existing_event_id, incoming_event_id, event_id,
+          bound_lineage_id, incoming_lineage_id, observed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (service_id, identity_key) DO NOTHING`,
+      [
+        incident.serviceId,
+        incident.identityKey,
+        incident.classification,
+        incident.suid ?? null,
+        incident.existingEventId ?? null,
+        incident.incomingEventId ?? null,
+        incident.eventId ?? null,
+        incident.boundLineageId ?? null,
+        incident.incomingLineageId ?? null,
+        incident.observedAt,
       ],
     );
   }

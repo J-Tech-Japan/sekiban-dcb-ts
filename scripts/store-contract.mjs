@@ -27,6 +27,7 @@ function message(serviceId, eventId, suid, tag, eventTags, enqueuedAt = 1_000) {
   return {
     version: 1,
     serviceId,
+    allocatorLineageId: "store-contract-lineage",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,

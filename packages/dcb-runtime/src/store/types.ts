@@ -22,6 +22,33 @@ export interface StoredEvent {
   arrivals: DeliveryLagRecord[];
 }
 
+export const DELIVERY_INCIDENT_CLASSIFICATIONS = [
+  "SUID_COLLISION",
+  "ORDER_VIOLATION",
+  "LINEAGE_MISMATCH",
+] as const;
+
+export type DeliveryIncidentClassification = (typeof DELIVERY_INCIDENT_CLASSIFICATIONS)[number];
+
+/** A durable, idempotent fact for a poisoned delivery or provider ordering defect. */
+export interface DeliveryIncident {
+  serviceId: string;
+  identityKey: string;
+  classification: DeliveryIncidentClassification;
+  suid?: string;
+  existingEventId?: string;
+  incomingEventId?: string;
+  eventId?: string;
+  boundLineageId?: string;
+  incomingLineageId?: string;
+  observedAt: number;
+}
+
+export type DeliveryOutcome =
+  | { outcome: "stored"; kind: "stored"; event: StoredEvent }
+  | { outcome: "suid-collision"; kind: "suid-collision"; incident: DeliveryIncident }
+  | { outcome: "lineage-mismatch"; kind: "lineage-mismatch"; incident: DeliveryIncident };
+
 /**
  * A projection checkpoint stores both its opaque projector state and its
  * source SUID position. They advance atomically so a restarted poller cannot
@@ -82,9 +109,11 @@ export interface InconsistencyFinding {
 /** Adapter-only persistence port. The detector deliberately does not receive it. */
 export interface EventStore {
   initialize(): Promise<void>;
-  recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<StoredEvent>;
+  recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome>;
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
+  /** Cosmos uses this optional retryable async landing projection. */
+  projectDeliveryIncidents?(serviceId?: string): Promise<number>;
 }
 
 /** Detector-only persistence port. It cannot write event rows by construction. */
@@ -103,6 +132,9 @@ export interface DetectorStore {
     classification: InconsistencyClassification,
   ): Promise<boolean>;
   listFindings(serviceId?: string, eventId?: string): Promise<InconsistencyFinding[]>;
+  appendDeliveryIncident(incident: DeliveryIncident): Promise<void>;
+  hasDeliveryIncident(serviceId: string, identityKey: string): Promise<boolean>;
+  listDeliveryIncidents(serviceId?: string): Promise<DeliveryIncident[]>;
 }
 
 /**
@@ -117,6 +149,8 @@ export interface ProjectionStore {
   readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;
   advanceProjectionCheckpoint(input: ProjectionCheckpointAdvance): Promise<boolean>;
   projectionLag(serviceId: string, projectionId: string, tag: string): Promise<ProjectionLag>;
+  /** Catch-up must persist an ORDER_VIOLATION before failing closed. */
+  appendDeliveryIncident(incident: DeliveryIncident): Promise<void>;
 }
 
 export type PipelineStore = EventStore & DetectorStore & ProjectionStore;
