@@ -128,11 +128,9 @@ describe("SDT-G19 D1 materialized-view store", () => {
       updatedAt: 1_002,
       mutations: MATERIALIZER.plan(second),
     })).rejects.toBeInstanceOf(MaterializedViewCasError);
-    expect({
-      instance: await mv.readActive(serviceId, MATERIALIZER.id),
-      rows: await mv.readRows(serviceId, MATERIALIZER.id),
-      indexes: await mv.readIndexEntries(serviceId, MATERIALIZER.id),
-    }).toEqual(before);
+    expect(await mv.readActive(serviceId, MATERIALIZER.id)).toEqual(before.instance);
+    expect(await mv.readRows(serviceId, MATERIALIZER.id)).toEqual(before.rows);
+    expect(await mv.readIndexEntries(serviceId, MATERIALIZER.id)).toEqual(before.indexes);
   });
 
   it("keeps active generation isolated during rebuild and switches it by CAS promotion", async () => {
@@ -166,6 +164,25 @@ describe("SDT-G19 D1 materialized-view store", () => {
     });
     expect((await mv.readActive(serviceId, MATERIALIZER.id))?.generation).toBe(1);
     expect((await mv.readRows(serviceId, MATERIALIZER.id))?.map((row) => row.rowKey)).toEqual(["event-2"]);
+  });
+
+  it("leaves the active generation untouched when a candidate rebuild crashes mid-follow", async () => {
+    const serviceId = `g19-crash-${crypto.randomUUID()}`;
+    const incidents: unknown[] = [];
+    const source = sourceFor([
+      storedEvent("suid-1", "event-1", 1_000),
+      storedEvent("suid-2", "event-2", 1_001),
+    ], 0, incidents);
+    const mv = store();
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: STORED_MATERIALIZER.id, definitionVersion: 1, updatedAt: 4_000 });
+    const runtime = new MaterializedViewCatchUpRuntime(source, mv);
+    await expect(runtime.rebuild(serviceId, STORED_MATERIALIZER, 50_000, "crash-rebuild", {
+      beforeApply: () => { throw new Error("injected candidate crash"); },
+    })).rejects.toThrow("injected candidate crash");
+    expect((await mv.readActive(serviceId, STORED_MATERIALIZER.id))?.generation).toBe(0);
+    expect(await mv.readRows(serviceId, STORED_MATERIALIZER.id)).toEqual([]);
+    expect((await mv.readInstance(serviceId, STORED_MATERIALIZER.id, 1))?.status).toBe("candidate");
   });
 
   it("orders and pages rows through a typed D1 MV backing without request SQL paths", async () => {
