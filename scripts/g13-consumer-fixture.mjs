@@ -21,6 +21,10 @@ for (const packageDirectory of packageNames) {
     await readFile(`${root}packages/${packageDirectory}/${packageJson.exports["./cosmos"].types}`, "utf8");
     await import(`${packageName}/cosmos`);
     await assert.rejects(import(`${packageName}/dist/cosmos.js`), /not exported|ERR_PACKAGE_PATH_NOT_EXPORTED/);
+    assert.ok(packageJson.exports?.["./d1"], "runtime D1 provider must use an explicit public subpath");
+    await readFile(`${root}packages/${packageDirectory}/${packageJson.exports["./d1"].types}`, "utf8");
+    await import(`${packageName}/d1`);
+    await assert.rejects(import(`${packageName}/dist/d1.js`), /not exported|ERR_PACKAGE_PATH_NOT_EXPORTED/);
   }
 }
 
@@ -60,4 +64,4 @@ const bundled = await build({
 const output = bundled.outputFiles?.[0]?.text ?? "";
 assert.match(output, /g.*c/);
 assert.ok(!output.includes("Cyclic JSON value"), "unused core validation code should be tree-shaken");
-console.log("SDT-G13/G14/G12 consumer fixtures passed: public entrypoints, Cosmos subpath, registration API, deep-import rejection, tree shaking");
+console.log("SDT-G13/G14/G18 consumer fixtures passed: public entrypoints, Cosmos/D1 subpaths, registration API, deep-import rejection, tree shaking");
