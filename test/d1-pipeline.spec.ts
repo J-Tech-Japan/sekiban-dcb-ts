@@ -147,6 +147,23 @@ describe("SDT-G18 D1 PipelineStore", () => {
     const first = message(serviceId, "guard-first", "suid-guard-1", tag);
     await store.recordDelivery(first, 2_000);
 
+    // G17's lineage oracle must be independent of SUID collision detection.
+    // This fresh SUID is from a foreign allocator lineage but does not collide
+    // with any durable event, so removing the event-insert lineage predicate
+    // would create a poisoned row while still returning lineage-mismatch.
+    const beforeNonCollidingLineage = await store.readAllEvents(serviceId, "");
+    const nonCollidingLineage = await store.recordDelivery({
+      ...first,
+      eventId: "lineage-non-colliding-event",
+      suid: "suid-guard-2",
+      allocatorLineageId: "different-lineage",
+    }, 2_050);
+    expect(nonCollidingLineage.outcome).toBe("lineage-mismatch");
+    expect((await store.listDeliveryIncidents(serviceId)).map((incident) => incident.classification)).toEqual([
+      "LINEAGE_MISMATCH",
+    ]);
+    expect(await store.readAllEvents(serviceId, "")).toEqual(beforeNonCollidingLineage);
+
     const lineage = await store.recordDelivery({ ...first, eventId: "lineage-event", allocatorLineageId: "different-lineage" }, 2_100);
     expect(lineage.outcome).toBe("lineage-mismatch");
     expect((await store.listDeliveryIncidents(serviceId)).map((incident) => incident.classification)).toEqual(["LINEAGE_MISMATCH"]);
