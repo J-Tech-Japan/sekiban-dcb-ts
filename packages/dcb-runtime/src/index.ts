@@ -12,6 +12,24 @@ import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
+export {
+  D1MaterializedViewStore,
+  MaterializedViewCasError,
+  MaterializedViewPromotionCasError,
+  MaterializedViewStoreError,
+} from "./mv/MaterializedViewStore";
+export type {
+  MaterializedViewApplyInput,
+  MaterializedViewApplyResult,
+  MaterializedViewCandidateInput,
+  MaterializedViewCreateInput,
+  MaterializedViewIndexEntry,
+  MaterializedViewInstance,
+  MaterializedViewPromoteInput,
+  MaterializedViewQueryOptions,
+  MaterializedViewRow,
+  MaterializedViewStore,
+} from "./mv/MaterializedViewStore";
 
 export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -19,6 +37,16 @@ export type { JsonValue } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
 export { POSTGRES_STORE_PROVIDER, createPostgresStoreProvider } from "./store/provider";
 export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
+export {
+  chooseQueryBacking,
+  selectQueryBacking,
+} from "./query/ProjectionQueryStore";
+export type {
+  MaterializedViewQueryPort,
+  QueryBacking,
+  QueryBackingOptions,
+  QueryBackingSelection,
+} from "./query/ProjectionQueryStore";
 
 export interface Env {
   ALLOCATOR: DurableObjectNamespace;
@@ -40,6 +68,8 @@ export interface Env {
   SDT_SERVICE_ID?: string;
   /** Explicit opt-in D1 PipelineStore binding; default composition remains Postgres. */
   D1?: D1Database;
+  /** Separate D1 binding for row-backed materialized views. */
+  D1_MV?: D1Database;
 }
 
 export interface RuntimeWorkerOptions {

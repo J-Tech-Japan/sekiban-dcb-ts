@@ -1,4 +1,5 @@
 import { D1EventStore, type D1StoreOptions } from "./store/D1EventStore";
+import { D1MaterializedViewStore } from "./mv/MaterializedViewStore";
 import type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 
 export {
@@ -8,6 +9,24 @@ export {
   type D1StoreOptions,
   type D1WriteOperation,
 } from "./store/D1EventStore";
+export {
+  D1MaterializedViewStore,
+  MaterializedViewCasError,
+  MaterializedViewPromotionCasError,
+  MaterializedViewStoreError,
+} from "./mv/MaterializedViewStore";
+export type {
+  MaterializedViewApplyInput,
+  MaterializedViewApplyResult,
+  MaterializedViewCandidateInput,
+  MaterializedViewCreateInput,
+  MaterializedViewIndexEntry,
+  MaterializedViewInstance,
+  MaterializedViewPromoteInput,
+  MaterializedViewQueryOptions,
+  MaterializedViewRow,
+  MaterializedViewStore,
+} from "./mv/MaterializedViewStore";
 
 export interface D1StoreProviderConfig {
   /** Optional test seam; production composition should leave this unset. */
@@ -24,4 +43,8 @@ export function createD1StoreProvider(config: D1StoreProviderConfig = {}): Store
       return new D1EventStore(env.D1, config.storeOptions);
     },
   });
+}
+
+export function createD1MaterializedViewStore(database: D1Database): D1MaterializedViewStore {
+  return new D1MaterializedViewStore(database);
 }

@@ -4,6 +4,26 @@ export {
   materializedViewCandidateId,
   materializedViewId,
 } from "./MaterializedViewRuntime";
+export {
+  D1MaterializedViewStore,
+  MaterializedViewCasError,
+  MaterializedViewPromotionCasError,
+  MaterializedViewStoreError,
+} from "./MaterializedViewStore";
+export type {
+  MaterializedViewApplyInput,
+  MaterializedViewApplyResult,
+  MaterializedViewCandidateInput,
+  MaterializedViewCreateInput,
+  MaterializedViewIndexEntry,
+  MaterializedViewInstance,
+  MaterializedViewPromoteInput,
+  MaterializedViewQueryOptions,
+  MaterializedViewRow,
+  MaterializedViewStore,
+} from "./MaterializedViewStore";
+export { MaterializedViewCatchUpRuntime } from "./MaterializedViewCatchUp";
+export type { MaterializedViewCatchUpHooks, MaterializedViewCatchUpResult } from "./MaterializedViewCatchUp";
 export type {
   MaterializedViewDefinition,
   MaterializedViewErrorCode,

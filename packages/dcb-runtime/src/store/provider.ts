@@ -7,6 +7,8 @@ export interface StoreProviderEnvironment {
   readonly HYPERDRIVE?: { readonly connectionString?: string };
   /** Explicit opt-in D1 binding; the default provider never requires it. */
   readonly D1?: D1Database;
+  /** Separate opt-in MV D1 binding; never used by the PipelineStore provider. */
+  readonly D1_MV?: D1Database;
 }
 
 /** Typed composition seam shared by the default Postgres and opt-in adapters. */
