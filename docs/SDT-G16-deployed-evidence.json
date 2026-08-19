@@ -1,40 +1,48 @@
 {
   "probe": "SDT-G16",
   "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
-  "deployedVersion": "dd6c13d1-779e-4eca-98cf-2ff44d9a5739",
-  "sourceCommit": "77d7e8182e79741b290844015c2393d6d71f1271",
-  "deployedCodeCommit": "7594757b903096271227927ce1513cb2be957299",
+  "deployedVersion": "6163816f-0a92-4573-95f4-5fe482dc5cae",
+  "sourceCommit": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
+  "deployedCodeCommit": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
   "rebaseBase": "c24444dc",
-  "prHead": "77d7e8182e79741b290844015c2393d6d71f1271",
+  "prHeadAtDeployment": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
   "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
   "hyperdriveCaching": "disabled",
   "safeWindowBoundMs": 120000,
   "localE2E": {
     "status": "PASS",
-    "artifact": ".artifacts/g16-local-after-g17.json",
-    "database": "sdt_g16_verify_20260819",
+    "artifact": ".artifacts/g16-local-e2e.json",
+    "database": "sdt_g16_identity_var_20260819",
     "reservationListVisibleWithinBound": true,
-    "reservationListCommitToVisibleMs": 21167.489,
+    "reservationListCommitToVisibleMs": 21334.065,
     "roomQueryStatus": 200,
     "rawV1Unauthenticated": [404, 404, 404, 404, 404],
     "g17Isolation": "fresh PostgreSQL database; no retained allocator binding",
-    "ciExactHead": "77d7e8182e79741b290844015c2393d6d71f1271",
-    "ciRun": "32264837840",
-    "ciVerify": "SUCCESS",
-    "ciCosmosEmulator": "SUCCESS"
+    "serviceIdentity": {
+      "configuredServiceId": "g11-g16-local-identity-20260819",
+      "source": "G15_LOCAL_SERVICE_ID/SDT_SERVICE_ID",
+      "clientHeaderForwarded": false
+    },
+    "defaultLocalFallbackAlsoPassed": true
   },
   "deployedE2E": {
-    "status": "BLOCKED",
+    "status": "PASS",
+    "deployedVersion": "6163816f-0a92-4573-95f4-5fe482dc5cae",
+    "deployedCodeCommit": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
+    "serviceIdentity": {
+      "configuredServiceId": "g11-g16-20400903b76e45fa8f4a",
+      "source": "Wrangler --var SDT_SERVICE_ID",
+      "clientHeaderForwarded": false
+    },
     "reservationListResponseStatus": 200,
-    "reservationListTotalCountObserved": 6,
-    "reservationListVisibleWithinBound": false,
-    "failure": "The post-G17 deployment app-layer E2E created a reservation, but the list-query remained at six pre-existing items through the 120000ms published SafeWindow bound. The first request after deployment also observed the expected Durable Object reset; G17 then fail-closed the new allocator lineage against the immutable legacy-pre-g17 binding before the event write.",
-    "artifact": ".artifacts/g16-deployed-e2e-final.json",
-    "exitCode": 1,
-    "duplicatePairsAfterGuardedDeployment": 0,
-    "lineageMismatchObserved": true,
-    "freshServiceId": "The app-layer routes intentionally do not accept internal service-id headers, so a fresh G17 service identity cannot be routed through this UI lane without changing the accepted G14/G16 contract.",
-    "operatorPoll": "not attempted; protected bearer-token value was not read or copied"
+    "reservationListVisibleWithinBound": true,
+    "reservationListCommitToVisibleMs": 102469.416,
+    "roomQueryStatus": 200,
+    "rawV1Unauthenticated": [404, 404, 404, 404, 404],
+    "artifact": ".artifacts/g16-deployed-service-var-final.json",
+    "exitCode": 0,
+    "freshServiceId": true,
+    "safeWindowBoundMs": 120000
   },
   "secret": "No bearer-token value, database credential, connection string, allocator token, or other secret value is present in this evidence."
 }
