@@ -36,6 +36,8 @@ export interface Env {
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   /** Only an authenticated deployment-verification lane may set this. */
   G11_VERIFICATION_ENABLED?: string;
+  /** Non-secret service identity configured per deployment; local defaults to V1. */
+  SDT_SERVICE_ID?: string;
 }
 
 export interface RuntimeWorkerOptions {

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import os
 import time
 import urllib.error
 import urllib.parse
@@ -47,6 +48,7 @@ def main() -> None:
     parser.add_argument("--state-file", required=True)
     parser.add_argument("--report", required=True)
     parser.add_argument("--token-file", required=True)
+    parser.add_argument("--app-service-id", default=os.environ.get("G14_APP_SERVICE_ID", "serialized-dcb-v1"))
     args = parser.parse_args()
     token = Path(args.token_file).read_text(encoding="utf-8").strip()
     if not token:
@@ -74,9 +76,9 @@ def main() -> None:
         checks[f"unauthenticated_{endpoint}"] = status
 
     # The app command API is intentionally public, but a client cannot use it
-    # to select a g11-* namespace. The command must fall back to the fixed
-    # production service while an authenticated conformance read using the
-    # attacker namespace remains empty.
+    # to select a g11-* namespace. The command uses the server-side
+    # SDT_SERVICE_ID deployment var while an authenticated conformance read
+    # using the attacker namespace remains empty.
     attacker_service_id = f"g11-g14-unauth-{uuid.uuid4().hex[:16]}"
     attacker_room_id = f"unauth-room-{uuid.uuid4().hex[:12]}"
     attacker_tag = f"room:{attacker_room_id}"
@@ -93,25 +95,26 @@ def main() -> None:
         token,
         attacker_service_id,
     )
-    default_latest_status, default_latest = request(
+    app_latest_status, app_latest = request(
         args.base_url,
         f"{lane}/api/sekiban/serialized/tag-latest-sortable",
         {"tag": attacker_tag},
         token,
-        "serialized-dcb-v1",
+        args.app_service_id,
     )
     if attacker_latest_status != 200 or attacker_latest.get("exists") is not False or attacker_latest.get("lastSortableUniqueId") != "":
         raise RuntimeError(f"unauthenticated command selected attacker namespace: {attacker_latest}")
-    if default_latest_status != 200 or default_latest.get("exists") is not True or default_latest.get("lastSortableUniqueId") == "":
-        raise RuntimeError(f"unauthenticated command did not use fixed production namespace: {default_latest}")
+    if app_latest_status != 200 or app_latest.get("exists") is not True or app_latest.get("lastSortableUniqueId") == "":
+        raise RuntimeError(f"unauthenticated command did not use configured app namespace: {app_latest}")
     checks["unauthenticatedCommandG11"] = {
         "command": command_status,
         "attackerServiceId": attacker_service_id,
         "attackerRoomId": attacker_room_id,
         "attackerNamespaceLatest": attacker_latest_status,
         "attackerNamespaceExists": attacker_latest.get("exists"),
-        "fixedNamespaceLatest": default_latest_status,
-        "fixedNamespaceExists": default_latest.get("exists"),
+        "configuredAppServiceId": args.app_service_id,
+        "configuredAppNamespaceLatest": app_latest_status,
+        "configuredAppNamespaceExists": app_latest.get("exists"),
     }
 
     commit_status, commit_body = request(args.base_url, f"{lane}/api/sekiban/serialized/commit", {
@@ -157,6 +160,7 @@ def main() -> None:
         "probe": "SDT-G14",
         "phase": args.phase,
         "serviceId": service_id,
+        "configuredAppServiceId": args.app_service_id,
         "roomId": room_id,
         "checks": checks,
         "freshServiceId": True,

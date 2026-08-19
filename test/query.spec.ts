@@ -84,25 +84,30 @@ function storedEvent(suid: string, eventId: string, tag: string): StoredEvent {
 class FakeQueryStore implements QueryProjectionStore {
   readonly checkpoints = new Map<string, ProjectionCheckpoint>();
   readonly readTimes: number[] = [];
+  readonly serviceIds: string[] = [];
   events: StoredEvent[] = [];
   tags: string[] = [];
   lagBoundMs = 0;
   onReadAllEvents: (() => void) | undefined;
 
-  async readAllEvents(): Promise<StoredEvent[]> {
+  async readAllEvents(serviceId: string): Promise<StoredEvent[]> {
+    this.serviceIds.push(serviceId);
     this.onReadAllEvents?.();
     return this.events;
   }
 
-  async currentLagBound(): Promise<number> {
+  async currentLagBound(serviceId: string): Promise<number> {
+    this.serviceIds.push(serviceId);
     return this.lagBoundMs;
   }
 
-  async listProjectionTags(): Promise<string[]> {
+  async listProjectionTags(serviceId: string): Promise<string[]> {
+    this.serviceIds.push(serviceId);
     return this.tags;
   }
 
   async readProjectionCheckpoint(...input: [serviceId: string, projectionId: string]): Promise<ProjectionCheckpoint | undefined> {
+    this.serviceIds.push(input[0]);
     return this.checkpoints.get(input[1]);
   }
 }
@@ -160,6 +165,31 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(serviceIdForRequest(new Request("https://runtime.internal/", {
       headers: { "x-sdt-g11-service-id": "g11-verification-namespace" },
     }), { allowG11Verification: true })).toBe("g11-verification-namespace");
+  });
+
+  it("uses the server-side SDT_SERVICE_ID for production reads without allowing client headers to override it", async () => {
+    const configuredServiceId = unique("g16-deployed-service");
+    const store = new FakeQueryStore();
+    const response = await handleSerializedQuery(new Request("https://api.example.com/api/sekiban/serialized/query", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-sdt-g11-service-id": "g11-client-namespace",
+        [TEST_SERVICE_ID_HEADER]: "g9-client-namespace",
+      },
+      body: JSON.stringify({ queryType: "GetTestCountQuery", queryParamsJson: "{}" }),
+    }), { SDT_SERVICE_ID: configuredServiceId }, { store });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ resultJson: JSON.stringify({ count: 0 }) });
+    expect(store.serviceIds.length).toBeGreaterThan(0);
+    expect(new Set(store.serviceIds)).toEqual(new Set([configuredServiceId]));
+    expect(serviceIdForRequest(new Request("https://api.example.com/", {
+      headers: { "x-sdt-g11-service-id": "g11-client-namespace" },
+    }), { configuredServiceId })).toBe(configuredServiceId);
+    expect(serviceIdForRequest(new Request("https://api.example.com/"), {
+      configuredServiceId: "not valid with spaces",
+    })).toBe(SERIALIZED_DCB_SERVICE_ID);
   });
 
   it("pins the exact 5.4/5.5 empty-success shapes and distinguishes unavailable projections", async () => {

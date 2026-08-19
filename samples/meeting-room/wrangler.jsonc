@@ -2,8 +2,12 @@
   "name": "sekiban-dcb-meeting-room",
   "main": "src/worker.ts",
   "compatibility_date": "2026-08-18",
-  "vars": { "AUTO_DRAIN_OUTBOX": "true" },
+  "vars": {
+    "AUTO_DRAIN_OUTBOX": "true",
+    "SDT_SERVICE_ID": "serialized-dcb-v1"
+  },
   "assets": { "directory": "public" },
+  "triggers": { "crons": ["* * * * *"] },
   "services": [
     { "binding": "RUNTIME", "service": "sekiban-dcb-meeting-room", "entrypoint": "runtime" }
   ],

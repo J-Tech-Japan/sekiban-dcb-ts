@@ -6,20 +6,26 @@ deployed URL. It is intentionally secret-free: the Hyperdrive binding holds
 the PostgreSQL connection credential, and the operator token is supplied only
 through Wrangler's protected secret store or a protected local file.
 
-## Fixed deployment facts
+## Deployment facts
 
 - Worker: `serialized-dcb-v1-runtime`
 - Cloudflare account: `3ede2188f4cf39a28e0aa3722d3d02c5`
 - Queue: `serialized-dcb-v1-outbox`
 - Hyperdrive binding: `HYPERDRIVE`
 - Hyperdrive config: `c236b7b51ed24bf4b312bc370c61a231`
-- Production service identity: `serialized-dcb-v1` (the compatibility default)
+- `SDT_SERVICE_ID`: a non-secret Wrangler deployment variable. Local Miniflare
+  defaults to `serialized-dcb-v1`; each deployed Worker receives a fresh,
+  environment-specific value.
 - SafeWindow estimate: dynamic and decaying; published floor `20_000 ms`, ceiling `120_000 ms`
 
-The deployed conformance and measurement harnesses use a fresh `g11-*`
-serviceId on every execution and send it in a deployment-verification header.
-This is service-scoped isolation on the shared database, not cleanup or a
-fabricated result; the production default remains `serialized-dcb-v1`.
+The sample app layer and its scheduled projection poll use the server-side
+`SDT_SERVICE_ID` value; public clients cannot select it because app routes do
+not read or forward namespace headers. The authenticated conformance and
+measurement harnesses separately use a fresh `g11-*` serviceId on every
+execution and send it in the deployment-verification header. This is
+service-scoped isolation on the shared database, not cleanup or a fabricated
+result. Durable Object namespaces are immutable: if one is recreated, deploy a
+new serviceId rather than trying to reattach the old identity.
 Lag is a current estimate rather than a monotonic high-water mark. It decays
 toward the 20-second floor. Recovery/outage backlog is reported as behind-head
 state and is excluded from the reordering estimator. If the current estimate
@@ -44,11 +50,11 @@ From the repository root:
 ```sh
 npm install
 ./node_modules/.bin/wrangler whoami
-npm run deploy:g11
+G14_SERVICE_ID="g11-g16-$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-')" npm run deploy:g14
 ```
 
-The deploy script creates the named queue if it is absent, reasserts disabled
-Hyperdrive caching, and deploys with `--keep-vars --strict`. If the protected
+The deploy script reasserts disabled Hyperdrive caching and deploys with
+`--keep-vars --strict --var SDT_SERVICE_ID:<fresh-value>`. If the protected
 operator token has not yet been attached to this Worker, set it interactively
 after the first deployment; Wrangler does not echo the value:
 
@@ -60,7 +66,9 @@ after the first deployment; Wrangler does not echo the value:
 An operator may instead set `G11_OPERATOR_TOKEN_FILE` to a protected local file
 when invoking `npm run deploy:g11`; the file is read through stdin and is never
 committed or printed. Never put a connection string, password, or token in
-`wrangler.jsonc`, source, logs, test output, or PR text.
+`wrangler.jsonc`, source, logs, test output, or PR text. `SDT_SERVICE_ID` is an
+identity rather than a secret, but record it only in redacted deployment
+metadata where needed.
 
 Record the `workers.dev` URL printed by deploy. The five V1 HTTP endpoints are
 the only public conformance surface; Durable Objects, Queue, and Hyperdrive

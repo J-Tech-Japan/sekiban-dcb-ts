@@ -8,6 +8,9 @@ readonly PORT="${G15_LOCAL_PORT:-8787}"
 readonly BASE_URL="${G15_LOCAL_BASE_URL:-http://127.0.0.1:${PORT}}"
 readonly REPORT="${G15_LOCAL_REPORT:-${REPO_ROOT}/.artifacts/g15-local-e2e.json}"
 readonly SERVER_LOG="${G15_LOCAL_SERVER_LOG:-${REPO_ROOT}/.artifacts/g15-wrangler.log}"
+readonly PERSIST_DIR="${G15_LOCAL_PERSIST_DIR:-}"
+readonly LOCAL_SERVICE_ID="${G15_LOCAL_SERVICE_ID:-}"
+readonly EXPECTED_SERVICE_ID="${G15_EXPECTED_SERVICE_ID:-${LOCAL_SERVICE_ID:-serialized-dcb-v1}}"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
@@ -18,15 +21,34 @@ test -n "${POSTGRES_URL:-}" || {
 mkdir -p "$(dirname "${REPORT}")"
 : > "${SERVER_LOG}"
 
+wrangler_args=(
+  dev
+  --config samples/meeting-room/wrangler.jsonc
+  --local
+  --test-scheduled
+  --port "${PORT}"
+  --log-level error
+)
+if [[ -n "${PERSIST_DIR}" ]]; then
+  mkdir -p "${PERSIST_DIR}"
+  wrangler_args+=(--persist-to "${PERSIST_DIR}")
+fi
+if [[ -n "${LOCAL_SERVICE_ID}" ]]; then
+  wrangler_args+=(--var "SDT_SERVICE_ID:${LOCAL_SERVICE_ID}")
+fi
+
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="${POSTGRES_URL}" \
-  "${WRANGLER_BIN}" dev --config samples/meeting-room/wrangler.jsonc --local --port "${PORT}" --log-level error \
+  "${WRANGLER_BIN}" "${wrangler_args[@]}" \
   > "${SERVER_LOG}" 2>&1 &
 readonly SERVER_PID=$!
 trap 'kill "${SERVER_PID}" 2>/dev/null || true' EXIT
 
 for _ in $(seq 1 60); do
   if curl --silent --show-error --fail "${BASE_URL}/" >/dev/null 2>&1; then
-    exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}"
+    if [[ "${G15_INCLUDE_QUERY_VIEWS:-false}" == "true" ]]; then
+      G15_TRIGGER_SCHEDULED=true G15_EXPECTED_SERVICE_ID="${EXPECTED_SERVICE_ID}" exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}" --include-query-views
+    fi
+    G15_EXPECTED_SERVICE_ID="${EXPECTED_SERVICE_ID}" exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}"
   fi
   sleep 1
 done

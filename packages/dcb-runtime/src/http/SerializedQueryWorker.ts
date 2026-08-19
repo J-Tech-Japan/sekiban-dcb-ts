@@ -24,6 +24,8 @@ export interface QueryWorkerEnv {
   HYPERDRIVE?: Hyperdrive;
   /** Set only by an authenticated deployment-verification lane. */
   G11_VERIFICATION_ENABLED?: string;
+  /** Non-secret service identity configured per deployment. */
+  SDT_SERVICE_ID?: string;
 }
 
 export interface QueryExecutionOptions {
@@ -194,6 +196,7 @@ export async function handleSerializedQuery(
   const endpoint = endpointFromPath(new URL(request.url).pathname);
   const serviceId = serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+    configuredServiceId: env.SDT_SERVICE_ID,
   });
   if (endpoint === undefined || request.method !== "POST") {
     return error(404, "query_route_not_found", "Query routes require POST");

@@ -41,6 +41,32 @@
         <h2>Projected state</h2>
         <pre id="projection">No command yet.</pre>
       </section>
+      <div class="grid query-grid">
+        <section id="reservation-list-panel">
+          <div class="section-heading">
+            <h2>Reservations</h2>
+            <button id="reservations-refresh" type="button">Refresh</button>
+          </div>
+          <p id="reservations-state" role="status" aria-live="polite">Not loaded</p>
+          <p id="reservations-head">Read head unavailable</p>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Reservation</th><th>Room</th><th>Status</th><th>Version</th></tr></thead>
+              <tbody id="reservations-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section id="room-query-panel">
+          <h2>Room query</h2>
+          <form id="room-query-form">
+            <label>Room ID <input name="roomId" required autocomplete="off"></label>
+            <button type="submit">Query room</button>
+          </form>
+          <p id="room-query-state" role="status" aria-live="polite">Not loaded</p>
+          <p id="room-query-head">Read head unavailable</p>
+          <pre id="room-query-result">No query yet.</pre>
+        </section>
+      </div>
     </main>
     <script type="module" src="/app.js"></script>
   </body>

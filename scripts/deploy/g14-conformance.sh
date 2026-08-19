@@ -18,4 +18,5 @@ if [[ -z "${TOKEN_FILE}" || ! -f "${TOKEN_FILE}" ]]; then
 fi
 
 python3 "${SCRIPT_DIR}/g14-conformance.py" --base-url "${BASE_URL}" --phase "${PHASE}" \
-  --state-file "${STATE_FILE}" --report "${REPORT}" --token-file "${TOKEN_FILE}"
+  --state-file "${STATE_FILE}" --report "${REPORT}" --token-file "${TOKEN_FILE}" \
+  --app-service-id "${G14_APP_SERVICE_ID:-serialized-dcb-v1}"

@@ -1,0 +1,48 @@
+{
+  "probe": "SDT-G16",
+  "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
+  "deployedVersion": "6163816f-0a92-4573-95f4-5fe482dc5cae",
+  "sourceCommit": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
+  "deployedCodeCommit": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
+  "rebaseBase": "c24444dc",
+  "prHeadAtDeployment": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
+  "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
+  "hyperdriveCaching": "disabled",
+  "safeWindowBoundMs": 120000,
+  "localE2E": {
+    "status": "PASS",
+    "artifact": ".artifacts/g16-local-e2e.json",
+    "database": "sdt_g16_identity_var_20260819",
+    "reservationListVisibleWithinBound": true,
+    "reservationListCommitToVisibleMs": 21334.065,
+    "roomQueryStatus": 200,
+    "rawV1Unauthenticated": [404, 404, 404, 404, 404],
+    "g17Isolation": "fresh PostgreSQL database; no retained allocator binding",
+    "serviceIdentity": {
+      "configuredServiceId": "g11-g16-local-identity-20260819",
+      "source": "G15_LOCAL_SERVICE_ID/SDT_SERVICE_ID",
+      "clientHeaderForwarded": false
+    },
+    "defaultLocalFallbackAlsoPassed": true
+  },
+  "deployedE2E": {
+    "status": "PASS",
+    "deployedVersion": "6163816f-0a92-4573-95f4-5fe482dc5cae",
+    "deployedCodeCommit": "0c44ffbf6a4d7f755929b7cb91efcef5ebdcc60e",
+    "serviceIdentity": {
+      "configuredServiceId": "g11-g16-20400903b76e45fa8f4a",
+      "source": "Wrangler --var SDT_SERVICE_ID",
+      "clientHeaderForwarded": false
+    },
+    "reservationListResponseStatus": 200,
+    "reservationListVisibleWithinBound": true,
+    "reservationListCommitToVisibleMs": 102469.416,
+    "roomQueryStatus": 200,
+    "rawV1Unauthenticated": [404, 404, 404, 404, 404],
+    "artifact": ".artifacts/g16-deployed-service-var-final.json",
+    "exitCode": 0,
+    "freshServiceId": true,
+    "safeWindowBoundMs": 120000
+  },
+  "secret": "No bearer-token value, database credential, connection string, allocator token, or other secret value is present in this evidence."
+}

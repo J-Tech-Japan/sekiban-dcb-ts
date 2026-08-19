@@ -20,6 +20,8 @@ interface ReadWorkerEnv {
   HYPERDRIVE?: Hyperdrive;
   /** Set only by an authenticated deployment-verification lane. */
   G11_VERIFICATION_ENABLED?: string;
+  /** Non-secret service identity configured per deployment. */
+  SDT_SERVICE_ID?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -175,5 +177,6 @@ export async function handleSerializedRead(
 ): Promise<Response> {
   return new SerializedReadWorker(env, serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+    configuredServiceId: env.SDT_SERVICE_ID,
   }), registry, storeProvider).handle(request);
 }
