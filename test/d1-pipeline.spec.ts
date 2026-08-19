@@ -36,6 +36,10 @@ function message(serviceId: string, eventId: string, suid: string, tag: string):
 }
 
 describe("SDT-G18 D1 PipelineStore", () => {
+  it("temporary forced-failure probe for the required CI lane", () => {
+    expect("forced-red-run").toBe("green-run");
+  });
+
   beforeAll(async () => {
     // The test harness does not apply Wrangler migrations automatically. The
     // fixture applies the committed versioned migration once; production
