@@ -1,0 +1,27 @@
+{
+  "probe": "SDT-G16",
+  "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
+  "deployedVersion": "604bd7b7-c358-40b0-8f12-d6a6d7e0e1d3",
+  "sourceCommit": "54044265ac447d1dcd873ad2f6b2d4b190553aca",
+  "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
+  "hyperdriveCaching": "disabled",
+  "safeWindowBoundMs": 120000,
+  "localE2E": {
+    "status": "PASS",
+    "artifact": ".artifacts/g16-local-e2e.json",
+    "database": "sdt_g16_e441176197134210892c1afde874c4e0",
+    "reservationListVisibleWithinBound": true,
+    "reservationListCommitToVisibleMs": 21156.764,
+    "roomQueryStatus": 200,
+    "rawV1Unauthenticated": [404, 404, 404, 404, 404]
+  },
+  "deployedE2E": {
+    "status": "BLOCKED",
+    "reservationListResponseStatus": 200,
+    "reservationListTotalCountObserved": 0,
+    "reservationListVisibleWithinBound": false,
+    "failure": "The final-head app-layer E2E created a reservation but the deployed list-query remained empty through the 120000ms published SafeWindow bound.",
+    "operatorPoll": "not attempted; protected bearer-token value was not read or copied"
+  },
+  "secret": "No bearer-token value, database credential, or connection string is present in this evidence."
+}
