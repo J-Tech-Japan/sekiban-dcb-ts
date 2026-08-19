@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createMeetingRoomWorker, type MeetingRoomEnv } from "../samples/meeting-room/src/worker";
+import { MAX_PUBLISHED_SAFE_WINDOW_MS } from "../packages/dcb-runtime/src/safeWindow";
 
 const uiModel = await import("../samples/meeting-room/public/ui-model.js");
 
@@ -13,6 +14,12 @@ function encoded(value: unknown): string {
 describe("SDT-G15 browser contract", () => {
   it("uses V1 ordinal comparison, not timestamps or a retry count, for visibility", () => {
     const bound = uiModel.UI_SAFE_WINDOW_BOUND_MS;
+    // Keep the served browser model tied to the single published runtime
+    // ceiling.  The absolute value is intentional: changing the protocol
+    // ruling requires changing this oracle, rather than silently drifting
+    // every copy of the bound together.
+    expect(MAX_PUBLISHED_SAFE_WINDOW_MS).toBe(120_000);
+    expect(bound).toBe(MAX_PUBLISHED_SAFE_WINDOW_MS);
     expect(uiModel.visibilityState({
       commitSortableUniqueId: "suid-02",
       lastSortedUniqueId: "suid-01",
@@ -61,7 +68,16 @@ describe("SDT-G15 browser contract", () => {
     };
     const worker = createMeetingRoomWorker();
     const fetch = worker.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
-    const read = await fetch(new Request("https://sample.test/api/read/room?roomId=room-1"), {
+    const read = await fetch(new Request("https://sample.test/api/read/room?roomId=room-1", {
+      headers: {
+        // These are attacker-controlled headers.  The app-layer wrapper must
+        // not forward either the G11 namespace selector or conformance auth
+        // into the internal runtime request.
+        "x-sdt-g11-service-id": "g11-attacker-supplied-value",
+        "x-sdt-g9-test-service-id": "g9-attacker-supplied-value",
+        authorization: "Bearer attacker-supplied-value",
+      },
+    }), {
       RUNTIME: runtimeFetcher,
     } as unknown as MeetingRoomEnv, {} as ExecutionContext);
     expect(read.status).toBe(200);
@@ -74,8 +90,13 @@ describe("SDT-G15 browser contract", () => {
     expect(calls).toHaveLength(1);
     expect(new URL(calls[0]!.url).pathname).toBe("/api/sekiban/serialized/tag-state");
     expect(calls[0]!.headers.has("x-sdt-g11-service-id")).toBe(false);
+    expect(calls[0]!.headers.has("x-sdt-g9-test-service-id")).toBe(false);
+    expect(calls[0]!.headers.has("authorization")).toBe(false);
 
-    const raw = await fetch(new Request("https://sample.test/api/sekiban/serialized/tag-state", { method: "POST" }), {
+    const raw = await fetch(new Request("https://sample.test/api/sekiban/serialized/tag-state", {
+      method: "POST",
+      headers: { "x-sdt-g11-service-id": "g11-attacker-supplied-value" },
+    }), {
       RUNTIME: runtimeFetcher,
     } as unknown as MeetingRoomEnv, {} as ExecutionContext);
     expect(raw.status).toBe(404);

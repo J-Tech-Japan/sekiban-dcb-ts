@@ -6,16 +6,29 @@
   "sourceCommit": "70f4e41c2a440331c911809659984c1348300e6b",
   "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
   "hyperdriveCaching": "disabled",
-  "runId": "0a1127daf6e9431eb853c4edf6274652",
-  "roomId": "g15-room-0a1127daf6e9431e",
-  "reservationId": "g15-reservation-0a1127daf6e9431e",
+  "runId": "0d9cdfe218464b52994c275f37cc6946",
+  "roomId": "g15-room-0d9cdfe218464b52",
+  "reservationId": "g15-reservation-0d9cdfe218464b52",
   "uiSafeWindowBoundMs": 120000,
+  "safeWindowBoundSources": {
+    "runtimeSource": "packages/dcb-runtime/src/safeWindow.ts",
+    "runtimeBoundMs": 120000,
+    "servedUiSource": "samples/meeting-room/public/ui-model.js",
+    "servedUiBoundMs": 120000,
+    "harnessBoundMs": 120000,
+    "absoluteProtocolBoundMs": 120000,
+    "deployedUiAsset": "/ui-model.js",
+    "deployedUiBoundMs": 120000
+  },
   "harnessGraceMs": 5000,
   "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
   "visibilityOracle": {
-    "headBelowCommit": "pending",
-    "headEqualOrAboveCommit": "visible",
-    "timeoutAtMs": 120000
+    "executed": true,
+    "pendingAtBoundMinusOne": "pending",
+    "timeoutAtBound": "timeout",
+    "visibleAtBoundWithEqualHead": "visible",
+    "timeoutAfterBound": "timeout",
+    "boundMs": 120000
   },
   "rawV1Unauthenticated": {
     "commit": 404,
@@ -27,18 +40,18 @@
   "commands": {
     "create": {
       "status": 200,
-      "requestMs": 2786.195,
-      "suid": "suid-00000000000000000000000000000037"
+      "requestMs": 2563.702,
+      "suid": "suid-00000000000000000000000000000043"
     },
     "reserve": {
       "status": 200,
-      "requestMs": 2471.756,
-      "suid": "suid-00000000000000000000000000000038"
+      "requestMs": 2761.889,
+      "suid": "suid-00000000000000000000000000000044"
     },
     "cancel": {
       "status": 200,
-      "requestMs": 1895.213,
-      "suid": "suid-00000000000000000000000000000039"
+      "requestMs": 2108.29,
+      "suid": "suid-00000000000000000000000000000045"
     },
     "rejected": {
       "status": 400,
@@ -48,19 +61,21 @@
   },
   "projection": {
     "createVisible": true,
-    "createCommitToVisibleMs": 865.931,
+    "createCommitToVisibleMs": 884.706,
     "createObservations": [
       {
-        "head": "suid-00000000000000000000000000000037",
-        "requestMs": 865.629
+        "head": "suid-00000000000000000000000000000043",
+        "requestMs": 884.41,
+        "elapsedMs": 884.676,
+        "state": "visible"
       }
     ],
     "reservationVisible": true,
-    "reservationCommitToVisibleMs": 929.949,
+    "reservationCommitToVisibleMs": 867.909,
     "cancelVisible": true,
-    "cancelCommitToVisibleMs": 1018.641
+    "cancelCommitToVisibleMs": 1229.05
   },
   "freshRunIds": true,
   "secret": "no bearer token or credential used by app-layer E2E",
-  "recordedAt": "2026-08-18T23:39:03Z"
+  "recordedAt": "2026-08-19T00:01:25Z"
 }
