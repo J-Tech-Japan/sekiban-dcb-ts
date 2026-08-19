@@ -1,7 +1,7 @@
 import { BindingExclusionLedgerClient } from "./ExclusionLookup";
 import { InconsistencyDetector } from "./InconsistencyDetector";
 import { isDownstreamOutboxMessage, systemPipelineClock, type PipelineClock } from "./types";
-import { PostgresEventStore } from "../store/PostgresEventStore";
+import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 
 export interface DownstreamAdapterEnv {
@@ -13,22 +13,14 @@ export interface DownstreamAdapterEnv {
 export interface AdapterOptions {
   clock?: PipelineClock;
   store?: PipelineStore;
+  storeProvider?: StoreProvider;
 }
 
-function connectionStringFrom(env: DownstreamAdapterEnv): string {
-  const connectionString = env.HYPERDRIVE?.connectionString ?? env.POSTGRES_URL;
-  if (connectionString === undefined || connectionString.length === 0) {
-    throw new Error("A Hyperdrive binding or POSTGRES_URL is required for the downstream adapter");
-  }
-  return connectionString;
-}
-
-function sharedStore(env: DownstreamAdapterEnv): PostgresEventStore {
-  const connectionString = connectionStringFrom(env);
-  // Hyperdrive/Postgres sockets are request-scoped in workerd. Never retain a
-  // client across Queue or scheduled invocations, or a later handler can
-  // attempt I/O on a stream owned by an earlier request.
-  return new PostgresEventStore(connectionString);
+function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): PipelineStore {
+  // The provider creates a request-scoped client. Never retain a client across
+  // Queue or scheduled invocations, or a later handler can attempt I/O on a
+  // stream owned by an earlier request.
+  return provider.create(env);
 }
 
 async function withStore<T>(
@@ -36,7 +28,7 @@ async function withStore<T>(
   options: AdapterOptions,
   operation: (store: PipelineStore, clock: PipelineClock) => Promise<T>,
 ): Promise<T> {
-  const store = options.store ?? sharedStore(env);
+  const store = options.store ?? sharedStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER);
   await store.initialize();
   return operation(store, options.clock ?? systemPipelineClock);
 }

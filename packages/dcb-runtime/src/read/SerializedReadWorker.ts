@@ -6,7 +6,7 @@ import {
   type TagStateIdentity,
 } from "../projection/ProjectorRegistry";
 import { safeWindowCeilingExceeded } from "../projection/ProjectionRuntime";
-import { PostgresEventStore } from "../store/PostgresEventStore";
+import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "../store/provider";
 import type { TagRecord } from "../tag/types";
 import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
 
@@ -67,6 +67,7 @@ export class SerializedReadWorker {
     private readonly env: ReadWorkerEnv,
     private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
     private readonly registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
+    private readonly storeProvider: StoreProvider = POSTGRES_STORE_PROVIDER,
   ) {}
 
   async handle(request: Request): Promise<Response> {
@@ -134,14 +135,13 @@ export class SerializedReadWorker {
   }
 
   private async ensureWindowDeterminate(): Promise<void> {
-    const connectionString = this.env.HYPERDRIVE?.connectionString ?? this.env.POSTGRES_URL;
     // Direct unit tests can exercise Tag DO determinacy with only TAG. The
-    // deployed Worker has HYPERDRIVE and must fail closed above the 120s
-    // published ceiling before returning a tag read that looks successful.
-    if (connectionString === undefined || connectionString.length === 0) {
+    // default provider has no backing store in that fixture. An explicit
+    // provider (including Cosmos) is always checked when it is configured.
+    if (this.storeProvider.isConfigured?.(this.env) === false) {
       return;
     }
-    const store = new PostgresEventStore(connectionString);
+    const store = this.storeProvider.create(this.env);
     await store.initialize();
     if (safeWindowCeilingExceeded(await store.currentLagBound(this.serviceId, Date.now()))) {
       throw new Error("Read-side SafeWindow ceiling exceeded; durable state is indeterminate");
@@ -171,8 +171,9 @@ export async function handleSerializedRead(
   request: Request,
   env: ReadWorkerEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
+  storeProvider: StoreProvider = POSTGRES_STORE_PROVIDER,
 ): Promise<Response> {
   return new SerializedReadWorker(env, serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
-  }), registry).handle(request);
+  }), registry, storeProvider).handle(request);
 }

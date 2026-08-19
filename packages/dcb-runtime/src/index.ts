@@ -11,11 +11,14 @@ import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProje
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
+import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
 
 export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 export type { JsonValue } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
+export { POSTGRES_STORE_PROVIDER, createPostgresStoreProvider } from "./store/provider";
+export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 
 export interface Env {
   ALLOCATOR: DurableObjectNamespace;
@@ -38,6 +41,8 @@ export interface Env {
 export interface RuntimeWorkerOptions {
   readonly domain?: DomainDefinition;
   readonly config?: RuntimeWorkerConfig;
+  /** Explicitly opt into a non-Postgres provider; default is Postgres. */
+  readonly storeProvider?: StoreProvider;
 }
 
 /**
@@ -48,6 +53,7 @@ export interface RuntimeWorkerOptions {
  */
 export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): ExportedHandler<Env> {
   const composition = composeRuntime(options.domain, options.config);
+  const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
   return {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
@@ -61,6 +67,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return handleSerializedQuery(request, env, {
           registry: composition.queries,
           projectors: composition.projectors,
+          storeProvider,
         });
       }
       if (url.pathname === "/operator/repair") {
@@ -70,13 +77,13 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return handleOutboxDrainRequest(request, env);
       }
       if (url.pathname === "/internal/projection/lag") {
-        return handleProjectionLag(request, env, composition.projectors);
+        return handleProjectionLag(request, env, composition.projectors, storeProvider);
       }
       if (
         url.pathname === "/api/sekiban/serialized/tag-latest-sortable" ||
         url.pathname === "/api/sekiban/serialized/tag-state"
       ) {
-        return handleSerializedRead(request, env, composition.projectors);
+        return handleSerializedRead(request, env, composition.projectors, storeProvider);
       }
       if (url.pathname === "/allocator" || url.pathname.startsWith("/allocator/")) {
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
@@ -120,12 +127,12 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
     },
 
     async queue(batch, env): Promise<void> {
-      await handleDownstreamQueue(batch, env);
+      await handleDownstreamQueue(batch, env, { storeProvider });
     },
 
     async scheduled(_controller, env): Promise<void> {
-      await stabilizeDownstream(env);
-      await pollLiveProjections(env, { registry: composition.projectors });
+      await stabilizeDownstream(env, { storeProvider });
+      await pollLiveProjections(env, { registry: composition.projectors, storeProvider });
     },
   };
 }
