@@ -10,6 +10,8 @@ export interface QueryDefinition {
   readonly endpoint: QueryEndpoint;
   readonly tagGroup: string;
   readonly tagProjector: string;
+  /** MV view id used when the query backing is d1-mv; defaults to the projector id. */
+  readonly materializedViewId?: string;
   readonly enabled: boolean;
 }
 

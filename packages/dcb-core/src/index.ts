@@ -503,3 +503,5 @@ export function defineDomain(options: DomainDefinitionOptions): DomainDefinition
     eventByName: new Map(events.map((event) => [event.name, event])),
   });
 }
+
+export * from "./materializedView";

@@ -42,6 +42,8 @@ jobs:
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
+      - name: Run required Miniflare D1 MV core lane (two D1 bindings)
+        run: npm run test:mv
       - run: npm run test:boundaries
       - run: npm run test:consumer
       - run: npm run build

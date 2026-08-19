@@ -1,12 +1,46 @@
 import { projectionIdFor } from "../projection/ProjectionRuntime";
 import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import type { QueryDefinition } from "./QueryRegistry";
+import type { MaterializedViewQueryOptions, MaterializedViewRow } from "../mv/MaterializedViewStore";
 
 /** The query surface can only inspect durable source and projection facts. */
 export type QueryProjectionStore = Pick<
   ProjectionStore,
   "readAllEvents" | "currentLagBound" | "listProjectionTags" | "readProjectionCheckpoint"
 >;
+
+/** The backing choice is typed and deploy-time; it never changes the V1 wire. */
+export type QueryBacking = "memory" | "d1-mv";
+
+export interface MaterializedViewQueryPort {
+  queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>;
+  /** D1-backed implementations may need to verify the versioned schema first. */
+  initialize?: () => Promise<void>;
+}
+
+export type QueryBackingSelection =
+  | { readonly backing: "memory"; readonly store: QueryProjectionStore }
+  | { readonly backing: "d1-mv"; readonly store: MaterializedViewQueryPort };
+
+export interface QueryBackingOptions {
+  readonly backing: QueryBacking;
+  readonly memory?: QueryProjectionStore;
+  readonly materializedView?: MaterializedViewQueryPort;
+}
+
+/** Select a query backing without allowing an HTTP request to provide a store. */
+export function selectQueryBacking(options: QueryBackingOptions): QueryBackingSelection {
+  if (options.backing === "memory") {
+    if (options.memory === undefined) throw new Error("A memory query backing is required when backing=memory");
+    return { backing: "memory", store: options.memory };
+  }
+  if (options.materializedView === undefined) {
+    throw new Error("A D1 materialized-view query backing is required when backing=d1-mv");
+  }
+  return { backing: "d1-mv", store: options.materializedView };
+}
+
+export const chooseQueryBacking = selectQueryBacking;
 
 export interface ProjectedQueryEntry {
   readonly eventId: string;
@@ -164,4 +198,28 @@ export async function projectionHasObserved(
     }
   }
   return false;
+}
+
+/** Query rows through the selected backing while preserving typed paging inputs. */
+export async function readRowsFromBacking(
+  selection: QueryBackingSelection,
+  serviceId: string,
+  viewId: string,
+  definition: QueryDefinition,
+  options: MaterializedViewQueryOptions = {},
+): Promise<ProjectedQueryEntry[]> {
+  if (selection.backing === "d1-mv") {
+    const rows = await selection.store.queryRows(serviceId, viewId, options);
+    return rows.map((row) => {
+      const value = row.value;
+      const eventId = isObject(value) && typeof value.eventId === "string" && value.eventId.length > 0
+        ? value.eventId
+        : row.rowKey;
+      return { eventId, suid: row.sourceSuid, payload: base64Json(value) };
+    }).sort((left, right) => {
+      const bySuid = compareSuid(left.suid, right.suid);
+      return bySuid === 0 ? compareSuid(left.eventId, right.eventId) : bySuid;
+    });
+  }
+  return readProjectedEntries(selection.store, serviceId, definition);
 }

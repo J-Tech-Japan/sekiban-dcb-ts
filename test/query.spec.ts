@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
 import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
-import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { createRuntimeWorker, type Env as WorkerEnv, type MaterializedViewRow } from "../packages/dcb-runtime/src/index";
+import type { MaterializedViewQueryOptions } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
 import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
@@ -112,6 +113,22 @@ class FakeQueryStore implements QueryProjectionStore {
   }
 }
 
+class FakeMaterializedViewQueryPort {
+  readonly calls: Array<{ serviceId: string; viewId: string; options: unknown }> = [];
+  initialized = 0;
+
+  constructor(private readonly rows: readonly MaterializedViewRow[]) {}
+
+  async initialize(): Promise<void> {
+    this.initialized += 1;
+  }
+
+  async queryRows(serviceId: string, viewId: string, options: MaterializedViewQueryOptions = {}): Promise<MaterializedViewRow[]> {
+    this.calls.push({ serviceId, viewId, options });
+    return [...this.rows];
+  }
+}
+
 async function expectSection6(response: Response, status: number, code: string): Promise<void> {
   expect(response.status).toBe(status);
   expect(response.headers.get("content-type")).toBe(JSON_CONTENT_TYPE);
@@ -190,6 +207,74 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(serviceIdForRequest(new Request("https://api.example.com/"), {
       configuredServiceId: "not valid with spaces",
     })).toBe(SERIALIZED_DCB_SERVICE_ID);
+  });
+
+  it("routes list-query through the selected D1-MV backing and preserves the memory V1 response", async () => {
+    const serviceId = unique("g19-backing-service");
+    const tag = "test:mv-route";
+    const entries = [
+      { eventId: "z-event", suid: "suid-00000000000000000000000000000001", payload: base64Json({ eventId: "z-event", forecastId: "first" }) },
+      { eventId: "a-event", suid: "suid-00000000000000000000000000000002", payload: base64Json({ eventId: "a-event", forecastId: "second" }) },
+    ];
+    const memory = new FakeQueryStore();
+    memory.tags = [tag];
+    memory.checkpoints.set(
+      checkpoint(tag, entries, entries[1]!.suid).projectionId,
+      checkpoint(tag, entries, entries[1]!.suid),
+    );
+    const rows: MaterializedViewRow[] = entries.map((entry) => ({
+      serviceId,
+      viewId: TEST_PROJECTOR,
+      generation: 0,
+      rowKey: entry.eventId,
+      value: JSON.parse(atob(entry.payload)) as MaterializedViewRow["value"],
+      rowVersion: 1,
+      sourceSuid: entry.suid,
+    }));
+    const materializedView = new FakeMaterializedViewQueryPort(rows);
+    const body = {
+      queryType: "GetTestListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
+    };
+    const memoryResponse = await handleSerializedQuery(new Request("https://query.test/api/sekiban/serialized/list-query", {
+      method: "POST",
+      headers: testServiceHeaders(serviceId),
+      body: JSON.stringify(body),
+    }), {}, { store: memory });
+    const runtime = createRuntimeWorker({ queryBacking: "d1-mv", materializedViewQueryPort: materializedView });
+    if (runtime.fetch === undefined) throw new Error("Runtime worker fetch handler was not composed");
+    const fetchHandler = runtime.fetch as unknown as (request: Request, env: WorkerEnv, context: ExecutionContext) => Promise<Response>;
+    const mvResponse = await fetchHandler(new Request("https://query.test/api/sekiban/serialized/list-query", {
+      method: "POST",
+      headers: testServiceHeaders(serviceId),
+      body: JSON.stringify(body),
+    }), {} as WorkerEnv, {} as ExecutionContext);
+
+    expect(memoryResponse.status).toBe(200);
+    expect(mvResponse.status).toBe(200);
+    expect(await mvResponse.json()).toEqual(await memoryResponse.json());
+    const scalarBody = { queryType: "GetTestCountQuery", queryParamsJson: "{}" };
+    const memoryScalar = await handleSerializedQuery(new Request("https://query.test/api/sekiban/serialized/query", {
+      method: "POST",
+      headers: testServiceHeaders(serviceId),
+      body: JSON.stringify(scalarBody),
+    }), {}, { store: memory });
+    const mvScalar = await fetchHandler(new Request("https://query.test/api/sekiban/serialized/query", {
+      method: "POST",
+      headers: testServiceHeaders(serviceId),
+      body: JSON.stringify(scalarBody),
+    }), {} as WorkerEnv, {} as ExecutionContext);
+    expect(await mvScalar.json()).toEqual(await memoryScalar.json());
+    expect(materializedView.initialized).toBeGreaterThan(0);
+    expect(materializedView.calls).toEqual([{
+      serviceId,
+      viewId: TEST_PROJECTOR,
+      options: { limit: null },
+    }, {
+      serviceId,
+      viewId: TEST_PROJECTOR,
+      options: { limit: null },
+    }]);
   });
 
   it("pins the exact 5.4/5.5 empty-success shapes and distinguishes unavailable projections", async () => {

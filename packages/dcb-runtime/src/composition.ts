@@ -24,6 +24,7 @@ export interface RuntimeQueryDefinition {
   readonly endpoint?: QueryEndpoint;
   readonly tagGroup: string;
   readonly tagProjector: string;
+  readonly materializedViewId?: string;
   readonly enabled?: boolean;
 }
 
@@ -112,6 +113,7 @@ function queryFromDefinition(value: RuntimeQueryDefinition): QueryDefinition {
     endpoint: value.endpoint ?? "query",
     tagGroup: value.tagGroup,
     tagProjector: value.tagProjector,
+    materializedViewId: value.materializedViewId ?? value.tagProjector,
     enabled: value.enabled ?? true,
   };
 }

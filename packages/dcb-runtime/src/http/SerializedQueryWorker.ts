@@ -5,10 +5,15 @@ import {
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import {
   projectionHasObserved,
-  readProjectedEntries,
+  readRowsFromBacking,
+  selectQueryBacking,
   type ProjectedQueryEntry,
+  type QueryBacking,
+  type QueryBackingSelection,
+  type MaterializedViewQueryPort,
   type QueryProjectionStore,
 } from "../query/ProjectionQueryStore";
+import { D1MaterializedViewStore } from "../mv/MaterializedViewStore";
 import {
   DEPLOYED_QUERY_REGISTRY,
   type QueryDefinition,
@@ -28,6 +33,8 @@ export interface QueryWorkerEnv {
   G11_VERIFICATION_ENABLED?: string;
   /** Non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
+  /** Separate D1 binding for row-backed materialized-view queries. */
+  D1_MV?: D1Database;
 }
 
 export interface QueryExecutionOptions {
@@ -36,6 +43,10 @@ export interface QueryExecutionOptions {
   storeProvider?: StoreProvider;
   registry?: QueryRegistry;
   projectors?: ProjectorRegistry;
+  /** Deploy-time query backing; request data can never select this value. */
+  queryBacking?: QueryBacking;
+  /** Optional injected port for tests or an explicitly composed runtime. */
+  materializedViewQueryPort?: MaterializedViewQueryPort;
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   pollIntervalMs?: number;
@@ -227,16 +238,38 @@ export async function handleSerializedQuery(
   }
 
   try {
-    const requestStoreValue = options.store === undefined
-      ? requestStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER)
-      : undefined;
-    const store: QueryProjectionStore = options.store ?? requestStoreValue!;
-    if (requestStoreValue !== undefined) {
-      await requestStoreValue.initialize();
+    const backing = options.queryBacking ?? "memory";
+    let requestStoreValue: PipelineStore | undefined;
+    let waitStore: QueryProjectionStore | undefined = options.store;
+    let selection: QueryBackingSelection;
+    if (backing === "d1-mv") {
+      const materializedView = options.materializedViewQueryPort ??
+        (env.D1_MV === undefined ? undefined : new D1MaterializedViewStore(env.D1_MV));
+      if (materializedView === undefined) {
+        return error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable");
+      }
+      await materializedView.initialize?.();
+      selection = selectQueryBacking({ backing, materializedView });
+      // Waiting still needs the durable source/checkpoint facts. Only create
+      // the normal source store when the request actually asks to wait.
+      if (parsed.value.waitForSortableUniqueId !== undefined && waitStore === undefined) {
+        requestStoreValue = requestStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER);
+        await requestStoreValue.initialize();
+        waitStore = requestStoreValue;
+      }
+    } else {
+      requestStoreValue = options.store === undefined
+        ? requestStore(env, options.storeProvider ?? POSTGRES_STORE_PROVIDER)
+        : undefined;
+      waitStore = options.store ?? requestStoreValue!;
+      if (requestStoreValue !== undefined) {
+        await requestStoreValue.initialize();
+      }
+      selection = selectQueryBacking({ backing, memory: waitStore });
     }
     if (
       parsed.value.waitForSortableUniqueId !== undefined &&
-      !(await waitForProjection(store, serviceId, definition, parsed.value.waitForSortableUniqueId, options))
+      (waitStore === undefined || !(await waitForProjection(waitStore, serviceId, definition, parsed.value.waitForSortableUniqueId, options)))
     ) {
       return error(
         504,
@@ -244,7 +277,14 @@ export async function handleSerializedQuery(
         "Outcome is undetermined: reread tag heads and event/query state before retrying; blind retry may create duplicate events",
       );
     }
-    return resultResponse(endpoint, await readProjectedEntries(store, serviceId, definition), pagination.value);
+    const entries = await readRowsFromBacking(
+      selection,
+      serviceId,
+      definition.materializedViewId ?? definition.tagProjector,
+      definition,
+      { limit: null },
+    );
+    return resultResponse(endpoint, entries, pagination.value);
   } catch {
     return error(503, "projection_unavailable", "The mapped query projection is unavailable");
   }
