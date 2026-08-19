@@ -41,6 +41,8 @@ jobs:
       - run: npm test
       - run: npm run test:g17
       - run: npm run test:g17:rollout-order
+      - name: Run SDT-G21 bootstrap import core lane
+        run: npm run test:g21
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1

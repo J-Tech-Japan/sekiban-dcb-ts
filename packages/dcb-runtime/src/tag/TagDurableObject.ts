@@ -9,6 +9,7 @@ import {
   type TagOutboxDelivery,
   type TagOutboxRow,
   type TagRecord,
+  type TagBootstrapAdmission,
   type TagReservation,
   type RepairAudit,
   type RepairBranch,
@@ -55,6 +56,14 @@ interface AppendCandidate {
 interface AppendInput extends ReservationInput {
   candidates: AppendCandidate[];
   faultInjection?: "after-append-before-confirm";
+}
+
+interface BootstrapAppendInput {
+  importId: string;
+  leaseEpoch: number;
+  manifestDigest: string;
+  targetServiceId: string;
+  candidates: AppendCandidate[];
 }
 
 interface FenceInput extends EpochInput {
@@ -307,6 +316,20 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
   }
 
   return { value: { ...reservation.value, candidates: ordered, faultInjection } };
+}
+
+function bootstrapAppendFrom(value: unknown, tag: string): { value?: BootstrapAppendInput; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.importId) || !isEpoch(value.leaseEpoch) || !isNonEmptyString(value.manifestDigest) || !isNonEmptyString(value.targetServiceId) || !Array.isArray(value.candidates) || value.candidates.length === 0) return { error: "bootstrap identity and candidates are required" };
+  const candidates: AppendCandidate[] = [];
+  for (const candidate of value.candidates) {
+    if (!isObject(candidate) || !isNonEmptyString(candidate.eventId) || !isNonEmptyString(candidate.suid) || typeof candidate.payload !== "string") return { error: "bootstrap candidate is invalid" };
+    const tags = stringArrayFrom(candidate.eventTags, "bootstrap candidate eventTags");
+    if (tags.value === undefined || !tags.value.includes(tag) || !isNonEmptyString(candidate.allocatorLineageId)) return { error: "bootstrap candidate must include this tag and lineage" };
+    candidates.push({ eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: tags.value, allocatorLineageId: candidate.allocatorLineageId });
+  }
+  const ordered = [...candidates].sort((a, b) => a.suid.localeCompare(b.suid));
+  if (ordered.some((candidate, index) => index > 0 && ordered[index - 1]!.suid === candidate.suid)) return { error: "bootstrap SUID values must be unique" };
+  return { value: { importId: value.importId, leaseEpoch: value.leaseEpoch, manifestDigest: value.manifestDigest, targetServiceId: value.targetServiceId, candidates: ordered } };
 }
 
 function fenceFrom(value: unknown): { value?: FenceInput; error?: string } {
@@ -616,6 +639,7 @@ function newRecord(tag: string): TagRecord {
     confirmations: [],
     fences: [],
     clearedFences: [],
+    bootstrapAdmission: null,
     repairOwner: null,
     repairLeaseUntil: null,
     highestRepairEpoch: 0,
@@ -638,6 +662,7 @@ function normalizeRepairRecord(record: TagRecord): TagRecord {
     highestRepairEpoch: record.highestRepairEpoch ?? 0,
     repairScope: record.repairScope ?? [],
     repairScopeVersion: record.repairScopeVersion ?? 0,
+    bootstrapAdmission: record.bootstrapAdmission ?? null,
   };
 }
 
@@ -808,6 +833,12 @@ export class TagDurableObject implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/append") {
       return this.append(tag, body, url.searchParams.get("__serviceId"));
+    }
+    if (request.method === "POST" && url.pathname === "/bootstrap/admit") {
+      return this.bootstrapAppend(tag, body, url.searchParams.get("__serviceId"));
+    }
+    if (request.method === "POST" && url.pathname === "/bootstrap/close") {
+      return this.closeBootstrap(tag, body);
     }
     if (request.method === "POST" && url.pathname === "/outbox/pending") {
       return this.pendingOutbox(tag, url.searchParams.get("__serviceId"), body);
@@ -1084,6 +1115,44 @@ export class TagDurableObject implements DurableObject {
         alarmDueAt: activeReservation === null ? null : activeReservation.alarmDueAt,
       });
       return { status: 200, body: { status: "sealed", highestEpoch: input.epoch, version: updated.version } };
+    });
+    return json(result.body, result.status);
+  }
+
+  /**
+   * Coordinator-only import admission.  This is deliberately not a flag on
+   * /append: it never creates an outbox row, never accepts a reservation, and
+   * closes permanently once the coordinator reaches READY.
+   */
+  private async bootstrapAppend(tag: string, body: unknown, serviceId: string | null): Promise<Response> {
+    const parsed = bootstrapAppendFrom(body, tag);
+    if (parsed.value === undefined) return error(400, "invalid_bootstrap_admission", parsed.error ?? "Invalid bootstrap admission");
+    if (serviceId !== parsed.value.targetServiceId) return error(409, "bootstrap_service_scope_mismatch", "Bootstrap target service does not match tag scope");
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag); const record = loaded.record;
+      if (record.bootstrapAdmission?.closed) return rejected("bootstrap_closed_permanently");
+      if (record.activeReservation !== null || record.fences.length > 0 || record.outbox.length > 0) return rejected("bootstrap_requires_empty_tag");
+      const admission: TagBootstrapAdmission = record.bootstrapAdmission ?? { importId: input.importId, leaseEpoch: input.leaseEpoch, manifestDigest: input.manifestDigest, targetServiceId: input.targetServiceId, closed: false };
+      if (admission.importId !== input.importId || admission.leaseEpoch !== input.leaseEpoch || admission.manifestDigest !== input.manifestDigest || admission.targetServiceId !== input.targetServiceId) return rejected("bootstrap_fencing_or_manifest_mismatch");
+      const exact = input.candidates.every((candidate) => record.events.some((event) => event.eventId === candidate.eventId && event.suid === candidate.suid && event.payload === candidate.payload && event.eventTags.join("\u0000") === candidate.eventTags.join("\u0000")));
+      if (exact) return { status: 200, body: { status: "duplicate", version: record.version } };
+      if (record.events.length > 0 || hasEventConflict(record, input.candidates) || monotonicityViolation(record.head, input.candidates)) return rejected("bootstrap_identity_or_order_conflict");
+      const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId }));
+      const updated = await this.commit(txn, record, { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events });
+      return { status: 201, body: { status: "bootstrap_admitted", version: updated.version } };
+    });
+    return json(result.body, result.status);
+  }
+
+  private async closeBootstrap(tag: string, body: unknown): Promise<Response> {
+    if (!isObject(body) || !isNonEmptyString(body.importId) || !isEpoch(body.leaseEpoch)) return error(400, "invalid_bootstrap_close", "bootstrap importId and leaseEpoch are required");
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const loaded = await this.recordFor(txn, tag); const record = loaded.record; const admission = record.bootstrapAdmission;
+      if (admission === null || admission.importId !== body.importId || admission.leaseEpoch !== body.leaseEpoch) return rejected("bootstrap_fencing_or_manifest_mismatch");
+      if (admission.closed) return { status: 200, body: { status: "closed", version: record.version } };
+      const updated = await this.commit(txn, record, { bootstrapAdmission: { ...admission, closed: true } });
+      return { status: 200, body: { status: "closed", version: updated.version } };
     });
     return json(result.body, result.status);
   }

@@ -59,6 +59,15 @@ export interface TagFence {
   epoch: number;
 }
 
+/** Bootstrap is intentionally separate from V1 append/reservation state. */
+export interface TagBootstrapAdmission {
+  importId: string;
+  leaseEpoch: number;
+  manifestDigest: string;
+  targetServiceId: string;
+  closed: boolean;
+}
+
 /**
  * SDT-G6 repair authority is deliberately held by the Tag DO rather than by
  * a Journal observation.  A scope item is the exact candidate that a repair
@@ -121,6 +130,7 @@ export interface TagRecord {
   confirmations: TagEpoch[];
   fences: TagFence[];
   clearedFences: TagFence[];
+  bootstrapAdmission: TagBootstrapAdmission | null;
   /** SDT-G6 repair fencing-token lease. */
   repairOwner: string | null;
   repairLeaseUntil: number | null;

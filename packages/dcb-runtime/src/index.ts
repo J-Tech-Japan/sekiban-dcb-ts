@@ -1,5 +1,6 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -35,7 +36,9 @@ export type {
   MaterializedViewStoreOperation,
 } from "./mv/MaterializedViewStore";
 
-export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
+export { BootstrapManifestError, bootstrapDigest, parseBootstrapDump } from "./bootstrap/manifest";
+export type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord, BootstrapManifest, BootstrapStatus, BootstrapStoreAdmissionPort } from "./bootstrap/types";
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
@@ -54,6 +57,7 @@ export type {
 
 export interface Env {
   ALLOCATOR: DurableObjectNamespace;
+  BOOTSTRAP: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
   /** Secret binding; deployment must configure this rather than a public var. */
@@ -133,6 +137,14 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
         const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName("service-wide-allocator"));
         return allocator.fetch(new Request(url.toString(), request));
+      }
+      const bootstrapMatch = url.pathname.match(/^\/bootstrap\/([^/]+)(\/.*)?$/);
+      if (bootstrapMatch !== null) {
+        let serviceId: string;
+        try { serviceId = decodeURIComponent(bootstrapMatch[1]); } catch { return new Response("Bootstrap serviceId must be URI encoded", { status: 400 }); }
+        if (serviceId.length === 0) return new Response("Bootstrap serviceId is required", { status: 400 });
+        url.pathname = bootstrapMatch[2] ?? "/state"; url.searchParams.set("__serviceId", serviceId);
+        return env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url.toString(), request));
       }
 
       const tagMatch = url.pathname.match(/^\/tags\/([^/]+)\/([^/]+)(\/.*)?$/);
