@@ -44,6 +44,8 @@ jobs:
       - run: npm run test:consumer
       - run: npm run build
       - run: npm run e2e:g15:local
+      - run: npm run test:g16
+      - run: npm run e2e:g16:local
 
   # Required Phase 1.5 lane. The adapter uses only gateway-mode operations
   # covered by the Linux vNext emulator: database/container bootstrap,

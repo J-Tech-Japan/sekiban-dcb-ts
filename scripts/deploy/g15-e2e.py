@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import time
 import urllib.error
@@ -185,11 +186,51 @@ def read_until_visible(base_url: str, kind: str, parameter: str, value: str, com
     raise RuntimeError(f"projection did not become visible within {bound_ms}ms: {observations[-3:]}")
 
 
+def list_items(body: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_items = body.get("itemsJson", body.get("items"))
+    if isinstance(raw_items, str):
+        raw_items = json.loads(raw_items)
+    require(isinstance(raw_items, list) and all(isinstance(item, dict) for item in raw_items), f"reservation list omitted itemsJson: {body}")
+    return raw_items
+
+
+def read_until_reservation_listed(base_url: str, reservation_id: str, bound_ms: int) -> tuple[dict[str, Any], float]:
+    """Use the list-query result as the app-level visibility oracle.
+
+    The current V1 list-query wire has no read-head field, so item presence is
+    the only authoritative observation for this endpoint. The deadline remains
+    the published SafeWindow bound and is never replaced by a retry count.
+    """
+    started = time.perf_counter()
+    deadline = started + bound_ms / 1000
+    observations: list[dict[str, Any]] = []
+    while True:
+        elapsed_before_request_ms = (time.perf_counter() - started) * 1000
+        if elapsed_before_request_ms > bound_ms:
+            raise RuntimeError(f"reservation list visibility timeout after {bound_ms}ms: {observations[-3:]}")
+        if os.environ.get("G15_TRIGGER_SCHEDULED") == "true":
+            scheduled_status, _, _ = request(base_url, "/__scheduled", method="GET")
+            require(scheduled_status == 200, f"local scheduled projection poll returned HTTP {scheduled_status}")
+        status, body, elapsed_ms = request(base_url, "/api/read/reservations?pageNumber=1&pageSize=20", method="GET")
+        require(status == 200 and isinstance(body, dict), f"reservation list returned HTTP {status}: {body}")
+        items = list_items(body)
+        found = next((item for item in items if item.get("reservationId") == reservation_id), None)
+        head = next((body.get(key) for key in ("lastSortedUniqueId", "lastSortableUniqueId", "readHead") if isinstance(body.get(key), str)), None)
+        elapsed_ms_total = (time.perf_counter() - started) * 1000
+        observations.append({"itemCount": len(items), "containsReservation": found is not None, "readHead": head, "requestMs": round(elapsed_ms, 3), "elapsedMs": round(elapsed_ms_total, 3)})
+        if found is not None:
+            return {"status": status, "item": found, "readHead": head, "observations": observations}, elapsed_ms_total
+        if elapsed_ms_total >= bound_ms:
+            raise RuntimeError(f"reservation list visibility timeout after {bound_ms}ms: {observations[-3:]}")
+        time.sleep(min(0.25, max(0.0, deadline - time.perf_counter())))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--report", required=True)
     parser.add_argument("--harness-grace-ms", type=int, default=5_000)
+    parser.add_argument("--include-query-views", action="store_true")
     args = parser.parse_args()
     require(args.harness_grace_ms >= 0, "harnessGraceMs must be non-negative")
     safe_window_bound_ms, bound_sources = published_safe_window_bound()
@@ -249,6 +290,31 @@ def main() -> None:
     )
     require(isinstance(reservation_read.get("state"), dict) and reservation_read["state"].get("status") == "reserved", f"reservation projection did not update: {reservation_read}")
 
+    query_views: dict[str, Any] | None = None
+    if args.include_query_views:
+        reservations_list, reservation_list_visible_ms = read_until_reservation_listed(args.base_url, reservation_id, safe_window_bound_ms)
+        require(reservations_list["item"].get("status") == "reserved", f"reservation list returned unexpected state: {reservations_list}")
+        room_query_status, room_query_body, room_query_ms = request(
+            args.base_url,
+            f"/api/read/room-query?roomId={urllib.parse.quote(room_id)}",
+            method="GET",
+        )
+        require(room_query_status == 200 and isinstance(room_query_body, dict), f"room query returned HTTP {room_query_status}: {room_query_body}")
+        result_json = room_query_body.get("resultJson")
+        require(isinstance(result_json, str), f"room query omitted resultJson: {room_query_body}")
+        room_result = json.loads(result_json)
+        require(isinstance(room_result, dict), f"room query result was not an object: {room_result}")
+        query_views = {
+            "reservationList": {
+                "status": 200,
+                "reservationId": reservation_id,
+                "commitToVisibleMs": round(reservation_list_visible_ms, 3),
+                "readHead": reservations_list["readHead"],
+                "observations": reservations_list["observations"],
+            },
+            "roomQuery": {"status": room_query_status, "requestMs": round(room_query_ms, 3), "result": room_result},
+        }
+
     cancel_status, cancel_body, cancel_ms = request(
         args.base_url,
         "/api/commands/cancel-reservation",
@@ -271,7 +337,7 @@ def main() -> None:
     require(rejected_status == 400 and isinstance(rejected_body, dict) and rejected_body.get("kind") == "invalid" and rejected_body.get("code") == "invalid_command_input", f"rejection was not distinct: {rejected_status} {rejected_body}")
 
     report = {
-        "probe": "SDT-G15",
+        "probe": "SDT-G16" if args.include_query_views else "SDT-G15",
         "baseUrl": args.base_url,
         "runId": run_id,
         "roomId": room_id,
@@ -297,6 +363,7 @@ def main() -> None:
             "cancelVisible": True,
             "cancelCommitToVisibleMs": round(cancelled_visible_ms, 3),
         },
+        "queryViews": query_views,
         "freshRunIds": True,
         "secret": "no bearer token or credential used by app-layer E2E",
         "recordedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

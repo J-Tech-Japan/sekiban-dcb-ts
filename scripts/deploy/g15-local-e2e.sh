@@ -19,13 +19,16 @@ mkdir -p "$(dirname "${REPORT}")"
 : > "${SERVER_LOG}"
 
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="${POSTGRES_URL}" \
-  "${WRANGLER_BIN}" dev --config samples/meeting-room/wrangler.jsonc --local --port "${PORT}" --log-level error \
+  "${WRANGLER_BIN}" dev --config samples/meeting-room/wrangler.jsonc --local --test-scheduled --port "${PORT}" --log-level error \
   > "${SERVER_LOG}" 2>&1 &
 readonly SERVER_PID=$!
 trap 'kill "${SERVER_PID}" 2>/dev/null || true' EXIT
 
 for _ in $(seq 1 60); do
   if curl --silent --show-error --fail "${BASE_URL}/" >/dev/null 2>&1; then
+    if [[ "${G15_INCLUDE_QUERY_VIEWS:-false}" == "true" ]]; then
+      G15_TRIGGER_SCHEDULED=true exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}" --include-query-views
+    fi
     exec python3 "${SCRIPT_DIR}/g15-e2e.py" --base-url "${BASE_URL}" --report "${REPORT}"
   fi
   sleep 1

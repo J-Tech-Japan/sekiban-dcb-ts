@@ -3,6 +3,8 @@
 import {
   UI_SAFE_WINDOW_BOUND_MS,
   commandOutcome,
+  reservationListView,
+  roomQueryView,
   visibilityState,
 } from "./ui-model.js";
 
@@ -11,6 +13,14 @@ const projectionElement = document.querySelector("#projection");
 const roomForm = document.querySelector("#room-form");
 const reservationForm = document.querySelector("#reservation-form");
 const cancelForm = document.querySelector("#cancel-form");
+const reservationsRefresh = document.querySelector("#reservations-refresh");
+const reservationsState = document.querySelector("#reservations-state");
+const reservationsHead = document.querySelector("#reservations-head");
+const reservationsBody = document.querySelector("#reservations-body");
+const roomQueryForm = document.querySelector("#room-query-form");
+const roomQueryState = document.querySelector("#room-query-state");
+const roomQueryHead = document.querySelector("#room-query-head");
+const roomQueryResult = document.querySelector("#room-query-result");
 
 function setStatus(message, kind = "info") {
   statusElement.textContent = message;
@@ -117,6 +127,72 @@ async function sendCommand(commandId, input, projection) {
   await observeProjection(projection.kind, projection.id, suid);
 }
 
+function setQueryState(element, message, kind) {
+  element.textContent = message;
+  element.dataset.kind = kind;
+}
+
+function setReadHead(element, readHead) {
+  element.textContent = readHead === undefined ? "Read head unavailable" : `Read head: ${readHead}`;
+}
+
+function renderReservationRows(rows) {
+  reservationsBody.replaceChildren();
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    for (const value of [row.reservationId, row.roomId, row.status, String(row.version)]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    reservationsBody.append(tr);
+  }
+}
+
+async function loadReservations() {
+  setQueryState(reservationsState, "Loading reservations…", "pending");
+  try {
+    const response = await fetch("/api/read/reservations", { headers: { Accept: "application/json" } });
+    const view = reservationListView(response.status, await responseBody(response));
+    setReadHead(reservationsHead, view.readHead);
+    if (view.kind === "error") {
+      renderReservationRows([]);
+      setQueryState(reservationsState, `Error: ${view.error}`, "error");
+      return;
+    }
+    renderReservationRows(view.rows);
+    if (view.kind === "empty") {
+      setQueryState(reservationsState, "No reservations found.", "empty");
+    } else {
+      setQueryState(reservationsState, `${view.rows.length} reservation(s)`, "ready");
+    }
+  } catch (error) {
+    renderReservationRows([]);
+    setQueryState(reservationsState, `Error: ${error instanceof Error ? error.message : "Network request failed"}`, "error");
+  }
+}
+
+async function queryRoom(roomId) {
+  setQueryState(roomQueryState, "Loading room query…", "pending");
+  try {
+    const response = await fetch(`/api/read/room-query?roomId=${encodeURIComponent(roomId)}`, {
+      headers: { Accept: "application/json" },
+    });
+    const view = roomQueryView(response.status, await responseBody(response));
+    setReadHead(roomQueryHead, view.readHead);
+    if (view.kind === "error") {
+      roomQueryResult.textContent = "No room result.";
+      setQueryState(roomQueryState, `Error: ${view.error}`, "error");
+      return;
+    }
+    roomQueryResult.textContent = JSON.stringify(view.result, null, 2);
+    setQueryState(roomQueryState, "Room query ready", "ready");
+  } catch (error) {
+    roomQueryResult.textContent = "No room result.";
+    setQueryState(roomQueryState, `Error: ${error instanceof Error ? error.message : "Network request failed"}`, "error");
+  }
+}
+
 roomForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(roomForm);
@@ -143,3 +219,16 @@ cancelForm.addEventListener("submit", (event) => {
     reservationId: form.get("reservationId"),
   }, { kind: "reservation", id: form.get("reservationId") });
 });
+
+reservationsRefresh.addEventListener("click", () => {
+  void loadReservations();
+});
+
+roomQueryForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = new FormData(roomQueryForm);
+  const roomId = form.get("roomId");
+  if (typeof roomId === "string" && roomId.length > 0) void queryRoom(roomId);
+});
+
+void loadReservations();

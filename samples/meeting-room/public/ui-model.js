@@ -44,3 +44,58 @@ export function commandOutcome(status, body) {
   if (kind === "noop") return "noop";
   return status >= 200 && status < 300 ? "committed" : "rejected";
 }
+
+function parsedJson(value) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function readHeadFrom(body) {
+  for (const key of ["lastSortedUniqueId", "lastSortableUniqueId", "readHead"]) {
+    if (typeof body?.[key] === "string") return body[key];
+  }
+  return undefined;
+}
+
+function queryError(status, body) {
+  return {
+    kind: "error",
+    status,
+    code: typeof body?.code === "string" ? body.code : "transport",
+    error: typeof body?.error === "string" ? body.error : `HTTP ${status}`,
+  };
+}
+
+export function reservationListView(status, body) {
+  if (status < 200 || status >= 300 || typeof body?.error === "string") {
+    return queryError(status, body);
+  }
+  const items = parsedJson(body?.itemsJson ?? body?.items);
+  if (!Array.isArray(items)) return queryError(502, { error: "Reservation list returned an invalid items array", code: "transport" });
+  const rows = items.map((item) => ({
+    reservationId: typeof item?.reservationId === "string" ? item.reservationId : "",
+    roomId: typeof item?.roomId === "string" ? item.roomId : "",
+    status: typeof item?.status === "string" ? item.status : "unknown",
+    version: typeof item?.version === "number" ? item.version : 0,
+  }));
+  return {
+    kind: rows.length === 0 ? "empty" : "ready",
+    rows,
+    readHead: readHeadFrom(body),
+    continuation: body?.continuation,
+    totalCount: typeof body?.totalCount === "number" ? body.totalCount : rows.length,
+  };
+}
+
+export function roomQueryView(status, body) {
+  if (status < 200 || status >= 300 || typeof body?.error === "string") {
+    return queryError(status, body);
+  }
+  const result = parsedJson(body?.resultJson ?? body?.result ?? body);
+  if (result === undefined) return queryError(502, { error: "Room query returned invalid resultJson", code: "transport" });
+  return { kind: "ready", result, readHead: readHeadFrom(body) };
+}

@@ -4,6 +4,7 @@
   "compatibility_date": "2026-08-18",
   "vars": { "AUTO_DRAIN_OUTBOX": "true" },
   "assets": { "directory": "public" },
+  "triggers": { "crons": ["* * * * *"] },
   "services": [
     { "binding": "RUNTIME", "service": "sekiban-dcb-meeting-room", "entrypoint": "runtime" }
   ],

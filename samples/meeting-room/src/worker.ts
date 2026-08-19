@@ -29,6 +29,19 @@ function invokeRuntime(request: Request, env: MeetingRoomEnv, ctx: ExecutionCont
   return handler(request, env, ctx);
 }
 
+interface RuntimeFetcher {
+  fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
+}
+
+function runtimeFetcher(env: MeetingRoomEnv, ctx: ExecutionContext): RuntimeFetcher {
+  return env.RUNTIME ?? {
+    fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => {
+      const inner = inputValue instanceof Request ? inputValue : new Request(inputValue, init);
+      return invokeRuntime(inner, env, ctx);
+    },
+  };
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -90,13 +103,7 @@ async function readApplicationProjection(
 
   const tag = isRoom ? roomTag(value) : reservationTag(value);
   const tagProjector = isRoom ? "RoomProjector" : "ReservationProjector";
-  const runtimeFetcher = env.RUNTIME ?? {
-    fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => {
-      const inner = inputValue instanceof Request ? inputValue : new Request(inputValue, init);
-      return invokeRuntime(inner, env, ctx);
-    },
-  };
-  const response = await runtimeFetcher.fetch("https://runtime.internal/api/sekiban/serialized/tag-state", {
+  const response = await runtimeFetcher(env, ctx).fetch("https://runtime.internal/api/sekiban/serialized/tag-state", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     body: JSON.stringify({ tagStateId: `${tag.id}:${tagProjector}` }),
@@ -125,6 +132,59 @@ async function readApplicationProjection(
   });
 }
 
+function positiveInteger(value: string | null, name: string, fallback: number): number | Response {
+  if (value === null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    return json({ error: `${name} must be a positive integer`, code: "validation_error" }, 400);
+  }
+  return parsed;
+}
+
+async function relayRuntimeJson(response: Response): Promise<Response> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return json({ error: `Query read returned HTTP ${response.status}`, code: "transport" }, 502);
+  }
+  return json(body, response.status);
+}
+
+async function readApplicationQuery(
+  request: Request,
+  env: MeetingRoomEnv,
+  ctx: ExecutionContext,
+): Promise<Response> {
+  if (request.method !== "GET") return json({ error: "Query routes require GET", code: "validation_error" }, 400);
+  const url = new URL(request.url);
+  const isReservations = url.pathname === "/api/read/reservations";
+  const isRoomQuery = url.pathname === "/api/read/room-query";
+  if (!isReservations && !isRoomQuery) return json({ error: "Query route was not found", code: "not_found" }, 404);
+
+  let queryParams: Record<string, unknown>;
+  if (isReservations) {
+    const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
+    if (pageNumber instanceof Response) return pageNumber;
+    const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
+    if (pageSize instanceof Response) return pageSize;
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize };
+  } else {
+    const roomId = url.searchParams.get("roomId");
+    queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
+  }
+
+  const queryType = isReservations ? "GetReservationListQuery" : "GetRoomStateQuery";
+  // Construct a fresh internal request. In particular, never copy incoming
+  // headers: namespace selectors and conformance credentials are client input.
+  const response = await runtimeFetcher(env, ctx).fetch("https://runtime.internal/api/sekiban/serialized/" + (isReservations ? "list-query" : "query"), {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify({ queryType, queryParamsJson: JSON.stringify(queryParams) }),
+  });
+  return relayRuntimeJson(response);
+}
+
 async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Command route requires POST", code: "validation_error" }, 400);
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
@@ -134,14 +194,9 @@ async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: Execut
   } catch {
     return json({ error: "Command request must be JSON", code: "validation_error" }, 400);
   }
-  const runtimeFetcher = env.RUNTIME ?? {
-    fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => {
-      const inner = inputValue instanceof Request ? inputValue : new Request(inputValue, init);
-      return invokeRuntime(inner, env, ctx);
-    },
-  };
+  const runtime = runtimeFetcher(env, ctx);
   const commandRuntime: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> } = {
-    fetch: async (inputValue, init) => runtimeFetcher.fetch(inputValue, init),
+    fetch: async (inputValue, init) => runtime.fetch(inputValue, init),
   };
   const result = await executeMeetingRoomCommand(commandId, input, {
     RUNTIME: commandRuntime,
@@ -178,6 +233,9 @@ export function createMeetingRoomWorker(): ExportedHandler<MeetingRoomEnv> {
       }
       if (path === "/api/read/room" || path === "/api/read/reservation") {
         return readApplicationProjection(request, env, ctx);
+      }
+      if (path === "/api/read/reservations" || path === "/api/read/room-query") {
+        return readApplicationQuery(request, env, ctx);
       }
       if (path.startsWith("/api/commands/")) return commandRequest(request, env, ctx);
       if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
