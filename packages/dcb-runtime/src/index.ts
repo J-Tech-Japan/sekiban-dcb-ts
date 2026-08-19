@@ -16,6 +16,7 @@ import type { MaterializedViewQueryPort, QueryBacking } from "./query/Projection
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
+  MaterializedViewPatchError,
   MaterializedViewPromotionCasError,
   MaterializedViewStoreError,
 } from "./mv/MaterializedViewStore";
@@ -36,7 +37,7 @@ export type {
 
 export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
-export type { JsonValue } from "@sekiban/dcb-core";
+export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
 export { POSTGRES_STORE_PROVIDER, createPostgresStoreProvider } from "./store/provider";
 export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";

@@ -12,6 +12,7 @@ import { defineRowMaterializer, type MaterializedViewRowMaterializer } from "@se
 import {
   D1MaterializedViewStore,
   MaterializedViewCasError,
+  MaterializedViewPatchError,
   MaterializedViewPromotionCasError,
   MaterializedViewStoreError,
 } from "../packages/dcb-runtime/src/d1-mv";
@@ -22,6 +23,9 @@ import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection
 import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import { readRowsFromBacking, selectQueryBacking, type QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import type { ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
+import { reservationMaterializer } from "../samples/meeting-room/src/d1-mv";
+import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
+import { composeRuntime } from "../packages/dcb-runtime/src/composition";
 
 interface Event {
   suid: string;
@@ -57,6 +61,46 @@ function event(suid: string, eventId: string, count: number): Event {
   return { suid, eventId, count };
 }
 
+interface PatchEvent {
+  suid: string;
+  eventId: string;
+  kind: "seed" | "cancel" | "rename";
+  rowKey: string;
+  value?: string;
+}
+
+const PATCH_MATERIALIZER: MaterializedViewRowMaterializer<PatchEvent> = defineRowMaterializer({
+  id: "g20-patch-oracle-v1",
+  version: 1,
+  indexDescriptors: [{
+    id: "status",
+    valueType: "text",
+    value: (row) => (row as { status?: unknown }).status,
+  }],
+  materialize: (incoming) => {
+    if (incoming.kind === "seed") {
+      return { rowUpserts: [{ rowKey: incoming.rowKey, value: { status: "reserved", value: incoming.value ?? "old" } }] };
+    }
+    if (incoming.kind === "cancel") {
+      return {
+        rowPatches: [{
+          kind: "json_patch",
+          rowKey: incoming.rowKey,
+          patch: { status: "cancelled" },
+          indexEntries: [{ indexId: "status", value: "cancelled", rowKey: incoming.rowKey }],
+        }],
+      };
+    }
+    return {
+      rowPatches: [{
+        kind: "json_patch",
+        rowKey: incoming.rowKey,
+        patch: { value: incoming.value ?? "new" },
+      }],
+    };
+  },
+});
+
 function storedEvent(suid: string, eventId: string, lastArrivedAt: number): StoredEvent {
   return {
     serviceId: "g19-source",
@@ -64,6 +108,27 @@ function storedEvent(suid: string, eventId: string, lastArrivedAt: number): Stor
     suid,
     payload: btoa(JSON.stringify({ eventId })),
     eventTags: ["g19:events"],
+    firstArrivedAt: lastArrivedAt,
+    lastArrivedAt,
+    maxDeliveryLagMs: 0,
+    arrivals: [],
+  };
+}
+
+function storedPayloadEvent(
+  serviceId: string,
+  suid: string,
+  eventId: string,
+  payload: Record<string, unknown>,
+  eventTags: readonly string[],
+  lastArrivedAt = 1_000,
+): StoredEvent {
+  return {
+    serviceId,
+    eventId,
+    suid,
+    payload: btoa(JSON.stringify(payload)),
+    eventTags: [...eventTags],
     firstArrivedAt: lastArrivedAt,
     lastArrivedAt,
     maxDeliveryLagMs: 0,
@@ -137,6 +202,69 @@ describe("SDT-G19 D1 materialized-view store", () => {
     expect(await mv.readActive(serviceId, MATERIALIZER.id)).toEqual(before.instance);
     expect(await mv.readRows(serviceId, MATERIALIZER.id)).toEqual(before.rows);
     expect(await mv.readIndexEntries(serviceId, MATERIALIZER.id)).toEqual(before.indexes);
+  });
+
+  it("applies a declarative JSON patch and replaces changed index entries in one batch", async () => {
+    const serviceId = `g20-patch-${crypto.randomUUID()}`;
+    const mv = store();
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: PATCH_MATERIALIZER.id, definitionVersion: 1, updatedAt: 1_000 });
+    const seed = { suid: "suid-1", eventId: "seed", kind: "seed" as const, rowKey: "reservation-1", value: "old" };
+    await mv.applyMutationsAndAdvanceCheckpoint({
+      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: null,
+      lastSuid: seed.suid, definitionVersion: 1, updatedAt: 1_001, mutations: PATCH_MATERIALIZER.plan(seed),
+    });
+    const cancel = { suid: "suid-2", eventId: "cancel", kind: "cancel" as const, rowKey: seed.rowKey };
+    await mv.applyMutationsAndAdvanceCheckpoint({
+      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: seed.suid,
+      lastSuid: cancel.suid, definitionVersion: 1, updatedAt: 1_002, mutations: PATCH_MATERIALIZER.plan(cancel),
+    });
+    expect((await mv.readRows(serviceId, PATCH_MATERIALIZER.id))[0]?.value).toEqual({ status: "cancelled", value: "old" });
+    expect(await mv.queryRows(serviceId, PATCH_MATERIALIZER.id, { indexId: "status", valueType: "text", limit: null }))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ rowKey: seed.rowKey, value: { status: "cancelled", value: "old" } })]));
+    expect(await mv.readIndexEntries(serviceId, PATCH_MATERIALIZER.id)).toEqual([
+      expect.objectContaining({ indexId: "status", value: "cancelled", rowKey: seed.rowKey }),
+    ]);
+  });
+
+  it("fails closed for a patch targeting a missing row without advancing any region", async () => {
+    const serviceId = `g20-patch-missing-${crypto.randomUUID()}`;
+    const mv = store();
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: PATCH_MATERIALIZER.id, definitionVersion: 1, updatedAt: 1_010 });
+    await expect(mv.applyMutationsAndAdvanceCheckpoint({
+      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: null,
+      lastSuid: "suid-missing", definitionVersion: 1, updatedAt: 1_011,
+      mutations: PATCH_MATERIALIZER.plan({ suid: "suid-missing", eventId: "missing", kind: "cancel", rowKey: "absent" }),
+    })).rejects.toBeInstanceOf(MaterializedViewPatchError);
+    expect(await mv.readActive(serviceId, PATCH_MATERIALIZER.id)).toEqual(expect.objectContaining({ lastSuid: "" }));
+    expect(await mv.readRows(serviceId, PATCH_MATERIALIZER.id)).toEqual([]);
+    expect(await mv.readIndexEntries(serviceId, PATCH_MATERIALIZER.id)).toEqual([]);
+  });
+
+  it("rolls back a JSON patch and its index update on a stale checkpoint CAS", async () => {
+    const serviceId = `g20-patch-cas-${crypto.randomUUID()}`;
+    const mv = store();
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: PATCH_MATERIALIZER.id, definitionVersion: 1, updatedAt: 1_020 });
+    const seed = { suid: "suid-1", eventId: "seed-cas", kind: "seed" as const, rowKey: "reservation-cas", value: "old" };
+    await mv.applyMutationsAndAdvanceCheckpoint({
+      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: null,
+      lastSuid: seed.suid, definitionVersion: 1, updatedAt: 1_021, mutations: PATCH_MATERIALIZER.plan(seed),
+    });
+    const before = {
+      instance: await mv.readActive(serviceId, PATCH_MATERIALIZER.id),
+      rows: await mv.readRows(serviceId, PATCH_MATERIALIZER.id),
+      indexes: await mv.readIndexEntries(serviceId, PATCH_MATERIALIZER.id),
+    };
+    await expect(mv.applyMutationsAndAdvanceCheckpoint({
+      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: "stale",
+      lastSuid: "suid-2", definitionVersion: 1, updatedAt: 1_022,
+      mutations: PATCH_MATERIALIZER.plan({ suid: "suid-2", eventId: "cancel-cas", kind: "cancel", rowKey: seed.rowKey }),
+    })).rejects.toBeInstanceOf(MaterializedViewCasError);
+    expect(await mv.readActive(serviceId, PATCH_MATERIALIZER.id)).toEqual(before.instance);
+    expect(await mv.readRows(serviceId, PATCH_MATERIALIZER.id)).toEqual(before.rows);
+    expect(await mv.readIndexEntries(serviceId, PATCH_MATERIALIZER.id)).toEqual(before.indexes);
   });
 
   it("keeps active generation isolated during rebuild and switches it by CAS promotion", async () => {
@@ -267,11 +395,82 @@ describe("SDT-G19 D1 materialized-view store", () => {
     });
     const memoryResponse = await handleSerializedQuery(request(), {}, { store: memory });
     const mvResponse = await handleSerializedQuery(request(), {}, {
-      queryBacking: "d1-mv",
-      materializedViewQueryPort: mv,
+      queryBacking: "d1-mv", materializedViewQueryPort: mv,
     });
     expect(mvResponse.status).toBe(200);
     expect(await mvResponse.json()).toEqual(await memoryResponse.json());
+  });
+
+  it("preserves roomId for a cancelled reservation in memory and D1 MV, including after rebuild", async () => {
+    const serviceId = `g20-cancelled-${crypto.randomUUID()}`;
+    const reservationId = "reservation-cancelled-1";
+    const roomId = "room-cancelled-1";
+    const tag = `reservation:${reservationId}`;
+    const events = [
+      storedPayloadEvent(serviceId, "suid-1", "reserved-event", {
+        eventType: "RoomReserved", reservationId, roomId,
+      }, [tag]),
+      // The cancellation intentionally omits roomId; the patch must retain it.
+      storedPayloadEvent(serviceId, "suid-2", "cancelled-event", {
+        eventType: "ReservationCancelled", reservationId,
+      }, [tag]),
+    ];
+    const incidents: unknown[] = [];
+    const source = sourceFor(events, 0, incidents);
+    const mv = store();
+    await mv.initialize();
+    const runtime = new MaterializedViewCatchUpRuntime(source, mv);
+    await runtime.build(serviceId, reservationMaterializer, 50_000);
+    const firstRead = await mv.readRows(serviceId, reservationMaterializer.id);
+    expect(firstRead.map((row) => row.value)).toEqual([{
+      reservationId, roomId, status: "cancelled", version: 2,
+    }]);
+    const rebuilt = await runtime.rebuild(serviceId, reservationMaterializer, 50_001, "g20-cancelled-rebuild");
+    await runtime.promote(serviceId, reservationMaterializer as unknown as MaterializedViewRowMaterializer, rebuilt.candidateGeneration, 50_002);
+    const rebuiltRows = await mv.readRows(serviceId, reservationMaterializer.id);
+    expect(rebuiltRows.map((row) => row.value)).toEqual(firstRead.map((row) => row.value));
+
+    const expected = { reservationId, roomId, status: "cancelled", version: 2 };
+    const memory: QueryProjectionStore = {
+      readAllEvents: async () => events,
+      currentLagBound: async () => 0,
+      listProjectionTags: async () => [tag],
+      readProjectionCheckpoint: async () => ({
+        serviceId,
+        projectionId: projectionIdFor({
+          tag, tagGroup: "reservation", tagContent: reservationId, tagProjector: reservationMaterializer.id,
+        }),
+        lastSuid: "suid-2",
+        stateJson: JSON.stringify([{
+          eventId: reservationId,
+          suid: "suid-2",
+          payload: btoa(JSON.stringify(expected)),
+        }]),
+        version: 2,
+        updatedAt: 50_002,
+      }),
+    };
+    const request = () => new Request("https://query.test/api/sekiban/serialized/list-query", {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+      body: JSON.stringify({
+        queryType: "GetReservationListQuery",
+        queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
+      }),
+    });
+    const composition = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
+    const memoryResponse = await handleSerializedQuery(request(), {}, {
+      store: memory, registry: composition.queries, projectors: composition.projectors,
+    });
+    const mvResponse = await handleSerializedQuery(request(), {}, {
+      queryBacking: "d1-mv",
+      materializedViewQueryPort: mv,
+      registry: composition.queries,
+      projectors: composition.projectors,
+    });
+    expect(mvResponse.status).toBe(200);
+    expect(await mvResponse.json()).toEqual(await memoryResponse.json());
+    expect(incidents).toEqual([]);
   });
 
   it("fails closed when the MV binding has not been initialized", async () => {

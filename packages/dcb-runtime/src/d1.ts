@@ -12,6 +12,7 @@ export {
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
+  MaterializedViewPatchError,
   MaterializedViewPromotionCasError,
   MaterializedViewStoreError,
 } from "./mv/MaterializedViewStore";

@@ -21,6 +21,7 @@ export type MaterializedViewStoreErrorCode =
   | "MV_CAS_MISMATCH"
   | "MV_PROMOTION_CAS_MISMATCH"
   | "MV_GENERATION_INVALID"
+  | "MV_PATCH_ROW_MISSING"
   | "MV_VALUE_INVALID"
   | "MV_STORE_OPERATION_FAILED";
 
@@ -48,6 +49,13 @@ export class MaterializedViewPromotionCasError extends MaterializedViewStoreErro
   constructor(message = "Materialized-view active-generation CAS did not match") {
     super("promote", "MV_PROMOTION_CAS_MISMATCH", message);
     this.name = "MaterializedViewPromotionCasError";
+  }
+}
+
+export class MaterializedViewPatchError extends MaterializedViewStoreError {
+  constructor(message = "Materialized-view JSON patch target row does not exist") {
+    super("apply", "MV_PATCH_ROW_MISSING", message);
+    this.name = "MaterializedViewPatchError";
   }
 }
 
@@ -109,6 +117,7 @@ export interface MaterializedViewApplyResult {
   readonly instance: MaterializedViewInstance;
   readonly rowUpserts: number;
   readonly rowDeletes: number;
+  readonly rowPatches: number;
   readonly indexEntries: number;
 }
 
@@ -178,6 +187,10 @@ function operationId(): string {
 function isCasFailure(error: unknown): boolean {
   const message = String(error);
   return message.includes("mv_atomic_guards.checkpoint_match") || message.includes("MV_CAS_MISMATCH");
+}
+
+function isPatchFailure(error: unknown): boolean {
+  return String(error).includes("CHECK constraint failed: checkpoint_match");
 }
 
 /**
@@ -390,6 +403,23 @@ export class D1MaterializedViewStore {
         input.expectedLastSuid,
       ),
     ];
+    // Patch guards are evaluated before any write. A missing target selects 0
+    // and violates the CHECK constraint, aborting the entire D1 batch.
+    for (const patch of input.mutations.rowPatches) {
+      statements.push(this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (
+           SELECT 1 FROM mv_rows
+            WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key COLLATE BINARY = ? COLLATE BINARY
+         ) THEN 1 ELSE 0 END`,
+      ).bind(
+        `${operation}:patch:${patch.rowKey}`,
+        input.serviceId,
+        input.viewId,
+        input.generation,
+        patch.rowKey,
+      ));
+    }
     for (const deletion of input.mutations.rowDeletes) {
       statements.push(this.database.prepare(
         `DELETE FROM mv_index_entries WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`,
@@ -420,6 +450,30 @@ export class D1MaterializedViewStore {
         JSON.stringify(assertJsonValue(upsert.value, "state-persistence")),
         upsert.rowVersion,
         upsert.sourceSuid,
+      ));
+    }
+    for (const patch of input.mutations.rowPatches) {
+      // A patch carrying index entries declares the complete replacement set
+      // for this row. With no entries the prior index rows remain intact.
+      if (patch.indexEntries.length > 0) {
+        statements.push(this.database.prepare(
+          `DELETE FROM mv_index_entries WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`,
+        ).bind(input.serviceId, input.viewId, input.generation, patch.rowKey));
+      }
+      // json_patch performs the partial merge in SQLite as one prepared
+      // statement. No current row is read or merged by the runtime.
+      statements.push(this.database.prepare(
+        `UPDATE mv_rows
+            SET value_json = json_patch(value_json, ?), row_version = ?, source_suid = ?
+          WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key COLLATE BINARY = ? COLLATE BINARY`,
+      ).bind(
+        JSON.stringify(assertJsonValue(patch.patch, "state-persistence")),
+        patch.rowVersion,
+        patch.sourceSuid,
+        input.serviceId,
+        input.viewId,
+        input.generation,
+        patch.rowKey,
       ));
     }
     for (const deletion of input.mutations.indexDeletes) {
@@ -453,6 +507,30 @@ export class D1MaterializedViewStore {
         entry.rowKey,
       ));
     }
+    for (const patch of input.mutations.rowPatches) {
+      for (const entry of patch.indexEntries) {
+        const typed = entry.valueType === "text"
+          ? [entry.value, null, null]
+          : entry.valueType === "integer"
+            ? [null, entry.value, null]
+            : [null, null, entry.value];
+        statements.push(this.database.prepare(
+          `INSERT INTO mv_index_entries
+             (service_id, view_id, generation, index_id, value_type, text_value, integer_value, real_value, row_key)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT (service_id, view_id, generation, index_id, value_type, text_value, integer_value, real_value, row_key)
+           DO NOTHING`,
+        ).bind(
+          input.serviceId,
+          input.viewId,
+          input.generation,
+          entry.indexId,
+          entry.valueType,
+          ...typed,
+          entry.rowKey,
+        ));
+      }
+    }
     statements.push(this.database.prepare(
       `UPDATE mv_instances
           SET last_suid = ?, definition_version = ?, updated_at = ?
@@ -465,10 +543,13 @@ export class D1MaterializedViewStore {
       input.viewId,
       input.generation,
     ));
-    statements.push(this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id = ?").bind(operation));
+    statements.push(this.database.prepare(
+      "DELETE FROM mv_atomic_guards WHERE operation_id = ? OR operation_id LIKE ?",
+    ).bind(operation, `${operation}:%`));
     try {
       await this.database.batch(statements);
     } catch (error) {
+      if (isPatchFailure(error)) throw new MaterializedViewPatchError();
       if (isCasFailure(error)) throw new MaterializedViewCasError();
       throw new MaterializedViewStoreError("apply", "MV_STORE_OPERATION_FAILED", `Materialized-view atomic apply failed: ${String(error)}`, { cause: error });
     }
@@ -478,6 +559,7 @@ export class D1MaterializedViewStore {
       instance,
       rowUpserts: input.mutations.rowUpserts.length,
       rowDeletes: input.mutations.rowDeletes.length,
+      rowPatches: input.mutations.rowPatches.length,
       indexEntries: input.mutations.indexEntries.length,
     };
   }

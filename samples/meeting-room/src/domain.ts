@@ -87,11 +87,12 @@ export const cancelReservationCommand = defineCommand<ReservationOnlyInput>({
   id: "cancel-reservation",
   parseInput: reservationOnlyInput,
   handler: (input, ctx) => {
-    const reservation = ctx.state<{ readonly status?: string }>(reservationTag(input.reservationId));
+    const reservation = ctx.state<{ readonly status?: string; readonly roomId?: string }>(reservationTag(input.reservationId));
     if (reservation === undefined) return ctx.reject("reservation does not exist", "reservation_missing");
     ctx.append(reservationCancelled, {
       eventType: reservationCancelled.eventName,
       reservationId: input.reservationId,
+      ...(typeof reservation.roomId === "string" ? { roomId: reservation.roomId } : {}),
     }, [reservationTag(input.reservationId)]);
     return ctx.done({ reservationId: input.reservationId });
   },

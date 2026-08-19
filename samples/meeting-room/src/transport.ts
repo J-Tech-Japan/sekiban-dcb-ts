@@ -151,9 +151,13 @@ export async function executeMeetingRoomCommand(
         return executor.execute(async (ctx) => {
           const state = await ctx.state(reservationStateId(parsed.reservationId));
           if (state === undefined || state === null) return { kind: "rejected", error: "reservation does not exist", code: "reservation_missing" };
+          const roomId = typeof state === "object" && state !== null && !Array.isArray(state) && typeof (state as Record<string, unknown>).roomId === "string"
+            ? (state as Record<string, string>).roomId
+            : undefined;
           ctx.append(meetingRoomEvents.reservationCancelled, {
             eventType: meetingRoomEvents.reservationCancelled.eventName,
             reservationId: parsed.reservationId,
+            ...(roomId === undefined ? {} : { roomId }),
           }, [reservationTag(parsed.reservationId)]);
           return { kind: "committed", value: { reservationId: parsed.reservationId } };
         });

@@ -47,6 +47,19 @@ export const reservationMaterializer = defineRowMaterializer<StoredEventLike>({
     if (reservationId === undefined) return {};
     const eventType = stringField(payload.eventType);
     if (eventType !== "RoomReserved" && eventType !== "ReservationCancelled") return {};
+    if (eventType === "ReservationCancelled") {
+      // Cancellation carries only changed fields. The database JSON patch
+      // preserves the roomId written by the preceding reservation event.
+      return {
+        rowPatches: [{
+          kind: "json_patch",
+          rowKey: reservationId,
+          patch: { status: "cancelled", version: 2 },
+          rowVersion: 2,
+          indexEntries: [{ indexId: "reservation-id", value: reservationId, rowKey: reservationId }],
+        }],
+      };
+    }
     const roomId = stringField(payload.roomId);
     return {
       rowUpserts: [{
@@ -54,8 +67,8 @@ export const reservationMaterializer = defineRowMaterializer<StoredEventLike>({
         value: {
           reservationId,
           ...(roomId === undefined ? {} : { roomId }),
-          status: eventType === "RoomReserved" ? "reserved" : "cancelled",
-          version: eventType === "RoomReserved" ? 1 : 2,
+          status: "reserved",
+          version: 1,
         },
       }],
     };
