@@ -21,7 +21,8 @@ and phase outcomes crossed the local boundary.
 Deployment facts for this run:
 
 - Worker: `https://serialized-dcb-v1-runtime.ttakaoka.workers.dev`
-- deployed version: `dc7ee4cd-39f2-426f-9ba0-baf134289d76`
+- rollout deployment: `dc7ee4cd-39f2-426f-9ba0-baf134289d76`
+- final verification deployment: `82e3e846-32cf-4ab8-8b47-4c5e6d259279`
 - target service id: `serialized-dcb-v1`
 - fresh resume service id: `g17-shared-fresh-20260819`
 
@@ -44,10 +45,10 @@ credential; no old namespace is reused by the fresh service id.
 The deployed negative oracles used fresh service-scoped data and the same
 Hyperdrive-backed store:
 
-- `g17-negative-collision-20260819`: two tag outboxes carried different
+- `g17-negative-collision-final-20260819`: two tag outboxes carried different
   EventIds with the same SUID; the store retained one event and recorded
   exactly one `SUID_COLLISION` incident.
-- `g17-negative-lineage-20260819`: after the first delivery established the
+- `g17-negative-lineage-final-20260819`: after the first delivery established the
   binding, a controlled wrong-lineage binding probe preceded a second delivery;
   the store recorded exactly one `LINEAGE_MISMATCH` incident before the binding
   was restored to its original value.
@@ -56,11 +57,11 @@ The complete probe outputs are retained under
 `.artifacts/g17-shared-deployed/`. No passwords, connection strings, bearer
 tokens, or other secret values are present in the evidence.
 
-The pinned G11 HTTP conformance script was also attempted against this final
+The pinned G11 HTTP conformance script was also attempted against the rollout
 deployment and stopped honestly at its `single-tag-read` check (HTTP 200 with
 `exists=false` before asynchronous delivery became visible). It is not claimed
-as a passing conformance run; the AC#8 rollout and negative-oracle results
-above are the only deployed claims made by this repair.
+as a passing conformance run; the AC#8 rollout and final-version
+negative-oracle results above are the only deployed claims made by this repair.
 
 The following run used the existing local PostgreSQL test container. The
 connection string was supplied through the process environment and was not
