@@ -1,9 +1,10 @@
 {
   "probe": "SDT-G16",
   "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
-  "deployedVersion": "604bd7b7-c358-40b0-8f12-d6a6d7e0e1d3",
-  "sourceCommit": "54044265ac447d1dcd873ad2f6b2d4b190553aca",
-  "prHead": "ea266daa41d275a28d631d919d6938c390523b6b",
+  "deployedVersion": "dd6c13d1-779e-4eca-98cf-2ff44d9a5739",
+  "sourceCommit": "7594757b903096271227927ce1513cb2be957299",
+  "rebaseBase": "c24444dc",
+  "prHead": "7594757b903096271227927ce1513cb2be957299",
   "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
   "hyperdriveCaching": "disabled",
   "safeWindowBoundMs": 120000,
@@ -19,10 +20,15 @@
   "deployedE2E": {
     "status": "BLOCKED",
     "reservationListResponseStatus": 200,
-    "reservationListTotalCountObserved": 0,
+    "reservationListTotalCountObserved": 6,
     "reservationListVisibleWithinBound": false,
-    "failure": "The final-head app-layer E2E created a reservation but the deployed list-query remained empty through the 120000ms published SafeWindow bound.",
+    "failure": "The post-G17 deployment app-layer E2E created a reservation, but the list-query remained at six pre-existing items through the 120000ms published SafeWindow bound. The first request after deployment also observed the expected Durable Object reset; G17 then fail-closed the new allocator lineage against the immutable legacy-pre-g17 binding before the event write.",
+    "artifact": ".artifacts/g16-deployed-e2e-final.json",
+    "exitCode": 1,
+    "duplicatePairsAfterGuardedDeployment": 0,
+    "lineageMismatchObserved": true,
+    "freshServiceId": "The app-layer routes intentionally do not accept internal service-id headers, so a fresh G17 service identity cannot be routed through this UI lane without changing the accepted G14/G16 contract.",
     "operatorPoll": "not attempted; protected bearer-token value was not read or copied"
   },
-  "secret": "No bearer-token value, database credential, or connection string is present in this evidence."
+  "secret": "No bearer-token value, database credential, connection string, allocator token, or other secret value is present in this evidence."
 }
