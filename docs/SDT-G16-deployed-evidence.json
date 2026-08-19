@@ -2,9 +2,10 @@
   "probe": "SDT-G16",
   "baseUrl": "https://sekiban-dcb-meeting-room.ttakaoka.workers.dev",
   "deployedVersion": "dd6c13d1-779e-4eca-98cf-2ff44d9a5739",
-  "sourceCommit": "7594757b903096271227927ce1513cb2be957299",
+  "sourceCommit": "7221754fd83c29b0714460cb5143afa13eb106",
+  "deployedCodeCommit": "7594757b903096271227927ce1513cb2be957299",
   "rebaseBase": "c24444dc",
-  "prHead": "7594757b903096271227927ce1513cb2be957299",
+  "prHead": "7221754fd83c29b0714460cb5143afa13eb106",
   "hyperdriveConfigId": "c236b7b51ed24bf4b312bc370c61a231",
   "hyperdriveCaching": "disabled",
   "safeWindowBoundMs": 120000,
@@ -16,7 +17,11 @@
     "reservationListCommitToVisibleMs": 21167.489,
     "roomQueryStatus": 200,
     "rawV1Unauthenticated": [404, 404, 404, 404, 404],
-    "g17Isolation": "fresh PostgreSQL database; no retained allocator binding"
+    "g17Isolation": "fresh PostgreSQL database; no retained allocator binding",
+    "ciExactHead": "7221754fd83c29b0714460cb5143afa13eb106",
+    "ciRun": "32264151634",
+    "ciVerify": "SUCCESS",
+    "ciCosmosEmulator": "SUCCESS"
   },
   "deployedE2E": {
     "status": "BLOCKED",
