@@ -8,6 +8,7 @@ readonly PORT="${G15_LOCAL_PORT:-8787}"
 readonly BASE_URL="${G15_LOCAL_BASE_URL:-http://127.0.0.1:${PORT}}"
 readonly REPORT="${G15_LOCAL_REPORT:-${REPO_ROOT}/.artifacts/g15-local-e2e.json}"
 readonly SERVER_LOG="${G15_LOCAL_SERVER_LOG:-${REPO_ROOT}/.artifacts/g15-wrangler.log}"
+readonly PERSIST_DIR="${G15_LOCAL_PERSIST_DIR:-}"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
@@ -18,8 +19,21 @@ test -n "${POSTGRES_URL:-}" || {
 mkdir -p "$(dirname "${REPORT}")"
 : > "${SERVER_LOG}"
 
+wrangler_args=(
+  dev
+  --config samples/meeting-room/wrangler.jsonc
+  --local
+  --test-scheduled
+  --port "${PORT}"
+  --log-level error
+)
+if [[ -n "${PERSIST_DIR}" ]]; then
+  mkdir -p "${PERSIST_DIR}"
+  wrangler_args+=(--persist-to "${PERSIST_DIR}")
+fi
+
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="${POSTGRES_URL}" \
-  "${WRANGLER_BIN}" dev --config samples/meeting-room/wrangler.jsonc --local --test-scheduled --port "${PORT}" --log-level error \
+  "${WRANGLER_BIN}" "${wrangler_args[@]}" \
   > "${SERVER_LOG}" 2>&1 &
 readonly SERVER_PID=$!
 trap 'kill "${SERVER_PID}" 2>/dev/null || true' EXIT

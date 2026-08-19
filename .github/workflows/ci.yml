@@ -43,7 +43,10 @@ jobs:
       - run: npm run test:boundaries
       - run: npm run test:consumer
       - run: npm run build
-      - run: npm run e2e:g15:local
+      - name: Run G15 local E2E
+        env:
+          G15_LOCAL_PERSIST_DIR: ${{ runner.temp }}/sdt-g15-wrangler-state
+        run: npm run e2e:g15:local
       - name: Isolate G16 E2E PostgreSQL database
         env:
           PGPASSWORD: postgres
@@ -54,7 +57,10 @@ jobs:
             --command "CREATE DATABASE \"${database}\""
           printf 'POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:5432/%s\n' "${database}" >> "${GITHUB_ENV}"
       - run: npm run test:g16
-      - run: npm run e2e:g16:local
+      - name: Run G16 local E2E
+        env:
+          G15_LOCAL_PERSIST_DIR: ${{ runner.temp }}/sdt-g16-wrangler-state
+        run: npm run e2e:g16:local
 
   # Required Phase 1.5 lane. The adapter uses only gateway-mode operations
   # covered by the Linux vNext emulator: database/container bootstrap,
