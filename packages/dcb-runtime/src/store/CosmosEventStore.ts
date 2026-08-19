@@ -27,6 +27,8 @@ export interface CosmosDocumentClient {
   read<T extends JsonObject>(container: string, id: string, partitionKey: string): Promise<CosmosDocumentRecord<T> | undefined>;
   create<T extends JsonObject>(container: string, document: T, partitionKey: string): Promise<CosmosDocumentRecord<T>>;
   replace<T extends JsonObject>(container: string, document: T, partitionKey: string, etag?: string): Promise<boolean>;
+  /** Optional fault-test seam; the adapter deliberately never calls it. */
+  delete?(container: string, id: string, partitionKey: string): Promise<boolean>;
   query<T extends JsonObject>(
     container: string,
     query: string,
@@ -45,6 +47,9 @@ export interface CosmosContainerNames {
   readonly checkpoints: string;
 }
 
+/** Every TypeScript Cosmos container is scoped by the serialized service id. */
+export const COSMOS_PARTITION_KEY_PATH = "/serviceId" as const;
+
 export const DEFAULT_COSMOS_CONTAINERS: CosmosContainerNames = Object.freeze({
   events: "dcb-events",
   lagEstimates: "dcb-lag-estimates",
@@ -52,6 +57,32 @@ export const DEFAULT_COSMOS_CONTAINERS: CosmosContainerNames = Object.freeze({
   findings: "dcb-findings",
   checkpoints: "dcb-projection-checkpoints",
 });
+
+export interface CosmosContainerDefinition {
+  readonly name: string;
+  readonly partitionKeyPath: typeof COSMOS_PARTITION_KEY_PATH;
+  readonly partitionKeyValue: (serviceId: string) => string;
+}
+
+/**
+ * The layout is data rather than a comment so every adapter initialization and
+ * contract fixture can inspect the same five service-partitioned containers.
+ */
+export function cosmosContainerDefinitions(
+  containers: CosmosContainerNames = DEFAULT_COSMOS_CONTAINERS,
+): readonly CosmosContainerDefinition[] {
+  return [
+    containers.events,
+    containers.lagEstimates,
+    containers.pendingArrivals,
+    containers.findings,
+    containers.checkpoints,
+  ].map((name) => ({
+    name,
+    partitionKeyPath: COSMOS_PARTITION_KEY_PATH,
+    partitionKeyValue: (serviceId: string) => serviceId,
+  }));
+}
 
 export interface CosmosStoreOptions {
   /** Cosmos account endpoint, including the trailing slash when supplied. */
@@ -218,10 +249,10 @@ export class CosmosRestClient implements CosmosDocumentClient {
   async initialize(): Promise<void> {
     if (this.initialized) return;
     await this.ensureResource("dbs", { id: this.database });
-    for (const container of Object.values(this.containers)) {
+    for (const container of cosmosContainerDefinitions(this.containers)) {
       await this.ensureResource(`dbs/${encodeURIComponent(this.database)}/colls`, {
-        id: container,
-        partitionKey: { paths: ["/serviceId"], kind: "Hash" },
+        id: container.name,
+        partitionKey: { paths: [container.partitionKeyPath], kind: "Hash" },
       });
     }
     this.initialized = true;

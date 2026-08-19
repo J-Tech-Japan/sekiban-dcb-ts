@@ -95,6 +95,11 @@ class MemoryCosmosClient {
     return true;
   }
 
+  async delete(container, id, partitionKey) {
+    this.deleteCalls += 1;
+    return this.documents.delete(this.key(container, partitionKey, id));
+  }
+
   async query(container, _query, parameters, partitionKey) {
     const serviceId = parameters.find((parameter) => parameter.name === "@serviceId")?.value;
     const eventId = parameters.find((parameter) => parameter.name === "@eventId")?.value;

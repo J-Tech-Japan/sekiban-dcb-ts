@@ -11,11 +11,17 @@ function fixtureKey(): string {
 
 describe("SDT-G12 workerd Cosmos REST path", () => {
   it("uses only Web APIs for gateway bootstrap, query, and missing-document reads", async () => {
-    const calls: Array<{ url: string; method: string; headers: Headers }> = [];
+    const calls: Array<{ url: string; method: string; headers: Headers; body?: unknown }> = [];
     let queryPage = 0;
     const fetcher = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const headers = new Headers(init?.headers);
-      calls.push({ url: String(input), method: init?.method ?? "GET", headers });
+      const bodyText = typeof init?.body === "string" ? init.body : undefined;
+      calls.push({
+        url: String(input),
+        method: init?.method ?? "GET",
+        headers,
+        body: bodyText === undefined ? undefined : JSON.parse(bodyText),
+      });
       if (init?.method === "GET") return new Response("missing", { status: 404 });
       if (headers.get("content-type") === "application/query+json") {
         queryPage += 1;
@@ -34,6 +40,17 @@ describe("SDT-G12 workerd Cosmos REST path", () => {
       fetcher,
     });
     await client.initialize();
+    const containerBodies = calls
+      .filter((call) => call.method === "POST" && call.url.endsWith("/colls"))
+      .map((call) => call.body as { id: string; partitionKey: { paths: string[]; kind: string } });
+    expect(containerBodies).toEqual([
+      { id: "dcb-events", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
+      { id: "dcb-lag-estimates", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
+      { id: "dcb-pending-arrivals", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
+      { id: "dcb-findings", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
+      { id: "dcb-projection-checkpoints", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
+    ]);
+    expect(containerBodies.every((container) => container.partitionKey.paths[0] === "/serviceId")).toBe(true);
     expect((await client.query("dcb-events", "SELECT * FROM c WHERE c.serviceId = @serviceId", [{ name: "@serviceId", value: "service" }], "service")).map((row) => row.document.id)).toEqual(["one", "two"]);
     expect(await client.read("dcb-events", "missing", "service")).toBeUndefined();
     expect(calls.length).toBe(9);

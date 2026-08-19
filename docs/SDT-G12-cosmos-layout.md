@@ -35,8 +35,8 @@ select a different service partition or container.
 
 ## Executable branch fixture
 
-`test/cosmos.contract.ts` runs the same `PipelineStore` contract assertions against
-the adapter's document-client seam and against a real emulator when the
+`scripts/store-contract.mjs` runs the same `PipelineStore` contract assertions
+against the adapter's document-client seam and against a real emulator when the
 Cosmos lane supplies `COSMOS_ENDPOINT`, `COSMOS_KEY`, and `COSMOS_DATABASE`.
 The emulator runner fails closed when any required value is absent; it never
 turns an unavailable emulator into a skipped green test. The fixture covers
@@ -44,7 +44,11 @@ event-id idempotency/conflict, bytewise SUID ordering, detector de-duplication,
 checkpoint CAS, and re-delivery after injected write failures.
 
 The deliberately-separate branch is executable rather than documentation-only:
-the fixture asserts the five TypeScript container names and the service
-partition contract, and rejects a document shaped like the historical .NET
-events/tags/states layout. A future interop adapter must therefore choose a
-new explicit provider instead of silently sharing these containers.
+`test/cosmos-pipeline.spec.ts` asserts the five TypeScript container names,
+the `/serviceId` path and service-id partition value for every container, and
+that none of the names collides with the historical .NET `events`/`tags`/`states`
+layout. A future interop adapter must therefore choose a new explicit provider
+instead of silently sharing these containers. The same spec drives both the
+Cosmos-backed query and tag-read handlers with production-shaped namespace
+headers, asserting that the service id and partition key remain
+`serialized-dcb-v1`.
