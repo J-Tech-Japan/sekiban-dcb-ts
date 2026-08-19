@@ -9,6 +9,59 @@ The rollout is intentionally ordered by `scripts/g17-staged-rollout.sh`:
    duplicate pairs are zero, then deploys the PostgreSQL unique index.
 4. `resume` records a fresh service id for post-remediation traffic.
 
+## Shared Hyperdrive-backed store run (2026-08-19)
+
+The AC#8 run was repeated against the deployed Worker's prepared Hyperdrive
+binding (`c236b7b51ed24bf4b312bc370c61a231`), whose caching setting was
+verified as disabled. The protected PostgreSQL connection was never exported
+to this checkout or written to an artifact: a short-lived remote-binding probe
+invoked the same staged script with a `psql` transport, so only query counts
+and phase outcomes crossed the local boundary.
+
+Deployment facts for this run:
+
+- Worker: `https://serialized-dcb-v1-runtime.ttakaoka.workers.dev`
+- deployed version: `dc7ee4cd-39f2-426f-9ba0-baf134289d76`
+- target service id: `serialized-dcb-v1`
+- fresh resume service id: `g17-shared-fresh-20260819`
+
+The four phases ran in the required order on the shared store. The read-only
+dry-run observed `duplicatePairs=26` and `duplicateRowsToQuarantine=26` for
+the exact target. Cleanup completed with `remainingDuplicatePairs=0`, the
+unique index preflight/deployment completed with
+`allRemainingDuplicatePairs=0`, and resume completed with the fresh service id
+above. A direct post-run query returned `0` remaining duplicate pairs. The
+final state file is preserved at
+`.artifacts/g17-shared-deployed/rollout-state.json`.
+
+The deployment cutover was recorded in
+`.artifacts/g17-shared-deployed/deployments.txt`: the new version above is the
+workers.dev deployment used for the probes, while the prior deployment is not
+addressable through the public worker URL after cutover. This is the
+reachability evidence available without exposing a Durable Object namespace or
+credential; no old namespace is reused by the fresh service id.
+
+The deployed negative oracles used fresh service-scoped data and the same
+Hyperdrive-backed store:
+
+- `g17-negative-collision-20260819`: two tag outboxes carried different
+  EventIds with the same SUID; the store retained one event and recorded
+  exactly one `SUID_COLLISION` incident.
+- `g17-negative-lineage-20260819`: after the first delivery established the
+  binding, a controlled wrong-lineage binding probe preceded a second delivery;
+  the store recorded exactly one `LINEAGE_MISMATCH` incident before the binding
+  was restored to its original value.
+
+The complete probe outputs are retained under
+`.artifacts/g17-shared-deployed/`. No passwords, connection strings, bearer
+tokens, or other secret values are present in the evidence.
+
+The pinned G11 HTTP conformance script was also attempted against this final
+deployment and stopped honestly at its `single-tag-read` check (HTTP 200 with
+`exists=false` before asynchronous delivery became visible). It is not claimed
+as a passing conformance run; the AC#8 rollout and negative-oracle results
+above are the only deployed claims made by this repair.
+
 The following run used the existing local PostgreSQL test container. The
 connection string was supplied through the process environment and was not
 printed or written here.

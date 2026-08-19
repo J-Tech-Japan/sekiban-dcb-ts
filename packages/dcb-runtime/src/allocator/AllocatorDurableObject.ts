@@ -200,10 +200,30 @@ export class AllocatorDurableObject implements DurableObject {
         const persistedState = await txn.get<AllocatorState>(STATE_KEY);
         const lineage = persistedState?.allocatorLineageId || newAllocatorLineageId();
         if (existing !== undefined) {
+          // Upgrade pre-G17 vectors in the same transaction.  Returning a
+          // freshly generated token without persisting it would make a
+          // repeated request observe a different allocator lineage.
+          if (existing.allocatorLineageId === undefined || persistedState?.allocatorLineageId === undefined) {
+            const upgradedVector: AllocationVector = {
+              ...existing,
+              allocatorLineageId: existing.allocatorLineageId ?? lineage,
+            };
+            const upgradedState: AllocatorState = persistedState === undefined
+              ? {
+                ...currentState(upgradedVector.allocatorLineageId),
+                allocatedWatermark: existing.candidates.at(-1)?.suid ?? null,
+              }
+              : {
+                ...persistedState,
+                schemaVersion: 2,
+                allocatorLineageId: upgradedVector.allocatorLineageId,
+              };
+            await txn.put(attemptKey(input.attemptId), upgradedVector);
+            await txn.put(STATE_KEY, upgradedState);
+            return { vector: upgradedVector, created: false };
+          }
           return {
-            vector: existing.allocatorLineageId === undefined
-              ? { ...existing, allocatorLineageId: lineage }
-              : existing,
+            vector: existing,
             created: false,
           };
         }

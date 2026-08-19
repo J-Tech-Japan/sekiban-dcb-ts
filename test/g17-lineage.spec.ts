@@ -85,6 +85,10 @@ class MemoryCosmosClient implements CosmosDocumentClient {
     return true;
   }
 
+  async delete(container: string, id: string, partitionKey: string): Promise<boolean> {
+    return this.rows.delete(this.key(container, partitionKey, id));
+  }
+
   async query<T extends Record<string, unknown>>(
     container: string,
     _query: string,
@@ -194,6 +198,35 @@ describe("SDT-G17 allocator lineage and incident contract", () => {
     expect((await store.listDeliveryIncidents(serviceId)).map((incident) => incident.classification)).toEqual([
       "LINEAGE_MISMATCH",
     ]);
+  });
+
+  it("rejects a different EventId at the same Cosmos SUID and keeps exact duplicates idempotent", async () => {
+    const client = new MemoryCosmosClient();
+    const store = new CosmosEventStore({ client });
+    await store.initialize();
+    const serviceId = unique("g17-cosmos-collision");
+    const first = message(serviceId, unique("cosmos-stored"), "suid-g17-cosmos-collision", "lineage-a");
+    expect((await store.recordDelivery(first, 3_600)).outcome).toBe("stored");
+    const before = await store.readAllEvents(serviceId, "");
+    // Model a retained historical event whose auxiliary reservation was not
+    // present yet.  This forces the event-document collision guard itself to
+    // carry the oracle rather than letting the newer reservation guard make
+    // the test pass vacuously.
+    expect(await client.delete("dcb-events", `${encodeURIComponent("suid-binding")}~${encodeURIComponent(first.suid)}`, serviceId)).toBe(true);
+
+    const collision = message(serviceId, unique("cosmos-collision"), first.suid, "lineage-a");
+    const rejected = await store.recordDelivery(collision, 3_601);
+    expect(rejected.outcome).toBe("suid-collision");
+    expect(rejected.kind).toBe("suid-collision");
+    expect(await store.readAllEvents(serviceId, "")).toEqual(before);
+    expect((await store.listDeliveryIncidents(serviceId)).filter((incident) => incident.classification === "SUID_COLLISION")).toHaveLength(1);
+
+    const replay = await store.recordDelivery(first, 3_602);
+    expect(replay.outcome).toBe("stored");
+    const afterReplay = await store.readAllEvents(serviceId, "");
+    expect(afterReplay).toHaveLength(1);
+    expect(afterReplay[0]).toMatchObject({ eventId: first.eventId, suid: first.suid, payload: first.payload });
+    expect((await store.listDeliveryIncidents(serviceId)).filter((incident) => incident.classification === "SUID_COLLISION")).toHaveLength(1);
   });
 
   it("acks a typed poison delivery only after the PostgreSQL incident is durable", async () => {
