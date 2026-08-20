@@ -1137,9 +1137,12 @@ export class TagDurableObject implements DurableObject {
       if (admission.importId !== input.importId || admission.leaseEpoch !== input.leaseEpoch || admission.manifestDigest !== input.manifestDigest || admission.targetServiceId !== input.targetServiceId) return rejected("bootstrap_fencing_or_manifest_mismatch");
       const exact = input.candidates.every((candidate) => record.events.some((event) => event.eventId === candidate.eventId && event.suid === candidate.suid && event.payload === candidate.payload && event.eventTags.join("\u0000") === candidate.eventTags.join("\u0000")));
       if (exact) return { status: 200, body: { status: "duplicate", version: record.version } };
-      if (record.events.length > 0 || hasEventConflict(record, input.candidates) || monotonicityViolation(record.head, input.candidates)) return rejected("bootstrap_identity_or_order_conflict");
+      // A coordinator may send several bounded chunks for one tag.  The
+      // admission identity is fixed above; only duplicate replay, conflicting
+      // identity, or non-monotonic continuation can be rejected here.
+      if (hasEventConflict(record, input.candidates) || monotonicityViolation(record.head, input.candidates)) return rejected("bootstrap_identity_or_order_conflict");
       const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId }));
-      const updated = await this.commit(txn, record, { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events });
+      const updated = await this.commit(txn, record, { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events: [...record.events, ...events] });
       return { status: 201, body: { status: "bootstrap_admitted", version: updated.version } };
     });
     return json(result.body, result.status);

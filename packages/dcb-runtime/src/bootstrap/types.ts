@@ -41,6 +41,13 @@ export interface BootstrapControlRecord {
   readonly failure: string | null;
   readonly readyAt: string | null;
   readonly normalInFlight: number;
+  /** Commands admitted before a bootstrap plan.  The epoch is carried to every
+   * final durable write, rather than treating admission as a one-time check. */
+  readonly normalCommands?: Readonly<Record<string, number>>;
+  /** READY is a post-verification state, never merely an import completion. */
+  readonly verifiedImportId?: string | null;
+  readonly verifiedLeaseEpoch?: number | null;
+  readonly storeCompletion?: "prepopulated-manifest" | null;
 }
 
 /** G22 supplies provider implementations. Bootstrap core deliberately has no adapter. */

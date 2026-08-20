@@ -17,6 +17,9 @@ interface AllocateInput {
   attemptId: string;
   candidates: AllocationCandidate[];
   faultInjection?: "between-vector-and-watermark";
+  serviceId?: string;
+  bootstrapCommandId?: string;
+  bootstrapEpoch?: number;
 }
 interface SeedInput { importId: string; leaseEpoch: number; highWatermark: string; }
 
@@ -134,7 +137,10 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
     return { error: "unsupported faultInjection" };
   }
 
-  return { value: { attemptId: value.attemptId, candidates: ordered, faultInjection } };
+  const bootstrap = isNonEmptyString(value.serviceId) && isNonEmptyString(value.bootstrapCommandId) && isNonNegativeInteger(value.bootstrapEpoch)
+    ? { serviceId: value.serviceId, bootstrapCommandId: value.bootstrapCommandId, bootstrapEpoch: value.bootstrapEpoch }
+    : {};
+  return { value: { attemptId: value.attemptId, candidates: ordered, faultInjection, ...bootstrap } };
 }
 
 /**
@@ -143,7 +149,7 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
  * allocated watermark is serialized and atomic.
  */
 export class AllocatorDurableObject implements DurableObject {
-  constructor(private readonly ctx: DurableObjectState) {}
+  constructor(private readonly ctx: DurableObjectState, private readonly env?: { BOOTSTRAP?: DurableObjectNamespace }) {}
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -201,6 +207,11 @@ export class AllocatorDurableObject implements DurableObject {
       return error(400, "invalid_allocation", parsed.error ?? "Invalid allocation request");
     }
     const input = parsed.value;
+    if (input.serviceId !== undefined && this.env?.BOOTSTRAP !== undefined) {
+      const url = new URL("https://allocator.internal/command/finalize"); url.searchParams.set("__serviceId", input.serviceId);
+      const admitted = await this.env.BOOTSTRAP.get(this.env.BOOTSTRAP.idFromName(input.serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId: input.bootstrapCommandId, leaseEpoch: input.bootstrapEpoch }) }));
+      if (!admitted.ok) return error(409, "bootstrap_command_rejected", "bootstrap fencing epoch rejects allocation");
+    }
 
     try {
       const result = await this.ctx.storage.transaction(async (txn): Promise<AllocationSuccess> => {

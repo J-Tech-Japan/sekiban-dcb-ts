@@ -46,7 +46,7 @@
     "test:g20": "npm run build:packages && vitest run --config vitest.g20.config.ts test/g20-cloudflare.spec.ts",
     "test:g20:candidate": "node scripts/g20-candidate-check.mjs",
     "test:g21": "npm run build:packages && vitest run --config vitest.config.ts test/bootstrap.spec.ts",
-    "test:g21:forced-red": "npm run test:g21 && node -e \"throw new Error('SDT-G21 forced-red CI wiring proof')\"",
+    "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
     "build:g20": "npm run build:packages && wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/g20-cloudflare-build --outfile .artifacts/g20-cloudflare-build/worker.js --metafile .artifacts/g20-cloudflare-build/bundle-meta.json",
     "test:watch": "vitest --config vitest.config.ts",
     "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g20:candidate"

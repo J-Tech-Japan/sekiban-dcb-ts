@@ -43,6 +43,12 @@ jobs:
       - run: npm run test:g17:rollout-order
       - name: Run SDT-G21 bootstrap import core lane
         run: npm run test:g21
+      - name: Prove SDT-G21 forced-red CI reachability
+        run: |
+          if SDT_G21_FORCE_FAILURE=1 npm run test:g21:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1

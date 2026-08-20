@@ -17,6 +17,7 @@ export interface LiveProjectionEnv {
   D1?: D1Database;
   /** Non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
+  BOOTSTRAP?: DurableObjectNamespace;
 }
 
 export interface ProjectionPollOptions {
@@ -47,6 +48,13 @@ function error(status: number, code: string, message: string): Response {
   return json({ error: message, code }, status);
 }
 
+async function admitBootstrapRoute(env: LiveProjectionEnv, serviceId: string): Promise<void> {
+  if (env.BOOTSTRAP === undefined) return;
+  const url = new URL("https://projection.internal/route/check"); url.searchParams.set("__serviceId", serviceId);
+  const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route: "projection-rebuild" }) }));
+  if (!admitted.ok) throw new Error("bootstrap_route_rejected:projection-rebuild");
+}
+
 /**
  * Scheduled polling entry point. It discovers durable tag memberships and
  * advances every deploy-time registered projector only through SafeWindow.
@@ -58,6 +66,8 @@ export async function pollLiveProjections(
   if (options.store === undefined && options.storeProvider === undefined) {
     throw new Error("A projection store provider is not configured");
   }
+  const serviceId = options.serviceId ?? configuredServiceIdOrDefault(env.SDT_SERVICE_ID);
+  await admitBootstrapRoute(env, serviceId);
   const store = options.store ?? sharedStore(env, options.storeProvider!);
   await store.initialize();
   const runtime = new ProjectionRuntime(store, options.registry ?? DEPLOYED_PROJECTOR_REGISTRY);
@@ -68,7 +78,7 @@ export async function pollLiveProjections(
       const identity = tagStateIdentityFrom(`${options.tag}:${projector.id}`, registry);
       if (identity.value !== undefined) {
         results.push(await runtime.catchUp(
-          options.serviceId ?? configuredServiceIdOrDefault(env.SDT_SERVICE_ID),
+          serviceId,
           identity.value,
           (options.clock ?? systemPipelineClock).now(),
         ));
@@ -76,7 +86,7 @@ export async function pollLiveProjections(
     }
     return results;
   }
-  return runtime.pollRegistered(options.serviceId ?? configuredServiceIdOrDefault(env.SDT_SERVICE_ID), (options.clock ?? systemPipelineClock).now());
+  return runtime.pollRegistered(serviceId, (options.clock ?? systemPipelineClock).now());
 }
 
 /**
