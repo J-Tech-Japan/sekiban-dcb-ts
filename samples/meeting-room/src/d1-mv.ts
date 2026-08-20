@@ -110,7 +110,7 @@ export const roomMaterializer = defineRowMaterializer<StoredEventLike>({
  * MV databases are intentionally separate bindings, while every source read
  * remains behind the existing SafeWindow/checkpoint rules.
  */
-export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env): Promise<void> {
+export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = env.SDT_SERVICE_ID ?? "serialized-dcb-v1"): Promise<void> {
   if (env.D1 === undefined || env.D1_MV === undefined) {
     throw new Error("Cloudflare-only composition requires D1 and D1_MV bindings");
   }
@@ -120,7 +120,6 @@ export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env)
   const views = new D1MaterializedViewStore(env.D1_MV);
   await views.initialize();
   const runtime = new MaterializedViewCatchUpRuntime(source, views);
-  const serviceId = env.SDT_SERVICE_ID ?? "serialized-dcb-v1";
   for (const materializer of [roomMaterializer, reservationMaterializer]) {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) {

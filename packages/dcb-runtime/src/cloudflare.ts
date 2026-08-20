@@ -9,7 +9,9 @@
  */
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { allocatorNameForService } from "./allocator/types";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
+import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -20,6 +22,7 @@ import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
+import { serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
@@ -41,6 +44,8 @@ export interface CloudflareOnlyEnv {
 export interface CloudflareOnlyWorkerOptions {
   readonly domain?: DomainDefinition;
   readonly config?: RuntimeWorkerConfig;
+  /** Optional deployment read-model rebuild that must finish before READY. */
+  readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;
 }
 
 /** Compose the named two-D1 Cloudflare-only Worker. */
@@ -69,6 +74,13 @@ export function createCloudflareOnlyRuntimeWorker(
       if (url.pathname === "/operator/repair") {
         return handleOperatorRepair(request, env);
       }
+      if (url.pathname.startsWith("/operator/bootstrap/")) {
+        return handleOperatorBootstrap(request, env, storeProvider, {
+          afterVerifyBeforeReady: options.afterBootstrapVerify === undefined
+            ? undefined
+            : ({ serviceId }) => options.afterBootstrapVerify!({ serviceId, env }),
+        });
+      }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
         return handleOutboxDrainRequest(request, env);
       }
@@ -83,8 +95,21 @@ export function createCloudflareOnlyRuntimeWorker(
       }
       if (url.pathname === "/allocator" || url.pathname.startsWith("/allocator/")) {
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
-        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName("service-wide-allocator"));
+        const serviceId = serviceIdForRequest(request, {
+          allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+          configuredServiceId: env.SDT_SERVICE_ID,
+        });
+        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
         return allocator.fetch(new Request(url.toString(), request));
+      }
+
+      const bootstrapMatch = url.pathname.match(/^\/bootstrap\/([^/]+)(\/.*)?$/);
+      if (bootstrapMatch !== null) {
+        let serviceId: string;
+        try { serviceId = decodeURIComponent(bootstrapMatch[1]); } catch { return new Response("Bootstrap serviceId must be URI encoded", { status: 400 }); }
+        if (serviceId.length === 0) return new Response("Bootstrap serviceId is required", { status: 400 });
+        url.pathname = bootstrapMatch[2] ?? "/state"; url.searchParams.set("__serviceId", serviceId);
+        return env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url.toString(), request));
       }
 
       const tagMatch = url.pathname.match(/^\/tags\/([^/]+)\/([^/]+)(\/.*)?$/);

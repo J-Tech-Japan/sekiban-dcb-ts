@@ -1,6 +1,8 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { allocatorNameForService } from "./allocator/types";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
+import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -10,6 +12,7 @@ import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
+import { serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
@@ -38,11 +41,13 @@ export type {
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 export { BootstrapManifestError, bootstrapDigest, parseBootstrapDump } from "./bootstrap/manifest";
+export { BootstrapIdentityConflictError, BootstrapStoreAdapter, createBootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
+export type { BootstrapExportCursor, BootstrapExportPage } from "./bootstrap/BootstrapStoreAdapter";
 export type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord, BootstrapManifest, BootstrapStatus, BootstrapStoreAdmissionPort } from "./bootstrap/types";
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
-export { POSTGRES_STORE_PROVIDER, createPostgresStoreProvider } from "./store/provider";
+export { POSTGRES_STORE_PROVIDER, createPostgresBootstrapAdapter, createPostgresStoreProvider } from "./store/provider";
 export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 export {
   chooseQueryBacking,
@@ -121,6 +126,9 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       if (url.pathname === "/operator/repair") {
         return handleOperatorRepair(request, env);
       }
+      if (url.pathname.startsWith("/operator/bootstrap/")) {
+        return handleOperatorBootstrap(request, env, storeProvider);
+      }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
         return handleOutboxDrainRequest(request, env);
       }
@@ -135,7 +143,11 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       }
       if (url.pathname === "/allocator" || url.pathname.startsWith("/allocator/")) {
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
-        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName("service-wide-allocator"));
+        const serviceId = serviceIdForRequest(request, {
+          allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+          configuredServiceId: env.SDT_SERVICE_ID,
+        });
+        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
         return allocator.fetch(new Request(url.toString(), request));
       }
       const bootstrapMatch = url.pathname.match(/^\/bootstrap\/([^/]+)(\/.*)?$/);

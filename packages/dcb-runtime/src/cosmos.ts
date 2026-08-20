@@ -4,6 +4,7 @@ import {
   type CosmosStoreOptions,
 } from "./store/CosmosEventStore";
 import type { StoreProvider } from "./store/provider";
+import { bootstrapEventIdentityMatches, createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
 
 export {
   CosmosClientError,
@@ -30,5 +31,10 @@ export function createCosmosStoreProvider(config: CosmosStoreProviderConfig): St
     name: "cosmos",
     isConfigured: () => true,
     create: () => new CosmosEventStore(config),
+    createBootstrapAdapter: () => createCosmosBootstrapAdapter(new CosmosEventStore(config)),
   });
+}
+
+export function createCosmosBootstrapAdapter(store: CosmosEventStore): BootstrapStoreAdapter {
+  return createBootstrapStoreAdapter("cosmos", store, (event, record) => bootstrapEventIdentityMatches(event, record));
 }

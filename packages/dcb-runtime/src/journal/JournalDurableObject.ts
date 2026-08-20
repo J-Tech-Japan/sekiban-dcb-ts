@@ -19,6 +19,7 @@ import {
   type RepairObservationPhase,
   type ReservationFailure,
 } from "./types";
+import { allocatorNameForService } from "../allocator/types";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -1399,7 +1400,7 @@ export class JournalDurableObject implements DurableObject {
     if (context === undefined) {
       return undefined;
     }
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName("service-wide-allocator"));
+    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(allocatorNameForService(context.serviceId)));
     const response = await allocator.fetch(
       new Request(`https://commit-recovery.internal/attempts/${encodeURIComponent(context.attemptId)}`),
     );

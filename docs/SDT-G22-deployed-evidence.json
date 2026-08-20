@@ -1,0 +1,22 @@
+{
+  "task": "SDT-G22",
+  "status": "verified",
+  "candidateCommit": "5439b8bda255144b608fcdeb6c89dc44dcb667d7",
+  "sourceCommit": "5439b8bda255144b608fcdeb6c89dc44dcb667d7",
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "7777d6cb3746cca7c333b7fe254f779d3caf276f2a0447cc0c0821b9760c9ba4",
+    "runtimeRoots": ["packages/dcb-runtime/src", "packages/dcb-runtime/package.json"],
+    "configuration": "590ff9d778c274dca284c38429c291a8ec28e3ac47c1f394e2f439c7bccc5674",
+    "configurationRoots": ["samples/meeting-room", "scripts", "package.json", ".github/workflows/ci.yml"]
+  },
+  "candidateDeployment": {"worker":"sekiban-dcb-meeting-room-cloudflare-only","url":"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev","version":"61d81b5e-e762-4788-a535-c760f8e5a48f","pipelineD1":"3c3b1641-7969-4d72-97a9-2ea65085c9bb","note":"5439b8b changes only the Cosmos contract assertion; deployed Worker content remains the verified 20db136 candidate."},
+  "providerContract": {"postgres":"PASS (PostgresEventStore against local/CI container)","d1":"PASS (D1EventStore under Miniflare)","cosmos":"required in cosmos-emulator CI via test:g22:cosmos","identityOracle":"each concrete provider snapshots event/metadata/detector/lag state around a one-axis EventId conflict"},
+  "fixtureProvenance": {"generator":"test/fixtures/g22-csharp-reference/Program.cs","reference":"J-Tech-Japan/Sekiban@f9953dc4490cd64b692766b597d6972fbcd8bc75","sha256":"84bdb7dfb04583a2707245de61c401f741f6edc776cb3c70c7c26e0d66f9a517","rawBytes":"PASS (generator stdout equals committed fixture bytes)"},
+  "roundTrip": {"sourceServiceId":"g20-8dbb4be-20260819a","targetServiceId":"g22-fix-20d-7bcf028d0b7e","importId":"g22-fix-20d-import-7bcf028d0b7e","eventCount":9,"highWatermark":"suid-00000000000000000000000000000032","digest":"fnv1a32:e15026f2","importingCommit":{"status":409,"code":"bootstrap_command_rejected","result":"PASS"},"targetStatus":"READY","readSurfaceEquality":{"tagState":"PASS (room:g15-room-06e13ff385ed4bfb:RoomProjector exact source/target response)","query":"PASS (GetRoomStateQuery exact source/target response)","listQuery":"PASS (GetReservationListQuery exact source/target response)"},"postReadyCommit":{"suid":"suid-00000000000000000000000000000033","queryVisible":"PASS"},"rawV1CommitStatus":404},
+  "v1Conformance": {"runner":"scripts/deploy/g14-conformance.py --service-id g22-fix-20d-7bcf028d0b7e","endpoints":{"commit":"PASS","query":"PASS","list-query":"PASS","tag-state":"PASS","tag-latest-sortable":"PASS"},"authenticatedLane":"PASS","appCommandAssertions":"not-applicable-to-bootstrap-target"},
+  "providerCrashResume": {"provider":"d1","targetServiceId":"g22-fix-20d-crash-2d6ec6c8d852","crashStatus":503,"crashCode":"bootstrap_simulated_crash","resumedStatus":"READY","eventCount":9,"digest":"fnv1a32:a2535f56"},
+  "g17Observation": {"targetServiceId":"g22-fix-20d-7bcf028d0b7e","findings":0,"deliveryIncidents":0,"rootCause":"target D1 materialized views were not rebuilt before READY; the post-verify pre-READY hook now rebuilds target views from the target store without checkpoint carry-over"},
+  "requiredVerification": ["real Postgres/D1/Cosmos provider-adapter contract", "IMPORTING commit rejected with bootstrap_command_rejected", "source-target tag-state/query/list-query equality PASS", "authenticated V1 commit/query/list-query/tag-state/tag-latest-sortable PASS", "provider crash-resume PASS", "raw V1 404 PASS"],
+  "secrets": "redacted"
+}

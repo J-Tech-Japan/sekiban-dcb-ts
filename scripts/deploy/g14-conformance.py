@@ -48,13 +48,17 @@ def main() -> None:
     parser.add_argument("--state-file", required=True)
     parser.add_argument("--report", required=True)
     parser.add_argument("--token-file", required=True)
+    parser.add_argument("--service-id", help="Run the authenticated V1 five-endpoint lane against an existing service; skips app-command namespace assertions.")
     parser.add_argument("--app-service-id", default=os.environ.get("G14_APP_SERVICE_ID", "serialized-dcb-v1"))
     args = parser.parse_args()
     token = Path(args.token_file).read_text(encoding="utf-8").strip()
     if not token:
         raise SystemExit("conformance token file is empty")
     state_path = Path(args.state_file)
-    if args.phase == "before-restart":
+    if args.service_id is not None:
+        service_id = args.service_id
+        room_id = f"g22-room-{uuid.uuid4().hex[:12]}"
+    elif args.phase == "before-restart":
         service_id = f"g11-g14-{uuid.uuid4().hex[:16]}"
         room_id = f"room-{uuid.uuid4().hex[:12]}"
     else:
@@ -79,43 +83,22 @@ def main() -> None:
     # to select a g11-* namespace. The command uses the server-side
     # SDT_SERVICE_ID deployment var while an authenticated conformance read
     # using the attacker namespace remains empty.
-    attacker_service_id = f"g11-g14-unauth-{uuid.uuid4().hex[:16]}"
-    attacker_room_id = f"unauth-room-{uuid.uuid4().hex[:12]}"
-    attacker_tag = f"room:{attacker_room_id}"
-    command_status, command_body = request(args.base_url, "/api/commands/create-room", {
-        "roomId": attacker_room_id,
-        "name": "unauthenticated-header-probe",
-    }, None, attacker_service_id)
-    if command_status != 200 or command_body.get("kind") != "committed":
-        raise RuntimeError(f"unauthenticated command probe failed HTTP {command_status}: {command_body}")
-    attacker_latest_status, attacker_latest = request(
-        args.base_url,
-        f"{lane}/api/sekiban/serialized/tag-latest-sortable",
-        {"tag": attacker_tag},
-        token,
-        attacker_service_id,
-    )
-    app_latest_status, app_latest = request(
-        args.base_url,
-        f"{lane}/api/sekiban/serialized/tag-latest-sortable",
-        {"tag": attacker_tag},
-        token,
-        args.app_service_id,
-    )
-    if attacker_latest_status != 200 or attacker_latest.get("exists") is not False or attacker_latest.get("lastSortableUniqueId") != "":
-        raise RuntimeError(f"unauthenticated command selected attacker namespace: {attacker_latest}")
-    if app_latest_status != 200 or app_latest.get("exists") is not True or app_latest.get("lastSortableUniqueId") == "":
-        raise RuntimeError(f"unauthenticated command did not use configured app namespace: {app_latest}")
-    checks["unauthenticatedCommandG11"] = {
-        "command": command_status,
-        "attackerServiceId": attacker_service_id,
-        "attackerRoomId": attacker_room_id,
-        "attackerNamespaceLatest": attacker_latest_status,
-        "attackerNamespaceExists": attacker_latest.get("exists"),
-        "configuredAppServiceId": args.app_service_id,
-        "configuredAppNamespaceLatest": app_latest_status,
-        "configuredAppNamespaceExists": app_latest.get("exists"),
-    }
+    if args.service_id is None:
+        attacker_service_id = f"g11-g14-unauth-{uuid.uuid4().hex[:16]}"
+        attacker_room_id = f"unauth-room-{uuid.uuid4().hex[:12]}"
+        attacker_tag = f"room:{attacker_room_id}"
+        command_status, command_body = request(args.base_url, "/api/commands/create-room", {
+            "roomId": attacker_room_id, "name": "unauthenticated-header-probe",
+        }, None, attacker_service_id)
+        if command_status != 200 or command_body.get("kind") != "committed":
+            raise RuntimeError(f"unauthenticated command probe failed HTTP {command_status}: {command_body}")
+        attacker_latest_status, attacker_latest = request(args.base_url, f"{lane}/api/sekiban/serialized/tag-latest-sortable", {"tag": attacker_tag}, token, attacker_service_id)
+        app_latest_status, app_latest = request(args.base_url, f"{lane}/api/sekiban/serialized/tag-latest-sortable", {"tag": attacker_tag}, token, args.app_service_id)
+        if attacker_latest_status != 200 or attacker_latest.get("exists") is not False or attacker_latest.get("lastSortableUniqueId") != "":
+            raise RuntimeError(f"unauthenticated command selected attacker namespace: {attacker_latest}")
+        if app_latest_status != 200 or app_latest.get("exists") is not True or app_latest.get("lastSortableUniqueId") == "":
+            raise RuntimeError(f"unauthenticated command did not use configured app namespace: {app_latest}")
+        checks["unauthenticatedCommandG11"] = {"command": command_status, "attackerServiceId": attacker_service_id, "attackerRoomId": attacker_room_id, "attackerNamespaceLatest": attacker_latest_status, "attackerNamespaceExists": attacker_latest.get("exists"), "configuredAppServiceId": args.app_service_id, "configuredAppNamespaceLatest": app_latest_status, "configuredAppNamespaceExists": app_latest.get("exists")}
 
     commit_status, commit_body = request(args.base_url, f"{lane}/api/sekiban/serialized/commit", {
         "version": 1,
@@ -137,15 +120,20 @@ def main() -> None:
     checks["tagState"] = {"status": state_status, "keys": sorted(state.keys())}
 
     poll_path = f"{lane}/internal/projection/lag?tagStateId={urllib.parse.quote(state_id)}&serviceId={urllib.parse.quote(service_id)}&poll=1"
-    # Queue delivery and the published 20s SafeWindow both must elapse before
-    # the read-side checkpoint can be advanced. One bounded probe avoids
-    # opening an unbounded number of request-scoped database clients.
-    time.sleep(25)
-    poll_status, poll_body = request(args.base_url, poll_path, None, token, service_id, method="GET")
-    if poll_status != 200:
-        raise RuntimeError(f"projection poll failed HTTP {poll_status}: {poll_body}")
-    if poll_body.get("checkpointSuid") != suid:
-        raise RuntimeError(f"projection did not observe committed SUID: {poll_body}")
+    # Queue arrival can occur after the commit response. Require the published
+    # 20s SafeWindow from that durable arrival, not merely from the HTTP write.
+    deadline = time.monotonic() + 55
+    poll_status = 0
+    poll_body: dict[str, object] = {}
+    while True:
+        time.sleep(5)
+        poll_status, poll_body = request(args.base_url, poll_path, None, token, service_id, method="GET")
+        if poll_status != 200:
+            raise RuntimeError(f"projection poll failed HTTP {poll_status}: {poll_body}")
+        if poll_body.get("checkpointSuid") == suid:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"projection did not observe committed SUID: {poll_body}")
     query_status, query = request(args.base_url, f"{lane}/api/sekiban/serialized/query", {"queryType": "GetRoomStateQuery", "queryParamsJson": "{}", "waitForSortableUniqueId": suid}, token, service_id)
     if query_status != 200:
         raise RuntimeError(f"query failed HTTP {query_status}: {query}")

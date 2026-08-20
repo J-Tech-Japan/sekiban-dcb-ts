@@ -239,6 +239,16 @@ async function conformanceRequest(request: Request, env: MeetingRoomEnv, ctx: Ex
   }, ctx, runtimeHandler);
 }
 
+/** The operator bearer is the only client header that crosses this boundary. */
+async function bootstrapOperatorRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): Promise<Response> {
+  const url = new URL(request.url);
+  const headers = new Headers();
+  const authorization = request.headers.get("authorization");
+  if (authorization !== null) headers.set("authorization", authorization);
+  if (request.method !== "GET") headers.set("content-type", "application/json");
+  return runtimeFetcher(env, ctx, runtimeHandler).fetch(new Request(`https://runtime.internal${url.pathname}`, request.method === "GET" ? { method: "GET", headers } : { method: request.method, headers, body: await request.text() }));
+}
+
 export function createMeetingRoomWorker(options: MeetingRoomWorkerOptions = {}): ExportedHandler<MeetingRoomEnv> {
   const runtimeHandler = (options.runtime ?? runtime) as unknown as MeetingRoomRuntimeHandler;
   return {
@@ -247,6 +257,7 @@ export function createMeetingRoomWorker(options: MeetingRoomWorkerOptions = {}):
       if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) {
         return conformanceRequest(request, env, ctx, runtimeHandler);
       }
+      if (path.startsWith("/operator/bootstrap/")) return bootstrapOperatorRequest(request, env, ctx, runtimeHandler);
       if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) {
         return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
       }
