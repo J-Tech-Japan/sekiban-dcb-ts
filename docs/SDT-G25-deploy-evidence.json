@@ -1,13 +1,13 @@
 {
   "task": "SDT-G25",
-  "status": "deployed; final conformance/latency evidence pending",
-  "candidateCommit": "1552375eeb5f225f00252d8c791a9b0a7f2aec28",
-  "sourceCommit": "1552375eeb5f225f00252d8c791a9b0a7f2aec28",
+  "status": "complete; same-candidate deployed verification recorded",
+  "candidateCommit": "6c225a7d6bea5c327d281bc88d1aab608c5e10c2",
+  "sourceCommit": "6c225a7d6bea5c327d281bc88d1aab608c5e10c2",
   "candidateDeployment": {
     "worker": "sekiban-dcb-meeting-room-cloudflare-only",
     "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
-    "serviceId": "g25-1552375-20260820a",
-    "version": "3a9b2d8b-3692-4021-b075-75771bd7f896",
+    "serviceId": "g25-6c225a7-20260820e",
+    "version": "27fc7aef-eb69-461f-92ac-c09379083f42",
     "migrationsApplied": ["0002_unsafe_window_materialized_views.sql", "0003_checkpoint_ahead_hardening.sql", "0004_unsafe_window_failure_findings.sql"]
   },
   "protocol": {
@@ -18,10 +18,55 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "1c4ff83a64ba4468121ddbfee597e939c3d9e45fdc8c8e3d84780572372c10df",
+    "runtime": "ce62b70972dcc0a568eca719212f250d3b5418a21f5a879f2567d341458a9be9",
     "runtimeRoots": ["packages/dcb-runtime/src"],
-    "configuration": "c0e905199e2547d7c0a37ed25720c4936e8a085c7f07e738921a0c16c61ebaa4",
+    "configuration": "50a7a4e3bd6dc22c222a2ea7bbcecb11277018861a11ddc3d7ded63bf5fd1003",
     "configurationRoots": ["samples/meeting-room/src", "samples/meeting-room/public", "samples/meeting-room/wrangler.cloudflare-only.jsonc", "samples/meeting-room/README.md", "package.json", ".github/workflows/ci.yml", "scripts/g20-candidate-check.mjs", "test/g25-composition.spec.ts"]
+  },
+  "deployedVerification": {
+    "fiveEndpointConformance": {
+      "serviceId": "g25-6c225a7-20260820c",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "rawV1Commit": 404,
+      "result": "PASS"
+    },
+    "restartRerun": {
+      "sameCandidate": "6c225a7d6bea5c327d281bc88d1aab608c5e10c2",
+      "serviceId": "g25-6c225a7-20260820e",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "rawV1Commit": 404,
+      "result": "PASS"
+    },
+    "fixedNLatency": {
+      "sampleCount": 20,
+      "path": "/api/commands/create-room",
+      "p50Ms": 2084.525125,
+      "p95Ms": 3141.471417,
+      "maxMs": 3170.915208,
+      "cronFallbackCount": 0,
+      "cronFallbackEvidence": "No scheduled endpoint was invoked; Queue arrival hook was the observed immediate path."
+    },
+    "g17NegativeOracles": {
+      "testG17": "PASS (7 tests)",
+      "rolloutOrder": "PASS"
+    },
+    "checkpointAheadDrill": {
+      "serviceId": "g25-6c225a7-20260820e",
+      "inducedCheckpoint": "suid-99999999999999999999999999999999",
+      "sourceMaxAtFinding": "suid-00000000000000000000000000000011",
+      "finding": "PASS (RoomProjector generation 0, idempotent primary key)",
+      "failClosedRead": "PASS (503 projection_unavailable)",
+      "generationRebuild": "PASS (generation 1 active at suid-00000000000000000000000000000011; composed query 200)",
+      "method": "scratch service; controlled MV checkpoint/kick fault followed by Queue-triggered follow and generation rebuild"
+    }
   },
   "secrets": "redacted"
 }
