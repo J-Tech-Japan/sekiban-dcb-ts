@@ -204,6 +204,12 @@ export class MaterializedViewCatchUpRuntime {
         current = result.instance;
         advancedSourceEvents += 1;
         appliedEvents += 1;
+        // A safe checkpoint alone cannot retire unsafe marker state.  The
+        // exact matching receipt is observed in its own guarded transaction.
+        const unsafe = this.materializedViews.unsafeWindow();
+        if (await unsafe.hasTargetReceipt(serviceId, materializer.id, event.eventId, event.suid)) {
+          await unsafe.observeSafeReceipt(serviceId, materializer.id, generation, event.eventId, event.suid);
+        }
         await hooks.afterApply?.(event, result);
       }
       if (!conflicted) {

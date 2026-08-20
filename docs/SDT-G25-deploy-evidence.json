@@ -1,0 +1,20 @@
+{
+  "task": "SDT-G25",
+  "status": "candidate-preparation; real deployment evidence pending",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "protocol": {
+    "finalCandidate": "all runtime/configuration/CI/UI/README changes precede candidate; afterward only docs/SDT-G25-*evidence* files may change",
+    "deploymentIdentity": "fresh explicit non-secret SDT_SERVICE_ID",
+    "latency": "fixed N >= 20; record p50, p95, max, and cron-fallback count",
+    "correctness": "authenticated five-endpoint conformance, raw V1 404, restart replay, G17 negatives, CHECKPOINT_AHEAD drill and generation rebuild"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": ["packages/dcb-runtime/src"],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": ["samples/meeting-room/src", "samples/meeting-room/public", "samples/meeting-room/wrangler.cloudflare-only.jsonc", "samples/meeting-room/README.md", "package.json", ".github/workflows/ci.yml", "scripts/g20-candidate-check.mjs", "test/g25-composition.spec.ts"]
+  },
+  "secrets": "redacted"
+}

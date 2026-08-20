@@ -73,6 +73,14 @@ jobs:
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G25 unsafe-window composition lane
+        run: npm run test:g25
+      - name: Prove SDT-G25 forced-red CI reachability
+        run: |
+          if SDT_G25_FORCE_FAILURE=1 npm run test:g25:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1

@@ -9,7 +9,7 @@ import {
 } from "@sekiban/dcb-runtime/cloudflare";
 import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
-import { catchUpMeetingRoomMaterializedViews } from "./d1-mv";
+import { applyMeetingRoomUnsafeArrival, catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks } from "./d1-mv";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 
@@ -22,6 +22,13 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
+  afterStoredDownstreamDelivery: async ({ event, env, ctx }) => {
+    await applyMeetingRoomUnsafeArrival(env, event);
+    // The durable kick lease collapses many waitUntil calls to one owner.  A
+    // drain failure is intentionally not allowed to turn the already-applied
+    // Queue message into an acknowledgement decision.
+    ctx.waitUntil(drainMeetingRoomUnsafeKicks(env));
+  },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
@@ -171,6 +178,7 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   async scheduled(controller, env, ctx) {
     await runtime.scheduled?.(controller, env, ctx);
     await catchUpMeetingRoomMaterializedViews(env);
+    await drainMeetingRoomUnsafeKicks(env);
   },
 };
 

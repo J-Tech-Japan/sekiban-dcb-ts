@@ -2,7 +2,7 @@ import { BindingExclusionLedgerClient } from "./ExclusionLookup";
 import { InconsistencyDetector } from "./InconsistencyDetector";
 import { isDownstreamOutboxMessage, systemPipelineClock, type PipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
-import type { PipelineStore } from "../store/types";
+import type { PipelineStore, StoredEvent } from "../store/types";
 import { requireConfiguredServiceId } from "../http/testServiceId";
 
 export interface DownstreamAdapterEnv {
@@ -19,6 +19,12 @@ export interface AdapterOptions {
   clock?: PipelineClock;
   store?: PipelineStore;
   storeProvider?: StoreProvider;
+  /** A stored-only hook; rejection deliberately returns the Queue message to retry. */
+  onStored?: (input: {
+    readonly message: import("./types").DownstreamOutboxMessage;
+    readonly event: StoredEvent;
+    readonly arrivedAt: number;
+  }) => Promise<void>;
 }
 
 function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): PipelineStore {
@@ -100,6 +106,7 @@ export async function handleDownstreamQueue(
         }
         const lagBound = await store.currentLagBound(queued.body.serviceId, arrivedAt);
         await detector.observe(queued.body, arrivedAt, lagBound);
+        await options.onStored?.({ message: queued.body, event: outcome.event, arrivedAt });
         queued.ack();
       } catch {
         queued.retry();

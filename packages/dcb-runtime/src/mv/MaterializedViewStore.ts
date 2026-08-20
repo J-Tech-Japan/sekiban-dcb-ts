@@ -413,6 +413,23 @@ export class D1MaterializedViewStore {
     return this.unsafe.hasTargetReceipt(serviceId, viewId, eventId, suid);
   }
 
+  /** Idempotent operational fact: a stored Queue event needs unsafe retry/DLQ attention. */
+  async recordUnsafeFailureFinding(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly eventId: string;
+    readonly suid: string;
+    readonly observedAt: number;
+  }): Promise<void> {
+    this.ready("apply");
+    await this.database.prepare(
+      `INSERT INTO mv_unsafe_failure_findings
+         (service_id, view_id, event_id, suid, classification, observed_at)
+       VALUES (?, ?, ?, ?, 'UNSAFE_APPLY_RETRY', ?)
+       ON CONFLICT (service_id, view_id, event_id, suid, classification) DO NOTHING`,
+    ).bind(input.serviceId, input.viewId, input.eventId, input.suid, input.observedAt).run();
+  }
+
   /**
    * Persist the source-reset observation exactly once for the affected
    * generation.  This deliberately never rewinds `mv_instances.last_suid`.
