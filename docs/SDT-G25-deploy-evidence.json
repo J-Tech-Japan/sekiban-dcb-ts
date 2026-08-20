@@ -1,16 +1,8 @@
 {
   "task": "SDT-G25",
-  "status": "deployed; final conformance/latency evidence pending",
-  "candidateCommit": "129b9d39dd5359b5c859d93c4b76db93e0a90f98",
-  "sourceCommit": "129b9d39dd5359b5c859d93c4b76db93e0a90f98",
-  "candidateDeployment": {
-    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
-    "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
-    "serviceId": "g25-129b9d3-20260820a",
-    "version": "0712cee5-5cab-4920-8e24-28d2931b8140",
-    "migrationsApplied": ["0002_unsafe_window_materialized_views.sql", "0003_checkpoint_ahead_hardening.sql", "0004_unsafe_window_failure_findings.sql"],
-    "deployedAt": "2026-08-20T15:20:57Z"
-  },
+  "status": "candidate-preparation; real deployment evidence pending",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
     "finalCandidate": "all runtime/configuration/CI/UI/README changes precede candidate; afterward only docs/SDT-G25-*evidence* files may change",
     "deploymentIdentity": "fresh explicit non-secret SDT_SERVICE_ID",
@@ -19,9 +11,9 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "36033db735446f46348951b6c08f8b8bad6efed4645c60ea45fed1a47239e167",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
     "runtimeRoots": ["packages/dcb-runtime/src"],
-    "configuration": "bb166b3b2e43362cd774dcea493dbf2f73ed255725559630d84ab30de7cf6ee0",
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
     "configurationRoots": ["samples/meeting-room/src", "samples/meeting-room/public", "samples/meeting-room/wrangler.cloudflare-only.jsonc", "samples/meeting-room/README.md", "package.json", ".github/workflows/ci.yml", "scripts/g20-candidate-check.mjs", "test/g25-composition.spec.ts"]
   },
   "secrets": "redacted"

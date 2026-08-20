@@ -1,6 +1,6 @@
 import { BindingExclusionLedgerClient } from "./ExclusionLookup";
 import { InconsistencyDetector } from "./InconsistencyDetector";
-import { isDownstreamOutboxMessage, systemPipelineClock, type PipelineClock } from "./types";
+import { isDownstreamOutboxMessage, systemPipelineClock, type DownstreamOutboxMessage, type PipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore, StoredEvent } from "../store/types";
 import { requireConfiguredServiceId } from "../http/testServiceId";
@@ -21,7 +21,7 @@ export interface AdapterOptions {
   storeProvider?: StoreProvider;
   /** A stored-only hook; rejection deliberately returns the Queue message to retry. */
   onStored?: (input: {
-    readonly message: import("./types").DownstreamOutboxMessage;
+    readonly message: DownstreamOutboxMessage;
     readonly event: StoredEvent;
     readonly arrivedAt: number;
   }) => Promise<void>;

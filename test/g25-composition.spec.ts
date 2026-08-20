@@ -66,7 +66,7 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     const queue = runtime.queue as (batch: MessageBatch<unknown>, input: CloudflareOnlyEnv, ctx: ExecutionContext) => Promise<void>;
     await queue({ messages: [{ body: queued, ack: () => { acked += 1; }, retry: () => { retried += 1; } }] } as unknown as MessageBatch<unknown>, {
       ...(env as unknown as CloudflareOnlyEnv), SDT_SERVICE_ID: serviceId,
-    }, { waitUntil: (promise) => { waits.push(promise); } } as unknown as ExecutionContext);
+    }, { waitUntil: (promise: Promise<unknown>) => { waits.push(promise); } } as unknown as ExecutionContext);
     expect(acked).toBe(1); expect(retried).toBe(0);
     await Promise.all(waits);
     const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
