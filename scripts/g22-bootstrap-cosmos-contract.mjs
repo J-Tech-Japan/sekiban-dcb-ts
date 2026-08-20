@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { BootstrapIdentityConflictError, createBootstrapStoreAdapter } from "@sekiban/dcb-runtime";
-import { CosmosEventStore } from "@sekiban/dcb-runtime/cosmos";
+import { BootstrapIdentityConflictError } from "@sekiban/dcb-runtime";
+import { createCosmosBootstrapAdapter, CosmosEventStore } from "@sekiban/dcb-runtime/cosmos";
 
 const requireRealCosmos = process.argv.includes("--require-real-cosmos");
 const endpoint = process.env.COSMOS_ENDPOINT;
@@ -51,7 +51,7 @@ const tags = [`g22:cosmos:orders:${suffix}`, `g22:cosmos:audit:${suffix}`].sort(
 
 await store.recordDelivery(message(sourceServiceId, "first", 1, tags), 0);
 await store.recordDelivery(message(sourceServiceId, "second", 2, tags), 0);
-const adapter = createBootstrapStoreAdapter("cosmos", store);
+const adapter = createCosmosBootstrapAdapter(store);
 const first = await adapter.exportPage({ sourceServiceId, targetServiceId, allocatorLineageId: "g22-bootstrap-provider-lineage", pageSize: 1 });
 await store.recordDelivery(message(sourceServiceId, "late-after-watermark", 3, tags), 0);
 const resumed = await adapter.exportPage({ sourceServiceId, targetServiceId, allocatorLineageId: "g22-bootstrap-provider-lineage", pageSize: 1, cursor: first.cursor });

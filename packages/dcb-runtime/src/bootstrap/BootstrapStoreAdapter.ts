@@ -27,29 +27,10 @@ function compareOpaque(left: string, right: string): number {
   for (let index = 0; index < Math.min(a.length, b.length); index += 1) if (a[index] !== b[index]) return a[index]! - b[index]!;
   return a.length - b.length;
 }
-function sameEvent(event: StoredEvent, record: BootstrapEventRecord): boolean {
+export function bootstrapEventIdentityMatches(event: StoredEvent, record: BootstrapEventRecord): boolean {
   return event.suid === record.suid && event.payload === record.payload && JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
 }
-type BootstrapIdentityGuard = (event: StoredEvent, record: BootstrapEventRecord) => boolean;
-
-// These guards intentionally remain provider-specific even though the current
-// durable representations share the same wire identity.  Each concrete
-// adapter is exercised against its real PipelineStore, so a provider change
-// cannot be masked by a label-only in-memory test.
-const POSTGRES_IDENTITY_GUARD: BootstrapIdentityGuard = (event, record) => sameEvent(event, record);
-const COSMOS_IDENTITY_GUARD: BootstrapIdentityGuard = (event, record) => sameEvent(event, record);
-const D1_IDENTITY_GUARD: BootstrapIdentityGuard = (event, record) => sameEvent(event, record);
-
-function identityGuardFor(provider: string): BootstrapIdentityGuard {
-  switch (provider) {
-    case "postgres": return POSTGRES_IDENTITY_GUARD;
-    case "cosmos": return COSMOS_IDENTITY_GUARD;
-    case "d1": return D1_IDENTITY_GUARD;
-    // Test-only/custom StoreProvider compositions retain the wire-level guard;
-    // production providers above always select their own explicit guard.
-    default: return sameEvent;
-  }
-}
+export type BootstrapIdentityGuard = (event: StoredEvent, record: BootstrapEventRecord) => boolean;
 function toRecord(event: StoredEvent): BootstrapEventRecord {
   return { eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: [...event.eventTags].sort(compareOpaque) };
 }
@@ -62,8 +43,8 @@ function toRecord(event: StoredEvent): BootstrapEventRecord {
 export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
   private readonly identityGuard: BootstrapIdentityGuard;
 
-  constructor(readonly provider: string, private readonly store: PipelineStore) {
-    this.identityGuard = identityGuardFor(provider);
+  constructor(readonly provider: string, private readonly store: PipelineStore, identityGuard: BootstrapIdentityGuard = bootstrapEventIdentityMatches) {
+    this.identityGuard = identityGuard;
   }
 
   async exportPage(input: {
@@ -121,6 +102,6 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
   }
 }
 
-export function createBootstrapStoreAdapter(provider: string, store: PipelineStore): BootstrapStoreAdapter {
-  return new BootstrapStoreAdapter(provider, store);
+export function createBootstrapStoreAdapter(provider: string, store: PipelineStore, identityGuard?: BootstrapIdentityGuard): BootstrapStoreAdapter {
+  return new BootstrapStoreAdapter(provider, store, identityGuard);
 }

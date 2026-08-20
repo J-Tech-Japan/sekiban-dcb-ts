@@ -3,7 +3,7 @@ import { beforeAll, describe, it } from "vitest";
 
 // @ts-expect-error Vite raw asset import keeps migration execution tied to the committed SQL.
 import migration from "../migrations/d1/0001_pipeline_store.sql?raw";
-import { D1EventStore } from "../packages/dcb-runtime/src/d1";
+import { createD1BootstrapAdapter, D1EventStore } from "../packages/dcb-runtime/src/d1";
 import { runG22BootstrapProviderContract } from "./helpers/g22-bootstrap-provider-contract";
 
 function database(): D1Database {
@@ -19,6 +19,6 @@ describe("SDT-G22 D1 bootstrap provider adapter", () => {
   });
 
   it("runs export snapshot and admission identity invariants against D1EventStore in Miniflare", async () => {
-    await runG22BootstrapProviderContract("d1", new D1EventStore(database()));
+    await runG22BootstrapProviderContract("d1", new D1EventStore(database()), (store) => createD1BootstrapAdapter(store as D1EventStore));
   });
 });

@@ -1,6 +1,6 @@
 import { PostgresEventStore } from "./PostgresEventStore";
 import type { PipelineStore } from "./types";
-import { createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "../bootstrap/BootstrapStoreAdapter";
+import { bootstrapEventIdentityMatches, createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "../bootstrap/BootstrapStoreAdapter";
 
 /** The storage bindings visible to a provider; no provider may inspect request headers. */
 export interface StoreProviderEnvironment {
@@ -17,6 +17,7 @@ export interface StoreProvider {
   readonly name: string;
   readonly isConfigured?: (env: StoreProviderEnvironment) => boolean;
   create(env: StoreProviderEnvironment): PipelineStore;
+  createBootstrapAdapter?(env: StoreProviderEnvironment): BootstrapStoreAdapter;
 }
 
 function postgresConnectionString(env: StoreProviderEnvironment): string {
@@ -37,6 +38,9 @@ export const POSTGRES_STORE_PROVIDER: StoreProvider = Object.freeze({
   create(env: StoreProviderEnvironment): PipelineStore {
     return new PostgresEventStore(postgresConnectionString(env));
   },
+  createBootstrapAdapter(env: StoreProviderEnvironment): BootstrapStoreAdapter {
+    return createPostgresBootstrapAdapter(this.create(env));
+  },
 });
 
 export function createPostgresStoreProvider(): StoreProvider {
@@ -44,6 +48,8 @@ export function createPostgresStoreProvider(): StoreProvider {
 }
 
 /** Explicit bootstrap adapter for the concrete Postgres PipelineStore. */
-export function createPostgresBootstrapAdapter(env: StoreProviderEnvironment): BootstrapStoreAdapter {
-  return createBootstrapStoreAdapter("postgres", POSTGRES_STORE_PROVIDER.create(env));
+export function createPostgresBootstrapAdapter(store: PipelineStore): BootstrapStoreAdapter {
+  // Kept in the Postgres composition module so its guard cannot leak into the
+  // Cloudflare-only bundle.
+  return createBootstrapStoreAdapter("postgres", store, (event, record) => bootstrapEventIdentityMatches(event, record));
 }

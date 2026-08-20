@@ -9,6 +9,7 @@ import { handleOperatorBootstrap } from "../packages/dcb-runtime/src/bootstrap/O
 import type { PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import { createPostgresBootstrapAdapter } from "../packages/dcb-runtime/src/store/provider";
 import { runG22BootstrapProviderContract } from "./helpers/g22-bootstrap-provider-contract";
 
 const suid = (value: number) => `suid-${String(value).padStart(32, "0")}`;
@@ -80,7 +81,7 @@ describe("SDT-G22 provider bootstrap adapters", () => {
   it("runs export snapshot and admission identity invariants against PostgresEventStore", async () => {
     const url = (env as unknown as { POSTGRES_URL?: string }).POSTGRES_URL;
     if (url === undefined) throw new Error("POSTGRES_URL binding is required for the real Postgres bootstrap contract");
-    await runG22BootstrapProviderContract("postgres", new PostgresEventStore(url));
+    await runG22BootstrapProviderContract("postgres", new PostgresEventStore(url), createPostgresBootstrapAdapter);
   });
   it("does not publish READY when deployment read-model rebuild fails after verification", async () => {
     const calls: string[] = [];

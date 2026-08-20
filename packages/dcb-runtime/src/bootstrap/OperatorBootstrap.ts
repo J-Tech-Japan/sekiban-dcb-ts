@@ -57,14 +57,14 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
     if (!allocatorState.ok) return json({ code: "bootstrap_allocator_unavailable", error: "target allocator state is unavailable" }, 503);
     const allocatorBody = await allocatorState.json<Partial<AllocatorState>>();
     if (typeof allocatorBody.allocatorLineageId !== "string" || allocatorBody.allocatorLineageId.length === 0) return json({ code: "bootstrap_allocator_invalid", error: "target allocator lineage is invalid" }, 500);
-    const adapter = createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
+    const adapter = storeProvider.createBootstrapAdapter?.(env) ?? createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
     return json(await adapter.exportPage({ sourceServiceId: serviceId, targetServiceId: body.targetServiceId, allocatorLineageId: allocatorBody.allocatorLineageId, pageSize: typeof body.pageSize === "number" ? body.pageSize : 128 }));
   }
   if (operation === "plan") return invoke("/plan", body);
   if (!object(body) || !object(body.dump)) return json({ code: "bootstrap_dump_invalid", error: "import requires dump" }, 400);
   let dump; try { dump = parseBootstrapDump(body.dump); } catch { return json({ code: "bootstrap_dump_invalid", error: "invalid canonical dump" }, 400); }
   if (typeof body.importId !== "string" || typeof body.leaseEpoch !== "number") return json({ code: "bootstrap_epoch_rejected", error: "importId and leaseEpoch required" }, 409);
-  const adapter = createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
+  const adapter = storeProvider.createBootstrapAdapter?.(env) ?? createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
   await adapter.admitBootstrap({ importId: body.importId, leaseEpoch: body.leaseEpoch, manifest: dump.manifest, events: dump.events });
   const imported = await invoke("/import", body);
   if (!imported.ok) return imported;

@@ -2,6 +2,7 @@ import { expect } from "vitest";
 
 import {
   BootstrapIdentityConflictError,
+  type BootstrapStoreAdapter,
   createBootstrapStoreAdapter,
 } from "../../packages/dcb-runtime/src/bootstrap/BootstrapStoreAdapter";
 import type { PipelineStore, StoredEvent } from "../../packages/dcb-runtime/src/store/types";
@@ -41,7 +42,11 @@ async function durableSnapshot(store: PipelineStore, serviceId: string): Promise
  * asserts the durable event, metadata, detector and lag surfaces, rather
  * than a label on a hand-written in-memory fake.
  */
-export async function runG22BootstrapProviderContract(provider: "postgres" | "cosmos" | "d1", store: PipelineStore): Promise<void> {
+export async function runG22BootstrapProviderContract(
+  provider: "postgres" | "cosmos" | "d1",
+  store: PipelineStore,
+  createAdapter: (store: PipelineStore) => BootstrapStoreAdapter = (target) => createBootstrapStoreAdapter(provider, target),
+): Promise<void> {
   const suffix = crypto.randomUUID();
   const sourceServiceId = `g22-${provider}-source-${suffix}`;
   const targetServiceId = `g22-${provider}-target-${suffix}`;
@@ -50,7 +55,7 @@ export async function runG22BootstrapProviderContract(provider: "postgres" | "co
 
   await store.recordDelivery(message(sourceServiceId, "first", 1, tags), 0);
   await store.recordDelivery(message(sourceServiceId, "second", 2, tags), 0);
-  const sourceAdapter = createBootstrapStoreAdapter(provider, store);
+  const sourceAdapter = createAdapter(store);
   const first = await sourceAdapter.exportPage({
     sourceServiceId,
     targetServiceId,
@@ -70,7 +75,7 @@ export async function runG22BootstrapProviderContract(provider: "postgres" | "co
   expect(resumed.page.map((row) => row.eventId)).toEqual(["second"]);
 
   await store.recordDelivery(message(targetServiceId, "same", 1, tags), 0);
-  const targetAdapter = createBootstrapStoreAdapter(provider, store);
+  const targetAdapter = createAdapter(store);
   const targetDump = (await targetAdapter.exportPage({
     sourceServiceId: targetServiceId,
     targetServiceId,

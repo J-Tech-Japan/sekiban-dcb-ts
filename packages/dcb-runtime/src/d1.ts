@@ -1,7 +1,7 @@
 import { D1EventStore, type D1StoreOptions } from "./store/D1EventStore";
 import { D1MaterializedViewStore } from "./mv/MaterializedViewStore";
 import type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
-import { createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
+import { bootstrapEventIdentityMatches, createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
 
 export {
   D1EventStore,
@@ -46,6 +46,10 @@ export function createD1StoreProvider(config: D1StoreProviderConfig = {}): Store
       if (env.D1 === undefined) throw new Error("A D1 binding is required for the D1 store");
       return new D1EventStore(env.D1, config.storeOptions);
     },
+    createBootstrapAdapter: (env: StoreProviderEnvironment) => {
+      if (env.D1 === undefined) throw new Error("A D1 binding is required for the D1 store");
+      return createD1BootstrapAdapter(new D1EventStore(env.D1, config.storeOptions));
+    },
   });
 }
 
@@ -53,6 +57,6 @@ export function createD1MaterializedViewStore(database: D1Database): D1Materiali
   return new D1MaterializedViewStore(database);
 }
 
-export function createD1BootstrapAdapter(database: D1Database): BootstrapStoreAdapter {
-  return createBootstrapStoreAdapter("d1", new D1EventStore(database));
+export function createD1BootstrapAdapter(store: D1EventStore): BootstrapStoreAdapter {
+  return createBootstrapStoreAdapter("d1", store, (event, record) => bootstrapEventIdentityMatches(event, record));
 }
