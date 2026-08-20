@@ -182,6 +182,9 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(serviceIdForRequest(new Request("https://runtime.internal/", {
       headers: { "x-sdt-g11-service-id": "g11-verification-namespace" },
     }), { allowG11Verification: true })).toBe("g11-verification-namespace");
+    expect(serviceIdForRequest(new Request("https://runtime.internal/", {
+      headers: { "x-sdt-g11-service-id": "g22-bootstrap-target" },
+    }), { allowG11Verification: true })).toBe("g22-bootstrap-target");
   });
 
   it("uses the server-side SDT_SERVICE_ID for production reads without allowing client headers to override it", async () => {

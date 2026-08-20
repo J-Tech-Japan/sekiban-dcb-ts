@@ -9,8 +9,8 @@ export const TEST_SERVICE_ID_HEADER = "x-sdt-g9-test-service-id";
 /** Deployment verification isolation; never part of the serialized V1 body. */
 export const G11_SERVICE_ID_HEADER = "x-sdt-g11-service-id";
 
-function validG11ServiceId(value: string | null): value is string {
-  return value !== null && /^g11-[A-Za-z0-9-]{8,96}$/.test(value);
+function validVerificationServiceId(value: string | null): value is string {
+  return value !== null && /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(value);
 }
 
 export interface ServiceIdRequestOptions {
@@ -36,7 +36,10 @@ export function serviceIdForRequest(request: Request, options: ServiceIdRequestO
   const configured = request.headers.get(TEST_SERVICE_ID_HEADER);
   const g11Configured = request.headers.get(G11_SERVICE_ID_HEADER);
   const g11Allowed = hostname.endsWith(".test") || options.allowG11Verification === true;
-  if (g11Allowed && validG11ServiceId(g11Configured)) {
+  // This header is accepted only by the authenticated deployment-verification
+  // lane (or the reserved .test host). The verification target may be a
+  // bootstrapped service rather than a g11-prefixed fixture.
+  if (g11Allowed && validVerificationServiceId(g11Configured)) {
     return g11Configured;
   }
   if (hostname.endsWith(".test") && configured !== null && configured.length > 0) {
