@@ -53,6 +53,15 @@ async function gc(state: Awaited<ReturnType<typeof seedGc>>, overrides: Partial<
 function fixtureMutation(eventId: string, suid: string) {
   return { rowUpserts: [{ rowKey: "reference-row", value: { eventId }, rowVersion: 1, sourceSuid: suid }], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] };
 }
+function winnerMutation(rowKey: string, eventId: string, suid: string) {
+  return { rowUpserts: [{ rowKey, value: { eventId }, rowVersion: 1, sourceSuid: suid }], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] };
+}
+async function applySafeWinner(mv: D1MaterializedViewStore, serviceId: string, rowKey: string, eventId: string, suid: string): Promise<void> {
+  await mv.applyMutationsAndAdvanceCheckpoint({
+    serviceId, viewId: MATERIALIZER.id, generation: 0, expectedLastSuid: "", lastSuid: suid,
+    definitionVersion: 1, updatedAt: 1, mutations: winnerMutation(rowKey, eventId, suid),
+  });
+}
 
 describe("SDT-G23 unsafe-window MV core", () => {
   let upgradeSawMissingUnsafeTable = false;
@@ -123,6 +132,36 @@ describe("SDT-G23 unsafe-window MV core", () => {
     expect(await unsafe.observeArrival(serviceId, MATERIALIZER.id, 0, "late", "suid-1")).toBe(true);
     expect((await unsafe.readMeta(serviceId, MATERIALIZER.id, 0)).rebuildRequired).toBe(true);
     await expect(mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 })).rejects.toBeInstanceOf(UnsafeWindowMaterializedViewError);
+  });
+  it("AC5 composed winner ranks same-key safe and unsafe candidates by SUID, then safe on an equal SUID", async () => {
+    const cases = [
+      { safeSuid: "suid-9", unsafeSuid: "suid-3", safeEvent: "safe-newer", unsafeEvent: "unsafe-older", expected: "safe-newer" },
+      { safeSuid: "suid-3", unsafeSuid: "suid-9", safeEvent: "safe-older", unsafeEvent: "unsafe-newer", expected: "unsafe-newer" },
+      { safeSuid: "suid-5", unsafeSuid: "suid-5", safeEvent: "safe-tie", unsafeEvent: "unsafe-tie", expected: "safe-tie" },
+    ];
+    for (const [index, candidate] of cases.entries()) {
+      const { mv, unsafe, serviceId } = await unsafeStore();
+      const rowKey = `winner-${index}`;
+      await applySafeWinner(mv, serviceId, rowKey, candidate.safeEvent, candidate.safeSuid);
+      await unsafe.apply(input(serviceId, `unsafe-${index}`, candidate.unsafeSuid, candidate.expected, {
+        mutations: winnerMutation(rowKey, candidate.unsafeEvent, candidate.unsafeSuid),
+      }));
+      // Both physical layers must coexist: the assertion below is a true
+      // cross-layer rank, not a single-layer query that happens to be sorted.
+      await expect(database().prepare("SELECT 1 FROM mv_rows WHERE service_id = ? AND view_id = ? AND generation = 0 AND row_key = ?").bind(serviceId, MATERIALIZER.id, rowKey).first()).resolves.toBeTruthy();
+      await expect(database().prepare("SELECT 1 FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = 0 AND row_key = ?").bind(serviceId, MATERIALIZER.id, rowKey).first()).resolves.toBeTruthy();
+      const page = await mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 });
+      expect(page.rows.map((row) => (row.value as { eventId: string }).eventId)).toEqual([candidate.expected]);
+    }
+  });
+  it("AC5 composed live read excludes a physically present unsafe tombstone", async () => {
+    const { mv, unsafe, serviceId } = await unsafeStore();
+    await unsafe.apply(input(serviceId, "unsafe-tombstone", "suid-7", "tombstone", { mutations: winnerMutation("tombstone-row", "unsafe-tombstone", "suid-7") }));
+    await database().prepare("UPDATE mv_unsafe_rows SET tombstone = 1 WHERE service_id = ? AND view_id = ? AND generation = 0 AND row_key = ?").bind(serviceId, MATERIALIZER.id, "tombstone-row").run();
+    const physical = await database().prepare("SELECT tombstone FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = 0 AND row_key = ?").bind(serviceId, MATERIALIZER.id, "tombstone-row").first<{ tombstone: number }>();
+    expect(physical?.tombstone).toBe(1);
+    const page = await mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 });
+    expect(page).toMatchObject({ rows: [], totalCount: 0 });
   });
   it("GC oracle safe-ahead-then-late-retry removes all repairable unsafe state", async () => {
     const state = await seedGc(); expect(await gc(state)).toBe(true);
