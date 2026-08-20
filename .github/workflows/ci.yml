@@ -128,13 +128,13 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      # Candidate evidence can reference a retained pre-squash feature branch.
-      # A detached PR checkout does not fetch that unrelated ref by default;
-      # retrieve it before the unchanged digest gate verifies its tree.
+      # Candidate evidence references retained commits that may no longer have
+      # a source branch after a squash.  Fetch the immutable objects directly
+      # so the unchanged digest gate can inspect their trees.
       - name: Fetch retained candidate history for evidence verification
         run: >-
           git fetch --no-tags origin
-          +refs/heads/claude/sdt-g20-cloudflare-only:refs/remotes/origin/claude/sdt-g20-cloudflare-only
+          8dbb4be825e084adef92065496cc0ffdc22b28ed
           5439b8bda255144b608fcdeb6c89dc44dcb667d7
       - uses: actions/setup-node@v4
         with:
