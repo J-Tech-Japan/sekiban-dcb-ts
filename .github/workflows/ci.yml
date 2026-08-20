@@ -31,6 +31,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -70,6 +71,14 @@ jobs:
       - name: Prove SDT-G24 forced-red CI reachability
         run: |
           if SDT_G24_FORCE_FAILURE=1 npm run test:g24:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G25 unsafe-window composition lane
+        run: npm run test:g25
+      - name: Prove SDT-G25 forced-red CI reachability
+        run: |
+          if SDT_G25_FORCE_FAILURE=1 npm run test:g25:forced-red; then
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
@@ -118,6 +127,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
+      # Candidate evidence references retained commits that may no longer have
+      # a source branch after a squash.  Fetch the immutable objects directly
+      # so the unchanged digest gate can inspect their trees.
+      - name: Fetch retained candidate history for evidence verification
+        run: >-
+          git fetch --no-tags origin
+          8dbb4be825e084adef92065496cc0ffdc22b28ed
+          5439b8bda255144b608fcdeb6c89dc44dcb667d7
       - uses: actions/setup-node@v4
         with:
           node-version: 24

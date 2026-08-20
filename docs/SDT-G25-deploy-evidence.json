@@ -1,0 +1,147 @@
+{
+  "task": "SDT-G25",
+  "status": "same-candidate deployed verification recorded",
+  "candidateCommit": "38219c8a6526a0209295e9f06450cce9e2217004",
+  "sourceCommit": "38219c8a6526a0209295e9f06450cce9e2217004",
+  "candidateDeployment": {
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "serviceId": "g25-38219c8-20260820f",
+    "version": "942eb5a5-22c9-4e68-921e-edb51e9e753b",
+    "migrationsApplied": ["0002_unsafe_window_materialized_views.sql", "0003_checkpoint_ahead_hardening.sql", "0004_unsafe_window_failure_findings.sql"]
+  },
+  "protocol": {
+    "finalCandidate": "all runtime/configuration/CI/UI/README changes precede candidate; afterward only docs/SDT-G25-*evidence* files may change",
+    "deploymentIdentity": "fresh explicit non-secret SDT_SERVICE_ID",
+    "latency": "fixed N >= 20; record p50, p95, max, and cron-fallback count",
+    "correctness": "authenticated five-endpoint conformance, raw V1 404, restart replay, G17 negatives, CHECKPOINT_AHEAD drill and generation rebuild"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "ce62b70972dcc0a568eca719212f250d3b5418a21f5a879f2567d341458a9be9",
+    "runtimeRoots": ["packages/dcb-runtime/src"],
+    "configuration": "0d9437ddb3157f42968dd12c2bf3c1715d461eaffa60016c5c6d870346757054",
+    "configurationRoots": ["samples/meeting-room/src", "samples/meeting-room/public", "samples/meeting-room/wrangler.cloudflare-only.jsonc", "samples/meeting-room/README.md", "package.json", ".github/workflows/ci.yml", "scripts/g20-candidate-check.mjs", "test/g25-composition.spec.ts"]
+  },
+  "deployedVerification": {
+    "fiveEndpointConformance": {
+      "timestamp": "2026-08-20T16:51:00.010Z",
+      "command": "authenticated POST /conformance/v1/api/sekiban/serialized/{commit,tag-latest-sortable,tag-state,query,list-query}; unauthenticated POST /api/sekiban/serialized/commit",
+      "serviceId": "g25-38219c8-20260820f",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "rawV1Commit": 404,
+      "result": "PASS"
+    },
+    "restartRerun": {
+      "timestamp": "2026-08-20T16:56:13.199Z",
+      "command": "wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars --strict --var SDT_SERVICE_ID:g25-38219c8-20260820f --message 'SDT-G25 FINAL candidate 38219c8 restart rerun'; authenticated fresh-service conformance replay",
+      "sameCandidate": "38219c8a6526a0209295e9f06450cce9e2217004",
+      "serviceId": "g25-38219c8-restart-rerun",
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "rawV1Commit": 404,
+      "result": "PASS"
+    },
+    "fixedNLatency": {
+      "startedAt": "2026-08-20T16:56:41Z",
+      "completedAt": "2026-08-20T16:57:42.265Z",
+      "command": "20 fixed samples in two batches: POST /api/commands/create-room followed immediately by GET /api/read/room; no scheduled invocation",
+      "sampleCount": 20,
+      "p50Ms": 2646.3171250000005,
+      "p95Ms": 3394.810833,
+      "maxMs": 3865.532792,
+      "cronFallbackCount": 0,
+      "cronFallbackEvidence": "Each sample observed its composed app read immediately after the stored command; no scheduled endpoint was invoked."
+    },
+    "g17NegativeOracles": {
+      "timestamp": "2026-08-20T16:57:53Z",
+      "commands": ["npm run test:g17", "npm run test:g17:rollout-order"],
+      "testG17": "PASS (7 tests)",
+      "rolloutOrder": "PASS"
+    },
+    "safeOnlyNonGate": {
+      "timestamp": "2026-08-20T16:57:53Z",
+      "command": "npm run test:g20:gate",
+      "result": "PASS; cloudflare-only binding/import/built-output gates and their mutations remain green"
+    },
+    "checkpointAheadDrill": {
+      "candidate": "38219c8a6526a0209295e9f06450cce9e2217004",
+      "scope": "scratch service g25-38219c8-checkpoint-drill only; the serving service's D1 rows were not changed",
+      "operatorPlane": "authenticated Wrangler D1 CLI plus the existing deployed cron; no HTTP endpoint or test header was added",
+      "commandLog": [
+        {
+          "timestamp": "2026-08-20T17:20:14Z",
+          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-pipeline --remote --command '<insert one old room event and allocator binding for scratch service>'",
+          "result": "PASS; store max SUID 00000000000000000001"
+        },
+        {
+          "timestamp": "2026-08-20T17:20:15Z",
+          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-mv --remote --command '<create Room generation 0 at store head and Reservation generation 0 at zzzzzzzzzzzzzzzzzzzz for scratch service>'",
+          "result": "PASS; only Reservation is ahead"
+        },
+        {
+          "timestamp": "2026-08-20T17:20:22.653400Z",
+          "command": "wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars --strict --var SDT_SERVICE_ID:g25-38219c8-checkpoint-drill --message 'SDT-G25 CHECKPOINT_AHEAD scratch drill candidate 38219c8'",
+          "result": "PASS; version 274d023f-6765-4250-a4c6-0228fcd3c2e7; existing * * * * * cron became the scratch catch-up executor"
+        },
+        {
+          "timestamp": "2026-08-20T17:21:10.891Z",
+          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-mv --remote --command '<select scratch checkpoint-ahead finding>'",
+          "result": "PASS; ReservationProjector generation 0 finding recorded with checkpoint zzzzzzzzzzzzzzzzzzzz > store max 00000000000000000001"
+        },
+        {
+          "timestamp": "2026-08-20T17:21:20Z",
+          "command": "GET https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev/api/read/reservations?pageNumber=1&pageSize=1",
+          "result": "PASS; HTTP 503 with existing V1 body code projection_unavailable"
+        },
+        {
+          "timestamp": "2026-08-20T17:22:10Z",
+          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-mv --remote --command '<G19 candidate generation 1 at source head; guarded atomic promote from generation 0; delete guard>'",
+          "result": "PASS; Wrangler statement batch completed, old generation retired, active pointer promoted to ReservationProjector generation 1"
+        },
+        {
+          "timestamp": "2026-08-20T17:22:24Z",
+          "command": "wrangler d1 execute sekiban-dcb-meeting-room-cloudflare-mv --remote --command '<join checkpoint findings to active generations>'; GET https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev/api/read/reservations?pageNumber=1&pageSize=1",
+          "result": "PASS; active finding count 0 and HTTP list read recovered with 200"
+        },
+        {
+          "timestamp": "2026-08-20T17:22:46.480676Z",
+          "command": "wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars --strict --var SDT_SERVICE_ID:g25-38219c8-20260820f --message 'SDT-G25 restore serving service after CHECKPOINT_AHEAD scratch drill candidate 38219c8'",
+          "result": "PASS; serving configuration restored as version 942eb5a5-22c9-4e68-921e-edb51e9e753b"
+        }
+      ],
+      "detection": {
+        "observedAt": "2026-08-20T17:21:10.891Z",
+        "viewId": "ReservationProjector",
+        "generation": 0,
+        "checkpointSuid": "zzzzzzzzzzzzzzzzzzzz",
+        "storeMaxSuid": "00000000000000000001"
+      },
+      "failClosed": {
+        "httpStatus": 503,
+        "code": "projection_unavailable"
+      },
+      "sanctionedRepair": {
+        "mechanism": "G19 generation rebuild/promote: candidate generation 1 folded through source head, then the active-generation CAS guard promoted it",
+        "activeReservationGenerationAfterPromote": 1,
+        "activeFindingCountAfterPromote": 0,
+        "recoveredHttpStatus": 200
+      }
+    },
+    "ci": {
+      "runId": 32395201819,
+      "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/32395201819",
+      "completedAt": "2026-08-20T17:05:17Z",
+      "verify": "success",
+      "cosmosEmulator": "success"
+    }
+  },
+  "secrets": "redacted"
+}

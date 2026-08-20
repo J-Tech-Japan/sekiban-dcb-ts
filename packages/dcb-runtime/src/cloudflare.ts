@@ -25,6 +25,7 @@ import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
+import type { StoredEvent } from "./store/types";
 
 export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
@@ -46,6 +47,14 @@ export interface CloudflareOnlyWorkerOptions {
   readonly config?: RuntimeWorkerConfig;
   /** Optional deployment read-model rebuild that must finish before READY. */
   readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;
+  /** Runs only after PipelineStore has returned a durable stored outcome. */
+  readonly afterStoredDownstreamDelivery?: (input: {
+    readonly message: DownstreamOutboxMessage;
+    readonly event: StoredEvent;
+    readonly arrivedAt: number;
+    readonly env: CloudflareOnlyEnv;
+    readonly ctx: ExecutionContext;
+  }) => Promise<void>;
 }
 
 /** Compose the named two-D1 Cloudflare-only Worker. */
@@ -146,9 +155,14 @@ export function createCloudflareOnlyRuntimeWorker(
       return journal.fetch(new Request(url.toString(), request));
     },
 
-    async queue(batch, env): Promise<void> {
+    async queue(batch, env, ctx): Promise<void> {
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
-      await handleDownstreamQueue(batch, env, { storeProvider });
+      await handleDownstreamQueue(batch, env, {
+        storeProvider,
+        onStored: options.afterStoredDownstreamDelivery === undefined
+          ? undefined
+          : ({ message, event, arrivedAt }) => options.afterStoredDownstreamDelivery!({ message, event, arrivedAt, env, ctx }),
+      });
     },
 
     async scheduled(_controller, env): Promise<void> {

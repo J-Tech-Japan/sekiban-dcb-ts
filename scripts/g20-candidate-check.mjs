@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -18,6 +19,11 @@ export const candidateEvidenceRules = Object.freeze([
     id: "g22-bootstrap-operator",
     evidencePath: "docs/SDT-G22-deployed-evidence.json",
     evidenceGlobs: Object.freeze(["docs/SDT-G22-*evidence*.json", "docs/SDT-G22-*evidence*.md"]),
+  }),
+  Object.freeze({
+    id: "g25-unsafe-window-composition",
+    evidencePath: "docs/SDT-G25-deploy-evidence.json",
+    evidenceGlobs: Object.freeze(["docs/SDT-G25-*evidence*.json", "docs/SDT-G25-*evidence*.md"]),
   }),
 ]);
 
@@ -50,6 +56,31 @@ export function assertRecordedEvidenceSelfDigest(evidence, rule) {
   if (typeof digests !== "object" || digests === null || Array.isArray(digests) || digests.algorithm !== "sha256(path NUL content NUL, paths sorted)" || !SHA256.test(digests.runtime) || !SHA256.test(digests.configuration) || !Array.isArray(digests.runtimeRoots) || !Array.isArray(digests.configurationRoots) || ![...digests.runtimeRoots, ...digests.configurationRoots].every((path) => typeof path === "string" && path.length > 0)) throw new Error(`${rule.id} evidence tree digest declaration is invalid`);
 }
 
+/**
+ * A FINAL candidate records hashes of its candidate tree, not of a later
+ * evidence-only commit.  This makes the check self-proving without allowing a
+ * source edit to be smuggled in after deployment.
+ */
+export function assertCandidateTreeDigests(evidence, run = (args) => execFileSync("git", args, { cwd: root, encoding: null })) {
+  if (evidence.candidateCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
+  const digest = (roots) => {
+    const entries = run(["ls-tree", "-r", "-z", "--name-only", evidence.candidateCommit, "--", ...roots])
+      .toString("utf8").split("\0").filter(Boolean).sort();
+    const hash = createHash("sha256");
+    for (const path of entries) {
+      hash.update(path); hash.update("\0");
+      hash.update(run(["show", `${evidence.candidateCommit}:${path}`])); hash.update("\0");
+    }
+    return hash.digest("hex");
+  };
+  const runtime = digest(evidence.treeDigests.runtimeRoots);
+  const configuration = digest(evidence.treeDigests.configurationRoots);
+  if (runtime !== evidence.treeDigests.runtime || configuration !== evidence.treeDigests.configuration) {
+    throw new Error("candidate tree digests do not match the declared FINAL candidate");
+  }
+  return { checked: true, runtime, configuration };
+}
+
 function gitSucceeds(args, run) {
   try { run(args); return true; } catch { return false; }
 }
@@ -80,6 +111,7 @@ export function runSelfTest() {
 
 function main() {
   if (process.env.SDT_G22_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G22 candidate gate forced failure");
+  if (process.env.SDT_G25_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G25 candidate gate forced failure");
   if (process.argv.includes("--self-test")) return runSelfTest();
   for (const rule of candidateEvidenceRules) {
     const evidencePath = join(root, rule.evidencePath);
@@ -90,6 +122,7 @@ function main() {
     expectMutationToFail(`${rule.id}:runtime-path`, () => assertEvidenceOnlyPaths(["packages/dcb-runtime/src/index.ts"], rule));
     assertEvidenceOnlyPaths([rule.evidencePath], rule);
     assertRecordedEvidenceSelfDigest(evidence, rule);
+    const treeDigestProof = assertCandidateTreeDigests(evidence);
     const status = candidateGateStatus(evidence.candidateCommit);
     const postCandidatePaths = status.active ? changedPaths(evidence.candidateCommit) : [];
     if (status.active) assertEvidenceOnlyPaths(postCandidatePaths, rule);
@@ -101,6 +134,7 @@ function main() {
       postCandidatePaths,
       mutationProof: { runtimePath: "fail-as-required", evidenceDocument: "accepted" },
       evidenceSelfDigest: "validated-without-head-comparison",
+      treeDigestProof,
     }, null, 2));
   }
 }

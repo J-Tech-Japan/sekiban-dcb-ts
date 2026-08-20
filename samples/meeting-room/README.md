@@ -30,9 +30,13 @@ query caching is disabled before conformance and measurement runs.
 It has two independent D1 bindings (`D1` for the PipelineStore and `D1_MV` for
 materialized-view rows/checkpoints), the same Journal/Allocator/Tag Durable
 Objects, and a Queue for durable outbox delivery. It deliberately has no
-Hyperdrive, Postgres, or Cosmos binding. The scheduled catch-up path feeds the
-G16 reservation list and room query from `D1_MV`; the existing PG config stays
-available as the alternative.
+Hyperdrive, Postgres, or Cosmos binding. The Queue consumer applies each
+*stored* outcome to G23's atomic unsafe port, so the reservation list and room
+query can show an immediate tentative winner from the composed `D1_MV` read.
+SafeWindow catch-up remains the definitive ordered fold; an unsafe failure is
+retried and is never silently acknowledged. Cron is only the recovery net for
+safe catch-up and residual kick/GC work. The existing PG config stays available
+as the alternative.
 
 The Cloudflare-only deployment uses the non-secret `SDT_SERVICE_ID` Wrangler
 var as part of its deployment lifecycle. Change it when replacing the DO

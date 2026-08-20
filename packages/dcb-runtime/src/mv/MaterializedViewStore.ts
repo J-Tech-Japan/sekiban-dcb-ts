@@ -388,10 +388,12 @@ export class D1MaterializedViewStore {
     this.ready("initialize");
     const selected = options.generation ?? (await this.readActive(serviceId, viewId))?.generation;
     if (selected === undefined) return { rows: [], totalCount: 0 };
-    const limit = options.limit === undefined ? 100 : options.limit;
+    // Scalar V1 queries pass `limit: null` to retain their legacy unpaged
+    // result. SQLite uses LIMIT -1 for that one-statement composed read.
+    const limit: number = options.limit === null ? -1 : options.limit === undefined ? 100 : options.limit;
     const offset = options.offset ?? 0;
-    if (limit === null || !Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(offset) || offset < 0) {
-      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs non-negative limit/offset");
+    if (!Number.isSafeInteger(limit) || limit < -1 || !Number.isSafeInteger(offset) || offset < 0) {
+      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs limit -1 or a non-negative limit/offset");
     }
     return this.unsafe.queryComposedPage(serviceId, viewId, selected, limit, offset);
   }
@@ -411,6 +413,23 @@ export class D1MaterializedViewStore {
   async hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean> {
     this.ready("initialize");
     return this.unsafe.hasTargetReceipt(serviceId, viewId, eventId, suid);
+  }
+
+  /** Idempotent operational fact: a stored Queue event needs unsafe retry/DLQ attention. */
+  async recordUnsafeFailureFinding(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly eventId: string;
+    readonly suid: string;
+    readonly observedAt: number;
+  }): Promise<void> {
+    this.ready("apply");
+    await this.database.prepare(
+      `INSERT INTO mv_unsafe_failure_findings
+         (service_id, view_id, event_id, suid, classification, observed_at)
+       VALUES (?, ?, ?, ?, 'UNSAFE_APPLY_RETRY', ?)
+       ON CONFLICT (service_id, view_id, event_id, suid, classification) DO NOTHING`,
+    ).bind(input.serviceId, input.viewId, input.eventId, input.suid, input.observedAt).run();
   }
 
   /**
