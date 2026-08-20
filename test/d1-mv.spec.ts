@@ -9,6 +9,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import migration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw asset import
 import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import hardeningMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
 
 import { defineRowMaterializer, type MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import {
@@ -161,7 +163,7 @@ const STORED_MATERIALIZER: MaterializedViewRowMaterializer<StoredEvent> = define
 
 describe("SDT-G19 D1 materialized-view store", () => {
   beforeAll(async () => {
-    const statements = [migration as string, unsafeMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
+    const statements = [migration as string, unsafeMigration as string, hardeningMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((statement) => statement.trim())
       .filter((statement) => statement.length > 0));

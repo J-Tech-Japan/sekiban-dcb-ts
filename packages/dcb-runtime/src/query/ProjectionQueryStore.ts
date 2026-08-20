@@ -19,6 +19,8 @@ export interface MaterializedViewQueryPort {
   queryRowsWithTotal?(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>;
   /** Target receipt is the unsafe-window wait oracle; global heads are not. */
   hasTargetReceipt?(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>;
+  /** SDT-G24 active-generation finding; true means every composed read is unavailable. */
+  hasCheckpointAheadFinding?(serviceId: string, viewId: string): Promise<boolean>;
   /** D1-backed implementations may need to verify the versioned schema first. */
   initialize?: () => Promise<void>;
 }

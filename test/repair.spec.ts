@@ -6,7 +6,7 @@ import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import type { RepairScopeItem, TagRecord } from "../packages/dcb-runtime/src/tag/types";
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = "local-test-runtime";
 const OPERATOR_TOKEN = "test-repair-operator-token";
 const SUID = "suid-00000000000000000000000000000001";
 

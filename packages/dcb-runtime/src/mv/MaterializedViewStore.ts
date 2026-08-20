@@ -212,6 +212,7 @@ export class D1MaterializedViewStore {
     if (this.initialized) return;
     await this.database.prepare("SELECT 1 FROM mv_instances LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_atomic_guards LIMIT 1").all();
+    await this.database.prepare("SELECT 1 FROM mv_checkpoint_ahead_findings LIMIT 1").all();
     this.initialized = true;
   }
 
@@ -410,6 +411,50 @@ export class D1MaterializedViewStore {
   async hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean> {
     this.ready("initialize");
     return this.unsafe.hasTargetReceipt(serviceId, viewId, eventId, suid);
+  }
+
+  /**
+   * Persist the source-reset observation exactly once for the affected
+   * generation.  This deliberately never rewinds `mv_instances.last_suid`.
+   */
+  async recordCheckpointAhead(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly generation: number;
+    readonly checkpointSuid: string;
+    readonly storeMaxSuid: string;
+    readonly observedAt: number;
+  }): Promise<void> {
+    this.ready("apply");
+    await this.database.prepare(
+      `INSERT INTO mv_checkpoint_ahead_findings
+         (service_id, view_id, generation, checkpoint_suid, store_max_suid, observed_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT (service_id, view_id, generation) DO NOTHING`,
+    ).bind(
+      input.serviceId,
+      input.viewId,
+      input.generation,
+      input.checkpointSuid,
+      input.storeMaxSuid,
+      input.observedAt,
+    ).run();
+  }
+
+  /** An open finding on the active generation fail-closes composed MV reads. */
+  async hasCheckpointAheadFinding(serviceId: string, viewId: string): Promise<boolean> {
+    this.ready("initialize");
+    const result = await this.database.prepare(
+      `SELECT 1 AS present
+         FROM mv_checkpoint_ahead_findings finding
+         JOIN mv_active_generations active
+           ON active.service_id = finding.service_id
+          AND active.view_id = finding.view_id
+          AND active.generation = finding.generation
+        WHERE finding.service_id = ? AND finding.view_id = ?
+        LIMIT 1`,
+    ).bind(serviceId, viewId).first<{ present: number }>();
+    return result?.present === 1;
   }
 
   /**
@@ -719,6 +764,8 @@ export type MaterializedViewStore = Pick<
   | "queryRows"
   | "queryRowsWithTotal"
   | "hasTargetReceipt"
+  | "recordCheckpointAhead"
+  | "hasCheckpointAheadFinding"
   | "applyMutationsAndAdvanceCheckpoint"
   | "promoteGeneration"
 >;

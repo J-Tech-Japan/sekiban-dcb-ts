@@ -3,6 +3,7 @@ import { InconsistencyDetector } from "./InconsistencyDetector";
 import { isDownstreamOutboxMessage, systemPipelineClock, type PipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
+import { requireConfiguredServiceId } from "../http/testServiceId";
 
 export interface DownstreamAdapterEnv {
   POSTGRES_URL?: string;
@@ -113,7 +114,7 @@ export async function stabilizeDownstream(
   options: AdapterOptions = {},
   serviceId?: string,
 ): Promise<void> {
-  await admitBootstrapRoute(env, serviceId ?? env.SDT_SERVICE_ID ?? "serialized-dcb-v1", "scheduled");
+  await admitBootstrapRoute(env, serviceId ?? requireConfiguredServiceId(env.SDT_SERVICE_ID), "scheduled");
   await withStore(env, options, async (store, clock) => {
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     await detector.stabilize(clock, serviceId);

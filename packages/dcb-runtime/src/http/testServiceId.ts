@@ -1,6 +1,3 @@
-/** The local/compatibility fallback when no deployment identity is configured. */
-export const SERIALIZED_DCB_SERVICE_ID = "serialized-dcb-v1";
-
 /**
  * Miniflare-only test override. `.test` is a reserved test TLD, so a deployed
  * request cannot use this to alter the production service identity.
@@ -27,8 +24,10 @@ function validConfiguredServiceId(value: string | undefined): value is string {
   return value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(value);
 }
 
-export function configuredServiceIdOrDefault(value: string | undefined): string {
-  return validConfiguredServiceId(value) ? value : SERIALIZED_DCB_SERVICE_ID;
+/** A deployment identity is never inferred from a baked-in compatibility value. */
+export function requireConfiguredServiceId(value: string | undefined): string {
+  if (validConfiguredServiceId(value)) return value;
+  throw new Error("SDT_SERVICE_ID is required and must be a non-empty deployment service identity");
 }
 
 export function serviceIdForRequest(request: Request, options: ServiceIdRequestOptions = {}): string {
@@ -45,5 +44,5 @@ export function serviceIdForRequest(request: Request, options: ServiceIdRequestO
   if (hostname.endsWith(".test") && configured !== null && configured.length > 0) {
     return configured;
   }
-  return configuredServiceIdOrDefault(options.configuredServiceId);
+  return requireConfiguredServiceId(options.configuredServiceId);
 }

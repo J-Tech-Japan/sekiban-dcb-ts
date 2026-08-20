@@ -6,7 +6,7 @@ import { type AlarmFaultPoint, type JournalRecord } from "../packages/dcb-runtim
 import type { TagRecord } from "../packages/dcb-runtime/src/tag/types";
 import { mapTerminalCommitOutcome, requeryFactsFromTagRecords } from "../packages/dcb-runtime/src/http/commitResponse";
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = "local-test-runtime";
 
 interface CommitResponse {
   writtenEvents: Array<{

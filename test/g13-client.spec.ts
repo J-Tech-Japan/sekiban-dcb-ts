@@ -93,6 +93,7 @@ describe("SDT-G13 claim-ledger client", () => {
     expect(validateCommitEnvelope(runtimeEnvelope)).toHaveProperty("value");
 
     const runtimeEnv = {
+      SDT_SERVICE_ID: "g13-client-fixture",
       JOURNAL: {
         idFromName: () => ({}),
         get: () => ({ fetch: async () => new Response("{}", { status: 500 }) }),

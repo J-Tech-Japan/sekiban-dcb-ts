@@ -8,7 +8,7 @@ import {
   type ProjectorRegistry,
 } from "./ProjectorRegistry";
 import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
-import { configuredServiceIdOrDefault } from "../http/testServiceId";
+import { requireConfiguredServiceId } from "../http/testServiceId";
 
 export interface LiveProjectionEnv {
   POSTGRES_URL?: string;
@@ -25,7 +25,7 @@ export interface ProjectionPollOptions {
   store?: PipelineStore;
   storeProvider?: StoreProvider;
   registry?: ProjectorRegistry;
-  /** Test-only service isolation; production scheduled polls use the V1 default. */
+  /** Test-only service isolation; scheduled production polls require SDT_SERVICE_ID. */
   serviceId?: string;
   /** Optional single tag scope for queue/HTTP operator catch-up. */
   tag?: string;
@@ -66,7 +66,7 @@ export async function pollLiveProjections(
   if (options.store === undefined && options.storeProvider === undefined) {
     throw new Error("A projection store provider is not configured");
   }
-  const serviceId = options.serviceId ?? configuredServiceIdOrDefault(env.SDT_SERVICE_ID);
+  const serviceId = options.serviceId ?? requireConfiguredServiceId(env.SDT_SERVICE_ID);
   await admitBootstrapRoute(env, serviceId);
   const store = options.store ?? sharedStore(env, options.storeProvider!);
   await store.initialize();
@@ -104,7 +104,7 @@ export async function handleProjectionLag(
   }
   const query = new URL(request.url).searchParams;
   const tagStateId = query.get("tagStateId");
-  const serviceId = query.get("serviceId") || configuredServiceIdOrDefault(env.SDT_SERVICE_ID);
+  const serviceId = query.get("serviceId") || requireConfiguredServiceId(env.SDT_SERVICE_ID);
   const pollRequested = query.get("poll") === "1";
   if (tagStateId === null || tagStateId.length === 0) {
     return error(400, "validation_error", "tagStateId is required");

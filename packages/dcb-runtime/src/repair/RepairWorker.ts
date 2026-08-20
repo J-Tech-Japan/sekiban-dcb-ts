@@ -1,6 +1,6 @@
 import type { RepairBranch, RepairFacts, RepairScopeItem, TagFence } from "../tag/types";
 import type { ExclusionLookupPort } from "../downstream/ExclusionLookup";
-import { configuredServiceIdOrDefault } from "../http/testServiceId";
+import { requireConfiguredServiceId } from "../http/testServiceId";
 
 type JsonObject = Record<string, unknown>;
 
@@ -137,7 +137,7 @@ export class RepairWorker {
   constructor(
     private readonly env: RepairWorkerEnv,
     private readonly exclusions: ExclusionLookupPort,
-    private readonly serviceId = configuredServiceIdOrDefault(env.SDT_SERVICE_ID),
+    private readonly serviceId = requireConfiguredServiceId(env.SDT_SERVICE_ID),
   ) {}
 
   async execute(input: RepairExecutionInput): Promise<RepairExecutionResult> {

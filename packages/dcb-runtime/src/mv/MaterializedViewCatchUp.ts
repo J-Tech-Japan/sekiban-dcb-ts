@@ -126,6 +126,29 @@ export class MaterializedViewCatchUpRuntime {
       if (instance === undefined) {
         throw new MaterializedViewStoreError("apply", "MV_INSTANCE_MISSING", "Materialized-view generation is missing");
       }
+      // `readAllEvents(serviceId, checkpoint)` is empty both for a caught-up
+      // source and for a reset source that is now behind the checkpoint. Read
+      // the source head separately so the latter can never freeze silently.
+      const sourceForHead = await this.source.readAllEvents(serviceId, "");
+      const storeMaxSuid = sourceForHead.reduce(
+        (maximum, event) => compareSuid(maximum, event.suid) >= 0 ? maximum : event.suid,
+        "",
+      );
+      if (instance.lastSuid.length > 0 && compareSuid(storeMaxSuid, instance.lastSuid) < 0) {
+        await this.materializedViews.recordCheckpointAhead({
+          serviceId,
+          viewId: materializer.id,
+          generation,
+          checkpointSuid: instance.lastSuid,
+          storeMaxSuid,
+          observedAt: nowMs,
+        });
+        throw new MaterializedViewStoreError(
+          "apply",
+          "MV_STORE_OPERATION_FAILED",
+          "CHECKPOINT_AHEAD: materialized-view checkpoint is ahead of the source store; rebuild and promote a generation",
+        );
+      }
       const dynamicLagBoundMs = await this.source.currentLagBound(serviceId, nowMs);
       const windowMs = safeWindowMs(dynamicLagBoundMs);
       if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {

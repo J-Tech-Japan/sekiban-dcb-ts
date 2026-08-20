@@ -104,14 +104,14 @@ async function captureTranscript(): Promise<unknown> {
     version: 1,
     eventCandidates: [],
     consistencyTags: [],
-  }), {} as CommitWorkerEnv);
+  }), { SDT_SERVICE_ID: "g13-wire-fixture" } as CommitWorkerEnv);
   const commitFailure = await handleSerializedCommit(new Request("https://g13.test/api/sekiban/serialized/commit", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "not-json",
-  }), {} as CommitWorkerEnv);
+  }), { SDT_SERVICE_ID: "g13-wire-fixture" } as CommitWorkerEnv);
 
-  const reader = new SerializedReadWorker(tagReadEnvironment());
+  const reader = new SerializedReadWorker(tagReadEnvironment(), "g13-wire-fixture");
   const latestSuccess = await reader.handle(request("/api/sekiban/serialized/tag-latest-sortable", { tag: "test:g13-wire" }));
   const latestFailure = await reader.handle(request("/api/sekiban/serialized/tag-latest-sortable", {}));
   const stateSuccess = await reader.handle(request("/api/sekiban/serialized/tag-state", {
@@ -122,13 +122,13 @@ async function captureTranscript(): Promise<unknown> {
   const querySuccess = await handleSerializedQuery(request("/api/sekiban/serialized/query", {
     queryType: "GetTestCountQuery",
     queryParamsJson: "{}",
-  }), {}, { store: queryStore() });
-  const queryFailure = await handleSerializedQuery(request("/api/sekiban/serialized/query", {}), {}, { store: queryStore() });
+  }), { SDT_SERVICE_ID: "g13-wire-fixture" }, { store: queryStore() });
+  const queryFailure = await handleSerializedQuery(request("/api/sekiban/serialized/query", {}), { SDT_SERVICE_ID: "g13-wire-fixture" }, { store: queryStore() });
   const listSuccess = await handleSerializedQuery(request("/api/sekiban/serialized/list-query", {
     queryType: "GetTestListQuery",
     queryParamsJson: "{}",
-  }), {}, { store: queryStore() });
-  const listFailure = await handleSerializedQuery(request("/api/sekiban/serialized/list-query", {}), {}, { store: queryStore() });
+  }), { SDT_SERVICE_ID: "g13-wire-fixture" }, { store: queryStore() });
+  const listFailure = await handleSerializedQuery(request("/api/sekiban/serialized/list-query", {}), { SDT_SERVICE_ID: "g13-wire-fixture" }, { store: queryStore() });
 
   const queuePayload: DownstreamOutboxMessage = {
     version: 1,

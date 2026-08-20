@@ -5,7 +5,8 @@
   "compatibility_date": "2026-08-16",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "AUTO_DRAIN_OUTBOX": "true"
+    "AUTO_DRAIN_OUTBOX": "true",
+    "SDT_SERVICE_ID": "local-test-runtime"
   },
   "hyperdrive": [
     {

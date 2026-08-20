@@ -8,7 +8,7 @@ import {
 import { safeWindowCeilingExceeded } from "../projection/ProjectionRuntime";
 import type { StoreProvider } from "../store/provider";
 import type { TagRecord } from "../tag/types";
-import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
+import { serviceIdForRequest } from "../http/testServiceId";
 
 export { TEST_TAG_STATE_PROJECTOR } from "../projection/ProjectorRegistry";
 
@@ -69,7 +69,7 @@ function tagStateIdentityFromBody(
 export class SerializedReadWorker {
   constructor(
     private readonly env: ReadWorkerEnv,
-    private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+    private readonly serviceId: string,
     private readonly registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
     private readonly storeProvider?: StoreProvider,
   ) {}

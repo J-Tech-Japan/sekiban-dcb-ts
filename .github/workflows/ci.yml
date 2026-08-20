@@ -65,6 +65,14 @@ jobs:
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G24 hardening guard lane
+        run: npm run test:g24
+      - name: Prove SDT-G24 forced-red CI reachability
+        run: |
+          if SDT_G24_FORCE_FAILURE=1 npm run test:g24:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
@@ -76,6 +84,7 @@ jobs:
       - name: Run G15 local E2E
         env:
           G15_LOCAL_PORT: 8787
+          G15_LOCAL_SERVICE_ID: ci-g15-local
           G15_LOCAL_PERSIST_DIR: ${{ runner.temp }}/sdt-g15-wrangler-state
         run: npm run e2e:g15:local
       - name: Isolate G16 E2E PostgreSQL database
@@ -91,6 +100,7 @@ jobs:
       - name: Run G16 local E2E
         env:
           G15_LOCAL_PORT: 8788
+          G15_LOCAL_SERVICE_ID: ci-g16-local
           G15_LOCAL_PERSIST_DIR: ${{ runner.temp }}/sdt-g16-wrangler-state
         run: npm run e2e:g16:local
 

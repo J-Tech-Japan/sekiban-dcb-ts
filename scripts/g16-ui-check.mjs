@@ -32,5 +32,5 @@ for (const marker of [
 }
 requireContract(!/\b(react|vue|svelte|next)\b/i.test(html + app), "framework marker found in plain HTML sample");
 requireContract(Object.keys(samplePackage.dependencies).sort().join(",") === "@sekiban/dcb-client,@sekiban/dcb-core,@sekiban/dcb-runtime", "frontend added a runtime dependency");
-requireContract(wranglerConfig.includes('"SDT_SERVICE_ID": "serialized-dcb-v1"'), "sample Wrangler config lacks the local SDT_SERVICE_ID default");
+requireContract(!wranglerConfig.includes('"SDT_SERVICE_ID"'), "sample Wrangler config must not bake an SDT_SERVICE_ID default");
 console.log("SDT-G16 static UI contract: PASS");

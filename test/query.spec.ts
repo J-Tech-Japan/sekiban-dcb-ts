@@ -2,7 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
-import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
+import { serviceIdForRequest, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
 import { createRuntimeWorker, type Env as WorkerEnv, type MaterializedViewRow } from "../packages/dcb-runtime/src/index";
 import type { MaterializedViewQueryOptions } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
@@ -16,7 +16,7 @@ import { QueryRegistry } from "../packages/dcb-runtime/src/query/QueryRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import type { ProjectionCheckpoint, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = "local-test-runtime";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
 
 function unique(prefix: string): string {
@@ -35,7 +35,7 @@ function base64Json(value: unknown): string {
 function queryRequest(path: "query" | "list-query", body: unknown): Request {
   return new Request(`https://query.test/api/sekiban/serialized/${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: testServiceHeaders(SERVICE_ID),
     body: JSON.stringify(body),
   });
 }
@@ -168,17 +168,17 @@ function collectingQueue(messages: DownstreamOutboxMessage[]): Queue<DownstreamO
 }
 
 describe("SDT-G9 serialized V1 query and list-query", () => {
-  it("keeps the production service identity fixed while allowing only Miniflare test isolation", () => {
+  it("requires a configured production service identity while allowing only Miniflare test isolation", () => {
     const testServiceId = unique("g9-test-service");
     expect(serviceIdForRequest(new Request("https://query.test/", {
       headers: { [TEST_SERVICE_ID_HEADER]: testServiceId },
     }))).toBe(testServiceId);
-    expect(serviceIdForRequest(new Request("https://api.example.com/", {
+    expect(() => serviceIdForRequest(new Request("https://api.example.com/", {
       headers: { [TEST_SERVICE_ID_HEADER]: testServiceId },
-    }))).toBe(SERIALIZED_DCB_SERVICE_ID);
-    expect(serviceIdForRequest(new Request("https://api.example.com/", {
+    }))).toThrow("SDT_SERVICE_ID is required");
+    expect(() => serviceIdForRequest(new Request("https://api.example.com/", {
       headers: { "x-sdt-g11-service-id": "g11-attacker-namespace" },
-    }))).toBe(SERIALIZED_DCB_SERVICE_ID);
+    }))).toThrow("SDT_SERVICE_ID is required");
     expect(serviceIdForRequest(new Request("https://runtime.internal/", {
       headers: { "x-sdt-g11-service-id": "g11-verification-namespace" },
     }), { allowG11Verification: true })).toBe("g11-verification-namespace");
@@ -207,9 +207,9 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     expect(serviceIdForRequest(new Request("https://api.example.com/", {
       headers: { "x-sdt-g11-service-id": "g11-client-namespace" },
     }), { configuredServiceId })).toBe(configuredServiceId);
-    expect(serviceIdForRequest(new Request("https://api.example.com/"), {
+    expect(() => serviceIdForRequest(new Request("https://api.example.com/"), {
       configuredServiceId: "not valid with spaces",
-    })).toBe(SERIALIZED_DCB_SERVICE_ID);
+    })).toThrow("SDT_SERVICE_ID is required");
   });
 
   it("routes list-query through the selected D1-MV backing and preserves the memory V1 response", async () => {
@@ -251,7 +251,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       method: "POST",
       headers: testServiceHeaders(serviceId),
       body: JSON.stringify(body),
-    }), {} as WorkerEnv, {} as ExecutionContext);
+    }), { SDT_SERVICE_ID: "g24-runtime-fixture" } as WorkerEnv, {} as ExecutionContext);
 
     expect(memoryResponse.status).toBe(200);
     expect(mvResponse.status).toBe(200);
@@ -266,7 +266,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       method: "POST",
       headers: testServiceHeaders(serviceId),
       body: JSON.stringify(scalarBody),
-    }), {} as WorkerEnv, {} as ExecutionContext);
+    }), { SDT_SERVICE_ID: "g24-runtime-fixture" } as WorkerEnv, {} as ExecutionContext);
     expect(await mvScalar.json()).toEqual(await memoryScalar.json());
     expect(materializedView.initialized).toBeGreaterThan(0);
     expect(materializedView.calls).toEqual([{

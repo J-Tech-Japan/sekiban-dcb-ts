@@ -10,10 +10,14 @@ readonly REPORT="${G15_LOCAL_REPORT:-${REPO_ROOT}/.artifacts/g15-local-e2e.json}
 readonly SERVER_LOG="${G15_LOCAL_SERVER_LOG:-${REPO_ROOT}/.artifacts/g15-wrangler.log}"
 readonly PERSIST_DIR="${G15_LOCAL_PERSIST_DIR:-}"
 readonly LOCAL_SERVICE_ID="${G15_LOCAL_SERVICE_ID:-}"
-readonly EXPECTED_SERVICE_ID="${G15_EXPECTED_SERVICE_ID:-${LOCAL_SERVICE_ID:-serialized-dcb-v1}}"
+readonly EXPECTED_SERVICE_ID="${G15_EXPECTED_SERVICE_ID:-${LOCAL_SERVICE_ID:-}}"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
+if [[ ! "${LOCAL_SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ || ! "${EXPECTED_SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
+  printf 'G15_LOCAL_SERVICE_ID and G15_EXPECTED_SERVICE_ID must be non-empty deployment service identities\n' >&2
+  exit 2
+fi
 test -n "${POSTGRES_URL:-}" || {
   printf 'POSTGRES_URL is required; the local Miniflare E2E must not silently skip PostgreSQL\n' >&2
   exit 2
@@ -33,9 +37,7 @@ if [[ -n "${PERSIST_DIR}" ]]; then
   mkdir -p "${PERSIST_DIR}"
   wrangler_args+=(--persist-to "${PERSIST_DIR}")
 fi
-if [[ -n "${LOCAL_SERVICE_ID}" ]]; then
-  wrangler_args+=(--var "SDT_SERVICE_ID:${LOCAL_SERVICE_ID}")
-fi
+wrangler_args+=(--var "SDT_SERVICE_ID:${LOCAL_SERVICE_ID}")
 
 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE="${POSTGRES_URL}" \
   "${WRANGLER_BIN}" "${wrangler_args[@]}" \

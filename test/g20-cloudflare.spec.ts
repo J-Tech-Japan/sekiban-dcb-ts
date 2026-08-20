@@ -6,6 +6,8 @@ import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw asset import
 import unsafeMvMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import hardeningMvMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
 import { D1EventStore } from "../packages/dcb-runtime/src/d1";
 import { createCloudflareOnlyRuntimeWorker } from "../packages/dcb-runtime/src/cloudflare";
 import { createD1StoreProvider } from "../packages/dcb-runtime/src/d1";
@@ -55,7 +57,7 @@ function event(serviceId: string): DownstreamOutboxMessage {
 describe("SDT-G20 Cloudflare-only composition", () => {
   beforeAll(async () => {
     await database().batch(statements(pipelineMigration as string));
-    await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
+    await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
       .filter(Boolean).map((value) => mvDatabase().prepare(value)));
   });
 
@@ -72,7 +74,7 @@ describe("SDT-G20 Cloudflare-only composition", () => {
       method: "POST",
       headers: { "content-type": "application/json", "x-sdt-g9-test-service-id": serviceId },
       body: JSON.stringify({ queryType: "GetReservationListQuery", queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }) }),
-    }), env as unknown as CloudflareOnlyEnv, {} as ExecutionContext);
+    }), { ...(env as unknown as CloudflareOnlyEnv), SDT_SERVICE_ID: serviceId }, {} as ExecutionContext);
     expect(response.status).toBe(200);
     const body = await response.json<{ itemsJson: string; totalCount: number }>();
     expect(body.totalCount).toBe(1);
