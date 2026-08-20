@@ -1,8 +1,8 @@
 {
   "task": "SDT-G22",
-  "status": "verified",
-  "candidateCommit": "0e539549da9636acb61c074b28eb02301737bede",
-  "sourceCommit": "0e539549da9636acb61c074b28eb02301737bede",
+  "status": "superseded",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "a8b4e36cd75cc97744acea480f679e651350b38379a43a10dba2a0df84e9ffe5",
@@ -13,6 +13,7 @@
   "candidateDeployment": {"worker":"sekiban-dcb-meeting-room-cloudflare-only","url":"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev","version":"22530ec6-738a-4b4e-8950-3af484bb6fd2","pipelineD1":"3c3b1641-7969-4d72-97a9-2ea65085c9bb"},
   "roundTrip": {"sourceServiceId":"g20-8dbb4be-20260819a","targetServiceId":"g22-bootstrap-20260820a","importId":"g22-import-20260820a","eventCount":9,"highWatermark":"suid-00000000000000000000000000000032","digest":"fnv1a32:18ec0815","targetStatus":"READY","eventIdentityEquality":"pass","rawV1CommitStatus":404},
   "providerCrashResume": {"provider":"d1","targetServiceId":"g22-crash-resume-20260820a","crashStatus":503,"resumedStatus":"READY","eventCount":9,"digest":"fnv1a32:eb5529d8"},
-  "requiredVerification": ["authenticated five-endpoint conformance pending protected existing token", "source-target event identity equality pass", "IMPORTING rejection covered by coordinator route suite", "READY watermark advance covered by allocator suite", "raw V1 404 pass", "provider crash-resume pass"],
+  "supersededReason": "post-READY target delivery used a different serving allocator lineage; a new candidate and full deployed verification are required",
+  "requiredVerification": ["new-candidate deployment and authenticated five-endpoint conformance required", "source-target event identity equality required", "post-READY downstream delivery and query visibility required", "provider crash-resume required"],
   "secrets": "redacted"
 }
