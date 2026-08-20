@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { BootstrapIdentityConflictError } from "@sekiban/dcb-runtime";
 import { createCosmosBootstrapAdapter, CosmosEventStore } from "@sekiban/dcb-runtime/cosmos";
 
 const requireRealCosmos = process.argv.includes("--require-real-cosmos");
@@ -65,7 +64,7 @@ await adapter.admitBootstrap({ importId: "g22-cosmos-replay", leaseEpoch: 1, man
 const before = await snapshot(store, targetServiceId);
 await assert.rejects(
   adapter.admitBootstrap({ importId: "g22-cosmos-conflict", leaseEpoch: 2, manifest: targetDump.manifest, events: [{ ...targetDump.events[0], payload: "Aw==" }] }),
-  BootstrapIdentityConflictError,
+  (error) => error?.code === "BOOTSTRAP_EVENT_IDENTITY_CONFLICT",
 );
 assert.deepEqual(await snapshot(store, targetServiceId), before, "Cosmos rejected bootstrap admission must not change event/metadata/detector/lag state");
 console.log("SDT-G22 real Cosmos bootstrap provider contract passed: export snapshot and store admission identity guard");
