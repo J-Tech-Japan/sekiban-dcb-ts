@@ -1,13 +1,13 @@
 {
   "task": "SDT-G25",
-  "status": "complete; same-candidate deployed verification recorded",
-  "candidateCommit": "6c225a7d6bea5c327d281bc88d1aab608c5e10c2",
-  "sourceCommit": "6c225a7d6bea5c327d281bc88d1aab608c5e10c2",
+  "status": "same-candidate deployed verification recorded",
+  "candidateCommit": "38219c8a6526a0209295e9f06450cce9e2217004",
+  "sourceCommit": "38219c8a6526a0209295e9f06450cce9e2217004",
   "candidateDeployment": {
     "worker": "sekiban-dcb-meeting-room-cloudflare-only",
     "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
-    "serviceId": "g25-6c225a7-20260820e",
-    "version": "27fc7aef-eb69-461f-92ac-c09379083f42",
+    "serviceId": "g25-38219c8-20260820f",
+    "version": "f0739193-4150-480c-9eb1-c160bc39509d",
     "migrationsApplied": ["0002_unsafe_window_materialized_views.sql", "0003_checkpoint_ahead_hardening.sql", "0004_unsafe_window_failure_findings.sql"]
   },
   "protocol": {
@@ -20,12 +20,14 @@
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "ce62b70972dcc0a568eca719212f250d3b5418a21f5a879f2567d341458a9be9",
     "runtimeRoots": ["packages/dcb-runtime/src"],
-    "configuration": "50a7a4e3bd6dc22c222a2ea7bbcecb11277018861a11ddc3d7ded63bf5fd1003",
+    "configuration": "0d9437ddb3157f42968dd12c2bf3c1715d461eaffa60016c5c6d870346757054",
     "configurationRoots": ["samples/meeting-room/src", "samples/meeting-room/public", "samples/meeting-room/wrangler.cloudflare-only.jsonc", "samples/meeting-room/README.md", "package.json", ".github/workflows/ci.yml", "scripts/g20-candidate-check.mjs", "test/g25-composition.spec.ts"]
   },
   "deployedVerification": {
     "fiveEndpointConformance": {
-      "serviceId": "g25-6c225a7-20260820c",
+      "timestamp": "2026-08-20T16:51:00.010Z",
+      "command": "authenticated POST /conformance/v1/api/sekiban/serialized/{commit,tag-latest-sortable,tag-state,query,list-query}; unauthenticated POST /api/sekiban/serialized/commit",
+      "serviceId": "g25-38219c8-20260820f",
       "commit": 200,
       "tagLatestSortable": 200,
       "tagState": 200,
@@ -35,8 +37,10 @@
       "result": "PASS"
     },
     "restartRerun": {
-      "sameCandidate": "6c225a7d6bea5c327d281bc88d1aab608c5e10c2",
-      "serviceId": "g25-6c225a7-20260820e",
+      "timestamp": "2026-08-20T16:56:13.199Z",
+      "command": "wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --keep-vars --strict --var SDT_SERVICE_ID:g25-38219c8-20260820f --message 'SDT-G25 FINAL candidate 38219c8 restart rerun'; authenticated fresh-service conformance replay",
+      "sameCandidate": "38219c8a6526a0209295e9f06450cce9e2217004",
+      "serviceId": "g25-38219c8-restart-rerun",
       "commit": 200,
       "tagLatestSortable": 200,
       "tagState": 200,
@@ -46,26 +50,26 @@
       "result": "PASS"
     },
     "fixedNLatency": {
+      "startedAt": "2026-08-20T16:56:41Z",
+      "completedAt": "2026-08-20T16:57:42.265Z",
+      "command": "20 fixed samples in two batches: POST /api/commands/create-room followed immediately by GET /api/read/room; no scheduled invocation",
       "sampleCount": 20,
-      "path": "/api/commands/create-room",
-      "p50Ms": 2084.525125,
-      "p95Ms": 3141.471417,
-      "maxMs": 3170.915208,
+      "p50Ms": 2646.3171250000005,
+      "p95Ms": 3394.810833,
+      "maxMs": 3865.532792,
       "cronFallbackCount": 0,
-      "cronFallbackEvidence": "No scheduled endpoint was invoked; Queue arrival hook was the observed immediate path."
+      "cronFallbackEvidence": "Each sample observed its composed app read immediately after the stored command; no scheduled endpoint was invoked."
     },
     "g17NegativeOracles": {
+      "timestamp": "2026-08-20T16:57:53Z",
+      "commands": ["npm run test:g17", "npm run test:g17:rollout-order"],
       "testG17": "PASS (7 tests)",
       "rolloutOrder": "PASS"
     },
-    "checkpointAheadDrill": {
-      "serviceId": "g25-6c225a7-20260820e",
-      "inducedCheckpoint": "suid-99999999999999999999999999999999",
-      "sourceMaxAtFinding": "suid-00000000000000000000000000000011",
-      "finding": "PASS (RoomProjector generation 0, idempotent primary key)",
-      "failClosedRead": "PASS (503 projection_unavailable)",
-      "generationRebuild": "PASS (generation 1 active at suid-00000000000000000000000000000011; composed query 200)",
-      "method": "scratch service; controlled MV checkpoint/kick fault followed by Queue-triggered follow and generation rebuild"
+    "safeOnlyNonGate": {
+      "timestamp": "2026-08-20T16:57:53Z",
+      "command": "npm run test:g20:gate",
+      "result": "PASS; cloudflare-only binding/import/built-output gates and their mutations remain green"
     }
   },
   "secrets": "redacted"
