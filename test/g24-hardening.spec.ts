@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 // @ts-expect-error Vite raw migration import.
 import migration0001 from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration import.
@@ -8,8 +8,6 @@ import migration0002 from "../migrations/mv/0002_unsafe_window_materialized_view
 import migration0003 from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
 // @ts-expect-error Vite raw source import for the literal-restoration mutation oracle.
 import serviceIdentitySource from "../packages/dcb-runtime/src/http/testServiceId.ts?raw";
-// @ts-expect-error Vite raw script import for deploy preflight verification.
-import deployScriptSource from "../scripts/deploy/g15-deploy.sh?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { createRuntimeWorker } from "../packages/dcb-runtime/src/index";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
@@ -17,6 +15,26 @@ import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testSer
 import { MaterializedViewCatchUpRuntime } from "../packages/dcb-runtime/src/mv/MaterializedViewCatchUp";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import type { ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
+import type * as DownstreamAdapter from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
+import type * as LiveProjectionWorker from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
+
+// The scheduled-entry oracle must not be satisfied by a later identity check
+// in either downstream stabilization or projection polling.  These test-local
+// seams leave every other RuntimeWorker path on its production implementation.
+const scheduledDependencies = vi.hoisted(() => ({
+  stabilize: vi.fn(async () => {}),
+  poll: vi.fn(async () => []),
+}));
+
+vi.mock("../packages/dcb-runtime/src/downstream/DownstreamAdapter", async (importOriginal) => {
+  const original = await importOriginal<typeof DownstreamAdapter>();
+  return { ...original, stabilizeDownstream: scheduledDependencies.stabilize };
+});
+
+vi.mock("../packages/dcb-runtime/src/projection/LiveProjectionWorker", async (importOriginal) => {
+  const original = await importOriginal<typeof LiveProjectionWorker>();
+  return { ...original, pollLiveProjections: scheduledDependencies.poll };
+});
 
 const VIEW_ID = "test-projector";
 const materializer = defineRowMaterializer<StoredEvent>({
@@ -62,6 +80,22 @@ async function checkpointAheadFixture(): Promise<{ serviceId: string; views: D1M
   return { serviceId, views, runtime: new MaterializedViewCatchUpRuntime(source([event("suid-1")]), views) };
 }
 
+async function checkpointAheadReadFixture(): Promise<{ serviceId: string; views: D1MaterializedViewStore }> {
+  const fixture = await checkpointAheadFixture();
+  // AC#2 starts from the already-persisted operational finding.  It must not
+  // rely on the catch-up detector whose own mutation belongs exclusively to
+  // AC#1.
+  await fixture.views.recordCheckpointAhead({
+    serviceId: fixture.serviceId,
+    viewId: VIEW_ID,
+    generation: 0,
+    checkpointSuid: "suid-9",
+    storeMaxSuid: "suid-1",
+    observedAt: 100,
+  });
+  return fixture;
+}
+
 describe("SDT-G24 hardening guards", () => {
   beforeAll(async () => {
     await database().batch(statements(migration0001 as string));
@@ -80,8 +114,7 @@ describe("SDT-G24 hardening guards", () => {
   });
 
   it("fails query and list-query closed in the existing V1 projection_unavailable shape while tag authority is not selected", async () => {
-    const fixture = await checkpointAheadFixture();
-    await expect(fixture.runtime.follow(fixture.serviceId, materializer, 100)).rejects.toThrow("CHECKPOINT_AHEAD");
+    const fixture = await checkpointAheadReadFixture();
     for (const endpoint of ["query", "list-query"] as const) {
       const response = await handleSerializedQuery(new Request(`https://g24.test/api/sekiban/serialized/${endpoint}`, {
         method: "POST",
@@ -93,11 +126,26 @@ describe("SDT-G24 hardening guards", () => {
     }
   });
 
-  it("requires SDT_SERVICE_ID independently at fetch, queue, and scheduled entries", async () => {
+  it("requires SDT_SERVICE_ID at fetch before the .test service-id override can return early", async () => {
     const worker = createRuntimeWorker();
-    await expect(worker.fetch!(new Request("https://g24.test/api/sekiban/serialized/query", { method: "POST" }) as never, {} as never, {} as ExecutionContext)).rejects.toThrow("SDT_SERVICE_ID is required");
+    await expect(worker.fetch!(new Request("https://g24.test/api/sekiban/serialized/query", {
+      method: "POST",
+      headers: { [TEST_SERVICE_ID_HEADER]: "g24-fetch-test-identity" },
+    }) as never, {} as never, {} as ExecutionContext)).rejects.toThrow("SDT_SERVICE_ID is required");
+  });
+
+  it("requires SDT_SERVICE_ID at queue before an empty batch can reach downstream handling", async () => {
+    const worker = createRuntimeWorker();
     await expect(worker.queue!({ messages: [] } as never, {} as never, {} as ExecutionContext)).rejects.toThrow("SDT_SERVICE_ID is required");
+  });
+
+  it("requires SDT_SERVICE_ID at scheduled before downstream identity guards can run", async () => {
+    const worker = createRuntimeWorker();
+    scheduledDependencies.stabilize.mockClear();
+    scheduledDependencies.poll.mockClear();
     await expect(worker.scheduled!({} as never, {} as never, {} as ExecutionContext)).rejects.toThrow("SDT_SERVICE_ID is required");
+    expect(scheduledDependencies.stabilize).not.toHaveBeenCalled();
+    expect(scheduledDependencies.poll).not.toHaveBeenCalled();
   });
 
   it("keeps the service guard independent: a configured identity reaches normal V1 validation without a checkpoint finding", async () => {
@@ -109,6 +157,5 @@ describe("SDT-G24 hardening guards", () => {
 
   it("rejects restoration of the retired literal default in the dedicated source mutation oracle", async () => {
     expect(serviceIdentitySource as string).not.toContain('"serialized-dcb-v1"');
-    expect(deployScriptSource as string).toContain("G15_SERVICE_ID must be a non-empty deployment service identity");
   });
 });

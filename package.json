@@ -51,7 +51,7 @@
     "test:g22:forced-red": "npm run test:g22 && node -e \"if (process.env.SDT_G22_FORCE_FAILURE === '1') throw new Error('SDT-G22 forced-red CI wiring proof')\"",
     "test:g23": "npm run build:packages && vitest run --config vitest.config.ts test/g23-unsafe-window.spec.ts",
     "test:g23:forced-red": "npm run test:g23 && node -e \"if (process.env.SDT_G23_FORCE_FAILURE === '1') throw new Error('SDT-G23 forced-red CI wiring proof')\"",
-    "test:g24": "npm run build:packages && vitest run --config vitest.config.ts test/g24-hardening.spec.ts",
+    "test:g24": "npm run build:packages && vitest run --config vitest.config.ts test/g24-hardening.spec.ts && vitest run --config vitest.g24-deploy.config.ts test/g24-deploy-preflight.spec.mjs",
     "test:g24:forced-red": "npm run test:g24 && node -e \"if (process.env.SDT_G24_FORCE_FAILURE === '1') throw new Error('SDT-G24 forced-red CI wiring proof')\"",
     "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
     "build:g20": "npm run build:packages && wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/g20-cloudflare-build --outfile .artifacts/g20-cloudflare-build/worker.js --metafile .artifacts/g20-cloudflare-build/bundle-meta.json",
