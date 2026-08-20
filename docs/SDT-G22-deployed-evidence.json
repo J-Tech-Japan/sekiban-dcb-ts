@@ -1,8 +1,8 @@
 {
   "task": "SDT-G22",
-  "status": "verified",
-  "candidateCommit": "49d7bc24ad40d9c15c764abdfc26f4a180bd026a",
-  "sourceCommit": "49d7bc24ad40d9c15c764abdfc26f4a180bd026a",
+  "status": "superseded",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "5361e8d156e21a758431f82314e9be37bd9e0e064d61c7d384f9e49428a5226f",
@@ -10,11 +10,11 @@
     "configuration": "00ad9e5ab4127b8a15b0dc2334b0240a67e12e4ee93cefb784c697f92e7b3e1a",
     "configurationRoots": ["samples/meeting-room", "scripts", "package.json", ".github/workflows/ci.yml"]
   },
-  "candidateDeployment": {"worker":"sekiban-dcb-meeting-room-cloudflare-only","url":"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev","version":"8eaa8ccf-b6f9-4795-acd6-dab189149506","pipelineD1":"3c3b1641-7969-4d72-97a9-2ea65085c9bb"},
-  "roundTrip": {"sourceServiceId":"g20-8dbb4be-20260819a","targetServiceId":"g22-candidate-49d7-20260820a","importId":"g22-candidate-49d7-import-20260820a","eventCount":9,"highWatermark":"suid-00000000000000000000000000000032","digest":"fnv1a32:42675616","targetStatus":"READY","eventIdentityEquality":"pass (two-way EXCEPT over EventId/SUID/payload/full tag set: 0 rows)","postReadyCommit":{"eventId":"4b85942f-9bcc-41fc-a00d-242235d99bea","suid":"suid-00000000000000000000000000000033","servingAllocatorLineageId":"fa891de8-b8ec-4db3-b0f1-83af1ed86116","d1Delivery":"pass","queryVisible":"pass"},"rawV1CommitStatus":404},
-  "v1Conformance": {"runner":"scripts/deploy/g14-conformance.py --service-id g22-candidate-49d7-20260820a","endpoints":{"commit":"PASS","query":"PASS","list-query":"PASS","tag-state":"PASS","tag-latest-sortable":"PASS"},"authenticatedLane":"PASS","appCommandAssertions":"not-applicable-to-bootstrap-target"},
-  "providerCrashResume": {"provider":"d1","targetServiceId":"g22-candidate-49d7-crash-20260820a","crashStatus":503,"crashCode":"bootstrap_simulated_crash","resumedStatus":"READY","eventCount":9,"digest":"fnv1a32:86d1d78e"},
-  "g17Observation": {"targetServiceId":"g22-candidate-49d7-20260820a","findings":"none","deliveryIncidents":"none","rootCause":"bootstrap binding originally used a synthetic target lineage while normal commit used a different allocator; binding is now derived from and seedAfter targets the serving allocator"},
-  "requiredVerification": ["authenticated V1 commit/query/list-query/tag-state/tag-latest-sortable PASS", "source-target byte equality PASS", "post-READY D1 delivery and query visibility PASS", "provider crash-resume PASS", "raw V1 404 PASS"],
+  "candidateDeployment": {"status":"superseded-by-review-repair"},
+  "roundTrip": {"status":"must-be-rerun-for-review-repair"},
+  "v1Conformance": {"status":"must-be-rerun-for-review-repair"},
+  "providerCrashResume": {"status":"must-be-rerun-for-review-repair"},
+  "g17Observation": {"status":"must-be-rerun-for-review-repair"},
+  "requiredVerification": ["new candidate deployment pending after F-G22-1..4 repair"],
   "secrets": "redacted"
 }
