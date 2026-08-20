@@ -27,6 +27,8 @@ export type {
 } from "./MaterializedViewStore";
 export { MaterializedViewCatchUpRuntime } from "./MaterializedViewCatchUp";
 export type { MaterializedViewCatchUpHooks, MaterializedViewCatchUpResult } from "./MaterializedViewCatchUp";
+export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./UnsafeWindowMaterializedView";
+export type { UnsafeComposedPage, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode } from "./UnsafeWindowMaterializedView";
 export type {
   MaterializedViewDefinition,
   MaterializedViewErrorCode,

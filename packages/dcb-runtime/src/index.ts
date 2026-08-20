@@ -38,6 +38,8 @@ export type {
   MaterializedViewStoreErrorCode,
   MaterializedViewStoreOperation,
 } from "./mv/MaterializedViewStore";
+export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./mv/UnsafeWindowMaterializedView";
+export type { UnsafeComposedPage, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode } from "./mv/UnsafeWindowMaterializedView";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 export { BootstrapManifestError, bootstrapDigest, parseBootstrapDump } from "./bootstrap/manifest";

@@ -4,6 +4,7 @@ import {
   type MaterializedViewIndexValueType,
   type MaterializedViewMutationPlan,
 } from "@sekiban/dcb-core";
+import { UnsafeWindowMaterializedViewStore, type UnsafeComposedPage } from "./UnsafeWindowMaterializedView";
 
 type D1Row = Record<string, unknown>;
 
@@ -201,8 +202,11 @@ function isPatchFailure(error: unknown): boolean {
  */
 export class D1MaterializedViewStore {
   private initialized = false;
+  private readonly unsafe: UnsafeWindowMaterializedViewStore;
 
-  constructor(private readonly database: D1Database) {}
+  constructor(private readonly database: D1Database) {
+    this.unsafe = new UnsafeWindowMaterializedViewStore(database);
+  }
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
@@ -376,6 +380,30 @@ export class D1MaterializedViewStore {
         ORDER BY ${orderColumn} COLLATE BINARY ASC, row.row_key COLLATE BINARY ASC${limitClause}`,
     ).bind(...values).all<D1Row>();
     return result.results.map((row) => this.rowFrom(row));
+  }
+
+  /** SDT-G23 composed server page; count and page rows share one statement. */
+  async queryRowsWithTotal(serviceId: string, viewId: string, options: MaterializedViewQueryOptions = {}): Promise<UnsafeComposedPage> {
+    this.ready("initialize");
+    const selected = options.generation ?? (await this.readActive(serviceId, viewId))?.generation;
+    if (selected === undefined) return { rows: [], totalCount: 0 };
+    const limit = options.limit === undefined ? 100 : options.limit;
+    const offset = options.offset ?? 0;
+    if (limit === null || !Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(offset) || offset < 0) {
+      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs non-negative limit/offset");
+    }
+    return this.unsafe.queryComposedPage(serviceId, viewId, selected, limit, offset);
+  }
+
+  /** Explicit unsafe port: callers must choose this exceptional immediate lane. */
+  unsafeWindow(): UnsafeWindowMaterializedViewStore {
+    this.ready("apply");
+    return this.unsafe;
+  }
+
+  async hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean> {
+    this.ready("initialize");
+    return this.unsafe.hasTargetReceipt(serviceId, viewId, eventId, suid);
   }
 
   /**
@@ -683,6 +711,8 @@ export type MaterializedViewStore = Pick<
   | "readRows"
   | "readIndexEntries"
   | "queryRows"
+  | "queryRowsWithTotal"
+  | "hasTargetReceipt"
   | "applyMutationsAndAdvanceCheckpoint"
   | "promoteGeneration"
 >;
