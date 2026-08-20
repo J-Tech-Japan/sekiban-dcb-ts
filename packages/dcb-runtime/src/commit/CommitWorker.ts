@@ -35,7 +35,11 @@ export interface CommitWorkerEnv {
 
 /** Test seam for the admitted-then-stalled bootstrap race; production has no hook. */
 export interface CommitWorkerHooks {
+  /** Test-only barrier after entry admission is released and before /allocate. */
+  beforeBootstrapAllocation?(): Promise<void> | void;
   beforeBootstrapFinalization?(): Promise<void> | void;
+  /** Test-only allocator namespace; production always uses the service-wide allocator. */
+  allocatorName?: string;
 }
 
 interface ReservationSuccess {
@@ -282,7 +286,8 @@ export class CommitWorker {
       );
     }
 
-    const allocation = await this.allocate(candidates, attemptId, fault);
+    await this.hooks.beforeBootstrapAllocation?.();
+    const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch);
     if (allocation === undefined) {
       return this.finishReservationFailure(
         journal,
@@ -487,11 +492,15 @@ export class CommitWorker {
     candidates: Array<{ eventId: string }>,
     attemptId: string,
     fault: CommitTestFault | undefined,
+    bootstrapEpoch: number,
   ): Promise<AllocationVector | undefined> {
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName("service-wide-allocator"));
+    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(this.hooks.allocatorName ?? "service-wide-allocator"));
     try {
       const result = await this.postJson<AllocationVector>(allocator, "/allocate", {
         attemptId,
+        serviceId: this.serviceId,
+        bootstrapCommandId: attemptId,
+        bootstrapEpoch,
         candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId })),
         faultInjection: fault === "allocator-commit" ? "between-vector-and-watermark" : undefined,
       });

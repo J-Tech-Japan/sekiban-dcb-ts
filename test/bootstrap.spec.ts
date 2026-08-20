@@ -28,7 +28,7 @@ function store(): PostgresEventStore {
   return new PostgresEventStore(url);
 }
 async function allocatorPost(name: string, path: string, body: unknown): Promise<Response> {
-  return workerEnv().ALLOCATOR.get(workerEnv().ALLOCATOR.idFromName(name)).fetch(new Request(`https://bootstrap.test${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+  return workerEnv().ALLOCATOR.get(workerEnv().ALLOCATOR.idFromName(name)).fetch(new Request(`https://bootstrap.test${path}`, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 }
 function queueMessage(serviceId: string): DownstreamOutboxMessage {
   return { version: 1, serviceId, allocatorLineageId: "bootstrap-test-lineage", tag: "orders", attemptId: `queue-${crypto.randomUUID()}`, eventId: `queue-event-${crypto.randomUUID()}`, suid: suid(7), payload: "AQ==", eventTags: ["orders"], enqueuedAt: Date.now() };
@@ -86,6 +86,33 @@ describe("SDT-G21 bootstrap core", () => {
     const serviceId = `projection-gate-${crypto.randomUUID()}`; expect((await post(serviceId, "/plan", { importId: "projection", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
     const database = store(); await database.initialize();
     await expect(pollLiveProjections({ POSTGRES_URL: workerEnv().POSTGRES_URL, BOOTSTRAP: workerEnv().BOOTSTRAP }, { store: database, serviceId })).rejects.toThrow("bootstrap_route_rejected:projection-rebuild");
+  });
+
+  it("gates the real /allocate route during PLANNED bootstrap and leaves the allocator seedable", async () => {
+    const serviceId = `allocator-gate-${crypto.randomUUID()}`; const allocatorName = `allocator-gate-${crypto.randomUUID()}`;
+    const admitted = await post(serviceId, "/command/admit", { commandId: "allocator-command" }); const { leaseEpoch } = await admitted.json<{ leaseEpoch: number }>();
+    expect((await post(serviceId, "/command/release", { commandId: "allocator-command", leaseEpoch })).status).toBe(200);
+    expect((await post(serviceId, "/plan", { importId: "allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
+    const rejected = await allocatorPost(allocatorName, "/allocate", { attemptId: "planned-allocation", serviceId, bootstrapCommandId: "allocator-command", bootstrapEpoch: leaseEpoch, candidates: [{ candidateIndex: 0, eventId: "planned-event" }] });
+    expect(rejected.status).toBe(409); expect(await rejected.json()).toMatchObject({ code: "bootstrap_command_rejected" });
+    expect(await (await allocatorPost(allocatorName, "/state", undefined)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
+    expect((await allocatorPost(allocatorName, "/seed-after", { importId: "allocator", leaseEpoch: 1, highWatermark: suid(2) })).status).toBe(201);
+  });
+
+  it("keeps normal allocation legal and blocks the real stalled CommitWorker allocation before watermark mutation", async () => {
+    const normalAllocator = `normal-allocation-${crypto.randomUUID()}`;
+    expect((await allocatorPost(normalAllocator, "/allocate", { attemptId: "normal", candidates: [{ candidateIndex: 0, eventId: "normal-event" }] })).status).toBe(201);
+    const serviceId = `commit-allocator-gate-${crypto.randomUUID()}`; const allocatorName = `commit-allocator-gate-${crypto.randomUUID()}`;
+    let entered!: () => void; const enteredAllocation = new Promise<void>((resolve) => { entered = resolve; });
+    let resume!: () => void; const resumeAllocation = new Promise<void>((resolve) => { resume = resolve; });
+    const worker = new CommitWorker(workerEnv(), serviceId, { allocatorName, beforeBootstrapAllocation: async () => { entered(); await resumeAllocation; } });
+    const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "AllocatorRace", tags: ["orders"] }], consistencyTags: [] }) }));
+    await enteredAllocation;
+    expect((await post(serviceId, "/plan", { importId: "commit-allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
+    resume(); const result = await pending;
+    expect(result.status).toBe(500);
+    expect(await (await allocatorPost(allocatorName, "/state", undefined)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
+    expect((await allocatorPost(allocatorName, "/seed-after", { importId: "commit-allocator", leaseEpoch: 1, highWatermark: suid(2) })).status).toBe(201);
   });
 
   it("resumes all six durable fault boundaries without duplicate tag rows or early READY", async () => {
