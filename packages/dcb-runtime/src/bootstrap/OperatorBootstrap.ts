@@ -21,7 +21,7 @@ export interface OperatorBootstrapEnv extends StoreProviderEnvironment {
 /** Bearer-only operator lane. Incoming headers are never forwarded to a DO. */
 export async function handleOperatorBootstrap(request: Request, env: OperatorBootstrapEnv, storeProvider: StoreProvider): Promise<Response> {
   const denied = bearer(request, env.REPAIR_OPERATOR_TOKEN); if (denied !== undefined) return denied;
-  const url = new URL(request.url); const match = url.pathname.match(/^\/operator\/bootstrap\/([^/]+)\/(plan|import|status|abort)$/);
+  const url = new URL(request.url); const match = url.pathname.match(/^\/operator\/bootstrap\/([^/]+)\/(plan|import|status|abort|export)$/);
   if (match === null) return json({ code: "not_found", error: "not found" }, 404);
   const serviceId = decodeURIComponent(match[1]!); const operation = match[2]!;
   const coordinator = env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId));
@@ -33,6 +33,11 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
   };
   if (operation === "status") return invoke("/state", undefined, "GET");
   if (operation === "abort") return invoke("/abort", body);
+  if (operation === "export") {
+    if (!object(body) || typeof body.targetServiceId !== "string" || typeof body.allocatorLineageId !== "string") return json({ code: "bootstrap_export_invalid", error: "targetServiceId and allocatorLineageId are required" }, 400);
+    const adapter = createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
+    return json(await adapter.exportPage({ sourceServiceId: serviceId, targetServiceId: body.targetServiceId, allocatorLineageId: body.allocatorLineageId, pageSize: typeof body.pageSize === "number" ? body.pageSize : 128 }));
+  }
   if (operation === "plan") return invoke("/plan", body);
   if (!object(body) || !object(body.dump)) return json({ code: "bootstrap_dump_invalid", error: "import requires dump" }, 400);
   let dump; try { dump = parseBootstrapDump(body.dump); } catch { return json({ code: "bootstrap_dump_invalid", error: "invalid canonical dump" }, 400); }

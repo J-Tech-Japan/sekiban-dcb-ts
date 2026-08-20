@@ -2,6 +2,7 @@ import type { ExecuteResult } from "@sekiban/dcb-client";
 import {
   createCloudflareOnlyRuntimeWorker,
   AllocatorDurableObject,
+  BootstrapCoordinatorDurableObject,
   JournalDurableObject,
   TagDurableObject,
   type CloudflareOnlyEnv,
@@ -10,7 +11,7 @@ import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import { catchUpMeetingRoomMaterializedViews } from "./d1-mv";
 
-export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 
 interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly ASSETS?: Fetcher;

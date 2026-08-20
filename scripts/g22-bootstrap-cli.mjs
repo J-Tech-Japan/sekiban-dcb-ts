@@ -5,8 +5,8 @@ import { readFile } from "node:fs/promises";
 const [operation, serviceId, file] = process.argv.slice(2);
 const baseUrl = process.env.SDT_G22_BASE_URL;
 const bearerFile = process.env.SDT_G22_BEARER_FILE;
-if (!["plan", "import", "status", "abort"].includes(operation) || !serviceId || !baseUrl || !bearerFile) {
-  throw new Error("usage: SDT_G22_BASE_URL=... SDT_G22_BEARER_FILE=/protected/token g22-bootstrap-cli.mjs <plan|import|status|abort> <serviceId> [json-file]");
+if (!["plan", "import", "status", "abort", "export"].includes(operation) || !serviceId || !baseUrl || !bearerFile) {
+  throw new Error("usage: SDT_G22_BASE_URL=... SDT_G22_BEARER_FILE=/protected/token g22-bootstrap-cli.mjs <plan|import|status|abort|export> <serviceId> [json-file]");
 }
 const token = (await readFile(bearerFile, "utf8")).trim();
 if (!token) throw new Error("operator bearer file is empty");
