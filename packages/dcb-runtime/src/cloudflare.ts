@@ -9,6 +9,7 @@
  */
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { allocatorNameForService } from "./allocator/types";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
@@ -21,6 +22,7 @@ import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
+import { serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
@@ -87,7 +89,11 @@ export function createCloudflareOnlyRuntimeWorker(
       }
       if (url.pathname === "/allocator" || url.pathname.startsWith("/allocator/")) {
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
-        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName("service-wide-allocator"));
+        const serviceId = serviceIdForRequest(request, {
+          allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
+          configuredServiceId: env.SDT_SERVICE_ID,
+        });
+        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
         return allocator.fetch(new Request(url.toString(), request));
       }
 
