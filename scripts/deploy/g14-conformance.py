@@ -120,15 +120,20 @@ def main() -> None:
     checks["tagState"] = {"status": state_status, "keys": sorted(state.keys())}
 
     poll_path = f"{lane}/internal/projection/lag?tagStateId={urllib.parse.quote(state_id)}&serviceId={urllib.parse.quote(service_id)}&poll=1"
-    # Queue delivery and the published 20s SafeWindow both must elapse before
-    # the read-side checkpoint can be advanced. One bounded probe avoids
-    # opening an unbounded number of request-scoped database clients.
-    time.sleep(25)
-    poll_status, poll_body = request(args.base_url, poll_path, None, token, service_id, method="GET")
-    if poll_status != 200:
-        raise RuntimeError(f"projection poll failed HTTP {poll_status}: {poll_body}")
-    if poll_body.get("checkpointSuid") != suid:
-        raise RuntimeError(f"projection did not observe committed SUID: {poll_body}")
+    # Queue arrival can occur after the commit response. Require the published
+    # 20s SafeWindow from that durable arrival, not merely from the HTTP write.
+    deadline = time.monotonic() + 55
+    poll_status = 0
+    poll_body: dict[str, object] = {}
+    while True:
+        time.sleep(5)
+        poll_status, poll_body = request(args.base_url, poll_path, None, token, service_id, method="GET")
+        if poll_status != 200:
+            raise RuntimeError(f"projection poll failed HTTP {poll_status}: {poll_body}")
+        if poll_body.get("checkpointSuid") == suid:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"projection did not observe committed SUID: {poll_body}")
     query_status, query = request(args.base_url, f"{lane}/api/sekiban/serialized/query", {"queryType": "GetRoomStateQuery", "queryParamsJson": "{}", "waitForSortableUniqueId": suid}, token, service_id)
     if query_status != 200:
         raise RuntimeError(f"query failed HTTP {query_status}: {query}")
