@@ -1,8 +1,8 @@
 {
   "task": "SDT-G22",
-  "status": "verified",
-  "candidateCommit": "3f110124368ee6b072440ed44771f633385c22bc",
-  "sourceCommit": "3f110124368ee6b072440ed44771f633385c22bc",
+  "status": "superseded",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "83bf0aad7ab87351855e7a3db730ab177cd2ab6612ae40c907cb8ac6a78c8106",
@@ -15,6 +15,7 @@
   "v1Conformance": {"runner":"scripts/deploy/g14-conformance.py --service-id g22-final-20260820a","endpoints":{"commit":"PASS","query":"PASS","list-query":"PASS","tag-state":"PASS","tag-latest-sortable":"PASS"},"authenticatedLane":"PASS","appCommandAssertions":"not-applicable-to-bootstrap-target"},
   "providerCrashResume": {"provider":"d1","targetServiceId":"g22-final-crash-20260820a","crashStatus":503,"crashCode":"bootstrap_simulated_crash","resumedStatus":"READY","eventCount":9,"digest":"fnv1a32:a8ee4034"},
   "g17Observation": {"targetServiceId":"g22-final-20260820a","findings":"none","deliveryIncidents":"none","rootCause":"initial bootstrap used a synthetic target lineage while normal commit used a different allocator; fixed by deriving and seeding the serving service allocator lineage"},
+  "supersededReason": "allocator inspection route was aligned with the serving allocator and requires a new deployed candidate verification",
   "requiredVerification": ["authenticated V1 commit/query/list-query/tag-state/tag-latest-sortable PASS", "source-target byte equality PASS", "post-READY D1 delivery and query visibility PASS", "provider crash-resume PASS", "raw V1 404 PASS"],
   "secrets": "redacted"
 }
