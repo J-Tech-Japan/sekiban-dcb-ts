@@ -2,6 +2,7 @@ import { projectionIdFor } from "../projection/ProjectionRuntime";
 import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import type { QueryDefinition } from "./QueryRegistry";
 import type { MaterializedViewQueryOptions, MaterializedViewRow } from "../mv/MaterializedViewStore";
+import type { UnsafeComposedPage } from "../mv/UnsafeWindowMaterializedView";
 
 /** The query surface can only inspect durable source and projection facts. */
 export type QueryProjectionStore = Pick<
@@ -14,6 +15,10 @@ export type QueryBacking = "memory" | "d1-mv";
 
 export interface MaterializedViewQueryPort {
   queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>;
+  /** Optional SDT-G23 port. D1 provides one-statement winner/count paging. */
+  queryRowsWithTotal?(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>;
+  /** Target receipt is the unsafe-window wait oracle; global heads are not. */
+  hasTargetReceipt?(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>;
   /** D1-backed implementations may need to verify the versioned schema first. */
   initialize?: () => Promise<void>;
 }
@@ -222,4 +227,28 @@ export async function readRowsFromBacking(
     });
   }
   return readProjectedEntries(selection.store, serviceId, definition);
+}
+
+/** Page in the backing when it supports composed SQL, otherwise preserve the legacy port. */
+export async function readRowsPageFromBacking(
+  selection: QueryBackingSelection,
+  serviceId: string,
+  viewId: string,
+  definition: QueryDefinition,
+  options: MaterializedViewQueryOptions,
+): Promise<{ readonly entries: ProjectedQueryEntry[]; readonly totalCount: number; readonly serverPaged: boolean }> {
+  if (selection.backing === "d1-mv" && selection.store.queryRowsWithTotal !== undefined) {
+    const page = await selection.store.queryRowsWithTotal(serviceId, viewId, options);
+    return {
+      entries: page.rows.map((row) => ({
+        eventId: isObject(row.value) && typeof row.value.eventId === "string" && row.value.eventId.length > 0 ? row.value.eventId : row.rowKey,
+        suid: row.sourceSuid,
+        payload: base64Json(row.value),
+      })),
+      totalCount: page.totalCount,
+      serverPaged: true,
+    };
+  }
+  const entries = await readRowsFromBacking(selection, serviceId, viewId, definition, options);
+  return { entries, totalCount: entries.length, serverPaged: false };
 }

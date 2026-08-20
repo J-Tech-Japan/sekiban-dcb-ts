@@ -1,0 +1,8 @@
+{
+  "generator": "test/fixtures/g23-csharp-reference/Program.cs",
+  "command": "dotnet run --project test/fixtures/g23-csharp-reference",
+  "referenceRepository": "https://github.com/J-Tech-Japan/Sekiban",
+  "referenceCommit": "f9953dc4490cd64b692766b597d6972fbcd8bc75",
+  "referenceType": "Sekiban.Dcb.Events.SerializableEvent unsafe-window reorder trace",
+  "sha256": "1ece3e37b890fd41bbbe06125bdfe682ba2c0766affcfa0feb393c603c09b864"
+}

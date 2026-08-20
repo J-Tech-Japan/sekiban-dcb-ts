@@ -5,7 +5,7 @@ import {
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import {
   projectionHasObserved,
-  readRowsFromBacking,
+  readRowsPageFromBacking,
   selectQueryBacking,
   type ProjectedQueryEntry,
   type QueryBacking,
@@ -171,6 +171,18 @@ async function waitForProjection(
   return false;
 }
 
+async function hasTargetReceipt(
+  selection: QueryBackingSelection,
+  source: QueryProjectionStore | undefined,
+  serviceId: string,
+  viewId: string,
+  requestedSuid: string,
+): Promise<boolean | undefined> {
+  if (selection.backing !== "d1-mv" || selection.store.hasTargetReceipt === undefined || source === undefined) return undefined;
+  const target = (await source.readAllEvents(serviceId, "")).find((event) => event.suid === requestedSuid);
+  return target === undefined ? false : selection.store.hasTargetReceipt(serviceId, viewId, target.eventId, requestedSuid);
+}
+
 function endpointFromPath(path: string): QueryEndpoint | undefined {
   if (path === "/api/sekiban/serialized/query") {
     return "query";
@@ -181,17 +193,17 @@ function endpointFromPath(path: string): QueryEndpoint | undefined {
   return undefined;
 }
 
-function resultResponse(endpoint: QueryEndpoint, entries: readonly ProjectedQueryEntry[], pagination?: Pagination): Response {
+function resultResponse(endpoint: QueryEndpoint, entries: readonly ProjectedQueryEntry[], pagination?: Pagination, totalCount = entries.length, serverPaged = false): Response {
   if (endpoint === "query") {
     return json({ resultJson: JSON.stringify({ count: entries.length }) });
   }
   const page = pagination!;
   const offset = (page.currentPage - 1) * page.pageSize;
-  const items = entries.slice(offset, offset + page.pageSize).map(decodePayload);
+  const items = (serverPaged ? entries : entries.slice(offset, offset + page.pageSize)).map(decodePayload);
   return json({
     itemsJson: JSON.stringify(items),
-    totalCount: entries.length,
-    totalPages: entries.length === 0 ? 0 : Math.ceil(entries.length / page.pageSize),
+    totalCount,
+    totalPages: totalCount === 0 ? 0 : Math.ceil(totalCount / page.pageSize),
     currentPage: page.currentPage,
     pageSize: page.pageSize,
   });
@@ -273,24 +285,30 @@ export async function handleSerializedQuery(
       }
       selection = selectQueryBacking({ backing, memory: waitStore });
     }
-    if (
-      parsed.value.waitForSortableUniqueId !== undefined &&
-      (waitStore === undefined || !(await waitForProjection(waitStore, serviceId, definition, parsed.value.waitForSortableUniqueId, options)))
-    ) {
+    const targetReceipt = parsed.value.waitForSortableUniqueId === undefined ? undefined : await hasTargetReceipt(
+      selection,
+      waitStore,
+      serviceId,
+      definition.materializedViewId ?? definition.tagProjector,
+      parsed.value.waitForSortableUniqueId,
+    );
+    if (parsed.value.waitForSortableUniqueId !== undefined && (targetReceipt ?? (waitStore !== undefined && await waitForProjection(waitStore, serviceId, definition, parsed.value.waitForSortableUniqueId, options))) !== true) {
       return error(
         504,
         "timeout",
         "Outcome is undetermined: reread tag heads and event/query state before retrying; blind retry may create duplicate events",
       );
     }
-    const entries = await readRowsFromBacking(
+    const requestedPage = pagination.value;
+    const supportsServerPaging = selection.backing === "d1-mv" && selection.store.queryRowsWithTotal !== undefined;
+    const page = await readRowsPageFromBacking(
       selection,
       serviceId,
       definition.materializedViewId ?? definition.tagProjector,
       definition,
-      { limit: null },
+      requestedPage === undefined || !supportsServerPaging ? { limit: null } : { limit: requestedPage.pageSize, offset: (requestedPage.currentPage - 1) * requestedPage.pageSize },
     );
-    return resultResponse(endpoint, entries, pagination.value);
+    return resultResponse(endpoint, page.entries, pagination.value, page.totalCount, page.serverPaged);
   } catch {
     return error(503, "projection_unavailable", "The mapped query projection is unavailable");
   }

@@ -184,6 +184,15 @@ export class MaterializedViewCatchUpRuntime {
         await hooks.afterApply?.(event, result);
       }
       if (!conflicted) {
+        // This runs even when sourceEvents is empty: a previous unsafe write
+        // may only become collectable after the safe checkpoint is observed.
+        await this.materializedViews.collectUnsafeGarbage(
+          serviceId,
+          materializer.id,
+          generation,
+          materializer.version,
+          current.lastSuid,
+        );
         return {
           instance: current,
           dynamicLagBoundMs,
