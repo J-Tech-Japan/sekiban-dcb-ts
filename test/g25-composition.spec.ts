@@ -75,6 +75,18 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     expect(page.rows[0]?.value).toMatchObject({ reservationId: "g25-1", status: "reserved" });
   });
 
+  it("keeps the scalar V1 query's unpaged composed read in one statement", async () => {
+    const serviceId = `g25-scalar-${crypto.randomUUID()}`;
+    const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
+    await views.createActive({ serviceId, viewId: "RoomProjector", generation: 0, definitionVersion: 1, updatedAt: 1 });
+    await mvDatabase().prepare(
+      "INSERT INTO mv_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    ).bind(serviceId, "RoomProjector", 0, "room", '{"roomId":"room","status":"created"}', 1, "suid-00000000000000000000000000000001").run();
+    const page = await views.queryRowsWithTotal(serviceId, "RoomProjector", { limit: null });
+    expect(page.totalCount).toBe(1);
+    expect(page.rows).toHaveLength(1);
+  });
+
   it("does not acknowledge an unsafe post-store failure and records the retry finding", async () => {
     const serviceId = `g25-${crypto.randomUUID()}`;
     const store = new D1EventStore(database()); await store.initialize();

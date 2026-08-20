@@ -388,10 +388,12 @@ export class D1MaterializedViewStore {
     this.ready("initialize");
     const selected = options.generation ?? (await this.readActive(serviceId, viewId))?.generation;
     if (selected === undefined) return { rows: [], totalCount: 0 };
-    const limit = options.limit === undefined ? 100 : options.limit;
+    // Scalar V1 queries pass `limit: null` to retain their legacy unpaged
+    // result. SQLite uses LIMIT -1 for that one-statement composed read.
+    const limit: number = options.limit === null ? -1 : options.limit === undefined ? 100 : options.limit;
     const offset = options.offset ?? 0;
-    if (limit === null || !Number.isSafeInteger(limit) || limit < 0 || !Number.isSafeInteger(offset) || offset < 0) {
-      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs non-negative limit/offset");
+    if (!Number.isSafeInteger(limit) || limit < -1 || !Number.isSafeInteger(offset) || offset < 0) {
+      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs limit -1 or a non-negative limit/offset");
     }
     return this.unsafe.queryComposedPage(serviceId, viewId, selected, limit, offset);
   }
