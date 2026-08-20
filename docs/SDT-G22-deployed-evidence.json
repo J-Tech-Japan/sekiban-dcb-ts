@@ -1,8 +1,8 @@
 {
   "task": "SDT-G22",
-  "status": "verified",
-  "candidateCommit": "26b98236fd0175c601e4eab4393ca4c9e5d315f2",
-  "sourceCommit": "26b98236fd0175c601e4eab4393ca4c9e5d315f2",
+  "status": "superseded",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "be32029d1ab226e75c80ea3c95a457b16b24e2a7ca496031af7353318dea3cd3",
@@ -10,7 +10,7 @@
     "configuration": "9e9dd1cec0e5d49b7783779fc4350dada9cb30b4e8101d00bad79d9947313b0a",
     "configurationRoots": ["samples/meeting-room", "scripts", "package.json", ".github/workflows/ci.yml"]
   },
-  "candidateDeployment": {"worker":"sekiban-dcb-meeting-room-cloudflare-only","url":"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev","version":"7921bc53-604e-4745-a749-e11fb7b08489","pipelineD1":"3c3b1641-7969-4d72-97a9-2ea65085c9bb"},
+  "candidateDeployment": {"status":"superseded-by-cloudflare-boundary-repair"},
   "providerContract": {"postgres":"PASS (PostgresEventStore against local/CI container)","d1":"PASS (D1EventStore under Miniflare)","cosmos":"required in cosmos-emulator CI via test:g22:cosmos","identityOracle":"each concrete provider snapshots event/metadata/detector/lag state around a one-axis EventId conflict"},
   "fixtureProvenance": {"generator":"test/fixtures/g22-csharp-reference/Program.cs","reference":"J-Tech-Japan/Sekiban@f9953dc4490cd64b692766b597d6972fbcd8bc75","sha256":"84bdb7dfb04583a2707245de61c401f741f6edc776cb3c70c7c26e0d66f9a517","rawBytes":"PASS (generator stdout equals committed fixture bytes)"},
   "roundTrip": {"sourceServiceId":"g20-8dbb4be-20260819a","targetServiceId":"g22-fix-26b-1ff4b5b5f740","importId":"g22-fix-26b-import-1ff4b5b5f740","eventCount":9,"highWatermark":"suid-00000000000000000000000000000032","digest":"fnv1a32:b95bd7b7","importingCommit":{"status":409,"code":"bootstrap_command_rejected","result":"PASS"},"targetStatus":"READY","readSurfaceEquality":{"tagState":"PASS (room:g15-room-06e13ff385ed4bfb:RoomProjector exact source/target response)","query":"PASS (GetRoomStateQuery exact source/target response)","listQuery":"PASS (GetReservationListQuery exact source/target response)"},"postReadyCommit":{"eventId":"b60e91f9-4423-4b68-a11a-882d7adb4728","suid":"suid-00000000000000000000000000000033","queryVisible":"PASS"},"rawV1CommitStatus":404},
