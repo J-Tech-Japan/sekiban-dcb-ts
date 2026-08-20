@@ -7,6 +7,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 // apply`, never runtime DDL.
 // @ts-expect-error Vite raw asset import
 import migration from "../migrations/mv/0001_materialized_views.sql?raw";
+// @ts-expect-error Vite raw asset import
+import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
 
 import { defineRowMaterializer, type MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import {
@@ -159,11 +161,10 @@ const STORED_MATERIALIZER: MaterializedViewRowMaterializer<StoredEvent> = define
 
 describe("SDT-G19 D1 materialized-view store", () => {
   beforeAll(async () => {
-    const migrationText = migration as string;
-    const statements = migrationText.replace(/^\s*--.*$/gm, "")
+    const statements = [migration as string, unsafeMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((statement) => statement.trim())
-      .filter((statement) => statement.length > 0);
+      .filter((statement) => statement.length > 0));
     await database().batch(statements.map((statement) => database().prepare(statement)));
   });
 

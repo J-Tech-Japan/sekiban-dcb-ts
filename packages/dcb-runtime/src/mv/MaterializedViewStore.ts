@@ -401,6 +401,12 @@ export class D1MaterializedViewStore {
     return this.unsafe;
   }
 
+  /** Runs repairable unsafe GC after an idle or advancing safe catch-up pass. */
+  async collectUnsafeGarbage(serviceId: string, viewId: string, generation: number, definitionVersion: number, safeHead: string): Promise<number> {
+    this.ready("apply");
+    return this.unsafe.collectEligible(serviceId, viewId, generation, definitionVersion, safeHead);
+  }
+
   async hasTargetReceipt(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean> {
     this.ready("initialize");
     return this.unsafe.hasTargetReceipt(serviceId, viewId, eventId, suid);

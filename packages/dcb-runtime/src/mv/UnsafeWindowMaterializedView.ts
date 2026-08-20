@@ -9,7 +9,8 @@ export type UnsafeWindowErrorCode =
   | "UNSAFE_SUID_CONTRADICTION"
   | "UNSAFE_SAFE_AHEAD"
   | "UNSAFE_BEHIND_FRONTIER"
-  | "UNSAFE_KICK_LEASE_HELD";
+  | "UNSAFE_KICK_LEASE_HELD"
+  | "UNSAFE_GC_GUARD_FAILED";
 
 /** Typed failures are intentionally retryable only for the expected row CAS. */
 export class UnsafeWindowMaterializedViewError extends Error {
@@ -57,6 +58,23 @@ export interface UnsafeKickLease {
 export interface UnsafeComposedPage {
   readonly rows: readonly MaterializedViewRow[];
   readonly totalCount: number;
+}
+
+export interface UnsafeGcInput {
+  readonly serviceId: string;
+  readonly viewId: string;
+  readonly generation: number;
+  readonly definitionVersion: number;
+  readonly rowKey: string;
+  readonly expectedRowVersion: number;
+  readonly expectedSourceSuid: string;
+  readonly safeHead: string;
+}
+
+interface UnsafeGcCandidate {
+  readonly rowKey: string;
+  readonly rowVersion: number;
+  readonly sourceSuid: string;
 }
 
 function compareSuid(left: string, right: string): number {
@@ -290,6 +308,100 @@ export class UnsafeWindowMaterializedViewStore {
         WHERE service_id = ? AND view_id = ? AND lease_owner = ? AND dirty = 0`,
     ).bind(serviceId, viewId, owner).run();
     return result.meta.changes === 1;
+  }
+
+  /**
+   * Collect a repairable unsafe row only when every recovery predicate holds.
+   * Every predicate is a constraint-promotion guard ahead of the deletes; a
+   * rejected GC therefore cannot leak a partially removed index/receipt.
+   */
+  async garbageCollect(input: UnsafeGcInput): Promise<boolean> {
+    const operation = operationId();
+    const statements: D1PreparedStatement[] = [
+      // safeHead >= row source, including the mandatory post-GC resurrection fence.
+      this.database.prepare(`INSERT INTO mv_atomic_guards (operation_id, checkpoint_match) SELECT ?, CASE WHEN ? COLLATE BINARY >= ? COLLATE BINARY THEN 1 ELSE NULL END`).bind(`${operation}:safe-head`, input.safeHead, input.expectedSourceSuid),
+      // Arrival receipt/watermark is a separate condition from the
+      // fail-closed detector state; each has its own in-batch guard.
+      this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (SELECT 1 FROM mv_unsafe_arrivals WHERE service_id = ? AND view_id = ? AND generation = ? AND arrival_watermark COLLATE BINARY >= ? COLLATE BINARY) THEN 1 ELSE NULL END`,
+      ).bind(`${operation}:arrival`, input.serviceId, input.viewId, input.generation, input.expectedSourceSuid),
+      this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (SELECT 1 FROM mv_unsafe_arrivals WHERE service_id = ? AND view_id = ? AND generation = ? AND rebuild_required = 0) THEN 1 ELSE NULL END`,
+      ).bind(`${operation}:frontier`, input.serviceId, input.viewId, input.generation),
+      // Candidate/retired generations and changed materializer definitions are
+      // never GC targets.  These are intentionally separate guards so a
+      // definition mutation cannot piggy-back on an active-generation check.
+      this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (SELECT 1 FROM mv_active_generations WHERE service_id = ? AND view_id = ? AND generation = ?) THEN 1 ELSE NULL END`,
+      ).bind(`${operation}:active-generation`, input.serviceId, input.viewId, input.generation),
+      this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (SELECT 1 FROM mv_instances WHERE service_id = ? AND view_id = ? AND generation = ? AND definition_version = ?) THEN 1 ELSE NULL END`,
+      ).bind(`${operation}:definition`, input.serviceId, input.viewId, input.generation, input.definitionVersion),
+      // Compare-and-delete is revalidated inside the atomic batch, never on a
+      // read-then-delete snapshot.
+      this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN EXISTS (SELECT 1 FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ? AND row_version = ? AND source_suid COLLATE BINARY = ? COLLATE BINARY) THEN 1 ELSE NULL END`,
+      ).bind(`${operation}:row`, input.serviceId, input.viewId, input.generation, input.rowKey, input.expectedRowVersion, input.expectedSourceSuid),
+      this.database.prepare(`DELETE FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`).bind(input.serviceId, input.viewId, input.generation, input.rowKey),
+      this.database.prepare(`DELETE FROM mv_unsafe_markers WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`).bind(input.serviceId, input.viewId, input.generation, input.rowKey),
+      this.database.prepare(`DELETE FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND suid = ?`).bind(input.serviceId, input.viewId, input.expectedSourceSuid),
+      this.database.prepare(`DELETE FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ? AND row_version = ? AND source_suid COLLATE BINARY = ? COLLATE BINARY`).bind(input.serviceId, input.viewId, input.generation, input.rowKey, input.expectedRowVersion, input.expectedSourceSuid),
+      this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id LIKE ?").bind(`${operation}:%`),
+    ];
+    try {
+      await this.database.batch(statements);
+      return true;
+    } catch (error) {
+      // Guard failure is an expected no-op for idle catch-up and never a
+      // successful delete. Other D1 failures remain visible to the caller.
+      if (String(error).includes("mv_atomic_guards") || String(error).includes("checkpoint_match")) return false;
+      throw error;
+    }
+  }
+
+  /**
+   * Idle catch-up calls this after it has advanced (or observed) the safe
+   * checkpoint.  Candidates are deliberately rechecked by garbageCollect;
+   * this read is only work selection, never permission to delete.
+   */
+  async collectEligible(
+    serviceId: string,
+    viewId: string,
+    generation: number,
+    definitionVersion: number,
+    safeHead: string,
+  ): Promise<number> {
+    if (safeHead === "") return 0;
+    const candidates = await this.database.prepare(
+      `SELECT row_key, row_version, source_suid FROM mv_unsafe_rows
+        WHERE service_id = ? AND view_id = ? AND generation = ?
+          AND source_suid COLLATE BINARY <= ? COLLATE BINARY
+        ORDER BY source_suid COLLATE BINARY ASC, row_key COLLATE BINARY ASC`,
+    ).bind(serviceId, viewId, generation, safeHead).all<D1Row>();
+    let collected = 0;
+    for (const row of candidates.results) {
+      const candidate: UnsafeGcCandidate = {
+        rowKey: string(row, "row_key"),
+        rowVersion: integer(row, "row_version"),
+        sourceSuid: string(row, "source_suid"),
+      };
+      if (await this.garbageCollect({
+        serviceId,
+        viewId,
+        generation,
+        definitionVersion,
+        rowKey: candidate.rowKey,
+        expectedRowVersion: candidate.rowVersion,
+        expectedSourceSuid: candidate.sourceSuid,
+        safeHead,
+      })) collected += 1;
+    }
+    return collected;
   }
 
   async queryComposedPage(serviceId: string, viewId: string, generation: number, limit: number, offset: number): Promise<UnsafeComposedPage> {
