@@ -2,7 +2,7 @@ import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { bootstrapDigest, parseBootstrapDump } from "../packages/dcb-runtime/src/bootstrap/manifest";
 import type { BootstrapDump, BootstrapManifest } from "../packages/dcb-runtime/src/bootstrap/types";
-import { CommitWorker } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
 
 const suid = (n: number) => `suid-${String(n).padStart(32, "0")}`;
 function dumpFor(serviceId: string): BootstrapDump {
@@ -90,7 +90,7 @@ describe("SDT-G21 bootstrap core", () => {
     const serviceId = `race-${crypto.randomUUID()}`; const dump = dumpFor(serviceId);
     // Bootstrap first: the actual HTTP commit worker loses its admission gate.
     expect((await post(serviceId, "/plan", { importId: "race", dump, targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
-    const worker = new CommitWorker(env, serviceId);
+    const worker = new CommitWorker(env as unknown as CommitWorkerEnv, serviceId);
     const commit = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "Race", tags: ["orders"] }], consistencyTags: [] }) }));
     expect(commit.status).toBe(409); expect((await commit.json<{ code: string }>()).code).toBe("bootstrap_command_rejected");
     // Commit first: its held real command admission prevents EMPTY -> PLANNED.
