@@ -25,6 +25,7 @@
     "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-meeting-room-cloudflare-outbox" }],
     "consumers": [{
       "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "max_batch_timeout": 0,
       "max_retries": 3,
       "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq"
     }]
