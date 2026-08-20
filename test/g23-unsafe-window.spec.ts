@@ -10,7 +10,8 @@ import fixtureBytes from "./fixtures/g23-csharp-fixture.generated.json?raw";
 import provenance from "./fixtures/g23-csharp-fixture.provenance.json";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1MaterializedViewStore, UnsafeWindowMaterializedViewError, type UnsafeWindowApplyInput, type UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
-import { readRowsPageFromBacking } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
+import { createRuntimeWorker, type MaterializedViewRow } from "../packages/dcb-runtime/src/index";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
 
 const MATERIALIZER = defineRowMaterializer<{ eventId: string; suid: string; value: string }>({
   id: "g23-unsafe-window-v1", version: 1,
@@ -48,6 +49,9 @@ async function seedGc(tombstone = false): Promise<{ mv: D1MaterializedViewStore;
 }
 async function gc(state: Awaited<ReturnType<typeof seedGc>>, overrides: Partial<{ rowVersion: number; sourceSuid: string; safeHead: string; definitionVersion: number }> = {}): Promise<boolean> {
   return state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 0, definitionVersion: overrides.definitionVersion ?? 1, rowKey: "gc-event", expectedRowVersion: overrides.rowVersion ?? 1, expectedSourceSuid: overrides.sourceSuid ?? "suid-5", safeHead: overrides.safeHead ?? "suid-5" });
+}
+function fixtureMutation(eventId: string, suid: string) {
+  return { rowUpserts: [{ rowKey: "reference-row", value: { eventId }, rowVersion: 1, sourceSuid: suid }], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] };
 }
 
 describe("SDT-G23 unsafe-window MV core", () => {
@@ -142,11 +146,26 @@ describe("SDT-G23 unsafe-window MV core", () => {
     expect(await state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 0, definitionVersion: 1, rowKey: "gc-event", expectedRowVersion: 1, expectedSourceSuid: "suid-5", safeHead: "suid-5" })).toBe(false);
   });
   it("GC mutation evidence: active-generation guard is independently required", async () => {
-    const state = await seedGc(); await state.mv.createCandidate({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 1, definitionVersion: 1, updatedAt: 2 });
+    // Candidate generation, matching definition, receipt/arrival, source and
+    // row CAS are all legal; only the active pointer still selects generation 0.
+    const state = await unsafeStore(); await state.mv.createCandidate({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 1, definitionVersion: 1, updatedAt: 2 });
+    await state.unsafe.apply(input(state.serviceId, "gc-event", "suid-5", "gc", { generation: 1 }));
+    await state.unsafe.observeSafeReceipt(state.serviceId, MATERIALIZER.id, 1, "gc-event", "suid-5");
     expect(await state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 1, definitionVersion: 1, rowKey: "gc-event", expectedRowVersion: 1, expectedSourceSuid: "suid-5", safeHead: "suid-5" })).toBe(false);
   });
   it("GC mutation evidence: definition-version guard is independently required", async () => {
-    const state = await seedGc(); expect(await gc(state, { definitionVersion: 2 })).toBe(false);
+    // The active pointer remains valid; mutate only the current instance's
+    // definition so this cannot be absorbed by the active-generation guard.
+    const state = await seedGc();
+    await database().prepare("UPDATE mv_instances SET definition_version = 2 WHERE service_id = ? AND view_id = ? AND generation = 0").bind(state.serviceId, MATERIALIZER.id).run();
+    expect(await gc(state)).toBe(false);
+  });
+  it("GC mutation evidence: behind-frontier guard is independently required", async () => {
+    // Arrival receipt/watermark, active generation, definition and row CAS
+    // stay valid; only the latched rebuild finding makes collection a no-op.
+    const state = await seedGc();
+    await database().prepare("UPDATE mv_unsafe_arrivals SET rebuild_required = 1 WHERE service_id = ? AND view_id = ? AND generation = 0").bind(state.serviceId, MATERIALIZER.id).run();
+    expect(await gc(state)).toBe(false);
   });
   it("AC9 N concurrent kicks elects one holder", async () => {
     const { unsafe, serviceId } = await unsafeStore(); await unsafe.apply(input(serviceId, "kick", "suid-2", "x"));
@@ -170,16 +189,45 @@ describe("SDT-G23 unsafe-window MV core", () => {
     const { unsafe, serviceId } = await unsafeStore(); await unsafe.apply(input(serviceId, "kick", "suid-2", "x"));
     await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "cron", 100, 10)).resolves.toMatchObject({ targetSuid: "suid-2" });
   });
-  it("AC6 paging wiring mutation fails if it attempts full-table queryRows materialization", async () => {
-    const port = { queryRows: async () => { throw new Error("full-table materialization is forbidden"); }, queryRowsWithTotal: async (_serviceId: string, _viewId: string, options: { limit?: number; offset?: number } = {}) => { expect(options).toEqual({ limit: 2, offset: 2 }); return { rows: [{ serviceId: "s", viewId: "v", generation: 0, rowKey: "r", value: { eventId: "r" }, rowVersion: 1, sourceSuid: "suid-3" }], totalCount: 3 }; } };
-    const page = await readRowsPageFromBacking({ backing: "d1-mv", store: port }, "s", "v", {} as never, { limit: 2, offset: 2 });
-    expect(page).toMatchObject({ totalCount: 3, serverPaged: true, entries: [{ eventId: "r" }] });
+  it("AC6 Worker paging mutation fails if supportsServerPaging regresses to full-table queryRows", async () => {
+    const calls: Array<{ serviceId: string; viewId: string; options: unknown }> = [];
+    const port = {
+      initialize: async () => {},
+      queryRows: async (): Promise<MaterializedViewRow[]> => { throw new Error("full-table materialization is forbidden"); },
+      queryRowsWithTotal: async (serviceId: string, viewId: string, options: { limit?: number; offset?: number } = {}) => {
+        calls.push({ serviceId, viewId, options });
+        return { rows: [{ serviceId, viewId, generation: 0, rowKey: "r", value: { eventId: "r" }, rowVersion: 1, sourceSuid: "suid-3" }], totalCount: 3 };
+      },
+    };
+    const worker = createRuntimeWorker({ queryBacking: "d1-mv", materializedViewQueryPort: port });
+    if (worker.fetch === undefined) throw new Error("Runtime worker fetch handler was not composed");
+    const fetchHandler = worker.fetch as unknown as (request: Request, env: unknown, context: ExecutionContext) => Promise<Response>;
+    const response = await fetchHandler(new Request("https://query.test/api/sekiban/serialized/list-query", {
+      method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: "g23-worker-paging" },
+      body: JSON.stringify({ queryType: "GetTestListQuery", queryParamsJson: JSON.stringify({ PageNumber: 2, PageSize: 2 }) }),
+    }), {} as never, {} as ExecutionContext);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ itemsJson: JSON.stringify([{ eventId: "r" }]), totalCount: 3, totalPages: 2, currentPage: 2, pageSize: 2 });
+    // If Worker-side supportsServerPaging becomes false, this receives
+    // {limit:null} and this exact oracle fails before a full-table fallback.
+    expect(calls).toEqual([{ serviceId: "g23-worker-paging", viewId: "test-projector", options: { limit: 2, offset: 2 } }]);
   });
-  it("uses the provenance-fixed C# in-window reorder trace for tentative and safe parity", async () => {
+  it("drives unsafe and safe TS paths against the provenance-fixed C# reorder trace", async () => {
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fixtureBytes));
     expect([...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")).toBe(provenance.sha256);
     const trace = fixture as { arrivals: Array<{ eventId: string; suid: string }>; unsafeTentative: string[]; safeOrderedFold: string[] };
-    expect(trace.arrivals.map((event) => event.eventId)).toEqual(trace.unsafeTentative);
-    expect([...trace.arrivals].sort((left, right) => left.suid.localeCompare(right.suid)).map((event) => event.eventId)).toEqual(trace.safeOrderedFold);
+    const { mv, unsafe, serviceId } = await unsafeStore();
+    for (const event of trace.arrivals) {
+      await unsafe.apply(input(serviceId, event.eventId, event.suid, event.eventId, { mutations: fixtureMutation(event.eventId, event.suid) }));
+    }
+    const tentative = await mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 });
+    expect(tentative.rows.map((row) => (row.value as { eventId: string }).eventId)).toEqual(trace.unsafeTentative);
+    let checkpoint = "";
+    for (const event of [...trace.arrivals].sort((left, right) => left.suid.localeCompare(right.suid))) {
+      await mv.applyMutationsAndAdvanceCheckpoint({ serviceId, viewId: MATERIALIZER.id, generation: 0, expectedLastSuid: checkpoint, lastSuid: event.suid, definitionVersion: 1, updatedAt: 1, mutations: fixtureMutation(event.eventId, event.suid) });
+      checkpoint = event.suid;
+    }
+    const safeFinal = await mv.queryRows(serviceId, MATERIALIZER.id, { generation: 0 });
+    expect(safeFinal.map((row) => (row.value as { eventId: string }).eventId)).toEqual(trace.safeOrderedFold);
   });
 });

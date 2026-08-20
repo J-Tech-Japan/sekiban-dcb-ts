@@ -1,7 +1,9 @@
 // Generated provenance source: J-Tech-Japan/Sekiban@f9953dc4.
 // Command: dotnet run --project test/fixtures/g23-csharp-reference
-// The two SerializableEvent identities are emitted in arrival (unsafe) order;
-// the same C# SUID ordering determines the safe ordered-fold expectation.
+// The two SerializableEvent identities are emitted in arrival (unsafe) order.
+// They target one row: the early arrival is older than the tentative late
+// winner, while a SUID-ordered safe fold deterministically reaches that same
+// late final winner.
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -17,8 +19,8 @@ var output = JsonSerializer.Serialize(new {
     new { eventId = late.Id.ToString(), suid = late.SortableUniqueIdValue, payload = Convert.ToBase64String(late.Payload) },
     new { eventId = early.Id.ToString(), suid = early.SortableUniqueIdValue, payload = Convert.ToBase64String(early.Payload) }
   },
-  unsafeTentative = new[] { late.Id.ToString(), early.Id.ToString() },
-  safeOrderedFold = new[] { early.Id.ToString(), late.Id.ToString() }
+  unsafeTentative = new[] { late.Id.ToString() },
+  safeOrderedFold = new[] { late.Id.ToString() }
 }) + "\n";
 Console.Write(output);
 Console.Error.WriteLine(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(output))).ToLowerInvariant());
