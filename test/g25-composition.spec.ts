@@ -10,13 +10,11 @@ import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_vi
 import hardeningMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import unsafeFailureMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
-import { createCloudflareOnlyRuntimeWorker, type CloudflareOnlyEnv } from "../packages/dcb-runtime/src/cloudflare";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
-import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
-import { D1EventStore } from "../packages/dcb-runtime/src/d1";
-import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
-import { applyMeetingRoomUnsafeArrival, drainMeetingRoomUnsafeKicks } from "../samples/meeting-room/src/d1-mv";
+// @ts-expect-error Vite raw deployed Queue configuration fixture.
+import workerConfig from "../samples/meeting-room/wrangler.cloudflare-only.jsonc?raw";
+import worker from "../samples/meeting-room/src/worker.cloudflare-only";
 
 function statements(sql: string, database: D1Database): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim()).filter(Boolean).map((value) => database.prepare(value));
@@ -42,6 +40,50 @@ function message(serviceId: string, suffix: string): DownstreamOutboxMessage {
   };
 }
 
+interface QueueResult {
+  readonly acked: number;
+  readonly retried: number;
+  readonly waits: readonly Promise<unknown>[];
+}
+
+function deployedEnvironment(serviceId: string): Record<string, unknown> {
+  return { ...(env as unknown as Record<string, unknown>), SDT_SERVICE_ID: serviceId };
+}
+
+async function invokeDeployedQueue(body: DownstreamOutboxMessage, serviceId: string, attempts = 1): Promise<QueueResult> {
+  let acked = 0;
+  let retried = 0;
+  const waits: Promise<unknown>[] = [];
+  const batch = {
+    messages: [{
+      body,
+      attempts,
+      ack: () => { acked += 1; },
+      retry: () => { retried += 1; },
+    }],
+  } as unknown as MessageBatch<unknown>;
+  const queue = worker.queue as unknown as ((
+    input: MessageBatch<unknown>,
+    inputEnv: Record<string, unknown>,
+    ctx: ExecutionContext,
+  ) => Promise<void>) | undefined;
+  if (queue === undefined) throw new Error("deployed meeting-room Worker must expose queue");
+  await queue(batch, deployedEnvironment(serviceId), {
+    waitUntil: (promise: Promise<unknown>) => { waits.push(promise); },
+  } as unknown as ExecutionContext);
+  return { acked, retried, waits };
+}
+
+async function invokeDeployedScheduled(serviceId: string): Promise<void> {
+  const scheduled = worker.scheduled as unknown as ((
+    controller: ScheduledController,
+    inputEnv: Record<string, unknown>,
+    ctx: ExecutionContext,
+  ) => Promise<void>) | undefined;
+  if (scheduled === undefined) throw new Error("deployed meeting-room Worker must expose scheduled");
+  await scheduled({} as ScheduledController, deployedEnvironment(serviceId), {} as ExecutionContext);
+}
+
 describe("SDT-G25 unsafe-window consumer composition", () => {
   beforeAll(async () => {
     await database().batch(statements(pipelineMigration as string, database()));
@@ -50,29 +92,32 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     }
   });
 
-  it("applies only the stored Queue outcome, exposes its tentative composed winner, and acks after G23 apply", async () => {
+  it("uses the deployed Worker entrypoint for stored-only unsafe apply, same-batch kick, and waitUntil drain", async () => {
     const serviceId = `g25-${crypto.randomUUID()}`;
-    const waits: Promise<unknown>[] = [];
-    let acked = 0; let retried = 0;
-    const runtime = createCloudflareOnlyRuntimeWorker({
-      domain: meetingRoomDomain,
-      config: meetingRoomRuntimeConfig,
-      afterStoredDownstreamDelivery: async ({ event, env: input, ctx }) => {
-        await applyMeetingRoomUnsafeArrival(input, event);
-        ctx.waitUntil(drainMeetingRoomUnsafeKicks(input));
-      },
-    });
     const queued = message(serviceId, "1");
-    const queue = runtime.queue as (batch: MessageBatch<unknown>, input: CloudflareOnlyEnv, ctx: ExecutionContext) => Promise<void>;
-    await queue({ messages: [{ body: queued, ack: () => { acked += 1; }, retry: () => { retried += 1; } }] } as unknown as MessageBatch<unknown>, {
-      ...(env as unknown as CloudflareOnlyEnv), SDT_SERVICE_ID: serviceId,
-    }, { waitUntil: (promise: Promise<unknown>) => { waits.push(promise); } } as unknown as ExecutionContext);
-    expect(acked).toBe(1); expect(retried).toBe(0);
-    await Promise.all(waits);
+    const stored = await invokeDeployedQueue(queued, serviceId);
+    expect(stored.acked).toBe(1); expect(stored.retried).toBe(0);
+    expect(stored.waits).toHaveLength(1);
+    await Promise.all(stored.waits);
     const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
     const page = await views.queryRowsWithTotal(serviceId, "ReservationProjector", { limit: 20 });
     expect(page.totalCount).toBe(1);
     expect(page.rows[0]?.value).toMatchObject({ reservationId: "g25-1", status: "reserved" });
+    const atomicArrival = await mvDatabase().prepare(
+      `SELECT receipt.suid AS receipt_suid, kick.target_suid AS kick_target_suid
+         FROM mv_unsafe_receipts receipt
+         JOIN mv_unsafe_kicks kick ON kick.service_id = receipt.service_id AND kick.view_id = receipt.view_id
+        WHERE receipt.service_id = ? AND receipt.view_id = 'ReservationProjector' AND receipt.event_id = ?`,
+    ).bind(serviceId, queued.eventId).first<{ receipt_suid: string; kick_target_suid: string }>();
+    expect(atomicArrival).toEqual({ receipt_suid: queued.suid, kick_target_suid: queued.suid });
+
+    // A source SUID collision is a non-stored outcome. The deployed hook must
+    // not reach the unsafe port or schedule another drain for it.
+    const nonStored = { ...message(serviceId, "non-stored"), suid: queued.suid };
+    const rejected = await invokeDeployedQueue(nonStored, serviceId);
+    expect(rejected.acked).toBe(1); expect(rejected.retried).toBe(0);
+    expect(rejected.waits).toEqual([]);
+    expect((await views.queryRowsWithTotal(serviceId, "ReservationProjector", { limit: 20 })).totalCount).toBe(1);
   });
 
   it("keeps the scalar V1 query's unpaged composed read in one statement", async () => {
@@ -87,22 +132,48 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     expect(page.rows).toHaveLength(1);
   });
 
-  it("does not acknowledge an unsafe post-store failure and records the retry finding", async () => {
+  it("retries the deployed unsafe failure through exhaustion, writes one identity finding, and cron safe catch-up recovers", async () => {
     const serviceId = `g25-${crypto.randomUUID()}`;
-    const store = new D1EventStore(database()); await store.initialize();
-    const queued = message(serviceId, "2");
-    let acked = 0; let retried = 0;
-    await handleDownstreamQueue({ messages: [{ body: queued, ack: () => { acked += 1; }, retry: () => { retried += 1; } }] } as unknown as MessageBatch<unknown>, { D1: database(), SDT_SERVICE_ID: serviceId }, {
-      store,
-      onStored: async ({ message: stored }) => {
-        const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
-        await views.recordUnsafeFailureFinding({ serviceId, viewId: "ReservationProjector", eventId: stored.eventId, suid: stored.suid, observedAt: 1 });
-        throw new Error("forced unsafe apply failure");
-      },
+    const queued = message(serviceId, "fault");
+    // This is a legal test seam for an atomic-port contradiction: the real
+    // stored event has a different SUID, so the deployed apply path throws
+    // after its arrival observation and must record the production finding.
+    await mvDatabase().prepare(
+      `INSERT INTO mv_unsafe_receipts (service_id, view_id, event_id, suid, outcome, observed_at)
+       VALUES (?, 'ReservationProjector', ?, ?, 'applied', 0)`,
+    ).bind(serviceId, queued.eventId, `${queued.suid}-contradiction`).run();
+
+    const attempts = await Promise.all([1, 2, 3].map((attempt) => invokeDeployedQueue(queued, serviceId, attempt)));
+    expect(attempts.map((result) => result.acked)).toEqual([0, 0, 0]);
+    expect(attempts.map((result) => result.retried)).toEqual([1, 1, 1]);
+    expect(attempts.flatMap((result) => result.waits)).toEqual([]);
+
+    const finding = await mvDatabase().prepare(
+      `SELECT service_id, view_id, event_id, suid, classification, COUNT(*) OVER () AS total
+         FROM mv_unsafe_failure_findings
+        WHERE service_id = ? AND view_id = 'ReservationProjector' AND event_id = ?`,
+    ).bind(serviceId, queued.eventId).first<{
+      service_id: string; view_id: string; event_id: string; suid: string; classification: string; total: number;
+    }>();
+    expect(finding).toMatchObject({
+      service_id: serviceId,
+      view_id: "ReservationProjector",
+      event_id: queued.eventId,
+      suid: queued.suid,
+      classification: "UNSAFE_APPLY_RETRY",
+      total: 1,
     });
-    expect(acked).toBe(0); expect(retried).toBe(1);
-    const finding = await mvDatabase().prepare("SELECT classification FROM mv_unsafe_failure_findings WHERE service_id = ? AND view_id = ? AND event_id = ?")
-      .bind(serviceId, "ReservationProjector", queued.eventId).first<{ classification: string }>();
-    expect(finding?.classification).toBe("UNSAFE_APPLY_RETRY");
+    const queuePolicy = JSON.parse(workerConfig as string) as { queues: { consumers: Array<{ max_retries: number; dead_letter_queue: string }> } };
+    expect(queuePolicy.queues.consumers).toContainEqual(expect.objectContaining({ max_retries: 3, dead_letter_queue: "sekiban-dcb-meeting-room-cloudflare-outbox-dlq" }));
+
+    // Make the persisted source old enough for the published safe window, then
+    // use the deployed scheduled entrypoint as the recovery net. It must fold
+    // the durable event even though every immediate Queue delivery retried.
+    await database().prepare("UPDATE serialized_dcb_events SET last_arrived_at = 0 WHERE service_id = ? AND event_id = ?")
+      .bind(serviceId, queued.eventId).run();
+    await invokeDeployedScheduled(serviceId);
+    const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
+    const recovered = await views.queryRowsWithTotal(serviceId, "ReservationProjector", { limit: 20 });
+    expect(recovered.rows[0]?.value).toMatchObject({ reservationId: "g25-fault", status: "reserved" });
   });
 });
