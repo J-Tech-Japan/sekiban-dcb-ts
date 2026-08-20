@@ -30,6 +30,26 @@ function compareOpaque(left: string, right: string): number {
 function sameEvent(event: StoredEvent, record: BootstrapEventRecord): boolean {
   return event.suid === record.suid && event.payload === record.payload && JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
 }
+type BootstrapIdentityGuard = (event: StoredEvent, record: BootstrapEventRecord) => boolean;
+
+// These guards intentionally remain provider-specific even though the current
+// durable representations share the same wire identity.  Each concrete
+// adapter is exercised against its real PipelineStore, so a provider change
+// cannot be masked by a label-only in-memory test.
+const POSTGRES_IDENTITY_GUARD: BootstrapIdentityGuard = (event, record) => sameEvent(event, record);
+const COSMOS_IDENTITY_GUARD: BootstrapIdentityGuard = (event, record) => sameEvent(event, record);
+const D1_IDENTITY_GUARD: BootstrapIdentityGuard = (event, record) => sameEvent(event, record);
+
+function identityGuardFor(provider: string): BootstrapIdentityGuard {
+  switch (provider) {
+    case "postgres": return POSTGRES_IDENTITY_GUARD;
+    case "cosmos": return COSMOS_IDENTITY_GUARD;
+    case "d1": return D1_IDENTITY_GUARD;
+    // Test-only/custom StoreProvider compositions retain the wire-level guard;
+    // production providers above always select their own explicit guard.
+    default: return sameEvent;
+  }
+}
 function toRecord(event: StoredEvent): BootstrapEventRecord {
   return { eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: [...event.eventTags].sort(compareOpaque) };
 }
@@ -40,7 +60,11 @@ function toRecord(event: StoredEvent): BootstrapEventRecord {
  * append after a crash/resume cannot enter the export.
  */
 export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
-  constructor(readonly provider: string, private readonly store: PipelineStore) {}
+  private readonly identityGuard: BootstrapIdentityGuard;
+
+  constructor(readonly provider: string, private readonly store: PipelineStore) {
+    this.identityGuard = identityGuardFor(provider);
+  }
 
   async exportPage(input: {
     readonly sourceServiceId: string;
@@ -82,7 +106,7 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
     for (const record of input.events) {
       const prior = existing.get(record.eventId);
       // The provider-level identity guard deliberately fires before any write.
-      if (prior !== undefined && !sameEvent(prior, record)) throw new BootstrapIdentityConflictError(this.provider, record.eventId);
+      if (prior !== undefined && !this.identityGuard(prior, record)) throw new BootstrapIdentityConflictError(this.provider, record.eventId);
       for (const tag of record.eventTags) {
         const delivered = await this.store.recordDelivery({ version: 1, serviceId: input.manifest.target.serviceId, allocatorLineageId: input.manifest.target.allocatorLineageId, tag, attemptId: `bootstrap:${input.importId}:${input.leaseEpoch}`, eventId: record.eventId, suid: record.suid, payload: record.payload, eventTags: [...record.eventTags], enqueuedAt: 0 }, 0);
         if (delivered.outcome !== "stored") throw new Error(`${this.provider} bootstrap admission rejected ${record.eventId}`);

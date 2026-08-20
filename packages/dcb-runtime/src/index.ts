@@ -47,7 +47,7 @@ export type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord, Boots
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
-export { POSTGRES_STORE_PROVIDER, createPostgresStoreProvider } from "./store/provider";
+export { POSTGRES_STORE_PROVIDER, createPostgresBootstrapAdapter, createPostgresStoreProvider } from "./store/provider";
 export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 export {
   chooseQueryBacking,

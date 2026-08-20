@@ -124,6 +124,8 @@ jobs:
         run: curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors http://127.0.0.1:8080/ready >/dev/null
       - name: Execute Cosmos contract and fault lane
         run: npm run test:cosmos
+      - name: Run SDT-G22 real Cosmos bootstrap provider contract
+        run: npm run test:g22:cosmos
       - name: Verify Cosmos lane remains wired
         run: npm run test:cosmos-wiring
       - name: Run required G20 Cloudflare-only D1 composition lane
