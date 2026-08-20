@@ -36,6 +36,26 @@ describe("SDT-G22 provider bootstrap adapters", () => {
     expect(accepted.status).toBe(200);
     expect(forwarded).toHaveLength(1); expect(forwarded[0]!.get("authorization")).toBeNull(); expect(forwarded[0]!.get("x-sdt-test-only")).toBeNull();
   });
+  it("binds bootstrap to the target serving allocator lineage, never a caller-supplied synthetic value", async () => {
+    const allocatorNames: string[] = [];
+    const env = {
+      REPAIR_OPERATOR_TOKEN: "operator-secret",
+      BOOTSTRAP: { idFromName: (value: string) => value, get: () => ({ fetch: async () => Response.json({ status: "EMPTY" }) }) },
+      ALLOCATOR: {
+        idFromName: (value: string) => { allocatorNames.push(value); return value; },
+        get: () => ({ fetch: async () => Response.json({ allocatorLineageId: "serving-allocator-lineage", allocatedWatermark: null, bootstrapSeed: null }) }),
+      },
+    };
+    const provider = { name: "test", create: () => memory([event("source", "event", 1)]) };
+    const endpoint = "https://operator.test/operator/bootstrap/source/export";
+    const exported = await handleOperatorBootstrap(new Request(endpoint, { method: "POST", headers: { authorization: "Bearer operator-secret", "content-type": "application/json" }, body: JSON.stringify({ targetServiceId: "target" }) }), env as never, provider);
+    expect(exported.status).toBe(200);
+    const body = await exported.json<{ dump: { manifest: { target: { allocatorLineageId: string } } } }>();
+    expect(body.dump.manifest.target.allocatorLineageId).toBe("serving-allocator-lineage");
+    expect(allocatorNames).toEqual(["service-allocator:target"]);
+    const synthetic = await handleOperatorBootstrap(new Request(endpoint, { method: "POST", headers: { authorization: "Bearer operator-secret", "content-type": "application/json" }, body: JSON.stringify({ targetServiceId: "target", allocatorLineageId: "synthetic" }) }), env as never, provider);
+    expect(synthetic.status).toBe(400);
+  });
   it("uses the provenance-fixed C# reference fixture bytes rather than handwritten canonical JSON", async () => {
     const bytes = JSON.stringify(fixture);
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bytes));

@@ -1,6 +1,7 @@
 import { parseBootstrapDump } from "./manifest";
 import { createBootstrapStoreAdapter } from "./BootstrapStoreAdapter";
 import type { StoreProvider, StoreProviderEnvironment } from "../store/provider";
+import { allocatorNameForService, type AllocatorState } from "../allocator/types";
 
 type JsonObject = Record<string, unknown>;
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8" } }); }
@@ -15,6 +16,7 @@ function bearer(request: Request, token: string): Response | undefined {
 
 export interface OperatorBootstrapEnv extends StoreProviderEnvironment {
   readonly BOOTSTRAP: DurableObjectNamespace;
+  readonly ALLOCATOR: DurableObjectNamespace;
   readonly REPAIR_OPERATOR_TOKEN: string;
 }
 
@@ -34,9 +36,17 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
   if (operation === "status") return invoke("/state", undefined, "GET");
   if (operation === "abort") return invoke("/abort", body);
   if (operation === "export") {
-    if (!object(body) || typeof body.targetServiceId !== "string" || typeof body.allocatorLineageId !== "string") return json({ code: "bootstrap_export_invalid", error: "targetServiceId and allocatorLineageId are required" }, 400);
+    if (!object(body) || typeof body.targetServiceId !== "string" || body.targetServiceId.length === 0 || "allocatorLineageId" in body) return json({ code: "bootstrap_export_invalid", error: "targetServiceId is required and allocator lineage is server-derived" }, 400);
+    // A caller must not nominate a synthetic lineage. Initializing the target
+    // service allocator first gives bootstrap and future commits one durable,
+    // authoritative lineage source.
+    const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(body.targetServiceId)));
+    const allocatorState = await allocator.fetch(new Request("https://bootstrap.internal/state"));
+    if (!allocatorState.ok) return json({ code: "bootstrap_allocator_unavailable", error: "target allocator state is unavailable" }, 503);
+    const allocatorBody = await allocatorState.json<Partial<AllocatorState>>();
+    if (typeof allocatorBody.allocatorLineageId !== "string" || allocatorBody.allocatorLineageId.length === 0) return json({ code: "bootstrap_allocator_invalid", error: "target allocator lineage is invalid" }, 500);
     const adapter = createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
-    return json(await adapter.exportPage({ sourceServiceId: serviceId, targetServiceId: body.targetServiceId, allocatorLineageId: body.allocatorLineageId, pageSize: typeof body.pageSize === "number" ? body.pageSize : 128 }));
+    return json(await adapter.exportPage({ sourceServiceId: serviceId, targetServiceId: body.targetServiceId, allocatorLineageId: allocatorBody.allocatorLineageId, pageSize: typeof body.pageSize === "number" ? body.pageSize : 128 }));
   }
   if (operation === "plan") return invoke("/plan", body);
   if (!object(body) || !object(body.dump)) return json({ code: "bootstrap_dump_invalid", error: "import requires dump" }, 400);

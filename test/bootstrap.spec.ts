@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { bootstrapDigest, parseBootstrapDump } from "../packages/dcb-runtime/src/bootstrap/manifest";
 import type { BootstrapDump, BootstrapManifest } from "../packages/dcb-runtime/src/bootstrap/types";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { allocatorNameForService } from "../packages/dcb-runtime/src/allocator/types";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -10,12 +11,12 @@ import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 
 const suid = (n: number) => `suid-${String(n).padStart(32, "0")}`;
-function dumpFor(serviceId: string): BootstrapDump {
+function dumpFor(serviceId: string, allocatorLineageId = "bootstrap-lineage"): BootstrapDump {
   const events = [
     { eventId: "event-a", suid: suid(1), payload: "AQ==", eventTags: ["orders", "users"] },
     { eventId: "event-b", suid: suid(2), payload: "Ag==", eventTags: ["orders"] },
   ];
-  const draft: Omit<BootstrapManifest, "contentDigest"> = { format: "sekiban-dcb-bootstrap", version: 1, source: { serviceId: "source", lineageId: "unknown-legacy" }, target: { serviceId, allocatorLineageId: "bootstrap-lineage" }, highWatermark: suid(2), eventCount: 2, tagCounts: { orders: 2, users: 1 }, canonicalization: "utf8-json-sorted-keys-v1" };
+  const draft: Omit<BootstrapManifest, "contentDigest"> = { format: "sekiban-dcb-bootstrap", version: 1, source: { serviceId: "source", lineageId: "unknown-legacy" }, target: { serviceId, allocatorLineageId }, highWatermark: suid(2), eventCount: 2, tagCounts: { orders: 2, users: 1 }, canonicalization: "utf8-json-sorted-keys-v1" };
   return { manifest: { ...draft, contentDigest: bootstrapDigest({ manifest: { ...draft, contentDigest: "" }, events }) }, events };
 }
 async function post(serviceId: string, path: string, body: unknown): Promise<Response> {
@@ -57,6 +58,38 @@ describe("SDT-G21 bootstrap core", () => {
     expect((await post(serviceId, "/ready", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
     const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/bootstrap/admit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: "import-1", leaseEpoch: control.leaseEpoch, manifestDigest: dump.manifest.contentDigest, targetServiceId: serviceId, candidates: [{ ...dump.events[0], allocatorLineageId: "bootstrap-lineage" }] }) });
     expect(tag.status).toBe(409);
+  });
+
+  it("uses the serving allocator lineage after READY so a real commit reaches the downstream store query", async () => {
+    const serviceId = `ready-delivery-${crypto.randomUUID()}`;
+    const servingAllocator = await allocatorPost(allocatorNameForService(serviceId), "/state", undefined);
+    const servingState = await servingAllocator.json<{ allocatorLineageId: string }>();
+    const dump = dumpFor(serviceId, servingState.allocatorLineageId);
+    const planned = await post(serviceId, "/plan", { importId: "ready-delivery", dump, targetEvidence: { bindingExists: false, eventsExist: false } });
+    const control = await planned.json<{ leaseEpoch: number }>();
+    expect(planned.status).toBe(201);
+    expect((await post(serviceId, "/import", { importId: "ready-delivery", leaseEpoch: control.leaseEpoch })).status).toBe(200);
+    expect((await post(serviceId, "/verify", { importId: "ready-delivery", leaseEpoch: control.leaseEpoch })).status).toBe(200);
+    expect((await post(serviceId, "/ready", { importId: "ready-delivery", leaseEpoch: control.leaseEpoch })).status).toBe(200);
+
+    const commit = await new CommitWorker(workerEnv(), serviceId).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "ReadyDelivery", tags: ["orders"] }], consistencyTags: [] }),
+    }));
+    expect(commit.status).toBe(200);
+    const committed = await commit.json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>();
+    const written = committed.writtenEvents[0]!;
+    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`);
+    const tagState = await tag.json<{ events: Array<{ eventId: string; suid: string; payload: string; eventTags: string[]; allocatorLineageId: string }> }>();
+    const delivered = tagState.events.find((event) => event.eventId === written.id)!;
+    expect(delivered.allocatorLineageId).toBe(servingState.allocatorLineageId);
+
+    const database = store(); await database.initialize();
+    const batch = createMessageBatch("serialized-dcb-v1-outbox", [{ id: "ready-delivery", timestamp: new Date(), attempts: 1, body: { version: 1, serviceId, allocatorLineageId: delivered.allocatorLineageId, tag: "orders", attemptId: "ready-delivery", eventId: delivered.eventId, suid: delivered.suid, payload: delivered.payload, eventTags: delivered.eventTags, enqueuedAt: Date.now() } }]);
+    await handleDownstreamQueue(batch, { POSTGRES_URL: workerEnv().POSTGRES_URL, BOOTSTRAP: workerEnv().BOOTSTRAP }, { store: database });
+    expect((await getQueueResult(batch, createExecutionContext())).explicitAcks).toHaveLength(1);
+    const queried = await database.readAllEvents(serviceId, "");
+    expect(queried).toEqual(expect.arrayContaining([expect.objectContaining({ eventId: written.id, suid: written.sortableUniqueIdValue })]));
   });
 
   it("isolates fresh-target plus already-seeded and already-allocating allocator guards", async () => {

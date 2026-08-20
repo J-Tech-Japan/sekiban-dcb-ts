@@ -1,4 +1,4 @@
-import type { AllocationVector } from "../allocator/types";
+import { allocatorNameForService, type AllocationVector } from "../allocator/types";
 import type { ConsistencyTag, JournalRecord, ReconciliationFailureCause } from "../journal/types";
 import {
   durationSince,
@@ -38,7 +38,7 @@ export interface CommitWorkerHooks {
   /** Test-only barrier after entry admission is released and before /allocate. */
   beforeBootstrapAllocation?(): Promise<void> | void;
   beforeBootstrapFinalization?(): Promise<void> | void;
-  /** Test-only allocator namespace; production always uses the service-wide allocator. */
+  /** Test-only allocator namespace; production uses the service-scoped allocator. */
   allocatorName?: string;
 }
 
@@ -494,7 +494,7 @@ export class CommitWorker {
     fault: CommitTestFault | undefined,
     bootstrapEpoch: number,
   ): Promise<AllocationVector | undefined> {
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(this.hooks.allocatorName ?? "service-wide-allocator"));
+    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(this.hooks.allocatorName ?? allocatorNameForService(this.serviceId)));
     try {
       const result = await this.postJson<AllocationVector>(allocator, "/allocate", {
         attemptId,

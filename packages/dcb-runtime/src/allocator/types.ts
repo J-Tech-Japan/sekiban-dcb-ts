@@ -26,3 +26,8 @@ export interface AllocatorState {
   allocatedWatermark: string | null;
   bootstrapSeed: { importId: string; leaseEpoch: number; highWatermark: string } | null;
 }
+
+/** The only allocator namespace that serves a particular service. */
+export function allocatorNameForService(serviceId: string): string {
+  return `service-allocator:${serviceId}`;
+}

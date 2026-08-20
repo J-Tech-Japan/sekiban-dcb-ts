@@ -1,6 +1,7 @@
 import { parseBootstrapDump } from "./manifest";
 import type { BootstrapManifestError } from "./manifest";
 import type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord } from "./types";
+import { allocatorNameForService } from "../allocator/types";
 
 const CONTROL = "bootstrap-control";
 const DUMP = "bootstrap-dump";
@@ -98,9 +99,9 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
         if (fault(body, "store-progress-gap")) return reject("bootstrap_simulated_crash", "simulated crash after durable tag write", 503);
       }
     }
-    // Normal commands allocate in the target-service namespace; seed that
-    // exact authoritative allocator rather than an unrelated client maximum.
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(serviceId));
+    // Seed the exact allocator used by normal commits for this service. Its
+    // durable lineage is the target store binding.
+    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
     const seeded = await allocator.fetch(new Request("https://bootstrap.internal/seed-after", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch, highWatermark: control.manifest.highWatermark ?? "suid-00000000000000000000000000000000" }) }));
     if (!seeded.ok) return reject("bootstrap_allocator_seed_failed", "allocator seedAfter rejected bootstrap", seeded.status);
     if (fault(body, "allocator-seed")) return reject("bootstrap_simulated_crash", "simulated crash after allocator seed", 503);
