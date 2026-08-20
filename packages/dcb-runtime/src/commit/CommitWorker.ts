@@ -33,6 +33,11 @@ export interface CommitWorkerEnv {
   SDT_SERVICE_ID?: string;
 }
 
+/** Test seam for the admitted-then-stalled bootstrap race; production has no hook. */
+export interface CommitWorkerHooks {
+  beforeBootstrapFinalization?(): Promise<void> | void;
+}
+
 interface ReservationSuccess {
   tag: string;
   reservationToken: string;
@@ -202,6 +207,7 @@ export class CommitWorker {
   constructor(
     private readonly env: CommitWorkerEnv,
     private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+    private readonly hooks: CommitWorkerHooks = {},
   ) {}
 
   async handle(request: Request): Promise<Response> {
@@ -234,6 +240,12 @@ export class CommitWorker {
     const bootstrapEpoch = await this.bootstrapCommand("admit", attemptId);
     if (bootstrapEpoch === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap is importing; commit is unavailable"), attemptId, fault !== undefined);
+    }
+    // Admission only linearizes the entry check.  Do not retain it through
+    // remote work: PLANNED may start after in-flight work reaches zero, and
+    // the epoch check at the authoritative write is what fences that race.
+    if ((await this.bootstrapCommand("release", attemptId, bootstrapEpoch)) === undefined) {
+      return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap admission could not be released"), attemptId, fault !== undefined);
     }
     try {
     const journal = this.journalFor(attemptId);
@@ -270,7 +282,7 @@ export class CommitWorker {
       );
     }
 
-    const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch);
+    const allocation = await this.allocate(candidates, attemptId, fault);
     if (allocation === undefined) {
       return this.finishReservationFailure(
         journal,
@@ -301,6 +313,8 @@ export class CommitWorker {
     if (writing === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
+
+    await this.hooks.beforeBootstrapFinalization?.();
 
     // This is immediately before the first final authoritative tag mutation.
     // The same service epoch obtained at admission must still be current.
@@ -334,9 +348,7 @@ export class CommitWorker {
         fault !== undefined,
       );
     }
-    } finally {
-      await this.bootstrapCommand("release", attemptId, bootstrapEpoch).catch(() => undefined);
-    }
+    } finally { /* the entry admission was deliberately released above */ }
   }
 
   private journalFor(attemptId: string): DurableObjectStub {
@@ -475,15 +487,11 @@ export class CommitWorker {
     candidates: Array<{ eventId: string }>,
     attemptId: string,
     fault: CommitTestFault | undefined,
-    bootstrapEpoch: number,
   ): Promise<AllocationVector | undefined> {
     const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName("service-wide-allocator"));
     try {
       const result = await this.postJson<AllocationVector>(allocator, "/allocate", {
         attemptId,
-        serviceId: this.serviceId,
-        bootstrapCommandId: attemptId,
-        bootstrapEpoch,
         candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId })),
         faultInjection: fault === "allocator-commit" ? "between-vector-and-watermark" : undefined,
       });

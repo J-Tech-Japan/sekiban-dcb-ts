@@ -44,6 +44,8 @@ export interface BootstrapControlRecord {
   /** Commands admitted before a bootstrap plan.  The epoch is carried to every
    * final durable write, rather than treating admission as a one-time check. */
   readonly normalCommands?: Readonly<Record<string, number>>;
+  /** Recently released entry admissions, retained only for their final epoch check. */
+  readonly releasedCommands?: Readonly<Record<string, number>>;
   /** READY is a post-verification state, never merely an import completion. */
   readonly verifiedImportId?: string | null;
   readonly verifiedLeaseEpoch?: number | null;

@@ -6,6 +6,7 @@ const CONTROL = "bootstrap-control";
 const DUMP = "bootstrap-dump";
 const MAX_CHUNK_EVENTS = 128;
 const MAX_CHUNK_BYTES = 192 * 1024;
+const MAX_RELEASED_COMMANDS = 512;
 type JsonObject = Record<string, unknown>;
 const object = (value: unknown): value is JsonObject => typeof value === "object" && value !== null && !Array.isArray(value);
 const string = (value: unknown): value is string => typeof value === "string" && value.length > 0;
@@ -18,10 +19,11 @@ type CommandAction = "admit" | "finalize" | "release";
 type FaultPoint = "mode-record" | "tag-chunk" | "store-progress-gap" | "allocator-seed" | "verifying" | "ready-cas";
 
 function empty(serviceId: string): BootstrapControlRecord {
-  return { schemaVersion: 1, status: "EMPTY", importId: null, targetServiceId: serviceId, allocatorLineageId: null, source: null, digest: null, manifest: null, progress: {}, leaseEpoch: 0, leaseUntil: null, failure: null, readyAt: null, normalInFlight: 0, normalCommands: {}, verifiedImportId: null, verifiedLeaseEpoch: null, storeCompletion: null };
+  return { schemaVersion: 1, status: "EMPTY", importId: null, targetServiceId: serviceId, allocatorLineageId: null, source: null, digest: null, manifest: null, progress: {}, leaseEpoch: 0, leaseUntil: null, failure: null, readyAt: null, normalInFlight: 0, normalCommands: {}, releasedCommands: {}, verifiedImportId: null, verifiedLeaseEpoch: null, storeCompletion: null };
 }
 function expired(control: BootstrapControlRecord): boolean { return control.leaseUntil !== null && control.leaseUntil <= Date.now(); }
 function commands(control: BootstrapControlRecord): Record<string, number> { return { ...(control.normalCommands ?? {}) }; }
+function released(control: BootstrapControlRecord): Record<string, number> { return { ...(control.releasedCommands ?? {}) }; }
 function fault(body: unknown, point: FaultPoint): boolean { return object(body) && body.faultAt === point; }
 function encodedBytes(value: unknown): number { return new TextEncoder().encode(JSON.stringify(value)).byteLength; }
 
@@ -144,13 +146,13 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (!object(body) || !string(body.commandId)) return reject("bootstrap_command_invalid", "commandId is required", 400);
     const commandId = body.commandId as string;
     const result = await this.ctx.storage.transaction(async (txn) => {
-      const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); const current = commands(control);
+      const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); const current = commands(control); const completed = released(control);
       if (action === "admit") { if (control.status !== "EMPTY" && control.status !== "READY") return { rejected: true }; if (current[commandId] !== undefined) return { control }; current[commandId] = control.leaseEpoch; const updated = { ...control, normalInFlight: Object.keys(current).length, normalCommands: current }; await txn.put(CONTROL, updated); return { control: updated }; }
       const expectedEpoch = body.leaseEpoch;
       // Release is cleanup only and may be retried after a lost response; it
       // may never authorize a mutation. Finalize retains the strict epoch CAS.
-      if (action === "release") { if (current[commandId] === undefined || (expectedEpoch !== undefined && (!epoch(expectedEpoch) || current[commandId] !== expectedEpoch))) return { rejected: true }; delete current[commandId]; const updated = { ...control, normalInFlight: Object.keys(current).length, normalCommands: current }; await txn.put(CONTROL, updated); return { control: updated }; }
-      if (!epoch(expectedEpoch) || current[commandId] !== expectedEpoch || control.leaseEpoch !== expectedEpoch || (control.status !== "EMPTY" && control.status !== "READY")) return { rejected: true };
+      if (action === "release") { if (current[commandId] === undefined || (expectedEpoch !== undefined && (!epoch(expectedEpoch) || current[commandId] !== expectedEpoch))) return { rejected: true }; completed[commandId] = current[commandId]!; delete current[commandId]; for (const stale of Object.keys(completed).slice(0, Math.max(0, Object.keys(completed).length - MAX_RELEASED_COMMANDS))) delete completed[stale]; const updated = { ...control, normalInFlight: Object.keys(current).length, normalCommands: current, releasedCommands: completed }; await txn.put(CONTROL, updated); return { control: updated }; }
+      if (!epoch(expectedEpoch) || (current[commandId] !== expectedEpoch && completed[commandId] !== expectedEpoch) || control.leaseEpoch !== expectedEpoch || (control.status !== "EMPTY" && control.status !== "READY")) return { rejected: true };
       return { control };
     });
     return "rejected" in result ? reject("bootstrap_command_rejected", "bootstrap epoch rejects normal durable mutation") : response({ leaseEpoch: result.control.leaseEpoch, admitted: true });
