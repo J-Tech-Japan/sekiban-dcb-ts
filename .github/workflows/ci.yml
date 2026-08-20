@@ -31,6 +31,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -126,6 +127,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
+      # Candidate evidence can reference a retained pre-squash feature branch.
+      # A detached PR checkout does not fetch that unrelated ref by default;
+      # retrieve it before the unchanged digest gate verifies its tree.
+      - name: Fetch retained candidate history for evidence verification
+        run: >-
+          git fetch --no-tags origin
+          +refs/heads/claude/sdt-g20-cloudflare-only:refs/remotes/origin/claude/sdt-g20-cloudflare-only
+          +refs/heads/codex/sdt-g22-bootstrap-operator:refs/remotes/origin/codex/sdt-g22-bootstrap-operator
       - uses: actions/setup-node@v4
         with:
           node-version: 24
