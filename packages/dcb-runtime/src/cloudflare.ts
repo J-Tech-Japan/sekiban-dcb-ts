@@ -9,6 +9,7 @@
  */
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -24,6 +25,7 @@ import { TagDurableObject } from "./tag/TagDurableObject";
 
 export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
+  BOOTSTRAP: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
@@ -129,7 +131,7 @@ export function createCloudflareOnlyRuntimeWorker(
   };
 }
 
-export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 
 const cloudflareOnlyRuntime = createCloudflareOnlyRuntimeWorker();
 export default cloudflareOnlyRuntime;

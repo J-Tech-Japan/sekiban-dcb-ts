@@ -10,6 +10,8 @@ export interface DownstreamAdapterEnv {
   /** Optional explicit D1 provider binding; Postgres remains the default. */
   D1?: D1Database;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
+  BOOTSTRAP?: DurableObjectNamespace;
+  SDT_SERVICE_ID?: string;
 }
 
 export interface AdapterOptions {
@@ -23,6 +25,13 @@ function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): Pipeli
   // Queue or scheduled invocations, or a later handler can attempt I/O on a
   // stream owned by an earlier request.
   return provider.create(env);
+}
+
+async function admitBootstrapRoute(env: DownstreamAdapterEnv, serviceId: string, route: string): Promise<void> {
+  if (env.BOOTSTRAP === undefined) return;
+  const url = new URL("https://downstream.internal/route/check"); url.searchParams.set("__serviceId", serviceId);
+  const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route }) }));
+  if (!admitted.ok) throw new Error(`bootstrap_route_rejected:${route}`);
 }
 
 async function withStore<T>(
@@ -47,6 +56,7 @@ export async function processDownstreamDelivery(
   if (!isDownstreamOutboxMessage(message)) {
     throw new Error("Downstream Queue contained an invalid outbox message");
   }
+  await admitBootstrapRoute(env, message.serviceId, "queue");
   await withStore(env, options, async (store, clock) => {
     const arrivedAt = clock.now();
     const outcome = await store.recordDelivery(message, arrivedAt);
@@ -79,6 +89,7 @@ export async function handleDownstreamQueue(
         if (!isDownstreamOutboxMessage(queued.body)) {
           throw new Error("Downstream Queue contained an invalid outbox message");
         }
+        await admitBootstrapRoute(env, queued.body.serviceId, "queue");
         const arrivedAt = clock.now();
         const outcome = await store.recordDelivery(queued.body, arrivedAt);
         if (outcome.outcome !== "stored") {
@@ -102,6 +113,7 @@ export async function stabilizeDownstream(
   options: AdapterOptions = {},
   serviceId?: string,
 ): Promise<void> {
+  await admitBootstrapRoute(env, serviceId ?? env.SDT_SERVICE_ID ?? "serialized-dcb-v1", "scheduled");
   await withStore(env, options, async (store, clock) => {
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     await detector.stabilize(clock, serviceId);

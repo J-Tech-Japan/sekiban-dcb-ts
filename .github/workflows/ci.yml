@@ -41,6 +41,14 @@ jobs:
       - run: npm test
       - run: npm run test:g17
       - run: npm run test:g17:rollout-order
+      - name: Run SDT-G21 bootstrap import core lane
+        run: npm run test:g21
+      - name: Prove SDT-G21 forced-red CI reachability
+        run: |
+          if SDT_G21_FORCE_FAILURE=1 npm run test:g21:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
@@ -105,7 +113,7 @@ jobs:
           mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview@sha256:6ce44ed4ac69cf69a6cb7982d0536cfaa22696172168fc9fe9a722a189d38f99
           --key-file /cosmos.key
       - name: Wait for required Cosmos emulator readiness
-        run: curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused http://127.0.0.1:8080/ready >/dev/null
+        run: curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors http://127.0.0.1:8080/ready >/dev/null
       - name: Execute Cosmos contract and fault lane
         run: npm run test:cosmos
       - name: Verify Cosmos lane remains wired

@@ -5,11 +5,12 @@
  */
 import runtimeWorker, {
   AllocatorDurableObject,
+  BootstrapCoordinatorDurableObject,
   JournalDurableObject,
   TagDurableObject,
   handleDownstreamQueue,
   stabilizeDownstream,
 } from "@sekiban/dcb-runtime";
 
-export { AllocatorDurableObject, JournalDurableObject, TagDurableObject, handleDownstreamQueue, stabilizeDownstream };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, handleDownstreamQueue, stabilizeDownstream };
 export default runtimeWorker;

@@ -17,7 +17,11 @@ interface AllocateInput {
   attemptId: string;
   candidates: AllocationCandidate[];
   faultInjection?: "between-vector-and-watermark";
+  serviceId?: string;
+  bootstrapCommandId?: string;
+  bootstrapEpoch?: number;
 }
+interface SeedInput { importId: string; leaseEpoch: number; highWatermark: string; }
 
 interface AllocationSuccess {
   vector: AllocationVector;
@@ -54,7 +58,13 @@ function attemptKey(attemptId: string): string {
 }
 
 function currentState(allocatorLineageId: string): AllocatorState {
-  return { schemaVersion: 2, allocatorLineageId, allocatedWatermark: null };
+  return { schemaVersion: 3, allocatorLineageId, allocatedWatermark: null, bootstrapSeed: null };
+}
+
+function seedFrom(value: unknown): { value?: SeedInput; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.importId) || !isNonNegativeInteger(value.leaseEpoch) || !isNonEmptyString(value.highWatermark)) return { error: "importId, leaseEpoch, and highWatermark are required" };
+  try { decodeSuid(value.highWatermark); } catch { return { error: "highWatermark must be an allocator SUID" }; }
+  return { value: { importId: value.importId, leaseEpoch: value.leaseEpoch, highWatermark: value.highWatermark } };
 }
 
 function newAllocatorLineageId(): string {
@@ -127,7 +137,10 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
     return { error: "unsupported faultInjection" };
   }
 
-  return { value: { attemptId: value.attemptId, candidates: ordered, faultInjection } };
+  const bootstrap = isNonEmptyString(value.serviceId) && isNonEmptyString(value.bootstrapCommandId) && isNonNegativeInteger(value.bootstrapEpoch)
+    ? { serviceId: value.serviceId, bootstrapCommandId: value.bootstrapCommandId, bootstrapEpoch: value.bootstrapEpoch }
+    : {};
+  return { value: { attemptId: value.attemptId, candidates: ordered, faultInjection, ...bootstrap } };
 }
 
 /**
@@ -136,7 +149,7 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
  * allocated watermark is serialized and atomic.
  */
 export class AllocatorDurableObject implements DurableObject {
-  constructor(private readonly ctx: DurableObjectState) {}
+  constructor(private readonly ctx: DurableObjectState, private readonly env?: { BOOTSTRAP?: DurableObjectNamespace }) {}
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -144,11 +157,11 @@ export class AllocatorDurableObject implements DurableObject {
       const state = await this.ctx.storage.transaction(async (txn) => {
         const stored = await txn.get<AllocatorState>(STATE_KEY);
         if (stored !== undefined && typeof stored.allocatorLineageId === "string" && stored.allocatorLineageId.length > 0) {
-          return { ...stored, schemaVersion: 2 as const };
+          return { ...stored, schemaVersion: 3 as const, bootstrapSeed: stored.bootstrapSeed ?? null };
         }
         const initialized = {
           ...currentState(newAllocatorLineageId()),
-          allocatedWatermark: stored?.allocatedWatermark ?? null,
+          allocatedWatermark: stored?.allocatedWatermark ?? null, bootstrapSeed: stored?.bootstrapSeed ?? null,
         };
         await txn.put(STATE_KEY, initialized);
         return initialized;
@@ -178,6 +191,7 @@ export class AllocatorDurableObject implements DurableObject {
     if (request.method === "POST" && url.pathname === "/allocate") {
       return this.allocate(request);
     }
+    if (request.method === "POST" && url.pathname === "/seed-after") return this.seedAfter(request);
     return error(404, "allocator_route_not_found", "Allocator route was not found");
   }
 
@@ -193,6 +207,11 @@ export class AllocatorDurableObject implements DurableObject {
       return error(400, "invalid_allocation", parsed.error ?? "Invalid allocation request");
     }
     const input = parsed.value;
+    if (input.serviceId !== undefined && this.env?.BOOTSTRAP !== undefined) {
+      const url = new URL("https://allocator.internal/command/finalize"); url.searchParams.set("__serviceId", input.serviceId);
+      const admitted = await this.env.BOOTSTRAP.get(this.env.BOOTSTRAP.idFromName(input.serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId: input.bootstrapCommandId, leaseEpoch: input.bootstrapEpoch }) }));
+      if (!admitted.ok) return error(409, "bootstrap_command_rejected", "bootstrap fencing epoch rejects allocation");
+    }
 
     try {
       const result = await this.ctx.storage.transaction(async (txn): Promise<AllocationSuccess> => {
@@ -215,8 +234,9 @@ export class AllocatorDurableObject implements DurableObject {
               }
               : {
                 ...persistedState,
-                schemaVersion: 2,
+                schemaVersion: 3,
                 allocatorLineageId: upgradedVector.allocatorLineageId,
+                bootstrapSeed: persistedState.bootstrapSeed ?? null,
               };
             await txn.put(attemptKey(input.attemptId), upgradedVector);
             await txn.put(STATE_KEY, upgradedState);
@@ -230,7 +250,7 @@ export class AllocatorDurableObject implements DurableObject {
 
         const state = persistedState === undefined
           ? currentState(lineage)
-          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 2 as const };
+          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 3 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null };
         const suids = nextSuids(state.allocatedWatermark, input.candidates.length);
         const candidates: AllocatedCandidate[] = input.candidates.map((candidate, index) => ({
           ...candidate,
@@ -243,9 +263,10 @@ export class AllocatorDurableObject implements DurableObject {
           allocatedAt: nowIso(),
         };
         const updatedState: AllocatorState = {
-          schemaVersion: 2,
+          schemaVersion: 3,
           allocatorLineageId: lineage,
           allocatedWatermark: candidates[candidates.length - 1]!.suid,
+          bootstrapSeed: state.bootstrapSeed ?? null,
         };
 
         await txn.put(attemptKey(input.attemptId), vector);
@@ -266,5 +287,25 @@ export class AllocatorDurableObject implements DurableObject {
       }
       return error(500, "allocator_failure", "Allocator could not persist the full allocation vector");
     }
+  }
+
+  /** One transaction: only a never-used allocator can establish bootstrap successor state. */
+  private async seedAfter(request: Request): Promise<Response> {
+    let body: unknown; try { body = await request.json<unknown>(); } catch { return error(400, "invalid_bootstrap_seed", "Request body must be JSON"); }
+    const parsed = seedFrom(body); if (parsed.value === undefined) return error(400, "invalid_bootstrap_seed", parsed.error ?? "Invalid bootstrap seed");
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<{ status: number; body: unknown }> => {
+      const stored = await txn.get<AllocatorState>(STATE_KEY);
+      const state = stored === undefined ? currentState(newAllocatorLineageId()) : { ...stored, schemaVersion: 3 as const, bootstrapSeed: stored.bootstrapSeed ?? null };
+      const seed = state.bootstrapSeed;
+      if (seed !== null) {
+        if (seed.importId === input.importId && seed.leaseEpoch === input.leaseEpoch && seed.highWatermark === input.highWatermark) return { status: 200, body: state };
+        return { status: 409, body: { code: "allocator_seed_rejected", error: "allocator already seeded" } };
+      }
+      if (state.allocatedWatermark !== null) return { status: 409, body: { code: "allocator_seed_rejected", error: "allocator already allocating" } };
+      const updated: AllocatorState = { ...state, allocatedWatermark: input.highWatermark, bootstrapSeed: input };
+      await txn.put(STATE_KEY, updated); return { status: 201, body: updated };
+    });
+    return json(result.body, result.status);
   }
 }

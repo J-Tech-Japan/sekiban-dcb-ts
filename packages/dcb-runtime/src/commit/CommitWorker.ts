@@ -25,10 +25,21 @@ export interface CommitWorkerEnv {
   ALLOCATOR: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
+  /** Service-scoped bootstrap authority. Optional keeps pre-G21 unit harnesses compatible. */
+  BOOTSTRAP?: DurableObjectNamespace;
   /** Set only by an authenticated deployment-verification lane. */
   G11_VERIFICATION_ENABLED?: string;
   /** Non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
+}
+
+/** Test seam for the admitted-then-stalled bootstrap race; production has no hook. */
+export interface CommitWorkerHooks {
+  /** Test-only barrier after entry admission is released and before /allocate. */
+  beforeBootstrapAllocation?(): Promise<void> | void;
+  beforeBootstrapFinalization?(): Promise<void> | void;
+  /** Test-only allocator namespace; production always uses the service-wide allocator. */
+  allocatorName?: string;
 }
 
 interface ReservationSuccess {
@@ -200,6 +211,7 @@ export class CommitWorker {
   constructor(
     private readonly env: CommitWorkerEnv,
     private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+    private readonly hooks: CommitWorkerHooks = {},
   ) {}
 
   async handle(request: Request): Promise<Response> {
@@ -229,6 +241,17 @@ export class CommitWorker {
       ? crypto.randomUUID()
       : testAttemptIdFromRequest(request) ?? crypto.randomUUID();
     const candidates = input.eventCandidates.map((candidate) => ({ ...candidate, eventId: crypto.randomUUID() }));
+    const bootstrapEpoch = await this.bootstrapCommand("admit", attemptId);
+    if (bootstrapEpoch === undefined) {
+      return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap is importing; commit is unavailable"), attemptId, fault !== undefined);
+    }
+    // Admission only linearizes the entry check.  Do not retain it through
+    // remote work: PLANNED may start after in-flight work reaches zero, and
+    // the epoch check at the authoritative write is what fences that race.
+    if ((await this.bootstrapCommand("release", attemptId, bootstrapEpoch)) === undefined) {
+      return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap admission could not be released"), attemptId, fault !== undefined);
+    }
+    try {
     const journal = this.journalFor(attemptId);
     const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
       candidates: candidates.map(({ eventId, payload, tags }) => ({ eventId, payload, tags })),
@@ -263,7 +286,8 @@ export class CommitWorker {
       );
     }
 
-    const allocation = await this.allocate(candidates, attemptId, fault);
+    await this.hooks.beforeBootstrapAllocation?.();
+    const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch);
     if (allocation === undefined) {
       return this.finishReservationFailure(
         journal,
@@ -295,6 +319,14 @@ export class CommitWorker {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
 
+    await this.hooks.beforeBootstrapFinalization?.();
+
+    // This is immediately before the first final authoritative tag mutation.
+    // The same service epoch obtained at admission must still be current.
+    if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch)) === undefined) {
+      return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap fencing epoch changed before commit write"), attemptId, fault !== undefined);
+    }
+
     const writesSucceeded = await this.appendAllTags(
       input,
       allocatedCandidates,
@@ -321,6 +353,7 @@ export class CommitWorker {
         fault !== undefined,
       );
     }
+    } finally { /* the entry admission was deliberately released above */ }
   }
 
   private journalFor(attemptId: string): DurableObjectStub {
@@ -329,6 +362,18 @@ export class CommitWorker {
 
   private tagFor(tag: string): DurableObjectStub {
     return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
+  }
+
+  private async bootstrapCommand(action: "admit" | "finalize" | "release", commandId: string, leaseEpoch?: number): Promise<number | undefined> {
+    if (this.env.BOOTSTRAP === undefined) return 0;
+    const url = new URL(`https://commit-worker.internal/command/${action}`);
+    url.searchParams.set("__serviceId", this.serviceId);
+    const result = await this.env.BOOTSTRAP.get(this.env.BOOTSTRAP.idFromName(this.serviceId)).fetch(new Request(url, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId, ...(leaseEpoch === undefined ? {} : { leaseEpoch }) }),
+    }));
+    if (!result.ok) return undefined;
+    const body = await result.json().catch(() => undefined) as { leaseEpoch?: unknown } | undefined;
+    return typeof body?.leaseEpoch === "number" ? body.leaseEpoch : undefined;
   }
 
   private async postJson<T>(stub: DurableObjectStub, path: string, body: unknown): Promise<{ response: Response; body?: T }> {
@@ -447,11 +492,15 @@ export class CommitWorker {
     candidates: Array<{ eventId: string }>,
     attemptId: string,
     fault: CommitTestFault | undefined,
+    bootstrapEpoch: number,
   ): Promise<AllocationVector | undefined> {
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName("service-wide-allocator"));
+    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(this.hooks.allocatorName ?? "service-wide-allocator"));
     try {
       const result = await this.postJson<AllocationVector>(allocator, "/allocate", {
         attemptId,
+        serviceId: this.serviceId,
+        bootstrapCommandId: attemptId,
+        bootstrapEpoch,
         candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId })),
         faultInjection: fault === "allocator-commit" ? "between-vector-and-watermark" : undefined,
       });
