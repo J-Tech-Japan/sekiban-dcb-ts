@@ -233,7 +233,7 @@ def main() -> None:
     parser.add_argument("--include-query-views", action="store_true")
     args = parser.parse_args()
     require(args.harness_grace_ms >= 0, "harnessGraceMs must be non-negative")
-    configured_service_id = os.environ.get("G15_EXPECTED_SERVICE_ID", "serialized-dcb-v1")
+    configured_service_id = os.environ.get("G15_EXPECTED_SERVICE_ID", "")
     require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", configured_service_id) is not None,
             "G15_EXPECTED_SERVICE_ID must be a non-secret deployment service identity")
     safe_window_bound_ms, bound_sources = published_safe_window_bound()

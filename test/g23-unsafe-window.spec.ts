@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import migration0001 from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0002 from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0003 from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
 import fixture from "./fixtures/g23-csharp-fixture.generated.json";
 // @ts-expect-error Vite raw asset import preserves the committed C# generator bytes.
 import fixtureBytes from "./fixtures/g23-csharp-fixture.generated.json?raw";
@@ -71,6 +73,7 @@ describe("SDT-G23 unsafe-window MV core", () => {
     await database().batch(statements(migration0001 as string));
     try { await database().prepare("SELECT 1 FROM mv_unsafe_rows LIMIT 1").all(); } catch { upgradeSawMissingUnsafeTable = true; }
     await database().batch(statements(migration0002 as string));
+    await database().batch(statements(migration0003 as string));
   });
 
   it("upgrades a G20 database with 0001 already applied by applying deployable 0002 only", async () => {
@@ -244,7 +247,7 @@ describe("SDT-G23 unsafe-window MV core", () => {
     const response = await fetchHandler(new Request("https://query.test/api/sekiban/serialized/list-query", {
       method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: "g23-worker-paging" },
       body: JSON.stringify({ queryType: "GetTestListQuery", queryParamsJson: JSON.stringify({ PageNumber: 2, PageSize: 2 }) }),
-    }), {} as never, {} as ExecutionContext);
+    }), { SDT_SERVICE_ID: "g23-worker-runtime" } as never, {} as ExecutionContext);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ itemsJson: JSON.stringify([{ eventId: "r" }]), totalCount: 3, totalPages: 2, currentPage: 2, pageSize: 2 });
     // If Worker-side supportsServerPaging becomes false, this receives

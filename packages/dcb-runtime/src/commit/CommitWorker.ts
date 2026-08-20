@@ -12,7 +12,7 @@ import {
   type CommitTestFault,
   type ValidatedCommitEnvelope,
 } from "./types";
-import { SERIALIZED_DCB_SERVICE_ID, serviceIdForRequest } from "../http/testServiceId";
+import { serviceIdForRequest } from "../http/testServiceId";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -210,7 +210,7 @@ export function validateCommitEnvelope(value: unknown):
 export class CommitWorker {
   constructor(
     private readonly env: CommitWorkerEnv,
-    private readonly serviceId = SERIALIZED_DCB_SERVICE_ID,
+    private readonly serviceId: string,
     private readonly hooks: CommitWorkerHooks = {},
   ) {}
 

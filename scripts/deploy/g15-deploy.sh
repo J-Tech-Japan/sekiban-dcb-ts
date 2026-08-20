@@ -16,8 +16,10 @@ test -x "${WRANGLER_BIN}"
 # Existing Wrangler secrets (including the conformance bearer) are retained;
 # no secret value is passed as an argument or written to repository artifacts.
 deploy_args=(deploy --config samples/meeting-room/wrangler.jsonc --keep-vars --strict --message "SDT-G15 meeting-room frontend")
-if [[ -n "${DEPLOY_SERVICE_ID}" ]]; then
-  deploy_args+=(--var "SDT_SERVICE_ID:${DEPLOY_SERVICE_ID}")
+if [[ ! "${DEPLOY_SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
+  printf 'G15_SERVICE_ID must be a non-empty deployment service identity\n' >&2
+  exit 2
 fi
+deploy_args+=(--var "SDT_SERVICE_ID:${DEPLOY_SERVICE_ID}")
 "${WRANGLER_BIN}" "${deploy_args[@]}"
 "${WRANGLER_BIN}" deployments list --name sekiban-dcb-meeting-room

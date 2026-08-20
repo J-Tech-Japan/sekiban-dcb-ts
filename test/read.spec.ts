@@ -6,7 +6,7 @@ import { G11_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServ
 import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = "local-test-runtime";
 
 interface PartialWriteResponse {
   error: string;

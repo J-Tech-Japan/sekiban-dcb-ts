@@ -91,7 +91,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
   }
 }
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = "local-test-runtime";
 
 function missingTagNamespace(): DurableObjectNamespace {
   const tagObject = { fetch: async () => new Response(null, { status: 404 }) };
@@ -119,7 +119,7 @@ function testMessage(): DownstreamOutboxMessage {
 describe("SDT-G12 Cosmos provider pipeline composition", () => {
   it("runs downstream delivery, projection catch-up, and both query endpoints through the explicit provider", async () => {
     const provider = createCosmosStoreProvider({ client: new PipelineMemoryClient() });
-    const env = {} as Parameters<typeof processDownstreamDelivery>[1];
+    const env = { SDT_SERVICE_ID: SERVICE_ID } as Parameters<typeof processDownstreamDelivery>[1];
     const entry = testMessage();
     await processDownstreamDelivery(entry, env, {
       storeProvider: provider,
@@ -201,7 +201,7 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
         headers: hostileHeaders,
         body: JSON.stringify({ queryType: "GetTestCountQuery", queryParamsJson: "{}" }),
       }),
-      {},
+      { SDT_SERVICE_ID: SERVICE_ID },
       { storeProvider: provider },
     );
     expect(queryResponse.status).toBe(200);
@@ -212,7 +212,7 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
         headers: hostileHeaders,
         body: JSON.stringify({ tag: "test:cosmos-provider" }),
       }),
-      { TAG: missingTagNamespace() },
+      { TAG: missingTagNamespace(), SDT_SERVICE_ID: SERVICE_ID },
       DEPLOYED_PROJECTOR_REGISTRY,
       provider,
     );

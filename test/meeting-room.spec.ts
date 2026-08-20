@@ -44,7 +44,7 @@ describe("SDT-G14 meeting-room consumer", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ queryType: "unknown", queryParamsJson: "{}" }),
-    }), {}, {});
+    }), { SDT_SERVICE_ID: "g24-runtime-fixture" }, {});
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: "validation_error" });
   });

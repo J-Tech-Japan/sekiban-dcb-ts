@@ -22,7 +22,7 @@ import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
-import { serviceIdForRequest } from "./http/testServiceId";
+import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 
@@ -56,6 +56,7 @@ export function createCloudflareOnlyRuntimeWorker(
   const storeProvider = createD1StoreProvider();
   return {
     async fetch(request, env): Promise<Response> {
+      requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env);
@@ -146,10 +147,12 @@ export function createCloudflareOnlyRuntimeWorker(
     },
 
     async queue(batch, env): Promise<void> {
+      requireConfiguredServiceId(env.SDT_SERVICE_ID);
       await handleDownstreamQueue(batch, env, { storeProvider });
     },
 
     async scheduled(_controller, env): Promise<void> {
+      requireConfiguredServiceId(env.SDT_SERVICE_ID);
       await stabilizeDownstream(env, { storeProvider });
       await pollLiveProjections(env, { registry: composition.projectors, storeProvider });
     },

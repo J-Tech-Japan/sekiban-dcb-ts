@@ -12,6 +12,11 @@ interface MeetingRoomD1Env {
   readonly SDT_SERVICE_ID?: string;
 }
 
+function requiredServiceId(value: string | undefined): string {
+  if (value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(value)) return value;
+  throw new Error("SDT_SERVICE_ID is required and must be a non-empty deployment service identity");
+}
+
 interface StoredEventLike {
   readonly suid: string;
   readonly eventId: string;
@@ -110,7 +115,7 @@ export const roomMaterializer = defineRowMaterializer<StoredEventLike>({
  * MV databases are intentionally separate bindings, while every source read
  * remains behind the existing SafeWindow/checkpoint rules.
  */
-export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = env.SDT_SERVICE_ID ?? "serialized-dcb-v1"): Promise<void> {
+export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = requiredServiceId(env.SDT_SERVICE_ID)): Promise<void> {
   if (env.D1 === undefined || env.D1_MV === undefined) {
     throw new Error("Cloudflare-only composition requires D1 and D1_MV bindings");
   }

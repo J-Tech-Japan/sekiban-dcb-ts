@@ -10,7 +10,7 @@ import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import type { ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
 
-const SERVICE_ID = "serialized-dcb-v1";
+const SERVICE_ID = "local-test-runtime";
 const PAYLOAD = "cGF5bG9hZA==";
 
 function unique(prefix: string): string {

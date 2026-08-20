@@ -49,8 +49,10 @@ def main() -> None:
     parser.add_argument("--report", required=True)
     parser.add_argument("--token-file", required=True)
     parser.add_argument("--service-id", help="Run the authenticated V1 five-endpoint lane against an existing service; skips app-command namespace assertions.")
-    parser.add_argument("--app-service-id", default=os.environ.get("G14_APP_SERVICE_ID", "serialized-dcb-v1"))
+    parser.add_argument("--app-service-id", default=os.environ.get("G14_APP_SERVICE_ID", ""))
     args = parser.parse_args()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", args.app_service_id):
+        raise SystemExit("G14_APP_SERVICE_ID must be a non-empty deployment service identity")
     token = Path(args.token_file).read_text(encoding="utf-8").strip()
     if not token:
         raise SystemExit("conformance token file is empty")

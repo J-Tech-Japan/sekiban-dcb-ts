@@ -262,6 +262,9 @@ export async function handleSerializedQuery(
       }
       await materializedView.initialize?.();
       selection = selectQueryBacking({ backing, materializedView });
+      if (await materializedView.hasCheckpointAheadFinding?.(serviceId, definition.materializedViewId ?? definition.tagProjector)) {
+        return error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable");
+      }
       // Waiting still needs the durable source/checkpoint facts. Only create
       // the normal source store when the request actually asks to wait.
       if (parsed.value.waitForSortableUniqueId !== undefined && waitStore === undefined) {
