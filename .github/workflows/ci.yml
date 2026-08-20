@@ -135,7 +135,7 @@ jobs:
         run: >-
           git fetch --no-tags origin
           +refs/heads/claude/sdt-g20-cloudflare-only:refs/remotes/origin/claude/sdt-g20-cloudflare-only
-          +refs/heads/codex/sdt-g22-bootstrap-operator:refs/remotes/origin/codex/sdt-g22-bootstrap-operator
+          5439b8bda255144b608fcdeb6c89dc44dcb667d7
       - uses: actions/setup-node@v4
         with:
           node-version: 24
