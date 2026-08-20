@@ -1,8 +1,8 @@
 {
   "task": "SDT-G22",
-  "status": "verified",
-  "candidateCommit": "20db136270cc493a7280d401636de4529792a820",
-  "sourceCommit": "20db136270cc493a7280d401636de4529792a820",
+  "status": "superseded",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "7777d6cb3746cca7c333b7fe254f779d3caf276f2a0447cc0c0821b9760c9ba4",
