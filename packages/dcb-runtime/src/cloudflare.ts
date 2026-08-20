@@ -10,6 +10,7 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
+import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -69,6 +70,9 @@ export function createCloudflareOnlyRuntimeWorker(
       if (url.pathname === "/operator/repair") {
         return handleOperatorRepair(request, env);
       }
+      if (url.pathname.startsWith("/operator/bootstrap/")) {
+        return handleOperatorBootstrap(request, env, storeProvider);
+      }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
         return handleOutboxDrainRequest(request, env);
       }
@@ -85,6 +89,15 @@ export function createCloudflareOnlyRuntimeWorker(
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
         const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName("service-wide-allocator"));
         return allocator.fetch(new Request(url.toString(), request));
+      }
+
+      const bootstrapMatch = url.pathname.match(/^\/bootstrap\/([^/]+)(\/.*)?$/);
+      if (bootstrapMatch !== null) {
+        let serviceId: string;
+        try { serviceId = decodeURIComponent(bootstrapMatch[1]); } catch { return new Response("Bootstrap serviceId must be URI encoded", { status: 400 }); }
+        if (serviceId.length === 0) return new Response("Bootstrap serviceId is required", { status: 400 });
+        url.pathname = bootstrapMatch[2] ?? "/state"; url.searchParams.set("__serviceId", serviceId);
+        return env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url.toString(), request));
       }
 
       const tagMatch = url.pathname.match(/^\/tags\/([^/]+)\/([^/]+)(\/.*)?$/);

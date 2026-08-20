@@ -41,6 +41,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (url.pathname === "/import") return this.import(serviceId, body);
     if (url.pathname === "/verify") return this.verify(serviceId, body);
     if (url.pathname === "/ready") return this.ready(serviceId, body);
+    if (url.pathname === "/abort") return this.abort(serviceId, body);
     if (url.pathname === "/route/check") return this.route(serviceId, body);
     if (url.pathname === "/command/admit") return this.command(serviceId, body, "admit");
     if (url.pathname === "/command/finalize") return this.command(serviceId, body, "finalize");
@@ -134,6 +135,19 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (fault(body, "ready-cas")) return reject("bootstrap_simulated_crash", "simulated crash before READY CAS", 503);
     const ready = await this.ctx.storage.transaction(async (txn) => { const current = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); if (current.status === "READY") return current; if (current.status !== "VERIFYING" || current.leaseEpoch !== control.leaseEpoch || current.verifiedImportId !== current.importId || current.verifiedLeaseEpoch !== current.leaseEpoch) throw new Error("bootstrap READY CAS failed"); const updated: BootstrapControlRecord = { ...current, status: "READY", leaseUntil: null, readyAt: new Date().toISOString() }; await txn.put(CONTROL, updated); return updated; });
     return response(ready);
+  }
+
+  /** Operator abort retains the durable failed plan for audit/retry; it never clears target state. */
+  private async abort(serviceId: string, body: unknown): Promise<Response> {
+    const control = await this.control(serviceId); const invalid = this.valid(control, body); if (invalid !== undefined) return reject("bootstrap_epoch_rejected", invalid);
+    if (control.status === "EMPTY" || control.status === "READY") return reject("bootstrap_state_rejected", "abort requires an active bootstrap");
+    const aborted = await this.ctx.storage.transaction(async (txn) => {
+      const current = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId);
+      if (current.importId !== control.importId || current.leaseEpoch !== control.leaseEpoch) throw new Error("bootstrap abort CAS failed");
+      const next: BootstrapControlRecord = { ...current, status: "FAILED", failure: "operator_abort", leaseUntil: null };
+      await txn.put(CONTROL, next); return next;
+    });
+    return response(aborted);
   }
 
   private async route(serviceId: string, body: unknown): Promise<Response> {

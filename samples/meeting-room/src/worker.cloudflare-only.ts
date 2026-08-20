@@ -142,10 +142,18 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
   return runtimeFetch(new Request(url.toString(), request), { ...env, G11_VERIFICATION_ENABLED: "true" }, ctx);
 }
 
+async function bootstrapOperator(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  const url = new URL(request.url); const headers = new Headers(); const authorization = request.headers.get("authorization");
+  if (authorization !== null) headers.set("authorization", authorization);
+  if (request.method !== "GET") headers.set("content-type", "application/json");
+  return runtimeFetch(new Request(`https://runtime.internal${url.pathname}`, request.method === "GET" ? { method: "GET", headers } : { method: request.method, headers, body: await request.text() }), env, ctx);
+}
+
 const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   async fetch(request, env, ctx) {
     const path = new URL(request.url).pathname;
     if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
+    if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
     if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
     if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx);
     if (path === "/api/read/reservations" || path === "/api/read/room-query") return readQuery(request, env, ctx);

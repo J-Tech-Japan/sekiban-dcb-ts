@@ -1,6 +1,7 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
+import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
@@ -38,6 +39,8 @@ export type {
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 export { BootstrapManifestError, bootstrapDigest, parseBootstrapDump } from "./bootstrap/manifest";
+export { BootstrapIdentityConflictError, BootstrapStoreAdapter, createBootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
+export type { BootstrapExportCursor, BootstrapExportPage } from "./bootstrap/BootstrapStoreAdapter";
 export type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord, BootstrapManifest, BootstrapStatus, BootstrapStoreAdmissionPort } from "./bootstrap/types";
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
@@ -120,6 +123,9 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       }
       if (url.pathname === "/operator/repair") {
         return handleOperatorRepair(request, env);
+      }
+      if (url.pathname.startsWith("/operator/bootstrap/")) {
+        return handleOperatorBootstrap(request, env, storeProvider);
       }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
         return handleOutboxDrainRequest(request, env);

@@ -1,6 +1,7 @@
 import { D1EventStore, type D1StoreOptions } from "./store/D1EventStore";
 import { D1MaterializedViewStore } from "./mv/MaterializedViewStore";
 import type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
+import { createBootstrapStoreAdapter, type BootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
 
 export {
   D1EventStore,
@@ -50,4 +51,8 @@ export function createD1StoreProvider(config: D1StoreProviderConfig = {}): Store
 
 export function createD1MaterializedViewStore(database: D1Database): D1MaterializedViewStore {
   return new D1MaterializedViewStore(database);
+}
+
+export function createD1BootstrapAdapter(database: D1Database): BootstrapStoreAdapter {
+  return createBootstrapStoreAdapter("d1", new D1EventStore(database));
 }

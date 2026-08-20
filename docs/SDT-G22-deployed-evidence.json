@@ -1,0 +1,15 @@
+{
+  "task": "SDT-G22",
+  "status": "candidate-pending-deployment",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": ["packages/dcb-runtime/src", "packages/dcb-runtime/package.json"],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": ["samples/meeting-room", "scripts", "package.json", ".github/workflows/ci.yml"]
+  },
+  "requiredVerification": ["authenticated five-endpoint conformance", "source-target tag/query equality", "IMPORTING rejection", "READY watermark advance", "raw V1 404", "provider crash-resume"],
+  "secrets": "redacted"
+}
