@@ -1,19 +1,20 @@
 {
   "task": "SDT-G22",
-  "status": "superseded",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "verified",
+  "candidateCommit": "3f110124368ee6b072440ed44771f633385c22bc",
+  "sourceCommit": "3f110124368ee6b072440ed44771f633385c22bc",
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "a8b4e36cd75cc97744acea480f679e651350b38379a43a10dba2a0df84e9ffe5",
+    "runtime": "83bf0aad7ab87351855e7a3db730ab177cd2ab6612ae40c907cb8ac6a78c8106",
     "runtimeRoots": ["packages/dcb-runtime/src", "packages/dcb-runtime/package.json"],
-    "configuration": "69392d67e93b2e41ba6e05fdc9629be4d094ab065b019295f1009475d51313a6",
+    "configuration": "00ad9e5ab4127b8a15b0dc2334b0240a67e12e4ee93cefb784c697f92e7b3e1a",
     "configurationRoots": ["samples/meeting-room", "scripts", "package.json", ".github/workflows/ci.yml"]
   },
-  "candidateDeployment": {"worker":"sekiban-dcb-meeting-room-cloudflare-only","url":"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev","version":"22530ec6-738a-4b4e-8950-3af484bb6fd2","pipelineD1":"3c3b1641-7969-4d72-97a9-2ea65085c9bb"},
-  "roundTrip": {"sourceServiceId":"g20-8dbb4be-20260819a","targetServiceId":"g22-bootstrap-20260820a","importId":"g22-import-20260820a","eventCount":9,"highWatermark":"suid-00000000000000000000000000000032","digest":"fnv1a32:18ec0815","targetStatus":"READY","eventIdentityEquality":"pass","rawV1CommitStatus":404},
-  "providerCrashResume": {"provider":"d1","targetServiceId":"g22-crash-resume-20260820a","crashStatus":503,"resumedStatus":"READY","eventCount":9,"digest":"fnv1a32:eb5529d8"},
-  "supersededReason": "post-READY target delivery used a different serving allocator lineage; a new candidate and full deployed verification are required",
-  "requiredVerification": ["new-candidate deployment and authenticated five-endpoint conformance required", "source-target event identity equality required", "post-READY downstream delivery and query visibility required", "provider crash-resume required"],
+  "candidateDeployment": {"worker":"sekiban-dcb-meeting-room-cloudflare-only","url":"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev","version":"83ab8eba-8656-4525-b735-cd2256c904de","pipelineD1":"3c3b1641-7969-4d72-97a9-2ea65085c9bb"},
+  "roundTrip": {"sourceServiceId":"g20-8dbb4be-20260819a","targetServiceId":"g22-final-20260820a","importId":"g22-final-import-20260820a","eventCount":9,"highWatermark":"suid-00000000000000000000000000000032","digest":"fnv1a32:9fdb3a79","targetStatus":"READY","eventIdentityEquality":"pass (two-way EXCEPT over EventId/SUID/payload/full tag set: 0 rows)","postReadyCommit":{"eventId":"0690111c-4c22-4730-b456-847ecd85af6f","suid":"suid-00000000000000000000000000000033","servingAllocatorLineageId":"54ccf894-4dfb-431c-a691-3406aab0fa85","d1Delivery":"pass","queryVisible":"pass"},"rawV1CommitStatus":404},
+  "v1Conformance": {"runner":"scripts/deploy/g14-conformance.py --service-id g22-final-20260820a","endpoints":{"commit":"PASS","query":"PASS","list-query":"PASS","tag-state":"PASS","tag-latest-sortable":"PASS"},"authenticatedLane":"PASS","appCommandAssertions":"not-applicable-to-bootstrap-target"},
+  "providerCrashResume": {"provider":"d1","targetServiceId":"g22-final-crash-20260820a","crashStatus":503,"crashCode":"bootstrap_simulated_crash","resumedStatus":"READY","eventCount":9,"digest":"fnv1a32:a8ee4034"},
+  "g17Observation": {"targetServiceId":"g22-final-20260820a","findings":"none","deliveryIncidents":"none","rootCause":"initial bootstrap used a synthetic target lineage while normal commit used a different allocator; fixed by deriving and seeding the serving service allocator lineage"},
+  "requiredVerification": ["authenticated V1 commit/query/list-query/tag-state/tag-latest-sortable PASS", "source-target byte equality PASS", "post-READY D1 delivery and query visibility PASS", "provider crash-resume PASS", "raw V1 404 PASS"],
   "secrets": "redacted"
 }
