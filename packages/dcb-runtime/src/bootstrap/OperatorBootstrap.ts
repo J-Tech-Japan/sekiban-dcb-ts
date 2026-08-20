@@ -1,5 +1,6 @@
 import { parseBootstrapDump } from "./manifest";
 import { createBootstrapStoreAdapter } from "./BootstrapStoreAdapter";
+import type { BootstrapManifest } from "./types";
 import type { StoreProvider, StoreProviderEnvironment } from "../store/provider";
 import { allocatorNameForService, type AllocatorState } from "../allocator/types";
 
@@ -20,8 +21,19 @@ export interface OperatorBootstrapEnv extends StoreProviderEnvironment {
   readonly REPAIR_OPERATOR_TOKEN: string;
 }
 
+/** Deployment composition may rebuild provider-specific read models after the
+ * durable store and tag verification, but before the coordinator becomes READY. */
+export interface OperatorBootstrapHooks {
+  readonly afterVerifyBeforeReady?: (input: {
+    readonly serviceId: string;
+    readonly importId: string;
+    readonly leaseEpoch: number;
+    readonly manifest: BootstrapManifest;
+  }) => Promise<void>;
+}
+
 /** Bearer-only operator lane. Incoming headers are never forwarded to a DO. */
-export async function handleOperatorBootstrap(request: Request, env: OperatorBootstrapEnv, storeProvider: StoreProvider): Promise<Response> {
+export async function handleOperatorBootstrap(request: Request, env: OperatorBootstrapEnv, storeProvider: StoreProvider, hooks: OperatorBootstrapHooks = {}): Promise<Response> {
   const denied = bearer(request, env.REPAIR_OPERATOR_TOKEN); if (denied !== undefined) return denied;
   const url = new URL(request.url); const match = url.pathname.match(/^\/operator\/bootstrap\/([^/]+)\/(plan|import|status|abort|export)$/);
   if (match === null) return json({ code: "not_found", error: "not found" }, 404);
@@ -58,5 +70,10 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
   if (!imported.ok) return imported;
   const verified = await invoke("/verify", body); if (!verified.ok) return verified;
   await adapter.verifyBootstrap({ importId: body.importId, manifest: dump.manifest });
+  try {
+    await hooks.afterVerifyBeforeReady?.({ serviceId, importId: body.importId, leaseEpoch: body.leaseEpoch, manifest: dump.manifest });
+  } catch {
+    return json({ code: "bootstrap_read_model_rebuild_failed", error: "target read-model rebuild failed before READY" }, 503);
+  }
   return invoke("/ready", body);
 }

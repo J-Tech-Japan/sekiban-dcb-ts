@@ -18,7 +18,11 @@ interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly CONFORMANCE_TOKEN?: string;
 }
 
-const runtime = createCloudflareOnlyRuntimeWorker({ domain: meetingRoomDomain, config: meetingRoomRuntimeConfig });
+const runtime = createCloudflareOnlyRuntimeWorker({
+  domain: meetingRoomDomain,
+  config: meetingRoomRuntimeConfig,
+  afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
+});
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
 function json(body: unknown, status = 200): Response {

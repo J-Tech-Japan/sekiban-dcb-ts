@@ -4,6 +4,7 @@ import fixture from "./fixtures/g22-csharp-fixture.generated.json";
 // @ts-expect-error Vite raw asset import preserves the committed generator bytes.
 import fixtureBytes from "./fixtures/g22-csharp-fixture.generated.json?raw";
 import provenance from "./fixtures/g22-csharp-fixture.provenance.json";
+import { bootstrapDigest } from "../packages/dcb-runtime/src/bootstrap/manifest";
 import { handleOperatorBootstrap } from "../packages/dcb-runtime/src/bootstrap/OperatorBootstrap";
 import type { PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -80,5 +81,31 @@ describe("SDT-G22 provider bootstrap adapters", () => {
     const url = (env as unknown as { POSTGRES_URL?: string }).POSTGRES_URL;
     if (url === undefined) throw new Error("POSTGRES_URL binding is required for the real Postgres bootstrap contract");
     await runG22BootstrapProviderContract("postgres", new PostgresEventStore(url));
+  });
+  it("does not publish READY when deployment read-model rebuild fails after verification", async () => {
+    const calls: string[] = [];
+    const record = { eventId: "rebuild-event", suid: suid(1), payload: "AQ==", eventTags: ["orders"] };
+    const draft = {
+      format: "sekiban-dcb-bootstrap" as const, version: 1 as const,
+      source: { serviceId: "source", lineageId: "unknown-legacy" },
+      target: { serviceId: "target", allocatorLineageId: "lineage" },
+      highWatermark: suid(1), eventCount: 1, tagCounts: { orders: 1 }, canonicalization: "utf8-json-sorted-keys-v1" as const,
+    };
+    const dump = { manifest: { ...draft, contentDigest: bootstrapDigest({ manifest: { ...draft, contentDigest: "" }, events: [record] }) }, events: [record] };
+    const coordinator = {
+      fetch: async (request: Request) => {
+        calls.push(new URL(request.url).pathname);
+        return Response.json({ status: new URL(request.url).pathname === "/verify" ? "VERIFYING" : "IMPORTING" });
+      },
+    };
+    const env = { REPAIR_OPERATOR_TOKEN: "operator-secret", BOOTSTRAP: { idFromName: (value: string) => value, get: () => coordinator } };
+    const response = await handleOperatorBootstrap(new Request("https://operator.test/operator/bootstrap/target/import", {
+      method: "POST", headers: { authorization: "Bearer operator-secret", "content-type": "application/json" }, body: JSON.stringify({ importId: "rebuild", leaseEpoch: 1, dump }),
+    }), env as never, { name: "test", create: () => memory([]) }, {
+      afterVerifyBeforeReady: async () => { throw new Error("materialized view rebuild unavailable"); },
+    });
+    expect(response.status).toBe(503);
+    expect((await response.json<{ code: string }>()).code).toBe("bootstrap_read_model_rebuild_failed");
+    expect(calls).toEqual(["/import", "/verify"]);
   });
 });

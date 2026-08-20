@@ -44,6 +44,8 @@ export interface CloudflareOnlyEnv {
 export interface CloudflareOnlyWorkerOptions {
   readonly domain?: DomainDefinition;
   readonly config?: RuntimeWorkerConfig;
+  /** Optional deployment read-model rebuild that must finish before READY. */
+  readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;
 }
 
 /** Compose the named two-D1 Cloudflare-only Worker. */
@@ -73,7 +75,11 @@ export function createCloudflareOnlyRuntimeWorker(
         return handleOperatorRepair(request, env);
       }
       if (url.pathname.startsWith("/operator/bootstrap/")) {
-        return handleOperatorBootstrap(request, env, storeProvider);
+        return handleOperatorBootstrap(request, env, storeProvider, {
+          afterVerifyBeforeReady: options.afterBootstrapVerify === undefined
+            ? undefined
+            : ({ serviceId }) => options.afterBootstrapVerify!({ serviceId, env }),
+        });
       }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
         return handleOutboxDrainRequest(request, env);
