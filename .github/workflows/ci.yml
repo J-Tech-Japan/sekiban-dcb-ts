@@ -136,6 +136,7 @@ jobs:
           git fetch --no-tags origin
           8dbb4be825e084adef92065496cc0ffdc22b28ed
           5439b8bda255144b608fcdeb6c89dc44dcb667d7
+          38219c8a6526a0209295e9f06450cce9e2217004
       - uses: actions/setup-node@v4
         with:
           node-version: 24
