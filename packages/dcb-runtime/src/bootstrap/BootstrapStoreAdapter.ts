@@ -28,11 +28,11 @@ function compareOpaque(left: string, right: string): number {
   return a.length - b.length;
 }
 export function bootstrapEventIdentityMatches(event: StoredEvent, record: BootstrapEventRecord): boolean {
-  return event.suid === record.suid && event.payload === record.payload && JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
+  return event.suid === record.suid && event.payload === record.payload && (event.eventType ?? undefined) === record.eventType && JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
 }
 export type BootstrapIdentityGuard = (event: StoredEvent, record: BootstrapEventRecord) => boolean;
 function toRecord(event: StoredEvent): BootstrapEventRecord {
-  return { eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: [...event.eventTags].sort(compareOpaque) };
+  return { eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: [...event.eventTags].sort(compareOpaque), ...(event.eventType === undefined ? {} : { eventType: event.eventType, provenance: { origin: event.provenance ?? "g27" } }) };
 }
 
 /**
@@ -89,7 +89,7 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
       // The provider-level identity guard deliberately fires before any write.
       if (prior !== undefined && !this.identityGuard(prior, record)) throw new BootstrapIdentityConflictError(this.provider, record.eventId);
       for (const tag of record.eventTags) {
-        const delivered = await this.store.recordDelivery({ version: 1, serviceId: input.manifest.target.serviceId, allocatorLineageId: input.manifest.target.allocatorLineageId, tag, attemptId: `bootstrap:${input.importId}:${input.leaseEpoch}`, eventId: record.eventId, suid: record.suid, payload: record.payload, eventTags: [...record.eventTags], enqueuedAt: 0 }, 0);
+        const delivered = await this.store.recordDelivery({ version: 1, serviceId: input.manifest.target.serviceId, allocatorLineageId: input.manifest.target.allocatorLineageId, tag, attemptId: `bootstrap:${input.importId}:${input.leaseEpoch}`, eventId: record.eventId, suid: record.suid, payload: record.payload, eventTags: [...record.eventTags], ...(record.eventType === undefined ? {} : { eventType: record.eventType }), provenance: record.eventType === undefined ? "pre-g27-queue" : "g27", enqueuedAt: 0 }, 0);
         if (delivered.outcome !== "stored") throw new Error(`${this.provider} bootstrap admission rejected ${record.eventId}`);
       }
     }

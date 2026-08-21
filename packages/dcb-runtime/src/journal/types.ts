@@ -29,6 +29,7 @@ export type JournalTerminalState = Extract<
 export interface JournalCandidate {
   eventId: string;
   payload: string;
+  eventType?: string;
   tags: string[];
 }
 

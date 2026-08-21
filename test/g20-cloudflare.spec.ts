@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw asset import
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw asset import
+import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw asset import
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw asset import
 import unsafeMvMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
@@ -50,13 +52,14 @@ function event(serviceId: string): DownstreamOutboxMessage {
       userId: "g20-user",
     })),
     eventTags: [tag],
+    provenance: "pre-g27-queue",
     enqueuedAt: 0,
   };
 }
 
 describe("SDT-G20 Cloudflare-only composition", () => {
   beforeAll(async () => {
-    await database().batch(statements(pipelineMigration as string));
+    await database().batch(statements(`${pipelineMigration as string}\n${identityMigration as string}`));
     await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
       .filter(Boolean).map((value) => mvDatabase().prepare(value)));
   });

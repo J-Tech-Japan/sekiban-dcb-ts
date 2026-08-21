@@ -34,6 +34,7 @@ function message(
     suid,
     payload: PAYLOAD,
     eventTags: ["g17:lineage"],
+    provenance: "pre-g27-queue",
     enqueuedAt: 1_000,
   };
 }

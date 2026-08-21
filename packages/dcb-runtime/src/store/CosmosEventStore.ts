@@ -1,4 +1,5 @@
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
+import { resolveDeliveryIdentity } from "../eventIdentity";
 import { decayedLagEstimateMs } from "../safeWindow";
 import type {
   DeliveryLagRecord,
@@ -160,6 +161,8 @@ function eventFrom(document: JsonObject): StoredEvent {
     suid: asString(document.suid, "suid"),
     payload: asString(document.payload, "payload"),
     eventTags: asStringArray(document.eventTags, "eventTags"),
+    ...(document.eventType === undefined ? {} : { eventType: asString(document.eventType, "eventType") }),
+    provenance: document.provenance === "g27" ? "g27" : "pre-g27",
     firstArrivedAt: asNumber(document.firstArrivedAt, "firstArrivedAt"),
     lastArrivedAt: asNumber(document.lastArrivedAt, "lastArrivedAt"),
     maxDeliveryLagMs: asNumber(document.maxDeliveryLagMs, "maxDeliveryLagMs"),
@@ -435,6 +438,8 @@ interface EventDocument extends JsonObject {
   suid: string;
   payload: string;
   eventTags: string[];
+  eventType?: string;
+  provenance?: "pre-g27" | "g27";
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;
@@ -545,6 +550,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
+    const identity = resolveDeliveryIdentity(message, deliverySource);
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const eventTags = sortedUnique(message.eventTags);
     const binding = await this.readLineageBinding(message.serviceId);
@@ -616,7 +622,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     const currentHead = currentEvents.reduce<string | undefined>((head, entry) =>
       head === undefined || compareCosmosSuid(entry.document.suid, head) > 0 ? entry.document.suid : head, undefined);
     const recoveryBacklogSample = currentHead !== undefined && compareCosmosSuid(message.suid, currentHead) < 0;
-    const event = await this.mutateEvent(message, arrivedAt, lagMs, eventTags);
+    const event = await this.mutateEvent(message, arrivedAt, lagMs, eventTags, identity.legacy ? undefined : identity.key, identity.legacy ? "pre-g27" : "g27");
     if (!recoveryBacklogSample && deliverySource !== "fast") await this.updateLag(message.serviceId, lagMs, arrivedAt);
     return { outcome: "stored", kind: "stored", event: eventFrom(event) };
   }
@@ -958,6 +964,8 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     arrivedAt: number,
     lagMs: number,
     eventTags: string[],
+    eventType?: string,
+    provenance: "pre-g27" | "g27" = "pre-g27",
   ): Promise<EventDocument> {
     const id = safeId(message.eventId);
     for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -971,6 +979,8 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
           suid: message.suid,
           payload: message.payload,
           eventTags,
+          ...(eventType === undefined ? {} : { eventType }),
+          provenance,
           firstArrivedAt: arrivedAt,
           lastArrivedAt: arrivedAt,
           maxDeliveryLagMs: lagMs,
@@ -993,6 +1003,9 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
         }
       }
       const prior = eventFrom(existing.document);
+      if (prior.eventType !== eventType || prior.provenance !== provenance) {
+        throw new Error(`EventId ${message.eventId} conflicts with its canonical event identity`);
+      }
       if (prior.suid !== message.suid || prior.payload !== message.payload || JSON.stringify(prior.eventTags) !== JSON.stringify(eventTags)) {
         throw new Error(`EventId ${message.eventId} conflicts with its durable Cosmos row`);
       }

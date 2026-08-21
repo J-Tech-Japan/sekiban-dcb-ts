@@ -315,6 +315,7 @@ describe("Serialized V1 reads", () => {
       suid: "suid-ceiling-00000000000000000000000000000001",
       payload: "e30=",
       eventTags: [tag],
+      provenance: "pre-g27-queue",
       enqueuedAt: now - 121_000,
     }, now);
     expect(await store.currentLagBound(serviceId, now)).toBeGreaterThan(120_000);

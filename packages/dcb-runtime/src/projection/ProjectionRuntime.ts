@@ -78,6 +78,8 @@ function projectionEventFromStored(event: StoredEvent): ProjectionEvent {
     suid: event.suid,
     payload: event.payload,
     eventTags: event.eventTags,
+    ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
+    provenance: event.provenance ?? (event.eventType === undefined ? "pre-g27" : "g27"),
   };
 }
 

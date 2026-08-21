@@ -1,5 +1,6 @@
 import { decayedLagEstimateMs } from "../safeWindow";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
+import { resolveDeliveryIdentity } from "../eventIdentity";
 import type {
   DeliveryIncident,
   DeliveryIncidentClassification,
@@ -100,6 +101,8 @@ function eventFrom(row: D1Row, arrivals: readonly D1Row[]): StoredEvent {
     suid: asString(row.suid, "suid"),
     payload: asString(row.payload, "payload"),
     eventTags: asStringArray(row.event_tags, "event_tags"),
+    ...(row.event_type === null || row.event_type === undefined ? {} : { eventType: asString(row.event_type, "event_type") }),
+    provenance: row.event_provenance === "g27" ? "g27" : "pre-g27",
     firstArrivedAt: asNumber(row.first_arrived_at, "first_arrived_at"),
     lastArrivedAt: asNumber(row.last_arrived_at, "last_arrived_at"),
     maxDeliveryLagMs: asNumber(row.max_delivery_lag_ms, "max_delivery_lag_ms"),
@@ -220,6 +223,13 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
+    const identity = resolveDeliveryIdentity(message, deliverySource);
+    const storedBefore = await this.eventById(message.serviceId, message.eventId);
+    const incomingEventType = identity.legacy ? undefined : identity.key;
+    const incomingProvenance = identity.legacy ? "pre-g27" : "g27";
+    if (storedBefore !== undefined && (storedBefore.eventType ?? undefined) !== incomingEventType) {
+      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`);
+    }
     const eventTags = sortedUnique(message.eventTags);
     const tagsJson = jsonArray(eventTags);
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
@@ -278,9 +288,9 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
       ),
       this.database.prepare(
         `INSERT INTO serialized_dcb_events
-           (service_id, event_id, suid, payload, allocator_lineage_id, event_tags,
+           (service_id, event_id, suid, payload, allocator_lineage_id, event_type, event_provenance, event_tags,
             first_arrived_at, last_arrived_at, max_delivery_lag_ms)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE NOT EXISTS (
             SELECT 1 FROM serialized_dcb_allocator_bindings
              WHERE service_id = ? AND allocator_lineage_id <> ?
@@ -296,6 +306,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.suid,
         message.payload,
         message.allocatorLineageId,
+        incomingEventType ?? null,
+        incomingProvenance,
         tagsJson,
         arrivedAt,
         arrivedAt,
@@ -314,6 +326,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
                 max_delivery_lag_ms = MAX(max_delivery_lag_ms, ?)
           WHERE service_id = ? AND event_id = ?
             AND suid COLLATE BINARY = ? COLLATE BINARY AND payload = ?
+            AND event_type IS ? AND event_provenance = ?
             AND (event_tags = ? OR event_tags = '[]')
             AND NOT EXISTS (
               SELECT 1 FROM serialized_dcb_allocator_bindings
@@ -333,6 +346,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.eventId,
         message.suid,
         message.payload,
+        incomingEventType ?? null,
+        incomingProvenance,
         tagsJson,
         message.serviceId,
         message.allocatorLineageId,
@@ -347,7 +362,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
           WHERE EXISTS (
             SELECT 1 FROM serialized_dcb_events
              WHERE service_id = ? AND event_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY
-               AND payload = ? AND (event_tags = ? OR event_tags = '[]')
+               AND payload = ? AND event_type IS ? AND event_provenance = ? AND (event_tags = ? OR event_tags = '[]')
           )
             AND NOT EXISTS (
               SELECT 1 FROM serialized_dcb_allocator_bindings
@@ -373,6 +388,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.eventId,
         message.suid,
         message.payload,
+        incomingEventType ?? null,
+        incomingProvenance,
         tagsJson,
         message.serviceId,
         message.allocatorLineageId,
@@ -397,7 +414,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
               SELECT 1 FROM serialized_dcb_events contradictory
                WHERE contradictory.service_id = ? AND contradictory.event_id = ?
                  AND (contradictory.suid COLLATE BINARY <> ? COLLATE BINARY
-                   OR contradictory.payload <> ? OR contradictory.event_tags <> ?)
+                   OR contradictory.payload <> ? OR contradictory.event_type IS NOT ?
+                   OR contradictory.event_provenance <> ? OR contradictory.event_tags <> ?)
             )
             AND NOT EXISTS (
               SELECT 1 FROM serialized_dcb_events prior
@@ -424,6 +442,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.eventId,
         message.suid,
         message.payload,
+        incomingEventType ?? null,
+        incomingProvenance,
         tagsJson,
         message.serviceId,
         message.suid,
@@ -452,7 +472,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
     if (
       stored.suid !== message.suid ||
       stored.payload !== message.payload ||
-      JSON.stringify(stored.eventTags) !== tagsJson
+      JSON.stringify(stored.eventTags) !== tagsJson ||
+      (stored.eventType ?? undefined) !== incomingEventType
     ) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its durable D1 identity`);
     }
@@ -462,7 +483,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
     this.ready();
     const rows = await this.rows(
-      `SELECT service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
+      `SELECT service_id, event_id, suid, payload, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
          FROM serialized_dcb_events
         WHERE service_id = ? AND suid COLLATE BINARY > ? COLLATE BINARY
         ORDER BY suid COLLATE BINARY ASC, event_id COLLATE BINARY ASC`,
@@ -776,7 +797,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
 
   private async eventById(serviceId: string, eventId: string): Promise<StoredEvent | undefined> {
     const rows = await this.rows(
-      `SELECT service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
+      `SELECT service_id, event_id, suid, payload, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
          FROM serialized_dcb_events WHERE service_id = ? AND event_id = ?`,
       serviceId,
       eventId,

@@ -35,6 +35,7 @@ function message(serviceId, eventId, suid, tag, eventTags, enqueuedAt = 1_000) {
     suid,
     payload: "cGF5bG9hZA==",
     eventTags,
+    provenance: "pre-g27-queue",
     enqueuedAt,
   };
 }

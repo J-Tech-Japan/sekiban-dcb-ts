@@ -1,5 +1,6 @@
 import { BindingExclusionLedgerClient } from "./ExclusionLookup";
 import { InconsistencyDetector } from "./InconsistencyDetector";
+import { resolveDeliveryIdentity } from "../eventIdentity";
 import type { DeliverySource, DownstreamOutboxMessage, PipelineClock } from "./types";
 import { systemPipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
@@ -171,6 +172,9 @@ export async function processDeliveryCore(
   options: DeliveryCoreOptions = {},
 ): Promise<DeliveryCoreResult> {
   const startedAt = performance.now();
+  // Admission is deliberately before initialize/recordDelivery: a malformed
+  // post-G27 envelope cannot create an incident, detector row, or view state.
+  const resolvedIdentity = resolveDeliveryIdentity(message, source);
   const store = providerStore(env, options);
   await store.initialize();
   const clock = options.clock ?? systemPipelineClock;
@@ -196,6 +200,13 @@ export async function processDeliveryCore(
     return result(source, message, outcome.outcome, arrivedAt, false, [], [], options.correlationId, startedAt);
   }
 
+  const storedEvent: StoredEvent = resolvedIdentity.legacy && outcome.event.eventType === undefined
+    ? outcome.event
+    : {
+      ...outcome.event,
+      eventType: outcome.event.eventType ?? resolvedIdentity.key,
+      provenance: outcome.event.provenance ?? resolvedIdentity.provenance,
+    };
   const failures: DeliveryCoreFailure[] = [];
   // Normative step 3: detector only for a stored event.
   let detectorApplied = false;
@@ -216,7 +227,7 @@ export async function processDeliveryCore(
   const viewOutcomes = await Promise.all(views.map(async (view) => {
     const viewStartedAt = performance.now();
     try {
-      const applied = await view.apply({ message, event: outcome.event, arrivedAt, source });
+      const applied = await view.apply({ message, event: storedEvent, arrivedAt, source });
       const status = applied === "duplicate-race" ? "duplicate-race" : "applied";
       return {
         result: { id: view.id, status, durationMs: Math.max(0, performance.now() - viewStartedAt) } as DeliveryViewResult,
@@ -245,7 +256,7 @@ export async function processDeliveryCore(
   // is after all explicit view branches and before the drain trigger.
   if (options.onStored !== undefined) {
     try {
-      await options.onStored({ message, event: outcome.event, arrivedAt, source });
+      await options.onStored({ message, event: storedEvent, arrivedAt, source });
     } catch (error) {
       failures.push({ phase: "view", class: "retryable-transient", viewId: "legacy-onStored", error: errorText(error) });
     }
@@ -257,7 +268,7 @@ export async function processDeliveryCore(
   // single MV-D1 apply batch.
   if (options.afterDelivery !== undefined && failures.every((failure) => failure.class === "duplicate-race")) {
     try {
-      await options.afterDelivery({ message, event: outcome.event, arrivedAt, source, result: preliminary });
+      await options.afterDelivery({ message, event: storedEvent, arrivedAt, source, result: preliminary });
     } catch (error) {
       failures.push({ phase: "drain", class: "retryable-transient", error: errorText(error) });
     }

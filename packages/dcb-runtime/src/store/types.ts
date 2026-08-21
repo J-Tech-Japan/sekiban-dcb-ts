@@ -1,4 +1,5 @@
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
+import type { EventProvenance } from "../eventIdentity";
 
 export interface DeliveryLagRecord {
   serviceId: string;
@@ -16,6 +17,9 @@ export interface StoredEvent {
   payload: string;
   /** Complete durable tag membership, retained from the outbox envelope. */
   eventTags: string[];
+  /** Canonical eventPayloadName:version, absent only on pre-G27 rows. */
+  eventType?: string;
+  provenance?: EventProvenance;
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;

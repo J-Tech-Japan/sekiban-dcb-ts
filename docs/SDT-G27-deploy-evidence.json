@@ -1,0 +1,56 @@
+{
+  "task": "SDT-G27",
+  "status": "CANDIDATE evidence; final digest is filled by bookkeeping R",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "protocol": {
+    "candidate": "C contains canonical identity, provenance gates, OrderClock, migration, tests, oracle map, and CI wiring",
+    "bookkeeping": "R updates only this evidence document and appends the immutable C SHA to the retained candidate fetch list",
+    "selfReference": false,
+    "secrets": "redacted"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": [
+      "packages/dcb-core/src",
+      "packages/dcb-runtime/src",
+      "packages/dcb-client/src"
+    ],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": [
+      ".github/workflows/ci.yml",
+      "migrations/d1",
+      "package.json",
+      "scripts/g20-candidate-check.mjs",
+      "scripts/store-contract.mjs",
+      "test/g27-identity.spec.ts",
+      "docs/SDT-G27-oracle-map.md",
+      "docs/SDT-G27-pr-body.md",
+      "vitest.config.ts"
+    ]
+  },
+  "localValidation": {
+    "npm run lint": "PASS",
+    "npm run typecheck": "PASS",
+    "npm test": { "status": "PASS", "testFiles": 36, "tests": 243 },
+    "npm run test:g27": { "status": "PASS", "testFiles": 1, "tests": 6 },
+    "npm run test:boundaries": "PASS",
+    "npm run test:consumer": "PASS",
+    "forcedRed": {
+      "SDT_G27_FORCE_FAILURE=1 npm run test:g27:forced-red": "EXPECTED-RED",
+      "SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED"
+    }
+  },
+  "migration": {
+    "baseline": "migrations/d1/0001_pipeline_store.sql",
+    "additive": "migrations/d1/0002_g27_event_identity.sql",
+    "columns": ["event_type", "event_provenance"],
+    "runtimeDdl": false
+  },
+  "remoteDeployment": {
+    "status": "not-run",
+    "reason": "G27 acceptance is covered by local provider/Miniflare contracts and dry-run build; no deployment credential was placed in the implementation seat.",
+    "secrets": "redacted"
+  }
+}

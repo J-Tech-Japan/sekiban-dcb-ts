@@ -59,6 +59,23 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export {
+  assertCanonicalEventType,
+  canonicalEventType,
+  DeliveryIdentityError,
+  MissingCanonicalEventIdentityError,
+  resolveDeliveryIdentity,
+} from "./eventIdentity";
+export type { DeliveryProvenance, EventProvenance, ResolvedDeliveryIdentity } from "./eventIdentity";
+export {
+  allocateOrderRange,
+  diagnosticAllocatedAt,
+  decodeOrderOrdinal,
+  encodeOrderOrdinal,
+  OrderClockReadError,
+  systemOrderClock,
+} from "./allocator/OrderClock";
+export type { OrderAllocationRange, OrderClock } from "./allocator/OrderClock";
 export type {
   DeliveryCoreEnvironment,
   DeliveryCoreFailure,

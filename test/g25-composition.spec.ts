@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw migration fixture.
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
+import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw migration fixture.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
@@ -36,7 +38,7 @@ function message(serviceId: string, suffix: string): DownstreamOutboxMessage {
     attemptId: `g25-attempt-${suffix}`, eventId: `g25-event-${suffix}`,
     suid: `suid-999999999999999999999999${suffix.padStart(8, "0")}`,
     payload: btoa(JSON.stringify({ eventType: "RoomReserved", reservationId: `g25-${suffix}`, roomId: "g25-room", userId: "g25-user" })),
-    eventTags: [tag], enqueuedAt: Date.now(),
+    eventTags: [tag], provenance: "pre-g27-queue", enqueuedAt: Date.now(),
   };
 }
 
@@ -86,7 +88,7 @@ async function invokeDeployedScheduled(serviceId: string): Promise<void> {
 
 describe("SDT-G25 unsafe-window consumer composition", () => {
   beforeAll(async () => {
-    await database().batch(statements(pipelineMigration as string, database()));
+    await database().batch(statements(`${pipelineMigration as string}\n${identityMigration as string}`, database()));
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration]) {
       await mvDatabase().batch(statements(migration as string, mvDatabase()));
     }

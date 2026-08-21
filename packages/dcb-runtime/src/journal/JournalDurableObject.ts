@@ -20,6 +20,7 @@ import {
   type ReservationFailure,
 } from "./types";
 import { allocatorNameForService } from "../allocator/types";
+import { assertCanonicalEventType } from "../eventIdentity";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -305,9 +306,20 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     ) {
       return { error: "each candidate needs eventId, payload, and one or more non-empty tags" };
     }
+    if (rawCandidate.eventType !== undefined && !isNonEmptyString(rawCandidate.eventType)) {
+      return { error: "candidate eventType must be a non-empty canonical key" };
+    }
+    if (rawCandidate.eventType !== undefined) {
+      try {
+        assertCanonicalEventType(rawCandidate.eventType);
+      } catch {
+        return { error: "candidate eventType must be a canonical eventPayloadName:version key" };
+      }
+    }
     candidates.push({
       eventId: rawCandidate.eventId,
       payload: rawCandidate.payload,
+      ...(rawCandidate.eventType === undefined ? {} : { eventType: rawCandidate.eventType }),
       tags: [...rawCandidate.tags],
     });
   }

@@ -4,12 +4,19 @@ import type {
   AllocationVector,
   AllocatorState,
 } from "./types";
+import {
+  allocateOrderRange,
+  diagnosticAllocatedAt,
+  decodeOrderOrdinal,
+  systemOrderClock,
+  type OrderClock,
+  OrderClockReadError,
+} from "./OrderClock";
 
 const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
 const SUID_PREFIX = "suid-";
 const SUID_DIGITS = 32;
-const SUID_LIMIT = 10n ** BigInt(SUID_DIGITS);
 
 type JsonObject = Record<string, unknown>;
 
@@ -26,6 +33,7 @@ interface SeedInput { importId: string; leaseEpoch: number; highWatermark: strin
 interface AllocationSuccess {
   vector: AllocationVector;
   created: boolean;
+  rollbackWarning?: { tick: string; watermark: string | null; serviceId: string; allocatorLineageId: string };
 }
 
 class AllocationTransactionFault extends Error {}
@@ -58,7 +66,7 @@ function attemptKey(attemptId: string): string {
 }
 
 function currentState(allocatorLineageId: string): AllocatorState {
-  return { schemaVersion: 3, allocatorLineageId, allocatedWatermark: null, bootstrapSeed: null };
+  return { schemaVersion: 4, allocatorLineageId, allocatedWatermark: null, bootstrapSeed: null, lastRollbackWarningFingerprint: null };
 }
 
 function seedFrom(value: unknown): { value?: SeedInput; error?: string } {
@@ -73,15 +81,7 @@ function newAllocatorLineageId(): string {
   return crypto.randomUUID();
 }
 
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function encodeSuid(value: bigint): string {
-  return `${SUID_PREFIX}${value.toString().padStart(SUID_DIGITS, "0")}`;
-}
-
-function decodeSuid(suid: string): bigint {
+export function decodeSuid(suid: string): bigint {
   const digits = suid.slice(SUID_PREFIX.length);
   if (!suid.startsWith(SUID_PREFIX) || !new RegExp(`^\\d{${SUID_DIGITS}}$`).test(digits)) {
     throw new Error("Persisted allocator watermark is not a valid SUID");
@@ -89,13 +89,8 @@ function decodeSuid(suid: string): bigint {
   return BigInt(digits);
 }
 
-function nextSuids(watermark: string | null, count: number): string[] {
-  const base = watermark === null ? 0n : decodeSuid(watermark);
-  const end = base + BigInt(count);
-  if (end >= SUID_LIMIT) {
-    throw new Error("Allocator SUID range is exhausted");
-  }
-  return Array.from({ length: count }, (_, index) => encodeSuid(base + BigInt(index + 1)));
+export function nextSuids(watermark: string | null, count: number, clockTick: bigint): string[] {
+  return [...allocateOrderRange(watermark, count, clockTick).suids];
 }
 
 function allocateFrom(value: unknown): { value?: AllocateInput; error?: string } {
@@ -149,7 +144,11 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
  * allocated watermark is serialized and atomic.
  */
 export class AllocatorDurableObject implements DurableObject {
-  constructor(private readonly ctx: DurableObjectState, private readonly env?: { BOOTSTRAP?: DurableObjectNamespace }) {}
+  constructor(
+    private readonly ctx: DurableObjectState,
+    private readonly env?: { BOOTSTRAP?: DurableObjectNamespace },
+    private readonly orderClock: OrderClock = systemOrderClock,
+  ) {}
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -157,7 +156,7 @@ export class AllocatorDurableObject implements DurableObject {
       const state = await this.ctx.storage.transaction(async (txn) => {
         const stored = await txn.get<AllocatorState>(STATE_KEY);
         if (stored !== undefined && typeof stored.allocatorLineageId === "string" && stored.allocatorLineageId.length > 0) {
-          return { ...stored, schemaVersion: 3 as const, bootstrapSeed: stored.bootstrapSeed ?? null };
+          return { ...stored, schemaVersion: 4 as const, bootstrapSeed: stored.bootstrapSeed ?? null, lastRollbackWarningFingerprint: stored.lastRollbackWarningFingerprint ?? null };
         }
         const initialized = {
           ...currentState(newAllocatorLineageId()),
@@ -234,9 +233,10 @@ export class AllocatorDurableObject implements DurableObject {
               }
               : {
                 ...persistedState,
-                schemaVersion: 3,
+                schemaVersion: 4,
                 allocatorLineageId: upgradedVector.allocatorLineageId,
                 bootstrapSeed: persistedState.bootstrapSeed ?? null,
+                lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null,
               };
             await txn.put(attemptKey(input.attemptId), upgradedVector);
             await txn.put(STATE_KEY, upgradedState);
@@ -250,23 +250,38 @@ export class AllocatorDurableObject implements DurableObject {
 
         const state = persistedState === undefined
           ? currentState(lineage)
-          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 3 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null };
-        const suids = nextSuids(state.allocatedWatermark, input.candidates.length);
+          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 4 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null, lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null };
+        // This is intentionally before the first transaction write. A clock
+        // failure therefore cannot leave a vector, watermark, or warning fact.
+        let clockTick: bigint;
+        try {
+          clockTick = this.orderClock.tick();
+        } catch (error) {
+          throw error instanceof OrderClockReadError
+            ? error
+            : new OrderClockReadError("Order clock failed before allocation write", { cause: error });
+        }
+        const range = allocateOrderRange(state.allocatedWatermark, input.candidates.length, clockTick);
+        const rollback = state.allocatedWatermark !== null && clockTick <= decodeOrderOrdinal(state.allocatedWatermark);
+        const warningFingerprint = `${clockTick}|${state.allocatedWatermark ?? "null"}`;
+        const shouldWarn = rollback && state.lastRollbackWarningFingerprint !== warningFingerprint;
         const candidates: AllocatedCandidate[] = input.candidates.map((candidate, index) => ({
           ...candidate,
-          suid: suids[index]!,
+          suid: range.suids[index]!,
         }));
         const vector: AllocationVector = {
           attemptId: input.attemptId,
           allocatorLineageId: lineage,
           candidates,
-          allocatedAt: nowIso(),
+          // Diagnostic presentation only; ordering is the ordinal above.
+          allocatedAt: diagnosticAllocatedAt(range.base),
         };
         const updatedState: AllocatorState = {
-          schemaVersion: 3,
+          schemaVersion: 4,
           allocatorLineageId: lineage,
-          allocatedWatermark: candidates[candidates.length - 1]!.suid,
+          allocatedWatermark: range.watermark,
           bootstrapSeed: state.bootstrapSeed ?? null,
+          lastRollbackWarningFingerprint: shouldWarn ? warningFingerprint : state.lastRollbackWarningFingerprint ?? null,
         };
 
         await txn.put(attemptKey(input.attemptId), vector);
@@ -274,8 +289,27 @@ export class AllocatorDurableObject implements DurableObject {
           throw new AllocationTransactionFault("Simulated interruption before transaction commit");
         }
         await txn.put(STATE_KEY, updatedState);
-        return { vector, created: true };
+        return {
+          vector,
+          created: true,
+          ...(shouldWarn ? {
+            rollbackWarning: {
+              tick: clockTick.toString(),
+              watermark: state.allocatedWatermark,
+              serviceId: input.serviceId ?? "unknown-service",
+              allocatorLineageId: lineage,
+            },
+          } : {}),
+        };
       });
+      if (result.rollbackWarning !== undefined) {
+        try {
+          console.warn(JSON.stringify({ type: "allocator_clock_rollback", ...result.rollbackWarning }));
+        } catch {
+          // Warning transport is observational; it must never change the
+          // already committed allocation result.
+        }
+      }
       return json(result.vector, result.created ? 201 : 200);
     } catch (failure) {
       if (failure instanceof AllocationTransactionFault) {
@@ -284,6 +318,9 @@ export class AllocatorDurableObject implements DurableObject {
           "simulated_allocation_crash",
           "Simulated interruption before durable allocation transaction commit",
         );
+      }
+      if (failure instanceof OrderClockReadError) {
+        return error(503, "allocator_order_clock_failed", failure.message);
       }
       return error(500, "allocator_failure", "Allocator could not persist the full allocation vector");
     }
@@ -296,7 +333,7 @@ export class AllocatorDurableObject implements DurableObject {
     const input = parsed.value;
     const result = await this.ctx.storage.transaction(async (txn): Promise<{ status: number; body: unknown }> => {
       const stored = await txn.get<AllocatorState>(STATE_KEY);
-      const state = stored === undefined ? currentState(newAllocatorLineageId()) : { ...stored, schemaVersion: 3 as const, bootstrapSeed: stored.bootstrapSeed ?? null };
+      const state = stored === undefined ? currentState(newAllocatorLineageId()) : { ...stored, schemaVersion: 4 as const, bootstrapSeed: stored.bootstrapSeed ?? null, lastRollbackWarningFingerprint: stored.lastRollbackWarningFingerprint ?? null };
       const seed = state.bootstrapSeed;
       if (seed !== null) {
         if (seed.importId === input.importId && seed.leaseEpoch === input.leaseEpoch && seed.highWatermark === input.highWatermark) return { status: 200, body: state };

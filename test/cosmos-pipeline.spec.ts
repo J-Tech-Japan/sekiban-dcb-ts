@@ -112,6 +112,7 @@ function testMessage(): DownstreamOutboxMessage {
     suid: "suid-00000000000000000000000000000001",
     payload: "eyJmb3JlY2FzdElkIjoiY29zbW9zIn0=",
     eventTags: ["test:cosmos-provider"],
+    provenance: "pre-g27-queue",
     enqueuedAt: 0,
   };
 }

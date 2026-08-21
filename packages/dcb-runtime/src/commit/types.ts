@@ -4,6 +4,7 @@ import type { ConsistencyTag } from "../journal/types";
 export interface SerializedCommitCandidate {
   payload: string;
   eventPayloadName: string;
+  eventType: string;
   tags: string[];
 }
 

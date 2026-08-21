@@ -21,10 +21,12 @@ export interface AllocationVector {
 
 /** The persisted service head; it is the allocated watermark. */
 export interface AllocatorState {
-  schemaVersion: 3;
+  schemaVersion: 4;
   allocatorLineageId: string;
   allocatedWatermark: string | null;
   bootstrapSeed: { importId: string; leaseEpoch: number; highWatermark: string } | null;
+  /** Durable rate-limit key for rollback warnings; it is not allocation authority. */
+  lastRollbackWarningFingerprint?: string | null;
 }
 
 /** The only allocator namespace that serves a particular service. */

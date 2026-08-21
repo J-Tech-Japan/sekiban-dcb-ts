@@ -1,4 +1,5 @@
 import type { TagEvent } from "../tag/types";
+import type { EventProvenance } from "../eventIdentity";
 
 export const TEST_TAG_STATE_PROJECTOR = "test-projector";
 
@@ -7,6 +8,8 @@ export interface ProjectionEvent {
   suid: string;
   payload: string;
   eventTags: readonly string[];
+  eventType?: string;
+  provenance?: EventProvenance;
 }
 
 /**
@@ -156,5 +159,7 @@ export function projectionEventFromTagEvent(event: TagEvent): ProjectionEvent {
     suid: event.suid,
     payload: event.payload,
     eventTags: event.eventTags,
+    ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
+    provenance: event.provenance ?? (event.eventType === undefined ? "pre-g27" : "g27"),
   };
 }

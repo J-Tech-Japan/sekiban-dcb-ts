@@ -32,7 +32,7 @@ async function allocatorPost(name: string, path: string, body: unknown): Promise
   return workerEnv().ALLOCATOR.get(workerEnv().ALLOCATOR.idFromName(name)).fetch(new Request(`https://bootstrap.test${path}`, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 }
 function queueMessage(serviceId: string): DownstreamOutboxMessage {
-  return { version: 1, serviceId, allocatorLineageId: "bootstrap-test-lineage", tag: "orders", attemptId: `queue-${crypto.randomUUID()}`, eventId: `queue-event-${crypto.randomUUID()}`, suid: suid(7), payload: "AQ==", eventTags: ["orders"], enqueuedAt: Date.now() };
+  return { version: 1, serviceId, allocatorLineageId: "bootstrap-test-lineage", tag: "orders", attemptId: `queue-${crypto.randomUUID()}`, eventId: `queue-event-${crypto.randomUUID()}`, suid: suid(7), payload: "AQ==", eventTags: ["orders"], provenance: "pre-g27-queue", enqueuedAt: Date.now() };
 }
 
 describe("SDT-G21 bootstrap core", () => {
@@ -85,7 +85,7 @@ describe("SDT-G21 bootstrap core", () => {
     expect(delivered.allocatorLineageId).toBe(servingState.allocatorLineageId);
 
     const database = store(); await database.initialize();
-    const batch = createMessageBatch("serialized-dcb-v1-outbox", [{ id: "ready-delivery", timestamp: new Date(), attempts: 1, body: { version: 1, serviceId, allocatorLineageId: delivered.allocatorLineageId, tag: "orders", attemptId: "ready-delivery", eventId: delivered.eventId, suid: delivered.suid, payload: delivered.payload, eventTags: delivered.eventTags, enqueuedAt: Date.now() } }]);
+    const batch = createMessageBatch("serialized-dcb-v1-outbox", [{ id: "ready-delivery", timestamp: new Date(), attempts: 1, body: { version: 1, serviceId, allocatorLineageId: delivered.allocatorLineageId, tag: "orders", attemptId: "ready-delivery", eventId: delivered.eventId, suid: delivered.suid, payload: delivered.payload, eventTags: delivered.eventTags, provenance: "pre-g27-queue", enqueuedAt: Date.now() } }]);
     await handleDownstreamQueue(batch, { POSTGRES_URL: workerEnv().POSTGRES_URL, BOOTSTRAP: workerEnv().BOOTSTRAP }, { store: database });
     expect((await getQueueResult(batch, createExecutionContext())).explicitAcks).toHaveLength(1);
     const queried = await database.readAllEvents(serviceId, "");

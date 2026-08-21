@@ -16,6 +16,8 @@ export interface BootstrapEventRecord {
   readonly suid: string;
   readonly payload: string;
   readonly eventTags: readonly string[];
+  /** Optional additive G27 canonical event identity. */
+  readonly eventType?: string;
   readonly provenance?: Readonly<Record<string, string>>;
 }
 

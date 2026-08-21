@@ -28,6 +28,8 @@ export type TagStateSnapshot = ReadonlyTagStateResponse & {
 export interface CommitCandidate {
   readonly eventId: string;
   readonly eventPayloadName: string;
+  /** Omitted for the historical v1 spelling; present for later payload schemas. */
+  readonly eventPayloadVersion?: number;
   readonly payload: JsonValue;
   readonly tags: readonly string[];
 }
@@ -490,7 +492,13 @@ export class ClaimLedgerExecutor {
           },
           append: (event, payload, tags) => {
             const jsonPayload = assertJsonValue(payload, "event-construction");
-            const candidate = Object.freeze({ eventId: newEventId(), eventPayloadName: eventPayloadName(event), payload: jsonPayload, tags: Object.freeze(tags.map(normalizeTag)) });
+            const candidate = Object.freeze({
+              eventId: newEventId(),
+              eventPayloadName: eventPayloadName(event),
+              ...(typeof event === "string" || event.version === 1 ? {} : { eventPayloadVersion: event.version }),
+              payload: jsonPayload,
+              tags: Object.freeze(tags.map(normalizeTag)),
+            });
             attemptCandidates.push(candidate);
             return candidate;
           },

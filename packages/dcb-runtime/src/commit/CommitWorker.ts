@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { serviceIdForRequest } from "../http/testServiceId";
 import type { DeliveryClass } from "../downstream/Doorbell";
+import { canonicalEventType } from "../eventIdentity";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -172,9 +173,20 @@ export function validateCommitEnvelope(value: unknown):
     ) {
       return { error: error(400, "validation_error", "Candidate tags must be unique non-empty strings") };
     }
+    let eventType: string;
+    try {
+      if (rawCandidate.eventPayloadVersion !== undefined &&
+        (typeof rawCandidate.eventPayloadVersion !== "number" || !Number.isSafeInteger(rawCandidate.eventPayloadVersion) || rawCandidate.eventPayloadVersion < 1)) {
+        throw new Error("eventPayloadVersion must be a positive safe integer");
+      }
+      eventType = canonicalEventType(rawCandidate.eventPayloadName, rawCandidate.eventPayloadVersion ?? 1);
+    } catch (identityError) {
+      return { error: error(400, "invalid_event_identity", identityError instanceof Error ? identityError.message : "Event identity is invalid") };
+    }
     eventCandidates.push({
       payload: rawCandidate.payload,
       eventPayloadName: rawCandidate.eventPayloadName,
+      eventType,
       tags: [...rawCandidate.tags],
     });
   }
@@ -257,7 +269,7 @@ export class CommitWorker {
     try {
     const journal = this.journalFor(attemptId);
     const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
-      candidates: candidates.map(({ eventId, payload, tags }) => ({ eventId, payload, tags })),
+      candidates: candidates.map(({ eventId, payload, eventType, tags }) => ({ eventId, payload, eventType, tags })),
       consistencyTags: input.consistencyTags,
       commitContext: {
         attemptId,
@@ -538,7 +550,7 @@ export class CommitWorker {
   }
 
   private withAllocatedSuids(
-    candidates: Array<{ eventId: string; payload: string; eventPayloadName: string; tags: string[] }>,
+    candidates: Array<{ eventId: string; payload: string; eventPayloadName: string; eventType: string; tags: string[] }>,
     vector: AllocationVector,
   ): AllocatedCommitCandidate[] | undefined {
     if (vector.candidates.length !== candidates.length) {
@@ -579,10 +591,12 @@ export class CommitWorker {
             reservationToken: reservations.get(tag)?.reservationToken,
             candidates: candidates
               .filter((candidate) => candidate.tags.includes(tag))
-              .map(({ eventId, suid, payload, tags }) => ({
+              .map(({ eventId, suid, payload, eventType, tags }) => ({
                 eventId,
                 suid,
                 payload,
+                eventType,
+                provenance: "g27" as const,
                 eventTags: tags,
                 allocatorLineageId,
               })),

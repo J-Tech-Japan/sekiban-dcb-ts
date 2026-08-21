@@ -77,6 +77,7 @@ function message(
     suid,
     payload: PAYLOAD,
     eventTags: [tag],
+    provenance: "pre-g27-queue",
     enqueuedAt,
   };
 }

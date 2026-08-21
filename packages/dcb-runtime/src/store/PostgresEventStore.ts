@@ -4,6 +4,7 @@ import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/type
 import {
   decayedLagEstimateMs,
 } from "../safeWindow";
+import { resolveDeliveryIdentity } from "../eventIdentity";
 import type {
   DeliveryLagRecord,
   DeliveryIncident,
@@ -35,6 +36,8 @@ CREATE TABLE IF NOT EXISTS serialized_dcb_events (
   suid TEXT NOT NULL,
   payload TEXT NOT NULL,
   allocator_lineage_id TEXT,
+  event_type TEXT,
+  event_provenance TEXT NOT NULL DEFAULT 'pre-g27',
   event_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
   first_arrived_at BIGINT NOT NULL,
   last_arrived_at BIGINT NOT NULL,
@@ -45,6 +48,10 @@ ALTER TABLE serialized_dcb_events
   ADD COLUMN IF NOT EXISTS event_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE serialized_dcb_events
   ADD COLUMN IF NOT EXISTS allocator_lineage_id TEXT;
+ALTER TABLE serialized_dcb_events
+  ADD COLUMN IF NOT EXISTS event_type TEXT;
+ALTER TABLE serialized_dcb_events
+  ADD COLUMN IF NOT EXISTS event_provenance TEXT NOT NULL DEFAULT 'pre-g27';
 UPDATE serialized_dcb_events
    SET event_tags = (event_tags #>> '{}')::jsonb
  WHERE jsonb_typeof(event_tags) = 'string';
@@ -288,6 +295,9 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
+    const identity = resolveDeliveryIdentity(message, deliverySource);
+    const incomingEventType = identity.legacy ? undefined : identity.key;
+    const incomingProvenance = identity.legacy ? "pre-g27" : "g27";
     const eventTags = sortedUnique(message.eventTags);
     const sql = this.requireSql();
     let outcome: "stored" | "suid-collision" | "lineage-mismatch" = "stored";
@@ -342,7 +352,7 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
         : asString(headRow.head_suid, "head_suid");
       const recoveryBacklogSample = currentHead !== undefined && compareSuid(message.suid, currentHead) < 0;
       const existing = (await transaction.unsafe(
-        `SELECT suid, payload, event_tags
+        `SELECT suid, payload, event_type, event_provenance, event_tags
            FROM serialized_dcb_events
           WHERE service_id = $1 AND event_id = $2
           FOR UPDATE`,
@@ -377,11 +387,16 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
       if (existing === undefined) {
         await transaction.unsafe(
           `INSERT INTO serialized_dcb_events
-             (service_id, event_id, suid, payload, allocator_lineage_id, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms)
-           VALUES ($1, $2, $3, $4, $5, ($6::text)::jsonb, $7, $7, $8)`,
-          [message.serviceId, message.eventId, message.suid, message.payload, message.allocatorLineageId, JSON.stringify(eventTags), arrivedAt, lagMs],
+             (service_id, event_id, suid, payload, allocator_lineage_id, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, ($8::text)::jsonb, $9, $9, $10)`,
+          [message.serviceId, message.eventId, message.suid, message.payload, message.allocatorLineageId, incomingEventType ?? null, incomingProvenance, JSON.stringify(eventTags), arrivedAt, lagMs],
         );
       } else {
+        const existingEventType = optionalString(existing.event_type, "event_type");
+        const existingProvenance = optionalString(existing.event_provenance, "event_provenance") ?? "pre-g27";
+        if (existingEventType !== incomingEventType || existingProvenance !== incomingProvenance) {
+          throw new Error(`EventId ${message.eventId} conflicts with its canonical event identity`);
+        }
         if (asString(existing.suid, "suid") !== message.suid || asString(existing.payload, "payload") !== message.payload) {
           throw new Error(`EventId ${message.eventId} conflicts with its durable PostgreSQL row`);
         }
@@ -458,7 +473,7 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
     const rows = await this.query(
-      `SELECT service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
+      `SELECT service_id, event_id, suid, payload, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
          FROM serialized_dcb_events
         WHERE service_id = $1 AND suid > $2
         ORDER BY suid ASC, event_id ASC`,
@@ -805,7 +820,7 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
 
   private async eventById(serviceId: string, eventId: string): Promise<StoredEvent | undefined> {
     const rows = await this.query(
-      `SELECT service_id, event_id, suid, payload, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
+      `SELECT service_id, event_id, suid, payload, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
          FROM serialized_dcb_events
         WHERE service_id = $1 AND event_id = $2`,
       [serviceId, eventId],
@@ -830,6 +845,8 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
       suid: asString(row.suid, "suid"),
       payload: asString(row.payload, "payload"),
       eventTags: asStringArray(row.event_tags, "event_tags"),
+      ...(row.event_type === null || row.event_type === undefined ? {} : { eventType: asString(row.event_type, "event_type") }),
+      provenance: row.event_provenance === "g27" ? "g27" : "pre-g27",
       firstArrivedAt: asNumber(row.first_arrived_at, "first_arrived_at"),
       lastArrivedAt: asNumber(row.last_arrived_at, "last_arrived_at"),
       maxDeliveryLagMs: asNumber(row.max_delivery_lag_ms, "max_delivery_lag_ms"),
