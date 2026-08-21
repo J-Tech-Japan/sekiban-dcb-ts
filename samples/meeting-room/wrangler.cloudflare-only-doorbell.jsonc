@@ -7,7 +7,7 @@
   "vars": {
     "AUTO_DRAIN_OUTBOX": "true",
     "DOMAIN_DELIVERY_CLASS": "immediate-preferred",
-    "DIRECT_DOORBELL": "false",
+    "DIRECT_DOORBELL": "true",
     "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector,ReservationProjector",
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
     "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
@@ -16,6 +16,13 @@
   },
   "assets": { "directory": "public" },
   "triggers": { "crons": ["* * * * *"] },
+  "services": [
+    {
+      "binding": "DOWNSTREAM_DOORBELL",
+      "service": "sekiban-dcb-meeting-room-doorbell",
+      "entrypoint": "MeetingRoomDownstreamDoorbell"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "D1",
