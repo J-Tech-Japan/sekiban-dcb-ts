@@ -1,8 +1,8 @@
 {
   "task": "SDT-G27",
   "status": "FINAL candidate C′; bookkeeping R′ records the candidate and its self-digests",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "candidateCommit": "50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f",
+  "sourceCommit": "50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f",
   "protocol": {
     "candidate": "C′ contains the F1-F6 fixes, canonical identity, provenance gates, OrderClock, migration, tests, oracle map, PR body, and CI wiring",
     "bookkeeping": "R′ updates only this evidence document and appends the immutable C′ SHA to the retained candidate fetch list",
@@ -11,13 +11,13 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtime": "6ea2337be556405be6b4e1b2d7bf3fae779e899a7ef5dd0e841ecc95b1e73c2c",
     "runtimeRoots": [
       "packages/dcb-core/src",
       "packages/dcb-runtime/src",
       "packages/dcb-client/src"
     ],
-    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "183ba40f2bf5f6c276eba305af7b2c9017cfccbb99e44e31762bbf8d8ab198c3",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "migrations/d1",
