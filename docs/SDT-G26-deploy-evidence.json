@@ -89,7 +89,7 @@
   ],
   "protocol": {
     "finalCandidate": "C'''' includes Queue duplicate-race retry-once disposition, source-asymmetric AC6 barrier, runtime tests, oracle map, and prior G26 code/config/CI",
-    "bookkeepingCommit": "PENDING-R''''",
+    "bookkeepingCommit": "5ddd1d2b49ee1d4b5c7e1a728c2699d1cc2a486b",
     "deploymentIdentity": "fresh explicit non-secret G26_SERVICE_ID per topology",
     "fixedN": 20,
     "controlledConcurrency": 1,
