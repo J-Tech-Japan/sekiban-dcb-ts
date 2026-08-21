@@ -127,6 +127,9 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
       definitionVersion: 1,
       updatedAt: 1,
     });
+    await database().prepare(
+      "INSERT INTO mv_unsafe_kicks (service_id, view_id, target_suid, dirty) VALUES (?, ?, ?, 1)",
+    ).bind(serviceId, "G26SharedCoreView", "g26-shared-aaa-target").run();
     let viewArrivals = 0;
     let releaseView!: () => void;
     const viewReleased = new Promise<void>((resolve) => { releaseView = resolve; });
@@ -169,13 +172,20 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     expect(results.filter((result) => result.views[0]?.status === "applied")).toHaveLength(1);
     expect(results.filter((result) => result.views[0]?.failureClass === "duplicate-race")).toHaveLength(1);
     expect(results.every((result) => result.queueDisposition === "ack")).toBe(true);
+    const retry = await processDeliveryCore(event, "queue", {}, { store, views: [view] });
+    expect(retry.queueDisposition).toBe("ack");
+    expect(retry.views[0]).toMatchObject({ status: "failed", failureClass: "duplicate-race" });
     const row = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ count: number }>();
     const index = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ count: number }>();
     const receipt = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ?").bind(serviceId, "G26SharedCoreView", event.eventId).first<{ count: number }>();
+    const marker = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_markers WHERE service_id = ? AND view_id = ? AND event_id = ?").bind(serviceId, "G26SharedCoreView", event.eventId).first<{ count: number }>();
+    const kick = await database().prepare("SELECT target_suid, dirty FROM mv_unsafe_kicks WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ target_suid: string; dirty: number }>();
     const incidents = await pipeline.listDeliveryIncidents(serviceId);
     expect(Number(row?.count)).toBe(1);
     expect(Number(index?.count)).toBe(1);
     expect(Number(receipt?.count)).toBe(1);
+    expect(Number(marker?.count)).toBe(0);
+    expect(kick).toEqual({ target_suid: event.suid, dirty: 1 });
     expect(incidents).toEqual([]);
   });
 

@@ -11,6 +11,7 @@ import hardeningMigration from "../migrations/mv/0003_checkpoint_ahead_hardening
 // @ts-expect-error Vite raw source import.
 import failureMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
+import { UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView";
 import { processDeliveryCore, type DeliveryCoreResult, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -90,7 +91,12 @@ async function applyCount(mv: D1MaterializedViewStore, serviceId: string, viewId
   return { rows: Number(values[0]?.count), indexes: Number(values[1]?.count), receipts: Number(values[2]?.count), markers: Number(values[3]?.count), kicks: Number(values[4]?.count) };
 }
 
-async function runBoundary(boundary: Boundary, options: { readonly poisonView?: string; readonly findingWriteFailure?: boolean; readonly viewOrder?: readonly string[] } = {}) {
+async function runBoundary(boundary: Boundary, options: {
+  readonly poisonView?: string;
+  readonly findingWriteFailure?: boolean;
+  readonly partialSuccessView?: string;
+  readonly viewOrder?: readonly string[];
+} = {}) {
   const event = message(`${boundary}-${crypto.randomUUID().slice(0, 8)}`);
   const pipeline = database("D1");
   const mv = new D1MaterializedViewStore(database("D1_MV"));
@@ -124,25 +130,53 @@ async function runBoundary(boundary: Boundary, options: { readonly poisonView?: 
     },
   });
   const orderedViewIds = options.viewOrder ?? viewIds;
+  const invocationCounts = new Map(viewIds.map((viewId) => [viewId, 0]));
+  const mutationCounts = new Map(viewIds.map((viewId) => [viewId, 0]));
+  let partialFailureInjected = false;
+  const afterKCommitted: string[] = [];
+  let releaseAfterKFailure!: () => void;
+  const afterKFailure = new Promise<void>((resolve) => { releaseAfterKFailure = resolve; });
+  let afterKFailureSignalled = false;
+  const afterKFast = boundary === "after-k-views"
+    ? new UnsafeWindowMaterializedViewStore(database("D1_MV"), {
+      beforeApplyBatch: async (input) => {
+        if (viewIds.slice(2).includes(input.viewId)) {
+          await afterKFailure;
+          throw new Error("G26 injected fast failure after receipt prefix commit");
+        }
+      },
+      afterApplyBatch: async (input) => {
+        afterKCommitted.push(input.viewId);
+        if (afterKCommitted.length === 2 && !afterKFailureSignalled) {
+          afterKFailureSignalled = true;
+          releaseAfterKFailure();
+          throw new Error("G26 injected fast failure after exactly k view receipts");
+        }
+      },
+    })
+    : undefined;
+  const afterKQueue = boundary === "after-k-views" ? new UnsafeWindowMaterializedViewStore(database("D1_MV")) : undefined;
   const handlers: readonly DeliveryViewHandler[] = orderedViewIds.map((viewId) => ({
     id: viewId,
-    apply: async ({ event: stored }) => {
+    apply: async ({ event: stored, source }) => {
+      invocationCounts.set(viewId, (invocationCounts.get(viewId) ?? 0) + 1);
       if (options.poisonView === viewId) {
         const poison = new Error(`G26 definition poison ${viewId}`) as Error & { retryable?: boolean };
         poison.retryable = false;
         await mv.recordUnsafeFailureFinding({ serviceId: event.serviceId, viewId, eventId: stored.eventId, suid: stored.suid, observedAt: 1_010 });
         throw poison;
       }
+      if (options.partialSuccessView === viewId && source === "fast" && !partialFailureInjected) {
+        partialFailureInjected = true;
+        await mv.recordUnsafeFailureFinding({ serviceId: event.serviceId, viewId, eventId: stored.eventId, suid: stored.suid, observedAt: 1_010 });
+        throw new Error(`G26 partial-success injected failure for ${viewId}`);
+      }
       if (boundary === "after-pipeline" && viewId === viewIds[0] && !viewFaulted) {
         viewFaulted = true;
         await mv.recordUnsafeFailureFinding({ serviceId: event.serviceId, viewId, eventId: stored.eventId, suid: stored.suid, observedAt: 1_010 });
         throw new Error("G26 injected cancellation after pipeline commit");
       }
-      if (boundary === "after-k-views" && viewId === viewIds[1] && !viewFaulted) {
-        viewFaulted = true;
-        throw new Error("G26 injected cancellation after k view receipts");
-      }
-      const unsafe = mv.unsafeWindow();
+      const unsafe = source === "fast" ? afterKFast ?? mv.unsafeWindow() : afterKQueue ?? mv.unsafeWindow();
       const active = await mv.readActive(event.serviceId, viewId);
       if (active === undefined) throw new Error(`missing active integration view ${viewId}`);
       await unsafe.observeArrival(event.serviceId, viewId, active.generation, stored.eventId, stored.suid);
@@ -158,6 +192,7 @@ async function runBoundary(boundary: Boundary, options: { readonly poisonView?: 
           mutations: mutation(viewId, event),
           targetSuid: stored.suid,
         });
+        if (!applied.duplicate) mutationCounts.set(viewId, (mutationCounts.get(viewId) ?? 0) + 1);
         return applied.duplicate ? "duplicate-race" : "applied";
       } catch (error) {
         if (options.findingWriteFailure && !findingFaulted) {
@@ -221,6 +256,12 @@ async function runBoundary(boundary: Boundary, options: { readonly poisonView?: 
   expect(queued).toHaveLength(1);
   expect(directEnvelopeBytes).toBe(JSON.stringify(queued[0]));
   expect(directResults[0]?.correlationId).toBe(`fast:${event.serviceId}:${event.eventId}:${event.attemptId}`);
+  const receiptsBeforeReplay = await Promise.all(viewIds.map(async (viewId) => {
+    const receipt = await database("D1_MV").prepare(
+      "SELECT COUNT(*) AS count FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ?",
+    ).bind(event.serviceId, viewId, event.eventId).first<{ count: number }>();
+    return { viewId, count: Number(receipt?.count) };
+  }));
   const queueResult = await processDeliveryCore(queued[0]!, "queue", {}, { store, views: handlers });
   queueResults.push(queueResult);
   const deliveries = values.get("outbox-deliveries") as Array<{ deliveredAt: number | null }> | undefined;
@@ -233,6 +274,10 @@ async function runBoundary(boundary: Boundary, options: { readonly poisonView?: 
     event,
     direct: directResults[0],
     queue: queueResults[0],
+    receiptsBeforeReplay,
+    afterKCommitted,
+    invocations: Object.fromEntries(viewIds.map((viewId) => [viewId, invocationCounts.get(viewId) ?? 0])),
+    mutations: Object.fromEntries(viewIds.map((viewId) => [viewId, mutationCounts.get(viewId) ?? 0])),
     counts,
     outboxDelivered: deliveries?.every((delivery) => delivery.deliveredAt !== null) ?? false,
     incidents: Number(incidents?.count),
@@ -269,10 +314,24 @@ describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
     expect(result.outboxDelivered).toBe(true);
   });
 
-  it("has an independent after-k-of-n boundary fixture with receipt-idempotent replay", async () => {
+  it("has an independent after-k-of-n boundary fixture with a committed receipt prefix and correlation-bound replay", async () => {
     const result = await runBoundary("after-k-views");
     expect(result.direct.fastDisposition).toBe("failed");
     expect(result.queue.queueDisposition).toBe("ack");
+    expect(result.direct.correlationId).toBe(`fast:${result.event.serviceId}:${result.event.eventId}:${result.event.attemptId}`);
+    expect(result.queue.correlationId).toBe(`queue:${result.event.serviceId}:${result.event.eventId}:${result.event.attemptId}`);
+    expect(result.receiptsBeforeReplay).toEqual([
+      { viewId: "G26IntegrationHead", count: 1 },
+      { viewId: "G26IntegrationMiddle", count: 1 },
+      { viewId: "G26IntegrationTail", count: 0 },
+    ]);
+    expect(new Set(result.afterKCommitted)).toEqual(new Set(["G26IntegrationHead", "G26IntegrationMiddle"]));
+    expect(result.afterKCommitted).toHaveLength(2);
+    expect(result.queue.views.map((view) => [view.id, view.status])).toEqual([
+      ["G26IntegrationHead", "duplicate-race"],
+      ["G26IntegrationMiddle", "duplicate-race"],
+      ["G26IntegrationTail", "applied"],
+    ]);
     expect(result.counts.every((count) => count.rows === 1 && count.indexes === 1 && count.receipts === 1 && count.markers === 0 && count.kicks === 1)).toBe(true);
     expect(result.arrivals).toBe(1);
     expect(result.outboxDelivered).toBe(true);
@@ -315,6 +374,37 @@ describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
     expect(result.findings).toContainEqual(expect.objectContaining({ view_id: "G26IntegrationHead", event_id: result.event.eventId, suid: result.event.suid }));
     expect(result.counts[0]).toMatchObject({ rows: 0, indexes: 0, receipts: 0, markers: 0, kicks: 0 });
     expect(result.counts.slice(1).every((count) => count.rows === 1)).toBe(true);
+    expect(result.outboxDelivered).toBe(true);
+  });
+
+  it("replays only the failed view after partial success and proves successful-view receipt no-ops", async () => {
+    const failedView = "G26IntegrationTail";
+    const result = await runBoundary("none", { partialSuccessView: failedView });
+    expect(result.direct.fastDisposition).toBe("failed");
+    expect(result.direct.queueDispositionReason).toBe("retryable-transient");
+    expect(result.queue.queueDisposition).toBe("ack");
+    expect(result.direct.views.map((view) => [view.id, view.status])).toEqual([
+      ["G26IntegrationHead", "applied"],
+      ["G26IntegrationMiddle", "applied"],
+      [failedView, "failed"],
+    ]);
+    expect(result.queue.views.map((view) => [view.id, view.status])).toEqual([
+      ["G26IntegrationHead", "duplicate-race"],
+      ["G26IntegrationMiddle", "duplicate-race"],
+      [failedView, "applied"],
+    ]);
+    expect(result.invocations).toEqual({
+      G26IntegrationHead: 2,
+      G26IntegrationMiddle: 2,
+      G26IntegrationTail: 2,
+    });
+    expect(result.mutations).toEqual({
+      G26IntegrationHead: 1,
+      G26IntegrationMiddle: 1,
+      G26IntegrationTail: 1,
+    });
+    expect(result.findings).toContainEqual(expect.objectContaining({ view_id: failedView, event_id: result.event.eventId, suid: result.event.suid }));
+    expect(result.counts.every((count) => count.rows === 1 && count.indexes === 1 && count.receipts === 1 && count.markers === 0 && count.kicks === 1)).toBe(true);
     expect(result.outboxDelivered).toBe(true);
   });
 

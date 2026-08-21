@@ -57,6 +57,11 @@ export interface UnsafeWindowMaterializedViewStoreOptions {
     input: UnsafeWindowApplyInput,
     statements?: readonly D1PreparedStatement[],
   ) => Promise<void>;
+  /** Test-only post-commit seam for receipt-boundary fault oracles. */
+  readonly afterApplyBatch?: (
+    input: UnsafeWindowApplyInput,
+    result: UnsafeWindowApplyResult,
+  ) => Promise<void>;
 }
 
 export interface UnsafeReadMeta {
@@ -236,7 +241,6 @@ export class UnsafeWindowMaterializedViewStore {
     await this.options.beforeApplyBatch?.(input, statements);
     try {
       await this.database.batch(statements);
-      return { outcome: "applied", duplicate: false };
     } catch (error) {
       // A NULL guard is the only expected fast-path miss. It has no durable
       // side effects because D1 batches are atomic; the complete path can now
@@ -263,6 +267,9 @@ export class UnsafeWindowMaterializedViewStore {
       }
       throw error;
     }
+    const result = { outcome: "applied", duplicate: false } as const;
+    await this.options.afterApplyBatch?.(input, result);
+    return result;
   }
 
   async apply(input: UnsafeWindowApplyInput, skipFastPath = false): Promise<UnsafeWindowApplyResult> {
@@ -381,7 +388,9 @@ export class UnsafeWindowMaterializedViewStore {
       if (typed !== undefined) throw typed;
       throw error;
     }
-    return { outcome, duplicate: false };
+    const result = { outcome, duplicate: false } as const;
+    await this.options.afterApplyBatch?.(input, result);
+    return result;
   }
 
   /** Advance safe head and remove markers only if this transaction observed its exact receipt. */

@@ -12,6 +12,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import process from "node:process";
+import { pathToFileURL } from "node:url";
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -78,7 +79,7 @@ async function readUntilListVisible(baseUrl, reservationId, timeoutMs) {
   throw new Error(`reservation ${reservationId} did not become visible in the opted-in list view within ${timeoutMs}ms`);
 }
 
-async function verifyTopology(baseUrl, token, expectedViewCount, expectedAllowedViews) {
+export async function verifyTopology(baseUrl, token, expectedViewCount, expectedAllowedViews) {
   const { response, body } = await request(baseUrl, `/conformance/v1/g26-config?g26_probe=${crypto.randomUUID()}`, {
     headers: { authorization: `Bearer ${token}` },
   });
@@ -127,7 +128,7 @@ async function measureOne(baseUrl, sample, timeoutMs) {
   };
 }
 
-async function runTopology(baseUrl, viewCount, configuration, samples, concurrency, timeoutMs) {
+export async function runTopology(baseUrl, viewCount, configuration, samples, concurrency, timeoutMs) {
   const values = [];
   for (let offset = 0; offset < samples; offset += concurrency) {
     const batch = Array.from({ length: Math.min(concurrency, samples - offset) }, (_, index) =>
@@ -145,6 +146,15 @@ async function runTopology(baseUrl, viewCount, configuration, samples, concurren
   };
 }
 
+/** Verify effective topology before any measurement-side command is issued. */
+export async function runVerifiedTopology(baseUrl, token, expectedViewCount, expectedAllowedViews, samples, concurrency, timeoutMs) {
+  const configuration = await verifyTopology(baseUrl, token, expectedViewCount, expectedAllowedViews);
+  return {
+    configuration,
+    topology: await runTopology(baseUrl, expectedViewCount, configuration, samples, concurrency, timeoutMs),
+  };
+}
+
 async function main() {
   const baseUrl = required("--base-url", argument("--base-url", process.env.G26_BASE_URL));
   const serviceId = required("G26_SERVICE_ID", process.env.G26_SERVICE_ID);
@@ -157,8 +167,15 @@ async function main() {
   const expectedAllowedViews = (argument("--expected-allowed-views", process.env.G26_EXPECTED_ALLOWED_VIEWS ?? "") ?? "")
     .split(",").map((value) => value.trim()).filter(Boolean);
   const startedAt = new Date().toISOString();
-  const configuration = await verifyTopology(baseUrl, conformanceToken, expectedViewCount, expectedAllowedViews);
-  const topology = await runTopology(baseUrl, expectedViewCount, configuration, samples, concurrency, timeoutMs);
+  const { topology } = await runVerifiedTopology(
+    baseUrl,
+    conformanceToken,
+    expectedViewCount,
+    expectedAllowedViews,
+    samples,
+    concurrency,
+    timeoutMs,
+  );
   const evidence = {
     task: "SDT-G26",
     label: "remote ephemeral fixed-N fan-out measurement",
@@ -190,7 +207,9 @@ async function main() {
   console.log(JSON.stringify(evidence, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

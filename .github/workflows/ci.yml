@@ -90,6 +90,14 @@ jobs:
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G26 effective topology verifier oracle
+        run: npm run test:g26:topology
+      - name: Prove SDT-G26 topology verifier forced-red reachability
+        run: |
+          if SDT_G26_TOPOLOGY_FORCE_FAILURE=1 npm run test:g26:topology; then
+            echo "topology forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
