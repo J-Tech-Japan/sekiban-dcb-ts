@@ -1327,7 +1327,7 @@ export class TagDurableObject implements DurableObject {
         // records delivery or applies a view. Keep the handoff off the
         // application response lifetime so transport backpressure cannot turn
         // a committed append into a Worker timeout.
-        this.ctx.waitUntil(this.autoDrainOutbox(tag, serviceId).catch(() => undefined));
+        this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId).catch(() => undefined));
       }
       return response;
     } catch (failure) {
@@ -1340,6 +1340,19 @@ export class TagDurableObject implements DurableObject {
       }
       return error(500, "tag_append_failure", "Tag append could not be persisted");
     }
+  }
+
+  /**
+   * A DO can receive the CommitWorker's immediate /state read as the next
+   * input event. Yield once before starting the awaited service binding so the
+   * append response and that authoritative state read are not serialized
+   * behind a cold receiver's first MV-generation build. The binding call is
+   * still awaited inside waitUntil, and all delivery work remains outside the
+   * Tag DO.
+   */
+  private async autoDrainAfterResponse(tag: string, serviceId: string): Promise<void> {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await this.autoDrainOutbox(tag, serviceId);
   }
 
   private async autoDrainOutbox(tag: string, serviceId: string): Promise<void> {
