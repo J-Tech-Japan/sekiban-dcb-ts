@@ -24,6 +24,23 @@ This draft PR adds the runtime-free, schema-first DCB domain authoring layer:
 - Dedicated package dependency/import/global/npm-pack gates and compile-fail
   fixtures, all wired into CI with forced-red reachability checks.
 
+## PR #63 review closure (F1–F6)
+
+- F1: eager and late replay share exact `(projector, tag)` eligibility, so a
+  stored `order:a` event cannot enter the `order:b` cell.
+- F2/F3: boundary gates now have independent CI invocations, selected-gate
+  completion attestation, and per-gate forced-red proofs; session fixtures assert canonical tag values across all
+  propagation points, stored v1→v2 tags, 2x2 replay, heads, sealing, and
+  discard paths.
+- F4: `toRuntimeDomain()` adapts authored commands to
+  `committed|noop|rejected` and routes through a read-only conflict barrier,
+  admission, allocator, commit, and same-candidate reconcile port with G27
+  provenance.
+- F5/F6: every parse boundary has an exact finding plus downstream-zero oracle,
+  including WASM schema bypass and cross-boundary provenance;
+  changing-clock retry and DecisionLog identity negatives are runtime and
+  pinned-diagnostic compile fixtures.
+
 ## Verification
 
 The candidate evidence and oracle map are in:
@@ -39,13 +56,16 @@ npm run lint                         PASS
 npm run typecheck                    PASS
 npm run test:g28:compile-fail       PASS
 npm run test:g28:boundaries         PASS
+npm run test:g28:boundary:source    PASS
+npm run test:g28:boundary:negative  PASS
+npm run test:g28:boundary:package   PASS
 npm run test:g28                    PASS
-npm test                             PASS
+npm test                             PASS (37 files / 274 tests)
 git diff --check                     PASS
 ```
 
 The full existing G13–G27 lanes remain in the workflow. The candidate protocol
-is non-self-referential: FINAL C contains implementation/configuration and an
-evidence placeholder; bookkeeping R records C's SHA/digests and performs the
+is non-self-referential: FINAL C' contains implementation/configuration and an
+evidence placeholder; bookkeeping R' records the C' SHA/digests and performs the
 single retained-list append. No deployment credentials or secrets are part of
 the evidence.

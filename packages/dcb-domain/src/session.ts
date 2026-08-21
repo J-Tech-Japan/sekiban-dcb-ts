@@ -125,8 +125,13 @@ function initialState(projector: ProjectorLike): unknown {
     : projector.initialState;
 }
 
-function eventEligible(projector: Pick<ProjectorLike, "tag" | "subscribes">, event: CommitCandidateEvent): boolean {
-  return event.tags.some((tag) => tag.family === projector.tag.family) && projector.subscribes(event.eventType);
+function eventEligible(
+  projector: Pick<ProjectorLike, "tag" | "subscribes">,
+  cellTag: Tag,
+  event: CommitCandidateEvent,
+): boolean {
+  return event.tags.some((tag) => tag.id === cellTag.id && tag.family === projector.tag.family)
+    && projector.subscribes(event.eventType);
 }
 
 interface AttachedProjector {
@@ -237,8 +242,9 @@ export class Session {
     let state = snapshot.state as State;
     for (const staged of this.staged) {
       const record = asRecord(staged);
-      if (!eventEligible(projector, record)) continue;
+      if (!eventEligible(projector, tag, record)) continue;
       state = projector.apply(state, record) as State;
+      this.observe({ point: "eligible-cells", eventType: record.eventType, tags: record.tags });
     }
     this.overlayByCell.set(key, state);
     this.rememberClaim({ kind: "state", projectorId: projector.id, tag }, snapshot.head);
@@ -328,7 +334,7 @@ export class Session {
       const tagId = key.slice(separator + 1);
       if (!record.tags.some((tag) => tag.id === tagId)) continue;
       const projector = this.readSetProjectors.get(projectorId);
-      if (projector === undefined || !eventEligible(projector, record)) continue;
+      if (projector === undefined || !eventEligible(projector, snapshot.tag, record)) continue;
       const previous = this.overlayByCell.get(key) ?? snapshot.state;
       const next = projector.apply(previous, record);
       this.overlayByCell.set(key, next);

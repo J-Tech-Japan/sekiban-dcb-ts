@@ -41,10 +41,22 @@ jobs:
       - run: npm run typecheck
       - name: Run SDT-G28 dedicated compile-fail and package-boundary gates
         run: npm run test:g28:compile-fail
+      - name: Prove SDT-G28 pinned compile-fail lane reachability
+        run: |
+          if SDT_G28_COMPILE_FAIL_FORCE_FAILURE=1 npm run test:g28:compile-fail:forced-red; then
+            echo "SDT-G28 compile-fail forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - name: Run SDT-G28 authoring, session, bridge, and parse lane
         run: npm run test:g28
       - name: Run SDT-G28 dependency/import/npm-pack boundary gate
         run: npm run test:g28:boundaries
+      - name: Run SDT-G28 source-boundary independent probe
+        run: npm run test:g28:boundary:source
+      - name: Run SDT-G28 negative-fixture independent probe
+        run: npm run test:g28:boundary:negative
+      - name: Run SDT-G28 package-manifest independent probe
+        run: npm run test:g28:boundary:package
       - name: Prove SDT-G28 forced-red CI reachability
         run: |
           if SDT_G28_FORCE_FAILURE=1 npm run test:g28:forced-red; then
@@ -55,6 +67,20 @@ jobs:
         run: |
           if SDT_G28_BOUNDARY_FORCE_FAILURE=1 npm run test:g28:boundaries; then
             echo "SDT-G28 boundary forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove each SDT-G28 boundary gate has an independent forced-red probe
+        run: |
+          if SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=source npm run test:g28:boundary:source; then
+            echo "SDT-G28 source gate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+          if SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=negative-fixtures npm run test:g28:boundary:negative; then
+            echo "SDT-G28 negative-fixtures gate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+          if SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=package-manifest npm run test:g28:boundary:package; then
+            echo "SDT-G28 package-manifest gate forced-red probe unexpectedly passed"
             exit 1
           fi
       - run: npm test

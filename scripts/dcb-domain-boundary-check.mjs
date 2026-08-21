@@ -11,6 +11,13 @@ const fail = (message) => {
   throw new Error(`SDT-G28 boundary gate: ${message}`);
 };
 
+const completedGates = new Set();
+const gateNames = Object.freeze(["source", "negative-fixtures", "package-manifest"]);
+
+function recordGate(name) {
+  completedGates.add(name);
+}
+
 async function filesUnder(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
@@ -60,6 +67,7 @@ async function checkSourceBoundary() {
     if (globalIndex >= 0) fail(`${path} uses forbidden global #${globalIndex}`);
     if (/\bas\s+(?:any|Event)\b/.test(source)) fail(`${path} contains a forbidden domain cast`);
   }
+  recordGate("source");
 }
 
 async function checkNegativeFixtures() {
@@ -90,6 +98,7 @@ async function checkNegativeFixtures() {
     } else if (importFixtures.has(name) && !(importViolation || dynamicViolation || source.includes("../../dcb-core"))) fail(`negative fixture ${name} does not reach import gate`);
     if (!importFixtures.has(name) && !globalViolation && !source.includes("../../dcb-core")) fail(`negative fixture ${name} does not reach globals gate`);
   }
+  recordGate("negative-fixtures");
 }
 
 async function checkPackageManifestAndPack() {
@@ -108,10 +117,61 @@ async function checkPackageManifestAndPack() {
     if (!names.includes(required)) fail(`npm pack omitted ${required}`);
   }
   if (names.some((name) => name.startsWith("src/") || name.includes("boundary-fixtures") || name.includes("typecheck-fixtures"))) fail("npm pack leaked source or negative fixtures");
+  recordGate("package-manifest");
 }
 
-if (process.env.SDT_G28_BOUNDARY_FORCE_FAILURE === "1") fail("forced-red boundary probe");
-await checkSourceBoundary();
-await checkNegativeFixtures();
-await checkPackageManifestAndPack();
-console.log(JSON.stringify({ status: "PASS", package: "@sekiban/dcb-domain", sourceFiles: (await filesUnder(sourceRoot)).length, negativeFixtures: 12 }));
+function selectedGate() {
+  const index = process.argv.indexOf("--gate");
+  if (index < 0) return undefined;
+  const value = process.argv[index + 1];
+  if (!gateNames.includes(value)) fail(`unknown gate ${value ?? ""}`);
+  return value;
+}
+
+function assertGateCoverage() {
+  const missing = gateNames.filter((name) => !completedGates.has(name));
+  if (missing.length > 0) fail(`independent gate probe did not execute: ${missing.join(",")}`);
+}
+
+function assertSelectedGate(name) {
+  if (!completedGates.has(name)) fail(`selected gate did not execute: ${name}`);
+}
+
+async function runGate(name, check) {
+  if (process.env.SDT_G28_BOUNDARY_FORCE_FAILURE === "1" || process.env.SDT_G28_BOUNDARY_FORCE_FAILURE_GATE === name) {
+    fail(`forced-red ${name} boundary probe`);
+  }
+  await check();
+}
+
+async function main() {
+  const gate = selectedGate();
+  if (gate === undefined) {
+    await runGate("source", checkSourceBoundary);
+    await runGate("negative-fixtures", checkNegativeFixtures);
+    await runGate("package-manifest", checkPackageManifestAndPack);
+    // This attestation is deliberately separate from the checks: deleting any
+    // one call above makes the default aggregate probe red instead of silently
+    // shrinking the coverage.
+    assertGateCoverage();
+  } else if (gate === "source") {
+    await runGate("source", checkSourceBoundary);
+    assertSelectedGate(gate);
+  } else if (gate === "negative-fixtures") {
+    await runGate("negative-fixtures", checkNegativeFixtures);
+    assertSelectedGate(gate);
+  } else {
+    await runGate("package-manifest", checkPackageManifestAndPack);
+    assertSelectedGate(gate);
+  }
+  console.log(JSON.stringify({
+    status: "PASS",
+    package: "@sekiban/dcb-domain",
+    gate: gate ?? "all",
+    sourceFiles: (await filesUnder(sourceRoot)).length,
+    negativeFixtures: 12,
+    completedGates: [...completedGates],
+  }));
+}
+
+await main();

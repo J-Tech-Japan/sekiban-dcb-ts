@@ -5,7 +5,7 @@ import {
   type ParsedAt,
 } from "./types";
 
-const parsedValues = new WeakSet<object>();
+const parsedValues = new Map<DomainBoundary, WeakSet<object>>();
 const parsedPrimitives = new Map<DomainBoundary, Set<unknown>>();
 
 export class BoundaryParseError extends DomainAuthoringError {
@@ -30,7 +30,11 @@ export function parseAt<
 ): ParsedAt<Boundary, z.infer<Schema>> {
   try {
     const parsed = schema.parse(value);
-    if (typeof parsed === "object" && parsed !== null) parsedValues.add(parsed);
+    if (typeof parsed === "object" && parsed !== null) {
+      const values = parsedValues.get(boundary) ?? new WeakSet<object>();
+      values.add(parsed);
+      parsedValues.set(boundary, values);
+    }
     else {
       const values = parsedPrimitives.get(boundary) ?? new Set<unknown>();
       values.add(parsed);
@@ -43,14 +47,16 @@ export function parseAt<
 }
 
 export function isParsedAt(value: unknown): boolean {
-  return typeof value === "object" && value !== null && parsedValues.has(value);
+  if (typeof value !== "object" || value === null) return false;
+  for (const values of parsedValues.values()) if (values.has(value)) return true;
+  return false;
 }
 
 export function assertParsedAt<Boundary extends DomainBoundary, Value>(
   boundary: Boundary,
   value: Value,
 ): ParsedAt<Boundary, Value> {
-  if ((typeof value === "object" && value !== null && parsedValues.has(value)) || parsedPrimitives.get(boundary)?.has(value) === true) {
+  if ((typeof value === "object" && value !== null && parsedValues.get(boundary)?.has(value) === true) || parsedPrimitives.get(boundary)?.has(value) === true) {
     return value as ParsedAt<Boundary, Value>;
   }
   throw new BoundaryParseError(boundary, `${boundary}-parse-bypass`, `Value did not come from the ${boundary} parser`);

@@ -1,11 +1,11 @@
 {
   "task": "SDT-G28",
-  "status": "FINAL candidate C=f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7; bookkeeping R records the C self-digests and retained-list append",
-  "candidateCommit": "f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7",
-  "sourceCommit": "f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7",
+  "status": "FINAL candidate C' placeholder; bookkeeping R' records C' self-digests and retained-list append",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
-    "candidate": "C contains the package, runtime bridge, CI, tests, README, oracle map, PR body, and the evidence placeholder",
-    "bookkeeping": "R updates only this evidence document and appends the immutable C SHA once to the retained candidate fetch list",
+    "candidate": "C' contains the review fixes, package, runtime bridge, CI, tests, README, oracle map, PR body, and this evidence placeholder",
+    "bookkeeping": "R' updates only this evidence document and appends the immutable C' SHA once to the retained candidate fetch list",
     "postCandidateAllowlist": [
       "docs/SDT-G28-deploy-evidence.json",
       ".github/workflows/ci.yml: one exact addition of C to the retained candidate fetch list"
@@ -45,27 +45,34 @@
   "localValidation": {
     "npm run lint": "PASS",
     "npm run typecheck": "PASS",
-    "npm run test:g28:compile-fail": "PASS — dedicated tsconfig with missing-schema, missing-tags, wrong-family, and unbranded-payload expected diagnostics",
+    "npm run test:g28:compile-fail": "PASS — dedicated tsconfig plus six pinned diagnostic fixtures (TS2554/TS2345/TS2339)",
     "npm run test:g28:boundaries": {
       "status": "PASS",
       "sourceFiles": 10,
       "negativeFixtures": 12
     },
+    "npm run test:g28:boundary:source": "PASS — independent source/import/global gate",
+    "npm run test:g28:boundary:negative": "PASS — independent negative-fixture gate",
+    "npm run test:g28:boundary:package": "PASS — independent manifest/npm-pack gate",
     "npm run test:g28": {
       "status": "PASS",
       "testFiles": 1,
-      "tests": 10
+      "tests": 19
     },
     "npm test": {
       "status": "PASS",
       "testFiles": 37,
-      "tests": 265
+      "tests": 274
     },
     "npm run check": "PASS",
     "git diff --check": "PASS",
     "forcedRed": {
+      "SDT_G28_COMPILE_FAIL_FORCE_FAILURE=1 npm run test:g28:compile-fail:forced-red": "EXPECTED-RED",
       "SDT_G28_FORCE_FAILURE=1 npm run test:g28:forced-red": "EXPECTED-RED",
       "SDT_G28_BOUNDARY_FORCE_FAILURE=1 npm run test:g28:boundaries": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=source npm run test:g28:boundary:source": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=negative-fixtures npm run test:g28:boundary:negative": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=package-manifest npm run test:g28:boundary:package": "EXPECTED-RED",
       "SDT_G28_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED"
     },
     "existingLanes": {
@@ -83,14 +90,15 @@
     }
   },
   "mutationMatrix": {
-    "compileFail": "Each type fixture is included in the dedicated typecheck project; removing its target constraint produces an unused-@ts-expect-error failure.",
-    "boundary": "Each direct/transitive/path-alias/deep-relative/dynamic-import and forbidden-global fixture reaches the package boundary gate.",
-    "session": "Propagation, staged exists, fresh retry, fixed now, snapshot coherence, discard, and downstream zero-call assertions are isolated in test/dcb-domain.spec.ts."
+    "compileFail": "The dedicated typecheck project plus six unsuppressed fixtures pin TS diagnostic code/message fragments; removing a target constraint produces a mismatch or unused-@ts-expect-error failure.",
+    "boundary": "Source/import/global, negative-fixture, and package-manifest/npm-pack gates have independent commands, selected completion attestation, per-gate forced-red proofs, and aggregate missing-gate attestation.",
+    "session": "Exact propagation values, 2x2 eager/late eligibility, stored v1→v2 tags, snapshot heads, whole-log seal, 0/1/N discard, changing-clock retry, cross-boundary parse provenance, and downstream zero-call assertions are isolated in test/dcb-domain.spec.ts.",
+    "bridge": "toRuntimeDomain authored commands use a read-only conflict barrier, admission, one allocator vector, commit, same-candidate reconcile, and g27 canonical identity/provenance."
   },
   "remoteDeployment": {
     "status": "not-run",
     "reason": "G28 is an adapter-neutral library layer; no deployment credential is used on the implementation seat.",
     "secrets": "redacted"
   },
-  "candidateGate": "PASS at R/PR head: C tree digests and the exact single retained-list append are validated by npm run test:g20:candidate"
+  "candidateGate": "PENDING C'/R' bookkeeping; placeholder evidence is intentionally non-self-referential"
 }

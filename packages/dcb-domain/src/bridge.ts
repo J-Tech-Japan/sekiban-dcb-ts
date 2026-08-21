@@ -1,8 +1,14 @@
 import {
   assertJsonValue,
   DomainAuthoringError,
+  type CandidateEnvelope,
+  type CommitCandidateEvent,
+  type FixedNow,
   type JsonValue,
+  type SnapshotReader,
 } from "./types";
+import { executeCommand, type ExecuteCommandResult } from "./session";
+import type { CommandDefinition } from "./command";
 import type { EventDefinition, RuntimeEventValue } from "./event";
 import type { AuthoringDomain } from "./domain";
 import type { ProjectorDefinition } from "./state";
@@ -46,9 +52,74 @@ export interface RuntimeCommandDefinition {
   readonly id: string;
   readonly name: string;
   readonly parseInput: (value: unknown) => unknown;
-  readonly execute: (...args: readonly unknown[]) => unknown;
-  readonly handle: (...args: readonly unknown[]) => unknown;
+  readonly execute: (value: unknown, options?: RuntimeCommandExecutionOptions) => RuntimeCommandOutcome | Promise<RuntimeCommandOutcome>;
+  readonly handle: (value: unknown, options?: RuntimeCommandExecutionOptions) => RuntimeCommandOutcome | Promise<RuntimeCommandOutcome>;
 }
+
+export interface RuntimeCommandCandidateEvent extends CommitCandidateEvent {
+  readonly provenance: "g27";
+}
+
+export interface RuntimeCommandCandidateEnvelope {
+  readonly kind: "candidate-envelope";
+  readonly now: FixedNow;
+  readonly events: readonly RuntimeCommandCandidateEvent[];
+  readonly tags: CandidateEnvelope["tags"];
+  readonly readClaims: CandidateEnvelope["readClaims"];
+  readonly decision: CandidateEnvelope["decision"];
+}
+
+export interface RuntimeAllocationVector {
+  readonly candidates: readonly { readonly ordinal: string; readonly suid: string }[];
+  readonly allocatorLineageId?: string;
+}
+
+export type RuntimeCommandPortResult =
+  | { readonly kind: "accepted" }
+  | { readonly kind: "consistency-conflict"; readonly error?: unknown }
+  | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
+  | { readonly kind: "rejected"; readonly error?: unknown; readonly reason?: string; readonly code?: string };
+
+export interface RuntimeCommandPort {
+  /** Read-only conflict barrier. A conflict here must not enter any write port. */
+  readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  /** Admission write gate runs after the read-only conflict barrier and before allocation. */
+  readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  /** Allocation is deliberately after admission and receives no durable id from the authoring log. */
+  readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector;
+  /** Commit receives the one allocated vector and the same canonical G27 event identity. */
+  readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  /** An unknown outcome is reconciled against the same candidate/attempt, never resubmitted as new work. */
+  readonly reconcile?: (candidate: RuntimeCommandCandidateEnvelope, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+}
+
+export interface RuntimeCommandExecutionOptions {
+  readonly state?: Readonly<Record<string, JsonValue>>;
+  readonly now?: FixedNow;
+  readonly snapshots?: SnapshotReader;
+  readonly runtimePort?: RuntimeCommandPort;
+}
+
+export interface RuntimeCommandCommitted {
+  readonly kind: "committed";
+  readonly value?: JsonValue;
+  readonly events: readonly RuntimeCommandCandidateEvent[];
+}
+
+export interface RuntimeCommandNoop {
+  readonly kind: "noop";
+  readonly reason?: string;
+  readonly events: readonly [];
+}
+
+export interface RuntimeCommandRejected {
+  readonly kind: "rejected";
+  readonly reason: string;
+  readonly code: string;
+  readonly events: readonly [];
+}
+
+export type RuntimeCommandOutcome = RuntimeCommandCommitted | RuntimeCommandNoop | RuntimeCommandRejected;
 
 export interface RuntimeDomainDefinition {
   readonly events: readonly RuntimeEventDefinition[];
@@ -154,6 +225,121 @@ function runtimeProjectorFrom(
   });
 }
 
+function runtimeCandidateFrom(envelope: CandidateEnvelope): RuntimeCommandCandidateEnvelope {
+  return Object.freeze({
+    kind: "candidate-envelope" as const,
+    now: envelope.now,
+    events: Object.freeze(envelope.events.map((event): RuntimeCommandCandidateEvent => Object.freeze({
+      ...event,
+      provenance: "g27" as const,
+    }))),
+    tags: envelope.tags,
+    readClaims: envelope.readClaims,
+    decision: envelope.decision,
+  });
+}
+
+function defaultRuntimeSnapshots(options: RuntimeCommandExecutionOptions): SnapshotReader {
+  if (options.snapshots !== undefined) return options.snapshots;
+  const states = options.state ?? {};
+  return {
+    read: (projector, tag) => ({
+      projectorId: projector.id,
+      tag,
+      head: null,
+      state: states[tag.id] ?? (typeof projector.initialState === "function" ? projector.initialState() : projector.initialState),
+      exists: states[tag.id] !== undefined,
+    }),
+  };
+}
+
+async function commitThroughRuntimePort(
+  envelope: CandidateEnvelope,
+  port: RuntimeCommandPort | undefined,
+): Promise<RuntimeCommandPortResult> {
+  if (port === undefined) return { kind: "accepted" };
+  const candidate = runtimeCandidateFrom(envelope);
+  const barrier = port.conflictBarrier === undefined ? { kind: "accepted" as const } : await port.conflictBarrier(candidate);
+  if (barrier.kind !== "accepted") {
+    return barrier.kind === "unknown" && port.reconcile !== undefined
+      ? await port.reconcile(candidate, barrier)
+      : barrier;
+  }
+  const admitted = port.admit === undefined ? { kind: "accepted" as const } : await port.admit(candidate);
+  if (admitted.kind !== "accepted") {
+    return admitted.kind === "unknown" && port.reconcile !== undefined
+      ? await port.reconcile(candidate, admitted)
+      : admitted;
+  }
+  const allocation = port.allocate === undefined ? undefined : await port.allocate(candidate);
+  const committed = port.commit === undefined
+    ? { kind: "accepted" as const }
+    : await port.commit(candidate, allocation);
+  return committed.kind === "unknown" && port.reconcile !== undefined
+    ? await port.reconcile(candidate, committed)
+    : committed;
+}
+
+function runtimeEventsFrom(result: ExecuteCommandResult): readonly RuntimeCommandCandidateEvent[] {
+  return result.envelope === undefined
+    ? Object.freeze([])
+    : Object.freeze(result.envelope.events.map((event): RuntimeCommandCandidateEvent => Object.freeze({
+      ...event,
+      provenance: "g27" as const,
+    })));
+}
+
+function runtimeOutcomeFrom(result: ExecuteCommandResult): RuntimeCommandOutcome {
+  if (result.status === "accepted" && result.decision.kind === "done") {
+    return Object.freeze({
+      kind: "committed" as const,
+      ...(result.decision.value === undefined ? {} : { value: result.decision.value }),
+      events: runtimeEventsFrom(result),
+    });
+  }
+  if (result.status === "discarded") {
+    const reason = result.decision.kind === "none" || result.decision.kind === "reject" ? result.decision.reason : undefined;
+    return Object.freeze({
+      kind: "noop" as const,
+      ...(reason === undefined ? {} : { reason }),
+      events: Object.freeze([]) as readonly [],
+    });
+  }
+  if (result.status === "rejected") {
+    return Object.freeze({
+      kind: "rejected" as const,
+      reason: result.decision.kind === "reject" ? result.decision.reason : "Command was rejected",
+      code: result.decision.kind === "reject" ? result.decision.code : "command_rejected",
+      events: Object.freeze([]) as readonly [],
+    });
+  }
+  return Object.freeze({
+    kind: "rejected" as const,
+    reason: "Command outcome is unknown and requires durable reconciliation",
+    code: "unknown_outcome",
+    events: Object.freeze([]) as readonly [],
+  });
+}
+
+/** Adapt an authoring command into the existing runtime's three-outcome contract. */
+export function adaptRuntimeCommand(command: CommandDefinition): RuntimeCommandDefinition {
+  const execute = async (value: unknown, options: RuntimeCommandExecutionOptions = {}): Promise<RuntimeCommandOutcome> => {
+    const result = await executeCommand(command, value, {
+      timeProvider: { now: () => options.now ?? 0 },
+      snapshots: defaultRuntimeSnapshots(options),
+      commit: (envelope) => commitThroughRuntimePort(envelope, options.runtimePort),
+    });
+    return runtimeOutcomeFrom(result);
+  };
+  return Object.freeze({
+    id: command.id,
+    name: command.id,
+    parseInput: command.parseInput,
+    execute,
+    handle: execute,
+  });
+}
+
 export function toRuntimeDomain(
   domain: AuthoringDomain<readonly EventDefinition[], readonly unknown[], readonly unknown[]> | LegacyDomainDefinition,
 ): RuntimeDomainDefinition {
@@ -174,7 +360,11 @@ export function toRuntimeDomain(
       projectors.push(projectorValue as RuntimeProjectorDefinition);
     }
   }
-  const commands = (domain.commands ?? []).map((command) => command as RuntimeCommandDefinition);
+  const commands = (domain.commands ?? []).map((command) =>
+    typeof command === "object" && command !== null && "reads" in command
+      ? adaptRuntimeCommand(command as CommandDefinition)
+      : command as RuntimeCommandDefinition,
+  );
   return Object.freeze({
     events: Object.freeze(events),
     commands: Object.freeze(commands),
