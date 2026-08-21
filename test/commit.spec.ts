@@ -76,12 +76,25 @@ async function tagState(tag: string): Promise<TagRecord> {
 }
 
 async function tagPost(tag: string, path: string, body: unknown): Promise<Response> {
+  const wireBody = path === "/append" && typeof body === "object" && body !== null && !Array.isArray(body)
+    ? {
+      ...(body as Record<string, unknown>),
+      candidates: Array.isArray((body as Record<string, unknown>).candidates)
+        ? ((body as Record<string, unknown>).candidates as unknown[]).map((candidate) =>
+          typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) &&
+          !Object.prototype.hasOwnProperty.call(candidate, "eventType")
+            ? { ...(candidate as Record<string, unknown>), provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" }
+            : candidate,
+        )
+        : (body as Record<string, unknown>).candidates,
+    }
+    : body;
   return SELF.fetch(
     `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(tag)}${path}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(wireBody),
     },
   );
 }

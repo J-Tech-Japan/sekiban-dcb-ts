@@ -75,7 +75,6 @@ export function createV1Transport(
         eventCandidates: request.candidates.map((candidate) => ({
           payload: jsonBytes(assertJsonValue(candidate.payload, "event-construction")),
           eventPayloadName: candidate.eventPayloadName,
-          ...(candidate.eventPayloadVersion === undefined ? {} : { eventPayloadVersion: candidate.eventPayloadVersion }),
           tags: [...candidate.tags],
         })),
         consistencyTags: request.consistency.map((entry) => ({

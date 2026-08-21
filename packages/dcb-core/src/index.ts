@@ -199,7 +199,6 @@ export type EventDefinitionOptions<TPayload extends JsonValue> = {
   readonly eventPayloadName?: string;
   /** Version of the payload schema; existing definitions default to v1. */
   readonly version?: number;
-  readonly eventPayloadVersion?: number;
   readonly parse?: EventParser<TPayload>;
   readonly parser?: EventParser<TPayload>;
   readonly validate?: EventParser<TPayload>;
@@ -220,7 +219,7 @@ export function defineEvent<TPayload extends JsonValue = JsonValue>(
   const name = options.name ?? options.eventName;
   if (!name) throw new DcbDefinitionError("EVENT_NAME_REQUIRED", "Event name is required");
   const eventPayloadName = options.eventPayloadName ?? name;
-  const version = options.version ?? options.eventPayloadVersion ?? 1;
+  const version = options.version ?? 1;
   const eventType = canonicalEventKey(eventPayloadName, version);
   const validate = options.parse ?? options.parser ?? options.validate ?? ((payload: unknown) => payload as TPayload);
   const parse = (payload: unknown): TPayload => {

@@ -17,6 +17,7 @@ const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
 const SUID_PREFIX = "suid-";
 const SUID_DIGITS = 32;
+const ROLLBACK_WARNING_WINDOW_MS = 1_000n;
 
 type JsonObject = Record<string, unknown>;
 
@@ -263,7 +264,11 @@ export class AllocatorDurableObject implements DurableObject {
         }
         const range = allocateOrderRange(state.allocatedWatermark, input.candidates.length, clockTick);
         const rollback = state.allocatedWatermark !== null && clockTick <= decodeOrderOrdinal(state.allocatedWatermark);
-        const warningFingerprint = `${clockTick}|${state.allocatedWatermark ?? "null"}`;
+        // The warning key is deliberately independent of the newly allocated
+        // watermark.  A rollback observed repeatedly in one clock window is
+        // one operational fact, not a new fact for every monotone allocation.
+        const warningWindow = (clockTick / ROLLBACK_WARNING_WINDOW_MS).toString();
+        const warningFingerprint = `rollback:${lineage}:${warningWindow}`;
         const shouldWarn = rollback && state.lastRollbackWarningFingerprint !== warningFingerprint;
         const candidates: AllocatedCandidate[] = input.candidates.map((candidate, index) => ({
           ...candidate,

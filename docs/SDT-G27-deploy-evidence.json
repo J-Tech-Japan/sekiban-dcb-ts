@@ -1,23 +1,23 @@
 {
   "task": "SDT-G27",
-  "status": "FINAL candidate C; bookkeeping R records the candidate and its self-digests",
-  "candidateCommit": "f401342df68461d3239f58b14ff6891db4214ac6",
-  "sourceCommit": "f401342df68461d3239f58b14ff6891db4214ac6",
+  "status": "FINAL candidate C′; bookkeeping R′ records the candidate and its self-digests",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
-    "candidate": "C contains canonical identity, provenance gates, OrderClock, migration, tests, oracle map, and CI wiring",
-    "bookkeeping": "R updates only this evidence document and appends the immutable C SHA to the retained candidate fetch list",
+    "candidate": "C′ contains the F1-F6 fixes, canonical identity, provenance gates, OrderClock, migration, tests, oracle map, PR body, and CI wiring",
+    "bookkeeping": "R′ updates only this evidence document and appends the immutable C′ SHA to the retained candidate fetch list",
     "selfReference": false,
     "secrets": "redacted"
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "4a104556a68d087b16ad3204b0428af836a3ee840d893c5a01ee1ab19a42b594",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
     "runtimeRoots": [
       "packages/dcb-core/src",
       "packages/dcb-runtime/src",
       "packages/dcb-client/src"
     ],
-    "configuration": "73c881d77cbe8d0953bcaebe00825f8692c396c3d29577e6aedb9e62582ef3df",
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "migrations/d1",
@@ -25,7 +25,13 @@
       "scripts/g20-candidate-check.mjs",
       "scripts/g22-bootstrap-cosmos-contract.mjs",
       "scripts/store-contract.mjs",
+      "test/commit.spec.ts",
+      "test/downstream.spec.ts",
       "test/g27-identity.spec.ts",
+      "test/helpers/g22-bootstrap-provider-contract.ts",
+      "test/read.spec.ts",
+      "test/repair.spec.ts",
+      "test/tag.spec.ts",
       "docs/SDT-G27-oracle-map.md",
       "docs/SDT-G27-pr-body.md",
       "vitest.config.ts"
@@ -34,8 +40,8 @@
   "localValidation": {
     "npm run lint": "PASS",
     "npm run typecheck": "PASS",
-    "npm test": { "status": "PASS", "testFiles": 36, "tests": 243 },
-    "npm run test:g27": { "status": "PASS", "testFiles": 1, "tests": 6 },
+    "npm test": { "status": "PASS", "testFiles": 36, "tests": 253 },
+    "npm run test:g27": { "status": "PASS", "testFiles": 1, "tests": 16 },
     "npm run test:boundaries": "PASS",
     "npm run test:consumer": "PASS",
     "forcedRed": {

@@ -23,7 +23,7 @@ import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
-import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
+import { composeRuntime, registeredEventVersions, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
@@ -89,7 +89,10 @@ export function createCloudflareOnlyRuntimeWorker(
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
-        return handleSerializedCommit(request, env, { domainDeliveryClass: options.config?.deliveryClass });
+        return handleSerializedCommit(request, env, {
+          domainDeliveryClass: options.config?.deliveryClass,
+          registeredEventVersions: registeredEventVersions(options.domain),
+        });
       }
       if (
         url.pathname === "/api/sekiban/serialized/query" ||

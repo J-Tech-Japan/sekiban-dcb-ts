@@ -35,6 +35,8 @@ const OUTBOX_DELIVERIES_KEY = "outbox-deliveries";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
 const DEFAULT_REPAIR_LEASE_MS = 30_000;
 const MAX_REPAIR_LEASE_MS = 5 * 60_000;
+/** Explicit proof that an identity-less /append is an immutable legacy import. */
+const LEGACY_APPEND_MIGRATION_MARKER = "pre-g27-append-v1" as const;
 
 type JsonObject = Record<string, unknown>;
 
@@ -319,12 +321,15 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
     }
     const rawProvenance = rawCandidate.provenance;
     if (rawProvenance !== undefined && rawProvenance !== "pre-g27" && rawProvenance !== "g27") return { error: "candidate provenance is invalid" };
-    const provenance = rawProvenance === undefined
-      ? eventType === undefined ? "pre-g27" : "g27"
-      : rawProvenance;
-    if ((eventType === undefined) !== (provenance === "pre-g27")) {
-      return { error: "candidate event identity and provenance must agree" };
+    const legacyMarker = rawCandidate.legacyMigrationMarker;
+    if (eventType === undefined) {
+      if (rawProvenance !== "pre-g27" || legacyMarker !== LEGACY_APPEND_MIGRATION_MARKER) {
+        return { error: "identity-less /append requires an explicit immutable pre-g27 migration marker" };
+      }
+    } else if (rawProvenance !== "g27" || legacyMarker !== undefined) {
+      return { error: "canonical /append candidates require g27 provenance and no legacy migration marker" };
     }
+    const provenance = eventType === undefined ? "pre-g27" : "g27";
     candidates.push({
       eventId: rawCandidate.eventId,
       suid: rawCandidate.suid,

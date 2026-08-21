@@ -45,6 +45,13 @@ export interface RuntimeComposition {
   readonly queries: QueryRegistry;
 }
 
+/** The commit authority is the active domain registry, never a V1 caller field. */
+export function registeredEventVersions(domain: DomainDefinition | undefined): Readonly<Record<string, number>> {
+  return Object.freeze(Object.fromEntries(
+    (domain?.events ?? []).map((event) => [event.eventPayloadName, event.version]),
+  ));
+}
+
 function decodeBase64Json(value: string): unknown {
   try {
     const binary = atob(value);

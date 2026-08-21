@@ -28,11 +28,23 @@ function compareOpaque(left: string, right: string): number {
   return a.length - b.length;
 }
 export function bootstrapEventIdentityMatches(event: StoredEvent, record: BootstrapEventRecord): boolean {
-  return event.suid === record.suid && event.payload === record.payload && (event.eventType ?? undefined) === record.eventType && JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
+  const eventOrigin = event.provenance ?? (event.eventType === undefined ? "pre-g27" : "g27");
+  const recordOrigin = record.provenance?.origin ?? (record.eventType === undefined ? "pre-g27" : "g27");
+  return event.suid === record.suid &&
+    event.payload === record.payload &&
+    (event.eventType ?? undefined) === record.eventType &&
+    eventOrigin === recordOrigin &&
+    JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
 }
 export type BootstrapIdentityGuard = (event: StoredEvent, record: BootstrapEventRecord) => boolean;
 function toRecord(event: StoredEvent): BootstrapEventRecord {
-  return { eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: [...event.eventTags].sort(compareOpaque), ...(event.eventType === undefined ? {} : { eventType: event.eventType, provenance: { origin: event.provenance ?? "g27" } }) };
+  return {
+    eventId: event.eventId,
+    suid: event.suid,
+    payload: event.payload,
+    eventTags: [...event.eventTags].sort(compareOpaque),
+    ...(event.eventType === undefined ? {} : { eventType: event.eventType, provenance: { origin: event.provenance ?? "g27" } }),
+  };
 }
 
 /**

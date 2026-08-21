@@ -37,7 +37,7 @@ function newScope(): Scope {
 }
 
 function candidate(scope: Scope, eventId: string, suid: string, payload = "payload") {
-  return { eventId, suid, payload, eventTags: [scope.tag] };
+  return { eventId, suid, payload, eventTags: [scope.tag], provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" };
 }
 
 async function state(scope: Scope): Promise<TagRecord> {
