@@ -60,10 +60,16 @@ function listItems(body) {
 
 async function readUntilListVisible(baseUrl, reservationId, timeoutMs) {
   const started = performance.now();
+  const pageSize = 100;
   while (performance.now() - started <= timeoutMs) {
-    const { response, body } = await request(baseUrl, "/api/read/reservations?pageNumber=1&pageSize=20");
-    if (response.status === 200 && listItems(body).some((item) => item?.reservationId === reservationId)) {
-      return performance.now();
+    for (let pageNumber = 1; pageNumber <= 100 && performance.now() - started <= timeoutMs; pageNumber += 1) {
+      const { response, body } = await request(baseUrl, `/api/read/reservations?pageNumber=${pageNumber}&pageSize=${pageSize}`);
+      const items = listItems(body);
+      if (response.status === 200 && items.some((item) => item?.reservationId === reservationId)) return performance.now();
+      // A short page is the durable end of this list snapshot. Retry from
+      // page one after the projection advances rather than assuming the new
+      // row will sort into the first fixed-size page.
+      if (response.status !== 200 || items.length < pageSize) break;
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
