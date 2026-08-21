@@ -203,28 +203,37 @@ export async function processDeliveryCore(
     failures.push({ phase: "detector", class: "retryable-transient", error: errorText(error) });
   }
 
-  const viewResults: DeliveryViewResult[] = [];
   const views = options.views ?? [];
   // Normative step 4: every view gets a turn, even when an earlier view is a
-  // deterministic poison or a transient failure.
-  for (const view of views) {
+  // deterministic poison or a transient failure. The branches are independent
+  // atomic batches, so starting them together bounds fast-path latency by the
+  // slowest view while preserving the input order in the returned oracle.
+  const viewOutcomes = await Promise.all(views.map(async (view) => {
     const viewStartedAt = performance.now();
     try {
       const applied = await view.apply({ message, event: outcome.event, arrivedAt, source });
       const status = applied === "duplicate-race" ? "duplicate-race" : "applied";
-      viewResults.push({ id: view.id, status, durationMs: Math.max(0, performance.now() - viewStartedAt) });
+      return {
+        result: { id: view.id, status, durationMs: Math.max(0, performance.now() - viewStartedAt) } as DeliveryViewResult,
+        failure: undefined,
+      };
     } catch (error) {
       const failureClass = view.classifyError?.(error) ?? defaultFailureClass(error);
-      const viewResult: DeliveryViewResult = {
-        id: view.id,
-        status: "failed",
-        failureClass,
-        error: errorText(error),
-        durationMs: Math.max(0, performance.now() - viewStartedAt),
+      return {
+        result: {
+          id: view.id,
+          status: "failed",
+          failureClass,
+          error: errorText(error),
+          durationMs: Math.max(0, performance.now() - viewStartedAt),
+        } as DeliveryViewResult,
+        failure: { phase: "view", class: failureClass, viewId: view.id, error: errorText(error) } as DeliveryCoreFailure,
       };
-      viewResults.push(viewResult);
-      failures.push({ phase: "view", class: failureClass, viewId: view.id, error: errorText(error) });
     }
+  }));
+  const viewResults = viewOutcomes.map((outcome) => outcome.result);
+  for (const outcome of viewOutcomes) {
+    if (outcome.failure !== undefined) failures.push(outcome.failure);
   }
 
   // Compatibility callers still receive their stored-only callback, but it
