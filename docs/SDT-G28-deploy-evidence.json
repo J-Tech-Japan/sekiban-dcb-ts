@@ -1,8 +1,8 @@
 {
   "task": "SDT-G28",
-  "status": "FINAL candidate C' placeholder; bookkeeping R' records C' self-digests and retained-list append",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "FINAL candidate C'=6308fb446335000d8729d490b170b189734461a4; bookkeeping R' records C' self-digests and retained-list append",
+  "candidateCommit": "6308fb446335000d8729d490b170b189734461a4",
+  "sourceCommit": "6308fb446335000d8729d490b170b189734461a4",
   "protocol": {
     "candidate": "C' contains the review fixes, package, runtime bridge, CI, tests, README, oracle map, PR body, and this evidence placeholder",
     "bookkeeping": "R' updates only this evidence document and appends the immutable C' SHA once to the retained candidate fetch list",
@@ -15,12 +15,12 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "2c8bf5e4d13f5054bd6e388cef1517d9e8198eb6d9a3298b34907af44ea6b7b8",
+    "runtime": "d080025418cc0e4d03777ac20e22c6e3c9f4f72d68e409f0499ecbc90edd6014",
     "runtimeRoots": [
       "packages/dcb-domain/src",
       "packages/dcb-runtime/src"
     ],
-    "configuration": "5fcceb9a3d03a8444ae0b1e6145da1cf2752c82742035651fb3875a8618ddf99",
+    "configuration": "c75bc784a0c8267fe2bb292a15f27312d42581e6ecdbdd0eb2f353fed28c04fa",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "docs/SDT-G28-oracle-map.md",
@@ -100,5 +100,5 @@
     "reason": "G28 is an adapter-neutral library layer; no deployment credential is used on the implementation seat.",
     "secrets": "redacted"
   },
-  "candidateGate": "PENDING C'/R' bookkeeping; placeholder evidence is intentionally non-self-referential"
+  "candidateGate": "PASS at C' tree: R' must append this C' SHA exactly once to the retained candidate fetch list and change only this evidence document plus that list"
 }
