@@ -263,7 +263,7 @@
     "localSlopeTarget": "PASS: real D1 slope fixture",
     "forcedRed": "PASS: G26 forced-red and candidate forced-red probes exited non-zero as expected",
     "candidateGate": "PASS: npm run test:g20:candidate",
-    "fullCheck": "pending final gate run",
+    "fullCheck": "PASS: npm run check (35 test files, 236 tests)",
     "remoteCI": "pending push"
   },
   "secrets": "redacted"
