@@ -149,23 +149,61 @@ function renderReservationRows(rows) {
   }
 }
 
+const RESERVATION_PAGE_SIZE = 20;
+const RESERVATIONS_ENDPOINT = "/api/read/reservations";
+
+async function fetchReservationPage(pageNumber) {
+  const response = await fetch(
+    `${RESERVATIONS_ENDPOINT}?pageNumber=${pageNumber}&pageSize=${RESERVATION_PAGE_SIZE}`,
+    { headers: { Accept: "application/json" } },
+  );
+  return reservationListView(response.status, await responseBody(response));
+}
+
 async function loadReservations() {
   setQueryState(reservationsState, "Loading reservations…", "pending");
   try {
-    const response = await fetch("/api/read/reservations", { headers: { Accept: "application/json" } });
-    const view = reservationListView(response.status, await responseBody(response));
-    setReadHead(reservationsHead, view.readHead);
-    if (view.kind === "error") {
+    // The server pages in ascending SUID order, so the newest rows live on the
+    // LAST page. Fetch the last page (and its predecessor when the last page
+    // is partial) and render newest-first.
+    const first = await fetchReservationPage(1);
+    if (first.kind === "error") {
       renderReservationRows([]);
-      setQueryState(reservationsState, `Error: ${view.error}`, "error");
+      setQueryState(reservationsState, `Error: ${first.error}`, "error");
       return;
     }
-    renderReservationRows(view.rows);
-    if (view.kind === "empty") {
+    setReadHead(reservationsHead, first.readHead);
+    if (first.kind === "empty") {
+      renderReservationRows([]);
       setQueryState(reservationsState, "No reservations found.", "empty");
-    } else {
-      setQueryState(reservationsState, `${view.rows.length} reservation(s)`, "ready");
+      return;
     }
+    const totalCount = first.totalCount;
+    const totalPages = Math.max(1, Math.ceil(totalCount / RESERVATION_PAGE_SIZE));
+    let rows = first.rows;
+    if (totalPages > 1) {
+      const last = await fetchReservationPage(totalPages);
+      if (last.kind === "error") {
+        renderReservationRows([]);
+        setQueryState(reservationsState, `Error: ${last.error}`, "error");
+        return;
+      }
+      rows = last.rows;
+      if (rows.length < RESERVATION_PAGE_SIZE && totalPages > 2) {
+        const previous = await fetchReservationPage(totalPages - 1);
+        if (previous.kind === "ready") rows = [...previous.rows, ...rows];
+      } else if (rows.length < RESERVATION_PAGE_SIZE && totalPages === 2) {
+        rows = [...first.rows, ...rows];
+      }
+      setReadHead(reservationsHead, last.readHead);
+    }
+    const newestFirst = rows.slice(-RESERVATION_PAGE_SIZE).reverse();
+    renderReservationRows(newestFirst);
+    setQueryState(
+      reservationsState,
+      `${totalCount} reservation(s) — showing newest ${newestFirst.length}`,
+      "ready",
+    );
   } catch (error) {
     renderReservationRows([]);
     setQueryState(reservationsState, `Error: ${error instanceof Error ? error.message : "Network request failed"}`, "error");
