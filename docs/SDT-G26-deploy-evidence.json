@@ -1,6 +1,6 @@
 {
   "task": "SDT-G26",
-  "status": "C'''' implementation, fresh remote evidence, local validation, and CI pending",
+  "status": "C'''' implementation, fresh remote evidence, local validation, and CI PASS",
   "candidateCommit": "1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6",
   "sourceCommit": "1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6",
   "candidateDeployment": {
@@ -306,7 +306,7 @@
     "candidateGate": "PASS: npm run test:g20:candidate with C''''+R'''' active; candidate tree digests and exact retained-list append verified",
     "fullCheck": "PASS: npm run check (35 test files, 237 tests; topology oracle runs as an additional 4-test Node lane)",
     "legacyWorkerE2E": "PASS: npm run e2e:g15:local with explicit PostgreSQL and queued-degraded legacy worker config",
-    "remoteCI": "PENDING: GitHub Actions run for C''''+R''''"
+    "remoteCI": "PASS: GitHub Actions run 32475507339 (verify 96750881702, cosmos-emulator 96750881514)"
   },
   "secrets": "redacted"
 }
