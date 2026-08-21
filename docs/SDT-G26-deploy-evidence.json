@@ -1,16 +1,16 @@
 {
   "task": "SDT-G26",
-  "status": "C' implementation and remote evidence PASS; final local/CI gates are recorded in validation",
-  "candidateCommit": "36de26747ba71a583908f1f6f22102150e98f72b",
-  "sourceCommit": "36de26747ba71a583908f1f6f22102150e98f72b",
+  "status": "C'' implementation and remote evidence PASS; final local/CI gates are recorded in validation",
+  "candidateCommit": "f1d3d7163f08a55c70fb8f66a38070be74f7caaf",
+  "sourceCommit": "f1d3d7163f08a55c70fb8f66a38070be74f7caaf",
   "candidateDeployment": {
     "primaryWorker": "sekiban-dcb-g26-meeting-room",
     "doorbellWorker": "sekiban-dcb-g26-doorbell",
     "baseUrl": "https://sekiban-dcb-g26-meeting-room.ttakaoka.workers.dev",
-    "serviceId": "g26-fix1-final3-v10-36de267",
+    "serviceId": "g26-fix1-final4-v10-f1d3d71",
     "freshExplicitServiceId": true,
-    "primaryVersionId": "b5815b4c-de02-4d66-b014-663a1100987f",
-    "doorbellVersionId": "d182fd1a-469f-413d-90fc-9277eed9e0ff",
+    "primaryVersionId": "e28de129-5c51-4f34-b805-5fb6b2bbac91",
+    "doorbellVersionId": "5cb8e1a3-cd72-4623-8ff7-85c74cb3899f",
     "topology": "10-view",
     "allowedViews": [
       "RoomProjector",
@@ -38,20 +38,20 @@
   "candidateTopologies": [
     {
       "viewCount": 1,
-      "serviceId": "g26-fix1-final3-v1-36de267",
-      "primaryVersionId": "ae719f36-e755-4249-b59e-a7ad6050757d",
-      "doorbellVersionId": "d20fde3f-7373-4d6c-9d75-576f2acf3100",
+      "serviceId": "g26-fix1-final4-v1-f1d3d71",
+      "primaryVersionId": "fd865e6e-895d-4ccf-b1ef-f79c9b4aa93f",
+      "doorbellVersionId": "16f1c2b5-0a88-4c87-b488-5da1d7dbb0f4",
       "allowedViews": ["ReservationProjector"],
       "configurationVerified": true,
       "fixedN": 20,
       "controlledConcurrency": 1,
-      "artifact": ".artifacts/g26-fix1-final3-v1-warm.json"
+      "artifact": ".artifacts/g26-fix1-final4-v1.json"
     },
     {
       "viewCount": 5,
-      "serviceId": "g26-fix1-final3-v5-36de267",
-      "primaryVersionId": "d438a6fc-8685-4058-80de-d0a922981675",
-      "doorbellVersionId": "cd0df27c-df58-473c-a269-9a9f8e7792fa",
+      "serviceId": "g26-fix1-final4-v5-f1d3d71",
+      "primaryVersionId": "f876f525-b6e9-4928-9ff7-554d16f5b17c",
+      "doorbellVersionId": "699dfedf-ffc7-4c32-80ab-ffd1f6ae0e4c",
       "allowedViews": [
         "RoomProjector",
         "ReservationProjector",
@@ -62,13 +62,13 @@
       "configurationVerified": true,
       "fixedN": 20,
       "controlledConcurrency": 1,
-      "artifact": ".artifacts/g26-fix1-final3-v5-attempt.json"
+      "artifact": ".artifacts/g26-fix1-final4-v5.json"
     },
     {
       "viewCount": 10,
-      "serviceId": "g26-fix1-final3-v10-36de267",
-      "primaryVersionId": "b5815b4c-de02-4d66-b014-663a1100987f",
-      "doorbellVersionId": "d182fd1a-469f-413d-90fc-9277eed9e0ff",
+      "serviceId": "g26-fix1-final4-v10-f1d3d71",
+      "primaryVersionId": "e28de129-5c51-4f34-b805-5fb6b2bbac91",
+      "doorbellVersionId": "5cb8e1a3-cd72-4623-8ff7-85c74cb3899f",
       "allowedViews": [
         "RoomProjector",
         "ReservationProjector",
@@ -84,12 +84,12 @@
       "configurationVerified": true,
       "fixedN": 20,
       "controlledConcurrency": 1,
-      "artifact": ".artifacts/g26-fix1-final3-v10-warm.json"
+      "artifact": ".artifacts/g26-fix1-final4-v10.json"
     }
   ],
   "protocol": {
-    "finalCandidate": "C' includes runtime, sample configuration, tests, deploy/measurement scripts, oracle map, and CI wiring",
-    "bookkeepingCommit": "5cc15310a42b5a49d4d46470d35760bbef4733e9",
+    "finalCandidate": "C'' includes runtime, sample configuration, tests, deploy/measurement scripts, oracle map, and CI wiring",
+    "bookkeepingCommit": "R' pending",
     "deploymentIdentity": "fresh explicit non-secret G26_SERVICE_ID per topology",
     "fixedN": 20,
     "controlledConcurrency": 1,
@@ -98,17 +98,18 @@
     "topologyReadHardening": "authenticated conformance and list reads use cache-control no-cache, cache no-store, and a per-read probe query",
     "postCandidateAllowlist": [
       "docs/SDT-G26-deploy-evidence.json",
-      ".github/workflows/ci.yml: one exact addition of C' to the retained candidate fetch list"
+      ".github/workflows/ci.yml: one exact addition of C'' to the retained candidate fetch list"
     ]
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "b6e882b161c272aeb0dae5f27e4f24c181d4de3b17476e08116548ed6d89c7ac",
     "runtimeRoots": ["packages/dcb-runtime/src"],
-    "configuration": "f689130e41cd8c55a3b17363f9ebf2cbe460da8117dfaa93ed527b6b9b4f8dbe",
+    "configuration": "1c3421dfcf038997f63cc8ac4047b5a1f5f9a8ebbc1f2244cce12ca67eb010f3",
     "configurationRoots": [
       "samples/meeting-room/src",
       "samples/meeting-room/public",
+      "samples/meeting-room/wrangler.jsonc",
       "samples/meeting-room/wrangler.direct-doorbell.jsonc",
       "samples/meeting-room/wrangler.doorbell.jsonc",
       "package.json",
@@ -144,49 +145,49 @@
     "runs": [
       {
         "viewCount": 1,
-        "serviceId": "g26-fix1-final3-v1-36de267",
-        "artifact": ".artifacts/g26-fix1-final3-v1-warm.json",
-        "commandStartToResponseMs": {"p50": 1673.465, "p95": 2025.811, "max": 2052.519, "samples": 20},
-        "responseToVisibleMs": {"p50": 237.876, "p95": 277.060, "max": 523.521, "samples": 20},
-        "commandStartToVisibleMs": {"p50": 1913.697, "p95": 2260.144, "max": 2298.647, "samples": 20}
+        "serviceId": "g26-fix1-final4-v1-f1d3d71",
+        "artifact": ".artifacts/g26-fix1-final4-v1.json",
+        "commandStartToResponseMs": {"p50": 1611.174, "p95": 2096.229, "max": 4467.668, "samples": 20},
+        "responseToVisibleMs": {"p50": 227.301, "p95": 452.751, "max": 492.148, "samples": 20},
+        "commandStartToVisibleMs": {"p50": 1823.290, "p95": 2432.516, "max": 4677.722, "samples": 20}
       },
       {
         "viewCount": 5,
-        "serviceId": "g26-fix1-final3-v5-36de267",
-        "artifact": ".artifacts/g26-fix1-final3-v5-attempt.json",
-        "commandStartToResponseMs": {"p50": 1645.790, "p95": 2439.265, "max": 3107.924, "samples": 20},
-        "responseToVisibleMs": {"p50": 334.815, "p95": 684.763, "max": 903.540, "samples": 20},
-        "commandStartToVisibleMs": {"p50": 2102.682, "p95": 2829.619, "max": 3436.334, "samples": 20}
+        "serviceId": "g26-fix1-final4-v5-f1d3d71",
+        "artifact": ".artifacts/g26-fix1-final4-v5.json",
+        "commandStartToResponseMs": {"p50": 1573.886, "p95": 2051.867, "max": 2091.278, "samples": 20},
+        "responseToVisibleMs": {"p50": 467.532, "p95": 1049.891, "max": 1131.859, "samples": 20},
+        "commandStartToVisibleMs": {"p50": 2067.795, "p95": 2749.119, "max": 2946.539, "samples": 20}
       },
       {
         "viewCount": 10,
-        "serviceId": "g26-fix1-final3-v10-36de267",
-        "artifact": ".artifacts/g26-fix1-final3-v10-warm.json",
-        "commandStartToResponseMs": {"p50": 1697.318, "p95": 3438.775, "max": 4189.448, "samples": 20},
-        "responseToVisibleMs": {"p50": 739.585, "p95": 1549.978, "max": 2339.439, "samples": 20},
-        "commandStartToVisibleMs": {"p50": 2503.784, "p95": 4093.955, "max": 4374.689, "samples": 20}
+        "serviceId": "g26-fix1-final4-v10-f1d3d71",
+        "artifact": ".artifacts/g26-fix1-final4-v10.json",
+        "commandStartToResponseMs": {"p50": 1604.187, "p95": 2151.981, "max": 2253.753, "samples": 20},
+        "responseToVisibleMs": {"p50": 451.348, "p95": 890.629, "max": 1126.303, "samples": 20},
+        "commandStartToVisibleMs": {"p50": 2227.288, "p95": 2487.025, "max": 2984.776, "samples": 20}
       }
     ],
     "receiverTelemetry": {
       "source": "wrangler tail sekiban-dcb-g26-doorbell --format json --sampling-rate 0.9999",
       "topology": "10-view",
-      "validDirectCoreRecords": 56,
-      "discardedPartialRecords": 1,
-      "dispositionCounts": {"completed": 56},
-      "viewStatusCounts": {"applied": 320, "duplicate-race": 240},
+      "validDirectCoreRecords": 67,
+      "discardedPartialRecords": 0,
+      "dispositionCounts": {"completed": 67},
+      "viewStatusCounts": {"applied": 380, "duplicate-race": 290},
       "failedViewStatusRecords": 0,
-      "coreDurationMs": {"p50": 856, "p95": 1390, "max": 4404, "samples": 56},
+      "coreDurationMs": {"p50": 811, "p95": 1260, "max": 2491, "samples": 67},
       "perViewApplyMs": {
-        "ReservationProjector": {"p50": 463, "p95": 882.5, "max": 2184, "samples": 56},
-        "RoomProjector": {"p50": 490.5, "p95": 765.5, "max": 2475, "samples": 56},
-        "G26FanoutView03": {"p50": 489, "p95": 765.5, "max": 2468, "samples": 56},
-        "G26FanoutView04": {"p50": 470.5, "p95": 884.75, "max": 2307, "samples": 56},
-        "G26FanoutView05": {"p50": 507.5, "p95": 794.5, "max": 2475, "samples": 56},
-        "G26FanoutView06": {"p50": 461.5, "p95": 889.25, "max": 2307, "samples": 56},
-        "G26FanoutView07": {"p50": 508, "p95": 795.25, "max": 2468, "samples": 56},
-        "G26FanoutView08": {"p50": 474.5, "p95": 884.25, "max": 2184, "samples": 56},
-        "G26FanoutView09": {"p50": 499.5, "p95": 765.5, "max": 2468, "samples": 56},
-        "G26FanoutView10": {"p50": 467, "p95": 884.25, "max": 2307, "samples": 56}
+        "ReservationProjector": {"p50": 384, "p95": 699, "max": 940, "samples": 67},
+        "RoomProjector": {"p50": 387, "p95": 744, "max": 1132, "samples": 67},
+        "G26FanoutView03": {"p50": 397, "p95": 734, "max": 1079, "samples": 67},
+        "G26FanoutView04": {"p50": 393, "p95": 699, "max": 1008, "samples": 67},
+        "G26FanoutView05": {"p50": 391, "p95": 744, "max": 1079, "samples": 67},
+        "G26FanoutView06": {"p50": 383, "p95": 699, "max": 1008, "samples": 67},
+        "G26FanoutView07": {"p50": 391, "p95": 744, "max": 1079, "samples": 67},
+        "G26FanoutView08": {"p50": 400, "p95": 699, "max": 923, "samples": 67},
+        "G26FanoutView09": {"p50": 388, "p95": 744, "max": 1079, "samples": 67},
+        "G26FanoutView10": {"p50": 390, "p95": 654, "max": 923, "samples": 67}
       },
       "d1ErrorCounts": {
         "pipeline": 0,
@@ -199,14 +200,14 @@
         "successfulListSamples": 20,
         "directCoreFailures": 0,
         "queuedDegraded": 0,
-        "queueReplayDuplicateRace": 240,
+        "queueReplayDuplicateRace": 290,
         "cronFallback": 0,
         "basis": "successful fixed-N measurement plus sampled direct-core records; no silent degradation was observed"
       }
     },
     "measurementNotes": [
       "Each final-candidate topology was deployed as a fresh receiver + primary pair; the authenticated cache-busted conformance endpoint verified G26_VIEW_COUNT and the exact allowed-view list before measurement.",
-      "A first post-deploy 1-view attempt returned the explicit Durable Object reset transport response and was excluded; it was not counted as a successful command or blindly retried as an ambiguous result.",
+      "No ambiguous command result was counted; each topology was measured only after the authenticated configuration check passed.",
       "Queue duplicate-race replays were observed as receipt-idempotent no-ops; no queued-degraded direct fallback occurred in the sampled final 10-view run.",
       "Command-start-to-visible remains reported for completeness and is not claimed sub-second."
     ],
@@ -230,8 +231,8 @@
     {
       "id": "F3",
       "scope": "AC5",
-      "oracle": "domain deliveryClass is forwarded into Tag firing; queued, queued-degraded, fail-fast, and envelope-bound direct status source oracles",
-      "artifact": "packages/dcb-runtime/src/commit/CommitWorker.ts and test/g26-delivery.spec.ts",
+      "oracle": "domain deliveryClass is forwarded into Tag firing; queued, queued-degraded, fail-fast, envelope-bound direct status, and explicit legacy-worker queued-degradation oracles",
+      "artifact": "packages/dcb-runtime/src/commit/CommitWorker.ts, samples/meeting-room/wrangler.jsonc, and test/g26-delivery.spec.ts",
       "status": "closed"
     },
     {
@@ -251,7 +252,7 @@
     {
       "id": "F6",
       "scope": "AC9/10",
-      "oracle": "real local D1 slope, separately deployed remote 1/5/10 topologies, authenticated cache-safe topology verification, list-view visibility, split latency distributions, and non-self-referential C'+R' protocol",
+      "oracle": "real local D1 slope, separately deployed remote 1/5/10 topologies, authenticated cache-safe topology verification, list-view visibility, split latency distributions, and non-self-referential C''+R'' protocol",
       "artifact": "test/g26-fanout.spec.ts, scripts/deploy/g26-deploy-topology.sh, scripts/deploy/g26-measure.mjs, docs/SDT-G26-oracle-map.md",
       "status": "closed"
     }
