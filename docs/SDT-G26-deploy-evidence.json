@@ -89,7 +89,7 @@
   ],
   "protocol": {
     "finalCandidate": "C' includes runtime, sample configuration, tests, deploy/measurement scripts, oracle map, and CI wiring",
-    "bookkeepingCommit": "pending exact one-line retained-list append in R'",
+    "bookkeepingCommit": "5cc15310a42b5a49d4d46470d35760bbef4733e9",
     "deploymentIdentity": "fresh explicit non-secret G26_SERVICE_ID per topology",
     "fixedN": 20,
     "controlledConcurrency": 1,
@@ -261,8 +261,8 @@
     "g23": "PASS: 27/27 unsafe-window tests after preserving independent arrival guard",
     "g26": "PASS: 31/31 tests",
     "localSlopeTarget": "PASS: real D1 slope fixture",
-    "forcedRed": "pending final gate run",
-    "candidateGate": "pending R' bookkeeping append",
+    "forcedRed": "PASS: G26 forced-red and candidate forced-red probes exited non-zero as expected",
+    "candidateGate": "PASS: npm run test:g20:candidate",
     "fullCheck": "pending final gate run",
     "remoteCI": "pending push"
   },
