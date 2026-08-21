@@ -47,7 +47,10 @@ export interface UnsafeWindowApplyResult {
 
 export interface UnsafeWindowMaterializedViewStoreOptions {
   /** Test-only barrier used by the SDT-G26 duplicate-race oracle. */
-  readonly beforeApplyBatch?: (input: UnsafeWindowApplyInput) => Promise<void>;
+  readonly beforeApplyBatch?: (
+    input: UnsafeWindowApplyInput,
+    statements?: readonly D1PreparedStatement[],
+  ) => Promise<void>;
 }
 
 export interface UnsafeReadMeta {
@@ -234,7 +237,7 @@ export class UnsafeWindowMaterializedViewStore {
     // The hook is test-only and is intentionally after the receipt pre-read,
     // which lets two invocations reach the same D1 batch barrier and prove
     // that the unique receipt loser is typed rather than a generic retry.
-    await this.options.beforeApplyBatch?.(input);
+    await this.options.beforeApplyBatch?.(input, statements);
     try {
       await this.database.batch(statements);
     } catch (error) {

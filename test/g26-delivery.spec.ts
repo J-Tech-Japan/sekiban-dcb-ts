@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import unsafeWindowSource from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView.ts?raw";
 // @ts-expect-error Vite raw source import for the Tag/Queue separation oracle.
 import downstreamAdapterSource from "../packages/dcb-runtime/src/downstream/DownstreamAdapter.ts?raw";
+// @ts-expect-error Vite raw source import for direct status observability.
+import tagSource from "../packages/dcb-runtime/src/tag/TagDurableObject.ts?raw";
 import {
   handleDownstreamQueue,
   processDeliveryCore,
@@ -117,28 +119,49 @@ describe("SDT-G26 shared delivery core", () => {
     ]);
   });
 
-  it("gates lineage and SUID incidents before detector, unsafe observation, view, or drain", async () => {
-    const cases: Array<{ name: string; outcome: DeliveryOutcome["outcome"]; kind: "SUID_COLLISION" | "LINEAGE_MISMATCH" }> = [
-      { name: "collision", outcome: "suid-collision", kind: "SUID_COLLISION" },
-      { name: "lineage", outcome: "lineage-mismatch", kind: "LINEAGE_MISMATCH" },
-    ];
-    for (const item of cases) {
-      const input = message(item.name);
-      const trace: string[] = [];
-      const incident: DeliveryOutcome = {
-        outcome: item.outcome,
-        kind: item.outcome,
-        incident: { serviceId: input.serviceId, identityKey: item.name, classification: item.kind, observedAt: 1_010 },
-      } as DeliveryOutcome;
-      const result = await processDeliveryCore(input, "queue", {}, {
-        store: storeFor(input, trace, incident),
-        views: [view("must-not-run", trace, async () => "applied")],
-        afterDelivery: async () => { trace.push("drain-trigger"); },
-      });
-      expect(result.outcome).toBe(item.outcome);
-      expect(result.queueDisposition).toBe("ack");
-      expect(trace).toEqual(["initialize", "recordDelivery:queue"]);
-    }
+  it("isolates the SUID-collision typed gate and its zero-call guard", async () => {
+    const input = message("suid-collision");
+    const trace: string[] = [];
+    const incident: DeliveryOutcome = {
+      outcome: "suid-collision",
+      kind: "suid-collision",
+      incident: { serviceId: input.serviceId, identityKey: "collision", classification: "SUID_COLLISION", observedAt: 1_010 },
+    } as DeliveryOutcome;
+    const result = await processDeliveryCore(input, "queue", {}, {
+      store: storeFor(input, trace, incident),
+      views: [view("suid-collision-must-not-run", trace, async () => "applied")],
+      afterDelivery: async () => { trace.push("drain-trigger"); },
+    });
+    expect(result.outcome).toBe("suid-collision");
+    expect(result.queueDisposition).toBe("ack");
+    expect(trace).toEqual(["initialize", "recordDelivery:queue"]);
+  });
+
+  it("isolates the lineage-mismatch typed gate and its zero-call guard", async () => {
+    const input = message("lineage-mismatch");
+    const trace: string[] = [];
+    const incident: DeliveryOutcome = {
+      outcome: "lineage-mismatch",
+      kind: "lineage-mismatch",
+      incident: { serviceId: input.serviceId, identityKey: "lineage", classification: "LINEAGE_MISMATCH", observedAt: 1_010 },
+    } as DeliveryOutcome;
+    const result = await processDeliveryCore(input, "queue", {}, {
+      store: storeFor(input, trace, incident),
+      views: [view("lineage-mismatch-must-not-run", trace, async () => "applied")],
+      afterDelivery: async () => { trace.push("drain-trigger"); },
+    });
+    expect(result.outcome).toBe("lineage-mismatch");
+    expect(result.queueDisposition).toBe("ack");
+    expect(trace).toEqual(["initialize", "recordDelivery:queue"]);
+  });
+
+  it("keeps fast delivery as a thin wrapper over the shared core", () => {
+    const fastWrapperStart = downstreamAdapterSource.indexOf("export async function processDownstreamDoorbell");
+    const queueWrapperStart = downstreamAdapterSource.indexOf("/** Processes one Queue");
+    const fastWrapper = downstreamAdapterSource.slice(fastWrapperStart, queueWrapperStart);
+    expect(downstreamAdapterSource).toMatch(/return processDeliveryCore\(message, "fast", env, options\)/);
+    expect(fastWrapper).not.toMatch(/recordDelivery/);
+    expect(fastWrapper).not.toMatch(/retry\(/);
   });
 
   it("continues after poison at the head and sends one aggregate retry-to-DLQ decision", async () => {
@@ -157,6 +180,26 @@ describe("SDT-G26 shared delivery core", () => {
     expect(result.views.map((entry) => entry.id)).toEqual(["head-poison", "middle", "tail"]);
     expect(result.failures[0]).toMatchObject({ class: "nonretryable-definition-poison", viewId: "head-poison" });
     expect(result.queueDisposition).toBe("retry-to-dlq");
+    expect(result.queueDispositionReason).toBe("definition-poison-dlq");
+  });
+
+  it("never acknowledges a poison Queue message and leaves bounded DLQ disposition to the wrapper", async () => {
+    const input = message("poison-wrapper");
+    const poison = view("poison-wrapper", [], async () => {
+      const error = new Error("definition is invalid") as Error & { retryable?: boolean };
+      error.retryable = false;
+      throw error;
+    });
+    let acked = 0;
+    let retried = 0;
+    await handleDownstreamQueue({
+      messages: [{ body: input, attempts: 1, ack: () => { acked += 1; }, retry: () => { retried += 1; } }],
+    } as unknown as MessageBatch<unknown>, {}, {
+      store: storeFor(input, []),
+      views: [poison],
+    });
+    expect(acked).toBe(0);
+    expect(retried).toBe(1);
   });
 
   it("treats a typed duplicate-race loser as a receipt no-op for both wrappers", async () => {
@@ -211,7 +254,7 @@ describe("SDT-G26 shared delivery core", () => {
 
   it("fails capability preflight explicitly instead of silently degrading", () => {
     const config = readDirectDoorbellConfig({
-      DELIVERY_CLASS: "immediate-preferred",
+      DOMAIN_DELIVERY_CLASS: "immediate-preferred",
       DIRECT_DOORBELL: "true",
       DIRECT_DOORBELL_ALLOWED_VIEWS: Array.from({ length: 32 }, (_, index) => `View${index}`).join(","),
       DIRECT_DOORBELL_DEGRADATION: "fail-fast",
@@ -220,12 +263,38 @@ describe("SDT-G26 shared delivery core", () => {
     expect(preflight.status).toBe("fail-fast");
     expect(preflight.reason).toContain("budget");
     const disabled = preflightDirectDoorbell(readDirectDoorbellConfig({
-      DELIVERY_CLASS: "immediate-preferred",
+      DOMAIN_DELIVERY_CLASS: "immediate-preferred",
       DIRECT_DOORBELL: "false",
       DIRECT_DOORBELL_DEGRADATION: "queued-degraded",
       DIRECT_DOORBELL_ALLOWED_VIEWS: "RoomProjector",
     }));
     expect(disabled).toMatchObject({ status: "queued-degraded", reason: "deployment_direct_doorbell_disabled" });
+  });
+
+  it("keeps every direct status emission envelope-bound", () => {
+    const source = tagSource as string;
+    expect(source.match(/console\.warn\("direct_doorbell_status"/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(source).toMatch(/direct_doorbell_status[\s\S]*correlationId[\s\S]*envelopeBytes/);
+  });
+
+  it("uses the domain delivery class at the Tag boundary, never a deployment override", () => {
+    const queuedDomain = readDirectDoorbellConfig({
+      DOMAIN_DELIVERY_CLASS: "queued",
+      DELIVERY_CLASS: "immediate-preferred",
+      DIRECT_DOORBELL: "true",
+      DIRECT_DOORBELL_ALLOWED_VIEWS: "RoomProjector",
+    });
+    expect(queuedDomain.deliveryClass).toBe("queued");
+    expect(preflightDirectDoorbell(queuedDomain).status).toBe("disabled");
+
+    const immediateDomain = readDirectDoorbellConfig({
+      DOMAIN_DELIVERY_CLASS: "immediate-preferred",
+      DELIVERY_CLASS: "queued",
+      DIRECT_DOORBELL: "true",
+      DIRECT_DOORBELL_ALLOWED_VIEWS: "RoomProjector",
+    });
+    expect(immediateDomain.deliveryClass).toBe("immediate-preferred");
+    expect(preflightDirectDoorbell(immediateDomain).status).toBe("ready");
   });
 
   it("classifies every direct failure boundary and keeps self-binding proof behind the budget preflight", () => {
@@ -234,7 +303,7 @@ describe("SDT-G26 shared delivery core", () => {
     expect(classifyDirectDoorbellFailure({ name: "AbortError" })).toBe("cancel");
     expect(classifyDirectDoorbellFailure(new Error("receiver threw"))).toBe("throw");
     const self = readDirectDoorbellConfig({
-      DELIVERY_CLASS: "immediate-preferred",
+      DOMAIN_DELIVERY_CLASS: "immediate-preferred",
       DIRECT_DOORBELL: "true",
       DIRECT_DOORBELL_ALLOWED_VIEWS: "RoomProjector",
       DIRECT_DOORBELL_RECEIVER_MODE: "self",
@@ -242,7 +311,7 @@ describe("SDT-G26 shared delivery core", () => {
     });
     expect(preflightDirectDoorbell(self).status).toBe("fail-fast");
     const proof = readDirectDoorbellConfig({
-      DELIVERY_CLASS: "immediate-preferred",
+      DOMAIN_DELIVERY_CLASS: "immediate-preferred",
       DIRECT_DOORBELL: "true",
       DIRECT_DOORBELL_ALLOWED_VIEWS: "RoomProjector",
       DIRECT_DOORBELL_RECEIVER_MODE: "self",

@@ -179,6 +179,20 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
   const supplied = request.headers.get("authorization");
   if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
   const url = new URL(request.url);
+  if (url.pathname === "/conformance/v1/g26-config") {
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
+    return json({
+      task: "SDT-G26",
+      viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
+      allowedViews: config.allowedViews,
+      domainDeliveryClass: meetingRoomRuntimeConfig.deliveryClass,
+      resolvedDeliveryClass: config.deliveryClass,
+      directDoorbell: config.enabled,
+      receiverMode: config.receiverMode,
+      degradation: config.degradation,
+      maxServiceBindingInvocations: config.maxServiceBindingInvocations,
+    });
+  }
   url.pathname = url.pathname.slice("/conformance/v1".length) || "/";
   return runtimeFetch(new Request(url.toString(), request), { ...env, G11_VERIFICATION_ENABLED: "true" }, ctx);
 }

@@ -34,7 +34,7 @@ export interface D1StoreOptions {
     operation: D1BatchOperation,
     statements: readonly D1PreparedStatement[],
     database: D1Database,
-  ) => readonly D1PreparedStatement[];
+  ) => readonly D1PreparedStatement[] | Promise<readonly D1PreparedStatement[]>;
   /**
    * Test-only replacement for a single durable statement. Production leaves
    * this unset; each such statement is already atomic in D1.
@@ -761,7 +761,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
   }
 
   private async batch(operation: D1BatchOperation, statements: readonly D1PreparedStatement[]): Promise<void> {
-    const transformed = this.options.beforeBatch?.(operation, statements, this.database) ?? statements;
+    const transformed = await this.options.beforeBatch?.(operation, statements, this.database) ?? statements;
     await this.database.batch([...transformed]);
   }
 

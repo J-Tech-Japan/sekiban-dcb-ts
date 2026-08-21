@@ -46,7 +46,7 @@ export interface CloudflareOnlyEnv {
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   G11_VERIFICATION_ENABLED?: string;
   SDT_SERVICE_ID?: string;
-  DELIVERY_CLASS?: string;
+  DOMAIN_DELIVERY_CLASS?: string;
   DIRECT_DOORBELL?: string;
   DIRECT_DOORBELL_ALLOWED_VIEWS?: string;
   DIRECT_DOORBELL_MAX_INVOCATIONS?: string;
@@ -89,7 +89,7 @@ export function createCloudflareOnlyRuntimeWorker(
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
-        return handleSerializedCommit(request, env);
+        return handleSerializedCommit(request, env, { domainDeliveryClass: options.config?.deliveryClass });
       }
       if (
         url.pathname === "/api/sekiban/serialized/query" ||
@@ -201,10 +201,12 @@ export {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,
   preflightDirectDoorbell,
+  readDomainDeliveryClass,
   readDirectDoorbellConfig,
   selectDirectDoorbellViews,
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
+export { deliveryCorrelationId } from "./downstream/DeliveryCore";
 export type {
   DeliveryClass,
   DownstreamDoorbellBinding,

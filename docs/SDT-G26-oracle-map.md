@@ -1,21 +1,25 @@
-# SDT-G26 acceptance-oracle map
+# SDT-G26 acceptance-oracle map (FIX-1)
+
+The six semantic review findings on PR #58 are closed by the following
+independent implementation and evidence oracles. The final candidate C' is
+the code/configuration/CI/docs commit named by `docs/SDT-G26-deploy-evidence.json`;
+the later bookkeeping commit R' only appends C' to the retained candidate list.
 
 | AC | Oracle / evidence |
 | --- | --- |
-| 1 | `packages/dcb-runtime/src/downstream/DeliveryCore.ts` is the single `processDeliveryCore(envelope, source)` order; `test/g26-delivery.spec.ts` covers ordering, typed non-stored gating, continuation, duplicate-race disposition, and wrapper-only Queue policy. The existing G25 lane proves the MV row/index/receipt/marker/kick single D1 batch. |
-| 2 | `TagDurableObject.pendingOutbox` is the envelope authority. `test/g26-doorbell.spec.ts` compares the full version/service/tag/eventTags/enqueuedAt/lineage envelope bytes sent to Queue and doorbell and proves the doorbell never marks delivery. |
-| 3 | `TagDurableObject.autoDrainOutbox` awaits the service-binding RPC inside `DurableObjectState.waitUntil`; `samples/meeting-room/src/worker.cloudflare-only.ts` exports the non-public `MeetingRoomDownstreamDoorbell` entrypoint. `wrangler.direct-doorbell.jsonc` targets that separate Worker, and the preflight exposes the 32-invocation budget. |
-| 4 | Core results carry an envelope-bound correlation id (`source:serviceId:eventId:attemptId`); the handoff logs the same id and explicit queued-degraded reason. `test/g26-delivery.spec.ts` isolates before-record, after-pipeline, after-k-of-n, and after-all-views cancellation/replay boundaries; Queue replay is receipt-idempotent and the G25 atomic MV oracle remains a required regression. |
-| 5 | `RuntimeWorkerConfig.deliveryClass` is the domain opt-in; deployment vars and `readDirectDoorbellConfig`/`preflightDirectDoorbell` are the deployment opt-in. Missing capability and budget mismatch are fail-fast or explicitly `queued-degraded`; no implicit fallback is reported. |
-| 6 | `test/g26-fanout.spec.ts` aligns two callers after the receipt pre-read. It requires exactly one committed receipt and a typed `UNSAFE_DUPLICATE_RACE` loser; `UnsafeWindowMaterializedView.apply` keeps row/index/marker/receipt/kick in the same batch. |
-| 7 | `DeliverySource` is threaded through EventStore implementations. D1/PG/Cosmos estimator writes are skipped for `fast`; `test/g26-delivery.spec.ts` asserts the internal source contract. |
-| 8 | `meetingRoomDeliveryViews` creates one handler per view and `DeliveryCore` invokes every handler before aggregate disposition. Typed transient, duplicate-race, and nonretryable poison classes are retained; G25 failure findings and generation-rebuild recovery remain the operator path. |
-| 9 | `samples/meeting-room/src/d1-mv.ts` expands deterministic duplicate materializers to a configured `G26_VIEW_COUNT` (default 2, bounded at 20), so remote 1/5/10 runs exercise real per-view MV receipts and kicks. `test/g26-fanout.spec.ts` records a labeled local algorithmic slope only. `docs/SDT-G26-deploy-evidence.json` has separate remote 1/5/10-view p50/p95/max fields and explicitly does not use Miniflare as capacity evidence. |
-| 10 | `docs/SDT-G26-deploy-evidence.json` is the candidate-bound deployed fixed-N record. It reports response→visible separately from command-start→visible, fast/Queue/cron fallback counts, and explicitly states that G26 does not claim total sub-second because POST remains G27 scope. |
-| 11 | `npm run test:g25`, the existing safe-only suites, `npm run test:g20`, and the PG build remain regression lanes. The per-view lookup facade is `lookupMeetingRoomMaterializedView`; it does not change the current split-reservation deployment. |
-| 12 | `.github/workflows/ci.yml` reaches `test:g26` and `test:g26:forced-red`. `scripts/g20-candidate-check.mjs` carries the non-self-referential G26 evidence rule; final candidate C is retained by the single post-C list append in the bookkeeping commit R. |
+| 1 / F1 | `processDeliveryCore` is the single record → typed gate → stored-only detector → per-view apply → drain order. `test/g26-delivery.spec.ts` has separate SUID-collision and lineage-mismatch fixtures, each with a zero-call gate-bypass assertion, plus an independent fast-wrapper source oracle. The G25 atomic MV batch oracle remains required. |
+| 2 | `TagDurableObject.pendingOutbox` is the envelope authority. `test/g26-doorbell.spec.ts` compares the complete JSON bytes handed to direct doorbell and Queue, including service/tag/eventTags/lineage/enqueuedAt. |
+| 3 | `TagDurableObject` awaits the receiver binding only from `waitUntil`; the receiver is the non-public `MeetingRoomDownstreamDoorbell` WorkerEntrypoint. The self-binding path remains behind the explicit recursion/budget preflight. |
+| 4 / F2 | `test/g26-integration.spec.ts` has four independent real pipeline → MV → outbox fixtures: before-record, after-pipeline, after-k-of-n views, and after-all-views. Each replays the exact Queue envelope and asserts D1 event/arrival rows, per-view rows/indexes/receipts/markers/kicks, and durable outbox delivery marks. Fast success/failure/degraded logs and core results use `source:serviceId:eventId:attemptId` plus the complete envelope bytes. |
+| 5 / F3 | `RuntimeWorkerConfig.deliveryClass` is forwarded on the internal CommitWorker → Tag append call (`__domainDeliveryClass`) and controls Tag firing; deployment vars only provide the second opt-in. Tests prove a queued domain suppresses direct binding even with deployment direct enabled, queued-degraded fallback is observable, fail-fast rejects before commit, and all `direct_doorbell_status` emissions carry correlation/envelope data. |
+| 6 / F4 | `test/g26-fanout.spec.ts` uses concurrent fast/Queue callers with real D1 `recordDelivery` and MV apply barriers. It proves one row/index/receipt/kick commit, a typed duplicate-race Queue loser that converges to ack, and no false incident while concurrent arrivals are preserved. |
+| 7 | The `DeliverySource` argument reaches D1/PG/Cosmos stores; fast samples cannot lower the queue-only lag estimator. The local oracle exercises both sources and checks queue lag monotonicity. |
+| 8 / F5 | `test/g26-integration.spec.ts` runs independent head/middle/tail poison fixtures against real view handlers, an actual finding-write failure, order reversal, and partial-success → failed-view-only replay. It asserts later-view continuation, finding identity, no-ack/retry-to-DLQ disposition, bounded retry classification, and receipt-idempotent state. |
+| 9 / F6 | `test/g26-fanout.spec.ts` records real Miniflare D1 statement counts and CPU timings for 1/5/10 views and labels the result local algorithmic slope only. `G26_VIEW_COUNT` and allowed views are bounded and exposed through authenticated `/conformance/v1/g26-config`. |
+| 10 / F6 | `scripts/deploy/g26-deploy-topology.sh` deploys receiver + primary separately for each fixed-N topology; `scripts/deploy/g26-measure.mjs` verifies effective view count/allowed list before measuring. Remote reports use the opted-in reservation list view, fixed N and concurrency, and separate response→visible from total command-start→visible. No total sub-second claim is made. |
+| 11 | `npm run test:g20:gate`, `npm run test:g25`, `npm run test:g15`, and the full package check remain regression lanes. The per-view lookup facade remains inside the existing split-reservation deployment. |
+| 12 | `.github/workflows/ci.yml` reaches the expanded `test:g26` lane and its forced-red probe. `scripts/g20-candidate-check.mjs` verifies the non-self-referential C'+R' evidence protocol, candidate tree digests, mutation failure, and the single retained-list append. |
 
-The evidence JSON is intentionally a candidate placeholder until the exact
-FINAL CANDIDATE is deployed. It contains no credentials or internal/test
-headers. Once populated, only the G26 evidence documents and the one retained
-candidate-list append may change after C.
+The evidence document deliberately records sourceCommit=C' and tree digests
+for the deployed candidate. Post-C' changes are limited to evidence documents
+and the one exact CI bookkeeping append required by the candidate protocol.

@@ -70,17 +70,28 @@ function parseAllowedViews(value: string | undefined): readonly string[] {
   return [...new Set(value.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0))];
 }
 
+function parseDeliveryClass(value: string | undefined, fallback: DeliveryClass): DeliveryClass {
+  if (value === undefined || value.length === 0) return fallback;
+  if (value === "queued" || value === "immediate-preferred") return value;
+  throw new Error("DOMAIN_DELIVERY_CLASS must be queued or immediate-preferred");
+}
+
+/** Resolve the domain-owned half of the two-layer opt-in. */
+export function readDomainDeliveryClass(
+  env: Record<string, unknown>,
+  fallback: DeliveryClass = "queued",
+): DeliveryClass {
+  return parseDeliveryClass(envString(env, "DOMAIN_DELIVERY_CLASS"), fallback);
+}
+
 /** Resolve the deployment half of the two-layer opt-in without touching a V1 body. */
 export function readDirectDoorbellConfig(
   env: Record<string, unknown>,
-  domainDeliveryClass: DeliveryClass = "queued",
+  domainDeliveryClass?: DeliveryClass,
 ): DirectDoorbellDeploymentConfig {
-  const deliveryClassValue = envString(env, "DELIVERY_CLASS");
-  const deliveryClass = deliveryClassValue === undefined
-    ? domainDeliveryClass
-    : deliveryClassValue === "queued" || deliveryClassValue === "immediate-preferred"
-      ? deliveryClassValue
-      : (() => { throw new Error("DELIVERY_CLASS must be queued or immediate-preferred"); })();
+  // The deployment half starts at DIRECT_DOORBELL. A deployment variable must
+  // not silently override the domain-owned delivery class.
+  const deliveryClass = domainDeliveryClass ?? readDomainDeliveryClass(env);
   const receiverModeValue = envString(env, "DIRECT_DOORBELL_RECEIVER_MODE") ?? "separate";
   if (receiverModeValue !== "separate" && receiverModeValue !== "self") {
     throw new Error("DIRECT_DOORBELL_RECEIVER_MODE must be separate or self");

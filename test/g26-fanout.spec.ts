@@ -11,7 +11,9 @@ import hardeningMigration from "../migrations/mv/0003_checkpoint_ahead_hardening
 // @ts-expect-error Vite raw migration fixture.
 import failureMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
 import { UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView";
+import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
+import { processDeliveryCore, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 
 function database(): D1Database {
@@ -87,19 +89,178 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     expect(kick).toEqual({ target_suid: input.suid, dirty: 1 });
   });
 
-  it("labels ten-view timing as local algorithmic slope and executes every view branch", async () => {
-    const viewCount = 10;
-    const calls: number[] = [];
-    const started = performance.now();
-    for (let index = 0; index < viewCount; index += 1) {
-      // This fixture intentionally measures loop/statement planning shape,
-      // never production D1 capacity or an SLO.
-      calls.push(index);
-      await Promise.resolve();
+  it("aligns concurrent fast/Queue shared-core delivery and preserves one real MV prefix", async () => {
+    const serviceId = `g26-shared-core-${crypto.randomUUID()}`;
+    const event = {
+      version: 1,
+      serviceId,
+      allocatorLineageId: "g26-shared-lineage",
+      tag: "g26:shared",
+      attemptId: "g26-shared-attempt",
+      eventId: "g26-shared-event",
+      suid: "g26-shared-suid",
+      payload: btoa(JSON.stringify({ eventType: "G26Shared" })),
+      eventTags: ["g26:shared"],
+      enqueuedAt: 1_000,
+    } satisfies DownstreamOutboxMessage;
+    const pipeline = new D1EventStore(pipelineDatabase());
+    await pipeline.initialize();
+    let recordArrivals = 0;
+    let releaseRecord!: () => void;
+    const recordReleased = new Promise<void>((resolve) => { releaseRecord = resolve; });
+    const store = new D1EventStore(pipelineDatabase(), {
+      beforeBatch: async (operation, prepared) => {
+        if (operation === "recordDelivery") {
+          recordArrivals += 1;
+          if (recordArrivals === 2) releaseRecord();
+          await recordReleased;
+        }
+        return prepared;
+      },
+    });
+    await store.initialize();
+    const materializedViews = new D1MaterializedViewStore(database());
+    await materializedViews.initialize();
+    await materializedViews.createActive({
+      serviceId,
+      viewId: "G26SharedCoreView",
+      definitionVersion: 1,
+      updatedAt: 1,
+    });
+    let viewArrivals = 0;
+    let releaseView!: () => void;
+    const viewReleased = new Promise<void>((resolve) => { releaseView = resolve; });
+    const unsafe = new UnsafeWindowMaterializedViewStore(database(), {
+      beforeApplyBatch: async () => {
+        viewArrivals += 1;
+        if (viewArrivals === 2) releaseView();
+        await viewReleased;
+      },
+    });
+    const view: DeliveryViewHandler = {
+      id: "G26SharedCoreView",
+      apply: async ({ event: stored }) => {
+        await unsafe.observeArrival(serviceId, "G26SharedCoreView", 0, stored.eventId, stored.suid);
+        const applied = await unsafe.apply({
+          serviceId,
+          viewId: "G26SharedCoreView",
+          generation: 0,
+          eventId: stored.eventId,
+          suid: stored.suid,
+          safeHead: "",
+          updatedAt: 1_010,
+          mutations: {
+            rowUpserts: [{ rowKey: "shared-row", value: { eventId: stored.eventId }, rowVersion: 1, sourceSuid: stored.suid }],
+            rowPatches: [],
+            rowDeletes: [],
+            indexEntries: [{ indexId: "shared-event", valueType: "text", value: stored.eventId, rowKey: "shared-row" }],
+            indexDeletes: [],
+          },
+          targetSuid: stored.suid,
+        });
+        return applied.duplicate ? "duplicate-race" : "applied";
+      },
+    };
+    const results = await Promise.all([
+      processDeliveryCore(event, "fast", {}, { store, views: [view] }),
+      processDeliveryCore(event, "queue", {}, { store, views: [view] }),
+    ]);
+    expect(results.map((result) => result.source).sort()).toEqual(["fast", "queue"]);
+    expect(results.filter((result) => result.views[0]?.status === "applied")).toHaveLength(1);
+    expect(results.filter((result) => result.views[0]?.failureClass === "duplicate-race")).toHaveLength(1);
+    expect(results.every((result) => result.queueDisposition === "ack")).toBe(true);
+    const row = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ count: number }>();
+    const index = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ count: number }>();
+    const receipt = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ?").bind(serviceId, "G26SharedCoreView", event.eventId).first<{ count: number }>();
+    const incidents = await pipeline.listDeliveryIncidents(serviceId);
+    expect(Number(row?.count)).toBe(1);
+    expect(Number(index?.count)).toBe(1);
+    expect(Number(receipt?.count)).toBe(1);
+    expect(incidents).toEqual([]);
+  });
+
+  it("preserves concurrent recordDelivery arrivals without a false incident", async () => {
+    const serviceId = `g26-arrivals-${crypto.randomUUID()}`;
+    const base = (suffix: string): DownstreamOutboxMessage => ({
+      version: 1,
+      serviceId,
+      allocatorLineageId: "g26-arrival-lineage",
+      tag: `g26:arrival:${suffix}`,
+      attemptId: `g26-arrival-attempt-${suffix}`,
+      eventId: `g26-arrival-event-${suffix}`,
+      suid: `g26-arrival-suid-${suffix}`,
+      payload: btoa(JSON.stringify({ suffix })),
+      eventTags: [`g26:arrival:${suffix}`],
+      enqueuedAt: 1_000,
+    });
+    let reached = 0;
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const store = new D1EventStore(pipelineDatabase(), {
+      beforeBatch: async (operation, prepared) => {
+        if (operation === "recordDelivery") {
+          reached += 1;
+          if (reached === 2) release();
+          await released;
+        }
+        return prepared;
+      },
+    });
+    await store.initialize();
+    await Promise.all([store.recordDelivery(base("one"), 1_010, "fast"), store.recordDelivery(base("two"), 1_020, "queue")]);
+    expect(await store.listDeliveryIncidents(serviceId)).toEqual([]);
+    const events = await pipelineDatabase().prepare("SELECT COUNT(*) AS count FROM serialized_dcb_events WHERE service_id = ?").bind(serviceId).first<{ count: number }>();
+    const arrivals = await pipelineDatabase().prepare("SELECT COUNT(*) AS count FROM serialized_dcb_event_arrivals WHERE service_id = ?").bind(serviceId).first<{ count: number }>();
+    expect(Number(events?.count)).toBe(2);
+    expect(Number(arrivals?.count)).toBe(2);
+  });
+
+  it("labels real D1 statement/CPU measurements as local algorithmic slope", async () => {
+    const measurements: Array<{ viewCount: number; d1Statements: number; cpuMs: number }> = [];
+    for (const viewCount of [1, 5, 10]) {
+      const serviceId = `g26-local-slope-${viewCount}-${crypto.randomUUID()}`;
+      let d1Statements = 0;
+      const materializedViews = new D1MaterializedViewStore(database());
+      await materializedViews.initialize();
+      const unsafe = new UnsafeWindowMaterializedViewStore(database(), {
+        beforeApplyBatch: async (_input, statementsForBatch) => {
+          d1Statements += statementsForBatch?.length ?? 0;
+        },
+      });
+      const started = performance.now();
+      for (let index = 0; index < viewCount; index += 1) {
+        const viewId = `G26SlopeView${index + 1}`;
+        await materializedViews.createActive({
+          serviceId,
+          viewId,
+          definitionVersion: 1,
+          updatedAt: 1,
+        });
+        await unsafe.apply({
+          serviceId,
+          viewId,
+          generation: 0,
+          eventId: `g26-local-event-${index}`,
+          suid: `g26-local-suid-${String(index).padStart(3, "0")}`,
+          safeHead: "",
+          updatedAt: 1_000 + index,
+          mutations: {
+            rowUpserts: [{ rowKey: `row-${index}`, value: { index }, rowVersion: 1, sourceSuid: `g26-local-suid-${String(index).padStart(3, "0")}` }],
+            rowPatches: [],
+            rowDeletes: [],
+            indexEntries: [{ indexId: "local-index", valueType: "integer", value: index, rowKey: `row-${index}` }],
+            indexDeletes: [],
+          },
+          targetSuid: `g26-local-suid-${String(index).padStart(3, "0")}`,
+        });
+      }
+      measurements.push({ viewCount, d1Statements, cpuMs: performance.now() - started });
     }
-    const elapsedMs = performance.now() - started;
-    expect(calls).toHaveLength(viewCount);
-    expect({ label: "local-algorithmic-slope", viewCount, elapsedMs }).toMatchObject({ label: "local-algorithmic-slope", viewCount: 10 });
+    expect(measurements.map((value) => value.viewCount)).toEqual([1, 5, 10]);
+    expect(measurements.every((value) => value.d1Statements > 0 && value.cpuMs >= 0)).toBe(true);
+    expect(measurements[1]!.d1Statements).toBeGreaterThan(measurements[0]!.d1Statements);
+    expect(measurements[2]!.d1Statements).toBeGreaterThan(measurements[1]!.d1Statements);
+    expect({ label: "local-algorithmic-slope", measurements }).toMatchObject({ label: "local-algorithmic-slope" });
   });
 
   it("does not let a fast observation shrink the queue-only lag estimator", async () => {

@@ -58,6 +58,8 @@ export interface DeliveryCoreResult {
   readonly coreDurationMs: number;
   /** The queue wrapper is the only caller that turns this into ack/retry. */
   readonly queueDisposition: "ack" | "retry-to-dlq";
+  /** A durable poison finding must reach bounded Queue/DLQ remediation. */
+  readonly queueDispositionReason: "none" | "retryable-transient" | "definition-poison-dlq";
   /** The fast wrapper never retries or changes outbox state. */
   readonly fastDisposition: "completed" | "failed";
 }
@@ -95,7 +97,7 @@ function errorText(error: unknown): string {
   return String(error);
 }
 
-function correlationId(message: DownstreamOutboxMessage, source: DeliverySource, supplied?: string): string {
+export function deliveryCorrelationId(message: DownstreamOutboxMessage, source: DeliverySource, supplied?: string): string {
   return supplied ?? `${source}:${message.serviceId}:${message.eventId}:${message.attemptId}`;
 }
 
@@ -112,10 +114,13 @@ function defaultFailureClass(error: unknown): DeliveryViewFailureClass {
 function disposition(
   failures: readonly DeliveryCoreFailure[],
   source: DeliverySource,
-): Pick<DeliveryCoreResult, "queueDisposition" | "fastDisposition"> {
-  const blocking = failures.some((failure) => failure.class !== "duplicate-race");
+): Pick<DeliveryCoreResult, "queueDisposition" | "queueDispositionReason" | "fastDisposition"> {
+  const blockingFailures = failures.filter((failure) => failure.class !== "duplicate-race");
+  const blocking = blockingFailures.length > 0;
+  const poisonOnly = blocking && blockingFailures.every((failure) => failure.class === "nonretryable-definition-poison");
   return {
     queueDisposition: blocking ? "retry-to-dlq" : "ack",
+    queueDispositionReason: !blocking ? "none" : poisonOnly ? "definition-poison-dlq" : "retryable-transient",
     fastDisposition: source === "fast" && blocking ? "failed" : "completed",
   };
 }
@@ -133,7 +138,7 @@ function result(
 ): DeliveryCoreResult {
   return {
     source,
-    correlationId: correlationId(message, source, suppliedCorrelationId),
+    correlationId: deliveryCorrelationId(message, source, suppliedCorrelationId),
     outcome,
     arrivedAt,
     detectorApplied,
