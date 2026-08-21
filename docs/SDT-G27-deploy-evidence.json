@@ -1,8 +1,8 @@
 {
   "task": "SDT-G27",
-  "status": "CANDIDATE evidence; final digest is filled by bookkeeping R",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "FINAL candidate C; bookkeeping R records the candidate and its self-digests",
+  "candidateCommit": "1a9a5f22238a4755b8f15cdc17aec4f68bcde79d",
+  "sourceCommit": "1a9a5f22238a4755b8f15cdc17aec4f68bcde79d",
   "protocol": {
     "candidate": "C contains canonical identity, provenance gates, OrderClock, migration, tests, oracle map, and CI wiring",
     "bookkeeping": "R updates only this evidence document and appends the immutable C SHA to the retained candidate fetch list",
@@ -11,13 +11,13 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtime": "4a104556a68d087b16ad3204b0428af836a3ee840d893c5a01ee1ab19a42b594",
     "runtimeRoots": [
       "packages/dcb-core/src",
       "packages/dcb-runtime/src",
       "packages/dcb-client/src"
     ],
-    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "4afb3366aa5f924e8b7dadde2b5a27165df137089f8d233c619241ea1a5f5860",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "migrations/d1",
