@@ -1,11 +1,11 @@
 {
   "task": "SDT-G28",
-  "status": "FINAL candidate C placeholder; bookkeeping R will record the immutable candidate and local evidence",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "FINAL candidate C=f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7; bookkeeping R records the C self-digests and retained-list append",
+  "candidateCommit": "f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7",
+  "sourceCommit": "f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7",
   "protocol": {
-    "candidate": "C carries the package, runtime bridge, tests, CI, README, oracle map, and PR body",
-    "bookkeeping": "R may update only this evidence document and append C once to the retained candidate fetch list",
+    "candidate": "C contains the package, runtime bridge, CI, tests, README, oracle map, PR body, and the evidence placeholder",
+    "bookkeeping": "R updates only this evidence document and appends the immutable C SHA once to the retained candidate fetch list",
     "postCandidateAllowlist": [
       "docs/SDT-G28-deploy-evidence.json",
       ".github/workflows/ci.yml: one exact addition of C to the retained candidate fetch list"
@@ -15,9 +15,12 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
-    "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
-    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtime": "2c8bf5e4d13f5054bd6e388cef1517d9e8198eb6d9a3298b34907af44ea6b7b8",
+    "runtimeRoots": [
+      "packages/dcb-domain/src",
+      "packages/dcb-runtime/src"
+    ],
+    "configuration": "5fcceb9a3d03a8444ae0b1e6145da1cf2752c82742035651fb3875a8618ddf99",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "docs/SDT-G28-oracle-map.md",
@@ -40,12 +43,54 @@
     ]
   },
   "localValidation": {
-    "status": "to be replaced by bookkeeping R after FINAL candidate C",
-    "secrets": "redacted"
+    "npm run lint": "PASS",
+    "npm run typecheck": "PASS",
+    "npm run test:g28:compile-fail": "PASS — dedicated tsconfig with missing-schema, missing-tags, wrong-family, and unbranded-payload expected diagnostics",
+    "npm run test:g28:boundaries": {
+      "status": "PASS",
+      "sourceFiles": 10,
+      "negativeFixtures": 12
+    },
+    "npm run test:g28": {
+      "status": "PASS",
+      "testFiles": 1,
+      "tests": 10
+    },
+    "npm test": {
+      "status": "PASS",
+      "testFiles": 37,
+      "tests": 265
+    },
+    "npm run check": "PASS",
+    "git diff --check": "PASS",
+    "forcedRed": {
+      "SDT_G28_FORCE_FAILURE=1 npm run test:g28:forced-red": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE=1 npm run test:g28:boundaries": "EXPECTED-RED",
+      "SDT_G28_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED"
+    },
+    "existingLanes": {
+      "npm run test:store-contract": "PASS",
+      "npm run test:d1": "PASS — 9 tests",
+      "npm run test:mv": "PASS — 18 tests",
+      "npm run test:boundaries": "PASS",
+      "npm run test:consumer": "PASS",
+      "npm run test:g20": "PASS — 2 tests",
+      "npm run test:g20:gate": "PASS",
+      "npm run test:g25": "PASS — 3 tests",
+      "npm run test:g26": "PASS — 32 tests",
+      "npm run test:g27": "PASS — 17 tests",
+      "npm run test:g26:topology": "PASS — 4 tests"
+    }
+  },
+  "mutationMatrix": {
+    "compileFail": "Each type fixture is included in the dedicated typecheck project; removing its target constraint produces an unused-@ts-expect-error failure.",
+    "boundary": "Each direct/transitive/path-alias/deep-relative/dynamic-import and forbidden-global fixture reaches the package boundary gate.",
+    "session": "Propagation, staged exists, fresh retry, fixed now, snapshot coherence, discard, and downstream zero-call assertions are isolated in test/dcb-domain.spec.ts."
   },
   "remoteDeployment": {
     "status": "not-run",
     "reason": "G28 is an adapter-neutral library layer; no deployment credential is used on the implementation seat.",
     "secrets": "redacted"
-  }
+  },
+  "candidateGate": "PASS at R/PR head: C tree digests and the exact single retained-list append are validated by npm run test:g20:candidate"
 }

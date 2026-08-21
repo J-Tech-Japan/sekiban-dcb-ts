@@ -190,6 +190,7 @@ jobs:
           50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f
           f7d306c0018b1b7046095891186b8409c9b16863
           16afe111b8e3aa3a48dc949b0caa33160b08f29f
+          f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7
       - uses: actions/setup-node@v4
         with:
           node-version: 24
