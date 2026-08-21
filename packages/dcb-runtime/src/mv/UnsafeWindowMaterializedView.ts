@@ -35,6 +35,12 @@ export interface UnsafeWindowApplyInput {
   readonly safeHead: string;
   readonly expectedRowVersion?: number | null;
   readonly updatedAt: number;
+  /**
+   * The generic unsafe apply API deliberately does not imply an arrival
+   * observation; G23 keeps that receipt guard independent. Materializer
+   * adapters that fold the observation into their upsert batch opt in.
+   */
+  readonly recordArrival?: boolean;
   /** A plan is already the materializer's stored outcome: this port never folds in TypeScript. */
   readonly mutations: MaterializedViewMutationPlan;
   readonly targetSuid?: string;
@@ -183,26 +189,28 @@ export class UnsafeWindowMaterializedViewStore {
       );
     }
 
-    const behindFrontier = input.safeHead !== "" && compareSuid(input.suid, input.safeHead) <= 0;
-    statements.push(this.database.prepare(
-      `INSERT INTO mv_unsafe_arrivals
-         (service_id, view_id, generation, safe_head, arrival_watermark, behind_frontier_event_id, behind_frontier_suid, rebuild_required)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT (service_id, view_id, generation) DO UPDATE SET
-         arrival_watermark = CASE WHEN excluded.arrival_watermark COLLATE BINARY > mv_unsafe_arrivals.arrival_watermark COLLATE BINARY THEN excluded.arrival_watermark ELSE mv_unsafe_arrivals.arrival_watermark END,
-         behind_frontier_event_id = CASE WHEN mv_unsafe_arrivals.rebuild_required = 1 THEN mv_unsafe_arrivals.behind_frontier_event_id ELSE excluded.behind_frontier_event_id END,
-         behind_frontier_suid = CASE WHEN mv_unsafe_arrivals.rebuild_required = 1 THEN mv_unsafe_arrivals.behind_frontier_suid ELSE excluded.behind_frontier_suid END,
-         rebuild_required = MAX(mv_unsafe_arrivals.rebuild_required, excluded.rebuild_required)`,
-    ).bind(
-      input.serviceId,
-      input.viewId,
-      input.generation,
-      input.safeHead,
-      input.suid,
-      behindFrontier ? input.eventId : null,
-      behindFrontier ? input.suid : null,
-      behindFrontier ? 1 : 0,
-    ));
+    if (input.recordArrival === true) {
+      const behindFrontier = input.safeHead !== "" && compareSuid(input.suid, input.safeHead) <= 0;
+      statements.push(this.database.prepare(
+        `INSERT INTO mv_unsafe_arrivals
+           (service_id, view_id, generation, safe_head, arrival_watermark, behind_frontier_event_id, behind_frontier_suid, rebuild_required)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (service_id, view_id, generation) DO UPDATE SET
+           arrival_watermark = CASE WHEN excluded.arrival_watermark COLLATE BINARY > mv_unsafe_arrivals.arrival_watermark COLLATE BINARY THEN excluded.arrival_watermark ELSE mv_unsafe_arrivals.arrival_watermark END,
+           behind_frontier_event_id = CASE WHEN mv_unsafe_arrivals.rebuild_required = 1 THEN mv_unsafe_arrivals.behind_frontier_event_id ELSE excluded.behind_frontier_event_id END,
+           behind_frontier_suid = CASE WHEN mv_unsafe_arrivals.rebuild_required = 1 THEN mv_unsafe_arrivals.behind_frontier_suid ELSE excluded.behind_frontier_suid END,
+           rebuild_required = MAX(mv_unsafe_arrivals.rebuild_required, excluded.rebuild_required)`,
+      ).bind(
+        input.serviceId,
+        input.viewId,
+        input.generation,
+        input.safeHead,
+        input.suid,
+        behindFrontier ? input.eventId : null,
+        behindFrontier ? input.suid : null,
+        behindFrontier ? 1 : 0,
+      ));
+    }
     statements.push(this.database.prepare(
       `DELETE FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`,
     ).bind(input.serviceId, input.viewId, input.generation, upsert.rowKey));
@@ -260,6 +268,7 @@ export class UnsafeWindowMaterializedViewStore {
   async apply(input: UnsafeWindowApplyInput, skipFastPath = false): Promise<UnsafeWindowApplyResult> {
     const fast = skipFastPath ? undefined : await this.applyUpsertFast(input);
     if (fast !== undefined) return fast;
+    if (input.recordArrival === true) await this.observeArrival(input.serviceId, input.viewId, input.generation, input.eventId, input.suid);
     const receipt = await this.database.prepare(
       `SELECT suid FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ? ORDER BY observed_at DESC LIMIT 1`,
     ).bind(input.serviceId, input.viewId, input.eventId).first<D1Row>();

@@ -256,6 +256,7 @@ async function applyMeetingRoomUnsafeView(
       suid: event.suid,
       safeHead: active.lastSuid,
       updatedAt: nowMs,
+      recordArrival: upsertOnly,
       mutations,
       targetSuid: event.suid,
     });

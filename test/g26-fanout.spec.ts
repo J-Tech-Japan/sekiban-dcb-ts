@@ -244,6 +244,7 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
           suid: `g26-local-suid-${String(index).padStart(3, "0")}`,
           safeHead: "",
           updatedAt: 1_000 + index,
+          recordArrival: true,
           mutations: {
             rowUpserts: [{ rowKey: `row-${index}`, value: { index }, rowVersion: 1, sourceSuid: `g26-local-suid-${String(index).padStart(3, "0")}` }],
             rowPatches: [],
