@@ -1,8 +1,8 @@
 {
   "task": "SDT-G27",
-  "status": "CANDIDATE evidence; final digest is filled by bookkeeping R",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "FINAL candidate C; bookkeeping R records the candidate and its self-digests",
+  "candidateCommit": "f401342df68461d3239f58b14ff6891db4214ac6",
+  "sourceCommit": "f401342df68461d3239f58b14ff6891db4214ac6",
   "protocol": {
     "candidate": "C contains canonical identity, provenance gates, OrderClock, migration, tests, oracle map, and CI wiring",
     "bookkeeping": "R updates only this evidence document and appends the immutable C SHA to the retained candidate fetch list",
@@ -17,12 +17,13 @@
       "packages/dcb-runtime/src",
       "packages/dcb-client/src"
     ],
-    "configuration": "4afb3366aa5f924e8b7dadde2b5a27165df137089f8d233c619241ea1a5f5860",
+    "configuration": "73c881d77cbe8d0953bcaebe00825f8692c396c3d29577e6aedb9e62582ef3df",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "migrations/d1",
       "package.json",
       "scripts/g20-candidate-check.mjs",
+      "scripts/g22-bootstrap-cosmos-contract.mjs",
       "scripts/store-contract.mjs",
       "test/g27-identity.spec.ts",
       "docs/SDT-G27-oracle-map.md",
