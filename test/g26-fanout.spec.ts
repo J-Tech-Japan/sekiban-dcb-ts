@@ -13,7 +13,11 @@ import failureMigration from "../migrations/mv/0004_unsafe_window_failure_findin
 import { UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
-import { processDeliveryCore, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
+import {
+  handleDownstreamQueue,
+  processDownstreamDoorbell,
+  type DeliveryViewHandler,
+} from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 
 function database(): D1Database {
@@ -89,7 +93,7 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     expect(kick).toEqual({ target_suid: input.suid, dirty: 1 });
   });
 
-  it("aligns concurrent fast/Queue shared-core delivery and preserves one real MV prefix", async () => {
+  it("makes Queue the deterministic race loser, retries once, then converges as a receipt no-op", async () => {
     const serviceId = `g26-shared-core-${crypto.randomUUID()}`;
     const event = {
       version: 1,
@@ -130,51 +134,102 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     await database().prepare(
       "INSERT INTO mv_unsafe_kicks (service_id, view_id, target_suid, dirty) VALUES (?, ?, ?, 1)",
     ).bind(serviceId, "G26SharedCoreView", "g26-shared-aaa-target").run();
-    let viewArrivals = 0;
-    let releaseView!: () => void;
-    const viewReleased = new Promise<void>((resolve) => { releaseView = resolve; });
-    const unsafe = new UnsafeWindowMaterializedViewStore(database(), {
+    let fastReached = false;
+    let queueReached = false;
+    let releaseBoth!: () => void;
+    const bothReached = new Promise<void>((resolve) => { releaseBoth = resolve; });
+    let fastCommitted!: () => void;
+    const fastCommittedPromise = new Promise<void>((resolve) => { fastCommitted = resolve; });
+    const fastUnsafe = new UnsafeWindowMaterializedViewStore(database(), {
       beforeApplyBatch: async () => {
-        viewArrivals += 1;
-        if (viewArrivals === 2) releaseView();
-        await viewReleased;
+        fastReached = true;
+        if (queueReached) releaseBoth();
+        await bothReached;
+      },
+      afterApplyBatch: async () => {
+        fastCommitted();
       },
     });
+    const queueRaceUnsafe = new UnsafeWindowMaterializedViewStore(database(), {
+      beforeApplyBatch: async () => {
+        queueReached = true;
+        if (fastReached) releaseBoth();
+        await bothReached;
+        // The fast batch is deliberately released and committed first. The
+        // queue batch then evaluates its prepared receipt guard against the
+        // committed receipt and becomes the typed duplicate-race loser.
+        await fastCommittedPromise;
+      },
+    });
+    // The replay must use the production no-hook path: an existing receipt is
+    // a duplicate no-op, not a second synthetic race.
+    const queueReplayUnsafe = new UnsafeWindowMaterializedViewStore(database());
+    let queueApplyCount = 0;
+    let queueRaceObserved = false;
+    let queueReplayObserved = false;
     const view: DeliveryViewHandler = {
       id: "G26SharedCoreView",
-      apply: async ({ event: stored }) => {
+      apply: async ({ event: stored, source }) => {
+        const unsafe = source === "fast"
+          ? fastUnsafe
+          : queueApplyCount++ === 0
+            ? queueRaceUnsafe
+            : queueReplayUnsafe;
         await unsafe.observeArrival(serviceId, "G26SharedCoreView", 0, stored.eventId, stored.suid);
-        const applied = await unsafe.apply({
-          serviceId,
-          viewId: "G26SharedCoreView",
-          generation: 0,
-          eventId: stored.eventId,
-          suid: stored.suid,
-          safeHead: "",
-          updatedAt: 1_010,
-          mutations: {
-            rowUpserts: [{ rowKey: "shared-row", value: { eventId: stored.eventId }, rowVersion: 1, sourceSuid: stored.suid }],
-            rowPatches: [],
-            rowDeletes: [],
-            indexEntries: [{ indexId: "shared-event", valueType: "text", value: stored.eventId, rowKey: "shared-row" }],
-            indexDeletes: [],
-          },
-          targetSuid: stored.suid,
-        });
-        return applied.duplicate ? "duplicate-race" : "applied";
+        try {
+          const applied = await unsafe.apply({
+            serviceId,
+            viewId: "G26SharedCoreView",
+            generation: 0,
+            eventId: stored.eventId,
+            suid: stored.suid,
+            safeHead: "",
+            updatedAt: 1_010,
+            mutations: {
+              rowUpserts: [{ rowKey: "shared-row", value: { eventId: stored.eventId }, rowVersion: 1, sourceSuid: stored.suid }],
+              rowPatches: [],
+              rowDeletes: [],
+              indexEntries: [{ indexId: "shared-event", valueType: "text", value: stored.eventId, rowKey: "shared-row" }],
+              indexDeletes: [],
+            },
+            targetSuid: stored.suid,
+          });
+          if (source === "queue" && queueApplyCount === 2) queueReplayObserved = applied.duplicate;
+          return applied.duplicate ? "duplicate-race" : "applied";
+        } catch (error) {
+          if (source === "queue" && queueApplyCount === 1 && (error as { readonly code?: unknown }).code === "UNSAFE_DUPLICATE_RACE") {
+            queueRaceObserved = true;
+          }
+          throw error;
+        }
       },
     };
-    const results = await Promise.all([
-      processDeliveryCore(event, "fast", {}, { store, views: [view] }),
-      processDeliveryCore(event, "queue", {}, { store, views: [view] }),
+    let queueAcked = 0;
+    let queueRetried = 0;
+    const queueBatch = (attempts: number): MessageBatch<unknown> => ({
+      messages: [{
+        body: event,
+        attempts,
+        ack: () => { queueAcked += 1; },
+        retry: () => { queueRetried += 1; },
+      }],
+    } as unknown as MessageBatch<unknown>);
+    const [fastResult] = await Promise.all([
+      processDownstreamDoorbell(event, {}, { store, views: [view] }),
+      handleDownstreamQueue(queueBatch(1), {}, { store, views: [view] }),
     ]);
-    expect(results.map((result) => result.source).sort()).toEqual(["fast", "queue"]);
-    expect(results.filter((result) => result.views[0]?.status === "applied")).toHaveLength(1);
-    expect(results.filter((result) => result.views[0]?.failureClass === "duplicate-race")).toHaveLength(1);
-    expect(results.every((result) => result.queueDisposition === "ack")).toBe(true);
-    const retry = await processDeliveryCore(event, "queue", {}, { store, views: [view] });
-    expect(retry.queueDisposition).toBe("ack");
-    expect(retry.views[0]).toMatchObject({ status: "failed", failureClass: "duplicate-race" });
+    expect(fastResult.source).toBe("fast");
+    expect(fastResult.fastDisposition).toBe("completed");
+    expect(fastResult.views[0]?.status).toBe("applied");
+    expect(queueRaceObserved).toBe(true);
+    expect(queueAcked).toBe(0);
+    expect(queueRetried).toBe(1);
+
+    await handleDownstreamQueue(queueBatch(2), {}, { store, views: [view] });
+    expect(queueApplyCount).toBe(2);
+    expect(queueReplayObserved).toBe(true);
+    expect(queueAcked).toBe(1);
+    expect(queueRetried).toBe(1);
     const row = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ count: number }>();
     const index = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ?").bind(serviceId, "G26SharedCoreView").first<{ count: number }>();
     const receipt = await database().prepare("SELECT COUNT(*) AS count FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ?").bind(serviceId, "G26SharedCoreView", event.eventId).first<{ count: number }>();

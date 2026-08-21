@@ -57,9 +57,9 @@ export interface DeliveryCoreResult {
   readonly failures: readonly DeliveryCoreFailure[];
   readonly coreDurationMs: number;
   /** The queue wrapper is the only caller that turns this into ack/retry. */
-  readonly queueDisposition: "ack" | "retry-to-dlq";
+  readonly queueDisposition: "ack" | "retry-once" | "retry-to-dlq";
   /** A durable poison finding must reach bounded Queue/DLQ remediation. */
-  readonly queueDispositionReason: "none" | "retryable-transient" | "definition-poison-dlq";
+  readonly queueDispositionReason: "none" | "duplicate-race-retry" | "retryable-transient" | "definition-poison-dlq";
   /** The fast wrapper never retries or changes outbox state. */
   readonly fastDisposition: "completed" | "failed";
 }
@@ -115,13 +115,18 @@ function disposition(
   failures: readonly DeliveryCoreFailure[],
   source: DeliverySource,
 ): Pick<DeliveryCoreResult, "queueDisposition" | "queueDispositionReason" | "fastDisposition"> {
-  const blockingFailures = failures.filter((failure) => failure.class !== "duplicate-race");
-  const blocking = blockingFailures.length > 0;
-  const poisonOnly = blocking && blockingFailures.every((failure) => failure.class === "nonretryable-definition-poison");
+  // A duplicate race is a blocking Queue outcome: the loser must be delivered
+  // once more so the receipt guard can turn the replay into a durable no-op.
+  // The fast path remains silent-fallback, so its disposition is calculated
+  // from the non-duplicate failures separately below.
+  const blocking = failures.length > 0;
+  const duplicateRaceOnly = blocking && failures.every((failure) => failure.class === "duplicate-race");
+  const poisonOnly = blocking && failures.every((failure) => failure.class === "nonretryable-definition-poison");
+  const fastBlocking = failures.some((failure) => failure.class !== "duplicate-race");
   return {
-    queueDisposition: blocking ? "retry-to-dlq" : "ack",
-    queueDispositionReason: !blocking ? "none" : poisonOnly ? "definition-poison-dlq" : "retryable-transient",
-    fastDisposition: source === "fast" && blocking ? "failed" : "completed",
+    queueDisposition: !blocking ? "ack" : duplicateRaceOnly ? "retry-once" : "retry-to-dlq",
+    queueDispositionReason: !blocking ? "none" : duplicateRaceOnly ? "duplicate-race-retry" : poisonOnly ? "definition-poison-dlq" : "retryable-transient",
+    fastDisposition: source === "fast" && fastBlocking ? "failed" : "completed",
   };
 }
 

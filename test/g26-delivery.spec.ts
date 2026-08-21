@@ -162,6 +162,7 @@ describe("SDT-G26 shared delivery core", () => {
     expect(downstreamAdapterSource).toMatch(/return processDeliveryCore\(message, "fast", env, options\)/);
     expect(fastWrapper).not.toMatch(/recordDelivery/);
     expect(fastWrapper).not.toMatch(/retry\(/);
+    expect(downstreamAdapterSource).toMatch(/queueDisposition === "retry-once"\) queued\.retry\(\)/);
   });
 
   it("continues after poison at the head and sends one aggregate retry-to-DLQ decision", async () => {
@@ -202,7 +203,7 @@ describe("SDT-G26 shared delivery core", () => {
     expect(retried).toBe(1);
   });
 
-  it("treats a typed duplicate-race loser as a receipt no-op for both wrappers", async () => {
+  it("retries a typed Queue duplicate-race once while fast remains silent-fallback", async () => {
     const input = message("duplicate-race");
     const duplicate = view("race", [], async () => {
       throw { code: "UNSAFE_DUPLICATE_RACE" };
@@ -212,11 +213,18 @@ describe("SDT-G26 shared delivery core", () => {
       views: [duplicate],
     });
     expect(fast.fastDisposition).toBe("completed");
-    expect(fast.queueDisposition).toBe("ack");
+    expect(fast.queueDisposition).toBe("retry-once");
+    expect(fast.queueDispositionReason).toBe("duplicate-race-retry");
     expect(fast.failures[0]?.class).toBe("duplicate-race");
 
     let acked = 0;
     let retried = 0;
+    let queueInvocations = 0;
+    const queueDuplicate = view("race", [], async () => {
+      queueInvocations += 1;
+      if (queueInvocations === 1) throw { code: "UNSAFE_DUPLICATE_RACE" };
+      return "duplicate-race";
+    });
     const batch = {
       messages: [{
         body: input,
@@ -227,10 +235,26 @@ describe("SDT-G26 shared delivery core", () => {
     } as unknown as MessageBatch<unknown>;
     await handleDownstreamQueue(batch, {}, {
       store: storeFor(input, []),
-      views: [duplicate],
+      views: [queueDuplicate],
     });
+    expect(acked).toBe(0);
+    expect(retried).toBe(1);
+
+    const replayBatch = {
+      messages: [{
+        body: input,
+        attempts: 2,
+        ack: () => { acked += 1; },
+        retry: () => { retried += 1; },
+      }],
+    } as unknown as MessageBatch<unknown>;
+    await handleDownstreamQueue(replayBatch, {}, {
+      store: storeFor(input, []),
+      views: [queueDuplicate],
+    });
+    expect(queueInvocations).toBe(2);
     expect(acked).toBe(1);
-    expect(retried).toBe(0);
+    expect(retried).toBe(1);
   });
 
   it("keeps the two transport envelopes byte-identical and protects queue lag from fast samples", async () => {

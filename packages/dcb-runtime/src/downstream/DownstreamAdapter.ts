@@ -119,6 +119,7 @@ export async function handleDownstreamQueue(
           disposition: outcome.queueDisposition,
         });
         if (outcome.queueDisposition === "ack") queued.ack();
+        else if (outcome.queueDisposition === "retry-once") queued.retry();
         else queued.retry();
       } catch {
         console.warn("downstream_queue_delivery", { disposition: "retry-to-dlq" });
