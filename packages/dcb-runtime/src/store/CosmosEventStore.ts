@@ -1,23 +1,23 @@
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
 import { decayedLagEstimateMs } from "../safeWindow";
-import type {
-  DeliveryLagRecord,
-  DeliveryIncident,
-  DeliveryIncidentClassification,
-  DeliveryOutcome,
-  DetectorStore,
-  EventStore,
-  InconsistencyClassification,
-  InconsistencyFinding,
-  PendingArrivalRecord,
-  ProjectionCheckpoint,
-  ProjectionCheckpointAdvance,
-  ProjectionLag,
-  ProjectionStore,
-  StoredEvent,
+import {
+  CanonicalEventIdentityConflictError,
+  type DeliveryLagRecord,
+  type DeliveryIncident,
+  type DeliveryIncidentClassification,
+  type DeliveryOutcome,
+  type DetectorStore,
+  type EventStore,
+  type InconsistencyClassification,
+  type InconsistencyFinding,
+  type PendingArrivalRecord,
+  type ProjectionCheckpoint,
+  type ProjectionCheckpointAdvance,
+  type ProjectionLag,
+  type ProjectionStore,
+  type StoredEvent,
 } from "./types";
-
 type JsonObject = Record<string, unknown>;
 
 export interface CosmosDocumentRecord<T extends JsonObject = JsonObject> {
@@ -1004,7 +1004,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       }
       const prior = eventFrom(existing.document);
       if (prior.eventType !== eventType || prior.provenance !== provenance) {
-        throw new Error(`EventId ${message.eventId} conflicts with its canonical event identity`);
+        throw new CanonicalEventIdentityConflictError("cosmos", message.eventId);
       }
       if (prior.suid !== message.suid || prior.payload !== message.payload || JSON.stringify(prior.eventTags) !== JSON.stringify(eventTags)) {
         throw new Error(`EventId ${message.eventId} conflicts with its durable Cosmos row`);

@@ -7,6 +7,7 @@ import {
 } from "../../packages/dcb-runtime/src/bootstrap/BootstrapStoreAdapter";
 import type { PipelineStore, StoredEvent } from "../../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../../packages/dcb-runtime/src/downstream/types";
+import { CanonicalEventIdentityConflictError } from "../../packages/dcb-runtime/src/store/types";
 
 const suid = (value: number) => `suid-${String(value).padStart(32, "0")}`;
 
@@ -127,6 +128,17 @@ export async function runG22BootstrapProviderContract(
     events: canonicalDump.events.filter((row) => row.eventId === "canonical"),
   });
   const canonicalBefore = await durableSnapshot(store, targetServiceId);
+  const canonicalTargetMessage = { ...canonical, serviceId: targetServiceId };
+  const directDivergence = { ...canonicalTargetMessage, eventType: "OrderPlaced:1" as const, provenance: "g27" as const };
+  let directError: unknown;
+  try {
+    await store.recordDelivery(directDivergence, 0);
+  } catch (error) {
+    directError = error;
+  }
+  expect(directError).toBeInstanceOf(CanonicalEventIdentityConflictError);
+  expect((directError as { readonly code?: string }).code).toBe("CANONICAL_EVENT_IDENTITY_CONFLICT");
+  expect(await durableSnapshot(store, targetServiceId)).toEqual(canonicalBefore);
   await expect(targetAdapter.admitBootstrap({
     importId: `g22-${provider}-canonical-divergence`,
     leaseEpoch: 4,

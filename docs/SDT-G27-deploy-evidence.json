@@ -1,11 +1,11 @@
 {
   "task": "SDT-G27",
-  "status": "FINAL candidate C′; bookkeeping R′ records the candidate and its self-digests",
-  "candidateCommit": "50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f",
-  "sourceCommit": "50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f",
+  "status": "CANDIDATE placeholder for C''; bookkeeping R'' will record the candidate and its self-digests",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
-    "candidate": "C′ contains the F1-F6 fixes, canonical identity, provenance gates, OrderClock, migration, tests, oracle map, PR body, and CI wiring",
-    "bookkeeping": "R′ updates only this evidence document and appends the immutable C′ SHA to the retained candidate fetch list",
+    "candidate": "C'' contains the F1-F6 rereview fixes, typed provider divergence guard, immutable queue fixture, focused tests, oracle map, and PR body",
+    "bookkeeping": "R'' will update only this evidence document and append the immutable C'' SHA to the retained candidate fetch list",
     "selfReference": false,
     "secrets": "redacted"
   },
@@ -27,6 +27,7 @@
       "scripts/store-contract.mjs",
       "test/commit.spec.ts",
       "test/downstream.spec.ts",
+      "test/fixtures/g13-pre-g27-outbox.json",
       "test/g27-identity.spec.ts",
       "test/helpers/g22-bootstrap-provider-contract.ts",
       "test/read.spec.ts",
@@ -40,8 +41,9 @@
   "localValidation": {
     "npm run lint": "PASS",
     "npm run typecheck": "PASS",
-    "npm test": { "status": "PASS", "testFiles": 36, "tests": 253 },
-    "npm run test:g27": { "status": "PASS", "testFiles": 1, "tests": 16 },
+    "npm test": { "status": "PASS", "testFiles": 36, "tests": 254 },
+    "npm run test:g27": { "status": "PASS", "testFiles": 1, "tests": 17 },
+    "npm run test:g22": { "status": "PASS", "testFiles": 2, "tests": 6 },
     "npm run test:boundaries": "PASS",
     "npm run test:consumer": "PASS",
     "forcedRed": {

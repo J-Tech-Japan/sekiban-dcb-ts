@@ -1,23 +1,23 @@
 import { decayedLagEstimateMs } from "../safeWindow";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
-import type {
-  DeliveryIncident,
-  DeliveryIncidentClassification,
-  DeliveryLagRecord,
-  DeliveryOutcome,
-  DetectorStore,
-  EventStore,
-  InconsistencyClassification,
-  InconsistencyFinding,
-  PendingArrivalRecord,
-  ProjectionCheckpoint,
-  ProjectionCheckpointAdvance,
-  ProjectionLag,
-  ProjectionStore,
-  StoredEvent,
+import {
+  CanonicalEventIdentityConflictError,
+  type DeliveryIncident,
+  type DeliveryIncidentClassification,
+  type DeliveryLagRecord,
+  type DeliveryOutcome,
+  type DetectorStore,
+  type EventStore,
+  type InconsistencyClassification,
+  type InconsistencyFinding,
+  type PendingArrivalRecord,
+  type ProjectionCheckpoint,
+  type ProjectionCheckpointAdvance,
+  type ProjectionLag,
+  type ProjectionStore,
+  type StoredEvent,
 } from "./types";
-
 type D1Row = Record<string, unknown>;
 
 /** Write batches exposed only as a test fault-injection seam. */
@@ -48,11 +48,9 @@ export interface D1StoreOptions {
 }
 
 /** A contradictory EventId identity is a typed fail-closed outcome. */
-export class D1IdentityConflictError extends Error {
-  readonly code = "D1_IDENTITY_CONFLICT" as const;
-
+export class D1IdentityConflictError extends CanonicalEventIdentityConflictError {
   constructor(message: string) {
-    super(message);
+    super("d1", "", message);
     this.name = "D1IdentityConflictError";
   }
 }

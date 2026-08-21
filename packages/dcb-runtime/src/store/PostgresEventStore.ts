@@ -5,23 +5,23 @@ import {
   decayedLagEstimateMs,
 } from "../safeWindow";
 import { resolveDeliveryIdentity } from "../eventIdentity";
-import type {
-  DeliveryLagRecord,
-  DeliveryIncident,
-  DeliveryIncidentClassification,
-  DeliveryOutcome,
-  DetectorStore,
-  EventStore,
-  InconsistencyClassification,
-  InconsistencyFinding,
-  PendingArrivalRecord,
-  ProjectionCheckpoint,
-  ProjectionCheckpointAdvance,
-  ProjectionLag,
-  ProjectionStore,
-  StoredEvent,
+import {
+  CanonicalEventIdentityConflictError,
+  type DeliveryLagRecord,
+  type DeliveryIncident,
+  type DeliveryIncidentClassification,
+  type DeliveryOutcome,
+  type DetectorStore,
+  type EventStore,
+  type InconsistencyClassification,
+  type InconsistencyFinding,
+  type PendingArrivalRecord,
+  type ProjectionCheckpoint,
+  type ProjectionCheckpointAdvance,
+  type ProjectionLag,
+  type ProjectionStore,
+  type StoredEvent,
 } from "./types";
-
 type DbRow = Record<string, unknown>;
 type SqlParameter = string | number | null;
 type SqlClient = ReturnType<typeof postgres>;
@@ -395,7 +395,7 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
         const existingEventType = optionalString(existing.event_type, "event_type");
         const existingProvenance = optionalString(existing.event_provenance, "event_provenance") ?? "pre-g27";
         if (existingEventType !== incomingEventType || existingProvenance !== incomingProvenance) {
-          throw new Error(`EventId ${message.eventId} conflicts with its canonical event identity`);
+          throw new CanonicalEventIdentityConflictError("postgres", message.eventId);
         }
         if (asString(existing.suid, "suid") !== message.suid || asString(existing.payload, "payload") !== message.payload) {
           throw new Error(`EventId ${message.eventId} conflicts with its durable PostgreSQL row`);

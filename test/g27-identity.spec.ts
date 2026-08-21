@@ -27,6 +27,8 @@ import type { PipelineStore } from "../packages/dcb-runtime/src/store/types";
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw asset import
 import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw fixture import
+import preG27OutboxBytes from "./fixtures/g13-pre-g27-outbox.json?raw";
 
 function tagStorage(): DurableObjectStorage {
   const values = new Map<string, unknown>();
@@ -136,16 +138,20 @@ function migrationSchema(sql: string): Map<string, Set<string>> {
   return schema;
 }
 
-function assertIdentityOnlyQueueDelta(baseline: Record<string, unknown>, actual: Record<string, unknown>): void {
-  const baselineKeys = new Set(Object.keys(baseline));
+const PRE_G27_OUTBOX = JSON.parse(preG27OutboxBytes.trim()) as Record<string, unknown>;
+const G27_QUEUE_ADDITIVE_FIELDS = new Set(["eventType", "provenance"]);
+
+function assertIdentityOnlyQueueDelta(actual: Record<string, unknown>): void {
+  const baselineKeys = new Set(Object.keys(PRE_G27_OUTBOX));
   const actualKeys = new Set(Object.keys(actual));
   const removed = [...baselineKeys].filter((key) => !actualKeys.has(key));
   const added = [...actualKeys].filter((key) => !baselineKeys.has(key));
-  if (removed.length > 0 || added.some((key) => key !== "eventType" && key !== "provenance")) {
+  if (removed.length > 0 || added.some((key) => !G27_QUEUE_ADDITIVE_FIELDS.has(key))) {
     throw new Error(`G13 non-allowlisted runtime delta removed=${removed.join(",")} added=${added.join(",")}`);
   }
-  const stripped = Object.fromEntries(Object.entries(actual).filter(([key]) => key !== "eventType" && key !== "provenance"));
-  expect(JSON.stringify(stripped)).toBe(JSON.stringify(baseline));
+  const stripped = Object.fromEntries(Object.entries(actual).filter(([key]) => !G27_QUEUE_ADDITIVE_FIELDS.has(key)));
+  expect(JSON.stringify(stripped)).toBe(preG27OutboxBytes.trim());
+  expect(stripped).toEqual(PRE_G27_OUTBOX);
 }
 
 describe("SDT-G27 canonical event identity", () => {
@@ -187,11 +193,17 @@ describe("SDT-G27 canonical event identity", () => {
 
   it("keeps canonical key, EventId, and SUID independent identities", () => {
     const key = "OrderPlaced:2";
-    const first = resolveDeliveryIdentity({ eventType: key, provenance: "g27" }, "queue");
-    const second = resolveDeliveryIdentity({ eventType: key, provenance: "g27", eventId: key, suid: key } as never, "queue");
-    expect(first.key).toBe(key);
-    expect(second.key).toBe(key);
-    expect({ eventId: "OrderPlaced:2", suid: "OrderPlaced:2" }).not.toEqual({ eventId: "event-1", suid: "suid-00000000000000000000000000000001" });
+    const independent = {
+      eventType: key,
+      provenance: "g27" as const,
+      eventId: "event-identity-independent",
+      suid: "suid-00000000000000000000000000000001",
+    };
+    const resolved = resolveDeliveryIdentity(independent, "queue");
+    expect(resolved.key).toBe(key);
+    expect(independent.eventType).toBe(key);
+    expect(independent.eventId).not.toBe(key);
+    expect(independent.suid).not.toBe(key);
   });
 
   it("retains the exact identity through Tag durable event and pending outbox envelope", async () => {
@@ -290,10 +302,9 @@ describe("SDT-G27 canonical event identity", () => {
       body: JSON.stringify({ nowMs: 100 }),
     }));
     const actual = (await pending.json<{ rows: DownstreamOutboxMessage[] }>()).rows[0]!;
-    const baseline = Object.fromEntries(Object.entries(actual).filter(([key]) => key !== "eventType" && key !== "provenance"));
-    assertIdentityOnlyQueueDelta(baseline, actual as unknown as Record<string, unknown>);
+    assertIdentityOnlyQueueDelta(actual as unknown as Record<string, unknown>);
     expect(downstreamEnvelopeBytes(actual)).toBe(JSON.stringify(actual));
-    expect(() => assertIdentityOnlyQueueDelta(baseline, { ...actual, unallowlistedQueueMember: "mutation" } as unknown as Record<string, unknown>)).toThrow(/non-allowlisted/);
+    expect(() => assertIdentityOnlyQueueDelta({ ...actual, unallowlistedQueueMember: "mutation" } as unknown as Record<string, unknown>)).toThrow(/non-allowlisted/);
 
     const database = await pipelineDatabase();
     const baselineSchema = migrationSchema(pipelineMigration as string);
@@ -380,7 +391,8 @@ describe("SDT-G27 canonical event identity", () => {
       provenance: "g27",
       enqueuedAt: 0,
     };
-    let storedIdentity: { eventType?: string; provenance?: string } | undefined;
+    let admittedMessage: DownstreamOutboxMessage | undefined;
+    let storedIdentity: { eventId: string; suid: string; eventType?: string; provenance?: string } | undefined;
     const pending = {
       serviceId: message.serviceId,
       attemptId: message.attemptId,
@@ -393,21 +405,24 @@ describe("SDT-G27 canonical event identity", () => {
     };
     const store = {
       initialize: async () => {},
-      recordDelivery: async () => ({
-        outcome: "stored",
-        kind: "stored",
-        event: {
-          serviceId: message.serviceId,
-          eventId: message.eventId,
-          suid: message.suid,
-          payload: message.payload,
-          eventTags: message.eventTags,
-          firstArrivedAt: 1,
-          lastArrivedAt: 1,
-          maxDeliveryLagMs: 1,
-          arrivals: [],
-        },
-      }),
+      recordDelivery: async (incoming: DownstreamOutboxMessage) => {
+        admittedMessage = incoming;
+        return {
+          outcome: "stored",
+          kind: "stored",
+          event: {
+            serviceId: message.serviceId,
+            eventId: message.eventId,
+            suid: message.suid,
+            payload: message.payload,
+            eventTags: message.eventTags,
+            firstArrivedAt: 1,
+            lastArrivedAt: 1,
+            maxDeliveryLagMs: 1,
+            arrivals: [],
+          },
+        };
+      },
       currentLagBound: async () => 0,
       upsertPending: async () => pending,
       listPending: async () => [],
@@ -425,10 +440,11 @@ describe("SDT-G27 canonical event identity", () => {
     } as unknown as PipelineStore;
     const outcome = await processDeliveryCore(message, "queue", {}, {
       store,
-      onStored: async ({ event }) => { storedIdentity = { eventType: event.eventType, provenance: event.provenance }; },
+      onStored: async ({ event }) => { storedIdentity = { eventId: event.eventId, suid: event.suid, eventType: event.eventType, provenance: event.provenance }; },
     });
     expect(outcome.outcome).toBe("stored");
-    expect(storedIdentity).toEqual({ eventType: "OrderPlaced:2", provenance: "g27" });
+    expect(admittedMessage).toMatchObject({ eventType: "OrderPlaced:2", eventId: message.eventId, suid: message.suid });
+    expect(storedIdentity).toEqual({ eventId: message.eventId, suid: message.suid, eventType: "OrderPlaced:2", provenance: "g27" });
   });
 
   it("dispatches same-name versions by registry identity and never by payload sniffing", () => {
@@ -446,6 +462,31 @@ describe("SDT-G27 canonical event identity", () => {
     expect(projector.apply([], { eventType: "Order:1", payload: { eventType: "wrong" } })).toEqual(["v1:{\"eventType\":\"wrong\"}"]);
     expect(projector.apply([], { eventType: "Order:2", payload: { eventType: "wrong" } })).toEqual(["v2:{\"eventType\":\"wrong\"}"]);
     expect(() => projector.apply([], { eventType: "Order:3", payload: {} })).toThrow(/canonical|subscribe|handler/i);
+  });
+
+  it("uses the canonical identity in the real composeRuntime path despite a contradictory payload discriminator", () => {
+    const v1 = defineEvent({ name: "Order", version: 1 });
+    const v2 = defineEvent({ name: "Order", version: 2 });
+    const projector = defineProjector({
+      id: "g27-compose-projector",
+      events: [v1, v2],
+      initialState: [] as string[],
+      eventTypeHandlers: {
+        "Order:1": (state, event) => [...state, `v1:${event.eventPayloadName}`],
+        "Order:2": (state, event) => [...state, `v2:${event.eventPayloadName}`],
+      },
+    });
+    const runtimeProjector = composeRuntime(defineDomain({ projectors: [projector] })).projectors.resolve("g27-compose-projector");
+    expect(runtimeProjector).toBeDefined();
+    const payload = btoa(JSON.stringify({ eventType: "Order:1", type: "Order:1" }));
+    expect(runtimeProjector!.apply([], {
+      eventId: "g27-compose-event",
+      suid: "suid-00000000000000000000000000000009",
+      eventTags: [],
+      eventType: "Order:2",
+      provenance: "g27",
+      payload,
+    })).toEqual(["v2:Order"]);
   });
 
   it("uses one monotone OrderClock range with watermark floor and typed overflow", () => {
@@ -466,7 +507,7 @@ describe("SDT-G27 canonical event identity", () => {
     const seed = await allocatorFetch(seedAllocator, "/seed-after", {
       importId: "g27-import",
       leaseEpoch: 1,
-      highWatermark: "suid-00000000000000000000000000000005",
+      highWatermark: "suid-00000000000000000000000000000064",
     });
     expect(seed.status).toBe(201);
     const restarted = new AllocatorDurableObject({ storage: seeded.storage } as unknown as DurableObjectState, undefined, sequenceClock(6n));
@@ -475,7 +516,7 @@ describe("SDT-G27 canonical event identity", () => {
       candidates: [{ candidateIndex: 0, eventId: "g27-after-seed-event" }],
     });
     expect(afterSeed.status).toBe(201);
-    expect((await afterSeed.json<{ candidates: Array<{ suid: string }> }>()).candidates[0]?.suid).toBe("suid-00000000000000000000000000000006");
+    expect((await afterSeed.json<{ candidates: Array<{ suid: string }> }>()).candidates[0]?.suid).toBe("suid-00000000000000000000000000000065");
 
     const beforeRestart = seeded.snapshot();
     const resumed = new AllocatorDurableObject({ storage: seeded.storage } as unknown as DurableObjectState, undefined, sequenceClock(500n));
