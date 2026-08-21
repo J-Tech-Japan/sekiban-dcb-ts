@@ -1,0 +1,8 @@
+{
+  "schema_version": "1",
+  "scope": "execution-unit:SDT-G26",
+  "actor": "implementation",
+  "team": "sekiban-dcb-ts-orch",
+  "claimed_at": "2026-08-21T03:45:27.535356+00:00",
+  "base_commit": "78cb46c081d2a0b0c083bf3a0e5f72830d9a7f58"
+}
