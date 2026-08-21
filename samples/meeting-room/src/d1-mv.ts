@@ -242,10 +242,12 @@ async function applyMeetingRoomUnsafeView(
   // through the unsafe lane; a later safe catch-up owns that convergence.
   if (active.lastSuid >= event.suid) return;
   const unsafe = handle.store.unsafeWindow();
+  const mutations = materializer.plan(event);
+  const upsertOnly = mutations.rowUpserts.length === 1 && mutations.rowPatches.length === 0 && mutations.rowDeletes.length === 0;
   try {
     // Arrival observation belongs inside this view branch. It is not a
     // transport-level prelude and cannot be shared across view handlers.
-    await unsafe.observeArrival(serviceId, handle.id, active.generation, event.eventId, event.suid);
+    if (!upsertOnly) await unsafe.observeArrival(serviceId, handle.id, active.generation, event.eventId, event.suid);
     const applied = await unsafe.apply({
       serviceId,
       viewId: handle.id,
@@ -254,7 +256,7 @@ async function applyMeetingRoomUnsafeView(
       suid: event.suid,
       safeHead: active.lastSuid,
       updatedAt: nowMs,
-      mutations: materializer.plan(event),
+      mutations,
       targetSuid: event.suid,
     });
     return applied.duplicate ? "duplicate-race" : "applied";
