@@ -1,0 +1,58 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sekiban-dcb-meeting-room-cloudflare-only",
+  "main": "src/worker.cloudflare-only.ts",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "AUTO_DRAIN_OUTBOX": "true",
+    "DOMAIN_DELIVERY_CLASS": "immediate-preferred",
+    "DIRECT_DOORBELL": "true",
+    "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector,ReservationProjector",
+    "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
+    "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
+    "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
+    "G26_VIEW_COUNT": "2"
+  },
+  "assets": { "directory": "public" },
+  "triggers": { "crons": ["* * * * *"] },
+  "services": [
+    {
+      "binding": "DOWNSTREAM_DOORBELL",
+      "service": "sekiban-dcb-meeting-room-doorbell",
+      "entrypoint": "MeetingRoomDownstreamDoorbell"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+      "database_id": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "migrations_dir": "../../migrations/d1"
+    },
+    {
+      "binding": "D1_MV",
+      "database_name": "sekiban-dcb-meeting-room-cloudflare-mv",
+      "database_id": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "migrations_dir": "../../migrations/mv"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-meeting-room-cloudflare-outbox" }],
+    "consumers": [{
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "max_batch_timeout": 1,
+      "max_retries": 3,
+      "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq"
+    }]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
+      { "name": "JOURNAL", "class_name": "JournalDurableObject" },
+      { "name": "TAG", "class_name": "TagDurableObject" },
+      { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] }, { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }]
+}
