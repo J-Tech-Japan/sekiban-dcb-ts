@@ -52,7 +52,7 @@
   ],
   "protocol": {
     "finalCandidate": "C4 contains runtime/configuration/CI/oracles/docs and is the deployed source; post-C paths are evidence documents plus one exact ci.yml retained-list append in bookkeeping R",
-    "bookkeepingCommit": "pending-after-evidence-commit",
+    "bookkeepingCommit": "8db0212c3a61e61a07e4dd031314d3805fc6b14e",
     "deploymentIdentity": "fresh explicit non-secret SDT_SERVICE_ID",
     "fixedN": "N >= 20",
     "totalLatencyClaim": "G26 does NOT claim total command-start-to-visible sub-second; POST remains G27 scope",
