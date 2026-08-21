@@ -29,6 +29,7 @@ export const candidateEvidenceRules = Object.freeze([
     id: "g26-direct-doorbell-fanout",
     evidencePath: "docs/SDT-G26-deploy-evidence.json",
     evidenceGlobs: Object.freeze(["docs/SDT-G26-*evidence*.json", "docs/SDT-G26-*evidence*.md"]),
+    bookkeepingPath: ".github/workflows/ci.yml",
   }),
 ]);
 
@@ -40,6 +41,26 @@ function matchesGlob(path, glob) {
 export function assertEvidenceOnlyPaths(paths, rule) {
   if (!paths.every((path) => rule.evidenceGlobs.some((glob) => matchesGlob(path, glob)))) {
     throw new Error(`${rule.id} candidate protocol violation; post-candidate paths: ${paths.join(", ")}`);
+  }
+}
+
+/**
+ * G26 has one non-evidence post-candidate path: the retained-candidate fetch
+ * list.  It is deliberately checked as a single exact append so an unrelated
+ * CI edit cannot hide behind the bookkeeping exception.
+ */
+export function assertPostCandidatePaths(paths, rule, candidate, run = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" })) {
+  if (rule.bookkeepingPath === undefined) return assertEvidenceOnlyPaths(paths, rule);
+  const unsupported = paths.filter((path) => path !== rule.bookkeepingPath && !rule.evidenceGlobs.some((glob) => matchesGlob(path, glob)));
+  if (unsupported.length > 0 || paths.filter((path) => path === rule.bookkeepingPath).length > 1) {
+    throw new Error(`${rule.id} candidate protocol violation; post-candidate paths: ${paths.join(", ")}`);
+  }
+  if (!paths.includes(rule.bookkeepingPath)) return;
+  const diff = run(["diff", "--unified=0", `${candidate}..HEAD`, "--", rule.bookkeepingPath]);
+  const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+  const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
+  if (additions.length !== 1 || removals.length !== 0 || additions[0].slice(1).trim() !== candidate) {
+    throw new Error(`${rule.id} bookkeeping path must append exactly candidate ${candidate}`);
   }
 }
 function expectMutationToFail(label, callback) {
@@ -131,7 +152,7 @@ function main() {
     const treeDigestProof = assertCandidateTreeDigests(evidence);
     const status = candidateGateStatus(evidence.candidateCommit);
     const postCandidatePaths = status.active ? changedPaths(evidence.candidateCommit) : [];
-    if (status.active) assertEvidenceOnlyPaths(postCandidatePaths, rule);
+    if (status.active) assertPostCandidatePaths(postCandidatePaths, rule, evidence.candidateCommit);
     console.log(JSON.stringify({
       rule: rule.id,
       candidateCommit: evidence.candidateCommit,
