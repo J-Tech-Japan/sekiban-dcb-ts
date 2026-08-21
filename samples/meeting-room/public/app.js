@@ -150,10 +150,11 @@ function renderReservationRows(rows) {
 }
 
 const RESERVATION_PAGE_SIZE = 20;
+const RESERVATIONS_ENDPOINT = "/api/read/reservations";
 
 async function fetchReservationPage(pageNumber) {
   const response = await fetch(
-    `/api/read/reservations?pageNumber=${pageNumber}&pageSize=${RESERVATION_PAGE_SIZE}`,
+    `${RESERVATIONS_ENDPOINT}?pageNumber=${pageNumber}&pageSize=${RESERVATION_PAGE_SIZE}`,
     { headers: { Accept: "application/json" } },
   );
   return reservationListView(response.status, await responseBody(response));
