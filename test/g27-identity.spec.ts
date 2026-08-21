@@ -196,7 +196,7 @@ describe("SDT-G27 canonical event identity", () => {
     const independent = {
       eventType: key,
       provenance: "g27" as const,
-      eventId: "event-identity-independent",
+      eventId: "DifferentIdentity:1",
       suid: "suid-00000000000000000000000000000001",
     };
     const resolved = resolveDeliveryIdentity(independent, "queue");
@@ -204,6 +204,7 @@ describe("SDT-G27 canonical event identity", () => {
     expect(independent.eventType).toBe(key);
     expect(independent.eventId).not.toBe(key);
     expect(independent.suid).not.toBe(key);
+    expect(independent.eventId).not.toBe(independent.suid);
   });
 
   it("retains the exact identity through Tag durable event and pending outbox envelope", async () => {
@@ -383,7 +384,7 @@ describe("SDT-G27 canonical event identity", () => {
       allocatorLineageId: "g27-core-lineage",
       tag: "orders:g27-core",
       attemptId: "g27-core-attempt",
-      eventId: "g27-core-event",
+      eventId: "DifferentIdentity:1",
       suid: "suid-00000000000000000000000000000002",
       payload: "e30=",
       eventTags: ["orders:g27-core"],

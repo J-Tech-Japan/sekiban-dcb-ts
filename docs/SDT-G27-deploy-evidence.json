@@ -1,11 +1,11 @@
 {
   "task": "SDT-G27",
-  "status": "FINAL candidate C''; bookkeeping R'' records the candidate and its self-digests",
-  "candidateCommit": "f7d306c0018b1b7046095891186b8409c9b16863",
-  "sourceCommit": "f7d306c0018b1b7046095891186b8409c9b16863",
+  "status": "CANDIDATE placeholder for C'''; bookkeeping R''' will record the candidate and its self-digests",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
-    "candidate": "C'' contains the F1-F6 rereview fixes, typed provider divergence guard, immutable queue fixture, focused tests, oracle map, and PR body",
-    "bookkeeping": "R'' updates only this evidence document and appends the immutable C'' SHA to the retained candidate fetch list",
+    "candidate": "C''' contains the F1/F6 third-review mutation-attribution fixes, prior F1-F6 implementation, focused tests, oracle map, and PR body",
+    "bookkeeping": "R''' will update only this evidence document and append the immutable C''' SHA to the retained candidate fetch list",
     "selfReference": false,
     "secrets": "redacted"
   },
@@ -28,6 +28,7 @@
       "test/commit.spec.ts",
       "test/downstream.spec.ts",
       "test/fixtures/g13-pre-g27-outbox.json",
+      "test/g22-bootstrap-d1.spec.ts",
       "test/g27-identity.spec.ts",
       "test/helpers/g22-bootstrap-provider-contract.ts",
       "test/read.spec.ts",
@@ -41,23 +42,26 @@
   "localValidation": {
     "npm run lint": "PASS",
     "npm run typecheck": "PASS",
-    "npm test": { "status": "PASS", "testFiles": 36, "tests": 254 },
+    "npm test": { "status": "PASS", "testFiles": 36, "tests": 255 },
     "npm run test:g27": { "status": "PASS", "testFiles": 1, "tests": 17 },
-    "npm run test:g22": { "status": "PASS", "testFiles": 2, "tests": 6 },
+    "npm run test:g22": { "status": "PASS", "testFiles": 2, "tests": 7 },
     "npm run test:boundaries": "PASS",
     "npm run test:consumer": "PASS",
     "forcedRed": {
       "SDT_G27_FORCE_FAILURE=1 npm run test:g27:forced-red": "EXPECTED-RED",
-      "SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED"
+      "SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED",
+      "F1 canonical-key-from-EventId mutation": "EXPECTED-RED — resolver and StoredEvent callback reject DifferentIdentity:1 rewrite",
+      "F6 D1 storedBefore-guard-bypass mutation": "EXPECTED-RED — beforeBatch spy observes a recordDelivery batch start"
     }
   },
   "rereviewFindings": {
-    "F1": "PASS — distinct canonical key/EventId/SUID admission and StoredEvent callback oracle",
+    "F1": "PASS — parseable DifferentIdentity:1 plus independent SUID remain distinct; resolver and StoredEvent callback reject eventId-derived canonical key",
     "F2": "PASS — composeRuntime identity-bearing Order:2 beats contradictory payload discriminator",
     "F4": "PASS — real allocator DO seed=100 with tick=6 requires watermark+1=101",
     "F5": "PASS — runtime pending bytes compare to committed pre-G27 fixture; additive fields are fixed",
-    "F6": "PASS — D1/Postgres direct typed canonical-key divergence and Cosmos real-emulator equivalent are wired",
-    "cosmosEmulatorFailure": "32522702896 failed only because the old C′ evidence saw the tracked claim commit as an unallowlisted post-candidate path; C'' is cut after that claim and R'' appends only C''"
+    "F6": "PASS — D1/Postgres direct typed canonical-key divergence and Cosmos real-emulator equivalent are wired; D1 beforeBatch spy attributes fail-before-write",
+    "cosmosEmulatorFailure": "32522702896 failed only because the old C′ evidence saw the tracked claim commit as an unallowlisted post-candidate path; C'' is cut after that claim and R'' appends only C''",
+    "candidateMutationAttribution": "C''' adds the two remaining expected-red mutation oracles; R''' records the final candidate and retained-list append"
   },
   "migration": {
     "baseline": "migrations/d1/0001_pipeline_store.sql",
