@@ -30,13 +30,20 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
 export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
   async deliver(message: unknown) {
     const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
-    return processDownstreamDoorbell(message, this.env, {
+    const result = await processDownstreamDoorbell(message, this.env, {
       storeProvider: createD1StoreProvider(),
       views: selectDirectDoorbellViews(meetingRoomDeliveryViews(this.env), config),
       afterDelivery: async () => {
         this.ctx.waitUntil(drainMeetingRoomUnsafeKicks(this.env));
       },
     });
+    console.log("direct_doorbell_core", {
+      correlationId: result.correlationId,
+      coreDurationMs: result.coreDurationMs,
+      viewDurationsMs: result.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
+      disposition: result.fastDisposition,
+    });
+    return result;
   }
 }
 

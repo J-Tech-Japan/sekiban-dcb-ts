@@ -31,10 +31,18 @@ export interface DirectDoorbellPreflightResult {
 export const MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST = 32;
 
 export function classifyDirectDoorbellFailure(error: unknown): DirectDoorbellFailureKind {
+  const structured = typeof error === "object" && error !== null
+    ? error as { readonly status?: unknown; readonly statusCode?: unknown; readonly code?: unknown; readonly name?: unknown }
+    : {};
+  const status = typeof structured.status === "number"
+    ? structured.status
+    : typeof structured.statusCode === "number" ? structured.statusCode : undefined;
+  if (status !== undefined && (status < 200 || status >= 300)) return "non-2xx";
   const value = String(error).toLowerCase();
-  if (value.includes("timeout") || value.includes("deadline")) return "timeout";
-  if (value.includes("cancel") || value.includes("abort")) return "cancel";
-  if (value.includes("non-2xx") || value.includes("status 4") || value.includes("status 5")) return "non-2xx";
+  const code = `${String(structured.code ?? "")} ${String(structured.name ?? "")}`.toLowerCase();
+  if (value.includes("timeout") || value.includes("deadline") || code.includes("timeout")) return "timeout";
+  if (value.includes("cancel") || value.includes("abort") || code.includes("abort")) return "cancel";
+  if (value.includes("non-2xx") || value.includes("http 4") || value.includes("http 5") || value.includes("status 4") || value.includes("status 5")) return "non-2xx";
   return "throw";
 }
 

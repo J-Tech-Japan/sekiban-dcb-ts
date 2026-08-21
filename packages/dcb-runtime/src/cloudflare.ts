@@ -53,6 +53,7 @@ export interface CloudflareOnlyEnv {
   DIRECT_DOORBELL_DEGRADATION?: string;
   DIRECT_DOORBELL_RECEIVER_MODE?: string;
   DIRECT_DOORBELL_SELF_BINDING_PROOF?: string;
+  G26_VIEW_COUNT?: string;
 }
 
 export interface CloudflareOnlyWorkerOptions {

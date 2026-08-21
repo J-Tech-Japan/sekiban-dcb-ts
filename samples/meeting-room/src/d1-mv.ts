@@ -12,6 +12,7 @@ interface MeetingRoomD1Env {
   readonly D1?: D1Database;
   readonly D1_MV?: D1Database;
   readonly SDT_SERVICE_ID?: string;
+  readonly G26_VIEW_COUNT?: string;
 }
 
 function requiredServiceId(value: string | undefined): string {
@@ -118,6 +119,46 @@ function materializers() {
 
 type MeetingRoomMaterializer = ReturnType<typeof materializers>[number];
 
+const DEFAULT_FANOUT_VIEW_COUNT = 2;
+const MAX_FANOUT_VIEW_COUNT = 20;
+
+function configuredViewCount(value: string | undefined): number {
+  if (value === undefined || value.length === 0) return DEFAULT_FANOUT_VIEW_COUNT;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_FANOUT_VIEW_COUNT) {
+    throw new Error(`G26_VIEW_COUNT must be an integer between 1 and ${MAX_FANOUT_VIEW_COUNT}`);
+  }
+  return parsed;
+}
+
+function fanoutViewId(index: number): string {
+  const base = materializers()[index];
+  if (base !== undefined) return base.id;
+  return `G26FanoutView${String(index + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Expand the sample's two real views with deterministic duplicate materializer
+ * definitions for remote 1/5/10-view topology runs. The duplicates use the
+ * same D1 MV handle and row plan, so the measurement exercises real per-view
+ * receipts, rows, indexes, markers, and kicks without changing V1 query wire
+ * shapes. Production/default composition remains two views.
+ */
+function fanoutMaterializers(viewCount: number): readonly MeetingRoomMaterializer[] {
+  const base = materializers();
+  const result: MeetingRoomMaterializer[] = [...base.slice(0, Math.min(viewCount, base.length))];
+  for (let index = result.length; index < viewCount; index += 1) {
+    const source = base[index % base.length]!;
+    result.push({ ...source, id: fanoutViewId(index) } as MeetingRoomMaterializer);
+  }
+  return result;
+}
+
+export function meetingRoomDeliveryViewIds(viewCount = DEFAULT_FANOUT_VIEW_COUNT): readonly string[] {
+  const count = Math.min(Math.max(Math.trunc(viewCount), 1), MAX_FANOUT_VIEW_COUNT);
+  return Array.from({ length: count }, (_, index) => fanoutViewId(index));
+}
+
 /**
  * Per-view lookup facade. The current deployment intentionally uses one MV
  * D1 binding, but callers resolve a handle by view id so a future split
@@ -126,8 +167,9 @@ type MeetingRoomMaterializer = ReturnType<typeof materializers>[number];
 export function lookupMeetingRoomMaterializedView(
   views: D1MaterializedViewStore,
   viewId: string,
+  configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
 ): { readonly id: string; readonly store: D1MaterializedViewStore; readonly materializer: MeetingRoomMaterializer } {
-  const materializer = materializers().find((candidate) => candidate.id === viewId);
+  const materializer = configuredMaterializers.find((candidate) => candidate.id === viewId);
   if (materializer === undefined) throw new Error(`Unknown meeting-room materialized view: ${viewId}`);
   return { id: viewId, store: views, materializer };
 }
@@ -152,8 +194,9 @@ async function ensureSafeInstances(
   views: D1MaterializedViewStore,
   serviceId: string,
   nowMs: number,
+  configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
 ): Promise<void> {
-  for (const materializer of materializers()) {
+  for (const materializer of configuredMaterializers) {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) await runtime.build(serviceId, materializer, nowMs);
   }
@@ -166,7 +209,7 @@ async function ensureSafeInstances(
  */
 export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = requiredServiceId(env.SDT_SERVICE_ID)): Promise<void> {
   const { runtime, views } = await openMaterializedViews(env);
-  for (const materializer of materializers()) {
+  for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) {
       await runtime.build(serviceId, materializer, Date.now());
@@ -182,8 +225,9 @@ async function applyMeetingRoomUnsafeView(
   serviceId: string,
   event: StoredEvent,
   nowMs: number,
+  configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
 ): Promise<"applied" | "duplicate-race" | void> {
-  const handle = lookupMeetingRoomMaterializedView(views, materializer.id);
+  const handle = lookupMeetingRoomMaterializedView(views, materializer.id, configuredMaterializers);
   const active = await handle.store.readActive(serviceId, handle.id);
   if (active === undefined) throw new Error(`Materialized view ${handle.id} was not initialized`);
   // A startup build can safely fold an already-old event. Do not resurrect it
@@ -234,6 +278,7 @@ async function applyMeetingRoomUnsafeView(
 
 /** Build one continuation-safe handler per configured meeting-room view. */
 export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly DeliveryViewHandler[] {
+  const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
   let opened: Promise<{
     readonly views: D1MaterializedViewStore;
     readonly runtime: MaterializedViewCatchUpRuntime;
@@ -243,16 +288,16 @@ export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly Delive
     opened ??= (async () => {
       const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
       const value = await openMaterializedViews(env);
-      await ensureSafeInstances(value.runtime, value.views, serviceId, Date.now());
+      await ensureSafeInstances(value.runtime, value.views, serviceId, Date.now(), configured);
       return { ...value, serviceId };
     })();
     return opened;
   };
-  return materializers().map((materializer) => ({
+  return configured.map((materializer) => ({
     id: materializer.id,
     apply: async ({ event, arrivedAt }) => {
       const value = await context();
-      return applyMeetingRoomUnsafeView(value.views, materializer, value.serviceId, event, arrivedAt);
+      return applyMeetingRoomUnsafeView(value.views, materializer, value.serviceId, event, arrivedAt, configured);
     },
     classifyError: (error: unknown): DeliveryViewFailureClass => {
       const typed = error as { readonly code?: unknown; readonly retryable?: unknown; readonly failureClass?: unknown };
@@ -276,9 +321,10 @@ export async function applyMeetingRoomUnsafeArrival(
   const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
   if (event.serviceId !== serviceId) throw new Error("Stored event service identity did not match SDT_SERVICE_ID");
   const { runtime, views } = await openMaterializedViews(env);
-  await ensureSafeInstances(runtime, views, serviceId, nowMs);
-  for (const materializer of materializers()) {
-    await applyMeetingRoomUnsafeView(views, materializer, serviceId, event, nowMs);
+  const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
+  await ensureSafeInstances(runtime, views, serviceId, nowMs, configured);
+  for (const materializer of configured) {
+    await applyMeetingRoomUnsafeView(views, materializer, serviceId, event, nowMs, configured);
   }
 }
 
@@ -286,7 +332,7 @@ export async function applyMeetingRoomUnsafeArrival(
 export async function drainMeetingRoomUnsafeKicks(env: MeetingRoomD1Env, nowMs = Date.now()): Promise<void> {
   const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
   const { runtime, views } = await openMaterializedViews(env);
-  for (const materializer of materializers()) {
+  for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const unsafe = views.unsafeWindow();
     const owner = `meeting-room-${crypto.randomUUID()}`;
     let lease;

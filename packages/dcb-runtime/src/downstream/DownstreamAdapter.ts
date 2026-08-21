@@ -112,9 +112,16 @@ export async function handleDownstreamQueue(
           store,
           clock,
         });
+        console.log("downstream_queue_delivery", {
+          correlationId: outcome.correlationId,
+          coreDurationMs: outcome.coreDurationMs,
+          viewDurationsMs: outcome.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
+          disposition: outcome.queueDisposition,
+        });
         if (outcome.queueDisposition === "ack") queued.ack();
         else queued.retry();
       } catch {
+        console.warn("downstream_queue_delivery", { disposition: "retry-to-dlq" });
         queued.retry();
       }
     }

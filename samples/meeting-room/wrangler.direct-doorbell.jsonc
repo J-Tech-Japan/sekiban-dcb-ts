@@ -11,7 +11,8 @@
     "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector,ReservationProjector",
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
     "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
-    "DIRECT_DOORBELL_RECEIVER_MODE": "separate"
+    "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
+    "G26_VIEW_COUNT": "2"
   },
   "assets": { "directory": "public" },
   "triggers": { "crons": ["* * * * *"] },

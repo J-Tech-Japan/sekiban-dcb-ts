@@ -37,6 +37,7 @@ export interface DeliveryViewResult {
   readonly status: "applied" | "duplicate-race" | "failed";
   readonly failureClass?: DeliveryViewFailureClass;
   readonly error?: string;
+  readonly durationMs: number;
 }
 
 export interface DeliveryCoreFailure {
@@ -54,6 +55,7 @@ export interface DeliveryCoreResult {
   readonly detectorApplied: boolean;
   readonly views: readonly DeliveryViewResult[];
   readonly failures: readonly DeliveryCoreFailure[];
+  readonly coreDurationMs: number;
   /** The queue wrapper is the only caller that turns this into ack/retry. */
   readonly queueDisposition: "ack" | "retry-to-dlq";
   /** The fast wrapper never retries or changes outbox state. */
@@ -127,6 +129,7 @@ function result(
   views: readonly DeliveryViewResult[],
   failures: readonly DeliveryCoreFailure[],
   suppliedCorrelationId?: string,
+  startedAt = performance.now(),
 ): DeliveryCoreResult {
   return {
     source,
@@ -136,6 +139,7 @@ function result(
     detectorApplied,
     views,
     failures,
+    coreDurationMs: Math.max(0, performance.now() - startedAt),
     ...disposition(failures, source),
   };
 }
@@ -156,6 +160,7 @@ export async function processDeliveryCore(
   env: DeliveryCoreEnvironment,
   options: DeliveryCoreOptions = {},
 ): Promise<DeliveryCoreResult> {
+  const startedAt = performance.now();
   const store = providerStore(env, options);
   await store.initialize();
   const clock = options.clock ?? systemPipelineClock;
@@ -166,7 +171,7 @@ export async function processDeliveryCore(
     outcome = await store.recordDelivery(message, arrivedAt, source);
   } catch (error) {
     const failures: DeliveryCoreFailure[] = [{ phase: "recordDelivery", class: "retryable-transient", error: errorText(error) }];
-    return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId);
+    return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId, startedAt);
   }
 
   // Normative step 2: typed non-stored outcome gate.  Only incident
@@ -176,9 +181,9 @@ export async function processDeliveryCore(
       await store.projectDeliveryIncidents?.(message.serviceId);
     } catch (error) {
       const failures: DeliveryCoreFailure[] = [{ phase: "detector", class: "retryable-transient", error: errorText(error) }];
-      return result(source, message, outcome.outcome, arrivedAt, false, [], failures, options.correlationId);
+      return result(source, message, outcome.outcome, arrivedAt, false, [], failures, options.correlationId, startedAt);
     }
-    return result(source, message, outcome.outcome, arrivedAt, false, [], [], options.correlationId);
+    return result(source, message, outcome.outcome, arrivedAt, false, [], [], options.correlationId, startedAt);
   }
 
   const failures: DeliveryCoreFailure[] = [];
@@ -198,10 +203,11 @@ export async function processDeliveryCore(
   // Normative step 4: every view gets a turn, even when an earlier view is a
   // deterministic poison or a transient failure.
   for (const view of views) {
+    const viewStartedAt = performance.now();
     try {
       const applied = await view.apply({ message, event: outcome.event, arrivedAt, source });
       const status = applied === "duplicate-race" ? "duplicate-race" : "applied";
-      viewResults.push({ id: view.id, status });
+      viewResults.push({ id: view.id, status, durationMs: Math.max(0, performance.now() - viewStartedAt) });
     } catch (error) {
       const failureClass = view.classifyError?.(error) ?? defaultFailureClass(error);
       const viewResult: DeliveryViewResult = {
@@ -209,6 +215,7 @@ export async function processDeliveryCore(
         status: "failed",
         failureClass,
         error: errorText(error),
+        durationMs: Math.max(0, performance.now() - viewStartedAt),
       };
       viewResults.push(viewResult);
       failures.push({ phase: "view", class: failureClass, viewId: view.id, error: errorText(error) });
@@ -225,7 +232,7 @@ export async function processDeliveryCore(
     }
   }
 
-  const preliminary = result(source, message, "stored", arrivedAt, detectorApplied, viewResults, failures, options.correlationId);
+  const preliminary = result(source, message, "stored", arrivedAt, detectorApplied, viewResults, failures, options.correlationId, startedAt);
   // Normative step 5: the trigger is after all view branches.  The trigger is
   // not itself a kick-target mutation; that mutation belongs to each view's
   // single MV-D1 apply batch.
@@ -236,5 +243,5 @@ export async function processDeliveryCore(
       failures.push({ phase: "drain", class: "retryable-transient", error: errorText(error) });
     }
   }
-  return result(source, message, "stored", arrivedAt, detectorApplied, viewResults, failures, options.correlationId);
+  return result(source, message, "stored", arrivedAt, detectorApplied, viewResults, failures, options.correlationId, startedAt);
 }
