@@ -165,6 +165,8 @@ export const meetingRoomDomain = defineDomain({
 });
 
 export const meetingRoomRuntimeConfig = {
+  /** Domain layer of the G26 two-layer opt-in; deployment still enables the doorbell. */
+  deliveryClass: "immediate-preferred" as const,
   projectorPayloadNames: {
     RoomProjector: "RoomState",
     ReservationProjector: "ReservationState",

@@ -1,4 +1,4 @@
-import type { DownstreamOutboxMessage } from "../downstream/types";
+import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { decayedLagEstimateMs } from "../safeWindow";
 import type {
   DeliveryLagRecord,
@@ -543,7 +543,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     this.initialized = true;
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome> {
+  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const eventTags = sortedUnique(message.eventTags);
@@ -617,7 +617,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       head === undefined || compareCosmosSuid(entry.document.suid, head) > 0 ? entry.document.suid : head, undefined);
     const recoveryBacklogSample = currentHead !== undefined && compareCosmosSuid(message.suid, currentHead) < 0;
     const event = await this.mutateEvent(message, arrivedAt, lagMs, eventTags);
-    if (!recoveryBacklogSample) await this.updateLag(message.serviceId, lagMs, arrivedAt);
+    if (!recoveryBacklogSample && deliverySource !== "fast") await this.updateLag(message.serviceId, lagMs, arrivedAt);
     return { outcome: "stored", kind: "stored", event: eventFrom(event) };
   }
 

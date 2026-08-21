@@ -6,6 +6,7 @@ type D1Row = Record<string, unknown>;
 export type UnsafeOutcome = "applied" | "older" | "patch-not-found" | "delete-without-row" | "no-change";
 export type UnsafeWindowErrorCode =
   | "UNSAFE_ROW_CAS_MISMATCH"
+  | "UNSAFE_DUPLICATE_RACE"
   | "UNSAFE_SUID_CONTRADICTION"
   | "UNSAFE_SAFE_AHEAD"
   | "UNSAFE_BEHIND_FRONTIER"
@@ -34,6 +35,12 @@ export interface UnsafeWindowApplyInput {
   readonly safeHead: string;
   readonly expectedRowVersion?: number | null;
   readonly updatedAt: number;
+  /**
+   * The generic unsafe apply API deliberately does not imply an arrival
+   * observation; G23 keeps that receipt guard independent. Materializer
+   * adapters that fold the observation into their upsert batch opt in.
+   */
+  readonly recordArrival?: boolean;
   /** A plan is already the materializer's stored outcome: this port never folds in TypeScript. */
   readonly mutations: MaterializedViewMutationPlan;
   readonly targetSuid?: string;
@@ -42,6 +49,19 @@ export interface UnsafeWindowApplyInput {
 export interface UnsafeWindowApplyResult {
   readonly outcome: UnsafeOutcome;
   readonly duplicate: boolean;
+}
+
+export interface UnsafeWindowMaterializedViewStoreOptions {
+  /** Test-only barrier used by the SDT-G26 duplicate-race oracle. */
+  readonly beforeApplyBatch?: (
+    input: UnsafeWindowApplyInput,
+    statements?: readonly D1PreparedStatement[],
+  ) => Promise<void>;
+  /** Test-only post-commit seam for receipt-boundary fault oracles. */
+  readonly afterApplyBatch?: (
+    input: UnsafeWindowApplyInput,
+    result: UnsafeWindowApplyResult,
+  ) => Promise<void>;
 }
 
 export interface UnsafeReadMeta {
@@ -104,6 +124,9 @@ function operationId(): string {
 
 function errorFrom(error: unknown): UnsafeWindowMaterializedViewError | undefined {
   const value = String(error);
+  if (value.includes("mv_unsafe_receipts") && (value.includes("UNIQUE") || value.includes("constraint"))) {
+    return new UnsafeWindowMaterializedViewError("UNSAFE_DUPLICATE_RACE", false, "Concurrent unsafe receipt was committed by another delivery", { cause: error });
+  }
   if (value.includes("unsafe_row_cas")) return new UnsafeWindowMaterializedViewError("UNSAFE_ROW_CAS_MISMATCH", true, "Unsafe row version changed before atomic apply", { cause: error });
   if (value.includes("unsafe_suid_contradiction")) return new UnsafeWindowMaterializedViewError("UNSAFE_SUID_CONTRADICTION", false, "Unsafe same-SUID payload contradiction", { cause: error });
   if (value.includes("unsafe_safe_ahead")) return new UnsafeWindowMaterializedViewError("UNSAFE_SAFE_AHEAD", false, "Safe head already covers unsafe event", { cause: error });
@@ -118,9 +141,141 @@ function errorFrom(error: unknown): UnsafeWindowMaterializedViewError | undefine
  * after a batch has already committed other statements.
  */
 export class UnsafeWindowMaterializedViewStore {
-  constructor(private readonly database: D1Database) {}
+  constructor(
+    private readonly database: D1Database,
+    private readonly options: UnsafeWindowMaterializedViewStoreOptions = {},
+  ) {}
 
-  async apply(input: UnsafeWindowApplyInput): Promise<UnsafeWindowApplyResult> {
+  /**
+   * The common row-materializer shape is one complete upsert. Keep its
+   * duplicate/order guards and all observable mutations in one D1 batch. A
+   * guard race falls back to apply(), which preserves the detailed older,
+   * duplicate, and contradiction classifications; only the uncontended fast
+   * path avoids the receipt/row pre-reads and separate arrival write.
+   */
+  private async applyUpsertFast(input: UnsafeWindowApplyInput): Promise<UnsafeWindowApplyResult | undefined> {
+    const { rowUpserts, rowPatches, rowDeletes } = input.mutations;
+    if (rowUpserts.length !== 1 || rowPatches.length !== 0 || rowDeletes.length !== 0) return undefined;
+    const upsert = rowUpserts[0]!;
+    if (upsert.sourceSuid !== input.suid) return undefined;
+    const valueJson = JSON.stringify(assertJsonValue(upsert.value, "state-persistence"));
+    const operation = operationId();
+    const statements: D1PreparedStatement[] = [];
+    const guard = (name: string, predicate: string, values: readonly (string | number | null)[]) => {
+      statements.push(this.database.prepare(
+        `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
+         SELECT ?, CASE WHEN (${predicate}) THEN 1 ELSE NULL END`,
+      ).bind(`${operation}:${name}`, ...values));
+    };
+    guard(
+      "receipt",
+      "NOT EXISTS (SELECT 1 FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ?)",
+      [input.serviceId, input.viewId, input.eventId],
+    );
+    guard("safe-head", "? = '' OR ? COLLATE BINARY < ? COLLATE BINARY", [input.safeHead, input.safeHead, input.suid]);
+    guard(
+      "row-order",
+      "NOT EXISTS (SELECT 1 FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ? AND source_suid COLLATE BINARY > ? COLLATE BINARY)",
+      [input.serviceId, input.viewId, input.generation, upsert.rowKey, input.suid],
+    );
+    guard(
+      "same-suid",
+      "NOT EXISTS (SELECT 1 FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ? AND source_suid COLLATE BINARY = ? COLLATE BINARY AND value_json <> ?)",
+      [input.serviceId, input.viewId, input.generation, upsert.rowKey, input.suid, valueJson],
+    );
+    if (input.expectedRowVersion !== undefined && input.expectedRowVersion !== null) {
+      guard(
+        "row-cas",
+        "NOT EXISTS (SELECT 1 FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?) OR EXISTS (SELECT 1 FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ? AND row_version = ?)",
+        [
+          input.serviceId, input.viewId, input.generation, upsert.rowKey,
+          input.serviceId, input.viewId, input.generation, upsert.rowKey, input.expectedRowVersion,
+        ],
+      );
+    }
+
+    if (input.recordArrival === true) {
+      const behindFrontier = input.safeHead !== "" && compareSuid(input.suid, input.safeHead) <= 0;
+      statements.push(this.database.prepare(
+        `INSERT INTO mv_unsafe_arrivals
+           (service_id, view_id, generation, safe_head, arrival_watermark, behind_frontier_event_id, behind_frontier_suid, rebuild_required)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (service_id, view_id, generation) DO UPDATE SET
+           arrival_watermark = CASE WHEN excluded.arrival_watermark COLLATE BINARY > mv_unsafe_arrivals.arrival_watermark COLLATE BINARY THEN excluded.arrival_watermark ELSE mv_unsafe_arrivals.arrival_watermark END,
+           behind_frontier_event_id = CASE WHEN mv_unsafe_arrivals.rebuild_required = 1 THEN mv_unsafe_arrivals.behind_frontier_event_id ELSE excluded.behind_frontier_event_id END,
+           behind_frontier_suid = CASE WHEN mv_unsafe_arrivals.rebuild_required = 1 THEN mv_unsafe_arrivals.behind_frontier_suid ELSE excluded.behind_frontier_suid END,
+           rebuild_required = MAX(mv_unsafe_arrivals.rebuild_required, excluded.rebuild_required)`,
+      ).bind(
+        input.serviceId,
+        input.viewId,
+        input.generation,
+        input.safeHead,
+        input.suid,
+        behindFrontier ? input.eventId : null,
+        behindFrontier ? input.suid : null,
+        behindFrontier ? 1 : 0,
+      ));
+    }
+    statements.push(this.database.prepare(
+      `DELETE FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`,
+    ).bind(input.serviceId, input.viewId, input.generation, upsert.rowKey));
+    statements.push(this.database.prepare(
+      `INSERT INTO mv_unsafe_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid, tombstone)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+       ON CONFLICT (service_id, view_id, generation, row_key) DO UPDATE SET
+         value_json = excluded.value_json, row_version = excluded.row_version, source_suid = excluded.source_suid, tombstone = 0`,
+    ).bind(input.serviceId, input.viewId, input.generation, upsert.rowKey, valueJson, upsert.rowVersion, upsert.sourceSuid));
+    for (const entry of input.mutations.indexEntries) this.addIndex(statements, "mv_unsafe_index_entries", input, entry);
+    statements.push(this.database.prepare(
+      `INSERT INTO mv_unsafe_receipts (service_id, view_id, event_id, suid, outcome, observed_at)
+       VALUES (?, ?, ?, ?, 'applied', ?)`,
+    ).bind(input.serviceId, input.viewId, input.eventId, input.suid, input.updatedAt));
+    statements.push(this.database.prepare(
+      `INSERT INTO mv_unsafe_kicks (service_id, view_id, target_suid, dirty)
+       VALUES (?, ?, ?, 1)
+       ON CONFLICT (service_id, view_id) DO UPDATE SET
+         target_suid = CASE WHEN excluded.target_suid COLLATE BINARY > mv_unsafe_kicks.target_suid COLLATE BINARY THEN excluded.target_suid ELSE mv_unsafe_kicks.target_suid END,
+         dirty = 1`,
+    ).bind(input.serviceId, input.viewId, input.targetSuid ?? input.suid));
+    statements.push(this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id LIKE ?").bind(`${operation}:%`));
+    await this.options.beforeApplyBatch?.(input, statements);
+    try {
+      await this.database.batch(statements);
+    } catch (error) {
+      // A NULL guard is the only expected fast-path miss. It has no durable
+      // side effects because D1 batches are atomic; the complete path can now
+      // classify the exact duplicate/older/contradiction outcome.
+      const text = String(error);
+      const guardFailure =
+        text.includes("mv_atomic_guards") ||
+        text.includes("checkpoint_match") ||
+        (text.includes("mv_unsafe_receipts") && (text.includes("UNIQUE") || text.includes("constraint")));
+      if (guardFailure) {
+        const receipt = await this.database.prepare(
+          `SELECT suid FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ? ORDER BY observed_at DESC LIMIT 1`,
+        ).bind(input.serviceId, input.viewId, input.eventId).first<D1Row>();
+        if (receipt !== null && receipt !== undefined) {
+          if (string(receipt, "suid") !== input.suid) {
+            throw new UnsafeWindowMaterializedViewError("UNSAFE_SUID_CONTRADICTION", false, "Duplicate event identity has a contradictory SUID", { cause: error });
+          }
+          if (this.options.beforeApplyBatch !== undefined) {
+            throw new UnsafeWindowMaterializedViewError("UNSAFE_DUPLICATE_RACE", false, "Concurrent unsafe receipt was committed by another delivery", { cause: error });
+          }
+          return { outcome: "no-change", duplicate: true };
+        }
+        return this.apply(input, true);
+      }
+      throw error;
+    }
+    const result = { outcome: "applied", duplicate: false } as const;
+    await this.options.afterApplyBatch?.(input, result);
+    return result;
+  }
+
+  async apply(input: UnsafeWindowApplyInput, skipFastPath = false): Promise<UnsafeWindowApplyResult> {
+    const fast = skipFastPath ? undefined : await this.applyUpsertFast(input);
+    if (fast !== undefined) return fast;
+    if (input.recordArrival === true) await this.observeArrival(input.serviceId, input.viewId, input.generation, input.eventId, input.suid);
     const receipt = await this.database.prepare(
       `SELECT suid FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND event_id = ? ORDER BY observed_at DESC LIMIT 1`,
     ).bind(input.serviceId, input.viewId, input.eventId).first<D1Row>();
@@ -219,6 +374,10 @@ export class UnsafeWindowMaterializedViewStore {
          dirty = 1`,
     ).bind(input.serviceId, input.viewId, input.targetSuid ?? input.suid));
     statements.push(this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id LIKE ?").bind(`${operation}:%`));
+    // The hook is test-only and is intentionally after the receipt pre-read,
+    // which lets two invocations reach the same D1 batch barrier and prove
+    // that the unique receipt loser is typed rather than a generic retry.
+    await this.options.beforeApplyBatch?.(input, statements);
     try {
       await this.database.batch(statements);
     } catch (error) {
@@ -229,7 +388,9 @@ export class UnsafeWindowMaterializedViewStore {
       if (typed !== undefined) throw typed;
       throw error;
     }
-    return { outcome, duplicate: false };
+    const result = { outcome, duplicate: false } as const;
+    await this.options.afterApplyBatch?.(input, result);
+    return result;
   }
 
   /** Advance safe head and remove markers only if this transaction observed its exact receipt. */

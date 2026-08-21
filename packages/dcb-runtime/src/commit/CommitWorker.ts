@@ -13,6 +13,7 @@ import {
   type ValidatedCommitEnvelope,
 } from "./types";
 import { serviceIdForRequest } from "../http/testServiceId";
+import type { DeliveryClass } from "../downstream/Doorbell";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -40,6 +41,8 @@ export interface CommitWorkerHooks {
   beforeBootstrapFinalization?(): Promise<void> | void;
   /** Test-only allocator namespace; production uses the service-scoped allocator. */
   allocatorName?: string;
+  /** Runtime composition value; never sourced from a caller-controlled V1 body. */
+  domainDeliveryClass?: DeliveryClass;
 }
 
 interface ReservationSuccess {
@@ -397,6 +400,9 @@ export class CommitWorker {
     const url = new URL(`https://commit-worker.internal${path}`);
     url.searchParams.set("__tag", tag);
     url.searchParams.set("__serviceId", this.serviceId);
+    if (path === "/append" && this.hooks.domainDeliveryClass !== undefined) {
+      url.searchParams.set("__domainDeliveryClass", this.hooks.domainDeliveryClass);
+    }
     return this.tagFor(tag).fetch(
       new Request(url.toString(), body === undefined ? undefined : {
         method: "POST",
@@ -721,9 +727,9 @@ export class CommitWorker {
   }
 }
 
-export async function handleSerializedCommit(request: Request, env: CommitWorkerEnv): Promise<Response> {
+export async function handleSerializedCommit(request: Request, env: CommitWorkerEnv, hooks: CommitWorkerHooks = {}): Promise<Response> {
   return new CommitWorker(env, serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
     configuredServiceId: env.SDT_SERVICE_ID,
-  })).handle(request);
+  }), hooks).handle(request);
 }

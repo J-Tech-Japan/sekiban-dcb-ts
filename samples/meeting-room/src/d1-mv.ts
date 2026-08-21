@@ -6,11 +6,13 @@ import {
   D1MaterializedViewStore,
   MaterializedViewCatchUpRuntime,
 } from "@sekiban/dcb-runtime/d1-mv";
+import type { DeliveryViewFailureClass, DeliveryViewHandler } from "@sekiban/dcb-runtime/d1-mv";
 import type { StoredEvent } from "@sekiban/dcb-runtime/d1-mv";
 interface MeetingRoomD1Env {
   readonly D1?: D1Database;
   readonly D1_MV?: D1Database;
   readonly SDT_SERVICE_ID?: string;
+  readonly G26_VIEW_COUNT?: string;
 }
 
 function requiredServiceId(value: string | undefined): string {
@@ -115,6 +117,71 @@ function materializers() {
   return [roomMaterializer, reservationMaterializer] as const;
 }
 
+type MeetingRoomMaterializer = ReturnType<typeof materializers>[number];
+
+const DEFAULT_FANOUT_VIEW_COUNT = 2;
+const MAX_FANOUT_VIEW_COUNT = 20;
+
+function configuredViewCount(value: string | undefined): number {
+  if (value === undefined || value.length === 0) return DEFAULT_FANOUT_VIEW_COUNT;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_FANOUT_VIEW_COUNT) {
+    throw new Error(`G26_VIEW_COUNT must be an integer between 1 and ${MAX_FANOUT_VIEW_COUNT}`);
+  }
+  return parsed;
+}
+
+function fanoutViewId(index: number, viewCount = DEFAULT_FANOUT_VIEW_COUNT): string {
+  // The one-view remote topology must still exercise the opted-in list view;
+  // RoomProjector is a scalar projection and cannot satisfy the G26 visibility
+  // oracle by itself.
+  if (viewCount === 1 && index === 0) return reservationMaterializer.id;
+  const base = materializers()[index];
+  if (base !== undefined) return base.id;
+  return `G26FanoutView${String(index + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Expand the sample's two real views with deterministic duplicate materializer
+ * definitions for remote 1/5/10-view topology runs. The duplicates use the
+ * same D1 MV handle and row plan, so the measurement exercises real per-view
+ * receipts, rows, indexes, markers, and kicks without changing V1 query wire
+ * shapes. Production/default composition remains two views.
+ */
+function fanoutMaterializers(viewCount: number): readonly MeetingRoomMaterializer[] {
+  const base = materializers();
+  const result: MeetingRoomMaterializer[] = [];
+  for (let index = 0; index < viewCount; index += 1) {
+    if (viewCount === 1 && index === 0) {
+      result.push(reservationMaterializer);
+      continue;
+    }
+    const source = base[index % base.length]!;
+    result.push(index < base.length ? source : { ...source, id: fanoutViewId(index, viewCount) } as MeetingRoomMaterializer);
+  }
+  return result;
+}
+
+export function meetingRoomDeliveryViewIds(viewCount = DEFAULT_FANOUT_VIEW_COUNT): readonly string[] {
+  const count = Math.min(Math.max(Math.trunc(viewCount), 1), MAX_FANOUT_VIEW_COUNT);
+  return Array.from({ length: count }, (_, index) => fanoutViewId(index, count));
+}
+
+/**
+ * Per-view lookup facade. The current deployment intentionally uses one MV
+ * D1 binding, but callers resolve a handle by view id so a future split
+ * reservation binding cannot leak SQL/database selection into delivery code.
+ */
+export function lookupMeetingRoomMaterializedView(
+  views: D1MaterializedViewStore,
+  viewId: string,
+  configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
+): { readonly id: string; readonly store: D1MaterializedViewStore; readonly materializer: MeetingRoomMaterializer } {
+  const materializer = configuredMaterializers.find((candidate) => candidate.id === viewId);
+  if (materializer === undefined) throw new Error(`Unknown meeting-room materialized view: ${viewId}`);
+  return { id: viewId, store: views, materializer };
+}
+
 async function openMaterializedViews(env: MeetingRoomD1Env): Promise<{
   readonly views: D1MaterializedViewStore;
   readonly runtime: MaterializedViewCatchUpRuntime;
@@ -135,11 +202,12 @@ async function ensureSafeInstances(
   views: D1MaterializedViewStore,
   serviceId: string,
   nowMs: number,
+  configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
 ): Promise<void> {
-  for (const materializer of materializers()) {
+  await Promise.all(configuredMaterializers.map(async (materializer) => {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) await runtime.build(serviceId, materializer, nowMs);
-  }
+  }));
 }
 
 /**
@@ -149,7 +217,7 @@ async function ensureSafeInstances(
  */
 export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = requiredServiceId(env.SDT_SERVICE_ID)): Promise<void> {
   const { runtime, views } = await openMaterializedViews(env);
-  for (const materializer of materializers()) {
+  for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) {
       await runtime.build(serviceId, materializer, Date.now());
@@ -157,6 +225,106 @@ export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env,
       await runtime.follow(serviceId, materializer, Date.now());
     }
   }
+}
+
+async function applyMeetingRoomUnsafeView(
+  views: D1MaterializedViewStore,
+  materializer: MeetingRoomMaterializer,
+  serviceId: string,
+  event: StoredEvent,
+  nowMs: number,
+  configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
+): Promise<"applied" | "duplicate-race" | void> {
+  const handle = lookupMeetingRoomMaterializedView(views, materializer.id, configuredMaterializers);
+  const active = await handle.store.readActive(serviceId, handle.id);
+  if (active === undefined) throw new Error(`Materialized view ${handle.id} was not initialized`);
+  // A startup build can safely fold an already-old event. Do not resurrect it
+  // through the unsafe lane; a later safe catch-up owns that convergence.
+  if (active.lastSuid >= event.suid) return;
+  const unsafe = handle.store.unsafeWindow();
+  const mutations = materializer.plan(event);
+  const upsertOnly = mutations.rowUpserts.length === 1 && mutations.rowPatches.length === 0 && mutations.rowDeletes.length === 0;
+  try {
+    // Arrival observation belongs inside this view branch. It is not a
+    // transport-level prelude and cannot be shared across view handlers.
+    if (!upsertOnly) await unsafe.observeArrival(serviceId, handle.id, active.generation, event.eventId, event.suid);
+    const applied = await unsafe.apply({
+      serviceId,
+      viewId: handle.id,
+      generation: active.generation,
+      eventId: event.eventId,
+      suid: event.suid,
+      safeHead: active.lastSuid,
+      updatedAt: nowMs,
+      recordArrival: upsertOnly,
+      mutations,
+      targetSuid: event.suid,
+    });
+    return applied.duplicate ? "duplicate-race" : "applied";
+  } catch (error) {
+    // The identity finding is retained for Queue retries/DLQ and operator
+    // repair. A finding-write failure is part of the same view failure, but it
+    // must not stop the core from invoking later views.
+    try {
+      await handle.store.recordUnsafeFailureFinding({
+        serviceId,
+        viewId: handle.id,
+        eventId: event.eventId,
+        suid: event.suid,
+        observedAt: nowMs,
+      });
+    } catch (findingError) {
+      const combined = new Error(
+        `unsafe view ${handle.id} failed and finding write failed: ${String(findingError)}`,
+        { cause: error },
+      ) as Error & { failureClass?: DeliveryViewFailureClass };
+      // A missing operational finding is itself retryable, even if the
+      // underlying view error happened to be a duplicate race.
+      combined.failureClass = "retryable-transient";
+      throw combined;
+    }
+    throw error;
+  }
+}
+
+/** Build one continuation-safe handler per configured meeting-room view. */
+export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly DeliveryViewHandler[] {
+  const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
+  // Start the opted-in list view first. The branches still run concurrently
+  // and every configured view is awaited, but this lets the deployed
+  // response-to-visible oracle observe ReservationProjector without waiting
+  // behind the scalar room branch or a later fan-out clone.
+  const reservation = configured.find((materializer) => materializer.id === reservationMaterializer.id);
+  const deliveryOrder = reservation === undefined
+    ? configured
+    : [reservation, ...configured.filter((materializer) => materializer !== reservation)];
+  let opened: Promise<{
+    readonly views: D1MaterializedViewStore;
+    readonly runtime: MaterializedViewCatchUpRuntime;
+    readonly serviceId: string;
+  }> | undefined;
+  const context = async () => {
+    opened ??= (async () => {
+      const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
+      const value = await openMaterializedViews(env);
+      await ensureSafeInstances(value.runtime, value.views, serviceId, Date.now(), configured);
+      return { ...value, serviceId };
+    })();
+    return opened;
+  };
+  return deliveryOrder.map((materializer) => ({
+    id: materializer.id,
+    apply: async ({ event, arrivedAt }) => {
+      const value = await context();
+      return applyMeetingRoomUnsafeView(value.views, materializer, value.serviceId, event, arrivedAt, configured);
+    },
+    classifyError: (error: unknown): DeliveryViewFailureClass => {
+      const typed = error as { readonly code?: unknown; readonly retryable?: unknown; readonly failureClass?: unknown };
+      if (typed.failureClass === "duplicate-race" || typed.code === "UNSAFE_DUPLICATE_RACE") return "duplicate-race";
+      if (typed.failureClass === "nonretryable-definition-poison" || typed.retryable === false) return "nonretryable-definition-poison";
+      return "retryable-transient";
+    },
+  }));
 }
 
 /**
@@ -172,39 +340,10 @@ export async function applyMeetingRoomUnsafeArrival(
   const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
   if (event.serviceId !== serviceId) throw new Error("Stored event service identity did not match SDT_SERVICE_ID");
   const { runtime, views } = await openMaterializedViews(env);
-  await ensureSafeInstances(runtime, views, serviceId, nowMs);
-  for (const materializer of materializers()) {
-    const active = await views.readActive(serviceId, materializer.id);
-    if (active === undefined) throw new Error(`Materialized view ${materializer.id} was not initialized`);
-    // A startup build can safely fold an already-old event.  Do not attempt to
-    // resurrect it through the unsafe lane.
-    if (active.lastSuid >= event.suid) continue;
-    const unsafe = views.unsafeWindow();
-    try {
-      await unsafe.observeArrival(serviceId, materializer.id, active.generation, event.eventId, event.suid);
-      await unsafe.apply({
-        serviceId,
-        viewId: materializer.id,
-        generation: active.generation,
-        eventId: event.eventId,
-        suid: event.suid,
-        safeHead: active.lastSuid,
-        updatedAt: nowMs,
-        mutations: materializer.plan(event),
-        targetSuid: event.suid,
-      });
-    } catch (error) {
-      // This finding remains present through repeated Queue attempts and is
-      // keyed by service/view/event identity plus its retry classification.
-      await views.recordUnsafeFailureFinding({
-        serviceId,
-        viewId: materializer.id,
-        eventId: event.eventId,
-        suid: event.suid,
-        observedAt: nowMs,
-      });
-      throw error;
-    }
+  const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
+  await ensureSafeInstances(runtime, views, serviceId, nowMs, configured);
+  for (const materializer of configured) {
+    await applyMeetingRoomUnsafeView(views, materializer, serviceId, event, nowMs, configured);
   }
 }
 
@@ -212,7 +351,7 @@ export async function applyMeetingRoomUnsafeArrival(
 export async function drainMeetingRoomUnsafeKicks(env: MeetingRoomD1Env, nowMs = Date.now()): Promise<void> {
   const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
   const { runtime, views } = await openMaterializedViews(env);
-  for (const materializer of materializers()) {
+  for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const unsafe = views.unsafeWindow();
     const owner = `meeting-room-${crypto.randomUUID()}`;
     let lease;

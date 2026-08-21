@@ -1,5 +1,5 @@
 import { decayedLagEstimateMs } from "../safeWindow";
-import type { DownstreamOutboxMessage } from "../downstream/types";
+import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import type {
   DeliveryIncident,
   DeliveryIncidentClassification,
@@ -34,7 +34,7 @@ export interface D1StoreOptions {
     operation: D1BatchOperation,
     statements: readonly D1PreparedStatement[],
     database: D1Database,
-  ) => readonly D1PreparedStatement[];
+  ) => readonly D1PreparedStatement[] | Promise<readonly D1PreparedStatement[]>;
   /**
    * Test-only replacement for a single durable statement. Production leaves
    * this unset; each such statement is already atomic in D1.
@@ -218,7 +218,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
     this.initialized = true;
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome> {
+  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
     const eventTags = sortedUnique(message.eventTags);
     const tagsJson = jsonArray(eventTags);
@@ -383,7 +383,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
       this.database.prepare(
         `INSERT INTO serialized_dcb_lag_estimates (service_id, estimate_ms, observed_at)
          SELECT ?, ?, ?
-          WHERE NOT EXISTS (
+          WHERE ? = 'queue'
+            AND NOT EXISTS (
             SELECT 1 FROM serialized_dcb_allocator_bindings
              WHERE service_id = ? AND allocator_lineage_id <> ?
           )
@@ -413,6 +414,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.serviceId,
         lagMs,
         arrivedAt,
+        deliverySource,
         message.serviceId,
         message.allocatorLineageId,
         message.serviceId,
@@ -759,7 +761,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
   }
 
   private async batch(operation: D1BatchOperation, statements: readonly D1PreparedStatement[]): Promise<void> {
-    const transformed = this.options.beforeBatch?.(operation, statements, this.database) ?? statements;
+    const transformed = await this.options.beforeBatch?.(operation, statements, this.database) ?? statements;
     await this.database.batch([...transformed]);
   }
 

@@ -1,29 +1,58 @@
 import type { ExecuteResult } from "@sekiban/dcb-client";
+import { WorkerEntrypoint } from "cloudflare:workers";
 import {
   createCloudflareOnlyRuntimeWorker,
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
   JournalDurableObject,
+  processDownstreamDoorbell,
+  readDirectDoorbellConfig,
+  selectDirectDoorbellViews,
   TagDurableObject,
   type CloudflareOnlyEnv,
 } from "@sekiban/dcb-runtime/cloudflare";
+import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
-import { applyMeetingRoomUnsafeArrival, catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks } from "./d1-mv";
+import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 
-interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
+export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly ASSETS?: Fetcher;
   readonly CONFORMANCE_TOKEN?: string;
+}
+
+/**
+ * Separate non-public receiver entrypoint. It is deployed as the target of a
+ * service binding; the primary Worker never exposes this method through fetch.
+ */
+export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
+  async deliver(message: unknown) {
+    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
+    const result = await processDownstreamDoorbell(message, this.env, {
+      storeProvider: createD1StoreProvider(),
+      views: selectDirectDoorbellViews(meetingRoomDeliveryViews(this.env), config),
+      afterDelivery: async () => {
+        this.ctx.waitUntil(drainMeetingRoomUnsafeKicks(this.env));
+      },
+    });
+    console.log("direct_doorbell_core", {
+      correlationId: result.correlationId,
+      coreDurationMs: result.coreDurationMs,
+      viewDurationsMs: result.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
+      disposition: result.fastDisposition,
+    });
+    return result;
+  }
 }
 
 const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
-  afterStoredDownstreamDelivery: async ({ event, env, ctx }) => {
-    await applyMeetingRoomUnsafeArrival(env, event);
+  deliveryViews: ({ env }) => meetingRoomDeliveryViews(env),
+  afterStoredDownstreamDelivery: async ({ env, ctx }) => {
     // The durable kick lease collapses many waitUntil calls to one owner.  A
     // drain failure is intentionally not allowed to turn the already-applied
     // Queue message into an acknowledgement decision.
@@ -150,6 +179,20 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
   const supplied = request.headers.get("authorization");
   if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
   const url = new URL(request.url);
+  if (url.pathname === "/conformance/v1/g26-config") {
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
+    return json({
+      task: "SDT-G26",
+      viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
+      allowedViews: config.allowedViews,
+      domainDeliveryClass: meetingRoomRuntimeConfig.deliveryClass,
+      resolvedDeliveryClass: config.deliveryClass,
+      directDoorbell: config.enabled,
+      receiverMode: config.receiverMode,
+      degradation: config.degradation,
+      maxServiceBindingInvocations: config.maxServiceBindingInvocations,
+    });
+  }
   url.pathname = url.pathname.slice("/conformance/v1".length) || "/";
   return runtimeFetch(new Request(url.toString(), request), { ...env, G11_VERIFICATION_ENABLED: "true" }, ctx);
 }

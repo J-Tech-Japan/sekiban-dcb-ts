@@ -10,7 +10,7 @@ export default defineConfig({
   test: {
     // g15-deploy.sh is a host-shell entrypoint and is exercised by the
     // dedicated Node-configured G24 lane, never inside Miniflare.
-    exclude: ["**/node_modules/**", "**/.git/**", "test/g24-deploy-preflight.spec.mjs"],
+    exclude: ["**/node_modules/**", "**/.git/**", "test/g24-deploy-preflight.spec.mjs", "test/g26-topology.spec.mjs"],
   },
   plugins: [
     cloudflareTest({

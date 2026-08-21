@@ -1,4 +1,4 @@
-import type { DownstreamOutboxMessage } from "../downstream/types";
+import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 
 export interface DeliveryLagRecord {
   serviceId: string;
@@ -109,7 +109,7 @@ export interface InconsistencyFinding {
 /** Adapter-only persistence port. The detector deliberately does not receive it. */
 export interface EventStore {
   initialize(): Promise<void>;
-  recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome>;
+  recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource?: DeliverySource): Promise<DeliveryOutcome>;
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   /** Cosmos uses this optional retryable async landing projection. */

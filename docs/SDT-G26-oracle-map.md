@@ -1,0 +1,25 @@
+# SDT-G26 acceptance-oracle map (FIX-3)
+
+The seven semantic review findings on PR #58 are closed by the following
+independent implementation and evidence oracles. The final candidate C'''' is
+the code/configuration/CI/docs commit named by `docs/SDT-G26-deploy-evidence.json`;
+the later bookkeeping commit R'''' only appends C'''' to the retained candidate list.
+
+| AC | Oracle / evidence |
+| --- | --- |
+| 1 / F1 | `processDeliveryCore` is the single record → typed gate → stored-only detector → per-view apply → drain order. `test/g26-delivery.spec.ts` has separate SUID-collision and lineage-mismatch fixtures, each with a zero-call gate-bypass assertion, plus an independent fast-wrapper source oracle. The G25 atomic MV batch oracle remains required. |
+| 2 | `TagDurableObject.pendingOutbox` is the envelope authority. `test/g26-doorbell.spec.ts` compares the complete JSON bytes handed to direct doorbell and Queue, including service/tag/eventTags/lineage/enqueuedAt. |
+| 3 | `TagDurableObject` awaits the receiver binding only from `waitUntil`; the receiver is the non-public `MeetingRoomDownstreamDoorbell` WorkerEntrypoint. The self-binding path remains behind the explicit recursion/budget preflight. |
+| 4 / F2 | `test/g26-integration.spec.ts` has four independent real pipeline → MV → outbox fixtures: before-record, after-pipeline, after-k-of-n views, and after-all-views. The after-k fixture uses a post-commit receipt latch, fixes exactly k committed receipts before injecting fast failure, then replays the exact Queue envelope and asserts prefix preservation, D1 event/arrival rows, per-view rows/indexes/receipts/markers/kicks, and durable outbox delivery marks. Fast success/failure/degraded logs and core results use `source:serviceId:eventId:attemptId` plus the complete envelope bytes. |
+| 5 / F3 | `RuntimeWorkerConfig.deliveryClass` is forwarded on the internal CommitWorker → Tag append call (`__domainDeliveryClass`) and controls Tag firing; deployment vars only provide the second opt-in. Tests prove a queued domain suppresses direct binding even with deployment direct enabled, queued-degraded fallback is observable, fail-fast rejects before commit, and all `direct_doorbell_status` emissions carry correlation/envelope data. |
+| 6 / F4 / F7 | `test/g26-fanout.spec.ts` uses concurrent fast/Queue callers with real D1 `recordDelivery` and source-asymmetric MV apply barriers. The AC6 fixture deterministically makes Queue the typed duplicate-race loser, proves the first Queue wrapper call retries exactly once, the replay is a receipt no-op/ack, and independently proves one row/index/receipt, marker state, kick max-target merge, fast silent fallback, and no false incident while concurrent arrivals are preserved. |
+| 7 | The `DeliverySource` argument reaches D1/PG/Cosmos stores; fast samples cannot lower the queue-only lag estimator. The local oracle exercises both sources and checks queue lag monotonicity. |
+| 8 / F5 | `test/g26-integration.spec.ts` runs independent head/middle/tail poison fixtures against real view handlers, an actual finding-write failure, order reversal, and an independent partial-success → failed-view-only replay. The latter asserts per-view invocation and mutation counts: successful views are receipt no-ops on Queue replay while only the failed view mutates. It also asserts later-view continuation, finding identity, no-ack/retry-to-DLQ disposition, bounded retry classification, and receipt-idempotent state. |
+| 9 / F6 | `test/g26-fanout.spec.ts` records real Miniflare D1 statement counts and CPU timings for 1/5/10 views and labels the result local algorithmic slope only. `G26_VIEW_COUNT` and allowed views are bounded and exposed through authenticated `/conformance/v1/g26-config`. `test/g26-topology.spec.mjs` uses a deterministic mock server to prove mismatches stop before measurement. |
+| 10 / F6 | `scripts/deploy/g26-deploy-topology.sh` deploys receiver + primary separately for each fixed-N topology; `scripts/deploy/g26-measure.mjs` verifies effective view count/allowed list before measuring, and `runVerifiedTopology` is covered by the mock-server and CI forced-red oracle. Remote reports use the opted-in reservation list view, fixed N and concurrency, and separate response→visible from total command-start→visible. No total sub-second claim is made. |
+| 11 | `npm run test:g20:gate`, `npm run test:g25`, `npm run test:g15`, and the full package check remain regression lanes. The per-view lookup facade remains inside the existing split-reservation deployment. |
+| 12 | `.github/workflows/ci.yml` reaches the expanded `test:g26` lane, its forced-red probe, the effective-topology oracle, and its forced-red probe. `scripts/g20-candidate-check.mjs` verifies the non-self-referential C''''+R'''' evidence protocol, candidate tree digests, mutation failure, and the single retained-list append. |
+
+The evidence document deliberately records sourceCommit=C'''' and tree digests
+for the deployed candidate. Post-C'''' changes are limited to evidence documents
+and the one exact CI bookkeeping append required by the candidate protocol.

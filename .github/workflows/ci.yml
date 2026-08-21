@@ -82,6 +82,22 @@ jobs:
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G26 direct-doorbell and multi-view lane
+        run: npm run test:g26
+      - name: Prove SDT-G26 forced-red CI reachability
+        run: |
+          if SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G26 effective topology verifier oracle
+        run: npm run test:g26:topology
+      - name: Prove SDT-G26 topology verifier forced-red reachability
+        run: |
+          if SDT_G26_TOPOLOGY_FORCE_FAILURE=1 npm run test:g26:topology; then
+            echo "topology forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
@@ -137,6 +153,12 @@ jobs:
           8dbb4be825e084adef92065496cc0ffdc22b28ed
           5439b8bda255144b608fcdeb6c89dc44dcb667d7
           38219c8a6526a0209295e9f06450cce9e2217004
+          2f024d019d6861ad8ff43a2d194eabdcd975cbc0
+          95197cf1140d1179b52e1f01280002bc090bb891
+          36de26747ba71a583908f1f6f22102150e98f72b
+          f1d3d7163f08a55c70fb8f66a38070be74f7caaf
+          da2a8356fdbd898fa044884469b57a51ed8da996
+          1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -174,6 +196,12 @@ jobs:
       - name: Prove SDT-G22 candidate gate forced failure
         run: |
           if SDT_G22_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
+            echo "candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove SDT-G26 candidate retention gate forced failure
+        run: |
+          if SDT_G26_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
             echo "candidate forced-red probe unexpectedly passed"
             exit 1
           fi

@@ -3,6 +3,7 @@ import type {
   JsonValue,
   ProjectorDefinition,
 } from "@sekiban/dcb-core";
+import type { DeliveryClass } from "./downstream/Doorbell";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
   ProjectorRegistry,
@@ -30,6 +31,8 @@ export interface RuntimeQueryDefinition {
 
 /** Values which affect registration, never the serialized V1 wire format. */
 export interface RuntimeWorkerConfig {
+  /** Domain layer of the two-layer direct-delivery opt-in. */
+  readonly deliveryClass?: DeliveryClass;
   readonly queries?: readonly RuntimeQueryDefinition[];
   readonly queryDefinitions?: readonly RuntimeQueryDefinition[];
   readonly projectorPayloadNames?: Readonly<Record<string, string>>;

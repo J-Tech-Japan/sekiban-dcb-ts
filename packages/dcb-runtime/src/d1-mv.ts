@@ -23,5 +23,6 @@ export type {
 export { MaterializedViewCatchUpRuntime } from "./mv/MaterializedViewCatchUp";
 export type { MaterializedViewCatchUpHooks, MaterializedViewCatchUpResult } from "./mv/MaterializedViewCatchUp";
 export type { StoredEvent } from "./store/types";
+export type { DeliveryViewFailureClass, DeliveryViewHandler } from "./downstream/DeliveryCore";
 export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./mv/UnsafeWindowMaterializedView";
-export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode } from "./mv/UnsafeWindowMaterializedView";
+export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
