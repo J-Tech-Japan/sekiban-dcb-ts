@@ -287,6 +287,14 @@ async function applyMeetingRoomUnsafeView(
 /** Build one continuation-safe handler per configured meeting-room view. */
 export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly DeliveryViewHandler[] {
   const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
+  // Start the opted-in list view first. The branches still run concurrently
+  // and every configured view is awaited, but this lets the deployed
+  // response-to-visible oracle observe ReservationProjector without waiting
+  // behind the scalar room branch or a later fan-out clone.
+  const reservation = configured.find((materializer) => materializer.id === reservationMaterializer.id);
+  const deliveryOrder = reservation === undefined
+    ? configured
+    : [reservation, ...configured.filter((materializer) => materializer !== reservation)];
   let opened: Promise<{
     readonly views: D1MaterializedViewStore;
     readonly runtime: MaterializedViewCatchUpRuntime;
@@ -301,7 +309,7 @@ export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly Delive
     })();
     return opened;
   };
-  return configured.map((materializer) => ({
+  return deliveryOrder.map((materializer) => ({
     id: materializer.id,
     apply: async ({ event, arrivedAt }) => {
       const value = await context();
