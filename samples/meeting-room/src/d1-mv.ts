@@ -204,10 +204,10 @@ async function ensureSafeInstances(
   nowMs: number,
   configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
 ): Promise<void> {
-  for (const materializer of configuredMaterializers) {
+  await Promise.all(configuredMaterializers.map(async (materializer) => {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) await runtime.build(serviceId, materializer, nowMs);
-  }
+  }));
 }
 
 /**
