@@ -52,18 +52,6 @@ async function request(baseUrl, path, init = {}) {
   return { response, body };
 }
 
-async function readUntilRoomVisible(baseUrl, roomId, timeoutMs) {
-  const started = performance.now();
-  while (performance.now() - started <= timeoutMs) {
-    const { response, body } = await request(baseUrl, `/api/read/room?roomId=${encodeURIComponent(roomId)}`);
-    if (response.status === 200 && body && typeof body === "object" && body.state?.status === "created") {
-      return performance.now();
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`room ${roomId} did not become visible within ${timeoutMs}ms`);
-}
-
 function listItems(body) {
   let items = body?.itemsJson ?? body?.items;
   if (typeof items === "string") items = JSON.parse(items);
@@ -109,7 +97,9 @@ async function measureOne(baseUrl, sample, timeoutMs) {
   if (setup.response.status !== 200 || setup.body?.kind !== "committed") {
     throw new Error(`create-room setup returned HTTP ${setup.response.status}: ${JSON.stringify(setup.body)}`);
   }
-  await readUntilRoomVisible(baseUrl, roomId, timeoutMs);
+  // Room existence is read from the Tag state by reserve-room. Do not wait on
+  // the scalar RoomProjector here: the G26 visibility oracle is the opted-in
+  // reservation list view, including for the one-view topology.
   const reservationId = `g26-reservation-${sample}-${crypto.randomUUID().slice(0, 12)}`;
   const commandStarted = performance.now();
   const { response, body } = await request(baseUrl, "/api/commands/reserve-room", {

@@ -131,7 +131,11 @@ function configuredViewCount(value: string | undefined): number {
   return parsed;
 }
 
-function fanoutViewId(index: number): string {
+function fanoutViewId(index: number, viewCount = DEFAULT_FANOUT_VIEW_COUNT): string {
+  // The one-view remote topology must still exercise the opted-in list view;
+  // RoomProjector is a scalar projection and cannot satisfy the G26 visibility
+  // oracle by itself.
+  if (viewCount === 1 && index === 0) return reservationMaterializer.id;
   const base = materializers()[index];
   if (base !== undefined) return base.id;
   return `G26FanoutView${String(index + 1).padStart(2, "0")}`;
@@ -146,17 +150,21 @@ function fanoutViewId(index: number): string {
  */
 function fanoutMaterializers(viewCount: number): readonly MeetingRoomMaterializer[] {
   const base = materializers();
-  const result: MeetingRoomMaterializer[] = [...base.slice(0, Math.min(viewCount, base.length))];
-  for (let index = result.length; index < viewCount; index += 1) {
+  const result: MeetingRoomMaterializer[] = [];
+  for (let index = 0; index < viewCount; index += 1) {
+    if (viewCount === 1 && index === 0) {
+      result.push(reservationMaterializer);
+      continue;
+    }
     const source = base[index % base.length]!;
-    result.push({ ...source, id: fanoutViewId(index) } as MeetingRoomMaterializer);
+    result.push(index < base.length ? source : { ...source, id: fanoutViewId(index, viewCount) } as MeetingRoomMaterializer);
   }
   return result;
 }
 
 export function meetingRoomDeliveryViewIds(viewCount = DEFAULT_FANOUT_VIEW_COUNT): readonly string[] {
   const count = Math.min(Math.max(Math.trunc(viewCount), 1), MAX_FANOUT_VIEW_COUNT);
-  return Array.from({ length: count }, (_, index) => fanoutViewId(index));
+  return Array.from({ length: count }, (_, index) => fanoutViewId(index, count));
 }
 
 /**
