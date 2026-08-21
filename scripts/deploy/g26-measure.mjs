@@ -45,7 +45,9 @@ function distribution(values) {
 }
 
 async function request(baseUrl, path, init = {}) {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, init);
+  const headers = new Headers(init.headers);
+  headers.set("cache-control", "no-cache");
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, { ...init, cache: "no-store", headers });
   const text = await response.text();
   let body = text;
   try { body = text.length === 0 ? {} : JSON.parse(text); } catch { /* keep text */ }
@@ -63,7 +65,7 @@ async function readUntilListVisible(baseUrl, reservationId, timeoutMs) {
   const pageSize = 100;
   while (performance.now() - started <= timeoutMs) {
     for (let pageNumber = 1; pageNumber <= 100 && performance.now() - started <= timeoutMs; pageNumber += 1) {
-      const { response, body } = await request(baseUrl, `/api/read/reservations?pageNumber=${pageNumber}&pageSize=${pageSize}`);
+      const { response, body } = await request(baseUrl, `/api/read/reservations?pageNumber=${pageNumber}&pageSize=${pageSize}&g26_probe=${crypto.randomUUID()}`);
       const items = listItems(body);
       if (response.status === 200 && items.some((item) => item?.reservationId === reservationId)) return performance.now();
       // A short page is the durable end of this list snapshot. Retry from
@@ -77,7 +79,7 @@ async function readUntilListVisible(baseUrl, reservationId, timeoutMs) {
 }
 
 async function verifyTopology(baseUrl, token, expectedViewCount, expectedAllowedViews) {
-  const { response, body } = await request(baseUrl, "/conformance/v1/g26-config", {
+  const { response, body } = await request(baseUrl, `/conformance/v1/g26-config?g26_probe=${crypto.randomUUID()}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   if (response.status !== 200 || body === null || typeof body !== "object") {
