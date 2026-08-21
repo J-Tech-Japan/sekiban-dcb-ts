@@ -1,6 +1,6 @@
 {
   "task": "SDT-G26",
-  "status": "PASS; exact C4 deployed and verified; bookkeeping R is the only remaining candidate-protocol step",
+  "status": "PASS; exact C4 deployed and verified; bookkeeping R completed and retained",
   "candidateCommit": "2f024d019d6861ad8ff43a2d194eabdcd975cbc0",
   "sourceCommit": "2f024d019d6861ad8ff43a2d194eabdcd975cbc0",
   "candidateDeployment": {
