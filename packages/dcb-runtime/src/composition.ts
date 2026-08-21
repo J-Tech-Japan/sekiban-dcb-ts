@@ -45,8 +45,15 @@ export interface RuntimeComposition {
   readonly queries: QueryRegistry;
 }
 
+/** Structural bridge returned by @sekiban/dcb-domain without a reverse package import. */
+export interface RuntimeDomainLike {
+  readonly events?: readonly { readonly eventPayloadName: string; readonly version: number }[];
+  readonly projectors?: readonly unknown[];
+  readonly queries?: readonly RuntimeQueryDefinition[];
+}
+
 /** The commit authority is the active domain registry, never a V1 caller field. */
-export function registeredEventVersions(domain: DomainDefinition | undefined): Readonly<Record<string, number>> {
+export function registeredEventVersions(domain: DomainDefinition | RuntimeDomainLike | undefined): Readonly<Record<string, number>> {
   return Object.freeze(Object.fromEntries(
     (domain?.events ?? []).map((event) => [event.eventPayloadName, event.version]),
   ));
@@ -138,7 +145,7 @@ function queryFromDefinition(value: RuntimeQueryDefinition): QueryDefinition {
  * immutable dcb-core definition values and registration metadata.
  */
 export function composeRuntime(
-  domain: DomainDefinition | undefined,
+  domain: DomainDefinition | RuntimeDomainLike | undefined,
   config: RuntimeWorkerConfig = {},
 ): RuntimeComposition {
   if (domain === undefined && config.queries === undefined && config.queryDefinitions === undefined) {

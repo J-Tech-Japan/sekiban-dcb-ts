@@ -16,6 +16,7 @@
   },
   "include": [
     "packages/dcb-core/src/**/*.ts",
+    "packages/dcb-domain/src/**/*.ts",
     "packages/dcb-runtime/src/**/*.ts",
     "packages/dcb-client/src/**/*.ts",
     "samples/meeting-room/src/**/*.ts",

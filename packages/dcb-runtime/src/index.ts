@@ -10,7 +10,7 @@ import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
-import { composeRuntime, registeredEventVersions, type RuntimeWorkerConfig } from "./composition";
+import { composeRuntime, registeredEventVersions, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
@@ -98,7 +98,7 @@ export type {
   DownstreamDoorbellBinding,
 } from "./downstream/Doorbell";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
-export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
+export type { RuntimeDomainLike, RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
 export { POSTGRES_STORE_PROVIDER, createPostgresBootstrapAdapter, createPostgresStoreProvider } from "./store/provider";
 export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 export {
@@ -146,7 +146,7 @@ export interface Env {
 }
 
 export interface RuntimeWorkerOptions {
-  readonly domain?: DomainDefinition;
+  readonly domain?: DomainDefinition | RuntimeDomainLike;
   readonly config?: RuntimeWorkerConfig;
   /** Explicitly opt into a non-Postgres provider; default is Postgres. */
   readonly storeProvider?: StoreProvider;

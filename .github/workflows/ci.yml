@@ -39,6 +39,24 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+      - name: Run SDT-G28 dedicated compile-fail and package-boundary gates
+        run: npm run test:g28:compile-fail
+      - name: Run SDT-G28 authoring, session, bridge, and parse lane
+        run: npm run test:g28
+      - name: Run SDT-G28 dependency/import/npm-pack boundary gate
+        run: npm run test:g28:boundaries
+      - name: Prove SDT-G28 forced-red CI reachability
+        run: |
+          if SDT_G28_FORCE_FAILURE=1 npm run test:g28:forced-red; then
+            echo "SDT-G28 forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove SDT-G28 boundary gate forced-red reachability
+        run: |
+          if SDT_G28_BOUNDARY_FORCE_FAILURE=1 npm run test:g28:boundaries; then
+            echo "SDT-G28 boundary forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm test
       - run: npm run test:g17
       - run: npm run test:g17:rollout-order
@@ -221,6 +239,14 @@ jobs:
       - name: Prove SDT-G27 candidate retention gate forced failure
         run: |
           if SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
+            echo "candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Verify SDT-G28 candidate/evidence protocol
+        run: npm run test:g20:candidate
+      - name: Prove SDT-G28 candidate retention gate forced failure
+        run: |
+          if SDT_G28_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
             echo "candidate forced-red probe unexpectedly passed"
             exit 1
           fi

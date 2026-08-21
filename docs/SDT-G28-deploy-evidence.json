@@ -1,0 +1,51 @@
+{
+  "task": "SDT-G28",
+  "status": "FINAL candidate C placeholder; bookkeeping R will record the immutable candidate and local evidence",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "protocol": {
+    "candidate": "C carries the package, runtime bridge, tests, CI, README, oracle map, and PR body",
+    "bookkeeping": "R may update only this evidence document and append C once to the retained candidate fetch list",
+    "postCandidateAllowlist": [
+      "docs/SDT-G28-deploy-evidence.json",
+      ".github/workflows/ci.yml: one exact addition of C to the retained candidate fetch list"
+    ],
+    "selfReference": false,
+    "secrets": "redacted"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": [
+      ".github/workflows/ci.yml",
+      "docs/SDT-G28-oracle-map.md",
+      "docs/SDT-G28-pr-body.md",
+      "eslint.config.mjs",
+      "package-lock.json",
+      "package.json",
+      "packages/dcb-domain/README.md",
+      "packages/dcb-domain/boundary-fixtures",
+      "packages/dcb-domain/package.json",
+      "packages/dcb-domain/tsconfig.build.json",
+      "packages/dcb-domain/tsconfig.json",
+      "packages/dcb-domain/tsconfig.typecheck.json",
+      "packages/dcb-domain/typecheck-fixtures",
+      "scripts/dcb-domain-boundary-check.mjs",
+      "scripts/g20-candidate-check.mjs",
+      "test/dcb-domain.spec.ts",
+      "tsconfig.json",
+      "vitest.config.ts"
+    ]
+  },
+  "localValidation": {
+    "status": "to be replaced by bookkeeping R after FINAL candidate C",
+    "secrets": "redacted"
+  },
+  "remoteDeployment": {
+    "status": "not-run",
+    "reason": "G28 is an adapter-neutral library layer; no deployment credential is used on the implementation seat.",
+    "secrets": "redacted"
+  }
+}

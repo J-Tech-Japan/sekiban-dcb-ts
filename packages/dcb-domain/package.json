@@ -1,0 +1,27 @@
+{
+  "name": "@sekiban/dcb-domain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runtime-free schema-first DCB domain authoring surface.",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "import": "./dist/testing.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --outfile=dist/testing.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
