@@ -1,5 +1,6 @@
 /** A queue payload is intentionally an internal envelope, never part of V1. */
 export const LEGACY_ALLOCATOR_LINEAGE_ID = "legacy-pre-g17" as const;
+export type DeliverySource = "queue" | "fast";
 export interface DownstreamOutboxMessage {
   version: 1;
   serviceId: string;

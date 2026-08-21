@@ -18,6 +18,13 @@ import {
   type RepairScopeItem,
 } from "./types";
 import { LEGACY_ALLOCATOR_LINEAGE_ID, type DownstreamOutboxMessage } from "../downstream/types";
+import {
+  downstreamEnvelopeBytes,
+  classifyDirectDoorbellFailure,
+  preflightDirectDoorbell,
+  readDirectDoorbellConfig,
+  type DownstreamDoorbellBinding,
+} from "../downstream/Doorbell";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -109,7 +116,15 @@ interface OutboxMarkInput {
 
 interface TagDurableObjectEnv {
   DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>;
+  DOWNSTREAM_DOORBELL?: DownstreamDoorbellBinding;
   AUTO_DRAIN_OUTBOX?: string;
+  DELIVERY_CLASS?: string;
+  DIRECT_DOORBELL?: string;
+  DIRECT_DOORBELL_ALLOWED_VIEWS?: string;
+  DIRECT_DOORBELL_MAX_INVOCATIONS?: string;
+  DIRECT_DOORBELL_DEGRADATION?: string;
+  DIRECT_DOORBELL_RECEIVER_MODE?: string;
+  DIRECT_DOORBELL_SELF_BINDING_PROOF?: string;
 }
 
 interface OperationResult {
@@ -1160,6 +1175,35 @@ export class TagDurableObject implements DurableObject {
     return json(result.body, result.status);
   }
 
+  private directDoorbellPreflight(): ReturnType<typeof preflightDirectDoorbell> {
+    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>);
+    const preflight = preflightDirectDoorbell(config, config.allowedViews.length);
+    if (preflight.status === "fail-fast") {
+      throw new Error(`direct_doorbell_preflight_failed:${preflight.reason}`);
+    }
+    if (
+      config.deliveryClass === "immediate-preferred" &&
+      config.enabled &&
+      this.env.DOWNSTREAM_DOORBELL === undefined
+    ) {
+      if (config.degradation === "fail-fast") {
+        throw new Error("direct_doorbell_capability_missing");
+      }
+      console.warn("direct_doorbell_status", {
+        status: "queued-degraded",
+        reason: "direct_doorbell_binding_missing",
+      });
+    }
+    if (preflight.status === "queued-degraded") {
+      console.warn("direct_doorbell_status", {
+        status: "queued-degraded",
+        reason: preflight.reason,
+        estimatedInvocations: preflight.estimatedInvocations,
+      });
+    }
+    return preflight;
+  }
+
   private async append(tag: string, body: unknown, serviceId: string | null): Promise<Response> {
     const parsed = appendFrom(body, tag);
     if (parsed.value === undefined) {
@@ -1167,6 +1211,7 @@ export class TagDurableObject implements DurableObject {
     }
     const input = parsed.value;
     try {
+      const doorbellPreflight = this.directDoorbellPreflight();
       const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
         const loaded = await this.recordFor(txn, tag);
         let record = loaded.record;
@@ -1274,13 +1319,14 @@ export class TagDurableObject implements DurableObject {
         result.status === 201 &&
         serviceId !== null && serviceId.length > 0 &&
         this.env.AUTO_DRAIN_OUTBOX === "true" &&
-        this.env.DOWNSTREAM_QUEUE !== undefined
+        (this.env.DOWNSTREAM_QUEUE !== undefined ||
+          (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
       ) {
-        // The append transaction is already durable. Queue delivery is an
-        // asynchronous handoff of the same durable outbox row; failures leave
-        // the row available to the explicit operator drain/retry path. Keep
-        // the send off the application response lifetime so queue backpressure
-        // cannot turn a committed append into a Worker timeout.
+        // The append transaction is already durable. Both transports consume
+        // the full pending-outbox envelope after the response; this DO never
+        // records delivery or applies a view. Keep the handoff off the
+        // application response lifetime so transport backpressure cannot turn
+        // a committed append into a Worker timeout.
         this.ctx.waitUntil(this.autoDrainOutbox(tag, serviceId).catch(() => undefined));
       }
       return response;
@@ -1297,16 +1343,65 @@ export class TagDurableObject implements DurableObject {
   }
 
   private async autoDrainOutbox(tag: string, serviceId: string): Promise<void> {
+    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>);
+    const preflight = preflightDirectDoorbell(config, config.allowedViews.length);
+    if (preflight.status === "fail-fast") {
+      throw new Error(`direct_doorbell_preflight_failed:${preflight.reason}`);
+    }
     const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now() });
     if (!pending.ok) {
       throw new Error(`automatic outbox pending read failed with ${pending.status}`);
     }
     const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
     const rows = body.rows ?? [];
+    const directReady =
+      preflight.status === "ready" &&
+      config.deliveryClass === "immediate-preferred" &&
+      config.enabled &&
+      this.env.DOWNSTREAM_DOORBELL !== undefined;
+    const queue = this.env.DOWNSTREAM_QUEUE;
     for (const row of rows) {
-      await this.env.DOWNSTREAM_QUEUE!.send(row, { contentType: "json" });
+      // `row` is the object created by pendingOutbox. The bytes are captured
+      // once for correlation/equality evidence and the exact same envelope is
+      // handed to both transports; no reduced TagOutboxRow is reconstructed.
+      const envelopeBytes = downstreamEnvelopeBytes(row);
+      if (directReady) {
+        try {
+          const delivered = await this.env.DOWNSTREAM_DOORBELL!.deliver(row);
+          if (
+            typeof delivered === "object" && delivered !== null &&
+            "fastDisposition" in delivered &&
+            (delivered as { fastDisposition?: unknown }).fastDisposition === "failed"
+          ) {
+            throw new Error("doorbell_receiver_delivery_failed");
+          }
+          console.log("direct_doorbell_delivery", {
+            correlationId: `fast:${serviceId}:${row.eventId}`,
+            bytes: envelopeBytes.length,
+            status: "success",
+          });
+        } catch (error) {
+          // A direct failure is explicit and the durable Queue is the
+          // backstop. Replaying the same envelope is safe because the core is
+          // receipt-idempotent; this is not a silent capability downgrade.
+          console.warn("direct_doorbell_status", {
+            status: "queued-degraded",
+            reason: "direct_doorbell_delivery_failed",
+            failureKind: classifyDirectDoorbellFailure(error),
+            error: String(error),
+          });
+        }
+      } else if (config.deliveryClass === "immediate-preferred" && config.enabled) {
+        console.warn("direct_doorbell_status", {
+          status: "queued-degraded",
+          reason: "direct_doorbell_not_ready",
+        });
+      }
+      if (queue !== undefined) {
+        await queue.send(row, { contentType: "json" });
+      }
     }
-    if (rows.length === 0) {
+    if (rows.length === 0 || queue === undefined) {
       return;
     }
     const mark = await this.markOutboxDelivered(tag, {

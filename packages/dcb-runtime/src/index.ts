@@ -8,6 +8,7 @@ import { handleSerializedCommit } from "./commit/CommitWorker";
 import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
+import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
@@ -39,7 +40,7 @@ export type {
   MaterializedViewStoreOperation,
 } from "./mv/MaterializedViewStore";
 export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./mv/UnsafeWindowMaterializedView";
-export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode } from "./mv/UnsafeWindowMaterializedView";
+export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 export { BootstrapManifestError, bootstrapDigest, parseBootstrapDump } from "./bootstrap/manifest";
@@ -47,6 +48,36 @@ export { BootstrapIdentityConflictError, BootstrapStoreAdapter, createBootstrapS
 export type { BootstrapExportCursor, BootstrapExportPage } from "./bootstrap/BootstrapStoreAdapter";
 export type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord, BootstrapManifest, BootstrapStatus, BootstrapStoreAdmissionPort } from "./bootstrap/types";
 export { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
+export { processDownstreamDoorbell, processDeliveryCore } from "./downstream/DownstreamAdapter";
+export {
+  downstreamEnvelopeBytes,
+  classifyDirectDoorbellFailure,
+  preflightDirectDoorbell,
+  readDirectDoorbellConfig,
+  selectDirectDoorbellViews,
+  MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
+} from "./downstream/Doorbell";
+export type {
+  DeliveryCoreEnvironment,
+  DeliveryCoreFailure,
+  DeliveryCoreOptions,
+  DeliveryCoreResult,
+  DeliverySource,
+  DeliveryViewApplyResult,
+  DeliveryViewFailureClass,
+  DeliveryViewHandler,
+  DeliveryViewInput,
+  DeliveryViewResult,
+} from "./downstream/DeliveryCore";
+export type {
+  DeliveryClass,
+  DirectDoorbellDegradation,
+  DirectDoorbellDeploymentConfig,
+  DirectDoorbellPreflightResult,
+  DirectDoorbellReceiverMode,
+  DirectDoorbellFailureKind,
+  DownstreamDoorbellBinding,
+} from "./downstream/Doorbell";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
 export type { RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
 export { POSTGRES_STORE_PROVIDER, createPostgresBootstrapAdapter, createPostgresStoreProvider } from "./store/provider";
@@ -71,6 +102,7 @@ export interface Env {
   REPAIR_OPERATOR_TOKEN: string;
   /** Queue producer/consumer for durable Tag outbox rows. */
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
+  DOWNSTREAM_DOORBELL?: DownstreamDoorbellBinding;
   /** Deployment-only handoff; local tests retain explicit drain control. */
   AUTO_DRAIN_OUTBOX?: string;
   /** Local Docker/CI connection; deployed Workers normally use HYPERDRIVE. */
@@ -81,6 +113,13 @@ export interface Env {
   G11_VERIFICATION_ENABLED?: string;
   /** Required non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
+  DELIVERY_CLASS?: string;
+  DIRECT_DOORBELL?: string;
+  DIRECT_DOORBELL_ALLOWED_VIEWS?: string;
+  DIRECT_DOORBELL_MAX_INVOCATIONS?: string;
+  DIRECT_DOORBELL_DEGRADATION?: string;
+  DIRECT_DOORBELL_RECEIVER_MODE?: string;
+  DIRECT_DOORBELL_SELF_BINDING_PROOF?: string;
   /** Explicit opt-in D1 PipelineStore binding; default composition remains Postgres. */
   D1?: D1Database;
   /** Separate D1 binding for row-backed materialized views. */

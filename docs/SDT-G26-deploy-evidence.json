@@ -1,0 +1,99 @@
+{
+  "task": "SDT-G26",
+  "status": "candidate evidence placeholder; populate only after FINAL CANDIDATE deployment",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "candidateDeployment": {
+    "primaryWorker": "sekiban-dcb-g26-meeting-room",
+    "doorbellWorker": "sekiban-dcb-g26-doorbell",
+    "serviceId": "fresh-explicit-SDT_SERVICE_ID-required",
+    "directDoorbellConfig": "samples/meeting-room/wrangler.direct-doorbell.jsonc",
+    "receiverConfig": "samples/meeting-room/wrangler.doorbell.jsonc",
+    "secrets": "redacted"
+  },
+  "protocol": {
+    "finalCandidate": "runtime/configuration/CI/oracle/docs precede candidate C; post-C edits are G26 evidence documents plus the one ci.yml retained-list append",
+    "deploymentIdentity": "fresh explicit non-secret SDT_SERVICE_ID",
+    "fixedN": "N >= 20",
+    "totalLatencyClaim": "G26 does NOT claim total command-start-to-visible sub-second; POST remains G27 scope (~2.3s baseline)",
+    "responseVisibilityClaim": "opted-in sample list view response-to-visible p50 must be sub-second"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": ["packages/dcb-runtime/src"],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": [
+      "samples/meeting-room/src",
+      "samples/meeting-room/public",
+      "samples/meeting-room/wrangler.direct-doorbell.jsonc",
+      "samples/meeting-room/wrangler.doorbell.jsonc",
+      "package.json",
+      ".github/workflows/ci.yml",
+      "scripts/g20-candidate-check.mjs",
+      "test/g26-delivery.spec.ts",
+      "test/g26-doorbell.spec.ts",
+      "test/g26-fanout.spec.ts"
+    ]
+  },
+  "localAlgorithmicSlope": {
+    "label": "Miniflare local algorithmic slope; not capacity or SLO evidence",
+    "viewCounts": [1, 5, 10],
+    "statementCountModel": "O(views)",
+    "cpuSlope": "recorded by test:g26 fan-out lane",
+    "superlinearityDetection": "recorded by the 1/5/10-view measurement harness",
+    "status": "PASS fixture wired; measured values populate with candidate run"
+  },
+  "remoteEphemeralFanout": {
+    "viewCounts": [1, 5, 10],
+    "fixedN": 20,
+    "controlledConcurrency": "explicitly recorded per run",
+    "metrics": [
+      "command-start-to-response",
+      "response-to-visible",
+      "command-start-to-visible",
+      "doorbell-core-time",
+      "per-view-apply-time",
+      "pipeline-d1-errors",
+      "pipeline-d1-overloaded",
+      "mv-d1-errors",
+      "mv-d1-overloaded",
+      "fast-success",
+      "queue-fallback"
+    ],
+    "status": "PENDING exact candidate deployment"
+  },
+  "cancellationConvergence": {
+    "correlationId": "source:serviceId:eventId:attemptId",
+    "boundaries": {
+      "beforeRecordDelivery": "fast failure leaves Queue/outbox authority unchanged; Queue completes the prefix",
+      "afterPipelineCommit": "stored EventId replay is idempotent; unfinished views continue through Queue",
+      "afterKOfNViewReceipts": "successful view receipts are no-ops and only unfinished view work remains",
+      "afterAllViews": "drain trigger/cancellation does not remove committed view receipts; Queue/cron is the recovery net"
+    },
+    "observation": "receiver result/metrics plus queue-fallback convergence, never in-process logs alone"
+  },
+  "deployedVerification": {
+    "status": "PENDING exact FINAL CANDIDATE",
+    "fixedNLatency": {
+      "sampleCount": 20,
+      "responseToVisibleMs": { "p50": null, "p95": null, "max": null },
+      "commandStartToVisibleMs": { "p50": null, "p95": null, "max": null },
+      "fastSuccessCount": null,
+      "queueFallbackCount": null,
+      "cronFallbackCount": null
+    },
+    "conformance": {
+      "fiveEndpoint": "required PASS at same candidate",
+      "rawV1": "required 404 at same candidate",
+      "safeOnlyRegression": "required PASS",
+      "g13G15Oracles": "required PASS"
+    }
+  },
+  "ci": {
+    "g26": "npm run test:g26",
+    "forcedRed": "SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red",
+    "candidateRetention": "scripts/g20-candidate-check.mjs G26 rule; final C appended by bookkeeping R"
+  },
+  "secrets": "redacted"
+}

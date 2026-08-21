@@ -82,6 +82,14 @@ jobs:
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G26 direct-doorbell and multi-view lane
+        run: npm run test:g26
+      - name: Prove SDT-G26 forced-red CI reachability
+        run: |
+          if SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
@@ -174,6 +182,12 @@ jobs:
       - name: Prove SDT-G22 candidate gate forced failure
         run: |
           if SDT_G22_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
+            echo "candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove SDT-G26 candidate retention gate forced failure
+        run: |
+          if SDT_G26_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
             echo "candidate forced-red probe unexpectedly passed"
             exit 1
           fi

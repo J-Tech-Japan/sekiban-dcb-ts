@@ -6,6 +6,7 @@ import {
   D1MaterializedViewStore,
   MaterializedViewCatchUpRuntime,
 } from "@sekiban/dcb-runtime/d1-mv";
+import type { DeliveryViewFailureClass, DeliveryViewHandler } from "@sekiban/dcb-runtime/d1-mv";
 import type { StoredEvent } from "@sekiban/dcb-runtime/d1-mv";
 interface MeetingRoomD1Env {
   readonly D1?: D1Database;
@@ -115,6 +116,22 @@ function materializers() {
   return [roomMaterializer, reservationMaterializer] as const;
 }
 
+type MeetingRoomMaterializer = ReturnType<typeof materializers>[number];
+
+/**
+ * Per-view lookup facade. The current deployment intentionally uses one MV
+ * D1 binding, but callers resolve a handle by view id so a future split
+ * reservation binding cannot leak SQL/database selection into delivery code.
+ */
+export function lookupMeetingRoomMaterializedView(
+  views: D1MaterializedViewStore,
+  viewId: string,
+): { readonly id: string; readonly store: D1MaterializedViewStore; readonly materializer: MeetingRoomMaterializer } {
+  const materializer = materializers().find((candidate) => candidate.id === viewId);
+  if (materializer === undefined) throw new Error(`Unknown meeting-room materialized view: ${viewId}`);
+  return { id: viewId, store: views, materializer };
+}
+
 async function openMaterializedViews(env: MeetingRoomD1Env): Promise<{
   readonly views: D1MaterializedViewStore;
   readonly runtime: MaterializedViewCatchUpRuntime;
@@ -159,6 +176,93 @@ export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env,
   }
 }
 
+async function applyMeetingRoomUnsafeView(
+  views: D1MaterializedViewStore,
+  materializer: MeetingRoomMaterializer,
+  serviceId: string,
+  event: StoredEvent,
+  nowMs: number,
+): Promise<"applied" | "duplicate-race" | void> {
+  const handle = lookupMeetingRoomMaterializedView(views, materializer.id);
+  const active = await handle.store.readActive(serviceId, handle.id);
+  if (active === undefined) throw new Error(`Materialized view ${handle.id} was not initialized`);
+  // A startup build can safely fold an already-old event. Do not resurrect it
+  // through the unsafe lane; a later safe catch-up owns that convergence.
+  if (active.lastSuid >= event.suid) return;
+  const unsafe = handle.store.unsafeWindow();
+  try {
+    // Arrival observation belongs inside this view branch. It is not a
+    // transport-level prelude and cannot be shared across view handlers.
+    await unsafe.observeArrival(serviceId, handle.id, active.generation, event.eventId, event.suid);
+    const applied = await unsafe.apply({
+      serviceId,
+      viewId: handle.id,
+      generation: active.generation,
+      eventId: event.eventId,
+      suid: event.suid,
+      safeHead: active.lastSuid,
+      updatedAt: nowMs,
+      mutations: materializer.plan(event),
+      targetSuid: event.suid,
+    });
+    return applied.duplicate ? "duplicate-race" : "applied";
+  } catch (error) {
+    // The identity finding is retained for Queue retries/DLQ and operator
+    // repair. A finding-write failure is part of the same view failure, but it
+    // must not stop the core from invoking later views.
+    try {
+      await handle.store.recordUnsafeFailureFinding({
+        serviceId,
+        viewId: handle.id,
+        eventId: event.eventId,
+        suid: event.suid,
+        observedAt: nowMs,
+      });
+    } catch (findingError) {
+      const combined = new Error(
+        `unsafe view ${handle.id} failed and finding write failed: ${String(findingError)}`,
+        { cause: error },
+      ) as Error & { failureClass?: DeliveryViewFailureClass };
+      // A missing operational finding is itself retryable, even if the
+      // underlying view error happened to be a duplicate race.
+      combined.failureClass = "retryable-transient";
+      throw combined;
+    }
+    throw error;
+  }
+}
+
+/** Build one continuation-safe handler per configured meeting-room view. */
+export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly DeliveryViewHandler[] {
+  let opened: Promise<{
+    readonly views: D1MaterializedViewStore;
+    readonly runtime: MaterializedViewCatchUpRuntime;
+    readonly serviceId: string;
+  }> | undefined;
+  const context = async () => {
+    opened ??= (async () => {
+      const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
+      const value = await openMaterializedViews(env);
+      await ensureSafeInstances(value.runtime, value.views, serviceId, Date.now());
+      return { ...value, serviceId };
+    })();
+    return opened;
+  };
+  return materializers().map((materializer) => ({
+    id: materializer.id,
+    apply: async ({ event, arrivedAt }) => {
+      const value = await context();
+      return applyMeetingRoomUnsafeView(value.views, materializer, value.serviceId, event, arrivedAt);
+    },
+    classifyError: (error: unknown): DeliveryViewFailureClass => {
+      const typed = error as { readonly code?: unknown; readonly retryable?: unknown; readonly failureClass?: unknown };
+      if (typed.failureClass === "duplicate-race" || typed.code === "UNSAFE_DUPLICATE_RACE") return "duplicate-race";
+      if (typed.failureClass === "nonretryable-definition-poison" || typed.retryable === false) return "nonretryable-definition-poison";
+      return "retryable-transient";
+    },
+  }));
+}
+
 /**
  * G25's exceptional immediate lane.  The input is the PipelineStore's stored
  * outcome, never a raw Queue payload.  Each apply owns its row mutation,
@@ -174,37 +278,7 @@ export async function applyMeetingRoomUnsafeArrival(
   const { runtime, views } = await openMaterializedViews(env);
   await ensureSafeInstances(runtime, views, serviceId, nowMs);
   for (const materializer of materializers()) {
-    const active = await views.readActive(serviceId, materializer.id);
-    if (active === undefined) throw new Error(`Materialized view ${materializer.id} was not initialized`);
-    // A startup build can safely fold an already-old event.  Do not attempt to
-    // resurrect it through the unsafe lane.
-    if (active.lastSuid >= event.suid) continue;
-    const unsafe = views.unsafeWindow();
-    try {
-      await unsafe.observeArrival(serviceId, materializer.id, active.generation, event.eventId, event.suid);
-      await unsafe.apply({
-        serviceId,
-        viewId: materializer.id,
-        generation: active.generation,
-        eventId: event.eventId,
-        suid: event.suid,
-        safeHead: active.lastSuid,
-        updatedAt: nowMs,
-        mutations: materializer.plan(event),
-        targetSuid: event.suid,
-      });
-    } catch (error) {
-      // This finding remains present through repeated Queue attempts and is
-      // keyed by service/view/event identity plus its retry classification.
-      await views.recordUnsafeFailureFinding({
-        serviceId,
-        viewId: materializer.id,
-        eventId: event.eventId,
-        suid: event.suid,
-        observedAt: nowMs,
-      });
-      throw error;
-    }
+    await applyMeetingRoomUnsafeView(views, materializer, serviceId, event, nowMs);
   }
 }
 

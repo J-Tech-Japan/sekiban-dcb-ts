@@ -1,6 +1,6 @@
 import postgres, { type TransactionSql } from "postgres";
 
-import type { DownstreamOutboxMessage } from "../downstream/types";
+import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import {
   decayedLagEstimateMs,
 } from "../safeWindow";
@@ -286,7 +286,7 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
     }
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number): Promise<DeliveryOutcome> {
+  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const eventTags = sortedUnique(message.eventTags);
     const sql = this.requireSql();
@@ -418,7 +418,7 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
           WHERE service_id = $1 AND event_id = $2`,
         [message.serviceId, message.eventId, arrivedAt, lagMs],
       );
-      if (!recoveryBacklogSample) {
+      if (!recoveryBacklogSample && deliverySource !== "fast") {
         const estimator = (await transaction.unsafe(
           `SELECT estimate_ms, observed_at
              FROM serialized_dcb_lag_estimates

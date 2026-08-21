@@ -25,6 +25,11 @@ export const candidateEvidenceRules = Object.freeze([
     evidencePath: "docs/SDT-G25-deploy-evidence.json",
     evidenceGlobs: Object.freeze(["docs/SDT-G25-*evidence*.json", "docs/SDT-G25-*evidence*.md"]),
   }),
+  Object.freeze({
+    id: "g26-direct-doorbell-fanout",
+    evidencePath: "docs/SDT-G26-deploy-evidence.json",
+    evidenceGlobs: Object.freeze(["docs/SDT-G26-*evidence*.json", "docs/SDT-G26-*evidence*.md"]),
+  }),
 ]);
 
 function matchesGlob(path, glob) {
@@ -112,6 +117,7 @@ export function runSelfTest() {
 function main() {
   if (process.env.SDT_G22_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G22 candidate gate forced failure");
   if (process.env.SDT_G25_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G25 candidate gate forced failure");
+  if (process.env.SDT_G26_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G26 candidate gate forced failure");
   if (process.argv.includes("--self-test")) return runSelfTest();
   for (const rule of candidateEvidenceRules) {
     const evidencePath = join(root, rule.evidencePath);

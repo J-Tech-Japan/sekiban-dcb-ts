@@ -1,29 +1,51 @@
 import type { ExecuteResult } from "@sekiban/dcb-client";
+import { WorkerEntrypoint } from "cloudflare:workers";
 import {
   createCloudflareOnlyRuntimeWorker,
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
   JournalDurableObject,
+  processDownstreamDoorbell,
+  readDirectDoorbellConfig,
+  selectDirectDoorbellViews,
   TagDurableObject,
   type CloudflareOnlyEnv,
 } from "@sekiban/dcb-runtime/cloudflare";
+import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
-import { applyMeetingRoomUnsafeArrival, catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks } from "./d1-mv";
+import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 
-interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
+export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly ASSETS?: Fetcher;
   readonly CONFORMANCE_TOKEN?: string;
+}
+
+/**
+ * Separate non-public receiver entrypoint. It is deployed as the target of a
+ * service binding; the primary Worker never exposes this method through fetch.
+ */
+export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
+  async deliver(message: unknown) {
+    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
+    return processDownstreamDoorbell(message, this.env, {
+      storeProvider: createD1StoreProvider(),
+      views: selectDirectDoorbellViews(meetingRoomDeliveryViews(this.env), config),
+      afterDelivery: async () => {
+        this.ctx.waitUntil(drainMeetingRoomUnsafeKicks(this.env));
+      },
+    });
+  }
 }
 
 const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
-  afterStoredDownstreamDelivery: async ({ event, env, ctx }) => {
-    await applyMeetingRoomUnsafeArrival(env, event);
+  deliveryViews: ({ env }) => meetingRoomDeliveryViews(env),
+  afterStoredDownstreamDelivery: async ({ env, ctx }) => {
     // The durable kick lease collapses many waitUntil calls to one owner.  A
     // drain failure is intentionally not allowed to turn the already-applied
     // Queue message into an acknowledgement decision.

@@ -14,7 +14,12 @@ import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordina
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
-import { handleDownstreamQueue, stabilizeDownstream } from "./downstream/DownstreamAdapter";
+import {
+  handleDownstreamQueue,
+  stabilizeDownstream,
+} from "./downstream/DownstreamAdapter";
+import type { DeliveryCoreResult, DeliveryViewHandler } from "./downstream/DeliveryCore";
+import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
@@ -33,6 +38,7 @@ export interface CloudflareOnlyEnv {
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
+  DOWNSTREAM_DOORBELL?: DownstreamDoorbellBinding;
   D1: D1Database;
   D1_MV: D1Database;
   AUTO_DRAIN_OUTBOX?: string;
@@ -40,6 +46,13 @@ export interface CloudflareOnlyEnv {
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   G11_VERIFICATION_ENABLED?: string;
   SDT_SERVICE_ID?: string;
+  DELIVERY_CLASS?: string;
+  DIRECT_DOORBELL?: string;
+  DIRECT_DOORBELL_ALLOWED_VIEWS?: string;
+  DIRECT_DOORBELL_MAX_INVOCATIONS?: string;
+  DIRECT_DOORBELL_DEGRADATION?: string;
+  DIRECT_DOORBELL_RECEIVER_MODE?: string;
+  DIRECT_DOORBELL_SELF_BINDING_PROOF?: string;
 }
 
 export interface CloudflareOnlyWorkerOptions {
@@ -47,13 +60,20 @@ export interface CloudflareOnlyWorkerOptions {
   readonly config?: RuntimeWorkerConfig;
   /** Optional deployment read-model rebuild that must finish before READY. */
   readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;
-  /** Runs only after PipelineStore has returned a durable stored outcome. */
+  /** Factories are evaluated per invocation; Queue and receiver can select views independently. */
+  readonly deliveryViews?: (input: {
+    readonly env: CloudflareOnlyEnv;
+    readonly ctx: ExecutionContext;
+  }) => readonly DeliveryViewHandler[];
+  /** Runs after all selected views have completed and before the drain trigger returns. */
   readonly afterStoredDownstreamDelivery?: (input: {
     readonly message: DownstreamOutboxMessage;
     readonly event: StoredEvent;
     readonly arrivedAt: number;
     readonly env: CloudflareOnlyEnv;
     readonly ctx: ExecutionContext;
+    readonly source?: "queue" | "fast";
+    readonly result?: DeliveryCoreResult;
   }) => Promise<void>;
 }
 
@@ -159,9 +179,10 @@ export function createCloudflareOnlyRuntimeWorker(
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       await handleDownstreamQueue(batch, env, {
         storeProvider,
-        onStored: options.afterStoredDownstreamDelivery === undefined
+        views: options.deliveryViews?.({ env, ctx }) ?? [],
+        afterDelivery: options.afterStoredDownstreamDelivery === undefined
           ? undefined
-          : ({ message, event, arrivedAt }) => options.afterStoredDownstreamDelivery!({ message, event, arrivedAt, env, ctx }),
+          : ({ message, event, arrivedAt, source, result }) => options.afterStoredDownstreamDelivery!({ message, event, arrivedAt, env, ctx, source, result }),
       });
     },
 
@@ -174,6 +195,36 @@ export function createCloudflareOnlyRuntimeWorker(
 }
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
+export { processDownstreamDoorbell } from "./downstream/DownstreamAdapter";
+export {
+  downstreamEnvelopeBytes,
+  classifyDirectDoorbellFailure,
+  preflightDirectDoorbell,
+  readDirectDoorbellConfig,
+  selectDirectDoorbellViews,
+  MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
+} from "./downstream/Doorbell";
+export type {
+  DeliveryClass,
+  DownstreamDoorbellBinding,
+  DirectDoorbellDegradation,
+  DirectDoorbellDeploymentConfig,
+  DirectDoorbellPreflightResult,
+  DirectDoorbellReceiverMode,
+  DirectDoorbellFailureKind,
+} from "./downstream/Doorbell";
+export type {
+  DeliveryCoreEnvironment,
+  DeliveryCoreFailure,
+  DeliveryCoreOptions,
+  DeliveryCoreResult,
+  DeliverySource,
+  DeliveryViewApplyResult,
+  DeliveryViewFailureClass,
+  DeliveryViewHandler,
+  DeliveryViewInput,
+  DeliveryViewResult,
+} from "./downstream/DeliveryCore";
 
 const cloudflareOnlyRuntime = createCloudflareOnlyRuntimeWorker();
 export default cloudflareOnlyRuntime;

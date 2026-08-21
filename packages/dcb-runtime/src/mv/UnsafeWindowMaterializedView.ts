@@ -6,6 +6,7 @@ type D1Row = Record<string, unknown>;
 export type UnsafeOutcome = "applied" | "older" | "patch-not-found" | "delete-without-row" | "no-change";
 export type UnsafeWindowErrorCode =
   | "UNSAFE_ROW_CAS_MISMATCH"
+  | "UNSAFE_DUPLICATE_RACE"
   | "UNSAFE_SUID_CONTRADICTION"
   | "UNSAFE_SAFE_AHEAD"
   | "UNSAFE_BEHIND_FRONTIER"
@@ -42,6 +43,11 @@ export interface UnsafeWindowApplyInput {
 export interface UnsafeWindowApplyResult {
   readonly outcome: UnsafeOutcome;
   readonly duplicate: boolean;
+}
+
+export interface UnsafeWindowMaterializedViewStoreOptions {
+  /** Test-only barrier used by the SDT-G26 duplicate-race oracle. */
+  readonly beforeApplyBatch?: (input: UnsafeWindowApplyInput) => Promise<void>;
 }
 
 export interface UnsafeReadMeta {
@@ -104,6 +110,9 @@ function operationId(): string {
 
 function errorFrom(error: unknown): UnsafeWindowMaterializedViewError | undefined {
   const value = String(error);
+  if (value.includes("mv_unsafe_receipts") && (value.includes("UNIQUE") || value.includes("constraint"))) {
+    return new UnsafeWindowMaterializedViewError("UNSAFE_DUPLICATE_RACE", false, "Concurrent unsafe receipt was committed by another delivery", { cause: error });
+  }
   if (value.includes("unsafe_row_cas")) return new UnsafeWindowMaterializedViewError("UNSAFE_ROW_CAS_MISMATCH", true, "Unsafe row version changed before atomic apply", { cause: error });
   if (value.includes("unsafe_suid_contradiction")) return new UnsafeWindowMaterializedViewError("UNSAFE_SUID_CONTRADICTION", false, "Unsafe same-SUID payload contradiction", { cause: error });
   if (value.includes("unsafe_safe_ahead")) return new UnsafeWindowMaterializedViewError("UNSAFE_SAFE_AHEAD", false, "Safe head already covers unsafe event", { cause: error });
@@ -118,7 +127,10 @@ function errorFrom(error: unknown): UnsafeWindowMaterializedViewError | undefine
  * after a batch has already committed other statements.
  */
 export class UnsafeWindowMaterializedViewStore {
-  constructor(private readonly database: D1Database) {}
+  constructor(
+    private readonly database: D1Database,
+    private readonly options: UnsafeWindowMaterializedViewStoreOptions = {},
+  ) {}
 
   async apply(input: UnsafeWindowApplyInput): Promise<UnsafeWindowApplyResult> {
     const receipt = await this.database.prepare(
@@ -219,6 +231,10 @@ export class UnsafeWindowMaterializedViewStore {
          dirty = 1`,
     ).bind(input.serviceId, input.viewId, input.targetSuid ?? input.suid));
     statements.push(this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id LIKE ?").bind(`${operation}:%`));
+    // The hook is test-only and is intentionally after the receipt pre-read,
+    // which lets two invocations reach the same D1 batch barrier and prove
+    // that the unique receipt loser is typed rather than a generic retry.
+    await this.options.beforeApplyBatch?.(input);
     try {
       await this.database.batch(statements);
     } catch (error) {

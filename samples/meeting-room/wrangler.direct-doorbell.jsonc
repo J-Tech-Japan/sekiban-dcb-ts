@@ -1,13 +1,13 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "sekiban-dcb-meeting-room-cloudflare-only",
+  "name": "sekiban-dcb-g26-meeting-room",
   "main": "src/worker.cloudflare-only.ts",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
     "AUTO_DRAIN_OUTBOX": "true",
     "DELIVERY_CLASS": "immediate-preferred",
-    "DIRECT_DOORBELL": "false",
+    "DIRECT_DOORBELL": "true",
     "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector,ReservationProjector",
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
     "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
@@ -15,6 +15,13 @@
   },
   "assets": { "directory": "public" },
   "triggers": { "crons": ["* * * * *"] },
+  "services": [
+    {
+      "binding": "DOWNSTREAM_DOORBELL",
+      "service": "sekiban-dcb-g26-doorbell",
+      "entrypoint": "MeetingRoomDownstreamDoorbell"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "D1",
@@ -30,12 +37,12 @@
     }
   ],
   "queues": {
-    "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-meeting-room-cloudflare-outbox" }],
+    "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-g26-outbox" }],
     "consumers": [{
-      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "queue": "sekiban-dcb-g26-outbox",
       "max_batch_timeout": 1,
       "max_retries": 3,
-      "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq"
+      "dead_letter_queue": "sekiban-dcb-g26-outbox-dlq"
     }]
   },
   "durable_objects": {

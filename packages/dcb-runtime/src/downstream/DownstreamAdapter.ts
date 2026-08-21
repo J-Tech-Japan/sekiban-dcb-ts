@@ -1,8 +1,17 @@
 import { BindingExclusionLedgerClient } from "./ExclusionLookup";
 import { InconsistencyDetector } from "./InconsistencyDetector";
-import { isDownstreamOutboxMessage, systemPipelineClock, type DownstreamOutboxMessage, type PipelineClock } from "./types";
+import {
+  processDeliveryCore,
+  type DeliveryCoreOptions,
+  type DeliveryCoreResult,
+} from "./DeliveryCore";
+import {
+  isDownstreamOutboxMessage,
+  systemPipelineClock,
+  type PipelineClock,
+} from "./types";
 import type { StoreProvider } from "../store/provider";
-import type { PipelineStore, StoredEvent } from "../store/types";
+import type { PipelineStore } from "../store/types";
 import { requireConfiguredServiceId } from "../http/testServiceId";
 
 export interface DownstreamAdapterEnv {
@@ -15,17 +24,7 @@ export interface DownstreamAdapterEnv {
   SDT_SERVICE_ID?: string;
 }
 
-export interface AdapterOptions {
-  clock?: PipelineClock;
-  store?: PipelineStore;
-  storeProvider?: StoreProvider;
-  /** A stored-only hook; rejection deliberately returns the Queue message to retry. */
-  onStored?: (input: {
-    readonly message: DownstreamOutboxMessage;
-    readonly event: StoredEvent;
-    readonly arrivedAt: number;
-  }) => Promise<void>;
-}
+export type AdapterOptions = DeliveryCoreOptions;
 
 function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): PipelineStore {
   // The provider creates a request-scoped client. Never retain a client across
@@ -36,8 +35,13 @@ function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): Pipeli
 
 async function admitBootstrapRoute(env: DownstreamAdapterEnv, serviceId: string, route: string): Promise<void> {
   if (env.BOOTSTRAP === undefined) return;
-  const url = new URL("https://downstream.internal/route/check"); url.searchParams.set("__serviceId", serviceId);
-  const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route }) }));
+  const url = new URL("https://downstream.internal/route/check");
+  url.searchParams.set("__serviceId", serviceId);
+  const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ route }),
+  }));
   if (!admitted.ok) throw new Error(`bootstrap_route_rejected:${route}`);
 }
 
@@ -54,7 +58,24 @@ async function withStore<T>(
   return operation(store, options.clock ?? systemPipelineClock);
 }
 
-/** Processes one at-least-once Queue delivery with idempotent EventId storage. */
+/**
+ * Processes one direct delivery through the shared core. The caller receives a
+ * typed result; this function never acknowledges, retries, or marks an
+ * outbox row.
+ */
+export async function processDownstreamDoorbell(
+  message: unknown,
+  env: DownstreamAdapterEnv,
+  options: AdapterOptions = {},
+): Promise<DeliveryCoreResult> {
+  if (!isDownstreamOutboxMessage(message)) {
+    throw new Error("Doorbell contained an invalid outbox message");
+  }
+  await admitBootstrapRoute(env, message.serviceId, "fast");
+  return processDeliveryCore(message, "fast", env, options);
+}
+
+/** Processes one Queue delivery without exposing Queue state to the core. */
 export async function processDownstreamDelivery(
   message: unknown,
   env: DownstreamAdapterEnv,
@@ -64,25 +85,15 @@ export async function processDownstreamDelivery(
     throw new Error("Downstream Queue contained an invalid outbox message");
   }
   await admitBootstrapRoute(env, message.serviceId, "queue");
-  await withStore(env, options, async (store, clock) => {
-    const arrivedAt = clock.now();
-    const outcome = await store.recordDelivery(message, arrivedAt);
-    if (outcome.outcome !== "stored") {
-      // A durable Cosmos incident is enough to acknowledge the poison row;
-      // projection is retried here when the provider exposes that seam.
-      await store.projectDeliveryIncidents?.(message.serviceId);
-      return;
-    }
-    const lagBound = await store.currentLagBound(message.serviceId, arrivedAt);
-    const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
-    await detector.observe(message, arrivedAt, lagBound);
-  });
+  const outcome = await processDeliveryCore(message, "queue", env, options);
+  if (outcome.queueDisposition !== "ack") {
+    throw new Error(`downstream_delivery_retry:${outcome.correlationId}`);
+  }
 }
 
 /**
- * Queue failures are retried per message. A duplicate after a successful
- * database transaction is safe because the adapter is keyed by EventId and
- * arrival path.
+ * Queue policy is deliberately limited to the wrapper: the shared core
+ * returns a disposition, and this is the only place that calls ack/retry.
  */
 export async function handleDownstreamQueue(
   batch: MessageBatch<unknown>,
@@ -90,24 +101,19 @@ export async function handleDownstreamQueue(
   options: AdapterOptions = {},
 ): Promise<void> {
   await withStore(env, options, async (store, clock) => {
-    const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     for (const queued of batch.messages) {
       try {
         if (!isDownstreamOutboxMessage(queued.body)) {
           throw new Error("Downstream Queue contained an invalid outbox message");
         }
         await admitBootstrapRoute(env, queued.body.serviceId, "queue");
-        const arrivedAt = clock.now();
-        const outcome = await store.recordDelivery(queued.body, arrivedAt);
-        if (outcome.outcome !== "stored") {
-          await store.projectDeliveryIncidents?.(queued.body.serviceId);
-          queued.ack();
-          continue;
-        }
-        const lagBound = await store.currentLagBound(queued.body.serviceId, arrivedAt);
-        await detector.observe(queued.body, arrivedAt, lagBound);
-        await options.onStored?.({ message: queued.body, event: outcome.event, arrivedAt });
-        queued.ack();
+        const outcome = await processDeliveryCore(queued.body, "queue", env, {
+          ...options,
+          store,
+          clock,
+        });
+        if (outcome.queueDisposition === "ack") queued.ack();
+        else queued.retry();
       } catch {
         queued.retry();
       }
@@ -127,3 +133,17 @@ export async function stabilizeDownstream(
     await detector.stabilize(clock, serviceId);
   });
 }
+
+export { processDeliveryCore } from "./DeliveryCore";
+export type {
+  DeliveryCoreEnvironment,
+  DeliveryCoreFailure,
+  DeliveryCoreOptions,
+  DeliveryCoreResult,
+  DeliverySource,
+  DeliveryViewApplyResult,
+  DeliveryViewFailureClass,
+  DeliveryViewHandler,
+  DeliveryViewInput,
+  DeliveryViewResult,
+} from "./DeliveryCore";
