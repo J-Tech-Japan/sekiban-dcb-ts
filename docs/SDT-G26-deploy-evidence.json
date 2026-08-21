@@ -89,7 +89,7 @@
   ],
   "protocol": {
     "finalCandidate": "C''' includes runtime, sample configuration, tests, deploy/measurement scripts, oracle map, and CI wiring",
-    "bookkeepingCommit": "R''' pending retained-candidate bookkeeping",
+    "bookkeepingCommit": "02865481fb912a4ff7a79fef8c67b4732125e7fb",
     "deploymentIdentity": "fresh explicit non-secret G26_SERVICE_ID per topology",
     "fixedN": 20,
     "controlledConcurrency": 1,
@@ -269,8 +269,8 @@
     "topologyOracle": "PASS: 4/4 deterministic mock-server tests; forced-red mismatch probe exited non-zero",
     "localSlopeTarget": "PASS: real D1 slope fixture",
     "forcedRed": "PASS: C''' G26 forced-red, topology forced-red, and candidate forced-red probes exited non-zero as expected",
-    "candidateGate": "PENDING: evidence recorded before R''' retained-candidate bookkeeping",
-    "fullCheck": "PENDING: run after C''' evidence and R''' bookkeeping are committed",
+    "candidateGate": "PASS: npm run test:g20:candidate with C'''+R''' active; candidate tree digests and exact retained-list append verified",
+    "fullCheck": "PASS: npm run check (35 test files, 237 tests; topology oracle runs as an additional 4-test Node lane)",
     "legacyWorkerE2E": "PASS: npm run e2e:g15:local with explicit PostgreSQL and queued-degraded legacy worker config",
     "remoteCI": "PENDING: GitHub Actions run for C'''"
   },
