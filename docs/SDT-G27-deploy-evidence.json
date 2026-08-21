@@ -1,11 +1,11 @@
 {
   "task": "SDT-G27",
-  "status": "CANDIDATE placeholder for C'''; bookkeeping R''' will record the candidate and its self-digests",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "FINAL candidate C'''; bookkeeping R''' records the candidate and its self-digests",
+  "candidateCommit": "16afe111b8e3aa3a48dc949b0caa33160b08f29f",
+  "sourceCommit": "16afe111b8e3aa3a48dc949b0caa33160b08f29f",
   "protocol": {
     "candidate": "C''' contains the F1/F6 third-review mutation-attribution fixes, prior F1-F6 implementation, focused tests, oracle map, and PR body",
-    "bookkeeping": "R''' will update only this evidence document and append the immutable C''' SHA to the retained candidate fetch list",
+    "bookkeeping": "R''' updates only this evidence document and appends the immutable C''' SHA to the retained candidate fetch list",
     "selfReference": false,
     "secrets": "redacted"
   },
@@ -17,7 +17,7 @@
       "packages/dcb-runtime/src",
       "packages/dcb-client/src"
     ],
-    "configuration": "92ddc83500206d6b1e921523b48a4a82a2bae38ff91a69fb285f1a684fa51bb5",
+    "configuration": "624d6954e8771bb551132bdb234d4bc4aba44ad8c4376c5352c6e68d2fce51cf",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "migrations/d1",
