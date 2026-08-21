@@ -1,4 +1,5 @@
 import type { BootstrapDump, BootstrapEventRecord, BootstrapManifest } from "./types";
+import { assertCanonicalEventType } from "../eventIdentity";
 
 export class BootstrapManifestError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -35,8 +36,13 @@ function parseManifest(value: unknown): BootstrapManifest {
 }
 function parseEvent(value: unknown): BootstrapEventRecord {
   if (!isObject(value)) throw new BootstrapManifestError("record_invalid", "event record must be an object");
-  const allowed = ["eventId", "eventTags", "payload", "provenance", "suid"]; if (Object.keys(value).some((key) => !allowed.includes(key)) || !nonEmpty(value.eventId) || !nonEmpty(value.suid) || typeof value.payload !== "string" || !Array.isArray(value.eventTags) || !value.eventTags.every(nonEmpty) || new Set(value.eventTags).size !== value.eventTags.length || (value.provenance !== undefined && !isObject(value.provenance))) throw new BootstrapManifestError("record_invalid", "event record is invalid");
-  return { eventId: value.eventId, suid: value.suid, payload: value.payload, eventTags: [...value.eventTags].sort(), ...(value.provenance === undefined ? {} : { provenance: value.provenance as Record<string, string> }) };
+  const allowed = ["eventId", "eventTags", "eventType", "payload", "provenance", "suid"]; if (Object.keys(value).some((key) => !allowed.includes(key)) || !nonEmpty(value.eventId) || !nonEmpty(value.suid) || typeof value.payload !== "string" || !Array.isArray(value.eventTags) || !value.eventTags.every(nonEmpty) || new Set(value.eventTags).size !== value.eventTags.length || (value.provenance !== undefined && !isObject(value.provenance)) || (value.eventType !== undefined && !nonEmpty(value.eventType))) throw new BootstrapManifestError("record_invalid", "event record is invalid");
+  if (value.eventType !== undefined) {
+    try { assertCanonicalEventType(value.eventType); } catch { throw new BootstrapManifestError("record_invalid", "eventType is not canonical"); }
+    if (isObject(value.provenance) && value.provenance.origin !== undefined && value.provenance.origin !== "g27") throw new BootstrapManifestError("record_invalid", "canonical eventType requires g27 provenance");
+  }
+  if (isObject(value.provenance) && value.provenance.origin !== undefined && value.provenance.origin !== "pre-g27" && value.provenance.origin !== "g27") throw new BootstrapManifestError("record_invalid", "event provenance origin is invalid");
+  return { eventId: value.eventId, suid: value.suid, payload: value.payload, eventTags: [...value.eventTags].sort(), ...(value.eventType === undefined ? {} : { eventType: value.eventType }), ...(value.provenance === undefined ? {} : { provenance: value.provenance as Record<string, string> }) };
 }
 
 /** Parses and validates the complete dump before a coordinator can mutate a target. */

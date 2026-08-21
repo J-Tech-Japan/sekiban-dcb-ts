@@ -1,0 +1,1 @@
+{"version":1,"serviceId":"g27-runtime-service","tag":"orders:g27-runtime-oracle","attemptId":"g27-runtime-oracle-attempt","eventId":"g27-runtime-oracle-event","suid":"suid-00000000000000000000000000000008","payload":"e30=","allocatorLineageId":"g27-runtime-lineage","eventTags":["orders:g27-runtime-oracle"],"enqueuedAt":100}

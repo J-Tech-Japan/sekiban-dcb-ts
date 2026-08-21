@@ -3,6 +3,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw migration fixture.
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
+import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw migration fixture.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
@@ -43,7 +45,7 @@ function statements(sql: string): D1PreparedStatement[] {
 
 describe("SDT-G26 fan-out and receipt-race oracles", () => {
   beforeAll(async () => {
-    const pipelineStatements = (pipelineMigration as string)
+    const pipelineStatements = `${pipelineMigration as string}\n${identityMigration as string}`
       .replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((value) => value.trim())
@@ -105,6 +107,8 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
       suid: "g26-shared-suid",
       payload: btoa(JSON.stringify({ eventType: "G26Shared" })),
       eventTags: ["g26:shared"],
+      eventType: "G26Shared:1",
+      provenance: "g27",
       enqueuedAt: 1_000,
     } satisfies DownstreamOutboxMessage;
     const pipeline = new D1EventStore(pipelineDatabase());
@@ -256,6 +260,8 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
       suid: `g26-arrival-suid-${suffix}`,
       payload: btoa(JSON.stringify({ suffix })),
       eventTags: [`g26:arrival:${suffix}`],
+      eventType: "G26Arrival:1",
+      provenance: "g27",
       enqueuedAt: 1_000,
     });
     let reached = 0;
@@ -343,6 +349,8 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
       suid,
       payload: btoa(JSON.stringify({ suffix })),
       eventTags: ["g26:lag"],
+      eventType: "G26Lag:1",
+      provenance: "g27",
       enqueuedAt: 0,
     });
     await store.recordDelivery(base("fast", "suid-0001"), 10_000, "fast");

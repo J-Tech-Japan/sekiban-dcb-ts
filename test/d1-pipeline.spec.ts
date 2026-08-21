@@ -6,6 +6,8 @@ import { beforeAll } from "vitest";
 // versioned SQL without making Node filesystem APIs part of a Worker test.
 // @ts-expect-error Vite raw asset import
 import migration from "../migrations/d1/0001_pipeline_store.sql?raw";
+// @ts-expect-error Vite raw asset import
+import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
 import { runPipelineContract } from "../scripts/store-contract.mjs";
 import { createD1StoreProvider, D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/d1";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -31,6 +33,7 @@ function message(serviceId: string, eventId: string, suid: string, tag: string):
     suid,
     payload: "cGF5bG9hZA==",
     eventTags: [tag],
+    provenance: "pre-g27-queue",
     enqueuedAt: 1_000,
   };
 }
@@ -40,7 +43,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
     // The test harness does not apply Wrangler migrations automatically. The
     // fixture applies the committed versioned migration once; production
     // deploys use `wrangler d1 migrations apply`, never runtime DDL.
-    const migrationText = migration as string;
+    const migrationText = `${migration as string}\n${identityMigration as string}`;
     const statements: string[] = migrationText.replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((statement) => statement.trim())

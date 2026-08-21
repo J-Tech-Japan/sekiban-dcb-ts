@@ -80,6 +80,60 @@ export class DcbDefinitionError extends Error {
   }
 }
 
+/** The event identity carried by the post-G27 internal delivery lanes. */
+export interface CanonicalEventIdentity {
+  readonly eventPayloadName: string;
+  readonly version: number;
+  readonly key: string;
+}
+
+export class CanonicalEventIdentityError extends DcbDefinitionError {
+  readonly code = "CANONICAL_EVENT_IDENTITY_INVALID" as const;
+
+  constructor(message: string) {
+    super("CANONICAL_EVENT_IDENTITY_INVALID", message);
+    this.name = "CanonicalEventIdentityError";
+  }
+}
+
+function canonicalEventVersion(version: unknown): number {
+  if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
+    throw new CanonicalEventIdentityError("Event identity version must be a positive safe integer");
+  }
+  return version;
+}
+
+/** Build the only accepted event identity spelling: name:decimal-version. */
+export function canonicalEventKey(eventPayloadName: string, version = 1): string {
+  if (typeof eventPayloadName !== "string" || eventPayloadName.length === 0 || eventPayloadName.includes(":")) {
+    throw new CanonicalEventIdentityError("Event payload names must be non-empty and must not contain ':'");
+  }
+  const canonicalVersion = canonicalEventVersion(version);
+  return `${eventPayloadName}:${canonicalVersion}`;
+}
+
+/** Parse and re-canonicalize an internal event identity without sniffing payload bytes. */
+export function parseCanonicalEventKey(key: string): CanonicalEventIdentity {
+  if (typeof key !== "string" || key.length === 0) {
+    throw new CanonicalEventIdentityError("Event identity key must be a non-empty string");
+  }
+  const separator = key.lastIndexOf(":");
+  if (separator <= 0 || separator === key.length - 1) {
+    throw new CanonicalEventIdentityError("Event identity key must be eventPayloadName:version");
+  }
+  const eventPayloadName = key.slice(0, separator);
+  const versionText = key.slice(separator + 1);
+  if (!/^\d+$/.test(versionText) || (versionText.length > 1 && versionText.startsWith("0"))) {
+    throw new CanonicalEventIdentityError("Event identity version must be canonical decimal text");
+  }
+  const version = Number(versionText);
+  const canonical = canonicalEventKey(eventPayloadName, version);
+  if (canonical !== key) {
+    throw new CanonicalEventIdentityError("Event identity key is not canonical");
+  }
+  return Object.freeze({ eventPayloadName, version, key });
+}
+
 export interface TagDefinition {
   readonly id: string;
   readonly group: string;
@@ -131,6 +185,8 @@ export interface EventDefinition<TPayload extends JsonValue = JsonValue> {
   readonly name: string;
   readonly eventName: string;
   readonly eventPayloadName: string;
+  readonly version: number;
+  readonly eventType: string;
   readonly create: (payload: unknown) => DefinedEvent<TPayload>;
   readonly construct: (payload: unknown) => DefinedEvent<TPayload>;
   readonly parse: (payload: unknown) => TPayload;
@@ -141,6 +197,8 @@ export type EventDefinitionOptions<TPayload extends JsonValue> = {
   readonly name?: string;
   readonly eventName?: string;
   readonly eventPayloadName?: string;
+  /** Version of the payload schema; existing definitions default to v1. */
+  readonly version?: number;
   readonly parse?: EventParser<TPayload>;
   readonly parser?: EventParser<TPayload>;
   readonly validate?: EventParser<TPayload>;
@@ -161,6 +219,8 @@ export function defineEvent<TPayload extends JsonValue = JsonValue>(
   const name = options.name ?? options.eventName;
   if (!name) throw new DcbDefinitionError("EVENT_NAME_REQUIRED", "Event name is required");
   const eventPayloadName = options.eventPayloadName ?? name;
+  const version = options.version ?? 1;
+  const eventType = canonicalEventKey(eventPayloadName, version);
   const validate = options.parse ?? options.parser ?? options.validate ?? ((payload: unknown) => payload as TPayload);
   const parse = (payload: unknown): TPayload => {
     let parsed: unknown;
@@ -175,11 +235,16 @@ export function defineEvent<TPayload extends JsonValue = JsonValue>(
   };
   const create = (payload: unknown): DefinedEvent<TPayload> =>
     Object.freeze({ eventName: name, eventPayloadName, payload: parse(payload) });
-  return Object.freeze({ name, eventName: name, eventPayloadName, create, construct: create, parse });
+  return Object.freeze({ name, eventName: name, eventPayloadName, version, eventType, create, construct: create, parse });
 }
 
 export type ProjectorState = JsonValue;
-export type ProjectorEvent = DefinedEvent | { readonly eventName?: string; readonly eventPayloadName?: string; readonly payload?: unknown };
+export type ProjectorEvent = DefinedEvent | {
+  readonly eventName?: string;
+  readonly eventPayloadName?: string;
+  readonly eventType?: string;
+  readonly payload?: unknown;
+};
 export type ProjectorHandler<TState extends JsonValue = JsonValue> = (
   state: TState,
   event: DefinedEvent,
@@ -191,6 +256,7 @@ export interface ProjectorDefinition<TState extends JsonValue = JsonValue> {
   readonly version: number;
   readonly projectorVersion: number;
   readonly subscribedEventNames: readonly string[];
+  readonly subscribedEventTypes: readonly string[];
   readonly initialState: TState;
   readonly apply: (state: TState, event: ProjectorEvent) => TState;
   readonly reduce: (state: TState, event: ProjectorEvent) => TState;
@@ -206,9 +272,12 @@ export type ProjectorDefinitionOptions<TState extends JsonValue = JsonValue> = {
   readonly subscribedEventNames?: readonly string[];
   readonly subscriptions?: readonly string[];
   readonly events?: readonly (string | EventDefinition)[];
+  readonly subscribedEventTypes?: readonly string[];
   readonly initialState: TState;
   readonly handlers?: Readonly<Record<string, ProjectorHandler<TState>>>;
   readonly eventHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>;
+  /** Optional canonical-key handlers; name handlers remain valid for v1. */
+  readonly eventTypeHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>;
   readonly serializeState?: (state: TState) => string;
   readonly deserializeState?: (serialized: string) => TState;
 };
@@ -223,7 +292,16 @@ export function defineProjector<TState extends JsonValue = JsonValue>(
   const handlers = options.handlers ?? options.eventHandlers ?? {};
   const subscribed = options.subscribedEventNames ?? options.subscriptions ?? options.events?.map((event) => typeof event === "string" ? event : event.name) ?? Object.keys(handlers);
   const uniqueSubscribed = [...new Set(subscribed)];
-  const missing = uniqueSubscribed.filter((name) => handlers[name] === undefined);
+  const eventTypeHandlers = options.eventTypeHandlers ?? {};
+  const subscribedEventTypes = options.subscribedEventTypes ?? options.events?.map((event) =>
+    typeof event === "string" ? canonicalEventKey(event, 1) : event.eventType,
+  ) ?? uniqueSubscribed.map((name) => canonicalEventKey(name, 1));
+  const uniqueSubscribedEventTypes = [...new Set(subscribedEventTypes.map((eventType) => parseCanonicalEventKey(eventType).key))];
+  const missing = uniqueSubscribed.filter((name) =>
+    handlers[name] === undefined && !uniqueSubscribedEventTypes.some((eventType) =>
+      parseCanonicalEventKey(eventType).eventPayloadName === name && eventTypeHandlers[eventType] !== undefined,
+    ),
+  );
   if (missing.length > 0) {
     throw new DcbDefinitionError("PROJECTOR_HANDLER_REQUIRED", `Projector ${id} is missing handlers: ${missing.join(", ")}`);
   }
@@ -233,15 +311,22 @@ export function defineProjector<TState extends JsonValue = JsonValue>(
   }
   const initialState = assertJsonValue(options.initialState, "state-persistence") as TState;
   const apply = (state: TState, event: ProjectorEvent): TState => {
-    const name = eventNameOf(event);
+    const eventType = "eventType" in event ? event.eventType : undefined;
+    const identity = eventType === undefined ? undefined : parseCanonicalEventKey(eventType);
+    const name = identity?.eventPayloadName ?? eventNameOf(event);
     if (!name || !uniqueSubscribed.includes(name)) return state;
+    if (identity !== undefined && !uniqueSubscribedEventTypes.includes(identity.key)) {
+      throw new DcbDefinitionError("EVENT_TYPE_UNREGISTERED", `Projector ${id} does not subscribe to ${identity.key}`);
+    }
     const payload = assertJsonValue(event.payload, "event-construction");
     const definedEvent = Object.freeze({
       eventName: name,
       eventPayloadName: event.eventPayloadName ?? name,
       payload,
     });
-    const next = handlers[name](state, definedEvent);
+    const handler = identity === undefined ? handlers[name] : eventTypeHandlers[identity.key] ?? handlers[name];
+    if (handler === undefined) throw new DcbDefinitionError("PROJECTOR_HANDLER_REQUIRED", `Projector ${id} has no handler for ${identity?.key ?? name}`);
+    const next = handler(state, definedEvent);
     return assertJsonValue(next, "state-persistence") as TState;
   };
   const serializeState = options.serializeState
@@ -269,6 +354,7 @@ export function defineProjector<TState extends JsonValue = JsonValue>(
     version,
     projectorVersion: version,
     subscribedEventNames: Object.freeze(uniqueSubscribed),
+    subscribedEventTypes: Object.freeze(uniqueSubscribedEventTypes),
     initialState,
     apply,
     reduce: apply,

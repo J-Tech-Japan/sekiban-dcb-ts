@@ -119,7 +119,18 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
       if (!actual.ok) return reject("bootstrap_verify_tag_missing", `tag ${tag} is missing`, actual.status);
       const state = await actual.json() as { head?: unknown; events?: unknown }; const actualEvents = Array.isArray(state.events) ? state.events : [];
       const expectedHead = expected.at(-1)?.suid ?? null;
-      if (state.head !== expectedHead || actualEvents.length !== expected.length || actualEvents.some((value, index) => { const event = value as Partial<BootstrapEventRecord>; const source = expected[index]!; return event.eventId !== source.eventId || event.suid !== source.suid || event.payload !== source.payload || JSON.stringify(event.eventTags) !== JSON.stringify(source.eventTags); })) return reject("bootstrap_verify_tag_mismatch", `tag ${tag} does not match manifest`);
+      if (state.head !== expectedHead || actualEvents.length !== expected.length || actualEvents.some((value, index) => {
+        const event = value as Partial<BootstrapEventRecord>;
+        const source = expected[index]!;
+        const eventOrigin = event.provenance?.origin ?? (event.eventType === undefined ? "pre-g27" : "g27");
+        const sourceOrigin = source.provenance?.origin ?? (source.eventType === undefined ? "pre-g27" : "g27");
+        return event.eventId !== source.eventId ||
+          event.suid !== source.suid ||
+          event.payload !== source.payload ||
+          event.eventType !== source.eventType ||
+          eventOrigin !== sourceOrigin ||
+          JSON.stringify(event.eventTags) !== JSON.stringify(source.eventTags);
+      })) return reject("bootstrap_verify_tag_mismatch", `tag ${tag} does not match manifest`);
     }
     // Permitted core completion branch: immutable pre-populated manifest snapshot.
     const ids = new Set(dump.events.map((event) => event.eventId));

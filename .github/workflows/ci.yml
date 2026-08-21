@@ -84,6 +84,14 @@ jobs:
           fi
       - name: Run SDT-G26 direct-doorbell and multi-view lane
         run: npm run test:g26
+      - name: Run SDT-G27 canonical identity and OrderClock lane
+        run: npm run test:g27
+      - name: Prove SDT-G27 forced-red CI reachability
+        run: |
+          if SDT_G27_FORCE_FAILURE=1 npm run test:g27:forced-red; then
+            echo "forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - name: Prove SDT-G26 forced-red CI reachability
         run: |
           if SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red; then
@@ -159,6 +167,11 @@ jobs:
           f1d3d7163f08a55c70fb8f66a38070be74f7caaf
           da2a8356fdbd898fa044884469b57a51ed8da996
           1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6
+          1a9a5f22238a4755b8f15cdc17aec4f68bcde79d
+          f401342df68461d3239f58b14ff6891db4214ac6
+          50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f
+          f7d306c0018b1b7046095891186b8409c9b16863
+          16afe111b8e3aa3a48dc949b0caa33160b08f29f
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -202,6 +215,12 @@ jobs:
       - name: Prove SDT-G26 candidate retention gate forced failure
         run: |
           if SDT_G26_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
+            echo "candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove SDT-G27 candidate retention gate forced failure
+        run: |
+          if SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
             echo "candidate forced-red probe unexpectedly passed"
             exit 1
           fi

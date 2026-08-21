@@ -50,6 +50,8 @@ function identity(message: DownstreamOutboxMessage): OutboxDelivery {
     eventId: message.eventId,
     suid: message.suid,
     payload: message.payload,
+    ...(message.eventType === undefined ? {} : { eventType: message.eventType }),
+    ...(message.provenance === undefined ? {} : { provenance: message.provenance }),
     enqueuedAt: message.enqueuedAt,
     deliveredAt: null,
   };

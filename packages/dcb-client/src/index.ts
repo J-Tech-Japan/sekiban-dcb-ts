@@ -490,7 +490,12 @@ export class ClaimLedgerExecutor {
           },
           append: (event, payload, tags) => {
             const jsonPayload = assertJsonValue(payload, "event-construction");
-            const candidate = Object.freeze({ eventId: newEventId(), eventPayloadName: eventPayloadName(event), payload: jsonPayload, tags: Object.freeze(tags.map(normalizeTag)) });
+            const candidate = Object.freeze({
+              eventId: newEventId(),
+              eventPayloadName: eventPayloadName(event),
+              payload: jsonPayload,
+              tags: Object.freeze(tags.map(normalizeTag)),
+            });
             attemptCandidates.push(candidate);
             return candidate;
           },

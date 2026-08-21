@@ -1,4 +1,15 @@
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
+import type { EventProvenance } from "../eventIdentity";
+
+/** A provider must reject canonical-key-only identity divergence before any durable write. */
+export class CanonicalEventIdentityConflictError extends Error {
+  readonly code: string = "CANONICAL_EVENT_IDENTITY_CONFLICT";
+
+  constructor(readonly provider: string, readonly eventId: string, message?: string) {
+    super(message ?? `${provider} EventId ${eventId} conflicts with its canonical event identity`);
+    this.name = "CanonicalEventIdentityConflictError";
+  }
+}
 
 export interface DeliveryLagRecord {
   serviceId: string;
@@ -16,6 +27,9 @@ export interface StoredEvent {
   payload: string;
   /** Complete durable tag membership, retained from the outbox envelope. */
   eventTags: string[];
+  /** Canonical eventPayloadName:version, absent only on pre-G27 rows. */
+  eventType?: string;
+  provenance?: EventProvenance;
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;

@@ -27,6 +27,7 @@ import {
   type DownstreamDoorbellBinding,
 } from "../downstream/Doorbell";
 import { deliveryCorrelationId } from "../downstream/DeliveryCore";
+import { assertCanonicalEventType, type EventProvenance } from "../eventIdentity";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -34,6 +35,8 @@ const OUTBOX_DELIVERIES_KEY = "outbox-deliveries";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
 const DEFAULT_REPAIR_LEASE_MS = 30_000;
 const MAX_REPAIR_LEASE_MS = 5 * 60_000;
+/** Explicit proof that an identity-less /append is an immutable legacy import. */
+const LEGACY_APPEND_MIGRATION_MARKER = "pre-g27-append-v1" as const;
 
 type JsonObject = Record<string, unknown>;
 
@@ -60,6 +63,8 @@ interface AppendCandidate {
   payload: string;
   eventTags: string[];
   allocatorLineageId: string;
+  eventType?: string;
+  provenance?: EventProvenance;
 }
 
 interface AppendInput extends ReservationInput {
@@ -112,7 +117,7 @@ interface OutboxPendingInput {
 }
 
 interface OutboxMarkInput {
-  deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt">>;
+  deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt" | "eventType" | "provenance">>;
   nowMs: number;
 }
 
@@ -307,6 +312,24 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
     if (eventTags.value === undefined || !eventTags.value.includes(tag)) {
       return { error: eventTags.error ?? "each candidate must include this event tag" };
     }
+    let eventType: string | undefined;
+    try {
+      if (rawCandidate.eventType !== undefined && typeof rawCandidate.eventType !== "string") return { error: "candidate eventType must be a string" };
+      eventType = rawCandidate.eventType === undefined ? undefined : assertCanonicalEventType(rawCandidate.eventType).key;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "candidate eventType is invalid" };
+    }
+    const rawProvenance = rawCandidate.provenance;
+    if (rawProvenance !== undefined && rawProvenance !== "pre-g27" && rawProvenance !== "g27") return { error: "candidate provenance is invalid" };
+    const legacyMarker = rawCandidate.legacyMigrationMarker;
+    if (eventType === undefined) {
+      if (rawProvenance !== "pre-g27" || legacyMarker !== LEGACY_APPEND_MIGRATION_MARKER) {
+        return { error: "identity-less /append requires an explicit immutable pre-g27 migration marker" };
+      }
+    } else if (rawProvenance !== "g27" || legacyMarker !== undefined) {
+      return { error: "canonical /append candidates require g27 provenance and no legacy migration marker" };
+    }
+    const provenance = eventType === undefined ? "pre-g27" : "g27";
     candidates.push({
       eventId: rawCandidate.eventId,
       suid: rawCandidate.suid,
@@ -315,6 +338,8 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
       allocatorLineageId: isNonEmptyString(rawCandidate.allocatorLineageId)
         ? rawCandidate.allocatorLineageId
         : LEGACY_ALLOCATOR_LINEAGE_ID,
+      ...(eventType === undefined ? {} : { eventType }),
+      provenance,
     });
   }
   if (new Set(candidates.map((candidate) => candidate.eventId)).size !== candidates.length) {
@@ -342,7 +367,22 @@ function bootstrapAppendFrom(value: unknown, tag: string): { value?: BootstrapAp
     if (!isObject(candidate) || !isNonEmptyString(candidate.eventId) || !isNonEmptyString(candidate.suid) || typeof candidate.payload !== "string") return { error: "bootstrap candidate is invalid" };
     const tags = stringArrayFrom(candidate.eventTags, "bootstrap candidate eventTags");
     if (tags.value === undefined || !tags.value.includes(tag) || !isNonEmptyString(candidate.allocatorLineageId)) return { error: "bootstrap candidate must include this tag and lineage" };
-    candidates.push({ eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: tags.value, allocatorLineageId: candidate.allocatorLineageId });
+    let eventType: string | undefined;
+    try {
+      if (candidate.eventType !== undefined && typeof candidate.eventType !== "string") return { error: "bootstrap candidate eventType must be a string" };
+      eventType = candidate.eventType === undefined ? undefined : assertCanonicalEventType(candidate.eventType).key;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "bootstrap candidate eventType is invalid" };
+    }
+    const rawProvenance = candidate.provenance;
+    if (rawProvenance !== undefined && rawProvenance !== "pre-g27" && rawProvenance !== "g27") return { error: "bootstrap candidate provenance is invalid" };
+    const provenance = rawProvenance === undefined
+      ? eventType === undefined ? "pre-g27" : "g27"
+      : rawProvenance;
+    if ((eventType === undefined) !== (provenance === "pre-g27")) {
+      return { error: "bootstrap candidate event identity and provenance must agree" };
+    }
+    candidates.push({ eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: tags.value, allocatorLineageId: candidate.allocatorLineageId, ...(eventType === undefined ? {} : { eventType }), provenance });
   }
   const ordered = [...candidates].sort((a, b) => a.suid.localeCompare(b.suid));
   if (ordered.some((candidate, index) => index > 0 && ordered[index - 1]!.suid === candidate.suid)) return { error: "bootstrap SUID values must be unique" };
@@ -491,12 +531,17 @@ function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: stri
     ) {
       return { error: "each delivery needs attemptId, eventId, suid, payload, and enqueuedAt" };
     }
+    if (raw.eventType !== undefined && typeof raw.eventType !== "string") return { error: "delivery eventType must be a string" };
+    if (raw.provenance !== undefined && raw.provenance !== "g27" && raw.provenance !== "pre-g27" && raw.provenance !== "pre-g27-queue") return { error: "delivery provenance is invalid" };
+    if ((raw.eventType === undefined) !== (raw.provenance === undefined || raw.provenance === "pre-g27" || raw.provenance === "pre-g27-queue")) return { error: "delivery event identity and provenance must agree" };
     deliveries.push({
       attemptId: raw.attemptId,
       eventId: raw.eventId,
       suid: raw.suid,
       payload: raw.payload,
       enqueuedAt: raw.enqueuedAt,
+      ...(typeof raw.eventType === "string" ? { eventType: raw.eventType } : {}),
+      ...(raw.provenance === "g27" ? { provenance: raw.provenance } : raw.provenance === "pre-g27" || raw.provenance === "pre-g27-queue" ? { provenance: "pre-g27" as const } : {}),
     });
   }
   if (new Set(deliveries.map(outboxRowKey)).size !== deliveries.length) {
@@ -543,7 +588,7 @@ function withoutFence(entries: TagFence[], reason: string, attemptId: string): T
 }
 
 function outboxRowKey(row: TagOutboxRow): string {
-  return `${row.attemptId}\u0000${row.eventId}\u0000${row.suid}\u0000${row.payload}`;
+  return `${row.attemptId}\u0000${row.eventId}\u0000${row.suid}\u0000${row.payload}\u0000${row.eventType ?? ""}\u0000${row.provenance ?? ""}`;
 }
 
 function repairScopeKey(item: RepairScopeItem): string {
@@ -643,7 +688,7 @@ function fenceEpochRejection(record: TagRecord, reason: string, attemptId: strin
 function newRecord(tag: string): TagRecord {
   const timestamp = nowIso();
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     tag,
     head: "",
     activeReservation: null,
@@ -674,6 +719,7 @@ function newRecord(tag: string): TagRecord {
 function normalizeRepairRecord(record: TagRecord): TagRecord {
   return {
     ...record,
+    schemaVersion: record.schemaVersion ?? 1,
     repairOwner: record.repairOwner ?? null,
     repairLeaseUntil: record.repairLeaseUntil ?? null,
     highestRepairEpoch: record.highestRepairEpoch ?? 0,
@@ -741,7 +787,9 @@ function candidateIsExactDuplicate(record: TagRecord, attemptId: string, candida
       event.attemptId === attemptId &&
       event.eventId === candidate.eventId &&
       event.suid === candidate.suid &&
-      event.payload === candidate.payload,
+      event.payload === candidate.payload &&
+      event.eventType === candidate.eventType &&
+      (event.provenance ?? "pre-g27") === (candidate.provenance ?? "pre-g27"),
   );
 }
 
@@ -750,7 +798,14 @@ function batchIsExactDuplicate(record: TagRecord, input: AppendInput): boolean {
 }
 
 function hasEventConflict(record: TagRecord, candidates: AppendCandidate[]): boolean {
-  return candidates.some((candidate) => record.events.some((event) => event.eventId === candidate.eventId));
+  return candidates.some((candidate) => record.events.some((event) =>
+    event.eventId === candidate.eventId && !(
+      event.suid === candidate.suid &&
+      event.payload === candidate.payload &&
+      event.eventType === candidate.eventType &&
+      (event.provenance ?? "pre-g27") === (candidate.provenance ?? "pre-g27")
+    ),
+  ));
 }
 
 function monotonicityViolation(head: string, candidates: AppendCandidate[]): boolean {
@@ -1152,13 +1207,13 @@ export class TagDurableObject implements DurableObject {
       if (record.activeReservation !== null || record.fences.length > 0 || record.outbox.length > 0) return rejected("bootstrap_requires_empty_tag");
       const admission: TagBootstrapAdmission = record.bootstrapAdmission ?? { importId: input.importId, leaseEpoch: input.leaseEpoch, manifestDigest: input.manifestDigest, targetServiceId: input.targetServiceId, closed: false };
       if (admission.importId !== input.importId || admission.leaseEpoch !== input.leaseEpoch || admission.manifestDigest !== input.manifestDigest || admission.targetServiceId !== input.targetServiceId) return rejected("bootstrap_fencing_or_manifest_mismatch");
-      const exact = input.candidates.every((candidate) => record.events.some((event) => event.eventId === candidate.eventId && event.suid === candidate.suid && event.payload === candidate.payload && event.eventTags.join("\u0000") === candidate.eventTags.join("\u0000")));
+      const exact = input.candidates.every((candidate) => record.events.some((event) => event.eventId === candidate.eventId && event.suid === candidate.suid && event.payload === candidate.payload && event.eventTags.join("\u0000") === candidate.eventTags.join("\u0000") && event.eventType === candidate.eventType && (event.provenance ?? "pre-g27") === (candidate.provenance ?? "pre-g27")));
       if (exact) return { status: 200, body: { status: "duplicate", version: record.version } };
       // A coordinator may send several bounded chunks for one tag.  The
       // admission identity is fixed above; only duplicate replay, conflicting
       // identity, or non-monotonic continuation can be rejected here.
       if (hasEventConflict(record, input.candidates) || monotonicityViolation(record.head, input.candidates)) return rejected("bootstrap_identity_or_order_conflict");
-      const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId }));
+      const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId, ...(candidate.eventType === undefined ? {} : { eventType: candidate.eventType }), provenance: candidate.provenance }));
       const updated = await this.commit(txn, record, { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events: [...record.events, ...events] });
       return { status: 201, body: { status: "bootstrap_admitted", version: updated.version } };
     });
@@ -1273,6 +1328,8 @@ export class TagDurableObject implements DurableObject {
           payload: candidate.payload,
           eventTags: candidate.eventTags,
           allocatorLineageId: candidate.allocatorLineageId,
+          ...(candidate.eventType === undefined ? {} : { eventType: candidate.eventType }),
+          provenance: candidate.provenance,
         }));
         const outboxRows: TagOutboxRow[] = input.candidates.map((candidate) => ({
           attemptId: input.attemptId,
@@ -1280,6 +1337,8 @@ export class TagDurableObject implements DurableObject {
           suid: candidate.suid,
           payload: candidate.payload,
           allocatorLineageId: candidate.allocatorLineageId,
+          ...(candidate.eventType === undefined ? {} : { eventType: candidate.eventType }),
+          provenance: candidate.provenance,
         }));
         const head = input.candidates[input.candidates.length - 1]!.suid;
         const appendedOnly = changed(record, {
@@ -1433,11 +1492,13 @@ export class TagDurableObject implements DurableObject {
       return;
     }
     const mark = await this.markOutboxDelivered(tag, {
-      deliveries: rows.map(({ attemptId, eventId, suid, payload, enqueuedAt }) => ({
+      deliveries: rows.map(({ attemptId, eventId, suid, payload, eventType, provenance, enqueuedAt }) => ({
         attemptId,
         eventId,
         suid,
         payload,
+        ...(eventType === undefined ? {} : { eventType }),
+        ...(provenance === "g27" ? { provenance } : {}),
         enqueuedAt,
       })),
       nowMs: Date.now(),
@@ -1637,6 +1698,8 @@ export class TagDurableObject implements DurableObject {
         payload: string;
         allocatorLineageId: string;
         eventTags: string[];
+        eventType?: string;
+        provenance?: "g27" | "pre-g27-queue";
         enqueuedAt: number;
       }> = [];
       for (const row of record.outbox) {
@@ -1654,7 +1717,9 @@ export class TagDurableObject implements DurableObject {
           candidate.attemptId === row.attemptId &&
           candidate.eventId === row.eventId &&
           candidate.suid === row.suid &&
-          candidate.payload === row.payload,
+          candidate.payload === row.payload &&
+          candidate.eventType === row.eventType &&
+          (candidate.provenance ?? "pre-g27") === (row.provenance ?? "pre-g27"),
         );
         if (event === undefined) {
           return {
@@ -1672,6 +1737,8 @@ export class TagDurableObject implements DurableObject {
           payload: row.payload,
           allocatorLineageId: row.allocatorLineageId ?? event.allocatorLineageId ?? LEGACY_ALLOCATOR_LINEAGE_ID,
           eventTags: event.eventTags,
+          ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
+          provenance: event.eventType === undefined ? "pre-g27-queue" : "g27",
           enqueuedAt: delivery.enqueuedAt,
         });
       }

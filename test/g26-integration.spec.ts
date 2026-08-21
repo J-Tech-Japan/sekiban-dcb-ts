@@ -2,6 +2,8 @@ import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw source import.
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
+// @ts-expect-error Vite raw source migration import.
+import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
 // @ts-expect-error Vite raw source import.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw source import.
@@ -64,6 +66,8 @@ function message(suffix: string): DownstreamOutboxMessage {
     suid: `g26-integration-suid-${suffix}`,
     payload: btoa(JSON.stringify({ eventType: "G26Integration", suffix })),
     eventTags: [tag],
+    eventType: "G26Integration:1",
+    provenance: "g27",
     enqueuedAt: 1_000,
   };
 }
@@ -247,7 +251,7 @@ async function runBoundary(boundary: Boundary, options: {
       body: JSON.stringify({
         attemptId: event.attemptId,
         epoch: 0,
-        candidates: [{ eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: event.eventTags, allocatorLineageId: event.allocatorLineageId }],
+        candidates: [{ eventId: event.eventId, suid: event.suid, payload: event.payload, eventType: event.eventType, provenance: "g27", eventTags: event.eventTags, allocatorLineageId: event.allocatorLineageId }],
       }),
     },
   ));
@@ -290,7 +294,7 @@ async function runBoundary(boundary: Boundary, options: {
 describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
   beforeAll(async () => {
     const pipeline = database("D1");
-    await pipeline.batch(statements(pipeline, pipelineMigration as string));
+    await pipeline.batch(statements(pipeline, `${pipelineMigration as string}\n${identityMigration as string}`));
     const mv = database("D1_MV");
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration]) {
       await mv.batch(statements(mv, migration as string));

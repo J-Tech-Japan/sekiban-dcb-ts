@@ -43,6 +43,7 @@ function message(
     suid,
     payload: PAYLOAD,
     eventTags,
+    provenance: "pre-g27-queue",
     enqueuedAt,
   };
 }
@@ -65,6 +66,8 @@ async function appendOutboxCopy(
           suid: body.suid,
           payload: PAYLOAD,
           eventTags: body.eventTags,
+          provenance: "pre-g27",
+          legacyMigrationMarker: "pre-g27-append-v1",
         }],
       }),
     },

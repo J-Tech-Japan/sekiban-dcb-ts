@@ -27,8 +27,12 @@ function message(serviceId, eventId, value, tags) {
     suid: suid(value),
     payload: value === 1 ? "AQ==" : "Ag==",
     eventTags: tags,
+    provenance: "pre-g27-queue",
     enqueuedAt: 0,
   };
+}
+function canonicalMessage(serviceId, eventId, value, tags) {
+  return { ...message(serviceId, eventId, value, tags), eventType: "OrderPlaced:2", provenance: "g27" };
 }
 async function snapshot(store, serviceId) {
   return {
@@ -67,4 +71,20 @@ await assert.rejects(
   (error) => error?.code === "BOOTSTRAP_EVENT_IDENTITY_CONFLICT",
 );
 assert.deepEqual(await snapshot(store, targetServiceId), before, "Cosmos rejected bootstrap admission must not change event/metadata/detector/lag state");
-console.log("SDT-G22 real Cosmos bootstrap provider contract passed: export snapshot and store admission identity guard");
+
+const canonical = canonicalMessage(sourceServiceId, "canonical", 4, tags);
+await store.recordDelivery(canonical, 0);
+const canonicalDump = (await adapter.exportPage({ sourceServiceId, targetServiceId, allocatorLineageId: "g22-bootstrap-provider-lineage", pageSize: 8 })).dump;
+await adapter.admitBootstrap({ importId: "g22-cosmos-canonical-replay", leaseEpoch: 3, manifest: canonicalDump.manifest, events: canonicalDump.events.filter((event) => event.eventId === "canonical") });
+const canonicalBefore = await snapshot(store, targetServiceId);
+const directDivergence = { ...canonical, serviceId: targetServiceId, eventType: "OrderPlaced:1" };
+await assert.rejects(
+  store.recordDelivery(directDivergence, 0),
+  (error) => error?.code === "CANONICAL_EVENT_IDENTITY_CONFLICT",
+);
+assert.deepEqual(await snapshot(store, targetServiceId), canonicalBefore, "Cosmos direct canonical-key divergence must fail before any durable side effect");
+await assert.rejects(
+  adapter.admitBootstrap({ importId: "g22-cosmos-canonical-divergence", leaseEpoch: 4, manifest: canonicalDump.manifest, events: [{ ...canonicalDump.events.find((event) => event.eventId === "canonical"), eventType: "OrderPlaced:1" }] }),
+  (error) => error?.code === "BOOTSTRAP_EVENT_IDENTITY_CONFLICT",
+);
+console.log("SDT-G22 real Cosmos bootstrap provider contract passed: export snapshot, direct store identity guard, and adapter guard");

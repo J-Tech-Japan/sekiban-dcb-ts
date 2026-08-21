@@ -4,6 +4,7 @@ import type {
   ProjectorDefinition,
 } from "@sekiban/dcb-core";
 import type { DeliveryClass } from "./downstream/Doorbell";
+import { resolveDeliveryIdentity } from "./eventIdentity";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
   ProjectorRegistry,
@@ -44,6 +45,13 @@ export interface RuntimeComposition {
   readonly queries: QueryRegistry;
 }
 
+/** The commit authority is the active domain registry, never a V1 caller field. */
+export function registeredEventVersions(domain: DomainDefinition | undefined): Readonly<Record<string, number>> {
+  return Object.freeze(Object.fromEntries(
+    (domain?.events ?? []).map((event) => [event.eventPayloadName, event.version]),
+  ));
+}
+
 function decodeBase64Json(value: string): unknown {
   try {
     const binary = atob(value);
@@ -54,6 +62,7 @@ function decodeBase64Json(value: string): unknown {
   }
 }
 
+/** Legacy-only discriminator. It is never called for a canonical G27 event. */
 function eventNameFromPayload(value: unknown, projector: ProjectorDefinition): string | undefined {
   if (typeof value === "object" && value !== null && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
@@ -79,11 +88,13 @@ function projectorFromDefinition(
   const payloadName = payloadNames[definition.id] ?? `${definition.id}State`;
   const apply = (state: JsonValue, event: ProjectionEvent): JsonValue => {
     const payload = decodeBase64Json(event.payload);
-    const eventName = eventNameFromPayload(payload, definition);
+    const identity = resolveDeliveryIdentity({ eventType: event.eventType, provenance: event.provenance }, "queue");
+    const eventName = identity.legacy ? eventNameFromPayload(payload, definition) : identity.eventPayloadName;
     if (eventName === undefined) return state;
     return definition.apply(state, {
       eventName,
       eventPayloadName: eventName,
+      ...(identity.legacy ? {} : { eventType: identity.key }),
       payload: payload as JsonValue,
     });
   };

@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { serviceIdForRequest } from "../http/testServiceId";
 import type { DeliveryClass } from "../downstream/Doorbell";
+import { canonicalEventType } from "../eventIdentity";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -43,6 +44,8 @@ export interface CommitWorkerHooks {
   allocatorName?: string;
   /** Runtime composition value; never sourced from a caller-controlled V1 body. */
   domainDeliveryClass?: DeliveryClass;
+  /** Active event registry used by commit admission to assign the canonical version. */
+  registeredEventVersions?: Readonly<Record<string, number>>;
 }
 
 interface ReservationSuccess {
@@ -128,7 +131,10 @@ function responseWithAttempt(response: Response, attemptId: string, expose: bool
 }
 
 /** Parse the complete V1 envelope before any Durable Object is contacted. */
-export function validateCommitEnvelope(value: unknown):
+export function validateCommitEnvelope(
+  value: unknown,
+  registeredEventVersions: Readonly<Record<string, number>> = {},
+):
   | { value: ValidatedCommitEnvelope }
   | { error: Response } {
   if (!isObject(value) || typeof value.version !== "number") {
@@ -172,9 +178,23 @@ export function validateCommitEnvelope(value: unknown):
     ) {
       return { error: error(400, "validation_error", "Candidate tags must be unique non-empty strings") };
     }
+    let eventType: string;
+    try {
+      if (Object.prototype.hasOwnProperty.call(rawCandidate, "eventPayloadVersion")) {
+        throw new Error("V1 commit candidates must not contain eventPayloadVersion; the registered event definition is authoritative");
+      }
+      const registeredVersion = registeredEventVersions[rawCandidate.eventPayloadName];
+      if (registeredVersion !== undefined && (!Number.isSafeInteger(registeredVersion) || registeredVersion < 1)) {
+        throw new Error("Registered event definition has an invalid payload version");
+      }
+      eventType = canonicalEventType(rawCandidate.eventPayloadName, registeredVersion ?? 1);
+    } catch (identityError) {
+      return { error: error(400, "invalid_event_identity", identityError instanceof Error ? identityError.message : "Event identity is invalid") };
+    }
     eventCandidates.push({
       payload: rawCandidate.payload,
       eventPayloadName: rawCandidate.eventPayloadName,
+      eventType,
       tags: [...rawCandidate.tags],
     });
   }
@@ -228,7 +248,7 @@ export class CommitWorker {
     } catch {
       return error(400, "malformed_commit_envelope", "Commit envelope must be JSON");
     }
-    const validated = validateCommitEnvelope(body);
+    const validated = validateCommitEnvelope(body, this.hooks.registeredEventVersions);
     if ("error" in validated) {
       return validated.error;
     }
@@ -257,7 +277,7 @@ export class CommitWorker {
     try {
     const journal = this.journalFor(attemptId);
     const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
-      candidates: candidates.map(({ eventId, payload, tags }) => ({ eventId, payload, tags })),
+      candidates: candidates.map(({ eventId, payload, eventType, tags }) => ({ eventId, payload, eventType, tags })),
       consistencyTags: input.consistencyTags,
       commitContext: {
         attemptId,
@@ -538,7 +558,7 @@ export class CommitWorker {
   }
 
   private withAllocatedSuids(
-    candidates: Array<{ eventId: string; payload: string; eventPayloadName: string; tags: string[] }>,
+    candidates: Array<{ eventId: string; payload: string; eventPayloadName: string; eventType: string; tags: string[] }>,
     vector: AllocationVector,
   ): AllocatedCommitCandidate[] | undefined {
     if (vector.candidates.length !== candidates.length) {
@@ -579,10 +599,12 @@ export class CommitWorker {
             reservationToken: reservations.get(tag)?.reservationToken,
             candidates: candidates
               .filter((candidate) => candidate.tags.includes(tag))
-              .map(({ eventId, suid, payload, tags }) => ({
+              .map(({ eventId, suid, payload, eventType, tags }) => ({
                 eventId,
                 suid,
                 payload,
+                eventType,
+                provenance: "g27" as const,
                 eventTags: tags,
                 allocatorLineageId,
               })),

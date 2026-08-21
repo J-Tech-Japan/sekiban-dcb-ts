@@ -49,10 +49,23 @@ async function commit(body: unknown, fault: string, attemptId: string): Promise<
 }
 
 async function tagPost(tag: string, path: string, body: unknown): Promise<Response> {
+  const wireBody = path === "/append" && typeof body === "object" && body !== null && !Array.isArray(body)
+    ? {
+      ...(body as Record<string, unknown>),
+      candidates: Array.isArray((body as Record<string, unknown>).candidates)
+        ? ((body as Record<string, unknown>).candidates as unknown[]).map((candidate) =>
+          typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) &&
+          !Object.prototype.hasOwnProperty.call(candidate, "eventType")
+            ? { ...(candidate as Record<string, unknown>), provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" }
+            : candidate,
+        )
+        : (body as Record<string, unknown>).candidates,
+    }
+    : body;
   return SELF.fetch(`https://read.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(tag)}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(wireBody),
   });
 }
 
@@ -315,6 +328,7 @@ describe("Serialized V1 reads", () => {
       suid: "suid-ceiling-00000000000000000000000000000001",
       payload: "e30=",
       eventTags: [tag],
+      provenance: "pre-g27-queue",
       enqueuedAt: now - 121_000,
     }, now);
     expect(await store.currentLagBound(serviceId, now)).toBeGreaterThan(120_000);

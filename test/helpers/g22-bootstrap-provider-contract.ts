@@ -7,6 +7,7 @@ import {
 } from "../../packages/dcb-runtime/src/bootstrap/BootstrapStoreAdapter";
 import type { PipelineStore, StoredEvent } from "../../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../../packages/dcb-runtime/src/downstream/types";
+import { CanonicalEventIdentityConflictError } from "../../packages/dcb-runtime/src/store/types";
 
 const suid = (value: number) => `suid-${String(value).padStart(32, "0")}`;
 
@@ -21,7 +22,16 @@ function message(serviceId: string, eventId: string, value: number, tags: string
     suid: suid(value),
     payload: value === 1 ? "AQ==" : "Ag==",
     eventTags: tags,
+    provenance: "pre-g27-queue",
     enqueuedAt: 0,
+  };
+}
+
+function canonicalMessage(serviceId: string, eventId: string, value: number, tags: string[]): DownstreamOutboxMessage {
+  return {
+    ...message(serviceId, eventId, value, tags),
+    eventType: "OrderPlaced:2",
+    provenance: "g27",
   };
 }
 
@@ -96,8 +106,55 @@ export async function runG22BootstrapProviderContract(
     events: [{ ...targetDump.events[0]!, payload: "Aw==" }],
   })).rejects.toBeInstanceOf(BootstrapIdentityConflictError);
   expect(await durableSnapshot(store, targetServiceId)).toEqual(before);
+
+  // The new identity is part of the provider-neutral dump, and a divergence
+  // in only that key must fail before any row/arrival/lag side effect.
+  const canonical = canonicalMessage(sourceServiceId, "canonical", 4, tags);
+  expect((await store.recordDelivery(canonical, 0)).outcome).toBe("stored");
+  const canonicalDump = (await sourceAdapter.exportPage({
+    sourceServiceId,
+    targetServiceId,
+    allocatorLineageId: "g22-bootstrap-provider-lineage",
+    pageSize: 8,
+  })).dump;
+  expect(canonicalDump.events.find((row) => row.eventId === "canonical")).toMatchObject({
+    eventType: "OrderPlaced:2",
+    provenance: { origin: "g27" },
+  });
+  await targetAdapter.admitBootstrap({
+    importId: `g22-${provider}-canonical-replay`,
+    leaseEpoch: 3,
+    manifest: canonicalDump.manifest,
+    events: canonicalDump.events.filter((row) => row.eventId === "canonical"),
+  });
+  const canonicalBefore = await durableSnapshot(store, targetServiceId);
+  const canonicalTargetMessage = { ...canonical, serviceId: targetServiceId };
+  const directDivergence = { ...canonicalTargetMessage, eventType: "OrderPlaced:1" as const, provenance: "g27" as const };
+  let directError: unknown;
+  try {
+    await store.recordDelivery(directDivergence, 0);
+  } catch (error) {
+    directError = error;
+  }
+  expect(directError).toBeInstanceOf(CanonicalEventIdentityConflictError);
+  expect((directError as { readonly code?: string }).code).toBe("CANONICAL_EVENT_IDENTITY_CONFLICT");
+  expect(await durableSnapshot(store, targetServiceId)).toEqual(canonicalBefore);
+  await expect(targetAdapter.admitBootstrap({
+    importId: `g22-${provider}-canonical-divergence`,
+    leaseEpoch: 4,
+    manifest: canonicalDump.manifest,
+    events: [{ ...canonicalDump.events.find((row) => row.eventId === "canonical")!, eventType: "OrderPlaced:1" }],
+  })).rejects.toThrow();
+  expect(await durableSnapshot(store, targetServiceId)).toEqual(canonicalBefore);
 }
 
-export function g22StoredEventIdentity(event: StoredEvent): Pick<StoredEvent, "eventId" | "suid" | "payload" | "eventTags"> {
-  return { eventId: event.eventId, suid: event.suid, payload: event.payload, eventTags: event.eventTags };
+export function g22StoredEventIdentity(event: StoredEvent): Pick<StoredEvent, "eventId" | "suid" | "payload" | "eventTags" | "eventType" | "provenance"> {
+  return {
+    eventId: event.eventId,
+    suid: event.suid,
+    payload: event.payload,
+    eventTags: event.eventTags,
+    ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
+    provenance: event.provenance,
+  };
 }

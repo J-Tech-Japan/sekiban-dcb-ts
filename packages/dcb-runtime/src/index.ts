@@ -10,7 +10,7 @@ import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
-import { composeRuntime, type RuntimeWorkerConfig } from "./composition";
+import { composeRuntime, registeredEventVersions, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
@@ -59,6 +59,23 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export {
+  assertCanonicalEventType,
+  canonicalEventType,
+  DeliveryIdentityError,
+  MissingCanonicalEventIdentityError,
+  resolveDeliveryIdentity,
+} from "./eventIdentity";
+export type { DeliveryProvenance, EventProvenance, ResolvedDeliveryIdentity } from "./eventIdentity";
+export {
+  allocateOrderRange,
+  diagnosticAllocatedAt,
+  decodeOrderOrdinal,
+  encodeOrderOrdinal,
+  OrderClockReadError,
+  systemOrderClock,
+} from "./allocator/OrderClock";
+export type { OrderAllocationRange, OrderClock } from "./allocator/OrderClock";
 export type {
   DeliveryCoreEnvironment,
   DeliveryCoreFailure,
@@ -153,7 +170,10 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
-        return handleSerializedCommit(request, env, { domainDeliveryClass: options.config?.deliveryClass });
+        return handleSerializedCommit(request, env, {
+          domainDeliveryClass: options.config?.deliveryClass,
+          registeredEventVersions: registeredEventVersions(options.domain),
+        });
       }
       if (
         url.pathname === "/api/sekiban/serialized/query" ||

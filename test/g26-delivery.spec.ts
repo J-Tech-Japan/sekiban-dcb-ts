@@ -32,6 +32,8 @@ function message(suffix = "one"): DownstreamOutboxMessage {
     suid: `g26-suid-${suffix}`,
     payload: btoa(JSON.stringify({ eventType: "G26", suffix })),
     eventTags: [tag],
+    eventType: "G26:1",
+    provenance: "g27",
     enqueuedAt: 1_000,
   };
 }
