@@ -27,6 +27,7 @@ function message(serviceId, eventId, value, tags) {
     suid: suid(value),
     payload: value === 1 ? "AQ==" : "Ag==",
     eventTags: tags,
+    provenance: "pre-g27-queue",
     enqueuedAt: 0,
   };
 }

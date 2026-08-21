@@ -1,8 +1,8 @@
 {
   "task": "SDT-G27",
-  "status": "FINAL candidate C; bookkeeping R records the candidate and its self-digests",
-  "candidateCommit": "1a9a5f22238a4755b8f15cdc17aec4f68bcde79d",
-  "sourceCommit": "1a9a5f22238a4755b8f15cdc17aec4f68bcde79d",
+  "status": "CANDIDATE evidence; final digest is filled by bookkeeping R",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
     "candidate": "C contains canonical identity, provenance gates, OrderClock, migration, tests, oracle map, and CI wiring",
     "bookkeeping": "R updates only this evidence document and appends the immutable C SHA to the retained candidate fetch list",
