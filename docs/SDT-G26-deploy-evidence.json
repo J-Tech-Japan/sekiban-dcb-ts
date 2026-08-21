@@ -266,7 +266,7 @@
     "candidateGate": "PASS: npm run test:g20:candidate with C''+R'' active",
     "fullCheck": "PASS: npm run check (35 test files, 236 tests)",
     "legacyWorkerE2E": "PASS: npm run e2e:g15:local with explicit PostgreSQL and queued-degraded legacy worker config",
-    "remoteCI": "pending push"
+    "remoteCI": "PASS: GitHub Actions run 32466727330 (verify 96724783490, cosmos-emulator 96724783519)"
   },
   "secrets": "redacted"
 }
