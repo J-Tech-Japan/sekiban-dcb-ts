@@ -1,23 +1,23 @@
 {
   "task": "SDT-G27",
-  "status": "CANDIDATE placeholder for C''; bookkeeping R'' will record the candidate and its self-digests",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "FINAL candidate C''; bookkeeping R'' records the candidate and its self-digests",
+  "candidateCommit": "f7d306c0018b1b7046095891186b8409c9b16863",
+  "sourceCommit": "f7d306c0018b1b7046095891186b8409c9b16863",
   "protocol": {
     "candidate": "C'' contains the F1-F6 rereview fixes, typed provider divergence guard, immutable queue fixture, focused tests, oracle map, and PR body",
-    "bookkeeping": "R'' will update only this evidence document and append the immutable C'' SHA to the retained candidate fetch list",
+    "bookkeeping": "R'' updates only this evidence document and appends the immutable C'' SHA to the retained candidate fetch list",
     "selfReference": false,
     "secrets": "redacted"
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "6ea2337be556405be6b4e1b2d7bf3fae779e899a7ef5dd0e841ecc95b1e73c2c",
+    "runtime": "4edf8f545ec5860f06f90039cc764a6c5d9d1feea40c242d5b6bab22fc243ddc",
     "runtimeRoots": [
       "packages/dcb-core/src",
       "packages/dcb-runtime/src",
       "packages/dcb-client/src"
     ],
-    "configuration": "183ba40f2bf5f6c276eba305af7b2c9017cfccbb99e44e31762bbf8d8ab198c3",
+    "configuration": "92ddc83500206d6b1e921523b48a4a82a2bae38ff91a69fb285f1a684fa51bb5",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "migrations/d1",
@@ -50,6 +50,14 @@
       "SDT_G27_FORCE_FAILURE=1 npm run test:g27:forced-red": "EXPECTED-RED",
       "SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED"
     }
+  },
+  "rereviewFindings": {
+    "F1": "PASS — distinct canonical key/EventId/SUID admission and StoredEvent callback oracle",
+    "F2": "PASS — composeRuntime identity-bearing Order:2 beats contradictory payload discriminator",
+    "F4": "PASS — real allocator DO seed=100 with tick=6 requires watermark+1=101",
+    "F5": "PASS — runtime pending bytes compare to committed pre-G27 fixture; additive fields are fixed",
+    "F6": "PASS — D1/Postgres direct typed canonical-key divergence and Cosmos real-emulator equivalent are wired",
+    "cosmosEmulatorFailure": "32522702896 failed only because the old C′ evidence saw the tracked claim commit as an unallowlisted post-candidate path; C'' is cut after that claim and R'' appends only C''"
   },
   "migration": {
     "baseline": "migrations/d1/0001_pipeline_store.sql",
