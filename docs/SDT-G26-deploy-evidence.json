@@ -89,7 +89,7 @@
   ],
   "protocol": {
     "finalCandidate": "C'' includes runtime, sample configuration, tests, deploy/measurement scripts, oracle map, and CI wiring",
-    "bookkeepingCommit": "R' pending",
+    "bookkeepingCommit": "4065b4b91b71f0e9a501fd73146daf9db35e2c1c",
     "deploymentIdentity": "fresh explicit non-secret G26_SERVICE_ID per topology",
     "fixedN": 20,
     "controlledConcurrency": 1,
@@ -262,9 +262,10 @@
     "g23": "PASS: 27/27 unsafe-window tests after preserving independent arrival guard",
     "g26": "PASS: 31/31 tests",
     "localSlopeTarget": "PASS: real D1 slope fixture",
-    "forcedRed": "PASS: G26 forced-red and candidate forced-red probes exited non-zero as expected",
-    "candidateGate": "PASS: npm run test:g20:candidate",
+    "forcedRed": "PASS: C'' G26 forced-red and candidate forced-red probes exited non-zero as expected",
+    "candidateGate": "PASS: npm run test:g20:candidate with C''+R'' active",
     "fullCheck": "PASS: npm run check (35 test files, 236 tests)",
+    "legacyWorkerE2E": "PASS: npm run e2e:g15:local with explicit PostgreSQL and queued-degraded legacy worker config",
     "remoteCI": "pending push"
   },
   "secrets": "redacted"
