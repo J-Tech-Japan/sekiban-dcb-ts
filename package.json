@@ -61,8 +61,8 @@
     "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g20:candidate"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "0.21.3",
-    "@cloudflare/workers-types": "5.20260817.1",
+    "@cloudflare/vitest-pool-workers": "0.22.0",
+    "@cloudflare/workers-types": "5.20260820.1",
     "@eslint/js": "9.39.2",
     "eslint": "9.39.2",
     "globals": "16.5.0",
@@ -70,7 +70,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.50.1",
     "vitest": "4.1.10",
-    "wrangler": "4.123.0"
+    "wrangler": "4.125.0"
   },
   "dependencies": {
     "postgres": "^3.4.9"
