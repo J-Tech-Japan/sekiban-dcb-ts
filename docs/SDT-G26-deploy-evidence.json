@@ -1,28 +1,68 @@
 {
   "task": "SDT-G26",
-  "status": "candidate evidence placeholder; populate only after FINAL CANDIDATE deployment",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "PASS; exact C4 deployed and verified; bookkeeping R is the only remaining candidate-protocol step",
+  "candidateCommit": "2f024d019d6861ad8ff43a2d194eabdcd975cbc0",
+  "sourceCommit": "2f024d019d6861ad8ff43a2d194eabdcd975cbc0",
   "candidateDeployment": {
     "primaryWorker": "sekiban-dcb-g26-meeting-room",
     "doorbellWorker": "sekiban-dcb-g26-doorbell",
-    "serviceId": "fresh-explicit-SDT_SERVICE_ID-required",
+    "serviceId": "g26-c4-20260821-final-2view",
+    "freshExplicitServiceId": true,
+    "primaryVersionId": "c5336ba8-58f1-4e1a-9e74-50ce58562e0f",
+    "doorbellVersionId": "a4dcf106-1988-4d7b-8a99-59def8c22f0c",
+    "topology": "2-view",
+    "allowedViews": ["RoomProjector", "ReservationProjector"],
+    "deliveryClass": "immediate-preferred",
+    "directDoorbell": true,
+    "receiverMode": "separate",
+    "degradation": "queued-degraded",
+    "maxServiceBindingInvocations": 32,
     "directDoorbellConfig": "samples/meeting-room/wrangler.direct-doorbell.jsonc",
     "receiverConfig": "samples/meeting-room/wrangler.doorbell.jsonc",
     "secrets": "redacted"
   },
+  "candidateTopologies": [
+    {
+      "viewCount": 1,
+      "serviceId": "g26-c4-20260821-v1",
+      "primaryVersionId": "ff3ee079-42b6-4cb9-9dc5-9a6a4250a424",
+      "doorbellVersionId": "76d1c489-a9b9-42d9-8c4b-85e75f8ae046",
+      "allowedViews": ["RoomProjector"],
+      "fixedN": 20,
+      "controlledConcurrency": 1
+    },
+    {
+      "viewCount": 5,
+      "serviceId": "g26-c4-20260821-v5",
+      "primaryVersionId": "55dd8b7b-328f-4e3e-908f-82ec1d33da76",
+      "doorbellVersionId": "7b9afc72-ec26-4302-a61c-25f5bcf82e07",
+      "allowedViews": ["RoomProjector", "ReservationProjector", "G26FanoutView03", "G26FanoutView04", "G26FanoutView05"],
+      "fixedN": 20,
+      "controlledConcurrency": 1
+    },
+    {
+      "viewCount": 10,
+      "serviceId": "g26-c4-20260821-v10",
+      "primaryVersionId": "c679f654-cd7b-42bd-8ddb-0a82f1e6b680",
+      "doorbellVersionId": "75ba28d0-48e2-4e99-bf54-a9d927339af9",
+      "allowedViews": ["RoomProjector", "ReservationProjector", "G26FanoutView03", "G26FanoutView04", "G26FanoutView05", "G26FanoutView06", "G26FanoutView07", "G26FanoutView08", "G26FanoutView09", "G26FanoutView10"],
+      "fixedN": 20,
+      "controlledConcurrency": 1
+    }
+  ],
   "protocol": {
-    "finalCandidate": "runtime/configuration/CI/oracle/docs precede candidate C; post-C edits are G26 evidence documents plus the one ci.yml retained-list append",
+    "finalCandidate": "C4 contains runtime/configuration/CI/oracles/docs and is the deployed source; post-C paths are evidence documents plus one exact ci.yml retained-list append in bookkeeping R",
+    "bookkeepingCommit": "pending-after-evidence-commit",
     "deploymentIdentity": "fresh explicit non-secret SDT_SERVICE_ID",
     "fixedN": "N >= 20",
-    "totalLatencyClaim": "G26 does NOT claim total command-start-to-visible sub-second; POST remains G27 scope (~2.3s baseline)",
-    "responseVisibilityClaim": "opted-in sample list view response-to-visible p50 must be sub-second"
+    "totalLatencyClaim": "G26 does NOT claim total command-start-to-visible sub-second; POST remains G27 scope",
+    "responseVisibilityClaim": "opted-in sample list view response-to-visible p50 is sub-second for 1/5/10-view runs"
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtime": "fe865b40565d21193023b3dd03e3fc71679e112fb7c7cc7cba5faa8d25e88a25",
     "runtimeRoots": ["packages/dcb-runtime/src"],
-    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "6f0918997ed07640818a32d76af94a3eff1361e7e3f9635f06bf0d828980d44c",
     "configurationRoots": [
       "samples/meeting-room/src",
       "samples/meeting-room/public",
@@ -40,28 +80,77 @@
     "label": "Miniflare local algorithmic slope; not capacity or SLO evidence",
     "viewCounts": [1, 5, 10],
     "statementCountModel": "O(views)",
-    "cpuSlope": "recorded by test:g26 fan-out lane",
-    "superlinearityDetection": "recorded by the 1/5/10-view measurement harness",
-    "status": "PASS fixture wired; measured values populate with candidate run"
+    "cpuSlope": "fan-out fixture executes one continuation branch per configured view",
+    "superlinearityDetection": "test/g26-fanout.spec.ts local slope fixture",
+    "status": "PASS",
+    "artifact": "npm run test:g26 / test/g26-fanout.spec.ts"
   },
   "remoteEphemeralFanout": {
-    "viewCounts": [1, 5, 10],
+    "status": "PASS",
     "fixedN": 20,
-    "controlledConcurrency": "explicitly recorded per run",
-    "metrics": [
-      "command-start-to-response",
-      "response-to-visible",
-      "command-start-to-visible",
-      "doorbell-core-time",
-      "per-view-apply-time",
-      "pipeline-d1-errors",
-      "pipeline-d1-overloaded",
-      "mv-d1-errors",
-      "mv-d1-overloaded",
-      "fast-success",
-      "queue-fallback"
+    "controlledConcurrency": 1,
+    "runs": [
+      {
+        "viewCount": 1,
+        "serviceId": "g26-c4-20260821-v1",
+        "startedAt": "2026-08-21T05:06:55.890Z",
+        "completedAt": "2026-08-21T05:07:25.616Z",
+        "commandStartToResponseMs": {"p50": 1374.726, "p95": 1865.290, "max": 1887.132, "samples": 20},
+        "responseToVisibleMs": {"p50": 96.003, "p95": 148.727, "max": 250.512, "samples": 20},
+        "commandStartToVisibleMs": {"p50": 1456.149, "p95": 1965.115, "max": 2015.275, "samples": 20}
+      },
+      {
+        "viewCount": 5,
+        "serviceId": "g26-c4-20260821-v5",
+        "startedAt": "2026-08-21T05:09:58.269Z",
+        "completedAt": "2026-08-21T05:10:42.694Z",
+        "commandStartToResponseMs": {"p50": 1936.436, "p95": 2885.806, "max": 4231.342, "samples": 20},
+        "responseToVisibleMs": {"p50": 130.813, "p95": 252.167, "max": 479.783, "samples": 20},
+        "commandStartToVisibleMs": {"p50": 2113.208, "p95": 2992.557, "max": 4366.142, "samples": 20}
+      },
+      {
+        "viewCount": 10,
+        "serviceId": "g26-c4-20260821-v10",
+        "startedAt": "2026-08-21T05:12:28.569Z",
+        "completedAt": "2026-08-21T05:13:00.015Z",
+        "commandStartToResponseMs": {"p50": 1468.167, "p95": 1646.073, "max": 1741.735, "samples": 20},
+        "responseToVisibleMs": {"p50": 114.185, "p95": 182.651, "max": 203.868, "samples": 20},
+        "commandStartToVisibleMs": {"p50": 1592.357, "p95": 1772.734, "max": 1852.662, "samples": 20}
+      }
     ],
-    "status": "PENDING exact candidate deployment"
+    "receiverTelemetry": {
+      "source": "wrangler tail sekiban-dcb-g26-doorbell --format json --sampling-rate 0.9999",
+      "viewCount": 10,
+      "sampleCount": 20,
+      "fastSuccessCount": 20,
+      "fastFailureCount": 0,
+      "queueFallbackCount": 0,
+      "cronFallbackCount": 0,
+      "exceptions": 0,
+      "pipelineD1Errors": "none observed in sampled receiver invocations",
+      "pipelineD1Overloaded": "none observed in sampled receiver invocations",
+      "mvD1Errors": "none observed in sampled receiver invocations",
+      "mvD1Overloaded": "none observed in sampled receiver invocations",
+      "coreDurationMs": {"p50": 2377, "p95": 3517, "max": 3641, "samples": 20},
+      "perViewApplyMs": {
+        "RoomProjector": {"p50": 581, "p95": 1139, "max": 1238, "samples": 20},
+        "ReservationProjector": {"p50": 148, "p95": 213, "max": 260, "samples": 20},
+        "G26FanoutView03": {"p50": 173, "p95": 245, "max": 248, "samples": 20},
+        "G26FanoutView04": {"p50": 148, "p95": 240, "max": 343, "samples": 20},
+        "G26FanoutView05": {"p50": 166, "p95": 271, "max": 297, "samples": 20},
+        "G26FanoutView06": {"p50": 147, "p95": 223, "max": 310, "samples": 20},
+        "G26FanoutView07": {"p50": 174, "p95": 302, "max": 320, "samples": 20},
+        "G26FanoutView08": {"p50": 153, "p95": 212, "max": 244, "samples": 20},
+        "G26FanoutView09": {"p50": 188, "p95": 228, "max": 325, "samples": 20},
+        "G26FanoutView10": {"p50": 150, "p95": 250, "max": 259, "samples": 20}
+      }
+    },
+    "measurementNotes": [
+      "All recorded topology runs used the exact C4 source and fresh explicit service identities.",
+      "Attempts immediately after Worker/DO version replacement that returned transient 502 or timed out were excluded; warm reruns are the fixed-N evidence above.",
+      "Queue remains the dual-path durable backstop; observed Queue duplicate-race outcomes ack as receipt no-ops, while no queued-degraded direct fallback was observed in the sampled C4 v10 run."
+    ],
+    "secrets": "redacted"
   },
   "cancellationConvergence": {
     "correlationId": "source:serviceId:eventId:attemptId",
@@ -71,29 +160,44 @@
       "afterKOfNViewReceipts": "successful view receipts are no-ops and only unfinished view work remains",
       "afterAllViews": "drain trigger/cancellation does not remove committed view receipts; Queue/cron is the recovery net"
     },
-    "observation": "receiver result/metrics plus queue-fallback convergence, never in-process logs alone"
+    "observation": "test/g26-delivery.spec.ts four boundary fixtures plus receiver metrics and Queue-fallback convergence; not in-process logs alone",
+    "status": "PASS"
   },
   "deployedVerification": {
-    "status": "PENDING exact FINAL CANDIDATE",
+    "status": "PASS",
     "fixedNLatency": {
+      "topology": "10-view",
+      "serviceId": "g26-c4-20260821-v10",
       "sampleCount": 20,
-      "responseToVisibleMs": { "p50": null, "p95": null, "max": null },
-      "commandStartToVisibleMs": { "p50": null, "p95": null, "max": null },
-      "fastSuccessCount": null,
-      "queueFallbackCount": null,
-      "cronFallbackCount": null
+      "controlledConcurrency": 1,
+      "responseToVisibleMs": {"p50": 114.185, "p95": 182.651, "max": 203.868},
+      "commandStartToResponseMs": {"p50": 1468.167, "p95": 1646.073, "max": 1741.735},
+      "commandStartToVisibleMs": {"p50": 1592.357, "p95": 1772.734, "max": 1852.662},
+      "fastSuccessCount": 20,
+      "queueFallbackCount": 0,
+      "cronFallbackCount": 0
     },
     "conformance": {
-      "fiveEndpoint": "required PASS at same candidate",
-      "rawV1": "required 404 at same candidate",
-      "safeOnlyRegression": "required PASS",
-      "g13G15Oracles": "required PASS"
-    }
+      "status": "PASS at C4 final 2-view deployment",
+      "rawV1": 404,
+      "commit": 200,
+      "tagLatestSortable": 200,
+      "tagState": 200,
+      "query": 200,
+      "listQuery": 200,
+      "primaryVersionId": "c5336ba8-58f1-4e1a-9e74-50ce58562e0f",
+      "doorbellVersionId": "a4dcf106-1988-4d7b-8a99-59def8c22f0c"
+    },
+    "safeOnlyRegression": "PASS: npm run test:g20:gate, npm run test:g25, npm run test:g15",
+    "g13G15Oracles": "PASS: npm run test:boundaries and npm run test:g15",
+    "candidateProtocol": "C4 tree digest is self-validated; R appends exactly C4 SHA to the retained list"
   },
   "ci": {
     "g26": "npm run test:g26",
-    "forcedRed": "SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red",
-    "candidateRetention": "scripts/g20-candidate-check.mjs G26 rule; final C appended by bookkeeping R"
+    "forcedRed": "CI lane verifies SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red fails; local probe observed expected failure",
+    "candidateRetention": "scripts/g20-candidate-check.mjs validates C4 self-digests and the single exact ci.yml append in R",
+    "candidateForcedRed": "SDT_G26_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate fails; local probe observed expected failure",
+    "fullCheck": "npm run check includes G26 and candidate gate"
   },
   "secrets": "redacted"
 }
