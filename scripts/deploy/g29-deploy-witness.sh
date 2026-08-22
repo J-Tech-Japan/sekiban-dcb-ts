@@ -5,6 +5,12 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 readonly PRIMARY_CONFIG="samples/meeting-room/wrangler.cloudflare-only-doorbell.jsonc"
+# Wrangler resolves D1 migration directories relative to its process cwd, not
+# the config-file path. Keep the D1 migration commands rooted at the sample so
+# the checked-in migrations_dir values are read consistently in preflight and
+# live deployment.
+readonly D1_CONFIG_DIR="samples/meeting-room"
+readonly D1_CONFIG="wrangler.cloudflare-only.jsonc"
 # The non-public receiver is a service-binding target only.  The primary owns
 # the outbox Queue consumer, so this production config intentionally has no
 # queues.consumers block.
@@ -36,8 +42,8 @@ cp "${EXPECTED_FILE}" "${BEFORE_EXPECTED_FILE}"
 # Phase 1: checked-in config and bundle preflight. No deployment or data write.
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}"
 "${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}"
-"${WRANGLER_BIN}" d1 migrations list sekiban-dcb-meeting-room-cloudflare-pipeline --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-"${WRANGLER_BIN}" d1 migrations list sekiban-dcb-meeting-room-cloudflare-mv --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+"${WRANGLER_BIN}" d1 migrations list sekiban-dcb-meeting-room-cloudflare-pipeline --cwd "${D1_CONFIG_DIR}" --config "${D1_CONFIG}" --remote
+"${WRANGLER_BIN}" d1 migrations list sekiban-dcb-meeting-room-cloudflare-mv --cwd "${D1_CONFIG_DIR}" --config "${D1_CONFIG}" --remote
 
 if [[ "${G29_DEPLOY_LIVE:-0}" != "1" ]]; then
   printf 'G29 preflight PASS; set G29_DEPLOY_LIVE=1 with G29_CONFORMANCE_TOKEN_FILE for witnessed deploy\n'
@@ -63,8 +69,8 @@ node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOK
 # Phase 3: the sealed final C is always deployed after the pre-witness.  The
 # migration commands are retained as checked-in no-op-or-additive checks; no
 # data reset, new service identity, or destructive migration is permitted.
-"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --cwd "${D1_CONFIG_DIR}" --config "${D1_CONFIG}" --remote
+"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --cwd "${D1_CONFIG_DIR}" --config "${D1_CONFIG}" --remote
 
 # Remove only an incorrect receiver consumer, never the primary consumer. The
 # production receiver config below has no Queue consumer and cannot recreate it.
