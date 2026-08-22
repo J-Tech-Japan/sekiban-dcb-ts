@@ -49,7 +49,10 @@ function stringField(value: unknown): string | undefined {
  */
 function eventTypeFromStored(event: StoredEventLike, payload: Record<string, unknown>): string | undefined {
   if (event.eventType !== undefined) return event.eventType;
-  if (event.provenance === "pre-g27") {
+  // A pre-G27 StoredEvent read from an older in-memory/provider fixture may
+  // omit provenance entirely; only an explicit G27 provenance must disable
+  // the proven legacy payload lane.
+  if (event.provenance !== "g27") {
     const legacyName = stringField(payload.eventType);
     if (legacyName === undefined) return undefined;
     return legacyName.includes(":") ? legacyName : `${legacyName}:1`;
