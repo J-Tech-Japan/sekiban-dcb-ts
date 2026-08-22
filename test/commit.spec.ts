@@ -5,6 +5,11 @@ import type { AllocatorState } from "../packages/dcb-runtime/src/allocator/types
 import { type AlarmFaultPoint, type JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import type { TagRecord } from "../packages/dcb-runtime/src/tag/types";
 import { mapTerminalCommitOutcome, requeryFactsFromTagRecords } from "../packages/dcb-runtime/src/http/commitResponse";
+import {
+  G32_FIXTURE_TIMESTAMP,
+  g32EventId,
+  g32Suid,
+} from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
 
@@ -44,6 +49,125 @@ async function expectSection6Error<T extends Section6Error>(
   return body;
 }
 
+function jsonText(value: string): string {
+  try {
+    JSON.parse(value);
+    return value;
+  } catch {
+    return JSON.stringify({ fixture: value });
+  }
+}
+
+/** Convert old human-readable test literals into a decoded JSON payload. */
+function g32JsonPayload(value: string): string {
+  try {
+    JSON.parse(value);
+    return value;
+  } catch {
+    // Fixture literals from the pre-G32 suite were often base64 transport
+    // values. Decode one transport layer only in this test constructor,
+    // never at runtime.
+    try {
+      const decoded = atob(value);
+      return jsonText(decoded);
+    } catch {
+      return jsonText(value);
+    }
+  }
+}
+
+function g32Base64JsonPayload(value: string): string {
+  try {
+    return btoa(jsonText(atob(value)));
+  } catch {
+    return value;
+  }
+}
+
+function normalizeG32Consistency(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value
+    .filter((entry) => !(typeof entry === "object" && entry !== null &&
+      (entry as Record<string, unknown>).lastSortableUniqueId === ""))
+    .map((entry) => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) return entry;
+      const candidate = entry as Record<string, unknown>;
+      return typeof candidate.lastSortableUniqueId === "string"
+        ? { ...candidate, lastSortableUniqueId: g32Suid(candidate.lastSortableUniqueId) }
+        : candidate;
+    });
+}
+
+async function normalizeG32CommitConsistency(value: unknown): Promise<unknown> {
+  if (!Array.isArray(value)) return value;
+  const entries: unknown[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      entries.push(entry);
+      continue;
+    }
+    const candidate = entry as Record<string, unknown>;
+    if (candidate.lastSortableUniqueId !== "" || typeof candidate.tag !== "string") {
+      entries.push(typeof candidate.lastSortableUniqueId === "string"
+        ? { ...candidate, lastSortableUniqueId: g32Suid(candidate.lastSortableUniqueId) }
+        : candidate);
+      continue;
+    }
+    const state = await SELF.fetch(
+      `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(candidate.tag)}/state`,
+    );
+    // G32's first-write spelling omits the tag. Once it exists, retain the
+    // stale old spelling so the real admission gate rejects it.
+    if (state.status !== 404) entries.push(candidate);
+  }
+  return entries;
+}
+
+function normalizeG32TagCandidate(value: unknown, fallback: string): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const candidate = value as Record<string, unknown>;
+  const eventId = g32EventId(typeof candidate.eventId === "string" ? candidate.eventId : fallback);
+  return {
+    ...candidate,
+    eventId,
+    suid: g32Suid(typeof candidate.suid === "string" ? candidate.suid : `${fallback}-suid`),
+    payload: g32JsonPayload(typeof candidate.payload === "string" ? candidate.payload : "fixture"),
+    eventType: typeof candidate.eventType === "string" ? candidate.eventType : "CommitFixtureEvent",
+    provenance: "g32",
+    allocatorLineageId: typeof candidate.allocatorLineageId === "string"
+      ? candidate.allocatorLineageId
+      : "commit-spec-lineage",
+    timestamp: typeof candidate.timestamp === "string" ? candidate.timestamp : G32_FIXTURE_TIMESTAMP,
+  };
+}
+
+function normalizeG32JournalBody(path: string, body: unknown): unknown {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) return body;
+  const input = body as Record<string, unknown>;
+  const normalizeRecords = (records: unknown) => Array.isArray(records)
+    ? records.map((record, index) => normalizeG32TagCandidate(record, `journal-record-${index}`))
+    : records;
+  const reconciliation = typeof input.reconciliation === "object" && input.reconciliation !== null && !Array.isArray(input.reconciliation)
+    ? {
+      ...(input.reconciliation as Record<string, unknown>),
+      allocatorVector: Array.isArray((input.reconciliation as Record<string, unknown>).allocatorVector)
+        ? ((input.reconciliation as Record<string, unknown>).allocatorVector as unknown[]).map((value) => g32Suid(String(value)))
+        : (input.reconciliation as Record<string, unknown>).allocatorVector,
+      records: normalizeRecords((input.reconciliation as Record<string, unknown>).records),
+    }
+    : input.reconciliation;
+  if (path === "/admit") {
+    return {
+      ...input,
+      candidates: Array.isArray(input.candidates)
+        ? input.candidates.map((candidate, index) => normalizeG32TagCandidate(candidate, `journal-admit-${index}`))
+        : input.candidates,
+      consistencyTags: normalizeG32Consistency(input.consistencyTags),
+    };
+  }
+  return { ...input, reconciliation };
+}
+
 async function commit(body: unknown, fault?: string, testAttemptId?: string): Promise<Response> {
   const headers = new Headers({ "content-type": "application/json" });
   if (fault !== undefined) {
@@ -52,10 +176,25 @@ async function commit(body: unknown, fault?: string, testAttemptId?: string): Pr
   if (testAttemptId !== undefined) {
     headers.set("x-sdt-g4-test-attempt-id", testAttemptId);
   }
+  const normalized = typeof body === "object" && body !== null && !Array.isArray(body)
+    ? {
+      ...(body as Record<string, unknown>),
+      eventCandidates: Array.isArray((body as Record<string, unknown>).eventCandidates)
+        ? ((body as Record<string, unknown>).eventCandidates as unknown[]).map((raw) => {
+          if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return raw;
+          const candidate = raw as Record<string, unknown>;
+          return typeof candidate.payload === "string"
+            ? { ...candidate, payload: g32Base64JsonPayload(candidate.payload) }
+            : candidate;
+        })
+        : (body as Record<string, unknown>).eventCandidates,
+      consistencyTags: await normalizeG32CommitConsistency((body as Record<string, unknown>).consistencyTags),
+    }
+    : body;
   return SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
     method: "POST",
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify(normalized),
   });
 }
 
@@ -80,15 +219,15 @@ async function tagPost(tag: string, path: string, body: unknown): Promise<Respon
     ? {
       ...(body as Record<string, unknown>),
       candidates: Array.isArray((body as Record<string, unknown>).candidates)
-        ? ((body as Record<string, unknown>).candidates as unknown[]).map((candidate) =>
-          typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) &&
-          !Object.prototype.hasOwnProperty.call(candidate, "eventType")
-            ? { ...(candidate as Record<string, unknown>), provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" }
-            : candidate,
+        ? ((body as Record<string, unknown>).candidates as unknown[]).map((candidate, index) =>
+          normalizeG32TagCandidate(candidate, `tag-append-${tag}-${index}`),
         )
         : (body as Record<string, unknown>).candidates,
+      consistencyTags: normalizeG32Consistency((body as Record<string, unknown>).consistencyTags),
     }
-    : body;
+    : path === "/acquire" && typeof body === "object" && body !== null && !Array.isArray(body)
+      ? { ...(body as Record<string, unknown>), consistencyTags: normalizeG32Consistency((body as Record<string, unknown>).consistencyTags) }
+      : body;
   return SELF.fetch(
     `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(tag)}${path}`,
     {
@@ -97,6 +236,26 @@ async function tagPost(tag: string, path: string, body: unknown): Promise<Respon
       body: JSON.stringify(wireBody),
     },
   );
+}
+
+/**
+ * G32 has no wire spelling for an asserted-empty head.  Tests that exercise
+ * reservation behavior therefore establish a real durable head first and
+ * pass that exact 30-digit value through the observed-tag path.
+ */
+async function seedObservedHead(tag: string, label = tag): Promise<string> {
+  const response = await tagPost(tag, "/append", {
+    attemptId: `g32-seed:${label}`,
+    epoch: 0,
+    candidates: [{
+      eventId: `g32-seed-event:${label}`,
+      suid: g32Suid("1"),
+      payload: JSON.stringify({ seed: label }),
+      eventTags: [tag],
+    }],
+  });
+  expect(response.status).toBe(201);
+  return (await tagState(tag)).head;
 }
 
 async function allocatorState(): Promise<AllocatorState> {
@@ -115,7 +274,7 @@ async function journalPost(attemptId: string, path: string, body: unknown): Prom
   return SELF.fetch(`https://commit.test/journals/${encodeURIComponent(attemptId)}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(normalizeG32JournalBody(path, body)),
   });
 }
 
@@ -140,28 +299,22 @@ async function prepareSealingAttempt(
 ): Promise<{ attemptId: string; tags: string[]; record: JournalRecord }> {
   const attemptId = crypto.randomUUID();
   const tags = [newTag(`${prefix}-a`), newTag(`${prefix}-b`)];
+  const heads = new Map(await Promise.all(tags.map(async (tag) => [tag, await seedObservedHead(tag, `${prefix}:${tag}`)] as const)));
   const admitted = await journalPost(attemptId, "/admit", {
     candidates: [{ eventId: `${attemptId}-event`, payload: "Y3Jhc2g=", tags }],
-    consistencyTags: tags.map((tag) => ({ tag, lastSortableUniqueId: "" })),
+    consistencyTags: tags.map((tag) => ({ tag, lastSortableUniqueId: heads.get(tag)! })),
     commitContext: { attemptId, serviceId: SERVICE_ID },
   });
   expect(admitted.status).toBe(201);
   let record = await responseJson<JournalRecord>(admitted);
   record = await journalTransition(attemptId, record, "RESERVED");
   for (const tag of tags) {
-    const response = await SELF.fetch(
-      `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(tag)}/acquire`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          attemptId,
-          epoch: 0,
-          eventTags: tags,
-          consistencyTags: tags.map((entry) => ({ tag: entry, lastSortableUniqueId: "" })),
-        }),
-      },
-    );
+    const response = await tagPost(tag, "/acquire", {
+      attemptId,
+      epoch: 0,
+      eventTags: tags,
+      consistencyTags: tags.map((entry) => ({ tag: entry, lastSortableUniqueId: heads.get(entry)! })),
+    });
     expect(response.status).toBe(201);
   }
   record = await journalTransition(attemptId, record, "ALLOCATED");
@@ -186,9 +339,10 @@ async function preparePartialFenceAttempt(
   const missingTag = newTag(`${prefix}-missing`);
   const eventId = `${attemptId}-event`;
   const tags = [writtenTag, missingTag];
+  const heads = new Map(await Promise.all(tags.map(async (tag) => [tag, await seedObservedHead(tag, `${prefix}:${tag}`)] as const)));
   const admitted = await journalPost(attemptId, "/admit", {
     candidates: [{ eventId, payload: "cGFydGlhbA==", tags }],
-    consistencyTags: tags.map((tag) => ({ tag, lastSortableUniqueId: "" })),
+    consistencyTags: tags.map((tag) => ({ tag, lastSortableUniqueId: heads.get(tag)! })),
     commitContext: {
       attemptId,
       serviceId: SERVICE_ID,
@@ -205,7 +359,7 @@ async function preparePartialFenceAttempt(
       attemptId,
       epoch: 0,
       eventTags: tags,
-      consistencyTags: tags.map((entry) => ({ tag: entry, lastSortableUniqueId: "" })),
+      consistencyTags: tags.map((entry) => ({ tag: entry, lastSortableUniqueId: heads.get(entry)! })),
     });
     expect(acquired.status).toBe(201);
     tokens.set(tag, (await responseJson<{ reservation: { token: string } }>(acquired)).reservation.token);
@@ -218,12 +372,12 @@ async function preparePartialFenceAttempt(
     reservationToken: tokens.get(writtenTag),
     candidates: [{
       eventId,
-      suid: "suid-00000000000000000000000000000001",
+      suid: g32Suid("2"),
       payload: "cGFydGlhbA==",
       eventTags: tags,
     }],
   });
-  expect(partialAppend.status).toBe(201);
+  expect(partialAppend.status, await partialAppend.clone().text()).toBe(201);
   const sealing = await journalPost(attemptId, "/transition", {
     expectedState: record.state,
     expectedVersion: record.version,
@@ -282,8 +436,8 @@ describe("Serialized V1 commit worker", () => {
       eventPayloadName: event.eventPayloadName,
       tags: event.tags,
     }))).toEqual([
-      { payload: "cGF5bG9hZC0x", eventPayloadName: "First", tags: [observed, unobserved] },
-      { payload: "cGF5bG9hZC0y", eventPayloadName: "Second", tags: [unobserved] },
+      { payload: g32Base64JsonPayload("cGF5bG9hZC0x"), eventPayloadName: "First", tags: [observed, unobserved] },
+      { payload: g32Base64JsonPayload("cGF5bG9hZC0y"), eventPayloadName: "Second", tags: [unobserved] },
     ]);
     expect(written.writtenEvents.map((event) => event.sortableUniqueIdValue)).toEqual(
       [...written.writtenEvents.map((event) => event.sortableUniqueIdValue)].sort(),
@@ -297,10 +451,10 @@ describe("Serialized V1 commit worker", () => {
     expect(unobservedState.events.map((event) => event.eventId)).toEqual(
       written.writtenEvents.map((event) => event.id),
     );
-    // The observed tag has the extra acquire mutation; the unobserved tag is
-    // written only in the append phase and never appears in the fan-out.
-    expect(observedState.version).toBe(unobservedState.version + 1);
-    expect(observedState.confirmations).toHaveLength(1);
+    // G32 omits an asserted-empty consistency entry, so both first-write
+    // tags take the unobserved path and no synthetic reservation is created.
+    expect(observedState.version).toBe(unobservedState.version);
+    expect(observedState.confirmations).toHaveLength(0);
     expect(unobservedState.confirmations).toHaveLength(0);
     expect(unobservedState.activeReservation).toBeNull();
 
@@ -312,12 +466,14 @@ describe("Serialized V1 commit worker", () => {
   it("AC2: settles the whole reservation fan-out, tombstones every observed tag, then terminalizes", async () => {
     const delayedA = newTag("delayed-a");
     const delayedB = newTag("delayed-b");
+    const delayedAHead = await seedObservedHead(delayedA, "delayed-a");
+    const delayedBHead = await seedObservedHead(delayedB, "delayed-b");
     const delayed = await commit({
       version: 1,
       eventCandidates: [candidate("YQ==", "Delayed", [delayedA, delayedB])],
       consistencyTags: [
-        { tag: delayedA, lastSortableUniqueId: "" },
-        { tag: delayedB, lastSortableUniqueId: "" },
+        { tag: delayedA, lastSortableUniqueId: delayedAHead },
+        { tag: delayedB, lastSortableUniqueId: delayedBHead },
       ],
     }, "reservation-delayed-success");
     await expectSection6Error(delayed, 504, "timeout");
@@ -339,7 +495,7 @@ describe("Serialized V1 commit worker", () => {
             attemptId: delayedAttempt,
             epoch: 0,
             eventTags: [tag],
-            consistencyTags: [{ tag, lastSortableUniqueId: "" }],
+            consistencyTags: [{ tag, lastSortableUniqueId: tag === delayedA ? delayedAHead : delayedBHead }],
           }),
         },
       );
@@ -359,16 +515,14 @@ describe("Serialized V1 commit worker", () => {
       version: 1,
       eventCandidates: [candidate("bmV4dA==", "Conflict", [conflictTag, releasedTag])],
       consistencyTags: [
-        { tag: conflictTag, lastSortableUniqueId: "" },
-        { tag: releasedTag, lastSortableUniqueId: "" },
+        { tag: conflictTag, lastSortableUniqueId: g32Suid("known-wrong-conflict") },
       ],
     });
     await expectSection6Error(conflict, 400, "consistency_conflict");
     expect(await allocatorState()).toEqual(allocatorBeforeConflict);
-    const released = await tagState(releasedTag);
-    expect(released.activeReservation).toBeNull();
-    expect(released.tombstones).toHaveLength(1);
-    expect(released.events).toHaveLength(0);
+    expect((await SELF.fetch(
+      `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(releasedTag)}/state`,
+    )).status).toBe(404);
   });
 
   it("runs the portable suite's commit-only assert-empty, exact-match, conflict, retry, null, and concurrent-SUID scenarios", async () => {
@@ -380,8 +534,8 @@ describe("Serialized V1 commit worker", () => {
       consistencyTags: expected === undefined ? [] : [{ tag, lastSortableUniqueId: expected }],
     });
 
-    const first = await write(exactTag, "");
-    expect(first.status).toBe(200);
+    const first = await write(exactTag, undefined);
+    expect(first.status, await first.clone().text()).toBe(200);
     const firstHead = (await responseJson<CommitResponse>(first)).writtenEvents[0]!.sortableUniqueIdValue;
     const exact = await write(exactTag, firstHead);
     expect(exact.status).toBe(200);
@@ -394,12 +548,13 @@ describe("Serialized V1 commit worker", () => {
       version: 1,
       eventCandidates: [candidate("bXVsdGk=", "ConformanceEvent", [exactTag, freshTag])],
       consistencyTags: [
-        { tag: exactTag, lastSortableUniqueId: "" },
-        { tag: freshTag, lastSortableUniqueId: "" },
+        { tag: exactTag, lastSortableUniqueId: g32Suid("known-wrong-multi") },
       ],
     });
     expect(multiConflict.status).toBe(400);
-    expect((await tagState(freshTag)).events).toHaveLength(0);
+    expect((await SELF.fetch(
+      `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(freshTag)}/state`,
+    )).status).toBe(404);
     const retry = await write(exactTag, exactHead);
     expect(retry.status).toBe(200);
 
@@ -483,7 +638,7 @@ describe("Serialized V1 commit worker", () => {
     const response = await commit({
       version: 1,
       eventCandidates: [candidate("ZmVuY2Vk", "Blocked", [fencedTag])],
-      consistencyTags: [{ tag: fencedTag, lastSortableUniqueId: "" }],
+      consistencyTags: [],
     });
     await expectSection6Error(response, 500, "internal_error");
     expect((await tagState(fencedTag)).events).toEqual([]);
@@ -566,7 +721,9 @@ describe("Serialized V1 commit worker", () => {
 
     for (const tag of prepared.tags) {
       const state = await tagState(tag);
-      expect(state.events).toHaveLength(0);
+      // The G32 fixture establishes a real observed head; recovery must not
+      // append a requested candidate or alter that pre-existing seed event.
+      expect(state.events).toHaveLength(1);
       expect(state.fences).toEqual([]);
       expect(state.activeReservation).toBeNull();
       expect(state.tombstones).toContainEqual({ attemptId: prepared.attemptId, epoch: terminal.ownerEpoch });
@@ -802,22 +959,23 @@ describe("Serialized V1 commit worker", () => {
       eventCandidates: [candidate("c2VlZA==", "Seed", [conflictTag])],
       consistencyTags: [{ tag: conflictTag, lastSortableUniqueId: "" }],
     })).status).toBe(200);
+    await tagState(conflictTag);
     const tombstoneAttempt = crypto.randomUUID();
     const afterTombstone = await commit({
       version: 1,
       eventCandidates: [candidate("bGF0ZQ==", "Late", [conflictTag, lateTag])],
       consistencyTags: [
-        { tag: conflictTag, lastSortableUniqueId: "" },
-        { tag: lateTag, lastSortableUniqueId: "" },
+        { tag: conflictTag, lastSortableUniqueId: g32Suid("wrong-tombstone-head") },
       ],
     }, "tombstone-after-durable", tombstoneAttempt);
     await expectSection6Error(afterTombstone, 504, "timeout");
     const pending = await journalState(tombstoneAttempt);
     expect(pending.state).toBe("RESERVED");
     expect(pending.reservationFailure).toMatchObject({ outcome: "REFUSED" });
-    const lateState = await tagState(lateTag);
-    expect(lateState.activeReservation).toBeNull();
-    expect(lateState.tombstones).toContainEqual({ attemptId: tombstoneAttempt, epoch: 0 });
+    // The unobserved companion tag is never reserved or tombstoned in G32.
+    expect((await SELF.fetch(
+      `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(lateTag)}/state`,
+    )).status).toBe(404);
 
     expect((await journalPost(tombstoneAttempt, "/debug/alarm", {})).status).toBe(200);
     const refused = await journalState(tombstoneAttempt);
@@ -842,9 +1000,9 @@ describe("Serialized V1 commit worker", () => {
     expect(await allocatorState()).toEqual(allocationStateBeforeFailure);
     const failedAttempt = allocationFailure.headers.get("x-sdt-g4-attempt-id");
     expect((await journalState(failedAttempt!)).state).toBe("FAILED");
-    const failedTag = await tagState(allocationFailureTag);
-    expect(failedTag.events).toHaveLength(0);
-    expect(failedTag.activeReservation).toBeNull();
+    expect((await SELF.fetch(
+      `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(allocationFailureTag)}/state`,
+    )).status).toBe(404);
   });
 
   it("returns Section 6 JSON when a completed commit cannot prepare its success response", async () => {

@@ -1,0 +1,84 @@
+{
+  "task": "SDT-G32",
+  "status": "placeholder evidence carried by sealed final C; R replaces this only after the witnessed production cutover",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "bridge": {
+    "candidateCommit": "43029a8b8b0298b6cc30c531639d7398f6295805",
+    "evidencePath": "docs/SDT-G32-bridge-evidence.json"
+  },
+  "protocol": {
+    "candidate": "B is the sealed old-format freeze-only bridge. C is the single final authority for runtime, configuration, CI, docs, tooling, tests, manifests, and this placeholder.",
+    "bookkeeping": "After C, R may change only this evidence document and append C exactly once to ci.yml's retained-candidate list.",
+    "selfReference": false,
+    "deploymentRequired": true
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": [
+      "packages/dcb-core/src",
+      "packages/dcb-domain/src",
+      "packages/dcb-runtime/src",
+      "packages/dcb-client/src",
+      "samples/meeting-room/src"
+    ],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": [
+      ".gitignore",
+      ".github/workflows/ci.yml",
+      "eslint.config.mjs",
+      "package.json",
+      "package-lock.json",
+      "contracts/dcb-tags-derivation.json",
+      "contracts/event-store-ddl.json",
+      "contracts/g32-bridge-writer-coverage.json",
+      "contracts/g32-cutover.json",
+      "fixtures/suid-allocator-golden.json",
+      "migrations/d1/g32",
+      "migrations/mv",
+      "samples/meeting-room/public",
+      "samples/meeting-room/wrangler.g32-bridge-primary.jsonc",
+      "samples/meeting-room/wrangler.g32-bridge-receiver.jsonc",
+      "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+      "samples/meeting-room/wrangler.g32-final-receiver.jsonc",
+      "scripts/g32-suid-coverage.mjs",
+      "scripts/g32-bridge-check.mjs",
+      "scripts/g32-cutover-check.mjs",
+      "scripts/g32-candidate-check.mjs",
+      "scripts/store-contract.mjs",
+      "scripts/deploy/g32-bridge-freeze.sh",
+      "scripts/deploy/g32-bridge-witness.mjs",
+      "scripts/deploy/g32-bridge-record-evidence.mjs",
+      "scripts/deploy/g32-config-digest.mjs",
+      "scripts/deploy/g32-deploy-cutover.sh",
+      "scripts/deploy/g32-witness.mjs",
+      "scripts/deploy/g32-measure.mjs",
+      "scripts/deploy/g32-queue-topology.mjs",
+      "scripts/deploy/g32-record-evidence.mjs",
+      "tools/derive-dcb-tags",
+      "tools/sekiban-parity",
+      "test",
+      "tsconfig.json",
+      "vitest.config.ts",
+      "docs/SDT-G29-mapping.json",
+      "docs/domain-authoring.md",
+      "docs/migration-sekiban-dcb.md",
+      "docs/SDT-G32-required-roots.json",
+      "docs/SDT-G32-oracle-map.md",
+      "docs/SDT-G32-pr-body.md",
+      "docs/SDT-G32-bridge-evidence.json",
+      "docs/SDT-G32-cutover-evidence.json"
+    ]
+  },
+  "deploymentConfig": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "digest": "CANDIDATE",
+    "paths": "resolved from scripts/deploy/g32-config-digest.mjs at C"
+  },
+  "candidateImpact": {
+    "deploymentRequired": true,
+    "reason": "The old prefixed SUID format cannot coexist with the C# 30-digit format, so final C must deploy the fresh service/D1/Queue cutover."
+  },
+  "secrets": "redacted"
+}

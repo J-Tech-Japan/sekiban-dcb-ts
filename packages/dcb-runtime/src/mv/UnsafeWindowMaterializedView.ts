@@ -1,4 +1,5 @@
 import { assertJsonValue, type MaterializedViewIndexEntryMutation, type MaterializedViewMutationPlan } from "@sekiban/dcb-core";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import type { MaterializedViewRow } from "./MaterializedViewStore";
 
 type D1Row = Record<string, unknown>;
@@ -298,6 +299,14 @@ export class UnsafeWindowMaterializedViewStore {
   }
 
   async apply(input: UnsafeWindowApplyInput, skipFastPath = false): Promise<UnsafeWindowApplyResult> {
+    // This is an ingress in its own right: direct materializer callers must
+    // not be able to bypass the Queue/doorbell SUID gate.
+    assertSortableUniqueId(input.suid);
+    if (input.safeHead.length > 0) assertSortableUniqueId(input.safeHead);
+    if (input.targetSuid !== undefined) assertSortableUniqueId(input.targetSuid);
+    for (const mutation of [...input.mutations.rowUpserts, ...input.mutations.rowPatches]) {
+      assertSortableUniqueId(mutation.sourceSuid);
+    }
     const fast = skipFastPath ? undefined : await this.applyUpsertFast(input);
     if (fast !== undefined) return fast;
     if (input.recordArrival === true) await this.observeArrival(input.serviceId, input.viewId, input.generation, input.eventId, input.suid);
@@ -442,6 +451,7 @@ export class UnsafeWindowMaterializedViewStore {
 
   /** Advance safe head and remove markers only if this transaction observed its exact receipt. */
   async observeSafeReceipt(serviceId: string, viewId: string, generation: number, eventId: string, suid: string): Promise<void> {
+    assertSortableUniqueId(suid);
     const operation = operationId();
     await this.database.batch([
       this.database.prepare(
@@ -460,6 +470,7 @@ export class UnsafeWindowMaterializedViewStore {
 
   /** Detects late first-arrivals independently of SafeWindow and fail-closes reads. */
   async observeArrival(serviceId: string, viewId: string, generation: number, eventId: string, suid: string): Promise<boolean> {
+    assertSortableUniqueId(suid);
     const existing = await this.database.prepare(
       `SELECT safe_head, arrival_watermark FROM mv_unsafe_arrivals WHERE service_id = ? AND view_id = ? AND generation = ?`,
     ).bind(serviceId, viewId, generation).first<D1Row>();

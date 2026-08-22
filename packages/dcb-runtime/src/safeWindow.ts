@@ -20,3 +20,30 @@ export function safeWindowMs(dynamicLagBoundMs: number): number {
 export function safeWindowCeilingExceeded(dynamicLagBoundMs: number): boolean {
   return dynamicLagBoundMs > MAX_PUBLISHED_SAFE_WINDOW_MS;
 }
+
+/**
+ * C# parity utility only: build the SafeWindow frontier in .NET ticks rather
+ * than substituting the historical 5-second helper or a wall-clock string.
+ * The minimum random suffix makes equality include every event at the cutoff
+ * tick; callers compare only validated 30-digit SUIDs.
+ */
+export function safeWindowCutoffSuid(nowMs: number, dynamicLagBoundMs: number): string {
+  if (!Number.isSafeInteger(nowMs) || nowMs < 0) throw new Error("SafeWindow now must be a non-negative safe integer");
+  const cutoffMs = Math.max(0, nowMs - safeWindowMs(dynamicLagBoundMs));
+  return formatSortableUniqueId(unixMsToDotNetTicks(cutoffMs), 0n);
+}
+
+export function isSortableUniqueIdSafeAt(
+  suid: string,
+  nowMs: number,
+  dynamicLagBoundMs: number,
+): boolean {
+  assertSortableUniqueId(suid);
+  return compareSortableUniqueId(suid, safeWindowCutoffSuid(nowMs, dynamicLagBoundMs)) <= 0;
+}
+import {
+  assertSortableUniqueId,
+  compareSortableUniqueId,
+  formatSortableUniqueId,
+  unixMsToDotNetTicks,
+} from "./allocator/SortableUniqueId";

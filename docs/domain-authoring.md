@@ -3,6 +3,8 @@
 SDT-G29 uses the same domain boundary in the C# and TypeScript examples: an
 event declares its schema and tags, a projector owns one tag family and a
 discriminated state, and a command declares its read set before it can append.
+Under SDT-G32, the registered event payload name is also the durable C#
+`EventType`; authors never select a version at a call site.
 The TypeScript sample is the executable reference for the wire-compatible
 meeting-room example.
 
@@ -196,8 +198,8 @@ export const cancelReservationCommand = command({
 
 | Concern | C# authoring shape | TypeScript authoring shape | Portability rule |
 | --- | --- | --- | --- |
-| Event | `Event<TPayload>` / event definition | `event("RoomCreated", z.object(...), { tags })` | The registered definition assigns `RoomCreated:1`; the caller cannot choose a version. |
-| Tags | `Tag<Room>` / `Tag<Reservation>` | `tagFamily("room").of(roomId)` | Tags are derived from the parsed payload once and are preserved through V1, stored, Queue, and projection hops. |
+| Event | `Event<TPayload>` / event definition | `event("RoomCreated", z.object(...), { tags })` | The registered definition assigns the durable `EventType` `RoomCreated`; a payload revision uses a different name. The `version` option is not supported. |
+| Tags | `Tag<Room>` / `Tag<Reservation>` | `tagFamily("room").of(roomId)` | Tags are derived from the parsed payload once, retain emission order in the logical event record, and are preserved through V1, stored, Queue, and projection hops. |
 | State | `State<T>` with a closed discriminator | `stateUnion(z.discriminatedUnion("status", ...))` | Projector state remains JSON and is validated on every evolution. |
 | Projector | `Projector<TState, TTag>` | `projector({ id, tag, events, state, handlers })` | A projector subscribes only to its registered event identities and tag family. |
 | Validate | decider validation function | `validate((state, input) => ...)` | Validation can return a typed reject before an append. |
@@ -212,8 +214,9 @@ The TypeScript sample defines `RoomCreated`, `RoomReserved`,
 `ReservationCancelled`, and `RoomReleased`. `RoomReserved` derives both the
 room and reservation tags from one validated payload. `reserve-room` declares
 both projector cells, reads both before deciding, and appends one event. A
-legacy `eventType` property in an old stored payload is ignored by the schema
-parser; a new payload does not manufacture that property.
+new payload carries neither a type discriminator nor a caller-selected event
+version. Identity-less or versioned stored/Queue input is rejected at ingress;
+the G32 wipe cutover has no legacy reader or payload-sniffing fallback.
 
 The HTTP command adapter reads the remote V1 tag-state rows into a portable
 snapshot, runs the authored command through `executeCommand`, and translates
@@ -229,10 +232,26 @@ Business time and ordering time are separate:
    value may be used as business time and must remain unchanged on a conflict
    retry.
 2. The allocator `OrderClock` is the only source of SUID order. It converts
-   Unix milliseconds to a fixed-width ordinal and applies
-   `max(tick, watermark + 1)` in its write transaction.
+   Unix milliseconds to the C# fixed-width 19-digit .NET tick field, appends
+   an allocator-owned 11-digit crypto suffix, and applies
+   `max(physicalTicks, observedTicks + 1)` in its write transaction.
 
 No command, event payload, tag deriver, or projector may use the allocator
 clock as business time, and no client may supply an event version, eventId, or
 SUID. The mapping and compatibility fixtures exercise these ownership
 boundaries directly.
+
+## G32 C# logical-event rules
+
+Event schema property names must be camelCase. At admission the original UTF-8
+JSON text is checked for syntax and exact member casing, then stored without
+reserializing it. The durable record is the C# logical shape
+`{ serviceId, id, sortableUniqueId, eventType, payload, tags, timestamp,
+causationId, correlationId, executedUser }`: `id` is UUID v7,
+`sortableUniqueId` is 30 ASCII digits, and serialized-path metadata is
+`(id, "SerializedCommit", "SerializedSekibanExecutor")`. Operational attempt
+facts live in the TS sidecar, never in author-facing metadata.
+
+`tools/derive-dcb-tags` can rebuild C# `dcb_tags` rows from these event records.
+It is a migration/rebuild tool only: a runtime domain continues to treat the
+Tag Durable Object and the event's ordered `family:value` tags as the authority.

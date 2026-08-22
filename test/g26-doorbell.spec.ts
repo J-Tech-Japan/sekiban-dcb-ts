@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { TagDurableObject } from "../packages/dcb-runtime/src/tag/TagDurableObject";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { g32Message } from "./helpers/g32-fixtures";
 
 function tagStorage(): { readonly storage: DurableObjectStorage; readonly values: Map<string, unknown> } {
   const values = new Map<string, unknown>();
@@ -23,6 +24,37 @@ function tagStorage(): { readonly storage: DurableObjectStorage; readonly values
     transaction: async <T>(callback: (txn: DurableObjectTransaction) => Promise<T>) => callback(transaction),
   } as unknown as DurableObjectStorage;
   return { storage, values };
+}
+
+function candidate(
+  serviceId: string,
+  tag: string,
+  attemptId: string,
+  eventId: string,
+  suid: string,
+  allocatorLineageId: string,
+): Pick<DownstreamOutboxMessage, "eventId" | "suid" | "payload" | "eventTags" | "eventType" | "provenance" | "timestamp" | "allocatorLineageId"> {
+  const envelope = g32Message({
+    serviceId,
+    tag,
+    attemptId,
+    eventId,
+    suid,
+    payload: JSON.stringify({ eventType: "G26" }),
+    eventTags: [tag],
+    eventType: "G26",
+    allocatorLineageId,
+  });
+  return {
+    eventId: envelope.eventId,
+    suid: envelope.suid,
+    payload: envelope.payload,
+    eventTags: envelope.eventTags,
+    eventType: envelope.eventType,
+    provenance: envelope.provenance,
+    timestamp: envelope.timestamp,
+    allocatorLineageId: envelope.allocatorLineageId,
+  };
 }
 
 describe("SDT-G26 Tag doorbell handoff", () => {
@@ -53,6 +85,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
     } as never);
     const serviceId = "g26-doorbell-service";
     const tag = "reservation:g26-doorbell";
+    const appendCandidate = candidate(serviceId, tag, "g26-attempt", "g26-event", "g26-suid", "g26-lineage");
     const response = await instance.fetch(new Request(
       `https://tag.test/append?__tag=${encodeURIComponent(tag)}&__serviceId=${serviceId}`,
       {
@@ -61,15 +94,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
         body: JSON.stringify({
           attemptId: "g26-attempt",
           epoch: 0,
-          candidates: [{
-            eventId: "g26-event",
-            suid: "g26-suid",
-            payload: btoa(JSON.stringify({ eventType: "G26" })),
-            eventTags: [tag],
-            eventType: "G26:1",
-            provenance: "g27",
-            allocatorLineageId: "g26-lineage",
-          }],
+          candidates: [appendCandidate],
         }),
       },
     ));
@@ -114,6 +139,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
       const tag = `reservation:${suffix}`;
       const eventId = `g26-event-${suffix}`;
       const attemptId = `g26-attempt-${suffix}`;
+      const appendCandidate = candidate(serviceId, tag, attemptId, eventId, `g26-suid-${suffix}`, `g26-lineage-${suffix}`);
       const appendUrl = new URL(`https://tag.test/append?__tag=${encodeURIComponent(tag)}&__serviceId=${serviceId}`);
       if (domainDeliveryClass !== undefined) appendUrl.searchParams.set("__domainDeliveryClass", domainDeliveryClass);
       const response = await instance.fetch(new Request(
@@ -124,24 +150,21 @@ describe("SDT-G26 Tag doorbell handoff", () => {
           body: JSON.stringify({
             attemptId,
             epoch: 0,
-            candidates: [{
-              eventId,
-              suid: `g26-suid-${suffix}`,
-              payload: btoa(JSON.stringify({ eventType: "G26" })),
-              eventTags: [tag],
-              eventType: "G26:1",
-              provenance: "g27",
-              allocatorLineageId: `g26-lineage-${suffix}`,
-            }],
+            candidates: [appendCandidate],
           }),
         },
       ));
       expect(response.status).toBe(201);
       await Promise.all(waits);
-      return { correlationId: `fast:${serviceId}:${eventId}:${attemptId}` };
+      return { correlationId: `fast:${serviceId}:${appendCandidate.eventId}:${attemptId}` };
     };
 
-    const success = await append("success", { deliver: async () => ({ fastDisposition: "completed", correlationId: "fast:g26-correlation-success:g26-event-success:g26-attempt-success" }) });
+    const success = await append("success", {
+      deliver: async (message: DownstreamOutboxMessage) => ({
+        fastDisposition: "completed",
+        correlationId: `fast:${message.serviceId}:${message.eventId}:${message.attemptId}`,
+      }),
+    });
     const failure = await append("failure", { deliver: async () => { throw new Error("receiver timeout"); } });
     const degraded = await append("degraded", undefined, true);
 
@@ -171,6 +194,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
       DOWNSTREAM_QUEUE: { send: async () => ({}) },
     } as never);
     const tag = "reservation:g26-domain-forwarded";
+    const appendCandidate = candidate("g26-domain-forwarded", tag, "g26-domain-attempt", "g26-domain-event", "g26-domain-suid", "g26-domain-lineage");
     const response = await instance.fetch(new Request(
       `https://tag.test/append?__tag=${encodeURIComponent(tag)}&__serviceId=g26-domain-forwarded&__domainDeliveryClass=queued`,
       {
@@ -179,15 +203,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
         body: JSON.stringify({
           attemptId: "g26-domain-attempt",
           epoch: 0,
-          candidates: [{
-            eventId: "g26-domain-event",
-            suid: "g26-domain-suid",
-            payload: btoa(JSON.stringify({ eventType: "G26" })),
-            eventTags: [tag],
-            eventType: "G26:1",
-            provenance: "g27",
-            allocatorLineageId: "g26-domain-lineage",
-          }],
+          candidates: [appendCandidate],
         }),
       },
     ));
@@ -209,6 +225,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
       DOWNSTREAM_QUEUE: { send: async () => ({}) },
     } as never);
     const tag = "reservation:g26-fail-fast";
+    const appendCandidate = candidate("g26-fail-fast", tag, "g26-fail-fast-attempt", "g26-fail-fast-event", "g26-fail-fast-suid", "g26-fail-fast-lineage");
     const response = await instance.fetch(new Request(
       `https://tag.test/append?__tag=${encodeURIComponent(tag)}&__serviceId=g26-fail-fast`,
       {
@@ -217,15 +234,7 @@ describe("SDT-G26 Tag doorbell handoff", () => {
         body: JSON.stringify({
           attemptId: "g26-fail-fast-attempt",
           epoch: 0,
-          candidates: [{
-            eventId: "g26-fail-fast-event",
-            suid: "g26-fail-fast-suid",
-            payload: btoa(JSON.stringify({ eventType: "G26" })),
-            eventTags: [tag],
-            eventType: "G26:1",
-            provenance: "g27",
-            allocatorLineageId: "g26-fail-fast-lineage",
-          }],
+          candidates: [appendCandidate],
         }),
       },
     ));

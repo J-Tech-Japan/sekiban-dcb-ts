@@ -6,6 +6,7 @@ import type {
   AllocationVector,
   AllocatorState,
 } from "../packages/dcb-runtime/src/allocator/types";
+import { G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
 
 interface JournalState {
   state: string;
@@ -219,7 +220,9 @@ describe("AllocatorDurableObject", () => {
     const interruptedAdmission = await journalRequest(crashAttempt, "/admit", {
       candidates: durableVector.candidates.map((candidate) => ({
         eventId: candidate.eventId,
-        payload: `payload-${candidate.candidateIndex + 1}`,
+        payload: JSON.stringify({ fixture: `payload-${candidate.candidateIndex + 1}` }),
+        eventType: "AllocatorFixtureEvent",
+        timestamp: G32_FIXTURE_TIMESTAMP,
         tags: [`tag-${candidate.candidateIndex + 1}`],
       })),
       consistencyTags: [],

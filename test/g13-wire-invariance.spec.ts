@@ -5,6 +5,7 @@ import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/Serializ
 import { SerializedReadWorker } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
 import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { g32Message } from "./helpers/g32-fixtures";
 
 /**
  * Captured on the pre-split base commit. Keep this normalized transcript
@@ -38,7 +39,11 @@ const PRE_SPLIT_GOLDEN = {
       failure: { status: 400, contentType: "application/json; charset=utf-8", keys: ["code", "error"] },
     },
   },
-  queuePayloadKeys: ["allocatorLineageId", "attemptId", "enqueuedAt", "eventId", "eventTags", "payload", "serviceId", "suid", "tag", "version"],
+  queuePayload: {
+    baselineKeys: ["allocatorLineageId", "attemptId", "enqueuedAt", "eventId", "eventTags", "payload", "serviceId", "suid", "tag", "version"],
+    allowedG32AdditiveKeys: ["causationId", "correlationId", "eventType", "executedUser", "provenance", "timestamp"],
+    keys: ["allocatorLineageId", "attemptId", "causationId", "correlationId", "enqueuedAt", "eventId", "eventTags", "eventType", "executedUser", "payload", "provenance", "serviceId", "suid", "tag", "timestamp", "version"],
+  },
   storageSchema: {
     sqliteDurableObjectKeys: ["allocator-state", "attempt:*", "journal", "outbox-deliveries", "repair-facts", "tag"],
     postgresTables: {
@@ -130,18 +135,18 @@ async function captureTranscript(): Promise<unknown> {
   }), { SDT_SERVICE_ID: "g13-wire-fixture" }, { store: queryStore() });
   const listFailure = await handleSerializedQuery(request("/api/sekiban/serialized/list-query", {}), { SDT_SERVICE_ID: "g13-wire-fixture" }, { store: queryStore() });
 
-  const queuePayload: DownstreamOutboxMessage = {
-    version: 1,
+  const queuePayload: DownstreamOutboxMessage = g32Message({
     serviceId: "g13-wire-service",
     allocatorLineageId: "test-g13-lineage",
     tag: "test:g13-wire",
     attemptId: "attempt",
     eventId: "event",
-    suid: "suid-00000000000000000000000000000001",
-    payload: "",
+    suid: "1",
+    payload: JSON.stringify({ g13: true }),
     eventTags: ["test:g13-wire"],
+    eventType: "G13WireFixtureEvent",
     enqueuedAt: 0,
-  };
+  });
 
   return {
     endpoints: {
@@ -151,7 +156,11 @@ async function captureTranscript(): Promise<unknown> {
       query: { success: await shape(querySuccess), failure: await shape(queryFailure) },
       listQuery: { success: await shape(listSuccess), failure: await shape(listFailure) },
     },
-    queuePayloadKeys: Object.keys(queuePayload).sort(),
+    queuePayload: {
+      baselineKeys: PRE_SPLIT_GOLDEN.queuePayload.baselineKeys,
+      allowedG32AdditiveKeys: PRE_SPLIT_GOLDEN.queuePayload.allowedG32AdditiveKeys,
+      keys: Object.keys(queuePayload).sort(),
+    },
     storageSchema: PRE_SPLIT_GOLDEN.storageSchema,
   };
 }
@@ -168,7 +177,7 @@ describe("SDT-G13 V1 wire-invariance oracle", () => {
   it("catches a deliberate status, spelling, and queue-member mutation", async () => {
     const captured = await captureTranscript() as {
       endpoints: { commit: { success: Shape }; tagState: { success: Shape } };
-      queuePayloadKeys: string[];
+      queuePayload: { keys: string[] };
     };
     const statusMutation = structuredClone(captured);
     statusMutation.endpoints.commit.success.status = 201;
@@ -179,7 +188,7 @@ describe("SDT-G13 V1 wire-invariance oracle", () => {
     expect(() => assertGolden(spellingMutation)).toThrow();
 
     const payloadMutation = structuredClone(captured);
-    payloadMutation.queuePayloadKeys = payloadMutation.queuePayloadKeys.filter((key) => key !== "eventTags");
+    payloadMutation.queuePayload.keys = payloadMutation.queuePayload.keys.filter((key) => key !== "eventTags");
     expect(() => assertGolden(payloadMutation)).toThrow();
   });
 });

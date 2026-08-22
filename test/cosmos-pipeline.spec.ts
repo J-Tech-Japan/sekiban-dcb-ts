@@ -12,11 +12,14 @@ import {
   DEFAULT_COSMOS_CONTAINERS,
 } from "../packages/dcb-runtime/src/cosmos";
 import {
+  COSMOS_AUXILIARY_PARTITION_KEY_PATH,
+  COSMOS_EVENT_PARTITION_KEY_PATH,
   COSMOS_PARTITION_KEY_PATH,
   cosmosContainerDefinitions,
 } from "../packages/dcb-runtime/src/store/CosmosEventStore";
 import type { CosmosDocumentClient, CosmosDocumentRecord } from "../packages/dcb-runtime/src/store/CosmosEventStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { g32Message, g32SuidAt } from "./helpers/g32-fixtures";
 
 type JsonObject = Record<string, unknown>;
 
@@ -47,7 +50,9 @@ class PipelineMemoryClient implements CosmosDocumentClient {
   }
 
   async create<T extends JsonObject>(container: string, document: T, partitionKey: string): Promise<CosmosDocumentRecord<T>> {
-    if (document.serviceId !== partitionKey) throw new Error("partition key mismatch");
+    if (document.serviceId !== partitionKey && !(container === DEFAULT_COSMOS_CONTAINERS.events && document.pk === partitionKey)) {
+      throw new Error("partition key mismatch");
+    }
     this.observations.push({ container, partitionKey, serviceId: String(document.serviceId) });
     const key = this.key(container, partitionKey, String(document.id));
     if (this.rows.has(key)) throw new CosmosClientError(409, "duplicate document");
@@ -57,7 +62,9 @@ class PipelineMemoryClient implements CosmosDocumentClient {
   }
 
   async replace<T extends JsonObject>(container: string, document: T, partitionKey: string, etag?: string): Promise<boolean> {
-    if (document.serviceId !== partitionKey) throw new Error("partition key mismatch");
+    if (document.serviceId !== partitionKey && !(container === DEFAULT_COSMOS_CONTAINERS.events && document.pk === partitionKey)) {
+      throw new Error("partition key mismatch");
+    }
     this.observations.push({ container, partitionKey, serviceId: String(document.serviceId) });
     const key = this.key(container, partitionKey, String(document.id));
     const current = this.rows.get(key);
@@ -68,7 +75,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
 
   async query<T extends JsonObject>(
     container: string,
-    _query: string,
+    query: string,
     parameters: readonly { name: string; value: unknown }[],
     partitionKey?: string,
   ): Promise<CosmosDocumentRecord<T>[]> {
@@ -82,6 +89,7 @@ class PipelineMemoryClient implements CosmosDocumentClient {
     const rows: CosmosDocumentRecord<T>[] = [];
     for (const [key, row] of this.rows) {
       if (!key.startsWith(`${container}\u0000`)) continue;
+      if (query.includes("IS_DEFINED(c.sortableUniqueId)") && typeof row.document.sortableUniqueId !== "string") continue;
       if (partitionKey !== undefined && row.document.serviceId !== partitionKey) continue;
       if (serviceId !== undefined && row.document.serviceId !== serviceId) continue;
       if (eventId !== undefined && row.document.eventId !== eventId) continue;
@@ -102,19 +110,18 @@ function missingTagNamespace(): DurableObjectNamespace {
 }
 
 function testMessage(): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId: SERVICE_ID,
     allocatorLineageId: "test-cosmos-lineage",
     tag: "test:cosmos-provider",
     attemptId: "cosmos-provider-attempt",
     eventId: "cosmos-provider-event",
-    suid: "suid-00000000000000000000000000000001",
-    payload: "eyJmb3JlY2FzdElkIjoiY29zbW9zIn0=",
+    suid: g32SuidAt(1_000, "cosmos-provider-suid"),
+    payload: JSON.stringify({ forecastId: "cosmos" }),
     eventTags: ["test:cosmos-provider"],
-    provenance: "pre-g27-queue",
+    eventType: "CosmosProviderEvent",
     enqueuedAt: 0,
-  };
+  });
 }
 
 describe("SDT-G12 Cosmos provider pipeline composition", () => {
@@ -175,10 +182,13 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
     ]);
     expect(definitions).toHaveLength(5);
     expect(new Set(definitions.map((definition) => definition.name)).size).toBe(5);
-    expect(definitions.every((definition) => definition.partitionKeyPath === COSMOS_PARTITION_KEY_PATH)).toBe(true);
-    expect(definitions.every((definition) => definition.partitionKeyPath === "/serviceId")).toBe(true);
-    expect(definitions.map((definition) => definition.partitionKeyValue(SERVICE_ID))).toEqual(
-      definitions.map(() => SERVICE_ID),
+    expect(COSMOS_PARTITION_KEY_PATH).toBe(COSMOS_AUXILIARY_PARTITION_KEY_PATH);
+    expect(definitions[0]?.partitionKeyPath).toBe(COSMOS_EVENT_PARTITION_KEY_PATH);
+    expect(definitions.slice(1).every((definition) => definition.partitionKeyPath === COSMOS_AUXILIARY_PARTITION_KEY_PATH)).toBe(true);
+    expect(definitions[0]?.partitionKeyValue(SERVICE_ID, "event-id")).toBe(`${SERVICE_ID}|event-id`);
+    expect(() => definitions[0]?.partitionKeyValue(SERVICE_ID)).toThrow(/event id/i);
+    expect(definitions.slice(1).map((definition) => definition.partitionKeyValue(SERVICE_ID))).toEqual(
+      definitions.slice(1).map(() => SERVICE_ID),
     );
 
     // The historical .NET layout is a separate namespace, not an alias for a
@@ -219,8 +229,12 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
     );
     expect(readResponse.status).toBe(200);
     expect(client.observations.length).toBeGreaterThan(0);
-    expect(new Set(client.observations.map((observation) => observation.partitionKey))).toEqual(new Set([SERVICE_ID]));
-    expect(new Set(client.observations.map((observation) => observation.serviceId))).toEqual(new Set([SERVICE_ID]));
+    const scoped = client.observations.filter((observation) => observation.serviceId !== undefined);
+    expect(new Set(scoped.map((observation) => observation.serviceId))).toEqual(new Set([SERVICE_ID]));
+    expect(client.observations.filter((observation) => observation.container !== DEFAULT_COSMOS_CONTAINERS.events).every((observation) => observation.partitionKey === SERVICE_ID)).toBe(true);
+    // CosmosEvent is partitioned by serviceId|eventId, so a service-scoped
+    // event listing uses a service predicate rather than a forged single PK.
+    expect(client.observations.some((observation) => observation.container === DEFAULT_COSMOS_CONTAINERS.events && observation.partitionKey === undefined)).toBe(true);
 
     // The reserved .test + explicit verification flag remains the only
     // intentional deployment-isolation override.
@@ -238,8 +252,9 @@ describe("SDT-G12 Cosmos provider pipeline composition", () => {
       { storeProvider: createCosmosStoreProvider({ client: overrideClient }) },
     );
     expect(overrideResponse.status).toBe(200);
-    expect(new Set(overrideClient.observations.map((observation) => observation.partitionKey))).toEqual(
+    expect(new Set(overrideClient.observations.map((observation) => observation.serviceId).filter((value): value is string => value !== undefined))).toEqual(
       new Set(["g11-test-namespace"]),
     );
+    expect(overrideClient.observations.every((observation) => observation.partitionKey === undefined || observation.partitionKey === "g11-test-namespace")).toBe(true);
   });
 });

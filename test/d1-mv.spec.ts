@@ -36,6 +36,7 @@ import type { ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/s
 import { reservationMaterializer } from "../samples/meeting-room/src/d1-mv";
 import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import { composeRuntime } from "../packages/dcb-runtime/src/composition";
+import { G32_FIXTURE_TIMESTAMP, g32Suid } from "./helpers/g32-fixtures";
 
 interface Event {
   suid: string;
@@ -67,8 +68,22 @@ function store(): D1MaterializedViewStore {
   return new D1MaterializedViewStore(database());
 }
 
+function canonicalSuid(value: string): string {
+  return g32Suid(value);
+}
+
 function event(suid: string, eventId: string, count: number): Event {
-  return { suid, eventId, count };
+  return { suid: canonicalSuid(suid), eventId, count };
+}
+
+function patchEvent(
+  suid: string,
+  eventId: string,
+  kind: PatchEvent["kind"],
+  rowKey: string,
+  value?: string,
+): PatchEvent {
+  return { suid: canonicalSuid(suid), eventId, kind, rowKey, ...(value === undefined ? {} : { value }) };
 }
 
 interface PatchEvent {
@@ -114,10 +129,19 @@ const PATCH_MATERIALIZER: MaterializedViewRowMaterializer<PatchEvent> = defineRo
 function storedEvent(suid: string, eventId: string, lastArrivedAt: number): StoredEvent {
   return {
     serviceId: "g19-source",
+    id: eventId,
     eventId,
-    suid,
-    payload: btoa(JSON.stringify({ eventId })),
+    sortableUniqueId: canonicalSuid(suid),
+    suid: canonicalSuid(suid),
+    payload: JSON.stringify({ eventId }),
+    tags: ["g19:events"],
     eventTags: ["g19:events"],
+    eventType: "G19StoredFixtureEvent",
+    timestamp: G32_FIXTURE_TIMESTAMP,
+    causationId: null,
+    correlationId: null,
+    executedUser: null,
+    provenance: "g32",
     firstArrivedAt: lastArrivedAt,
     lastArrivedAt,
     maxDeliveryLagMs: 0,
@@ -135,10 +159,19 @@ function storedPayloadEvent(
 ): StoredEvent {
   return {
     serviceId,
+    id: eventId,
     eventId,
-    suid,
-    payload: btoa(JSON.stringify(payload)),
+    sortableUniqueId: canonicalSuid(suid),
+    suid: canonicalSuid(suid),
+    payload: JSON.stringify(payload),
+    tags: [...eventTags],
     eventTags: [...eventTags],
+    eventType: typeof payload.eventType === "string" ? payload.eventType : "G19PayloadFixtureEvent",
+    timestamp: G32_FIXTURE_TIMESTAMP,
+    causationId: null,
+    correlationId: null,
+    executedUser: null,
+    provenance: "g32",
     firstArrivedAt: lastArrivedAt,
     lastArrivedAt,
     maxDeliveryLagMs: 0,
@@ -202,7 +235,7 @@ describe("SDT-G19 D1 materialized-view store", () => {
       serviceId,
       viewId: MATERIALIZER.id,
       generation: 0,
-      expectedLastSuid: "stale-suid",
+      expectedLastSuid: canonicalSuid("stale-suid"),
       lastSuid: second.suid,
       definitionVersion: MATERIALIZER.version,
       updatedAt: 1_002,
@@ -218,12 +251,12 @@ describe("SDT-G19 D1 materialized-view store", () => {
     const mv = store();
     await mv.initialize();
     await mv.createActive({ serviceId, viewId: PATCH_MATERIALIZER.id, definitionVersion: 1, updatedAt: 1_000 });
-    const seed = { suid: "suid-1", eventId: "seed", kind: "seed" as const, rowKey: "reservation-1", value: "old" };
+    const seed = patchEvent("suid-1", "seed", "seed", "reservation-1", "old");
     await mv.applyMutationsAndAdvanceCheckpoint({
       serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: null,
       lastSuid: seed.suid, definitionVersion: 1, updatedAt: 1_001, mutations: PATCH_MATERIALIZER.plan(seed),
     });
-    const cancel = { suid: "suid-2", eventId: "cancel", kind: "cancel" as const, rowKey: seed.rowKey };
+    const cancel = patchEvent("suid-2", "cancel", "cancel", seed.rowKey);
     await mv.applyMutationsAndAdvanceCheckpoint({
       serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: seed.suid,
       lastSuid: cancel.suid, definitionVersion: 1, updatedAt: 1_002, mutations: PATCH_MATERIALIZER.plan(cancel),
@@ -243,8 +276,8 @@ describe("SDT-G19 D1 materialized-view store", () => {
     await mv.createActive({ serviceId, viewId: PATCH_MATERIALIZER.id, definitionVersion: 1, updatedAt: 1_010 });
     await expect(mv.applyMutationsAndAdvanceCheckpoint({
       serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: null,
-      lastSuid: "suid-missing", definitionVersion: 1, updatedAt: 1_011,
-      mutations: PATCH_MATERIALIZER.plan({ suid: "suid-missing", eventId: "missing", kind: "cancel", rowKey: "absent" }),
+      lastSuid: canonicalSuid("suid-missing"), definitionVersion: 1, updatedAt: 1_011,
+      mutations: PATCH_MATERIALIZER.plan(patchEvent("suid-missing", "missing", "cancel", "absent")),
     })).rejects.toBeInstanceOf(MaterializedViewPatchError);
     expect(await mv.readActive(serviceId, PATCH_MATERIALIZER.id)).toEqual(expect.objectContaining({ lastSuid: "" }));
     expect(await mv.readRows(serviceId, PATCH_MATERIALIZER.id)).toEqual([]);
@@ -256,7 +289,7 @@ describe("SDT-G19 D1 materialized-view store", () => {
     const mv = store();
     await mv.initialize();
     await mv.createActive({ serviceId, viewId: PATCH_MATERIALIZER.id, definitionVersion: 1, updatedAt: 1_020 });
-    const seed = { suid: "suid-1", eventId: "seed-cas", kind: "seed" as const, rowKey: "reservation-cas", value: "old" };
+    const seed = patchEvent("suid-1", "seed-cas", "seed", "reservation-cas", "old");
     await mv.applyMutationsAndAdvanceCheckpoint({
       serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: null,
       lastSuid: seed.suid, definitionVersion: 1, updatedAt: 1_021, mutations: PATCH_MATERIALIZER.plan(seed),
@@ -267,9 +300,9 @@ describe("SDT-G19 D1 materialized-view store", () => {
       indexes: await mv.readIndexEntries(serviceId, PATCH_MATERIALIZER.id),
     };
     await expect(mv.applyMutationsAndAdvanceCheckpoint({
-      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: "stale",
-      lastSuid: "suid-2", definitionVersion: 1, updatedAt: 1_022,
-      mutations: PATCH_MATERIALIZER.plan({ suid: "suid-2", eventId: "cancel-cas", kind: "cancel", rowKey: seed.rowKey }),
+      serviceId, viewId: PATCH_MATERIALIZER.id, generation: 0, expectedLastSuid: canonicalSuid("stale"),
+      lastSuid: canonicalSuid("suid-2"), definitionVersion: 1, updatedAt: 1_022,
+      mutations: PATCH_MATERIALIZER.plan(patchEvent("suid-2", "cancel-cas", "cancel", seed.rowKey)),
     })).rejects.toBeInstanceOf(MaterializedViewCasError);
     expect(await mv.readActive(serviceId, PATCH_MATERIALIZER.id)).toEqual(before.instance);
     expect(await mv.readRows(serviceId, PATCH_MATERIALIZER.id)).toEqual(before.rows);
@@ -336,7 +369,7 @@ describe("SDT-G19 D1 materialized-view store", () => {
     for (const [index, item] of [event("suid-1", "event-b", 2), event("suid-2", "event-a", 1)].entries()) {
       await mv.applyMutationsAndAdvanceCheckpoint({
         serviceId, viewId: MATERIALIZER.id, generation: 0,
-        expectedLastSuid: index === 0 ? null : `suid-${index}`,
+        expectedLastSuid: index === 0 ? null : canonicalSuid(`suid-${index}`),
         lastSuid: item.suid, definitionVersion: 1, updatedAt: 3_001 + index, mutations: MATERIALIZER.plan(item),
       });
     }
@@ -372,7 +405,7 @@ describe("SDT-G19 D1 materialized-view store", () => {
     const entries = events.map((incoming) => ({
       eventId: incoming.eventId,
       suid: incoming.suid,
-      payload: btoa(JSON.stringify({ eventId: incoming.eventId, count: incoming.count })),
+      payload: JSON.stringify({ eventId: incoming.eventId, count: incoming.count }),
     }));
     const projectionId = projectionIdFor({
       tag,
@@ -449,11 +482,11 @@ describe("SDT-G19 D1 materialized-view store", () => {
         projectionId: projectionIdFor({
           tag, tagGroup: "reservation", tagContent: reservationId, tagProjector: reservationMaterializer.id,
         }),
-        lastSuid: "suid-2",
+        lastSuid: canonicalSuid("suid-2"),
         stateJson: JSON.stringify([{
           eventId: reservationId,
-          suid: "suid-2",
-          payload: btoa(JSON.stringify(expected)),
+          suid: canonicalSuid("suid-2"),
+          payload: JSON.stringify(expected),
         }]),
         version: 2,
         updatedAt: 50_002,
@@ -504,7 +537,7 @@ describe("SDT-G19 D1 materialized-view store", () => {
     const result = await runtime.build(serviceId, STORED_MATERIALIZER, nowMs);
     expect(result.appliedEvents).toBe(1);
     expect(result.indeterminate).toBe(false);
-    expect((await mv.readActive(serviceId, STORED_MATERIALIZER.id))?.lastSuid).toBe("suid-1");
+    expect((await mv.readActive(serviceId, STORED_MATERIALIZER.id))?.lastSuid).toBe(canonicalSuid("suid-1"));
     expect(incidents).toEqual([]);
   });
 

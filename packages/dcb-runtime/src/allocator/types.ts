@@ -21,7 +21,7 @@ export interface AllocationVector {
 
 /** The persisted service head; it is the allocated watermark. */
 export interface AllocatorState {
-  schemaVersion: 4;
+  schemaVersion: 5;
   allocatorLineageId: string;
   allocatedWatermark: string | null;
   bootstrapSeed: { importId: string; leaseEpoch: number; highWatermark: string } | null;

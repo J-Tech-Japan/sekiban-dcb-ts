@@ -1,112 +1,72 @@
-export type CompatibilityLane =
-  | "old-to-old"
-  | "old-to-new"
-  | "new-to-new"
-  | "new-to-old"
-  | "upgrade-downgrade-replay";
+/**
+ * SDT-G32 cutover policy for the sample. The final worker owns a new D1
+ * database and service identity, so there is intentionally no old-record
+ * reader, replay shim, downgrade path, or payload discriminator fallback.
+ */
+export type CutoverLane = "bridge-freeze" | "fresh-g32";
+export type CutoverOutcome = "frozen" | "accepted" | "typed-rejected";
 
-export type CompatibilityOutcome = "accepted" | "typed-rejected";
-
-export const LEGACY_MIGRATION_MARKER = "sekiban-dcb-pre-g27-migration-v1";
-
-export function compatibilityOutcome(lane: CompatibilityLane): CompatibilityOutcome {
-  return lane === "new-to-old" ? "typed-rejected" : "accepted";
+export interface G32FinalFence {
+  readonly phase?: string;
+  readonly release?: string;
+  readonly token?: string;
+  readonly tokenFingerprint?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * The old V1 runtime has no canonical-identity storage lane.  New clients
- * therefore get a typed rejection instead of an identity-bearing request
- * being silently downgraded into a legacy row.
- */
-export function oldRuntimeAdmission(value: unknown): CompatibilityOutcome {
-  if (!isRecord(value) || !Array.isArray(value.eventCandidates)) return "typed-rejected";
-  const identityBearing = value.eventCandidates.some((candidate) =>
-    isRecord(candidate) && (Object.prototype.hasOwnProperty.call(candidate, "eventType") || Object.prototype.hasOwnProperty.call(candidate, "provenance") || Object.prototype.hasOwnProperty.call(candidate, "eventPayloadVersion")));
-  return identityBearing ? "typed-rejected" : "accepted";
+export function cutoverOutcome(lane: CutoverLane): CutoverOutcome {
+  return lane === "bridge-freeze" ? "frozen" : "accepted";
 }
 
-/** Storage is fail-closed unless G27 identity or an immutable legacy marker is present. */
-export function assertStoredIdentity(value: unknown): void {
-  if (!isRecord(value)) throw new Error("G29_STORAGE_IDENTITY_MISSING");
-  const eventType = value.eventType;
-  const provenance = value.provenance;
-  const marker = value.legacyMigrationMarker;
-  if (typeof eventType === "string" && eventType.length > 0 && provenance === "g27") return;
-  if (provenance === "pre-g27" && marker === LEGACY_MIGRATION_MARKER) return;
-  throw new Error("G29_STORAGE_IDENTITY_MISSING");
+/** Fail closed before a store/dispatch call when a non-G32 record reaches it. */
+export function assertG32StoredIdentity(value: unknown): void {
+  if (!isRecord(value)) throw new Error("G32_STORED_RECORD_INVALID");
+  if (
+    typeof value.eventType !== "string" || value.eventType.length === 0 || value.eventType.includes(":") ||
+    value.provenance !== "g32" ||
+    typeof value.suid !== "string" || !/^[0-9]{30}$/.test(value.suid) ||
+    typeof value.eventId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.eventId)
+  ) {
+    throw new Error("G32_STORED_RECORD_INVALID");
+  }
 }
 
-export interface CompatibilityReplayRecord {
-  readonly eventId: string;
-  readonly suid: string;
-  readonly payload: unknown;
-  readonly eventType?: string;
-  readonly provenance?: "g27" | "pre-g27";
+/** The bridge admits only its freeze token; final G32 accepts no bridge wire. */
+export function cutoverAdmission(lane: CutoverLane, value: unknown): CutoverOutcome {
+  if (!isRecord(value)) return "typed-rejected";
+  if (lane === "bridge-freeze") return value.freezeToken === true ? "frozen" : "typed-rejected";
+  try {
+    assertG32StoredIdentity(value);
+    return "accepted";
+  } catch {
+    return "typed-rejected";
+  }
 }
 
-function payloadRecord(value: unknown): Record<string, unknown> {
-  if (!isRecord(value)) throw new Error("G29_REPLAY_PAYLOAD_INVALID");
-  return value;
+export function cutoverLaneIds(): readonly CutoverLane[] {
+  return Object.freeze(["bridge-freeze", "fresh-g32"]);
 }
 
-function canonicalEventType(name: string): string {
-  if (name.includes(":")) return name;
-  return name + ":1";
+function hex(bytes: ArrayBuffer): string {
+  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /**
- * Old stored rows are replayed by the new runtime only after the immutable
- * migration marker has been supplied by the fixture. Canonical G27 rows use
- * their stored identity and never sniff payload fields.
+ * The final Worker cannot become writable merely because the bridge was
+ * removed. It must carry the final phase marker plus the same deployment
+ * fence secret/fingerprint pair on every primary and receiver version.
  */
-export function replayOldHistoryToNewRuntime(
-  record: CompatibilityReplayRecord,
-  legacyMigrationMarker?: string,
-): { readonly kind: "accepted"; readonly eventType: string; readonly usedLegacyDiscriminator: boolean } {
-  if (record.eventType !== undefined && record.provenance === "g27") {
-    return Object.freeze({ kind: "accepted", eventType: record.eventType, usedLegacyDiscriminator: false });
+export async function assertG32FinalFence(value: G32FinalFence): Promise<void> {
+  if (value.phase !== "final-g32" || value.release !== "after-new-bindings") {
+    throw new Error("G32_CUTOVER_FENCE_PHASE_INVALID");
   }
-  if (record.provenance === "pre-g27" && legacyMigrationMarker === LEGACY_MIGRATION_MARKER) {
-    const legacyName = payloadRecord(record.payload).eventType;
-    if (typeof legacyName !== "string" || legacyName.length === 0) throw new Error("G29_STORAGE_IDENTITY_MISSING");
-    return Object.freeze({ kind: "accepted", eventType: canonicalEventType(legacyName), usedLegacyDiscriminator: true });
+  if (typeof value.token !== "string" || value.token.length === 0 || typeof value.tokenFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(value.tokenFingerprint)) {
+    throw new Error("G32_CUTOVER_FENCE_INVALID");
   }
-  throw new Error("G29_STORAGE_IDENTITY_MISSING");
-}
-
-/**
- * The old runtime compatibility shim consumes a canonical record by mapping
- * only its additive G27 identity to the old event name. It rejects a record
- * that would require payload sniffing without a canonical identity.
- */
-export function replayNewHistoryToOldRuntime(
-  record: CompatibilityReplayRecord,
-): { readonly kind: "accepted"; readonly eventName: string; readonly legacyDiscriminator: string } {
-  if (record.provenance !== "g27" || typeof record.eventType !== "string" || !record.eventType.includes(":")) {
-    throw new Error("G29_OLD_RUNTIME_IDENTITY_REQUIRED");
-  }
-  const eventName = record.eventType.slice(0, record.eventType.lastIndexOf(":"));
-  return Object.freeze({ kind: "accepted", eventName, legacyDiscriminator: eventName });
-}
-
-export function downgradeReplay(
-  records: readonly CompatibilityReplayRecord[],
-  legacyMigrationMarker: string,
-): { readonly kind: "accepted"; readonly writes: 0; readonly eventTypes: readonly string[] } {
-  const eventTypes = records.map((record) => replayOldHistoryToNewRuntime(record, legacyMigrationMarker).eventType);
-  return Object.freeze({ kind: "accepted", writes: 0, eventTypes: Object.freeze(eventTypes) });
-}
-
-export function compatibilityLaneIds(): readonly CompatibilityLane[] {
-  return Object.freeze([
-    "old-to-old",
-    "old-to-new",
-    "new-to-new",
-    "new-to-old",
-    "upgrade-downgrade-replay",
-  ]);
+  const encoded = new TextEncoder().encode(value.token);
+  const observed = hex(await crypto.subtle.digest("SHA-256", encoded));
+  if (observed !== value.tokenFingerprint) throw new Error("G32_CUTOVER_FENCE_INVALID");
 }

@@ -89,39 +89,31 @@ export interface RuntimeComposition {
 
 /** Structural bridge returned by @sekiban/dcb-domain without a reverse package import. */
 export interface RuntimeDomainLike {
-  readonly events?: readonly { readonly eventPayloadName: string; readonly version: number }[];
+  readonly events?: readonly {
+    readonly eventPayloadName: string;
+    readonly parse?: (payload: unknown) => unknown;
+  }[];
   readonly commands?: readonly unknown[];
   readonly projectors?: readonly unknown[];
   readonly queries?: readonly RuntimeQueryDefinition[];
   readonly views?: readonly { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: DeliveryClass }[];
 }
 
-/** The commit authority is the active domain registry, never a V1 caller field. */
-export function registeredEventVersions(domain: DomainDefinition | RuntimeDomainLike | undefined): Readonly<Record<string, number>> {
-  return Object.freeze(Object.fromEntries(
-    (domain?.events ?? []).map((event) => [event.eventPayloadName, event.version]),
-  ));
+/** Registered domain parsers are the exact-case admission authority. */
+export function registeredEventParsers(domain: DomainDefinition | RuntimeDomainLike | undefined): Readonly<Record<string, (payload: unknown) => unknown>> {
+  const entries: Array<readonly [string, (payload: unknown) => unknown]> = [];
+  for (const event of domain?.events ?? []) {
+    if (typeof event.parse === "function") entries.push([event.eventPayloadName, event.parse]);
+  }
+  return Object.freeze(Object.fromEntries(entries) as Record<string, (payload: unknown) => unknown>);
 }
 
-function decodeBase64Json(value: string): unknown {
+function decodeStoredJson(value: string): unknown {
   try {
-    const binary = atob(value);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes));
+    return JSON.parse(value);
   } catch {
     return value;
   }
-}
-
-/** Legacy-only discriminator. It is never called for a canonical G27 event. */
-function eventNameFromPayload(value: unknown, projector: ProjectorDefinition): string | undefined {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
-    for (const key of ["eventType", "eventName", "eventPayloadName", "type"]) {
-      if (typeof record[key] === "string" && record[key].length > 0) return record[key];
-    }
-  }
-  return projector.subscribedEventNames.length === 1 ? projector.subscribedEventNames[0] : undefined;
 }
 
 function jsonBytes(value: unknown): string {
@@ -138,20 +130,13 @@ function projectorFromDefinition(
   const payloadNames = config.projectorPayloadNames ?? config.tagPayloadNames ?? {};
   const payloadName = payloadNames[definition.id] ?? `${definition.id}State`;
   const apply = (state: JsonValue, event: ProjectionEvent): JsonValue => {
-    const payload = decodeBase64Json(event.payload);
+    const payload = decodeStoredJson(event.payload);
     const identity = resolveDeliveryIdentity({ eventType: event.eventType, provenance: event.provenance }, "queue");
-    const eventName = identity.legacy ? eventNameFromPayload(payload, definition) : identity.eventPayloadName;
-    if (eventName === undefined) return state;
-    const normalizedEventType = identity.legacy && definition.subscribedEventTypes.includes(eventName)
-      ? eventName
-      : identity.legacy
-        ? `${eventName}:1`
-        : identity.key;
+    const eventName = identity.eventPayloadName;
+    const normalizedEventType = identity.key;
     // Polling visits every registered projector for each discovered tag. A
     // projector must therefore turn an event from another family into a
-    // state-preserving no-op before the authored bridge sees it. This is also
-    // the legacy compatibility boundary: sniffing is allowed only after the
-    // pre-G27 provenance gate above, never for a canonical message.
+    // state-preserving no-op before the authored bridge sees it.
     if (!definition.subscribedEventTypes.includes(normalizedEventType)) return state;
     return definition.apply(state, {
       eventName,
@@ -246,8 +231,8 @@ export interface RuntimeCommitPort {
 
 export interface RuntimeCommitPortOptions {
   readonly requestUrl?: string;
-  readonly hooks?: Omit<CommitWorkerHooks, "registeredEventVersions">;
-  readonly registeredEventVersions?: Readonly<Record<string, number>>;
+  readonly hooks?: Omit<CommitWorkerHooks, "registeredEventParsers">;
+  readonly registeredEventParsers?: Readonly<Record<string, (payload: unknown) => unknown>>;
 }
 
 function encodeJsonPayload(value: unknown): string {
@@ -265,7 +250,12 @@ function candidateToV1Envelope(candidate: RuntimeCommitCandidateLike): {
   const eventTags = new Set(candidate.events.flatMap((event) => event.tags.map((tag) => tag.id)));
   const claims = new Map<string, string>();
   for (const claim of candidate.readClaims) {
-    if (eventTags.has(claim.tag.id) && !claims.has(claim.tag.id)) claims.set(claim.tag.id, claim.head ?? "");
+    // G32 has no empty-SUID sentinel.  A first write omits the unobserved
+    // tag claim entirely; emitting an empty string would turn a valid
+    // authoring candidate into an invalid V1 request before admission.
+    if (eventTags.has(claim.tag.id) && claim.head !== null && !claims.has(claim.tag.id)) {
+      claims.set(claim.tag.id, claim.head);
+    }
   }
   return {
     version: 1,
@@ -321,7 +311,7 @@ export function createRuntimeCommitPort(
       );
       const response = await handleSerializedCommit(request, env, {
         ...(options.hooks ?? {}),
-        registeredEventVersions: options.registeredEventVersions,
+        registeredEventParsers: options.registeredEventParsers,
       });
       const body = await responseBody(response);
       if (response.ok) return { kind: "accepted", attemptId: attemptIdFromResponse(body) };

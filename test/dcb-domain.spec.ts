@@ -35,7 +35,7 @@ import {
 import {
   composeRuntime,
   createRuntimeCommitPort,
-  registeredEventVersions,
+  registeredEventParsers,
 } from "../packages/dcb-runtime/src/composition";
 import { evolveTable, given } from "@sekiban/dcb-domain/testing";
 
@@ -43,7 +43,6 @@ const order = tagFamily("order");
 const audit = tagFamily("audit");
 const placed = event("OrderPlaced", z.object({ orderId: z.string() }), {
   tags: (payload) => [order.of(payload.orderId)],
-  version: 2,
 });
 const cancelled = event("OrderCancelled", z.object({ orderId: z.string() }), {
   tags: (payload) => [order.of(payload.orderId)],
@@ -86,8 +85,7 @@ describe("SDT-G28 authoring surface", () => {
   it("parses schema-first events, derives tags once, and builds a union", () => {
     const payload = placed.make({ orderId: "o-1" });
     expect(payload.orderId).toBe("o-1");
-    expect(placed.version).toBe(2);
-    expect(placed.eventType).toBe("OrderPlaced:2");
+    expect(placed.eventType).toBe("OrderPlaced");
     expect(placed.tags(payload).map((tag) => tag.id)).toEqual(["order:o-1"]);
     expect(union.parse({ orderId: "o-1" }).orderId).toBe("o-1");
     expect(() => placed.make({ orderId: 1 })).toThrow();
@@ -108,9 +106,9 @@ describe("SDT-G28 authoring surface", () => {
   });
 
   it("enforces projector coverage and domain identity registration", () => {
-    expect(orderProjector.eventTypes).toEqual(["OrderPlaced:2", "OrderCancelled:1"]);
+    expect(orderProjector.eventTypes).toEqual(["OrderPlaced", "OrderCancelled"]);
     const registered = domain({ events: [placed, cancelled], projectors: [orderProjector] });
-    expect(registered.eventByType.get("OrderPlaced:2")).toBe(placed);
+    expect(registered.eventByType.get("OrderPlaced")).toBe(placed);
     expect(() => domain({ events: [placed, placed] })).toThrow(DomainRegistrationError);
   });
 
@@ -146,7 +144,7 @@ describe("SDT-G28 authoring surface", () => {
     expect(result.status).toBe("accepted");
     expect(result.now).toBe("fixed-now");
     expect(result.envelope?.tags.map((tag) => tag.id)).toEqual(["order:o-2"]);
-    expect(result.envelope?.events[0]?.eventType).toBe("OrderPlaced:2");
+    expect(result.envelope?.events[0]?.eventType).toBe("OrderPlaced");
     expect(result.envelope?.events[0]).not.toHaveProperty("eventId");
     expect(committed).toHaveLength(1);
     expect(result.session.status).toBe("SEALED");
@@ -335,8 +333,8 @@ describe("SDT-G28 authoring surface", () => {
     });
     const first = await executeCommand(timedCommand, { orderId: "clock-order" }, { timeProvider: { now: () => 10 } });
     const second = await executeCommand(timedCommand, { orderId: "clock-order" }, { timeProvider: { now: () => 20 } });
-    expect(first.envelope?.events[0]).toMatchObject({ eventType: "BusinessTimed:1", payload: { businessAt: 10 }, tags: [{ id: "order:clock-order" }] });
-    expect(second.envelope?.events[0]).toMatchObject({ eventType: "BusinessTimed:1", payload: { businessAt: 20 }, tags: [{ id: "order:clock-order" }] });
+    expect(first.envelope?.events[0]).toMatchObject({ eventType: "BusinessTimed", payload: { businessAt: 10 }, tags: [{ id: "order:clock-order" }] });
+    expect(second.envelope?.events[0]).toMatchObject({ eventType: "BusinessTimed", payload: { businessAt: 20 }, tags: [{ id: "order:clock-order" }] });
     expect(first.envelope?.events[0]).not.toHaveProperty("eventId");
     expect(second.envelope?.events[0]).not.toHaveProperty("suid");
   });
@@ -484,10 +482,10 @@ describe("SDT-G28 authoring surface", () => {
     expect(decoder.decode(JSON.stringify({ version: 1 })).version).toBe(1);
     expect(() => decoder.decode("not-json")).toThrow(BoundaryParseError);
     const runtime = toRuntimeDomain(domain({ events: [placed, cancelled], projectors: [orderProjector] }));
-    expect(runtime.events[0]?.eventType).toBe("OrderPlaced:2");
-    expect(runtime.projectors[0]?.subscribedEventTypes).toEqual(["OrderPlaced:2", "OrderCancelled:1"]);
+    expect(runtime.events[0]?.eventType).toBe("OrderPlaced");
+    expect(runtime.projectors[0]?.subscribedEventTypes).toEqual(["OrderPlaced", "OrderCancelled"]);
     const state = runtime.projectors[0]?.apply({ kind: "empty" }, {
-      eventType: "OrderPlaced:2",
+      eventType: "OrderPlaced",
       payload: { orderId: "o-5" },
     });
     expect(state).toEqual({ kind: "placed", orderId: "o-5" });
@@ -496,10 +494,10 @@ describe("SDT-G28 authoring surface", () => {
     const composedState = composed!.apply({ kind: "empty" }, {
       eventId: "e-5",
       suid: "suid-00000000000000000000000000000005",
-      payload: btoa(JSON.stringify({ orderId: "o-5" })),
+      payload: JSON.stringify({ orderId: "o-5" }),
       eventTags: ["order:o-5"],
-      eventType: "OrderPlaced:2",
-      provenance: "g27",
+      eventType: "OrderPlaced",
+      provenance: "g32",
     });
     expect(composedState).toEqual({ kind: "placed", orderId: "o-5" });
     const snapshot = deserializePortableSnapshot(serializePortableSnapshot({
@@ -548,17 +546,17 @@ describe("SDT-G28 authoring surface", () => {
     const port = {
       conflictBarrier: (candidate: { readonly events: readonly { readonly eventType: string; readonly provenance: string }[] }) => {
         barriers += 1;
-        expect(candidate.events[0]).toMatchObject({ eventType: "OrderPlaced:2", provenance: "g27" });
+        expect(candidate.events[0]).toMatchObject({ eventType: "OrderPlaced", provenance: "g32" });
         return barriers === 1 ? { kind: "consistency-conflict" as const } : { kind: "accepted" as const };
       },
       admit: (candidate: { readonly events: readonly { readonly eventType: string; readonly provenance: string }[] }) => {
         admissions += 1;
-        expect(candidate.events[0]).toMatchObject({ eventType: "OrderPlaced:2", provenance: "g27" });
+        expect(candidate.events[0]).toMatchObject({ eventType: "OrderPlaced", provenance: "g32" });
         return { kind: "accepted" as const };
       },
       allocate: (candidate: { readonly events: readonly { readonly eventType: string; readonly provenance: string }[] }) => {
         allocations += 1;
-        expect(candidate.events[0]).toMatchObject({ eventType: "OrderPlaced:2", provenance: "g27" });
+        expect(candidate.events[0]).toMatchObject({ eventType: "OrderPlaced", provenance: "g32" });
         return { candidates: [{ ordinal: "0", suid: "suid-runtime-vector-1" }], allocatorLineageId: "runtime-lineage" };
       },
       commit: (candidate: { readonly events: readonly { readonly eventType: string; readonly provenance: string }[] }, allocation?: { readonly candidates: readonly { readonly suid: string }[] }) => {
@@ -672,7 +670,7 @@ describe("SDT-G28 authoring surface", () => {
       BOOTSTRAP: tracedNamespace(testEnv.BOOTSTRAP),
     } as unknown as Parameters<typeof createRuntimeCommitPort>[0];
     const port = createRuntimeCommitPort(runtimeEnv, {
-      registeredEventVersions: registeredEventVersions(runtimeDomain),
+      registeredEventParsers: registeredEventParsers(runtimeDomain),
     });
     const outcome = await composed.commands.execute(
       "runtime-real-command",
@@ -682,7 +680,10 @@ describe("SDT-G28 authoring surface", () => {
 
     expect(outcome).toMatchObject({ kind: "committed" });
     expect(paths).toContain("/admit");
-    expect(paths).toContain("/acquire");
+    // The first write has no observed tag head. G32 omits that claim instead
+    // of sending an empty-SUID reservation, so acquire is intentionally not
+    // invoked before the initial append.
+    expect(paths).not.toContain("/acquire");
     expect(paths).toContain("/allocate");
     expect(paths).toContain("/append");
   });

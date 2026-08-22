@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "authority": {
+    "repository": "J-Tech-Japan/Sekiban",
+    "commit": "855feaa93564fef54defec76e9ccff969d4ee01a",
+    "sources": [
+      "dcb/src/Sekiban.Dcb.Postgres/DbModels/DbEvent.cs",
+      "dcb/src/Sekiban.Dcb.Postgres/SekibanDcbDbContext.cs",
+      "dcb/src/Sekiban.Dcb.CosmosDb/Models/CosmosEvent.cs"
+    ]
+  },
+  "logicalRecord": {
+    "table": "dcb_events",
+    "fields": [
+      { "id": "serviceId", "postgres": "ServiceId", "d1": "ServiceId", "cosmos": "serviceId", "nullable": false },
+      { "id": "id", "postgres": "Id", "d1": "Id", "cosmos": "id", "nullable": false },
+      { "id": "sortableUniqueId", "postgres": "SortableUniqueId", "d1": "SortableUniqueId", "cosmos": "sortableUniqueId", "nullable": false },
+      { "id": "eventType", "postgres": "EventType", "d1": "EventType", "cosmos": "eventType", "nullable": false },
+      { "id": "payload", "postgres": "Payload", "d1": "Payload", "cosmos": "payload", "nullable": false },
+      { "id": "tags", "postgres": "Tags", "d1": "Tags", "cosmos": "tags", "nullable": false },
+      { "id": "timestamp", "postgres": "Timestamp", "d1": "Timestamp", "cosmos": "timestamp", "nullable": false },
+      { "id": "causationId", "postgres": "CausationId", "d1": "CausationId", "cosmos": "causationId", "nullable": true },
+      { "id": "correlationId", "postgres": "CorrelationId", "d1": "CorrelationId", "cosmos": "correlationId", "nullable": true },
+      { "id": "executedUser", "postgres": "ExecutedUser", "d1": "ExecutedUser", "cosmos": "executedUser", "nullable": true }
+    ]
+  },
+  "postgres": {
+    "table": "dcb_events",
+    "quotedPascalCase": true,
+    "columns": [
+      { "name": "ServiceId", "type": "varchar(64)", "nullable": false },
+      { "name": "Id", "type": "uuid", "nullable": false },
+      { "name": "SortableUniqueId", "type": "varchar(100)", "nullable": false },
+      { "name": "EventType", "type": "text", "nullable": false },
+      { "name": "Payload", "type": "json", "nullable": false },
+      { "name": "Tags", "type": "jsonb", "nullable": false },
+      { "name": "Timestamp", "type": "timestamptz", "nullable": false },
+      { "name": "CausationId", "type": "text", "nullable": true },
+      { "name": "CorrelationId", "type": "text", "nullable": true },
+      { "name": "ExecutedUser", "type": "text", "nullable": true }
+    ],
+    "primaryKey": { "name": "PK_dcb_events", "columns": ["ServiceId", "Id"] },
+    "indexes": [
+      { "name": "IX_Events_ServiceId", "columns": ["ServiceId"] },
+      { "name": "IX_Events_Service_SortableUniqueId", "columns": ["ServiceId", "SortableUniqueId"] },
+      { "name": "IX_dcb_events_EventType", "columns": ["EventType"] },
+      { "name": "IX_dcb_events_Timestamp", "columns": ["Timestamp"] }
+    ],
+    "forbidden": ["UNIQUE", "DEFAULT", "CHECK"]
+  },
+  "d1": {
+    "table": "dcb_events",
+    "columns": [
+      { "name": "ServiceId", "type": "TEXT", "nullable": false },
+      { "name": "Id", "type": "TEXT", "nullable": false },
+      { "name": "SortableUniqueId", "type": "TEXT COLLATE BINARY", "nullable": false },
+      { "name": "EventType", "type": "TEXT", "nullable": false },
+      { "name": "Payload", "type": "TEXT", "nullable": false },
+      { "name": "Tags", "type": "TEXT", "nullable": false },
+      { "name": "Timestamp", "type": "TEXT", "nullable": false },
+      { "name": "CausationId", "type": "TEXT", "nullable": true },
+      { "name": "CorrelationId", "type": "TEXT", "nullable": true },
+      { "name": "ExecutedUser", "type": "TEXT", "nullable": true }
+    ],
+    "primaryKey": { "name": "PK_dcb_events", "columns": ["ServiceId", "Id"] },
+    "indexes": [
+      { "name": "IX_Events_ServiceId", "columns": ["ServiceId"] },
+      { "name": "IX_Events_Service_SortableUniqueId", "columns": ["ServiceId", "SortableUniqueId"] },
+      { "name": "IX_dcb_events_EventType", "columns": ["EventType"] },
+      { "name": "IX_dcb_events_Timestamp", "columns": ["Timestamp"] }
+    ],
+    "forbidden": ["UNIQUE(ServiceId,SortableUniqueId)", "DEFAULT", "CHECK"]
+  },
+  "cosmos": {
+    "partitionKeyPath": "/pk",
+    "pk": "{serviceId}|{id}",
+    "applicationFields": ["serviceId", "id", "sortableUniqueId", "eventType", "payload", "tags", "timestamp", "causationId", "correlationId", "executedUser"],
+    "providerManagedReadonlyFields": ["_etag", "_ts", "_rid", "_self"]
+  },
+  "sidecar": {
+    "table": "dcb_event_ops",
+    "primaryKey": ["ServiceId", "Id"],
+    "columns": ["AttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs"]
+  }
+}

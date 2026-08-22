@@ -1,5 +1,7 @@
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
+import { isSortableUniqueIdSafeAt } from "../safeWindow";
 import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
 
@@ -306,7 +308,6 @@ export class MaterializedViewRuntime {
   ): Promise<MaterializedViewFollowResult<State>> {
     const dynamicLagBoundMs = await this.store.currentLagBound(serviceId, nowMs);
     const windowMs = safeWindowMs(dynamicLagBoundMs);
-    const safeThrough = nowMs - windowMs;
 
     for (let retry = 0; retry < MAX_CHECKPOINT_CAS_RETRIES; retry += 1) {
       const checkpoint = await this.store.readProjectionCheckpoint(serviceId, viewId);
@@ -327,6 +328,7 @@ export class MaterializedViewRuntime {
       const sourceEvents = await this.store.readAllEvents(serviceId, checkpoint.lastSuid);
       let validatedPreviousSuid = checkpoint.lastSuid;
       for (const event of sourceEvents) {
+        assertSortableUniqueId(event.suid);
         if (compareSuid(validatedPreviousSuid, event.suid) >= 0) {
           throw this.failure(
             operation,
@@ -343,7 +345,7 @@ export class MaterializedViewRuntime {
       for (const event of sourceEvents) {
         // SafeWindow is deliberately read-only: stopping at the first unsafe
         // SUID preserves convergence when a lower SUID is delivered late.
-        if (event.lastArrivedAt > safeThrough) {
+        if (!isSortableUniqueIdSafeAt(event.suid, nowMs, dynamicLagBoundMs)) {
           return {
             ...this.snapshot(serviceId, viewId, currentCheckpoint, definition, operation),
             dynamicLagBoundMs,

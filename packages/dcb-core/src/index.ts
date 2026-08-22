@@ -83,7 +83,6 @@ export class DcbDefinitionError extends Error {
 /** The event identity carried by the post-G27 internal delivery lanes. */
 export interface CanonicalEventIdentity {
   readonly eventPayloadName: string;
-  readonly version: number;
   readonly key: string;
 }
 
@@ -96,42 +95,21 @@ export class CanonicalEventIdentityError extends DcbDefinitionError {
   }
 }
 
-function canonicalEventVersion(version: unknown): number {
-  if (typeof version !== "number" || !Number.isSafeInteger(version) || version < 1) {
-    throw new CanonicalEventIdentityError("Event identity version must be a positive safe integer");
-  }
-  return version;
-}
-
-/** Build the only accepted event identity spelling: name:decimal-version. */
-export function canonicalEventKey(eventPayloadName: string, version = 1): string {
+/** Build the only accepted durable identity spelling: eventPayloadName. */
+export function canonicalEventKey(eventPayloadName: string): string {
   if (typeof eventPayloadName !== "string" || eventPayloadName.length === 0 || eventPayloadName.includes(":")) {
     throw new CanonicalEventIdentityError("Event payload names must be non-empty and must not contain ':'");
   }
-  const canonicalVersion = canonicalEventVersion(version);
-  return `${eventPayloadName}:${canonicalVersion}`;
+  return eventPayloadName;
 }
 
-/** Parse and re-canonicalize an internal event identity without sniffing payload bytes. */
+/** Parse the durable eventPayloadName without consulting payload bytes. */
 export function parseCanonicalEventKey(key: string): CanonicalEventIdentity {
-  if (typeof key !== "string" || key.length === 0) {
-    throw new CanonicalEventIdentityError("Event identity key must be a non-empty string");
-  }
-  const separator = key.lastIndexOf(":");
-  if (separator <= 0 || separator === key.length - 1) {
-    throw new CanonicalEventIdentityError("Event identity key must be eventPayloadName:version");
-  }
-  const eventPayloadName = key.slice(0, separator);
-  const versionText = key.slice(separator + 1);
-  if (!/^\d+$/.test(versionText) || (versionText.length > 1 && versionText.startsWith("0"))) {
-    throw new CanonicalEventIdentityError("Event identity version must be canonical decimal text");
-  }
-  const version = Number(versionText);
-  const canonical = canonicalEventKey(eventPayloadName, version);
+  const canonical = canonicalEventKey(key);
   if (canonical !== key) {
     throw new CanonicalEventIdentityError("Event identity key is not canonical");
   }
-  return Object.freeze({ eventPayloadName, version, key });
+  return Object.freeze({ eventPayloadName: key, key });
 }
 
 export interface TagDefinition {
@@ -185,7 +163,6 @@ export interface EventDefinition<TPayload extends JsonValue = JsonValue> {
   readonly name: string;
   readonly eventName: string;
   readonly eventPayloadName: string;
-  readonly version: number;
   readonly eventType: string;
   readonly create: (payload: unknown) => DefinedEvent<TPayload>;
   readonly construct: (payload: unknown) => DefinedEvent<TPayload>;
@@ -197,8 +174,8 @@ export type EventDefinitionOptions<TPayload extends JsonValue> = {
   readonly name?: string;
   readonly eventName?: string;
   readonly eventPayloadName?: string;
-  /** Version of the payload schema; existing definitions default to v1. */
-  readonly version?: number;
+  /** Removed by G32: new payload revisions use a new eventPayloadName. */
+  readonly version?: never;
   readonly parse?: EventParser<TPayload>;
   readonly parser?: EventParser<TPayload>;
   readonly validate?: EventParser<TPayload>;
@@ -219,8 +196,10 @@ export function defineEvent<TPayload extends JsonValue = JsonValue>(
   const name = options.name ?? options.eventName;
   if (!name) throw new DcbDefinitionError("EVENT_NAME_REQUIRED", "Event name is required");
   const eventPayloadName = options.eventPayloadName ?? name;
-  const version = options.version ?? 1;
-  const eventType = canonicalEventKey(eventPayloadName, version);
+  if (Object.prototype.hasOwnProperty.call(options, "version")) {
+    throw new DcbDefinitionError("EVENT_VERSION_REMOVED", "Event version is removed; use a distinct event payload name");
+  }
+  const eventType = canonicalEventKey(eventPayloadName);
   const validate = options.parse ?? options.parser ?? options.validate ?? ((payload: unknown) => payload as TPayload);
   const parse = (payload: unknown): TPayload => {
     let parsed: unknown;
@@ -235,7 +214,7 @@ export function defineEvent<TPayload extends JsonValue = JsonValue>(
   };
   const create = (payload: unknown): DefinedEvent<TPayload> =>
     Object.freeze({ eventName: name, eventPayloadName, payload: parse(payload) });
-  return Object.freeze({ name, eventName: name, eventPayloadName, version, eventType, create, construct: create, parse });
+  return Object.freeze({ name, eventName: name, eventPayloadName, eventType, create, construct: create, parse });
 }
 
 export type ProjectorState = JsonValue;
@@ -294,8 +273,8 @@ export function defineProjector<TState extends JsonValue = JsonValue>(
   const uniqueSubscribed = [...new Set(subscribed)];
   const eventTypeHandlers = options.eventTypeHandlers ?? {};
   const subscribedEventTypes = options.subscribedEventTypes ?? options.events?.map((event) =>
-    typeof event === "string" ? canonicalEventKey(event, 1) : event.eventType,
-  ) ?? uniqueSubscribed.map((name) => canonicalEventKey(name, 1));
+    typeof event === "string" ? canonicalEventKey(event) : event.eventType,
+  ) ?? uniqueSubscribed.map((name) => canonicalEventKey(name));
   const uniqueSubscribedEventTypes = [...new Set(subscribedEventTypes.map((eventType) => parseCanonicalEventKey(eventType).key))];
   const missing = uniqueSubscribed.filter((name) =>
     handlers[name] === undefined && !uniqueSubscribedEventTypes.some((eventType) =>

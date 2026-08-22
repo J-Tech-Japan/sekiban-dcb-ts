@@ -13,6 +13,7 @@ import matrix from "../docs/SDT-G29-delivery-matrix.json";
 import { meetingRoomDeliveryPolicy } from "../samples/meeting-room/src/domain";
 import { MeetingRoomDownstreamDoorbell, type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { g32Message, g32StoredEvent } from "./helpers/g32-fixtures";
 
 const views = [{ id: "RoomProjector" }, { id: "ReservationProjector" }];
 const enabled = {
@@ -24,20 +25,18 @@ const enabled = {
 const allQueued = { RoomProjector: "queued" as const, ReservationProjector: "queued" as const };
 
 function message(id: string): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId: "g29-delivery-fixture",
     allocatorLineageId: "g29-delivery-lineage",
     tag: `room:${id}`,
     attemptId: `attempt-${id}`,
     eventId: `event-${id}`,
     suid: `suid-${id}`,
-    payload: btoa(JSON.stringify({ roomId: id, name: "fixture" })),
+    payload: JSON.stringify({ roomId: id, name: "fixture" }),
     eventTags: [`room:${id}`],
-    eventType: "RoomCreated:1",
-    provenance: "g27",
+    eventType: "RoomCreated",
     enqueuedAt: 0,
-  };
+  });
 }
 
 function fakeStore(): PipelineStore {
@@ -46,19 +45,7 @@ function fakeStore(): PipelineStore {
     recordDelivery: async (input, arrivedAt) => ({
       outcome: "stored",
       kind: "stored",
-      event: {
-        serviceId: input.serviceId,
-        eventId: input.eventId,
-        suid: input.suid,
-        payload: input.payload,
-        eventTags: [...input.eventTags],
-        eventType: input.eventType,
-        provenance: input.provenance === "g27" ? "g27" : undefined,
-        firstArrivedAt: arrivedAt,
-        lastArrivedAt: arrivedAt,
-        maxDeliveryLagMs: arrivedAt - input.enqueuedAt,
-        arrivals: [],
-      } satisfies StoredEvent,
+      event: g32StoredEvent(input, arrivedAt) satisfies StoredEvent,
     }),
     readAllEvents: async () => [],
     currentLagBound: async () => 0,

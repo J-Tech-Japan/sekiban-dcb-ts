@@ -25,15 +25,13 @@ interface StoredEventLike {
   readonly eventId: string;
   readonly payload: string;
   readonly eventTags: readonly string[];
-  /** G27 identity is authoritative whenever the row carries it. */
-  readonly eventType?: string;
-  readonly provenance?: "g27" | "pre-g27";
+  /** G32 EventType is the sole dispatch authority. */
+  readonly eventType: string;
+  readonly provenance: "g32";
 }
 
 function decodePayload(value: string): Record<string, unknown> {
-  const binary = atob(value);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  const parsed: unknown = JSON.parse(value);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
   return parsed as Record<string, unknown>;
 }
@@ -42,22 +40,9 @@ function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-/**
- * New rows dispatch by the stored canonical identity. Payload sniffing is
- * retained only for the immutable pre-G27 history lane, where the old V1
- * payload discriminator is the proven migration marker.
- */
-function eventTypeFromStored(event: StoredEventLike, payload: Record<string, unknown>): string | undefined {
-  if (event.eventType !== undefined) return event.eventType;
-  // A pre-G27 StoredEvent read from an older in-memory/provider fixture may
-  // omit provenance entirely; only an explicit G27 provenance must disable
-  // the proven legacy payload lane.
-  if (event.provenance !== "g27") {
-    const legacyName = stringField(payload.eventType);
-    if (legacyName === undefined) return undefined;
-    return legacyName.includes(":") ? legacyName : `${legacyName}:1`;
-  }
-  return undefined;
+/** G32 dispatch is solely the durable EventType; payload is never sniffed. */
+function eventTypeFromStored(event: StoredEventLike): string | undefined {
+  return event.eventType;
 }
 
 /** One row per reservation, updated by reservation events in SUID order. */
@@ -74,9 +59,9 @@ export const reservationMaterializer = defineRowMaterializer<StoredEventLike>({
     const payload = decodePayload(event.payload);
     const reservationId = stringField(payload.reservationId);
     if (reservationId === undefined) return {};
-    const eventType = eventTypeFromStored(event, payload);
-    if (eventType !== "RoomReserved:1" && eventType !== "ReservationCancelled:1") return {};
-    if (eventType === "ReservationCancelled:1") {
+    const eventType = eventTypeFromStored(event);
+    if (eventType !== "RoomReserved" && eventType !== "ReservationCancelled") return {};
+    if (eventType === "ReservationCancelled") {
       // Cancellation carries only changed fields. The database JSON patch
       // preserves the roomId written by the preceding reservation event.
       return {
@@ -118,16 +103,16 @@ export const roomMaterializer = defineRowMaterializer<StoredEventLike>({
     const payload = decodePayload(event.payload);
     const roomId = stringField(payload.roomId);
     if (roomId === undefined) return {};
-    const eventType = eventTypeFromStored(event, payload);
-    if (eventType !== "RoomCreated:1" && eventType !== "RoomReleased:1") return {};
+    const eventType = eventTypeFromStored(event);
+    if (eventType !== "RoomCreated" && eventType !== "RoomReleased") return {};
     return {
       rowUpserts: [{
         rowKey: roomId,
         value: {
           roomId,
           name: stringField(payload.name) ?? "",
-          status: eventType === "RoomCreated:1" ? "created" : "released",
-          version: eventType === "RoomCreated:1" ? 1 : 2,
+          status: eventType === "RoomCreated" ? "created" : "released",
+          version: eventType === "RoomCreated" ? 1 : 2,
         },
       }],
     };

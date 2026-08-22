@@ -15,6 +15,7 @@ import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/Pro
 import { QueryRegistry } from "../packages/dcb-runtime/src/query/QueryRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import type { ProjectionCheckpoint, StoredEvent } from "../packages/dcb-runtime/src/store/types";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
 const JSON_CONTENT_TYPE = "application/json; charset=utf-8";
@@ -71,10 +72,19 @@ function checkpoint(tag: string, entries: unknown[], lastSuid: string): Projecti
 function storedEvent(suid: string, eventId: string, tag: string): StoredEvent {
   return {
     serviceId: SERVICE_ID,
-    eventId,
-    suid,
-    payload: base64Json({ forecastId: eventId }),
+    id: g32EventId(eventId),
+    eventId: g32EventId(eventId),
+    sortableUniqueId: g32Suid(suid),
+    suid: g32Suid(suid),
+    payload: JSON.stringify({ forecastId: eventId }),
+    tags: [tag],
     eventTags: [tag],
+    eventType: "QueryFixtureEvent",
+    timestamp: G32_FIXTURE_TIMESTAMP,
+    causationId: g32EventId(eventId),
+    correlationId: "SerializedCommit",
+    executedUser: "SerializedSekibanExecutor",
+    provenance: "g32",
     firstArrivedAt: 0,
     lastArrivedAt: 0,
     maxDeliveryLagMs: 0,
@@ -216,8 +226,8 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const serviceId = unique("g19-backing-service");
     const tag = "test:mv-route";
     const entries = [
-      { eventId: "z-event", suid: "suid-00000000000000000000000000000001", payload: base64Json({ eventId: "z-event", forecastId: "first" }) },
-      { eventId: "a-event", suid: "suid-00000000000000000000000000000002", payload: base64Json({ eventId: "a-event", forecastId: "second" }) },
+      { eventId: g32EventId("z-event"), suid: g32Suid("mv-route-1"), payload: JSON.stringify({ eventId: "z-event", forecastId: "first" }) },
+      { eventId: g32EventId("a-event"), suid: g32Suid("mv-route-2"), payload: JSON.stringify({ eventId: "a-event", forecastId: "second" }) },
     ];
     const memory = new FakeQueryStore();
     memory.tags = [tag];
@@ -230,7 +240,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       viewId: TEST_PROJECTOR,
       generation: 0,
       rowKey: entry.eventId,
-      value: JSON.parse(atob(entry.payload)) as MaterializedViewRow["value"],
+      value: JSON.parse(entry.payload) as MaterializedViewRow["value"],
       rowVersion: 1,
       sourceSuid: entry.suid,
     }));
@@ -325,7 +335,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
   it("times out exactly at the SafeWindow boundary instead of fabricating an empty success", async () => {
     const store = new FakeQueryStore();
     const tag = "test:wait-boundary";
-    const requestedSuid = "suid-00000000000000000000000000000001";
+    const requestedSuid = g32Suid("wait-boundary");
     store.events = [storedEvent(requestedSuid, "wait-event", tag)];
     store.tags = [tag];
     let now = 50_000;
@@ -358,7 +368,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const response = await handleSerializedQuery(queryRequest("query", {
       queryType: "GetTestCountQuery",
       queryParamsJson: "{}",
-      waitForSortableUniqueId: "suid-ceiling",
+      waitForSortableUniqueId: g32Suid("ceiling"),
     }), {}, { store, now: () => 1_000 });
     const body = await response.clone().json<{ error: string }>();
     await expectSection6(response, 504, "timeout");
@@ -373,9 +383,9 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     const unsafeTag = "test:concurrent-page";
     store.tags = [stableTag];
     const stableEntries = [
-      { eventId: "z-event", suid: "suid-00000000000000000000000000000001", payload: base64Json({ forecastId: "one" }) },
-      { eventId: "m-event", suid: "suid-00000000000000000000000000000002", payload: base64Json({ forecastId: "two" }) },
-      { eventId: "a-event", suid: "suid-00000000000000000000000000000003", payload: base64Json({ forecastId: "three" }) },
+      { eventId: g32EventId("z-event"), suid: g32Suid("stable-page-1"), payload: JSON.stringify({ forecastId: "one" }) },
+      { eventId: g32EventId("m-event"), suid: g32Suid("stable-page-2"), payload: JSON.stringify({ forecastId: "two" }) },
+      { eventId: g32EventId("a-event"), suid: g32Suid("stable-page-3"), payload: JSON.stringify({ forecastId: "three" }) },
     ];
     store.checkpoints.set(checkpoint(stableTag, stableEntries, stableEntries[2]!.suid).projectionId,
       checkpoint(stableTag, stableEntries, stableEntries[2]!.suid));
@@ -390,7 +400,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
     // The source sees a concurrent append, but SafeWindow has no durable
     // checkpoint for it yet. The second page must stay in the first snapshot.
-    store.events.push(storedEvent("suid-00000000000000000000000000000004", "0-event", unsafeTag));
+    store.events.push(storedEvent("concurrent-page-4", "0-event", unsafeTag));
     store.tags.push(unsafeTag);
     const second = await handleSerializedQuery(queryRequest("list-query", {
       queryType: "GetTestListQuery",
@@ -421,7 +431,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
           eventPayloadName: "TestEventCreated",
           tags: [tag],
         }],
-        consistencyTags: [{ tag, lastSortableUniqueId: "" }],
+        consistencyTags: [],
       }),
     });
     expect(commitResponse.status, await commitResponse.clone().text()).toBe(200);
@@ -453,7 +463,9 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       tagProjector: TEST_PROJECTOR,
     });
 
-    const clockNow = 1_000_000;
+    // G32 SafeWindow compares the .NET-tick prefix with the injected clock;
+    // retain the real allocation epoch rather than the old synthetic ordinal.
+    const clockNow = Date.now();
     const clock: PipelineClock = { now: () => clockNow };
     const queued: DownstreamOutboxMessage[] = [];
     const workerEnv = env as unknown as WorkerEnv;

@@ -31,10 +31,11 @@ export interface TagEvent {
   suid: string;
   payload: string;
   eventTags: string[];
-  eventType?: string;
-  provenance?: "pre-g27" | "g27";
-  /** Internal allocator lineage; absent only on pre-G17 durable rows. */
-  allocatorLineageId?: string;
+  eventType: string;
+  provenance: "g32";
+  timestamp: string;
+  /** Internal allocator lineage belongs to the sidecar/outbox path. */
+  allocatorLineageId: string;
 }
 
 export interface TagOutboxRow {
@@ -42,9 +43,10 @@ export interface TagOutboxRow {
   eventId: string;
   suid: string;
   payload: string;
-  allocatorLineageId?: string;
-  eventType?: string;
-  provenance?: "pre-g27" | "g27";
+  allocatorLineageId: string;
+  eventType: string;
+  provenance: "g32";
+  timestamp: string;
 }
 
 /**
@@ -83,9 +85,10 @@ export interface RepairScopeItem {
   suid: string;
   payload: string;
   eventTags: string[];
-  allocatorLineageId?: string;
-  eventType?: string;
-  provenance?: "pre-g27" | "g27";
+  allocatorLineageId: string;
+  eventType: string;
+  provenance: "g32";
+  timestamp: string;
 }
 
 export type RepairBranch = "ROLLED_FORWARD" | "EXCLUDED_AUDITED" | "FAILED_CLOSED";
@@ -123,7 +126,8 @@ export interface RepairFacts {
  * consistency comparison; there is no in-memory cache of the head.
  */
 export interface TagRecord {
-  schemaVersion: 1 | 2;
+  /** G32 is a fresh namespace; earlier durable Tag record shapes are rejected. */
+  schemaVersion: 3;
   tag: string;
   head: string;
   activeReservation: TagReservation | null;

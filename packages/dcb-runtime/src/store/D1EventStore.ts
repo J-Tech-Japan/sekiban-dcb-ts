@@ -2,6 +2,8 @@ import { decayedLagEstimateMs } from "../safeWindow";
 import type { WaitForTargetLookup, WaitForTargetSourcePort } from "../query/ProjectionQueryStore";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import {
   CanonicalEventIdentityConflictError,
   type DeliveryIncident,
@@ -61,6 +63,10 @@ function asString(value: unknown, name: string): string {
   return value;
 }
 
+function nullableString(value: unknown, name: string): string | null {
+  return value === null ? null : asString(value, name);
+}
+
 function asNumber(value: unknown, name: string): number {
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number)) throw new Error(`D1 ${name} was not a safe integer`);
@@ -88,20 +94,28 @@ function asStringArray(value: unknown, name: string): string[] {
   if (!Array.isArray(decoded) || !decoded.every((entry) => typeof entry === "string")) {
     throw new Error(`D1 ${name} was not a string array`);
   }
-  return sortedUnique(decoded);
+  return [...decoded];
 }
 
 function eventFrom(row: D1Row, arrivals: readonly D1Row[]): StoredEvent {
   const serviceId = asString(row.service_id, "service_id");
   const eventId = asString(row.event_id, "event_id");
+  const tags = asStringArray(row.event_tags, "event_tags");
   return {
     serviceId,
+    id: eventId,
     eventId,
+    sortableUniqueId: asString(row.suid, "suid"),
     suid: asString(row.suid, "suid"),
     payload: asString(row.payload, "payload"),
-    eventTags: asStringArray(row.event_tags, "event_tags"),
-    ...(row.event_type === null || row.event_type === undefined ? {} : { eventType: asString(row.event_type, "event_type") }),
-    provenance: row.event_provenance === "g27" ? "g27" : "pre-g27",
+    tags,
+    eventTags: tags,
+    eventType: asString(row.event_type, "event_type"),
+    timestamp: asString(row.timestamp, "timestamp"),
+    causationId: nullableString(row.causation_id, "causation_id"),
+    correlationId: nullableString(row.correlation_id, "correlation_id"),
+    executedUser: nullableString(row.executed_user, "executed_user"),
+    provenance: "g32",
     firstArrivedAt: asNumber(row.first_arrived_at, "first_arrived_at"),
     lastArrivedAt: asNumber(row.last_arrived_at, "last_arrived_at"),
     maxDeliveryLagMs: asNumber(row.max_delivery_lag_ms, "max_delivery_lag_ms"),
@@ -197,6 +211,42 @@ function jsonArray(values: readonly string[]): string {
   return JSON.stringify(sortedUnique(values));
 }
 
+interface DurableEventMetadata {
+  readonly causationId: string | null;
+  readonly correlationId: string | null;
+  readonly executedUser: string | null;
+}
+
+/** Normal delivery has fixed serialized metadata; the fenced import lane may retain C# nulls. */
+function metadataForDelivery(message: DownstreamOutboxMessage, deliverySource: DeliverySource): DurableEventMetadata {
+  const serialized = serializedEventMetadata(message.eventId);
+  if (deliverySource !== "import") {
+    if (
+      message.causationId !== serialized.causationId ||
+      message.correlationId !== serialized.correlationId ||
+      message.executedUser !== serialized.executedUser
+    ) {
+      throw new D1IdentityConflictError(`EventId ${message.eventId} metadata must use the serialized C# constants`);
+    }
+    return serialized;
+  }
+  const values = [message.causationId, message.correlationId, message.executedUser];
+  if (!values.every((value) => value === null || typeof value === "string")) {
+    throw new D1IdentityConflictError(`EventId ${message.eventId} import metadata must be string or null`);
+  }
+  const allNull = values.every((value) => value === null);
+  const allSerialized = message.causationId === serialized.causationId &&
+    message.correlationId === serialized.correlationId && message.executedUser === serialized.executedUser;
+  if (!allNull && !allSerialized) {
+    throw new D1IdentityConflictError(`EventId ${message.eventId} import metadata must be all null or serialized constants`);
+  }
+  return {
+    causationId: message.causationId,
+    correlationId: message.correlationId,
+    executedUser: message.executedUser,
+  };
+}
+
 /**
  * Cloudflare D1 PipelineStore implementation.
  *
@@ -223,14 +273,36 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
     const identity = resolveDeliveryIdentity(message, deliverySource);
+    assertSortableUniqueId(message.suid);
+    const acceptsImportedId = deliverySource === "import";
+    if (!(acceptsImportedId ? isRfc4122Uuid(message.eventId) : isUuidV7(message.eventId))) {
+      throw new D1IdentityConflictError(`EventId ${message.eventId} is not an ${acceptsImportedId ? "RFC 4122 UUID" : "UUID v7"}`);
+    }
+    try { JSON.parse(message.payload); } catch { throw new D1IdentityConflictError(`EventId ${message.eventId} payload is not JSON text`); }
+    const timestamp = message.timestamp ?? new Date(arrivedAt).toISOString();
+    // C# DateTimeOffset's round-trip representation carries seven fractional
+    // digits.  Values authored by the TS commit worker use milliseconds, but
+    // imported C# records must retain their exact UTC representation too.
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(timestamp)) {
+      throw new D1IdentityConflictError(`EventId ${message.eventId} timestamp is not canonical UTC ISO-8601`);
+    }
+    const metadata = metadataForDelivery(message, deliverySource);
     const storedBefore = await this.eventById(message.serviceId, message.eventId);
-    const incomingEventType = identity.legacy ? undefined : identity.key;
-    const incomingProvenance = identity.legacy ? "pre-g27" : "g27";
-    if (storedBefore !== undefined && (storedBefore.eventType ?? undefined) !== incomingEventType) {
+    const incomingEventType = identity.key;
+    const eventTags = [...message.eventTags];
+    const tagsJson = JSON.stringify(eventTags);
+    if (storedBefore !== undefined && (
+      storedBefore.eventType !== incomingEventType ||
+      storedBefore.suid !== message.suid ||
+      storedBefore.payload !== message.payload ||
+      JSON.stringify(storedBefore.eventTags) !== tagsJson ||
+      storedBefore.timestamp !== timestamp ||
+      storedBefore.causationId !== metadata.causationId ||
+      storedBefore.correlationId !== metadata.correlationId ||
+      storedBefore.executedUser !== metadata.executedUser
+    )) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`);
     }
-    const eventTags = sortedUnique(message.eventTags);
-    const tagsJson = jsonArray(eventTags);
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const statements: D1PreparedStatement[] = [
       this.database.prepare(
@@ -256,7 +328,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.allocatorLineageId,
       ),
       // G31 needs a target-SUID point gate even though a rejected lineage
-      // delivery has no serialized_dcb_events row. Keep this compact alias
+      // delivery has no dcb_events row. Keep this compact alias
       // separate from the historical incident identity used by operators.
       this.database.prepare(
         `INSERT INTO serialized_dcb_wait_target_incidents
@@ -279,13 +351,13 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       this.database.prepare(
         `INSERT INTO serialized_dcb_delivery_incidents
            (service_id, identity_key, classification, suid, existing_event_id, incoming_event_id, observed_at)
-         SELECT service_id,
-                'SUID_COLLISION|' || service_id || '|' || suid || '|' ||
-                  CASE WHEN event_id < ? THEN event_id ELSE ? END || '|' ||
-                  CASE WHEN event_id < ? THEN ? ELSE event_id END,
-                'SUID_COLLISION', suid, event_id, ?, ?
-          FROM serialized_dcb_events
-          WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY AND event_id <> ?
+         SELECT "ServiceId",
+                'SUID_COLLISION|' || "ServiceId" || '|' || "SortableUniqueId" || '|' ||
+                  CASE WHEN "Id" < ? THEN "Id" ELSE ? END || '|' ||
+                  CASE WHEN "Id" < ? THEN ? ELSE "Id" END,
+                'SUID_COLLISION', "SortableUniqueId", "Id", ?, ?
+          FROM dcb_events
+          WHERE "ServiceId" = ? AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY AND "Id" <> ?
             AND NOT EXISTS (
               SELECT 1 FROM serialized_dcb_allocator_bindings
                WHERE service_id = ? AND allocator_lineage_id <> ?
@@ -310,9 +382,9 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
            (service_id, suid, classification, event_id, observed_at)
          SELECT ?, ?, 'SUID_COLLISION', ?, ?
           WHERE EXISTS (
-            SELECT 1 FROM serialized_dcb_events
-             WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY
-               AND event_id <> ?
+          SELECT 1 FROM dcb_events
+             WHERE "ServiceId" = ? AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY
+               AND "Id" <> ?
           )
             AND NOT EXISTS (
               SELECT 1 FROM serialized_dcb_allocator_bindings
@@ -331,31 +403,29 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.allocatorLineageId,
       ),
       this.database.prepare(
-        `INSERT INTO serialized_dcb_events
-           (service_id, event_id, suid, payload, allocator_lineage_id, event_type, event_provenance, event_tags,
-            first_arrived_at, last_arrived_at, max_delivery_lag_ms)
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        `INSERT INTO dcb_events
+           ("ServiceId", "Id", "SortableUniqueId", "EventType", "Payload", "Tags", "Timestamp", "CausationId", "CorrelationId", "ExecutedUser")
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE NOT EXISTS (
             SELECT 1 FROM serialized_dcb_allocator_bindings
              WHERE service_id = ? AND allocator_lineage_id <> ?
           )
             AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_events
-               WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY AND event_id <> ?
+              SELECT 1 FROM dcb_events
+               WHERE "ServiceId" = ? AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY AND "Id" <> ?
             )
-         ON CONFLICT (service_id, event_id) DO NOTHING`,
+         ON CONFLICT ("ServiceId", "Id") DO NOTHING`,
       ).bind(
         message.serviceId,
         message.eventId,
         message.suid,
+        incomingEventType,
         message.payload,
-        message.allocatorLineageId,
-        incomingEventType ?? null,
-        incomingProvenance,
         tagsJson,
-        arrivedAt,
-        arrivedAt,
-        lagMs,
+        timestamp,
+        metadata.causationId,
+        metadata.correlationId,
+        metadata.executedUser,
         message.serviceId,
         message.allocatorLineageId,
         message.serviceId,
@@ -363,26 +433,24 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.eventId,
       ),
       this.database.prepare(
-        `UPDATE serialized_dcb_events
-            SET event_tags = CASE WHEN event_tags = '[]' THEN ? ELSE event_tags END,
-                first_arrived_at = MIN(first_arrived_at, ?),
-                last_arrived_at = MAX(last_arrived_at, ?),
-                max_delivery_lag_ms = MAX(max_delivery_lag_ms, ?)
-          WHERE service_id = ? AND event_id = ?
-            AND suid COLLATE BINARY = ? COLLATE BINARY AND payload = ?
-            AND event_type IS ? AND event_provenance = ?
-            AND (event_tags = ? OR event_tags = '[]')
-            AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_allocator_bindings
-               WHERE service_id = ? AND allocator_lineage_id <> ?
-            )
-            AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_events collision
-               WHERE collision.service_id = ? AND collision.suid COLLATE BINARY = ? COLLATE BINARY
-                 AND collision.event_id <> ?
-            )`,
+        `INSERT INTO dcb_event_ops
+           ("ServiceId", "Id", "AttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs")
+         SELECT ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM dcb_events
+             WHERE "ServiceId" = ? AND "Id" = ?
+               AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY
+               AND "Payload" = ? AND "EventType" = ? AND "Tags" = ?
+          )
+         ON CONFLICT ("ServiceId", "Id") DO UPDATE
+           SET "FirstArrivedAt" = MIN(dcb_event_ops."FirstArrivedAt", excluded."FirstArrivedAt"),
+               "LastArrivedAt" = MAX(dcb_event_ops."LastArrivedAt", excluded."LastArrivedAt"),
+               "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs")`,
       ).bind(
-        tagsJson,
+        message.serviceId,
+        message.eventId,
+        message.attemptId,
+        message.allocatorLineageId,
         arrivedAt,
         arrivedAt,
         lagMs,
@@ -390,32 +458,26 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.eventId,
         message.suid,
         message.payload,
-        incomingEventType ?? null,
-        incomingProvenance,
+        incomingEventType,
         tagsJson,
-        message.serviceId,
-        message.allocatorLineageId,
-        message.serviceId,
-        message.suid,
-        message.eventId,
       ),
       this.database.prepare(
         `INSERT INTO serialized_dcb_event_arrivals
            (service_id, event_id, tag, enqueued_at, arrived_at, lag_ms)
          SELECT ?, ?, ?, ?, ?, ?
           WHERE EXISTS (
-            SELECT 1 FROM serialized_dcb_events
-             WHERE service_id = ? AND event_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY
-               AND payload = ? AND event_type IS ? AND event_provenance = ? AND (event_tags = ? OR event_tags = '[]')
+            SELECT 1 FROM dcb_events
+             WHERE "ServiceId" = ? AND "Id" = ? AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY
+               AND "Payload" = ? AND "EventType" = ? AND "Tags" = ?
           )
             AND NOT EXISTS (
               SELECT 1 FROM serialized_dcb_allocator_bindings
                WHERE service_id = ? AND allocator_lineage_id <> ?
             )
             AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_events collision
-               WHERE collision.service_id = ? AND collision.suid COLLATE BINARY = ? COLLATE BINARY
-                 AND collision.event_id <> ?
+              SELECT 1 FROM dcb_events collision
+               WHERE collision."ServiceId" = ? AND collision."SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY
+                 AND collision."Id" <> ?
             )
          ON CONFLICT (service_id, event_id, tag) DO UPDATE
            SET enqueued_at = MIN(serialized_dcb_event_arrivals.enqueued_at, excluded.enqueued_at),
@@ -432,8 +494,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.eventId,
         message.suid,
         message.payload,
-        incomingEventType ?? null,
-        incomingProvenance,
+        incomingEventType,
         tagsJson,
         message.serviceId,
         message.allocatorLineageId,
@@ -450,20 +511,20 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
              WHERE service_id = ? AND allocator_lineage_id <> ?
           )
             AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_events collision
-               WHERE collision.service_id = ? AND collision.suid COLLATE BINARY = ? COLLATE BINARY
-                 AND collision.event_id <> ?
+            SELECT 1 FROM dcb_events collision
+               WHERE collision."ServiceId" = ? AND collision."SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY
+                 AND collision."Id" <> ?
             )
             AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_events contradictory
-               WHERE contradictory.service_id = ? AND contradictory.event_id = ?
-                 AND (contradictory.suid COLLATE BINARY <> ? COLLATE BINARY
-                   OR contradictory.payload <> ? OR contradictory.event_type IS NOT ?
-                   OR contradictory.event_provenance <> ? OR contradictory.event_tags <> ?)
+              SELECT 1 FROM dcb_events contradictory
+               WHERE contradictory."ServiceId" = ? AND contradictory."Id" = ?
+                 AND (contradictory."SortableUniqueId" COLLATE BINARY <> ? COLLATE BINARY
+                   OR contradictory."Payload" <> ? OR contradictory."EventType" <> ?
+                   OR contradictory."Tags" <> ?)
             )
             AND NOT EXISTS (
-              SELECT 1 FROM serialized_dcb_events prior
-               WHERE prior.service_id = ? AND prior.suid COLLATE BINARY > ? COLLATE BINARY
+              SELECT 1 FROM dcb_events prior
+               WHERE prior."ServiceId" = ? AND prior."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY
             )
          ON CONFLICT (service_id) DO UPDATE
             SET estimate_ms = MAX(
@@ -486,8 +547,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.eventId,
         message.suid,
         message.payload,
-        incomingEventType ?? null,
-        incomingProvenance,
+        incomingEventType,
         tagsJson,
         message.serviceId,
         message.suid,
@@ -517,7 +577,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       stored.suid !== message.suid ||
       stored.payload !== message.payload ||
       JSON.stringify(stored.eventTags) !== tagsJson ||
-      (stored.eventType ?? undefined) !== incomingEventType
+      stored.eventType !== incomingEventType
     ) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its durable D1 identity`);
     }
@@ -526,11 +586,22 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
     this.ready();
+    // The empty cursor is the internal "before the first event" sentinel.
+    // Every externally supplied cursor is a C#-shape SUID.
+    if (since.length !== 0) assertSortableUniqueId(since);
     const rows = await this.rows(
-      `SELECT service_id, event_id, suid, payload, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
-         FROM serialized_dcb_events
-        WHERE service_id = ? AND suid COLLATE BINARY > ? COLLATE BINARY
-        ORDER BY suid COLLATE BINARY ASC, event_id COLLATE BINARY ASC`,
+      `SELECT e."ServiceId" AS service_id, e."Id" AS event_id,
+              e."SortableUniqueId" AS suid, e."Payload" AS payload,
+              e."EventType" AS event_type, e."Tags" AS event_tags,
+              e."Timestamp" AS timestamp, e."CausationId" AS causation_id,
+              e."CorrelationId" AS correlation_id, e."ExecutedUser" AS executed_user,
+              COALESCE(o."FirstArrivedAt", 0) AS first_arrived_at,
+              COALESCE(o."LastArrivedAt", 0) AS last_arrived_at,
+              COALESCE(o."MaxDeliveryLagMs", 0) AS max_delivery_lag_ms
+         FROM dcb_events e LEFT JOIN dcb_event_ops o
+           ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+        WHERE e."ServiceId" = ? AND e."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY
+        ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC`,
       serviceId,
       since,
     );
@@ -544,12 +615,13 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
    */
   async readWaitForTarget(serviceId: string, suid: string): Promise<WaitForTargetLookup> {
     this.ready();
+    assertSortableUniqueId(suid);
     const row = await this.database.prepare(
       `WITH target AS (
-         SELECT event_id
-           FROM serialized_dcb_events
-          WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY
-          ORDER BY event_id COLLATE BINARY ASC
+         SELECT "Id" AS event_id
+           FROM dcb_events
+          WHERE "ServiceId" = ? AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY
+          ORDER BY "Id" COLLATE BINARY ASC
           LIMIT 2
        )
        SELECT
@@ -599,8 +671,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     this.ready();
     const rows = await this.rows(
       `SELECT DISTINCT membership.value AS tag
-         FROM serialized_dcb_events event, json_each(event.event_tags) membership
-        WHERE event.service_id = ?
+         FROM dcb_events event, json_each(event."Tags") membership
+        WHERE event."ServiceId" = ?
         ORDER BY tag COLLATE BINARY ASC`,
       serviceId,
     );
@@ -660,14 +732,14 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     const checkpointSuid = checkpoint?.lastSuid ?? "";
     const rows = await this.rows(
       `SELECT
-         COALESCE((SELECT event.suid
-                     FROM serialized_dcb_events event, json_each(event.event_tags) membership
-                    WHERE event.service_id = ? AND membership.value = ?
-                    ORDER BY event.suid COLLATE BINARY DESC LIMIT 1), '') AS head_suid,
+         COALESCE((SELECT event."SortableUniqueId"
+                     FROM dcb_events event, json_each(event."Tags") membership
+                    WHERE event."ServiceId" = ? AND membership.value = ?
+                    ORDER BY event."SortableUniqueId" COLLATE BINARY DESC LIMIT 1), '') AS head_suid,
          (SELECT COUNT(*)
-            FROM serialized_dcb_events event, json_each(event.event_tags) membership
-           WHERE event.service_id = ? AND membership.value = ?
-             AND event.suid COLLATE BINARY > ? COLLATE BINARY) AS behind_events`,
+            FROM dcb_events event, json_each(event."Tags") membership
+           WHERE event."ServiceId" = ? AND membership.value = ?
+             AND event."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY) AS behind_events`,
       serviceId,
       tag,
       serviceId,
@@ -883,8 +955,17 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
 
   private async eventById(serviceId: string, eventId: string): Promise<StoredEvent | undefined> {
     const rows = await this.rows(
-      `SELECT service_id, event_id, suid, payload, event_type, event_provenance, event_tags, first_arrived_at, last_arrived_at, max_delivery_lag_ms
-         FROM serialized_dcb_events WHERE service_id = ? AND event_id = ?`,
+      `SELECT e."ServiceId" AS service_id, e."Id" AS event_id,
+              e."SortableUniqueId" AS suid, e."Payload" AS payload,
+              e."EventType" AS event_type, e."Tags" AS event_tags,
+              e."Timestamp" AS timestamp, e."CausationId" AS causation_id,
+              e."CorrelationId" AS correlation_id, e."ExecutedUser" AS executed_user,
+              COALESCE(o."FirstArrivedAt", 0) AS first_arrived_at,
+              COALESCE(o."LastArrivedAt", 0) AS last_arrived_at,
+              COALESCE(o."MaxDeliveryLagMs", 0) AS max_delivery_lag_ms
+         FROM dcb_events e LEFT JOIN dcb_event_ops o
+           ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+        WHERE e."ServiceId" = ? AND e."Id" = ?`,
       serviceId,
       eventId,
     );
@@ -923,9 +1004,9 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
 
   private async collisionEvent(serviceId: string, suid: string, eventId: string): Promise<string | undefined> {
     const rows = await this.rows(
-      `SELECT event_id FROM serialized_dcb_events
-        WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY AND event_id <> ?
-        ORDER BY event_id COLLATE BINARY ASC LIMIT 1`,
+      `SELECT "Id" AS event_id FROM dcb_events
+        WHERE "ServiceId" = ? AND "SortableUniqueId" COLLATE BINARY = ? COLLATE BINARY AND "Id" <> ?
+        ORDER BY "Id" COLLATE BINARY ASC LIMIT 1`,
       serviceId,
       suid,
       eventId,

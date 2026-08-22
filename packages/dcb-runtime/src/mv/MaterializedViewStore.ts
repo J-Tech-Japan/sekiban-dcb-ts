@@ -4,6 +4,7 @@ import {
   type MaterializedViewIndexValueType,
   type MaterializedViewMutationPlan,
 } from "@sekiban/dcb-core";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import { UnsafeWindowMaterializedViewStore, type UnsafeComposedPage } from "./UnsafeWindowMaterializedView";
 
 type D1Row = Record<string, unknown>;
@@ -239,6 +240,7 @@ export class D1MaterializedViewStore {
     const generation = input.generation ?? 0;
     this.validateGeneration(generation, "create-active");
     const lastSuid = input.lastSuid ?? "";
+    if (lastSuid.length > 0) assertSortableUniqueId(lastSuid);
     try {
       await this.database.batch([
         this.database.prepare(
@@ -260,6 +262,7 @@ export class D1MaterializedViewStore {
   async createCandidate(input: MaterializedViewCandidateInput): Promise<MaterializedViewInstance> {
     this.ready("create-candidate");
     this.validateGeneration(input.generation, "create-candidate");
+    if ((input.lastSuid ?? "").length > 0) assertSortableUniqueId(input.lastSuid!);
     try {
       await this.database.prepare(
         `INSERT INTO mv_instances
@@ -620,6 +623,11 @@ export class D1MaterializedViewStore {
    * The guard row intentionally uses a NOT NULL failure to abort a stale CAS.
    */
   async applyMutationsAndAdvanceCheckpoint(input: MaterializedViewApplyInput): Promise<MaterializedViewApplyResult> {
+    assertSortableUniqueId(input.lastSuid);
+    if (input.expectedLastSuid !== null) assertSortableUniqueId(input.expectedLastSuid);
+    for (const mutation of [...input.mutations.rowUpserts, ...input.mutations.rowPatches]) {
+      assertSortableUniqueId(mutation.sourceSuid);
+    }
     this.ready("apply");
     this.validateGeneration(input.generation, "apply");
     const operation = operationId();

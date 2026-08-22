@@ -5,6 +5,7 @@ import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { G11_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
 import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
 
@@ -49,24 +50,37 @@ async function commit(body: unknown, fault: string, attemptId: string): Promise<
 }
 
 async function tagPost(tag: string, path: string, body: unknown): Promise<Response> {
-  const wireBody = path === "/append" && typeof body === "object" && body !== null && !Array.isArray(body)
-    ? {
-      ...(body as Record<string, unknown>),
-      candidates: Array.isArray((body as Record<string, unknown>).candidates)
-        ? ((body as Record<string, unknown>).candidates as unknown[]).map((candidate) =>
-          typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) &&
-          !Object.prototype.hasOwnProperty.call(candidate, "eventType")
-            ? { ...(candidate as Record<string, unknown>), provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" }
-            : candidate,
-        )
-        : (body as Record<string, unknown>).candidates,
-    }
-    : body;
   return SELF.fetch(`https://read.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(tag)}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(wireBody),
+    body: JSON.stringify(body),
   });
+}
+
+function tagCandidate(input: {
+  readonly eventId: string;
+  readonly suid: string;
+  readonly payload: string;
+  readonly eventTags: readonly string[];
+  readonly eventType?: string;
+}) {
+  let payload: string;
+  try {
+    JSON.parse(input.payload);
+    payload = input.payload;
+  } catch {
+    payload = JSON.stringify({ fixturePayload: input.payload });
+  }
+  return {
+    eventId: g32EventId(input.eventId),
+    suid: g32Suid(input.suid),
+    payload,
+    eventTags: [...input.eventTags],
+    allocatorLineageId: "read-test-lineage",
+    eventType: input.eventType ?? "ReadFixtureEvent",
+    provenance: "g32" as const,
+    timestamp: G32_FIXTURE_TIMESTAMP,
+  };
 }
 
 async function tagState(tag: string): Promise<Record<string, unknown>> {
@@ -80,8 +94,9 @@ async function tagState(tag: string): Promise<Record<string, unknown>> {
 /** Creates a genuine identity conflict inside the named Tag DO for the 500 oracle. */
 async function poisonTagIdentity(tag: string): Promise<void> {
   const poisonedTag = `poisoned-${crypto.randomUUID()}`;
-  const url = new URL("https://read.test/acquire");
+  const url = new URL("https://read.test/append");
   url.searchParams.set("__tag", poisonedTag);
+  url.searchParams.set("__serviceId", SERVICE_ID);
   const tagNamespace = (env as unknown as Pick<WorkerEnv, "TAG">).TAG;
   const tagObject = tagNamespace.get(tagNamespace.idFromName(`${SERVICE_ID}|${tag}`));
   const response = await tagObject.fetch(new Request(url.toString(), {
@@ -90,8 +105,12 @@ async function poisonTagIdentity(tag: string): Promise<void> {
     body: JSON.stringify({
       attemptId: "state-indeterminacy-fixture",
       epoch: 0,
-      eventTags: [poisonedTag],
-      consistencyTags: [{ tag: poisonedTag, lastSortableUniqueId: "" }],
+      candidates: [tagCandidate({
+        eventId: "state-indeterminacy-fixture",
+        suid: "state-indeterminacy-fixture",
+        payload: "{}",
+        eventTags: [poisonedTag],
+      })],
     }),
   }));
   expect(response.status).toBe(201);
@@ -109,11 +128,11 @@ describe("Serialized V1 reads", () => {
   it("returns the existing latest-sortable and tag-state wire shapes for determinate fenced tags", async () => {
     const tag = tagFor("orders");
     const [tagGroup, tagContent] = tag.split(":");
-    const suid = "suid-00000000000000000000000000000001";
+    const suid = g32Suid("read-seed");
     expect((await tagPost(tag, "/append", {
       attemptId: "read-seed",
       epoch: 0,
-      candidates: [{ eventId: "read-event", suid, payload: "cGF5bG9hZA==", eventTags: [tag] }],
+      candidates: [tagCandidate({ eventId: "read-event", suid, payload: JSON.stringify({ value: "read" }), eventTags: [tag] })],
     })).status).toBe(201);
     expect((await tagPost(tag, "/fence/install", {
       reason: "segment_rotation",
@@ -162,13 +181,13 @@ describe("Serialized V1 reads", () => {
   it("catches up the complete durable tag history into the exact V1 tag-state wire", async () => {
     const tag = tagFor("full-history");
     const [tagGroup, tagContent] = tag.split(":");
-    const first = { eventId: "full-history-first", suid: "suid-00000000000000000000000000000001", payload: "Zmlyc3Q=" };
-    const second = { eventId: "full-history-second", suid: "suid-00000000000000000000000000000002", payload: "c2Vjb25k" };
+    const first = tagCandidate({ eventId: "full-history-first", suid: "full-history-1", payload: JSON.stringify({ value: "first" }), eventTags: [tag] });
+    const second = tagCandidate({ eventId: "full-history-second", suid: "full-history-2", payload: JSON.stringify({ value: "second" }), eventTags: [tag] });
     for (const [attemptId, candidate] of [["full-history-first-attempt", first], ["full-history-second-attempt", second]] as const) {
       expect((await tagPost(tag, "/append", {
         attemptId,
         epoch: 0,
-        candidates: [{ ...candidate, eventTags: [tag] }],
+        candidates: [candidate],
       })).status).toBe(201);
     }
 
@@ -198,19 +217,19 @@ describe("Serialized V1 reads", () => {
       projectorVersion: "1",
     });
     expect(payloadJson<Array<{ eventId: string; payload: string; suid: string }>>(body.payload as string)).toEqual([
-      first,
-      second,
+      { eventId: first.eventId, suid: first.suid, payload: first.payload },
+      { eventId: second.eventId, suid: second.suid, payload: second.payload },
     ]);
   });
 
   it("accepts the test tag-state identity from the deploy-time registry", async () => {
     const tagContent = crypto.randomUUID();
     const tag = `test:${tagContent}`;
-    const suid = "suid-00000000000000000000000000000001";
+    const suid = g32Suid("test-conformance");
     expect((await tagPost(tag, "/append", {
       attemptId: "test-conformance-attempt",
       epoch: 0,
-      candidates: [{ eventId: "test-conformance-event", suid, payload: "e30=", eventTags: [tag] }],
+      candidates: [tagCandidate({ eventId: "test-conformance-event", suid, payload: "{}", eventTags: [tag] })],
     })).status).toBe(201);
 
     const response = await read("tag-state", {
@@ -239,14 +258,11 @@ describe("Serialized V1 reads", () => {
     const partial = await commit({
       version: 1,
       eventCandidates: [{
-        payload: "cGFydGlhbA==",
+        payload: btoa(JSON.stringify({ value: "partial" })),
         eventPayloadName: "ReadPartial",
         tags: [writtenTag, requestedMissingTag],
       }],
-      consistencyTags: [
-        { tag: writtenTag, lastSortableUniqueId: "" },
-        { tag: requestedMissingTag, lastSortableUniqueId: "" },
-      ],
+      consistencyTags: [],
     }, "tag-append-last", attemptId);
     expect(partial.status).toBe(500);
     expect(partial.headers.get("content-type")).toBe("application/json; charset=utf-8");
@@ -318,19 +334,18 @@ describe("Serialized V1 reads", () => {
     }
     const store = new PostgresEventStore(url);
     await store.initialize();
-    await store.recordDelivery({
-      version: 1,
+    await store.recordDelivery(g32Message({
       serviceId,
       allocatorLineageId: "test-read-lineage",
       tag,
       attemptId: crypto.randomUUID(),
       eventId: crypto.randomUUID(),
-      suid: "suid-ceiling-00000000000000000000000000000001",
-      payload: "e30=",
+      suid: "read-ceiling",
+      payload: "{}",
       eventTags: [tag],
-      provenance: "pre-g27-queue",
+      eventType: "ReadCeilingEvent",
       enqueuedAt: now - 121_000,
-    }, now);
+    }), now);
     expect(await store.currentLagBound(serviceId, now)).toBeGreaterThan(120_000);
 
     const response = await SELF.fetch("https://read.test/api/sekiban/serialized/tag-latest-sortable", {

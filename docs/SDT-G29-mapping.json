@@ -19,7 +19,7 @@
       "owner": "registered event definition schema",
       "doTs": "event.make(payload) and event.create(payload)",
       "portable": "JsonValue payload without runtime brands",
-      "version": "event definition version, default 1",
+      "version": "event payload revisions use a distinct name",
       "unsupported": "caller-selected eventPayloadVersion"
     },
     {
@@ -35,11 +35,11 @@
     {
       "rowId": "canonical-identity",
       "field": "canonical identity",
-      "wire": "eventPayloadName:decimalVersion",
+      "wire": "eventPayloadName",
       "owner": "registered domain definition at commit admission",
       "doTs": "event.eventType",
       "portable": "eventType string",
-      "version": "name-local decimal version",
+      "version": "version removed from durable identity",
       "unsupported": "identity derived from eventId or payload sniffing"
     },
     {
@@ -49,7 +49,7 @@
       "owner": "allocator and commit admission",
       "doTs": "absent from authoring decision",
       "portable": "optional transport metadata only",
-      "version": "G27 runtime identity",
+      "version": "UUID v7 identity",
       "unsupported": "authoring command manufactures eventId"
     },
     {

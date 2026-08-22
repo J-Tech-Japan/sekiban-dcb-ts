@@ -20,14 +20,13 @@ export interface RuntimeProjectionEvent {
   readonly eventPayloadName?: string;
   readonly payload: unknown;
   readonly eventTags?: readonly string[];
-  readonly provenance?: "g27" | "pre-g27";
+  readonly provenance?: "g32";
 }
 
 export interface RuntimeEventDefinition {
   readonly name: string;
   readonly eventName: string;
   readonly eventPayloadName: string;
-  readonly version: number;
   readonly eventType: string;
   readonly create: (payload: unknown) => RuntimeEventValue;
   readonly construct: (payload: unknown) => RuntimeEventValue;
@@ -57,7 +56,7 @@ export interface RuntimeCommandDefinition {
 }
 
 export interface RuntimeCommandCandidateEvent extends CommitCandidateEvent {
-  readonly provenance: "g27";
+  readonly provenance: "g32";
 }
 
 export interface RuntimeCommandCandidateEnvelope {
@@ -150,7 +149,6 @@ interface LegacyEventDefinition {
   readonly name?: string;
   readonly eventName?: string;
   readonly eventPayloadName?: string;
-  readonly version?: number;
   readonly eventType?: string;
   readonly parse?: (payload: unknown) => unknown;
   readonly create?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string };
@@ -169,8 +167,7 @@ function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): 
   if (name === undefined || name.length === 0 || name.includes(":")) throw new DomainAuthoringError("EVENT_NAME_INVALID", "Runtime event name is invalid");
   const eventPayloadName = definition.eventPayloadName ?? name;
   if (eventPayloadName.length === 0 || eventPayloadName.includes(":")) throw new DomainAuthoringError("EVENT_NAME_INVALID", "Runtime event payload name is invalid");
-  const version = definition.version ?? 1;
-  const expectedEventType = `${eventPayloadName}:${version}`;
+  const expectedEventType = eventPayloadName;
   const eventType = definition.eventType ?? expectedEventType;
   if (eventType !== expectedEventType) throw new DomainAuthoringError("CANONICAL_EVENT_IDENTITY_INVALID", `Runtime event identity must be ${expectedEventType}`);
   const parse = (payload: unknown): JsonValue => {
@@ -183,7 +180,6 @@ function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): 
     eventName: name,
     eventPayloadName,
     eventType,
-    version,
     payload: parse(payload),
     tags: Object.freeze([]),
   });
@@ -191,7 +187,6 @@ function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): 
     name,
     eventName: name,
     eventPayloadName: definition.eventPayloadName ?? name,
-    version,
     eventType,
     create,
     construct: create,
@@ -204,7 +199,7 @@ function runtimeProjectorFrom(
   events: ReadonlyMap<string, RuntimeEventDefinition>,
 ): RuntimeProjectorDefinition {
   const eventTypes = Object.freeze([...definition.eventTypes]);
-  const eventNames = Object.freeze(eventTypes.map((eventType) => events.get(eventType)?.name ?? eventType.split(":")[0] ?? eventType));
+  const eventNames = Object.freeze(eventTypes.map((eventType) => events.get(eventType)?.name ?? eventType));
   const initial = typeof definition.initialState === "function"
     ? (definition.initialState as () => unknown)()
     : definition.initialState;
@@ -246,7 +241,7 @@ function runtimeCandidateFrom(envelope: CandidateEnvelope): RuntimeCommandCandid
     now: envelope.now,
     events: Object.freeze(envelope.events.map((event): RuntimeCommandCandidateEvent => Object.freeze({
       ...event,
-      provenance: "g27" as const,
+      provenance: "g32" as const,
     }))),
     tags: envelope.tags,
     readClaims: envelope.readClaims,
@@ -340,7 +335,7 @@ function runtimeEventsFrom(result: ExecuteCommandResult): readonly RuntimeComman
     ? Object.freeze([])
     : Object.freeze(result.envelope.events.map((event): RuntimeCommandCandidateEvent => Object.freeze({
       ...event,
-      provenance: "g27" as const,
+      provenance: "g32" as const,
     })));
 }
 

@@ -23,6 +23,7 @@ import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/Material
 import type { ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import type * as DownstreamAdapter from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type * as LiveProjectionWorker from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 // The scheduled-entry oracle must not be satisfied by a later identity check
 // in either downstream stabilization or projection polling.  These test-local
@@ -73,17 +74,36 @@ function source(events: readonly StoredEvent[]): ProjectionStore {
 }
 
 function event(suid: string): StoredEvent {
-  return { serviceId: "g24", eventId: `event-${suid}`, suid, payload: "e30=", eventTags: [], firstArrivedAt: 0, lastArrivedAt: 0, maxDeliveryLagMs: 0, arrivals: [] };
+  return {
+    serviceId: "g24",
+    id: g32EventId(`event-${suid}`),
+    eventId: g32EventId(`event-${suid}`),
+    sortableUniqueId: g32Suid(suid),
+    suid: g32Suid(suid),
+    payload: JSON.stringify({}),
+    tags: [],
+    eventTags: [],
+    eventType: "G24FixtureEvent",
+    timestamp: G32_FIXTURE_TIMESTAMP,
+    causationId: null,
+    correlationId: null,
+    executedUser: null,
+    provenance: "g32",
+    firstArrivedAt: 0,
+    lastArrivedAt: 0,
+    maxDeliveryLagMs: 0,
+    arrivals: [],
+  };
 }
 
 async function checkpointAheadFixture(): Promise<{ serviceId: string; views: D1MaterializedViewStore; runtime: MaterializedViewCatchUpRuntime }> {
   const serviceId = `g24-checkpoint-${crypto.randomUUID()}`;
   const views = new D1MaterializedViewStore(database());
   await views.initialize();
-  await views.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: 1, updatedAt: 1, lastSuid: "suid-9" });
+  await views.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: 1, updatedAt: 1, lastSuid: g32Suid("g24-suid-9") });
   // This source has legal lineage, no collision, and monotonically ordered
   // rows. Only its maximum being behind the checkpoint can trigger G24.
-  return { serviceId, views, runtime: new MaterializedViewCatchUpRuntime(source([event("suid-1")]), views) };
+  return { serviceId, views, runtime: new MaterializedViewCatchUpRuntime(source([event("g24-suid-1")]), views) };
 }
 
 async function checkpointAheadReadFixture(): Promise<{ serviceId: string; views: D1MaterializedViewStore }> {
@@ -95,8 +115,8 @@ async function checkpointAheadReadFixture(): Promise<{ serviceId: string; views:
     serviceId: fixture.serviceId,
     viewId: VIEW_ID,
     generation: 0,
-    checkpointSuid: "suid-9",
-    storeMaxSuid: "suid-1",
+    checkpointSuid: g32Suid("g24-suid-9"),
+    storeMaxSuid: g32Suid("g24-suid-1"),
     observedAt: 100,
   });
   return fixture;
@@ -116,7 +136,7 @@ describe("SDT-G24 hardening guards", () => {
     const fixture = await checkpointAheadFixture();
     await expect(fixture.runtime.follow(fixture.serviceId, materializer, 100)).rejects.toThrow("CHECKPOINT_AHEAD");
     await expect(fixture.runtime.follow(fixture.serviceId, materializer, 101)).rejects.toThrow("CHECKPOINT_AHEAD");
-    expect((await fixture.views.readActive(fixture.serviceId, VIEW_ID))?.lastSuid).toBe("suid-9");
+    expect((await fixture.views.readActive(fixture.serviceId, VIEW_ID))?.lastSuid).toBe(g32Suid("g24-suid-9"));
     expect(await fixture.views.hasCheckpointAheadFinding(fixture.serviceId, VIEW_ID)).toBe(true);
     const persisted = await database().prepare("SELECT COUNT(*) AS count FROM mv_checkpoint_ahead_findings WHERE service_id = ? AND view_id = ?").bind(fixture.serviceId, VIEW_ID).first<{ count: number }>();
     expect(Number(persisted?.count)).toBe(1);

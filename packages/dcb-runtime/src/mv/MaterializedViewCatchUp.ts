@@ -1,6 +1,7 @@
 import type { MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import type { ProjectionStore, StoredEvent } from "../store/types";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import {
   MaterializedViewCasError,
   MaterializedViewStoreError,
@@ -130,6 +131,7 @@ export class MaterializedViewCatchUpRuntime {
       // source and for a reset source that is now behind the checkpoint. Read
       // the source head separately so the latter can never freeze silently.
       const sourceForHead = await this.source.readAllEvents(serviceId, "");
+      for (const event of sourceForHead) assertSortableUniqueId(event.suid);
       const storeMaxSuid = sourceForHead.reduce(
         (maximum, event) => compareSuid(maximum, event.suid) >= 0 ? maximum : event.suid,
         "",
@@ -188,7 +190,10 @@ export class MaterializedViewCatchUpRuntime {
             serviceId,
             viewId: materializer.id,
             generation,
-            expectedLastSuid: current.lastSuid,
+            // The durable schema represents an unadvanced checkpoint as an
+            // empty string, while the atomic apply port reserves `null` for
+            // that state so all non-null ingress values are full G32 SUIDs.
+            expectedLastSuid: current.lastSuid.length === 0 ? null : current.lastSuid,
             lastSuid: event.suid,
             definitionVersion: materializer.version,
             updatedAt: nowMs,

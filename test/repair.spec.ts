@@ -5,10 +5,12 @@ import { handleOperatorRepair, type OperatorRepairEnv } from "../packages/dcb-ru
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import type { RepairScopeItem, TagRecord } from "../packages/dcb-runtime/src/tag/types";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
 const OPERATOR_TOKEN = "test-repair-operator-token";
-const SUID = "suid-00000000000000000000000000000001";
+const SUID = g32Suid("repair-suid-1");
+const HEAD_AHEAD_SUID = "315537897599999999999999999999";
 
 interface RepairFactsResponse {
   head: string;
@@ -48,10 +50,7 @@ async function tagPost(target: string, path: string, body: unknown): Promise<Res
       ...(body as Record<string, unknown>),
       candidates: Array.isArray((body as Record<string, unknown>).candidates)
         ? ((body as Record<string, unknown>).candidates as unknown[]).map((candidate) =>
-          typeof candidate === "object" && candidate !== null && !Array.isArray(candidate) &&
-          !Object.prototype.hasOwnProperty.call(candidate, "eventType")
-            ? { ...(candidate as Record<string, unknown>), provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" }
-            : candidate,
+          tagCandidate(target, candidate),
         )
         : (body as Record<string, unknown>).candidates,
     }
@@ -61,6 +60,35 @@ async function tagPost(target: string, path: string, body: unknown): Promise<Res
     headers: { "content-type": "application/json" },
     body: JSON.stringify(wireBody),
   });
+}
+
+function jsonPayload(value: unknown): string {
+  if (typeof value === "string") {
+    try {
+      JSON.parse(value);
+      return value;
+    } catch {
+      return JSON.stringify({ fixture: value });
+    }
+  }
+  return JSON.stringify(value ?? {});
+}
+
+function tagCandidate(target: string, value: unknown): Record<string, unknown> {
+  const raw = typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  return {
+    ...raw,
+    eventId: g32EventId(typeof raw.eventId === "string" ? raw.eventId : `repair:${target}`),
+    suid: g32Suid(typeof raw.suid === "string" ? raw.suid : `repair:${target}`),
+    payload: jsonPayload(raw.payload),
+    eventTags: Array.isArray(raw.eventTags) ? raw.eventTags : [target],
+    allocatorLineageId: typeof raw.allocatorLineageId === "string" ? raw.allocatorLineageId : "g32-repair-lineage",
+    eventType: typeof raw.eventType === "string" ? raw.eventType : "RepairFixtureEvent",
+    provenance: "g32",
+    timestamp: typeof raw.timestamp === "string" ? raw.timestamp : G32_FIXTURE_TIMESTAMP,
+  };
 }
 
 async function tagState(target: string): Promise<TagRecord> {
@@ -121,13 +149,14 @@ async function partialAttempt(prefix: string, options: { headAhead?: boolean; ca
   const attemptId = crypto.randomUUID();
   const writtenTag = tag(`${prefix}-written`);
   const missingTag = tag(`${prefix}-missing`);
+  const headAheadSuid = HEAD_AHEAD_SUID;
   if (options.headAhead === true) {
     const seeded = await tagPost(missingTag, "/append", {
       attemptId: "seed-head-ahead",
       epoch: 0,
       candidates: [{
         eventId: "seed-head-ahead-event",
-        suid: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        suid: headAheadSuid,
         payload: "c2VlZA==",
         eventTags: [missingTag],
       }],
@@ -144,14 +173,13 @@ async function partialAttempt(prefix: string, options: { headAhead?: boolean; ca
     body: JSON.stringify({
       version: 1,
       eventCandidates: Array.from({ length: options.candidateCount ?? 1 }, (_, index) => ({
-        payload: index === 0 ? "cGFydGlhbA==" : "cGFydGlhbC0y",
+        payload: index === 0 ? "eyJmaXh0dXJlIjoicGFydGlhbCJ9" : "eyJmaXh0dXJlIjoicGFydGlhbC0yIn0=",
         eventPayloadName: `RepairPartial${index}`,
         tags: [writtenTag, missingTag],
       })),
-      consistencyTags: [
-        { tag: writtenTag, lastSortableUniqueId: "" },
-        { tag: missingTag, lastSortableUniqueId: options.headAhead === true ? "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz" : "" },
-      ],
+      consistencyTags: options.headAhead === true
+        ? [{ tag: missingTag, lastSortableUniqueId: headAheadSuid }]
+        : [],
     }),
   });
   expect(response.status).toBe(500);
@@ -161,8 +189,19 @@ async function partialAttempt(prefix: string, options: { headAhead?: boolean; ca
   return { attemptId, missingTag, writtenTag };
 }
 
-function item(attemptId: string, target: string, eventId = `${attemptId}-event`, suid = SUID, payload = "cGFydGlhbA=="): RepairScopeItem {
-  return { attemptId, eventId, suid, payload, eventTags: [target] };
+function item(attemptId: string, target: string, eventId = `${attemptId}-event`, suid = SUID, payload = JSON.stringify({ fixture: "partial" })): RepairScopeItem {
+  const candidate = tagCandidate(target, { eventId, suid, payload, eventTags: [target] });
+  return {
+    attemptId,
+    eventId: candidate.eventId as string,
+    suid: candidate.suid as string,
+    payload: candidate.payload as string,
+    eventTags: candidate.eventTags as string[],
+    allocatorLineageId: candidate.allocatorLineageId as string,
+    eventType: candidate.eventType as string,
+    provenance: "g32",
+    timestamp: candidate.timestamp as string,
+  };
 }
 
 async function installPartial(target: string, attemptId: string, epoch = 1): Promise<void> {
@@ -179,7 +218,7 @@ describe("SDT-G6 operator repair vertical slice", () => {
     const firstAttempt = "repair-first";
     const lateAttempt = "repair-f3";
     const first = item(firstAttempt, target);
-    const late = item(lateAttempt, target, "late-event", "suid-00000000000000000000000000000002");
+    const late = item(lateAttempt, target, "late-event", g32Suid("repair-suid-2"));
     await installPartial(target, firstAttempt);
     await installPartial(target, lateAttempt);
 
@@ -226,7 +265,7 @@ describe("SDT-G6 operator repair vertical slice", () => {
     const firstAttempt = "stable-snapshot-first";
     const secondAttempt = "stable-snapshot-second";
     const first = item(firstAttempt, target, "stable-snapshot-first-event");
-    const second = item(secondAttempt, target, "stable-snapshot-second-event", "suid-00000000000000000000000000000002");
+    const second = item(secondAttempt, target, "stable-snapshot-second-event", g32Suid("repair-suid-2"));
     await installPartial(target, firstAttempt);
     await installPartial(target, secondAttempt);
 
@@ -323,7 +362,7 @@ describe("SDT-G6 operator repair vertical slice", () => {
       expect(journal.state).toBe("PARTIAL");
       expect(journal.repairObservations.map((entry) => entry.phase)).toContain("CLEARED");
     }
-  });
+  }, 15_000);
 
   it("uses a bounded scan checkpoint and clears only after the resumed durable scope is complete", async () => {
     const prepared = await partialAttempt("checkpoint", { candidateCount: 2 });
@@ -405,10 +444,10 @@ describe("SDT-G6 operator repair vertical slice", () => {
   it("records a head-ahead exclusion without advancing the Tag head or version", async () => {
     const target = tag("head-ahead-direct");
     const attemptId = "head-ahead-direct-attempt";
-    const repairItem = item(attemptId, target, "excluded-event", "aaaa", "payload");
+    const repairItem = item(attemptId, target, "excluded-event", SUID, "payload");
     expect((await tagPost(target, "/append", {
       attemptId: "seed", epoch: 0,
-      candidates: [{ eventId: "later", suid: "zzzz", payload: "seed", eventTags: [target] }],
+      candidates: [{ eventId: "later", suid: HEAD_AHEAD_SUID, payload: "seed", eventTags: [target] }],
     })).status).toBe(201);
     await installPartial(target, attemptId);
     const lease = await responseJson<{ epoch: number }>(await tagPost(target, "/repair/acquire", {

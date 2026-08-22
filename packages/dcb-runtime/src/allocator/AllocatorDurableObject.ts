@@ -7,16 +7,14 @@ import type {
 import {
   allocateOrderRange,
   diagnosticAllocatedAt,
-  decodeOrderOrdinal,
   systemOrderClock,
   type OrderClock,
   OrderClockReadError,
 } from "./OrderClock";
+import { assertSortableUniqueId, SortableUniqueIdError } from "./SortableUniqueId";
 
 const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
-const SUID_PREFIX = "suid-";
-const SUID_DIGITS = 32;
 const ROLLBACK_WARNING_WINDOW_MS = 1_000n;
 
 type JsonObject = Record<string, unknown>;
@@ -67,7 +65,17 @@ function attemptKey(attemptId: string): string {
 }
 
 function currentState(allocatorLineageId: string): AllocatorState {
-  return { schemaVersion: 4, allocatorLineageId, allocatedWatermark: null, bootstrapSeed: null, lastRollbackWarningFingerprint: null };
+  return { schemaVersion: 5, allocatorLineageId, allocatedWatermark: null, bootstrapSeed: null, lastRollbackWarningFingerprint: null };
+}
+
+/** G32 is a fresh allocator namespace; an old durable state is never upgraded. */
+function assertG32State(state: AllocatorState | undefined): void {
+  if (state === undefined) return;
+  if (state.schemaVersion !== 5 || !isNonEmptyString(state.allocatorLineageId)) {
+    throw new SortableUniqueIdError("SUID_INVALID", "G32 allocator requires a fresh 30-digit state namespace");
+  }
+  if (state.allocatedWatermark !== null) assertSortableUniqueId(state.allocatedWatermark);
+  if (state.bootstrapSeed !== null) assertSortableUniqueId(state.bootstrapSeed.highWatermark);
 }
 
 function seedFrom(value: unknown): { value?: SeedInput; error?: string } {
@@ -83,11 +91,7 @@ function newAllocatorLineageId(): string {
 }
 
 export function decodeSuid(suid: string): bigint {
-  const digits = suid.slice(SUID_PREFIX.length);
-  if (!suid.startsWith(SUID_PREFIX) || !new RegExp(`^\\d{${SUID_DIGITS}}$`).test(digits)) {
-    throw new Error("Persisted allocator watermark is not a valid SUID");
-  }
-  return BigInt(digits);
+  return assertSortableUniqueId(suid).ticks;
 }
 
 export function nextSuids(watermark: string | null, count: number, clockTick: bigint): string[] {
@@ -156,13 +160,11 @@ export class AllocatorDurableObject implements DurableObject {
     if (request.method === "GET" && url.pathname === "/state") {
       const state = await this.ctx.storage.transaction(async (txn) => {
         const stored = await txn.get<AllocatorState>(STATE_KEY);
-        if (stored !== undefined && typeof stored.allocatorLineageId === "string" && stored.allocatorLineageId.length > 0) {
-          return { ...stored, schemaVersion: 4 as const, bootstrapSeed: stored.bootstrapSeed ?? null, lastRollbackWarningFingerprint: stored.lastRollbackWarningFingerprint ?? null };
+        if (stored !== undefined) {
+          assertG32State(stored);
+          return { ...stored, bootstrapSeed: stored.bootstrapSeed ?? null, lastRollbackWarningFingerprint: stored.lastRollbackWarningFingerprint ?? null };
         }
-        const initialized = {
-          ...currentState(newAllocatorLineageId()),
-          allocatedWatermark: stored?.allocatedWatermark ?? null, bootstrapSeed: stored?.bootstrapSeed ?? null,
-        };
+        const initialized = currentState(newAllocatorLineageId());
         await txn.put(STATE_KEY, initialized);
         return initialized;
       });
@@ -217,31 +219,17 @@ export class AllocatorDurableObject implements DurableObject {
       const result = await this.ctx.storage.transaction(async (txn): Promise<AllocationSuccess> => {
         const existing = await txn.get<AllocationVector>(attemptKey(input.attemptId));
         const persistedState = await txn.get<AllocatorState>(STATE_KEY);
+        assertG32State(persistedState);
         const lineage = persistedState?.allocatorLineageId || newAllocatorLineageId();
         if (existing !== undefined) {
-          // Upgrade pre-G17 vectors in the same transaction.  Returning a
-          // freshly generated token without persisting it would make a
-          // repeated request observe a different allocator lineage.
-          if (existing.allocatorLineageId === undefined || persistedState?.allocatorLineageId === undefined) {
-            const upgradedVector: AllocationVector = {
-              ...existing,
-              allocatorLineageId: existing.allocatorLineageId ?? lineage,
-            };
-            const upgradedState: AllocatorState = persistedState === undefined
-              ? {
-                ...currentState(upgradedVector.allocatorLineageId),
-                allocatedWatermark: existing.candidates.at(-1)?.suid ?? null,
-              }
-              : {
-                ...persistedState,
-                schemaVersion: 4,
-                allocatorLineageId: upgradedVector.allocatorLineageId,
-                bootstrapSeed: persistedState.bootstrapSeed ?? null,
-                lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null,
-              };
-            await txn.put(attemptKey(input.attemptId), upgradedVector);
-            await txn.put(STATE_KEY, upgradedState);
-            return { vector: upgradedVector, created: false };
+          // Never upgrade an old attempt vector in place. The new and old
+          // lexical domains cannot coexist and a replay must stay byte exact.
+          for (const candidate of existing.candidates) assertSortableUniqueId(candidate.suid);
+          if (persistedState?.allocatedWatermark !== null && persistedState?.allocatedWatermark !== undefined) {
+            assertSortableUniqueId(persistedState.allocatedWatermark);
+          }
+          if (!isNonEmptyString(existing.allocatorLineageId)) {
+            throw new SortableUniqueIdError("SUID_INVALID", "G32 allocator refuses a pre-cutover attempt vector");
           }
           return {
             vector: existing,
@@ -251,7 +239,7 @@ export class AllocatorDurableObject implements DurableObject {
 
         const state = persistedState === undefined
           ? currentState(lineage)
-          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 4 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null, lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null };
+          : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 5 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null, lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null };
         // This is intentionally before the first transaction write. A clock
         // failure therefore cannot leave a vector, watermark, or warning fact.
         let clockTick: bigint;
@@ -263,7 +251,7 @@ export class AllocatorDurableObject implements DurableObject {
             : new OrderClockReadError("Order clock failed before allocation write", { cause: error });
         }
         const range = allocateOrderRange(state.allocatedWatermark, input.candidates.length, clockTick);
-        const rollback = state.allocatedWatermark !== null && clockTick <= decodeOrderOrdinal(state.allocatedWatermark);
+        const rollback = range.observedTicks !== null && range.physicalTicks < range.observedTicks;
         // The warning key is deliberately independent of the newly allocated
         // watermark.  A rollback observed repeatedly in one clock window is
         // one operational fact, not a new fact for every monotone allocation.
@@ -282,7 +270,7 @@ export class AllocatorDurableObject implements DurableObject {
           allocatedAt: diagnosticAllocatedAt(range.base),
         };
         const updatedState: AllocatorState = {
-          schemaVersion: 4,
+          schemaVersion: 5,
           allocatorLineageId: lineage,
           allocatedWatermark: range.watermark,
           bootstrapSeed: state.bootstrapSeed ?? null,
@@ -299,7 +287,7 @@ export class AllocatorDurableObject implements DurableObject {
           created: true,
           ...(shouldWarn ? {
             rollbackWarning: {
-              tick: clockTick.toString(),
+              tick: range.physicalTicks.toString(),
               watermark: state.allocatedWatermark,
               serviceId: input.serviceId ?? "unknown-service",
               allocatorLineageId: lineage,
@@ -327,6 +315,9 @@ export class AllocatorDurableObject implements DurableObject {
       if (failure instanceof OrderClockReadError) {
         return error(503, "allocator_order_clock_failed", failure.message);
       }
+      if (failure instanceof SortableUniqueIdError) {
+        return error(409, "allocator_suid_invalid", failure.message);
+      }
       return error(500, "allocator_failure", "Allocator could not persist the full allocation vector");
     }
   }
@@ -338,7 +329,8 @@ export class AllocatorDurableObject implements DurableObject {
     const input = parsed.value;
     const result = await this.ctx.storage.transaction(async (txn): Promise<{ status: number; body: unknown }> => {
       const stored = await txn.get<AllocatorState>(STATE_KEY);
-      const state = stored === undefined ? currentState(newAllocatorLineageId()) : { ...stored, schemaVersion: 4 as const, bootstrapSeed: stored.bootstrapSeed ?? null, lastRollbackWarningFingerprint: stored.lastRollbackWarningFingerprint ?? null };
+      assertG32State(stored);
+      const state = stored === undefined ? currentState(newAllocatorLineageId()) : { ...stored, bootstrapSeed: stored.bootstrapSeed ?? null, lastRollbackWarningFingerprint: stored.lastRollbackWarningFingerprint ?? null };
       const seed = state.bootstrapSeed;
       if (seed !== null) {
         if (seed.importId === input.importId && seed.leaseEpoch === input.leaseEpoch && seed.highWatermark === input.highWatermark) return { status: 200, body: state };

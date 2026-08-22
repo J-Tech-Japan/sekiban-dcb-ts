@@ -19,37 +19,26 @@ import {
 } from "../packages/dcb-runtime/src/downstream/Doorbell";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import type { DeliveryOutcome, PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
+import { g32Message, g32StoredEvent } from "./helpers/g32-fixtures";
 
 function message(suffix = "one"): DownstreamOutboxMessage {
   const tag = `g26:${suffix}`;
-  return {
-    version: 1,
+  return g32Message({
     serviceId: `g26-service-${suffix}`,
     allocatorLineageId: `g26-lineage-${suffix}`,
     tag,
     attemptId: `g26-attempt-${suffix}`,
     eventId: `g26-event-${suffix}`,
     suid: `g26-suid-${suffix}`,
-    payload: btoa(JSON.stringify({ eventType: "G26", suffix })),
+    payload: JSON.stringify({ eventType: "G26", suffix }),
     eventTags: [tag],
-    eventType: "G26:1",
-    provenance: "g27",
+    eventType: "G26",
     enqueuedAt: 1_000,
-  };
+  });
 }
 
 function storedEvent(input: DownstreamOutboxMessage): StoredEvent {
-  return {
-    serviceId: input.serviceId,
-    eventId: input.eventId,
-    suid: input.suid,
-    payload: input.payload,
-    eventTags: input.eventTags,
-    firstArrivedAt: 1_010,
-    lastArrivedAt: 1_010,
-    maxDeliveryLagMs: 10,
-    arrivals: [],
-  };
+  return g32StoredEvent(input, 1_010);
 }
 
 function storeFor(

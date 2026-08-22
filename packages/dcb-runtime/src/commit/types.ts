@@ -1,7 +1,8 @@
 import type { ConsistencyTag } from "../journal/types";
 
-/** The exact V1 request candidate, retained without rewriting payload bytes. */
+/** The V1 base64 payload after fatal UTF-8 JSON admission, retained as text. */
 export interface SerializedCommitCandidate {
+  /** Decoded UTF-8 JSON text; whitespace and member order are preserved. */
   payload: string;
   eventPayloadName: string;
   eventType: string;
@@ -17,6 +18,7 @@ export interface ValidatedCommitEnvelope {
 export interface AllocatedCommitCandidate extends SerializedCommitCandidate {
   eventId: string;
   suid: string;
+  timestamp: string;
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { TagEvent } from "../tag/types";
-import type { EventProvenance } from "../eventIdentity";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 
 export const TEST_TAG_STATE_PROJECTOR = "test-projector";
 
@@ -8,8 +8,8 @@ export interface ProjectionEvent {
   suid: string;
   payload: string;
   eventTags: readonly string[];
-  eventType?: string;
-  provenance?: EventProvenance;
+  eventType: string;
+  provenance: "g32";
 }
 
 /**
@@ -154,12 +154,13 @@ export function tagStateIdentityFrom(
 }
 
 export function projectionEventFromTagEvent(event: TagEvent): ProjectionEvent {
+  assertSortableUniqueId(event.suid);
   return {
     eventId: event.eventId,
     suid: event.suid,
     payload: event.payload,
     eventTags: event.eventTags,
-    ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
-    provenance: event.provenance ?? (event.eventType === undefined ? "pre-g27" : "g27"),
+    eventType: event.eventType,
+    provenance: "g32",
   };
 }

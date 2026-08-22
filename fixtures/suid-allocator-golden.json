@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "authority": "SDT-G32 AC1 independent C# parity fixtures",
+  "requiredRowIds": ["M1", "M2", "M2a", "M2b", "M3", "M4", "M5", "M6", "M7", "M8", "M9", "M10", "M11", "M12"],
+  "vectors": {
+    "unixMsToTicks": [
+      { "unixMs": "0", "ticks": "0621355968000000000" },
+      { "unixMs": "1", "ticks": "0621355968000010000" },
+      { "unixMs": "1787414836102", "ticks": "0639230116361020000" },
+      { "unixMs": "200000000000001", "ticks": "2621355968000010000" },
+      { "unixMs": "253402300799999", "ticks": "3155378975999990000" }
+    ],
+    "invalidUnixMs": ["-1", "253402300800000", "9007199254740992"],
+    "invalidSuids": [
+      "suid-00000000000000000001787414836102",
+      "06213559680000000000000000000",
+      "0062135596800000000000000000000",
+      "0621355968000000000０0000000000",
+      "0621355968000000000000000000001"
+    ]
+  },
+  "rows": [
+    {
+      "rowId": "M1",
+      "mutation": "full-30-digit-decode",
+      "input": { "watermark": "063800000000000000002147483647", "unixMs": "0", "count": 1 },
+      "expect": { "observedTicks": "0638000000000000000", "baseTicks": "0638000000000000001", "mutantBaseTicks": "2147483648" }
+    },
+    {
+      "rowId": "M2",
+      "mutation": "unix-ms-unit-mismatch",
+      "input": { "watermark": null, "unixMs": "1787414836102", "count": 1 },
+      "expect": { "physicalTicks": "0639230116361020000", "baseTicks": "0639230116361020000" }
+    },
+    {
+      "rowId": "M2a",
+      "mutation": "physical-ticks-branch-removed",
+      "input": { "watermark": "063923011636101999800000000000", "unixMs": "1787414836102", "count": 1 },
+      "expect": { "baseTicks": "0639230116361020000", "rollbackWarning": false, "watermarkTicks": "0639230116361020000" }
+    },
+    {
+      "rowId": "M2b",
+      "mutation": "observed-plus-one-branch-removed",
+      "input": { "watermark": "063923011636102000000000000000", "unixMs": "1787414836101", "count": 3 },
+      "expect": { "baseTicks": "0639230116361020001", "rollbackWarning": true, "vectorTicks": ["0639230116361020001", "0639230116361020002", "0639230116361020003"], "watermarkTicks": "0639230116361020003" }
+    },
+    {
+      "rowId": "M3",
+      "mutation": "number-multiply-before-bigint",
+      "input": { "unixMs": "200000000000001" },
+      "expect": { "ticks": "2621355968000010000", "mutantTicks": "2621355968000009984" }
+    },
+    {
+      "rowId": "M4",
+      "mutation": "suffix-redrawn-on-replay",
+      "input": { "attemptId": "replayed-attempt", "count": 2 },
+      "expect": { "replayByteIdentical": true }
+    },
+    {
+      "rowId": "M5",
+      "mutation": "watermark-only-commit",
+      "input": { "fault": "between-vector-and-watermark" },
+      "expect": { "zeroDiff": ["vector", "watermark", "attempt"] }
+    },
+    {
+      "rowId": "M6",
+      "mutation": "old-watermark-fallback",
+      "input": { "oldSuid": "suid-00000000000000000001787414836102" },
+      "expect": { "typedReject": true, "zeroWrites": true }
+    },
+    {
+      "rowId": "M7",
+      "mutation": "write-after-ceiling",
+      "input": { "baseTicks": "3155378975999999998", "count": 5 },
+      "expect": { "typedReject": true, "zeroWrites": true }
+    },
+    {
+      "rowId": "M8",
+      "mutation": "five-second-safewindow",
+      "input": { "boundSeconds": 20 },
+      "expect": { "cutoffSeconds": 20 }
+    },
+    {
+      "rowId": "M9",
+      "mutation": "one-ingress-bypass",
+      "input": { "oldSuid": "suid-00000000000000000001787414836102", "ingresses": ["commit", "list-query", "waitFor", "bootstrap", "dump-restore", "queue", "doorbell", "mv-apply"] },
+      "expect": { "typedReject": true, "downstreamCalls": 0 }
+    },
+    {
+      "rowId": "M10",
+      "mutation": "partial-write-on-clock-failure",
+      "input": { "clock": "throws" },
+      "expect": { "zeroDiff": ["vector", "watermark", "attempt", "warning"] }
+    },
+    {
+      "rowId": "M11",
+      "mutation": "rollback-warning-wrong-unit",
+      "input": { "physicalTicks": "0639230116361019999", "observedTicks": "0639230116361020000" },
+      "expect": { "rollbackWarning": true, "baseTicks": "0639230116361020001" }
+    },
+    {
+      "rowId": "M12",
+      "mutation": "business-order-derivation",
+      "input": { "clockUnixMs": "1787414836102", "businessNow": "1", "eventId": "018f9c51-6b74-7f5e-8ca1-0123456789ab" },
+      "expect": { "suidUsesClockOnly": true }
+    }
+  ]
+}

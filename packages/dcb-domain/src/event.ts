@@ -14,6 +14,8 @@ import {
 } from "./types";
 
 const brandedPayloads = new WeakSet<object>();
+const CAMEL_CASE_KEY = /^[a-z][A-Za-z0-9]*$/;
+const FORBIDDEN_PAYLOAD_DISCRIMINATORS = new Set(["eventType", "eventName", "eventPayloadName"]);
 
 function rememberPayload<T>(value: T): T {
   if (typeof value === "object" && value !== null) brandedPayloads.add(value);
@@ -24,20 +26,56 @@ export function isEventPayload(value: unknown): boolean {
   return typeof value === "object" && value !== null && brandedPayloads.has(value);
 }
 
+/**
+ * C# serialized payloads use JsonNamingPolicy.CamelCase and fail on a
+ * case-mismatched member. Check the authoring schema once so callers cannot
+ * accidentally publish a PascalCase or discriminator-bearing wire shape.
+ */
+function assertCamelCaseSchemaKeys(schema: z.ZodTypeAny, path = "$"): void {
+  const definition = schema as unknown as {
+    readonly def?: {
+      readonly type?: unknown;
+      readonly shape?: unknown;
+      readonly element?: unknown;
+      readonly innerType?: unknown;
+      readonly options?: unknown;
+    };
+  };
+  const def = definition.def;
+  if (def?.type === "object" && typeof def.shape === "object" && def.shape !== null) {
+    for (const [key, child] of Object.entries(def.shape as Record<string, z.ZodTypeAny>)) {
+      if (!CAMEL_CASE_KEY.test(key) || FORBIDDEN_PAYLOAD_DISCRIMINATORS.has(key)) {
+        throw new DomainAuthoringError("EVENT_PAYLOAD_CAMEL_CASE_REQUIRED", `Event schema member ${path}.${key} must be camelCase and must not be a type discriminator`);
+      }
+      assertCamelCaseSchemaKeys(child, `${path}.${key}`);
+    }
+    return;
+  }
+  if (def?.type === "array" && def.element instanceof z.ZodType) {
+    assertCamelCaseSchemaKeys(def.element, `${path}[]`);
+    return;
+  }
+  if (def?.innerType instanceof z.ZodType) {
+    assertCamelCaseSchemaKeys(def.innerType, path);
+    return;
+  }
+  if (Array.isArray(def?.options)) {
+    for (const option of def.options) if (option instanceof z.ZodType) assertCamelCaseSchemaKeys(option, path);
+  }
+}
+
 export interface EventDefinition<
   Name extends string = string,
   Schema extends z.ZodTypeAny = z.ZodTypeAny,
   Family extends string = string,
-  Version extends number = number,
 > {
   readonly name: Name;
   readonly eventPayloadName: Name;
-  readonly version: Version;
-  readonly eventType: `${Name}:${Version}` | string;
-  readonly key: `${Name}:${Version}` | string;
+  readonly eventType: Name | string;
+  readonly key: Name | string;
   readonly schema: Schema;
   readonly tags: (payload: z.infer<Schema>) => readonly Tag<Family>[];
-  readonly make: (payload: unknown) => EventOf<EventDefinition<Name, Schema, Family, Version>>;
+  readonly make: (payload: unknown) => EventOf<EventDefinition<Name, Schema, Family>>;
   readonly parse: (payload: unknown) => z.infer<Schema>;
   readonly create: (payload: unknown) => RuntimeEventValue;
   readonly construct: (payload: unknown) => RuntimeEventValue;
@@ -48,14 +86,14 @@ export interface RuntimeEventValue {
   readonly eventName: string;
   readonly eventPayloadName: string;
   readonly eventType: string;
-  readonly version: number;
   readonly payload: JsonValue;
   readonly tags: readonly Tag[];
 }
 
-export interface EventOptions<Payload, Deriver extends TagDeriver<Payload>, Version extends number = number> {
+export interface EventOptions<Payload, Deriver extends TagDeriver<Payload>> {
   readonly tags: Deriver;
-  readonly version?: Version;
+  /** Removed by G32: define a distinct event name for each payload revision. */
+  readonly version?: never;
   readonly tagFamily?: TagFamily | string;
 }
 
@@ -63,27 +101,26 @@ export function event<
   const Name extends string,
   Schema extends z.ZodTypeAny,
   Deriver extends TagDeriver<z.infer<Schema>>,
-  const Version extends number = 1,
 >(
   name: Name,
   schema: Schema,
-  options: EventOptions<z.infer<Schema>, Deriver, Version> & { readonly version?: Version },
-): EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>, Version> {
+  options: EventOptions<z.infer<Schema>, Deriver>,
+): EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>> {
   if (name.length === 0) throw new DomainAuthoringError("EVENT_NAME_INVALID", "Event name must not be empty");
   if (name.includes(":")) throw new DomainAuthoringError("EVENT_NAME_INVALID", "Event name must not contain ':'");
-  const version = (options.version ?? 1) as Version;
-  if (!Number.isSafeInteger(version) || version < 1) {
-    throw new DomainAuthoringError("EVENT_VERSION_INVALID", "Event version must be a positive safe integer");
+  if (Object.prototype.hasOwnProperty.call(options, "version")) {
+    throw new DomainAuthoringError("EVENT_VERSION_REMOVED", "Event version is removed; use a distinct event payload name");
   }
-  const eventType = `${name}:${version}`;
+  const eventType = name;
+  assertCamelCaseSchemaKeys(schema);
   const parse = (payload: unknown): z.infer<Schema> => {
     const parsed = schema.parse(payload);
     assertJsonValue(parsed, "event-construction");
     return parsed;
   };
-  const make = (payload: unknown): EventOf<EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>, Version>> => {
+  const make = (payload: unknown): EventOf<EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>>> => {
     const parsed = cloneAndFreeze(parse(payload));
-    return rememberPayload(parsed) as EventPayload<EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>, Version>>;
+    return rememberPayload(parsed) as EventPayload<EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>>>;
   };
   const create = (payload: unknown): RuntimeEventValue => {
     const parsed = parse(payload);
@@ -94,7 +131,6 @@ export function event<
       eventName: name,
       eventPayloadName: name,
       eventType,
-      version,
       payload: assertJsonValue(parsed),
       tags,
     }) as RuntimeEventValue;
@@ -105,7 +141,6 @@ export function event<
   return Object.freeze({
     name,
     eventPayloadName: name,
-    version,
     eventType,
     key: eventType,
     schema,
@@ -119,7 +154,7 @@ export function event<
     create,
     construct: create,
     tagFamilies: Object.freeze(tagFamilies),
-  }) as EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>, Version>;
+  }) as EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>>;
 }
 
 export interface EventUnion<Events extends readonly EventDefinition[] = readonly EventDefinition[]> {

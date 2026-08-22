@@ -1,11 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw asset import
-import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
-// @ts-expect-error Vite raw asset import
-import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
-// @ts-expect-error Vite raw asset import
-import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
+import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw asset import
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw asset import
@@ -25,6 +21,7 @@ import { catchUpMeetingRoomMaterializedViews } from "../samples/meeting-room/src
 import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import type { CloudflareOnlyEnv } from "../packages/dcb-runtime/src/cloudflare";
+import { g32Message } from "./helpers/g32-fixtures";
 
 function statements(sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
@@ -45,29 +42,27 @@ function mvDatabase(): D1Database {
 
 function event(serviceId: string): DownstreamOutboxMessage {
   const tag = "reservation:g20-reservation";
-  return {
-    version: 1,
+  return g32Message({
     serviceId,
     allocatorLineageId: "g20-test-lineage",
     tag,
     attemptId: "g20-attempt",
     eventId: "g20-event",
-    suid: "suid-00000000000000000000000000000001",
-    payload: btoa(JSON.stringify({
-      eventType: "RoomReserved",
+    suid: "g20-event",
+    payload: JSON.stringify({
       reservationId: "g20-reservation",
       roomId: "g20-room",
       userId: "g20-user",
-    })),
+    }),
     eventTags: [tag],
-    provenance: "pre-g27-queue",
+    eventType: "RoomReserved",
     enqueuedAt: 0,
-  };
+  });
 }
 
 describe("SDT-G20 Cloudflare-only composition", () => {
   beforeAll(async () => {
-    await database().batch(statements(`${pipelineMigration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`));
+    await database().batch(statements(g32Migration as string));
     await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string, unsafeFailureMvMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
       .filter(Boolean).map((value) => mvDatabase().prepare(value)));
   });

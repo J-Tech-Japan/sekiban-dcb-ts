@@ -20,6 +20,7 @@ import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1MaterializedViewStore, UnsafeWindowMaterializedViewError, type UnsafeWindowApplyInput, type UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import { createRuntimeWorker, type MaterializedViewRow } from "../packages/dcb-runtime/src/index";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
+import { g32Suid } from "./helpers/g32-fixtures";
 
 const MATERIALIZER = defineRowMaterializer<{ eventId: string; suid: string; value: string }>({
   id: "g23-unsafe-window-v1", version: 1,
@@ -42,8 +43,32 @@ async function unsafeStore(): Promise<{ mv: D1MaterializedViewStore; unsafe: Uns
   await mv.createActive({ serviceId, viewId: MATERIALIZER.id, definitionVersion: 1, updatedAt: 1 });
   return { mv, unsafe: mv.unsafeWindow(), serviceId };
 }
-function input(serviceId: string, eventId: string, suid: string, value: string, extra: Partial<UnsafeWindowApplyInput> = {}): UnsafeWindowApplyInput {
-  return { serviceId, viewId: MATERIALIZER.id, generation: 0, eventId, suid, safeHead: "", updatedAt: 1, mutations: MATERIALIZER.plan({ eventId, suid, value }), ...extra };
+function canonicalSuid(value: string): string {
+  return g32Suid(value);
+}
+function normalizeMutations(mutations: UnsafeWindowApplyInput["mutations"]): UnsafeWindowApplyInput["mutations"] {
+  return {
+    ...mutations,
+    rowUpserts: mutations.rowUpserts.map((entry) => ({ ...entry, sourceSuid: canonicalSuid(entry.sourceSuid) })),
+    rowPatches: mutations.rowPatches.map((entry) => ({ ...entry, sourceSuid: canonicalSuid(entry.sourceSuid) })),
+  };
+}
+function input(serviceId: string, eventId: string, sourceSuid: string, value: string, extra: Partial<UnsafeWindowApplyInput> = {}): UnsafeWindowApplyInput {
+  const suid = canonicalSuid(sourceSuid);
+  const mutations = extra.mutations ?? MATERIALIZER.plan({ eventId, suid, value });
+  const { safeHead, targetSuid, ...other } = extra;
+  return {
+    ...other,
+    serviceId,
+    viewId: MATERIALIZER.id,
+    generation: 0,
+    eventId,
+    suid,
+    safeHead: safeHead === undefined || safeHead === "" ? "" : canonicalSuid(safeHead),
+    updatedAt: 1,
+    targetSuid: targetSuid === undefined ? undefined : canonicalSuid(targetSuid),
+    mutations: normalizeMutations(mutations),
+  };
 }
 function sameRow(serviceId: string, eventId: string, suid: string, value: string, extra: Partial<UnsafeWindowApplyInput> = {}): UnsafeWindowApplyInput {
   return input(serviceId, eventId, suid, value, { mutations: { rowUpserts: [{ rowKey: "shared", value: { eventId, value }, rowVersion: 1, sourceSuid: suid }], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] }, ...extra });
@@ -51,12 +76,12 @@ function sameRow(serviceId: string, eventId: string, suid: string, value: string
 async function seedGc(tombstone = false): Promise<{ mv: D1MaterializedViewStore; unsafe: UnsafeWindowMaterializedViewStore; serviceId: string }> {
   const state = await unsafeStore();
   await state.unsafe.apply(input(state.serviceId, "gc-event", "suid-5", "gc"));
-  await state.unsafe.observeSafeReceipt(state.serviceId, MATERIALIZER.id, 0, "gc-event", "suid-5");
+  await state.unsafe.observeSafeReceipt(state.serviceId, MATERIALIZER.id, 0, "gc-event", canonicalSuid("suid-5"));
   if (tombstone) await database().prepare("UPDATE mv_unsafe_rows SET tombstone = 1 WHERE service_id = ? AND view_id = ?").bind(state.serviceId, MATERIALIZER.id).run();
   return state;
 }
 async function gc(state: Awaited<ReturnType<typeof seedGc>>, overrides: Partial<{ rowVersion: number; sourceSuid: string; safeHead: string; definitionVersion: number }> = {}): Promise<boolean> {
-  return state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 0, definitionVersion: overrides.definitionVersion ?? 1, rowKey: "gc-event", expectedRowVersion: overrides.rowVersion ?? 1, expectedSourceSuid: overrides.sourceSuid ?? "suid-5", safeHead: overrides.safeHead ?? "suid-5" });
+  return state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 0, definitionVersion: overrides.definitionVersion ?? 1, rowKey: "gc-event", expectedRowVersion: overrides.rowVersion ?? 1, expectedSourceSuid: canonicalSuid(overrides.sourceSuid ?? "suid-5"), safeHead: canonicalSuid(overrides.safeHead ?? "suid-5") });
 }
 function fixtureMutation(eventId: string, suid: string) {
   return { rowUpserts: [{ rowKey: "reference-row", value: { eventId }, rowVersion: 1, sourceSuid: suid }], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] };
@@ -66,8 +91,8 @@ function winnerMutation(rowKey: string, eventId: string, suid: string) {
 }
 async function applySafeWinner(mv: D1MaterializedViewStore, serviceId: string, rowKey: string, eventId: string, suid: string): Promise<void> {
   await mv.applyMutationsAndAdvanceCheckpoint({
-    serviceId, viewId: MATERIALIZER.id, generation: 0, expectedLastSuid: "", lastSuid: suid,
-    definitionVersion: 1, updatedAt: 1, mutations: winnerMutation(rowKey, eventId, suid),
+    serviceId, viewId: MATERIALIZER.id, generation: 0, expectedLastSuid: null, lastSuid: canonicalSuid(suid),
+    definitionVersion: 1, updatedAt: 1, mutations: normalizeMutations(winnerMutation(rowKey, eventId, suid)),
   });
 }
 
@@ -93,14 +118,14 @@ describe("SDT-G23 unsafe-window MV core", () => {
     const { mv, unsafe, serviceId } = await unsafeStore();
     await unsafe.apply(input(serviceId, "same", "suid-2", "first"));
     await expect(unsafe.apply(input(serviceId, "other", "suid-3", "second", { expectedRowVersion: 99, mutations: MATERIALIZER.plan({ eventId: "same", suid: "suid-3", value: "second" }) }))).rejects.toMatchObject({ code: "UNSAFE_ROW_CAS_MISMATCH", retryable: true });
-    expect(await unsafe.hasTargetReceipt(serviceId, MATERIALIZER.id, "other", "suid-3")).toBe(false);
+    expect(await unsafe.hasTargetReceipt(serviceId, MATERIALIZER.id, "other", canonicalSuid("suid-3"))).toBe(false);
     expect((await mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 })).rows[0]?.value).toMatchObject({ value: "first" });
   });
   it("AC11 post-recordDelivery unsafe crash retry has exactly one durable receipt", async () => {
     const { unsafe, serviceId } = await unsafeStore();
     await unsafe.apply(input(serviceId, "crash", "suid-2", "once")); // simulated hook throws after this atomic call
     await expect(unsafe.apply(input(serviceId, "crash", "suid-2", "once"))).resolves.toEqual({ outcome: "no-change", duplicate: true });
-    expect(await unsafe.hasTargetReceipt(serviceId, MATERIALIZER.id, "crash", "suid-2")).toBe(true);
+    expect(await unsafe.hasTargetReceipt(serviceId, MATERIALIZER.id, "crash", canonicalSuid("suid-2"))).toBe(true);
   });
   it("AC11 duplicate retry oracle is isolated from crash handling", async () => {
     const { mv, unsafe, serviceId } = await unsafeStore();
@@ -122,7 +147,7 @@ describe("SDT-G23 unsafe-window MV core", () => {
     const { mv, unsafe, serviceId } = await unsafeStore();
     const mutations = { rowUpserts: [], rowDeletes: [], rowPatches: [{ kind: "json_patch" as const, rowKey: "missing", patch: { value: "x" }, rowVersion: 1, sourceSuid: "suid-5", indexEntries: [] }], indexEntries: [], indexDeletes: [] };
     await expect(unsafe.apply(input(serviceId, "patch", "suid-5", "ignored", { mutations }))).resolves.toMatchObject({ outcome: "patch-not-found" });
-    expect(await unsafe.hasTargetReceipt(serviceId, MATERIALIZER.id, "patch", "suid-5")).toBe(true);
+    expect(await unsafe.hasTargetReceipt(serviceId, MATERIALIZER.id, "patch", canonicalSuid("suid-5"))).toBe(true);
     expect((await mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 })).totalCount).toBe(0);
   });
   it("AC11 delete-without-row and no-change have distinct isolated receipt outcomes", async () => {
@@ -135,13 +160,13 @@ describe("SDT-G23 unsafe-window MV core", () => {
     const { unsafe, serviceId } = await unsafeStore();
     const mutations = { rowUpserts: [], rowDeletes: [], rowPatches: [{ kind: "json_patch" as const, rowKey: "missing", patch: { value: "x" }, rowVersion: 1, sourceSuid: "suid-5", indexEntries: [] }], indexEntries: [], indexDeletes: [] };
     await unsafe.apply(input(serviceId, "patch", "suid-5", "ignored", { mutations }));
-    await expect(unsafe.observeSafeReceipt(serviceId, MATERIALIZER.id, 0, "wrong", "suid-5")).rejects.toBeTruthy();
-    await expect(unsafe.observeSafeReceipt(serviceId, MATERIALIZER.id, 0, "patch", "suid-5")).resolves.toBeUndefined();
+    await expect(unsafe.observeSafeReceipt(serviceId, MATERIALIZER.id, 0, "wrong", canonicalSuid("suid-5"))).rejects.toBeTruthy();
+    await expect(unsafe.observeSafeReceipt(serviceId, MATERIALIZER.id, 0, "patch", canonicalSuid("suid-5"))).resolves.toBeUndefined();
   });
   it("detects a behind-frontier first arrival without SafeWindow and fail-closes composed reads", async () => {
     const { mv, unsafe, serviceId } = await unsafeStore();
-    await unsafe.apply(input(serviceId, "known", "suid-8", "known")); await unsafe.observeSafeReceipt(serviceId, MATERIALIZER.id, 0, "known", "suid-8");
-    expect(await unsafe.observeArrival(serviceId, MATERIALIZER.id, 0, "late", "suid-1")).toBe(true);
+    await unsafe.apply(input(serviceId, "known", "suid-8", "known")); await unsafe.observeSafeReceipt(serviceId, MATERIALIZER.id, 0, "known", canonicalSuid("suid-8"));
+    expect(await unsafe.observeArrival(serviceId, MATERIALIZER.id, 0, "late", canonicalSuid("suid-1"))).toBe(true);
     expect((await unsafe.readMeta(serviceId, MATERIALIZER.id, 0)).rebuildRequired).toBe(true);
     await expect(mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 })).rejects.toBeInstanceOf(UnsafeWindowMaterializedViewError);
   });
@@ -177,14 +202,14 @@ describe("SDT-G23 unsafe-window MV core", () => {
   });
   it("GC oracle safe-ahead-then-late-retry removes all repairable unsafe state", async () => {
     const state = await seedGc(); expect(await gc(state)).toBe(true);
-    expect(await state.unsafe.hasTargetReceipt(state.serviceId, MATERIALIZER.id, "gc-event", "suid-5")).toBe(false);
+    expect(await state.unsafe.hasTargetReceipt(state.serviceId, MATERIALIZER.id, "gc-event", canonicalSuid("suid-5"))).toBe(false);
   });
   it("GC oracle newer-unsafe-during-GC keeps the row on compare-and-delete mismatch", async () => {
     const state = await seedGc(); expect(await gc(state, { rowVersion: 99 })).toBe(false);
     expect((await state.mv.queryRowsWithTotal(state.serviceId, MATERIALIZER.id, { limit: 10 })).totalCount).toBe(1);
   });
   it("GC oracle open-behind-frontier keeps unsafe state until rebuild", async () => {
-    const state = await seedGc(); await state.unsafe.observeArrival(state.serviceId, MATERIALIZER.id, 0, "behind", "suid-1"); expect(await gc(state)).toBe(false);
+    const state = await seedGc(); await state.unsafe.observeArrival(state.serviceId, MATERIALIZER.id, 0, "behind", canonicalSuid("suid-1")); expect(await gc(state)).toBe(false);
   });
   it("GC oracle tombstone is collected only after every other guard is true", async () => {
     const state = await seedGc(true); expect(await gc(state)).toBe(true);
@@ -194,15 +219,15 @@ describe("SDT-G23 unsafe-window MV core", () => {
   });
   it("GC mutation evidence: observed-arrival receipt guard is independently required", async () => {
     const state = await unsafeStore(); await state.unsafe.apply(input(state.serviceId, "gc-event", "suid-5", "gc"));
-    expect(await state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 0, definitionVersion: 1, rowKey: "gc-event", expectedRowVersion: 1, expectedSourceSuid: "suid-5", safeHead: "suid-5" })).toBe(false);
+    expect(await state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 0, definitionVersion: 1, rowKey: "gc-event", expectedRowVersion: 1, expectedSourceSuid: canonicalSuid("suid-5"), safeHead: canonicalSuid("suid-5") })).toBe(false);
   });
   it("GC mutation evidence: active-generation guard is independently required", async () => {
     // Candidate generation, matching definition, receipt/arrival, source and
     // row CAS are all legal; only the active pointer still selects generation 0.
     const state = await unsafeStore(); await state.mv.createCandidate({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 1, definitionVersion: 1, updatedAt: 2 });
     await state.unsafe.apply(input(state.serviceId, "gc-event", "suid-5", "gc", { generation: 1 }));
-    await state.unsafe.observeSafeReceipt(state.serviceId, MATERIALIZER.id, 1, "gc-event", "suid-5");
-    expect(await state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 1, definitionVersion: 1, rowKey: "gc-event", expectedRowVersion: 1, expectedSourceSuid: "suid-5", safeHead: "suid-5" })).toBe(false);
+    await state.unsafe.observeSafeReceipt(state.serviceId, MATERIALIZER.id, 1, "gc-event", canonicalSuid("suid-5"));
+    expect(await state.unsafe.garbageCollect({ serviceId: state.serviceId, viewId: MATERIALIZER.id, generation: 1, definitionVersion: 1, rowKey: "gc-event", expectedRowVersion: 1, expectedSourceSuid: canonicalSuid("suid-5"), safeHead: canonicalSuid("suid-5") })).toBe(false);
   });
   it("GC mutation evidence: definition-version guard is independently required", async () => {
     // The active pointer remains valid; mutate only the current instance's
@@ -226,7 +251,7 @@ describe("SDT-G23 unsafe-window MV core", () => {
   it("AC9 mid-drain dirty arrival requires another drain", async () => {
     const { unsafe, serviceId } = await unsafeStore(); await unsafe.apply(input(serviceId, "kick", "suid-2", "x")); await unsafe.acquireKick(serviceId, MATERIALIZER.id, "a", 10, 10);
     await unsafe.apply(input(serviceId, "kick-2", "suid-3", "y")); expect(await unsafe.finishKick(serviceId, MATERIALIZER.id, "a")).toBe(false);
-    await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "a", 11, 10)).resolves.toMatchObject({ targetSuid: "suid-3" });
+    await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "a", 11, 10)).resolves.toMatchObject({ targetSuid: canonicalSuid("suid-3") });
   });
   it("AC9 crashed holder is recovered after lease expiry", async () => {
     const { unsafe, serviceId } = await unsafeStore(); await unsafe.apply(input(serviceId, "kick", "suid-2", "x")); await unsafe.acquireKick(serviceId, MATERIALIZER.id, "a", 10, 10);
@@ -234,11 +259,11 @@ describe("SDT-G23 unsafe-window MV core", () => {
     // eligible for the recovery lease.
     await unsafe.apply(input(serviceId, "kick-after-crash", "suid-3", "y"));
     await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "b", 11, 10)).rejects.toMatchObject({ code: "UNSAFE_KICK_LEASE_HELD" });
-    await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "b", 21, 10)).resolves.toMatchObject({ targetSuid: "suid-3" });
+    await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "b", 21, 10)).resolves.toMatchObject({ targetSuid: canonicalSuid("suid-3") });
   });
   it("AC9 missed waitUntil is recoverable by later cron acquisition", async () => {
     const { unsafe, serviceId } = await unsafeStore(); await unsafe.apply(input(serviceId, "kick", "suid-2", "x"));
-    await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "cron", 100, 10)).resolves.toMatchObject({ targetSuid: "suid-2" });
+    await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "cron", 100, 10)).resolves.toMatchObject({ targetSuid: canonicalSuid("suid-2") });
   });
   it("AC6 Worker paging mutation fails if supportsServerPaging regresses to full-table queryRows", async () => {
     const calls: Array<{ serviceId: string; viewId: string; options: unknown }> = [];
@@ -268,14 +293,15 @@ describe("SDT-G23 unsafe-window MV core", () => {
     expect([...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("")).toBe(provenance.sha256);
     const trace = fixture as { arrivals: Array<{ eventId: string; suid: string }>; unsafeTentative: string[]; safeOrderedFold: string[] };
     const { mv, unsafe, serviceId } = await unsafeStore();
-    for (const event of trace.arrivals) {
+    const arrivals = trace.arrivals.map((event) => ({ ...event, suid: canonicalSuid(event.suid) }));
+    for (const event of arrivals) {
       await unsafe.apply(input(serviceId, event.eventId, event.suid, event.eventId, { mutations: fixtureMutation(event.eventId, event.suid) }));
     }
     const tentative = await mv.queryRowsWithTotal(serviceId, MATERIALIZER.id, { limit: 10 });
     expect(tentative.rows.map((row) => (row.value as { eventId: string }).eventId)).toEqual(trace.unsafeTentative);
     let checkpoint = "";
-    for (const event of [...trace.arrivals].sort((left, right) => left.suid.localeCompare(right.suid))) {
-      await mv.applyMutationsAndAdvanceCheckpoint({ serviceId, viewId: MATERIALIZER.id, generation: 0, expectedLastSuid: checkpoint, lastSuid: event.suid, definitionVersion: 1, updatedAt: 1, mutations: fixtureMutation(event.eventId, event.suid) });
+    for (const event of [...arrivals].sort((left, right) => left.suid.localeCompare(right.suid))) {
+      await mv.applyMutationsAndAdvanceCheckpoint({ serviceId, viewId: MATERIALIZER.id, generation: 0, expectedLastSuid: checkpoint === "" ? null : checkpoint, lastSuid: event.suid, definitionVersion: 1, updatedAt: 1, mutations: normalizeMutations(fixtureMutation(event.eventId, event.suid)) });
       checkpoint = event.suid;
     }
     const safeFinal = await mv.queryRows(serviceId, MATERIALIZER.id, { generation: 0 });

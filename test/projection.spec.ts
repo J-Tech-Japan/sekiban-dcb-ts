@@ -9,9 +9,9 @@ import { PUBLISHED_SAFE_WINDOW_MS, ProjectionRuntime, projectionIdFor, safeWindo
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import type { ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
+import { g32Message, g32Suid, g32SuidAt } from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
-const PAYLOAD = "cGF5bG9hZA==";
 
 function unique(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -29,19 +29,18 @@ function message(
   tag: string,
   enqueuedAt: number,
 ): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId,
     allocatorLineageId: "test-projection-lineage",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,
-    suid,
-    payload: PAYLOAD,
+    // These SafeWindow fixtures need a physical tick segment near the
+    // injected clock, not the epoch-adjacent generic fixture default.
+    suid: g32SuidAt(Math.max(999, enqueuedAt), suid),
     eventTags: [tag],
-    provenance: "pre-g27-queue",
     enqueuedAt,
-  };
+  });
 }
 
 function postgresStore(): PostgresEventStore {
@@ -86,14 +85,14 @@ describe("SDT-G8 live projection", () => {
       serviceId,
       projectionId,
       expectedLastSuid: null,
-      lastSuid: "suid-00000000000000000000000000000001",
+      lastSuid: g32Suid("1"),
       stateJson: JSON.stringify({ applied: ["first"] }),
       version: 1,
       updatedAt: 1_000,
     };
     const stale = {
       ...first,
-      lastSuid: "suid-00000000000000000000000000000002",
+      lastSuid: g32Suid("2"),
       stateJson: JSON.stringify({ applied: ["first", "stale"] }),
       version: 2,
       updatedAt: 2_000,

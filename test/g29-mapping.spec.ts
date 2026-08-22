@@ -33,7 +33,7 @@ describe("SDT-G29 mapping authority", () => {
     expect(stateResponse.status).toBe(200);
     const state = await stateResponse.json<{ events: Array<{ eventId: string; eventType?: string; suid?: string; eventTags?: string[] }> }>();
     const stored = state.events.find((event) => event.eventId === eventId);
-    expect(stored).toMatchObject({ eventType: "RoomCreated:1", eventTags: [tag] });
+    expect(stored).toMatchObject({ eventType: "RoomCreated", eventTags: [tag] });
     const callerSelectedVersion = validateCommitEnvelope({
       version: 1,
       eventCandidates: [{ payload: payloadBase64, eventPayloadName: "RoomCreated", eventPayloadVersion: 99, tags: [tag] }],
@@ -42,12 +42,11 @@ describe("SDT-G29 mapping authority", () => {
     const admission: MappingAdmissionEvidence = {
       eventPayloadName: written.writtenEvents[0]!.eventPayloadName,
       eventType: stored!.eventType!,
-      registeredVersion: 1,
       payloadBase64,
       storedEventId: eventId,
       storedSuid: stored!.suid ?? written.writtenEvents[0]!.sortableUniqueIdValue,
       tags: stored!.eventTags ?? [tag],
-      callerSelectedVersionRejected: "error" in callerSelectedVersion,
+      versionOptionRejected: "error" in callerSelectedVersion,
     };
     observed = await observePortableMappingExecution(admission);
   });
@@ -57,8 +56,8 @@ describe("SDT-G29 mapping authority", () => {
     const runtime = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
     const runtimeResult = await runtime.commands.execute("create-room", { roomId: "g29-mapping-runtime-bridge", name: "Observed" }, { now: "mapping-fixed-now" });
     expect(mapping.schemaVersion).toBe(1);
-    expect(runtimeResult).toMatchObject({ kind: "committed", events: [{ eventType: "RoomCreated:1" }] });
-    expect(observed.candidate.events[0]?.eventType).toBe("RoomCreated:1");
+    expect(runtimeResult).toMatchObject({ kind: "committed", events: [{ eventType: "RoomCreated" }] });
+    expect(observed.candidate.events[0]?.eventType).toBe("RoomCreated");
     expect(observed.decisionLogBytes).toContain("mapping-fixed-now");
     expect(execution.runtimeBridgeOutcome).toBe("committed");
     expect(execution.eventTypes).toEqual(meetingRoomDomain.events.map((event) => event.eventType));
@@ -68,7 +67,7 @@ describe("SDT-G29 mapping authority", () => {
     expect(execution.doTs.candidate.events).toEqual(execution.portable.candidate.events);
     expect(execution.doTs.claims).toEqual(execution.portable.claims);
     expect(execution.doTs.decisionLogBytes).toBe(execution.portable.decisionLogBytes);
-    expect(execution.admission).toMatchObject({ eventPayloadName: "RoomCreated", eventType: "RoomCreated:1", registeredVersion: 1, callerSelectedVersionRejected: true });
+    expect(execution.admission).toMatchObject({ eventPayloadName: "RoomCreated", eventType: "RoomCreated", versionOptionRejected: true });
     expect(assertMappingContract(observed.contract, mapping)).toEqual({ rows: 13, columns: 7 });
   });
 

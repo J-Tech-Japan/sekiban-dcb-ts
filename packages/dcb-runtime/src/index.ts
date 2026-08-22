@@ -10,7 +10,7 @@ import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
-import { composeRuntime, registeredEventVersions, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
+import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
@@ -77,6 +77,42 @@ export {
   systemOrderClock,
 } from "./allocator/OrderClock";
 export type { OrderAllocationRange, OrderClock } from "./allocator/OrderClock";
+export {
+  DOTNET_MAX_TICKS,
+  DOTNET_TICKS_PER_MILLISECOND,
+  DOTNET_UNIX_EPOCH_TICKS,
+  MAX_UNIX_MILLISECONDS,
+  SORTABLE_UNIQUE_ID_DIGITS,
+  SORTABLE_UNIQUE_ID_RANDOM_DIGITS,
+  SORTABLE_UNIQUE_ID_TICKS_DIGITS,
+  SortableUniqueIdError,
+  assertDotNetTicks,
+  assertSortableUniqueId,
+  compareSortableUniqueId,
+  cryptoRandomSortableUniqueIdSuffix,
+  dotNetTicksToUnixMs,
+  formatSortableUniqueId,
+  isSortableUniqueId,
+  unixMsToDotNetTicks,
+} from "./allocator/SortableUniqueId";
+export type { ParsedSortableUniqueId, SortableUniqueIdErrorCode } from "./allocator/SortableUniqueId";
+export {
+  MAX_PUBLISHED_SAFE_WINDOW_MS,
+  PUBLISHED_SAFE_WINDOW_MS,
+  safeWindowCeilingExceeded,
+  safeWindowCutoffSuid,
+  safeWindowMs,
+} from "./safeWindow";
+export {
+  SERIALIZED_COMMIT_CORRELATION_ID,
+  SERIALIZED_SEKIBAN_EXECUTOR,
+  createUuidV7,
+  isRfc4122Uuid,
+  isUuidV7,
+  serializedEventMetadata,
+  writeTimestampUtc,
+} from "./eventRecord";
+export type { SerializedEventMetadata } from "./eventRecord";
 export type {
   DeliveryCoreEnvironment,
   DeliveryCoreFailure,
@@ -102,6 +138,7 @@ export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
 export {
   composeRuntime,
   createRuntimeCommitPort,
+  registeredEventParsers,
   RuntimeCommandRegistry,
 } from "./composition";
 export type {
@@ -188,7 +225,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
-          registeredEventVersions: registeredEventVersions(options.domain),
+          registeredEventParsers: registeredEventParsers(options.domain),
         });
       }
       if (

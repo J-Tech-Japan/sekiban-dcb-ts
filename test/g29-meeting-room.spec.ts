@@ -21,6 +21,7 @@ import {
 import { reservationMaterializer, roomMaterializer } from "../samples/meeting-room/src/d1-mv";
 import mapping from "../docs/SDT-G29-mapping.json";
 import preRewriteFixture from "./fixtures/g29-pre-rewrite-stored-outbox.json";
+import { g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 function initialState(projector: ProjectorLike): unknown {
   return typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
@@ -56,67 +57,8 @@ function encodeFixtureBytes(value: Record<string, unknown>): string {
   return btoa(binary);
 }
 
-function decodePayload(value: unknown): Record<string, unknown> {
-  if (typeof value !== "string") throw new Error("G29 pre-rewrite stored payload is not bytes");
-  const binary = atob(value);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("G29 pre-rewrite payload is not an object");
-  return parsed as Record<string, unknown>;
-}
-
-function replayCommittedPreRewriteBytes(value = preRewriteFixture) {
-  const stored = value.storedBytes.map(decodeFixtureBytes);
-  const outbox = value.outboxBytes.map(decodeFixtureBytes);
-  if (stored.length !== 2 || outbox.length !== 2) throw new Error("G29 pre-rewrite fixture must contain two stored and two outbox rows");
-
-  const first = stored[0]!;
-  const second = stored[1]!;
-  const firstPayload = decodePayload(first.payload);
-  if (first.eventType !== undefined || first.provenance !== "pre-g27" || typeof firstPayload.eventType !== "string") {
-    throw new Error("G29 legacy discriminator/provenance fixture boundary was lost");
-  }
-  if (second.eventType !== value.expected.canonicalEventType || second.provenance !== "g27") {
-    throw new Error("G29 canonical identity/provenance fixture boundary was lost");
-  }
-  const firstOutbox = outbox[0]!;
-  const secondOutbox = outbox[1]!;
-  if (firstOutbox.eventId !== first.eventId || firstOutbox.provenance !== "pre-g27-queue" ||
-      (firstOutbox.payload as Record<string, unknown>)?.eventType !== "RoomCreated") {
-    throw new Error("G29 legacy outbox discriminator was lost");
-  }
-  if (secondOutbox.eventId !== second.eventId || secondOutbox.eventType !== second.eventType || secondOutbox.provenance !== "g27") {
-    throw new Error("G29 G27 outbox identity was lost");
-  }
-
-  const projector = meetingRoomProjectors.roomProjector;
-  const initial = typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
-  const records: EventRecord[] = [
-    {
-      eventType: `${firstPayload.eventType}:1`,
-      eventName: String(firstPayload.eventType),
-      payload: firstPayload,
-      tags: [roomTag(value.expected.roomId)],
-      ordinal: "0",
-    },
-    {
-      eventType: String(second.eventType),
-      eventName: String(second.eventType).split(":")[0],
-      payload: decodePayload(second.payload),
-      tags: [roomTag(value.expected.roomId)],
-      ordinal: "1",
-    },
-  ];
-  for (const [index, row] of stored.entries()) {
-    const plan = roomMaterializer.plan(row as never);
-    if (plan.rowUpserts.length !== 1) throw new Error(`G29 rewritten materializer dropped fixture row ${index}`);
-  }
-  const afterCreated = projector.apply(initial, records[0]!);
-  return projector.apply(afterCreated, records[1]!);
-}
-
 describe("SDT-G29 meeting-room authoring portability", () => {
-  it("derives canonical identity and event-declared tags through the real session", async () => {
+  it("derives the G32 payload-name identity and event-declared tags through the real session", async () => {
     let candidate: CandidateEnvelope | undefined;
     const result = await executeCommand(createRoomCommand, { roomId: "r-g29", name: "Portable" }, {
       timeProvider: { now: () => "business-clock-1" },
@@ -129,7 +71,7 @@ describe("SDT-G29 meeting-room authoring portability", () => {
     expect(result.status).toBe("accepted");
     expect(candidate?.events[0]).toMatchObject({
       eventName: "RoomCreated",
-      eventType: "RoomCreated:1",
+      eventType: "RoomCreated",
       tags: [{ id: "room:r-g29" }],
     });
     expect(candidate?.events[0]?.payload).not.toHaveProperty("eventType");
@@ -137,13 +79,13 @@ describe("SDT-G29 meeting-room authoring portability", () => {
     expect(mapping.rows.find((row) => row.rowId === "tags")?.doTs).toBe("event.tags(payload)");
   });
 
-  it("replays a mixed legacy/new history through the discriminated state union", () => {
+  it("replays a G32 history through the discriminated state union without a payload discriminator", () => {
     const projector = meetingRoomProjectors.roomProjector;
     const initial = typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
     const created: EventRecord = {
       eventType: meetingRoomEvents.roomCreated.eventType,
       eventName: meetingRoomEvents.roomCreated.name,
-      payload: { eventType: "RoomCreated", roomId: "r-mixed", name: "Legacy" },
+      payload: { roomId: "r-mixed", name: "Created" },
       tags: [roomTag("r-mixed")],
       ordinal: "0",
     };
@@ -156,31 +98,28 @@ describe("SDT-G29 meeting-room authoring portability", () => {
     };
     const afterCreated = projector.apply(initial, created);
     const afterReleased = projector.apply(afterCreated, released);
-    expect(afterReleased).toEqual({ status: "released", version: 2, roomId: "r-mixed", name: "Legacy" });
+    expect(afterReleased).toEqual({ status: "released", version: 2, roomId: "r-mixed", name: "Created" });
   });
 
-  it("replays immutable pre-rewrite stored/outbox bytes through the real materializer and preserves identity", () => {
-    expect(replayCommittedPreRewriteBytes()).toEqual({ status: "released", version: 2, roomId: "r-g29-bytes", name: "Legacy bytes" });
+  it("preserves the pre-cutover fixture bytes only as a negative: G32 never replays them", () => {
     for (const bytes of [...preRewriteFixture.storedBytes, ...preRewriteFixture.outboxBytes]) {
       const decoded = decodeFixtureBytes(bytes);
       expect(encodeFixtureBytes(decoded)).toBe(bytes);
     }
+    const legacyRow = decodeFixtureBytes(preRewriteFixture.storedBytes[0]!);
+    expect(() => roomMaterializer.plan(legacyRow as never)).toThrow(SyntaxError);
   });
 
-  it("makes loss of either the legacy discriminator or G27 provenance an exact replay failure", () => {
-    const withoutLegacyDiscriminator = structuredClone(preRewriteFixture);
-    const legacy = decodeFixtureBytes(withoutLegacyDiscriminator.storedBytes[0]!);
-    const legacyPayload = decodePayload(legacy.payload);
-    delete legacyPayload.eventType;
-    legacy.payload = encodeFixtureBytes(legacyPayload);
-    withoutLegacyDiscriminator.storedBytes[0] = encodeFixtureBytes(legacy);
-    expect(() => replayCommittedPreRewriteBytes(withoutLegacyDiscriminator)).toThrow("legacy discriminator");
-
-    const withoutG27Provenance = structuredClone(preRewriteFixture);
-    const canonical = decodeFixtureBytes(withoutG27Provenance.storedBytes[1]!);
-    delete canonical.provenance;
-    withoutG27Provenance.storedBytes[1] = encodeFixtureBytes(canonical);
-    expect(() => replayCommittedPreRewriteBytes(withoutG27Provenance)).toThrow("canonical identity/provenance");
+  it("does not payload-sniff a missing G32 EventType", () => {
+    const missingIdentity = {
+      eventId: g32EventId("missing-materializer-identity"),
+      suid: g32Suid("missing-materializer-identity"),
+      payload: JSON.stringify({ eventType: "RoomReserved", reservationId: "missing", roomId: "room" }),
+      eventTags: ["reservation:missing"],
+      eventType: undefined,
+      provenance: "g32" as const,
+    };
+    expect(reservationMaterializer.plan(missingIdentity as never)).toEqual({ rowUpserts: [], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] });
   });
 
   it("preserves the two-tag reservation candidate and release noop", async () => {
@@ -206,62 +145,58 @@ describe("SDT-G29 meeting-room authoring portability", () => {
   });
 
   it("keeps event identity, allocator fields, and public view policy on separate owners", () => {
-    expect(meetingRoomEvents.roomCreated.eventType).toBe("RoomCreated:1");
+    expect(meetingRoomEvents.roomCreated.eventType).toBe("RoomCreated");
     expect(meetingRoomEvents.roomCreated.eventType).not.toContain("eventId");
     expect(meetingRoomEvents.roomCreated.eventType).not.toContain("suid");
     expect(meetingRoomProjectors.reservationProjector.tag.of("r").id).toBe("reservation:r");
     expect(reservationTag("res-g29").id).toBe("reservation:res-g29");
   });
 
-  it("keeps composed polling family-safe for legacy and canonical deliveries", () => {
+  it("keeps composed polling family-safe for G32 canonical deliveries", () => {
     const composed = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
     const roomProjector = composed.projectors.resolve("RoomProjector");
     const reservationProjector = composed.projectors.resolve("ReservationProjector");
     expect(roomProjector).toBeDefined();
     expect(reservationProjector).toBeDefined();
     expect(meetingRoomDomain.events.map((value) => value.eventType)).toEqual([
-      "RoomCreated:1",
-      "RoomReserved:1",
-      "ReservationCancelled:1",
-      "RoomReleased:1",
+      "RoomCreated",
+      "RoomReserved",
+      "ReservationCancelled",
+      "RoomReleased",
     ]);
     expect((meetingRoomDomain.projectors[1] as { subscribedEventTypes: readonly string[] }).subscribedEventTypes).toEqual([
-      "RoomReserved:1",
-      "ReservationCancelled:1",
+      "RoomReserved",
+      "ReservationCancelled",
     ]);
     const event = {
-      eventId: "debug",
-      suid: "debug",
-      payload: btoa(JSON.stringify({ eventType: "RoomReserved", reservationId: "debug", roomId: "room", userId: "user" })),
+      eventId: g32EventId("debug"),
+      suid: g32Suid("debug"),
+      payload: JSON.stringify({ reservationId: "debug", roomId: "room", userId: "user" }),
       eventTags: ["reservation:debug"],
     } as const;
-    expect(roomProjector!.apply(roomProjector!.initialState(), { ...event, provenance: "pre-g27" })).toEqual(roomProjector!.initialState());
-    expect(reservationProjector!.apply(reservationProjector!.initialState(), { ...event, provenance: "pre-g27" })).toMatchObject({ status: "reserved" });
-    expect(roomProjector!.apply(roomProjector!.initialState(), { ...event, eventType: "RoomReserved:1", provenance: "g27" })).toEqual(roomProjector!.initialState());
-    expect(reservationProjector!.apply(reservationProjector!.initialState(), { ...event, eventType: "RoomReserved:1", provenance: "g27" })).toMatchObject({ status: "reserved" });
+    expect(roomProjector!.apply(roomProjector!.initialState(), { ...event, eventType: "RoomReserved", provenance: "g32" })).toEqual(roomProjector!.initialState());
+    expect(reservationProjector!.apply(reservationProjector!.initialState(), { ...event, eventType: "RoomReserved", provenance: "g32" })).toMatchObject({ status: "reserved" });
   });
 
-  it("dispatches materializers by stored identity and fences legacy sniffing to pre-G27 rows", () => {
-    const payload = (value: unknown) => btoa(JSON.stringify(value));
+  it("dispatches materializers by durable G32 identity and never payload-sniffs", () => {
+    const payload = (value: unknown) => JSON.stringify(value);
     const canonical = {
-      eventId: "canonical-reservation",
-      suid: "suid-canonical-reservation",
+      eventId: g32EventId("canonical-reservation"),
+      suid: g32Suid("canonical-reservation"),
       payload: payload({ reservationId: "canonical-reservation", roomId: "room", userId: "user" }),
       eventTags: ["reservation:canonical-reservation"],
-      eventType: "RoomReserved:1",
-      provenance: "g27" as const,
+      eventType: "RoomReserved",
+      provenance: "g32" as const,
     };
     expect(reservationMaterializer.plan(canonical).rowUpserts).toHaveLength(1);
     expect(roomMaterializer.plan(canonical)).toEqual({ rowUpserts: [], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] });
 
-    const legacy = {
+    const droppedIdentity = {
       ...canonical,
-      eventId: "legacy-reservation",
-      payload: payload({ eventType: "RoomReserved", reservationId: "legacy-reservation", roomId: "room", userId: "user" }),
+      eventId: g32EventId("dropped-reservation"),
+      payload: payload({ eventType: "RoomReserved", reservationId: "dropped-reservation", roomId: "room", userId: "user" }),
       eventType: undefined,
-      provenance: "pre-g27" as const,
     };
-    expect(reservationMaterializer.plan(legacy).rowUpserts).toHaveLength(1);
-    expect(reservationMaterializer.plan({ ...legacy, provenance: "g27", eventType: undefined })).toEqual({ rowUpserts: [], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] });
+    expect(reservationMaterializer.plan(droppedIdentity as never)).toEqual({ rowUpserts: [], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] });
   });
 });

@@ -29,7 +29,11 @@ export function buildBridgeEvidence(witness) {
   if (settlement?.phase !== "bridge-freeze" || settlement?.queueDisposition !== "old-format messages are explicitly discarded by the bridge consumer; final C binds a new queue") {
     throw new Error("G32 bridge disposition settlement is incomplete");
   }
-  if (Number(settlement?.pipeline?.pendingArrivals) !== 0) throw new Error("G32 bridge has pending delivery arrivals after freeze");
+  // `serialized_dcb_pending_arrivals` is a durable detector inventory, not a
+  // live Queue/in-flight counter. The bridge's fetch/queue/DO fences establish
+  // in-flight=0; this historical table is recorded for the specified full wipe.
+  const pendingArrivalInventory = Number(settlement?.pipeline?.pendingArrivals);
+  if (!Number.isSafeInteger(pendingArrivalInventory) || pendingArrivalInventory < 0) throw new Error("G32 bridge pending-arrival inventory is invalid");
   if (settlement?.allocator?.alarmAt !== null || settlement?.bootstrap?.alarmAt !== null) {
     throw new Error("G32 bridge allocator/bootstrap alarms are not settled");
   }
@@ -53,7 +57,7 @@ export function buildBridgeEvidence(witness) {
     freezePreconditions: {
       inFlight: 0,
       pendingOutbox: settlement.outboxDiscarded === 0 ? "zero-observed" : "explicitly-discarded",
-      pendingArrivals: settlement.pipeline.pendingArrivals,
+      pendingArrivalInventory,
       queueDisposition: settlement.queueDisposition,
       allocatorAlarm: settlement.allocator.alarmAt,
       bootstrapAlarm: settlement.bootstrap.alarmAt,

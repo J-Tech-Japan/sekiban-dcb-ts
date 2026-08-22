@@ -26,6 +26,7 @@ import {
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 import { serviceIdForRequest } from "./testServiceId";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 
 export interface QueryWorkerEnv {
   POSTGRES_URL?: string;
@@ -107,6 +108,13 @@ function parseRequest(value: unknown): { value?: QueryRequest; error?: string } 
   if (value.waitForSortableUniqueId !== undefined && !isNonEmptyString(value.waitForSortableUniqueId)) {
     return { error: "waitForSortableUniqueId must be a non-empty string when present" };
   }
+  if (value.waitForSortableUniqueId !== undefined) {
+    try {
+      assertSortableUniqueId(value.waitForSortableUniqueId);
+    } catch {
+      return { error: "waitForSortableUniqueId must be a 30-digit SortableUniqueId" };
+    }
+  }
   return {
     value: {
       queryType: value.queryType,
@@ -135,13 +143,13 @@ function paginationFrom(value: unknown): { value?: Pagination; error?: string } 
 
 function decodePayload(entry: ProjectedQueryEntry): unknown {
   try {
-    const binary = atob(entry.payload);
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes));
+    // G32 projections carry the exact decoded JSON text from dcb_events.
+    // Do not revive the historical atob path: it would reinterpret already
+    // persisted bytes and hide a storage-format regression.
+    return JSON.parse(entry.payload);
   } catch {
-    // V1 transports arbitrary base64 payload bytes. A query result must remain
-    // valid JSON even when a deployed event-history projector contains bytes
-    // that are not themselves a JSON document.
+    // A projection value can still be a deliberately opaque string. The
+    // commit admission boundary has already guaranteed event payload JSON.
     return entry.payload;
   }
 }
