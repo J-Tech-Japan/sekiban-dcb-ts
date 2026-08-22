@@ -1,11 +1,11 @@
 {
   "task": "SDT-G29",
-  "status": "C'' placeholder: F3/F5/F6/F7 review closure is complete locally; evidence-only R'' updates the immutable candidate and retained-C line",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "R'' complete: F3/F5/F6/F7 review closure and candidate evidence recorded",
+  "candidateCommit": "41e3665c055a366eb3f0d1ebff49be5d9414fa99",
+  "sourceCommit": "41e3665c055a366eb3f0d1ebff49be5d9414fa99",
   "protocol": {
-    "candidate": "One immutable C contains the complete F1-F8 implementation, oracle map, required-root manifest, deployment source-commit witness wiring, and placeholder evidence.",
-    "bookkeeping": "R updates only this evidence document and appends the immutable C once to the retained-candidate fetch list.",
+    "candidate": "One immutable C'' contains the complete F3/F5/F6/F7 closure, oracle map, required-root manifest, deployment witness wiring, and placeholder evidence.",
+    "bookkeeping": "R'' updates only this evidence document and appends the immutable C'' once to the retained-candidate fetch list.",
     "preDeployOrder": [
       "config-and-bundle-diff",
       "pre-witness",
@@ -41,7 +41,7 @@
       "packages/dcb-domain/src",
       "packages/dcb-runtime/src"
     ],
-    "configuration": "9d9af443d55c5a4ea8581729bb43945d097dfe319c138b3a3ca852436c4d52bd",
+    "configuration": "324f41c17ef636f4086ca2a2f25519ead20d8eb958de957672d9a2870f7e9835",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
@@ -92,15 +92,15 @@
   "localValidation": {
     "status": "passed",
     "fullCheck": {
-      "command": "npm run check",
+      "command": "npm test && npm run typecheck && npm run lint",
       "result": "PASS",
       "testFiles": 43,
-      "tests": 313
+      "tests": 401
     },
     "focusedG29": {
       "result": "PASS",
-      "testFiles": 6,
-      "tests": 38
+      "testFiles": 3,
+      "tests": 109
     },
     "static": {
       "lint": "PASS",
@@ -121,16 +121,16 @@
     "oracles": [
       "F1 domain-source lint mutation",
       "F2 immutable stored/outbox bytes replay",
-      "F3 pinned authoring anchors",
+      "F3 pinned C# Validate/Evolve/ICommandWithHandler/ICommandContext/EventOrNone plus TS anchors",
       "F4 real receiver/Queue 8-cell matrix",
-      "F5 DO-ts mapping observation",
-      "F6 CommitWorker admission/storage",
-      "F7 four diagnostic quadrants",
+      "F5 shared DO-ts/portable mapping execution with restore decoder and 13x7 mutation matrix",
+      "F6 five real compatibility lanes plus typed fail-closed zero-dispatch fallback gate",
+      "F7 fresh/stale x version-match/mismatch diagnostics with exact raw field assertions",
       "F8 source-commit/raw witness/fixed-N tooling"
     ]
   },
   "remoteDeployment": {
-    "status": "completed",
+    "status": "inherited prior witnessed deployment; no deployed worker bundle or production topology change in F3/F5/F6/F7",
     "deployedRuntimeCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
     "sourceCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
     "commitEquality": {
@@ -1621,10 +1621,16 @@
     }
   },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "C is the complete implementation candidate; R is restricted to live evidence plus one retained-candidate append.",
+  "candidateGate": "C'' is the complete implementation candidate; R'' is restricted to live evidence plus one retained-candidate append.",
+  "candidateImpact": {
+    "candidateCommit": "41e3665c055a366eb3f0d1ebff49be5d9414fa99",
+    "deploymentRequired": false,
+    "workerBundleChanged": false,
+    "rationale": "F3/F5/F6/F7 changes are documentation, executable test/portable observation, compatibility fixtures, and diagnostics fixtures; none is imported by the deployed worker entrypoint. The prior witnessed production identity/data witness is retained unchanged."
+  },
   "ci": {
-    "workflowRun": 32550698795,
-    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/32550698795",
+    "workflowRun": 32553790351,
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/32553790351",
     "verify": "passed",
     "cosmosEmulator": "passed"
   }
