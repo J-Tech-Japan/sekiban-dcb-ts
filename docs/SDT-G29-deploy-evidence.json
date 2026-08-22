@@ -1,21 +1,21 @@
 {
   "task": "SDT-G29",
-  "status": "R3 evidence; local and preflight evidence complete, live witnessed deploy blocked by protected conformance token availability",
-  "candidateCommit": "2db888bc9e57e04b66b4525270d312e8ddf78530",
-  "sourceCommit": "2db888bc9e57e04b66b4525270d312e8ddf78530",
+  "status": "FIX-0 R5 witnessed deploy complete; direct doorbell restored for both views and fixed-N response visibility returned to sub-second p50",
+  "candidateCommit": "d6bfb5c5b4f5da1d44985199a4820786be6e89a1",
+  "sourceCommit": "d6bfb5c5b4f5da1d44985199a4820786be6e89a1",
   "protocol": {
-    "candidate": "C3 contains the sample authoring rewrite, V1-compatible command transport response mapping, mapping/compatibility/diagnostic fixtures, runtime per-view policy, witness tooling, oracle map, PR body, and this placeholder",
-    "bookkeeping": "R changes only this evidence document and appends C once to the retained-candidate fetch list",
-    "preDeployOrder": ["config-and-bundle-diff", "pre-witness", "receiver-deploy", "primary-deploy", "post-witness", "fixed-N-measurement"],
-    "deploymentIdentity": "existing g25-38219c8-20260820; no reseed, fresh serviceId, namespace, D1, Queue, or DO generation",
-    "secrets": "redacted",
+    "candidate": "C5 contains the C3 sample rewrite plus the direct-doorbell recovery, both-view production policy, explicit C3-to-C5 witness transition oracle, and measurement tooling",
+    "bookkeeping": "R changes only this evidence document and appends C5 once to the retained-candidate fetch list",
+    "preDeployOrder": ["config-and-bundle-diff", "pre-witness", "checked-in-additive-migration-apply", "receiver-deploy", "primary-deploy", "post-witness", "five-endpoint-conformance", "raw-v1-404", "fixed-N-measurement"],
+    "deploymentIdentity": "existing g25-38219c8-20260820f; no reseed, fresh serviceId, namespace, Queue, or DO generation",
+    "secrets": "new protected conformance token rotated by file-fed Wrangler secret input for FIX-0; old token intentionally invalidated; value redacted; rotation did not touch data, D1, or DO state; local token file removed after measurement",
     "selfReference": false
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "a1b29d920df1c8b6cb7d78ddf52cc5c400cab54d085cd9d0de2fe09a2c2d7221",
     "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
-    "configuration": "e6bc5360bd3652f3a8ab1ddebdaee849c720db30c25d1367df280415ca2a7b8a",
+    "configuration": "497a3e2cd482593abb63c98a5ca0cc6b256ce60b6479c4fbc61194521e422ebc",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
@@ -66,14 +66,121 @@
     "diagnostics": "passed: 8 tests across six raw fields and four derived quadrants",
     "compatibility": "passed: five lanes and identity fail-closed oracle",
     "sample": "passed: 12 focused tests including canonical materializer dispatch and legacy replay; clean Miniflare G15 and G16 app-layer E2E passed; full suite 304 tests passed",
-    "witness": "passed: 2 local witness tests; remote live witness not run"
+    "witness": "passed: C3-to-C5 transition oracle, 3 witness tests, remote pre/post identity/data comparison, five-endpoint conformance, raw V1 closure, and post-fix direct-doorbell tail evidence"
   },
   "remoteDeployment": {
-    "status": "blocked",
-    "reason": "dry-run preflight PASS; live witness requires the protected G29_CONFORMANCE_TOKEN_FILE, which is not available in this seat",
-    "preflight": "receiver and primary strict bundles passed; remote pipeline reports checked-in 0002_g27_event_identity.sql pending; MV has no pending migration",
-    "identityPolicy": "existing g25-38219c8-20260820 only; no reseed, fresh serviceId, namespace, generation, or destructive migration"
+    "status": "completed",
+    "preflight": "PASS: C5 receiver and primary strict bundles; pipeline and MV both reported no migrations to apply",
+    "migration": "no migration was applied during FIX-0; existing pipeline/MV schemas were preserved",
+    "fixDiagnosis": {
+      "before": "C3 had DIRECT_DOORBELL=true and a live DOWNSTREAM_DOORBELL binding, but ReservationProjector was declared queued and the allowlist contained only RoomProjector; direct delivery succeeded for the room view while the opted-in reservation list observed Queue latency",
+      "tailBefore": "direct_doorbell_delivery succeeded for RoomProjector; ReservationProjector was not in the effective direct set, and the fixed-N list witness measured queue delivery",
+      "change": "C5 declares both RoomProjector and ReservationProjector immediate-preferred and configures both primary and receiver allowlists with the exact two view IDs",
+      "tailAfter": "direct_doorbell_delivery status=success was observed for RoomCreated room and RoomReserved reservation/room tags under C5; no direct_doorbell_status queued-degraded or fail-fast event was observed",
+      "effectiveDirectSet": ["RoomProjector", "ReservationProjector"]
+    },
+    "identityPolicy": "existing g25-38219c8-20260820f only; no reseed, fresh serviceId, namespace, generation, destructive migration, or data reset",
+    "tokenRotation": {
+      "status": "completed",
+      "mechanism": "protected local file fed to wrangler secret put CONFORMANCE_TOKEN",
+      "oldToken": "intentionally invalidated",
+      "newToken": "redacted",
+      "dataD1DurableObjectImpact": "none",
+      "localFileAfterMeasurement": "deleted"
+    },
+    "receiverDeployment": {
+      "worker": "sekiban-dcb-meeting-room-doorbell",
+      "versionId": "85a7408f-25cc-441a-9de6-ae1c395adef7",
+      "serviceId": "g25-38219c8-20260820f",
+      "result": "C5 code upload/deploy completed",
+      "queueConsumer": "existing consumer preserved; Wrangler reported Queue already has a consumer, so no consumer deletion or replacement was performed"
+    },
+    "primaryDeployment": {
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "versionId": "3ae2ac86-0cfc-475b-bddf-707a8e485196",
+      "serviceId": "g25-38219c8-20260820f",
+      "result": "C5 completed; binding list shows DOWNSTREAM_DOORBELL receiver, DIRECT_DOORBELL=true, and both allowlisted views"
+    },
+    "preWitness": {
+      "capturedAt": "2026-08-22T02:54:32.205Z",
+      "endpoint": "/conformance/v1/g29-config",
+      "identitySource": "remote-g29-conformance",
+      "identityVerified": true,
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "serviceId": "g25-38219c8-20260820f",
+      "viewCount": 2,
+      "allowedViews": ["RoomProjector"],
+      "domainViewDeliveryClasses": {"RoomProjector": "immediate-preferred", "ReservationProjector": "queued"},
+      "directDoorbell": true,
+      "receiverMode": "separate",
+      "degradation": "queued-degraded",
+      "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "generation": "v2",
+      "dataDigest": "c49edd281190bfc19a02fc97633114e5aeb79a59ae95943853a34e3301e62374",
+      "rawV1": {"status": 404}
+    },
+    "postWitness": {
+      "capturedAt": "2026-08-22T02:56:48.910Z",
+      "endpoint": "/conformance/v1/g29-config",
+      "identityVerified": true,
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "serviceId": "g25-38219c8-20260820f",
+      "viewCount": 2,
+      "allowedViews": ["RoomProjector", "ReservationProjector"],
+      "domainDeliveryClass": "immediate-preferred",
+      "resolvedDeliveryClass": "immediate-preferred",
+      "domainViewDeliveryClasses": {"RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred"},
+      "directDoorbell": true,
+      "receiverMode": "separate",
+      "degradation": "queued-degraded",
+      "maxServiceBindingInvocations": 32,
+      "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "generation": "v2",
+      "rawDataDigest": "c49edd281190bfc19a02fc97633114e5aeb79a59ae95943853a34e3301e62374",
+      "rawV1": {"status": 404},
+      "comparison": "PASS: C3-to-C5 explicit transition oracle held worker/service/D1/Queue/generation, raw V1 closure, row/state/head/count data, and data digest; only the declared delivery policy and matching allowlist changed"
+    },
+    "fiveEndpointConformance": {
+      "token": "new rotated token, redacted",
+      "serviceId": "g25-38219c8-20260820f",
+      "authenticated": {
+        "commit": {"status": 200, "writtenEvents": 0},
+        "tag-latest-sortable": {"status": 200},
+        "tag-state": {"status": 200},
+        "query": {"status": 200},
+        "list-query": {"status": 200}
+      },
+      "rawUnauthenticated": {
+        "commit": 404,
+        "tag-latest-sortable": 404,
+        "tag-state": 404,
+        "query": 404,
+        "list-query": 404
+      },
+      "result": "PASS after C5; authenticated empty commit was a zero-write probe and all four authenticated reads succeeded; all five public raw V1 routes remained 404"
+    },
+    "oldDegradedMeasurement": {
+      "sampleCount": 10,
+      "artifact": "R4 pre-fix observation",
+      "responseToVisibleMs": {"p50": 2620.5025830000013, "p95": 4546.112667, "max": 4546.112667, "samples": 10},
+      "commandStartToVisibleMs": {"p50": 5186.136541, "p95": 7257.381042, "max": 7257.381042, "samples": 10},
+      "status": "all 10 committed with errorCount 0 and fallbackCount 0; checked-in sub-second response→visible gate failed because ReservationProjector was queue-owned"
+    },
+    "fixedNMeasurement": {
+      "sampleCount": 10,
+      "visibilityOracle": "opted-in /api/read/reservations list view; scalar room projection was not used",
+      "status": "all 10 HTTP 200 committed; errorCount 0; fallbackCount 0",
+      "commandStartToResponseMs": {"p50": 2352.394042, "p95": 4087.0894590000025, "max": 4087.0894590000025, "samples": 10},
+      "responseToVisibleMs": {"p50": 635.4232499999998, "p95": 1043.1692919999996, "max": 1043.1692919999996, "samples": 10},
+      "commandStartToVisibleMs": {"p50": 3254.9195, "p95": 4847.602250000004, "max": 4847.602250000004, "samples": 10},
+      "thresholdNote": "PASS: checked-in g29-measure.mjs response→visible p50 < 1000ms; total command-start→visible remains separately reported and is not claimed sub-second",
+      "probeData": "the fixed-N run intentionally added 10 room/reservation probe pairs after the post-witness comparison"
+    }
   },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "C=2db888bc9e57e04b66b4525270d312e8ddf78530; R3 updates only this evidence and appends C3 once to the retained-candidate fetch list"
+  "candidateGate": "C=d6bfb5c5b4f5da1d44985199a4820786be6e89a1; R5 updates only this evidence and appends C5 once to the retained-candidate fetch list"
 }
