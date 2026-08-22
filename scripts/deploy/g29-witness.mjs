@@ -219,22 +219,65 @@ export async function captureWitness(baseUrl, token, expected) {
   });
 }
 
+function isVerifiedG29Witness(witness) {
+  return witness?.identityVerified === true &&
+    witness?.endpoint === "/conformance/v1/g29-config" &&
+    witness?.identitySource === "remote-g29-conformance";
+}
+
+function isLegacyG26Witness(witness) {
+  return witness?.identityVerified === false &&
+    witness?.endpoint === "/conformance/v1/g26-config" &&
+    witness?.identitySource === "legacy-g26-conformance-fallback";
+}
+
+function legacyG26Expected(expected) {
+  return {
+    ...expected,
+    allowedViews: ["RoomProjector"],
+    domainViewDeliveryClasses: { RoomProjector: "immediate-preferred", ReservationProjector: "queued" },
+  };
+}
+
 function assertExpectedFields(witness, expected, phase) {
   for (const [field, value] of Object.entries(expected)) {
     if (JSON.stringify(witness[field]) !== JSON.stringify(value)) throw new Error(`G29 ${phase} witness identity/topology mismatch at ${field}`);
   }
 }
 
+export function assertCaptureWitnessProfile(witness, expected, allowLegacyG26Fallback = false) {
+  if (isVerifiedG29Witness(witness)) {
+    assertExpectedFields(witness, expected, "capture");
+    return Object.freeze({ profile: "g29", identitySource: witness.identitySource });
+  }
+  if (allowLegacyG26Fallback && isLegacyG26Witness(witness)) {
+    assertExpectedFields(witness, legacyG26Expected(expected), "legacy pre-capture");
+    return Object.freeze({ profile: "legacy-g26", identitySource: witness.identitySource });
+  }
+  throw new Error("G29 witness requires /conformance/v1/g29-config unless the pre-witness explicitly permits the authenticated G26 fallback");
+}
+
 export function assertWitnessStable(before, after, expected, beforeExpected = expected) {
-  assertExpectedFields(before, beforeExpected, "before");
+  // A pre-deploy C3 Worker exposes only the authenticated G26 topology
+  // endpoint. Its declared C3 delivery profile is the sole permitted legacy
+  // shape; a full G29 pre-witness instead uses the final profile directly.
+  assertExpectedFields(before, isLegacyG26Witness(before) ? beforeExpected : expected, "before");
   assertExpectedFields(after, expected, "after");
-  if (!before.identityVerified || !after.identityVerified) throw new Error("G29 witness did not verify the full G29 topology endpoint");
+  if (!isVerifiedG29Witness(after) || (!isVerifiedG29Witness(before) && !isLegacyG26Witness(before))) throw new Error("G29 witness did not verify the permitted pre/post topology endpoints");
   if (before.worker !== after.worker || before.serviceId !== after.serviceId || before.pipelineDatabaseId !== after.pipelineDatabaseId || before.materializedViewDatabaseId !== after.materializedViewDatabaseId || before.queue !== after.queue || before.generation !== after.generation) {
     throw new Error("G29 witness detected a namespace, service, queue, or generation change");
   }
   if (before.rawV1?.status !== 404 || after.rawV1?.status !== 404) throw new Error("G29 public V1 surface is not closed");
   const dataPreservation = assertPreWitnessSetPreserved(before.data, after.data);
   return { stable: true, fields: Object.keys(expected), dataPreservation };
+}
+
+export function assertFinalWitnessIdentity(sourceCommit, pre, post) {
+  if (typeof sourceCommit !== "string" || sourceCommit.length === 0) throw new Error("G29 final witness source commit is required");
+  if (!isVerifiedG29Witness(post)) throw new Error("G29 final post-witness did not verify the G29 topology endpoint");
+  if (!isVerifiedG29Witness(pre) && !isLegacyG26Witness(pre)) throw new Error("G29 final pre-witness did not verify an allowed topology endpoint");
+  if (post.sourceCommit !== sourceCommit) throw new Error(`G29 deployed runtime sourceCommit mismatch: expected ${sourceCommit}, observed ${String(post.sourceCommit)}`);
+  return Object.freeze({ preIdentitySource: pre.identitySource, postSourceCommit: post.sourceCommit, match: true });
 }
 
 export function assertSourceCommit(witness, sourceCommit) {
@@ -265,6 +308,7 @@ async function main() {
   }
   const tokenFile = required("--token-file", argument("--token-file", process.env.G29_CONFORMANCE_TOKEN_FILE));
   const token = readFileSync(tokenFile, "utf8").trim();
+  const allowLegacyG26Fallback = process.argv.includes("--allow-legacy-g26-fallback");
   const expected = {
     worker: required("--worker", argument("--worker", "sekiban-dcb-meeting-room-cloudflare-only")),
     serviceId: required("--service-id", argument("--service-id", process.env.G29_SERVICE_ID)),
@@ -283,7 +327,7 @@ async function main() {
     generation: "v2",
   };
   const witness = await captureWitness(required("--base-url", argument("--base-url", process.env.G29_BASE_URL)), token, expected);
-  if (!witness.identityVerified) throw new Error("G29 live witness requires /conformance/v1/g29-config, not the legacy fallback");
+  assertCaptureWitnessProfile(witness, expected, allowLegacyG26Fallback);
   writeFileSync(output, `${JSON.stringify(witness, null, 2)}\n`, "utf8");
   console.log(JSON.stringify(witness, null, 2));
 }

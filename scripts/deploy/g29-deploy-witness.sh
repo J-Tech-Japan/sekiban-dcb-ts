@@ -36,8 +36,7 @@ if [[ ! "${SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
   exit 2
 fi
 mkdir -p .artifacts
-node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[2],viewCount:2,allowedViews:["RoomProjector","ReservationProjector"],domainDeliveryClass:"immediate-preferred",resolvedDeliveryClass:"immediate-preferred",domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"immediate-preferred"},directDoorbell:true,receiverMode:"separate",degradation:"queued-degraded",maxServiceBindingInvocations:32,pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2"},null,2)+"\n")' "${EXPECTED_FILE}" "${SERVICE_ID}"
-cp "${EXPECTED_FILE}" "${BEFORE_EXPECTED_FILE}"
+node -e 'const fs=require("fs"); const final={worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[3],viewCount:2,allowedViews:["RoomProjector","ReservationProjector"],domainDeliveryClass:"immediate-preferred",resolvedDeliveryClass:"immediate-preferred",domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"immediate-preferred"},directDoorbell:true,receiverMode:"separate",degradation:"queued-degraded",maxServiceBindingInvocations:32,pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2"}; const legacy={...final,allowedViews:["RoomProjector"],domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"queued"}}; fs.writeFileSync(process.argv[1],JSON.stringify(final,null,2)+"\n"); fs.writeFileSync(process.argv[2],JSON.stringify(legacy,null,2)+"\n")' "${EXPECTED_FILE}" "${BEFORE_EXPECTED_FILE}" "${SERVICE_ID}"
 
 # Phase 1: checked-in config and bundle preflight. No deployment or data write.
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}"
@@ -63,8 +62,11 @@ trap 'rm -f "${TOKEN_FILE}"' EXIT
 # it does not touch D1, Durable Objects, Queue state, or the service identity.
 "${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "sekiban-dcb-meeting-room-cloudflare-only" < "${TOKEN_FILE}"
 
-# Phase 2: pre-witness is captured before either Worker is changed.
-node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${PRE_FILE}"
+# Phase 2: pre-witness is captured before either Worker is changed. The
+# deployed C3 runtime has the authenticated G26 endpoint and may expose only
+# its declared Room-fast/Reservation-queued profile; this explicit flag is
+# restricted to the pre-witness invocation.
+node scripts/deploy/g29-witness.mjs --allow-legacy-g26-fallback --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${PRE_FILE}"
 
 # Phase 3: the sealed final C is always deployed after the pre-witness.  The
 # migration commands are retained as checked-in no-op-or-additive checks; no

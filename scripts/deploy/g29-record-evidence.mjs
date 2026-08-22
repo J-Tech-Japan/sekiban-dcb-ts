@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { assertPreWitnessSetPreserved } from "./g29-witness.mjs";
+import { assertFinalWitnessIdentity, assertPreWitnessSetPreserved } from "./g29-witness.mjs";
 
 const root = process.cwd();
 
@@ -54,8 +54,7 @@ function witnessTopology(witness) {
 
 function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology, primaryDeployMode) {
   if (primaryDeployMode !== "deployed-final-c") throw new Error("G29 final evidence requires a witnessed deployment of the sealed final candidate");
-  if (pre.sourceCommit !== sourceCommit) throw new Error(`G29 pre-witness source commit mismatch: ${pre.sourceCommit}`);
-  if (post.sourceCommit !== sourceCommit) throw new Error(`G29 deployed source commit mismatch: ${post.sourceCommit}`);
+  const witnessIdentity = assertFinalWitnessIdentity(sourceCommit, pre, post);
   const dataPreservation = assertPreWitnessSetPreserved(pre.data, post.data);
   if (measurement.latency?.sampleCount !== 10 || measurement.latency?.samples?.length !== 10) throw new Error("G29 final evidence requires exactly N=10 raw samples");
   const probeWrites = measurement.latency.samples.map((sample) => ({ index: sample.index, roomId: sample.roomId, reservationId: sample.reservationId })).filter((sample) => typeof sample.roomId === "string" && typeof sample.reservationId === "string");
@@ -104,6 +103,8 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
       primaryDeployment: primaryDeployMode,
       receiverTopology: "service-binding-only receiver; primary exclusively owns the outbox Queue consumer",
       witnessRule: "every pre-captured row, head, and list entry is required to remain semantically identical after deployment; aggregate counts are recorded but are not an equality gate",
+      preWitnessIdentitySource: witnessIdentity.preIdentitySource,
+      postWitnessIdentitySource: "remote-g29-conformance",
     },
     treeDigests: {
       algorithm: "sha256(path NUL content NUL, paths sorted)",

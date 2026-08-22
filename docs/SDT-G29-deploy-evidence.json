@@ -32,7 +32,7 @@
       "packages/dcb-domain/src",
       "packages/dcb-runtime/src"
     ],
-    "configuration": "8d47e1deb318e62d534a0bf79ee3829ec6a5ecdb505e6181f44eede1ab473b9d",
+    "configuration": "287fd89e6eb4b9641acee43ab7cd86bff4e4e49328bf5556b42dfde09683f94e",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
