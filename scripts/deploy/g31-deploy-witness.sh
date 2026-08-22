@@ -34,7 +34,7 @@ if [[ "$(git rev-parse HEAD)" != "${SOURCE_COMMIT}" ]]; then
   exit 2
 fi
 mkdir -p .artifacts
-node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[2],pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2",waitFor:{sourceTarget:"unique-indexed-point-read",activeReceipt:"generation-definition-bound",safeHead:"unique-source-required",maxPointReads:252},directDoorbell:true,allowedViews:["RoomProjector","ReservationProjector"]},null,2)+"\n")' "${EXPECTED_FILE}" "${SERVICE_ID}"
+node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[2],pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2",waitFor:{sourceTarget:"unique-indexed-point-read",activeReceipt:"generation-definition-bound",safeHead:"unique-source-required",maxPointReads:254},directDoorbell:true,allowedViews:["RoomProjector","ReservationProjector"]},null,2)+"\n")' "${EXPECTED_FILE}" "${SERVICE_ID}"
 
 # Phase 1: sealed config/bundle/migration preflight only. No deployment or data write.
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G31_SOURCE_COMMIT:${SOURCE_COMMIT}"

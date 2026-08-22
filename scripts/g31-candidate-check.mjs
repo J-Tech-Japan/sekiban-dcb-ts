@@ -9,6 +9,8 @@ const manifestPath = resolve(root, "docs/SDT-G31-required-roots.json");
 const evidencePath = resolve(root, "docs/SDT-G31-deploy-evidence.json");
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
+const PRIOR_G31_CANDIDATE = "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c";
+const PRIOR_G31_EVIDENCE_COMMIT = "dae254c1c4311e185cdfd62570a00efb6d3fd83a";
 
 export function loadManifest(read = (path) => readFileSync(path, "utf8")) {
   const manifest = JSON.parse(read(manifestPath));
@@ -59,6 +61,30 @@ function digestAtCommit(commit, roots, run = (args) => execFileSync("git", args,
   return hash.digest("hex");
 }
 
+function assertEvidenceHistory(evidence) {
+  if (!Array.isArray(evidence?.history) || evidence.history.length === 0) {
+    throw new Error("G31 evidence must retain at least one prior C/R history entry");
+  }
+  for (const entry of evidence.history) {
+    if (!SHA.test(entry?.candidateCommit) || entry.sourceCommit !== entry.candidateCommit || !SHA.test(entry?.evidenceCommit)) {
+      throw new Error("G31 historical C/R identity is invalid");
+    }
+    if (entry.evidencePath !== "docs/SDT-G31-deploy-evidence.json") {
+      throw new Error("G31 historical evidence path is invalid");
+    }
+    if (entry.deployedRuntimeCommit !== entry.candidateCommit) {
+      throw new Error("G31 historical deployed runtime identity is invalid");
+    }
+  }
+  if (!evidence.history.some((entry) =>
+    entry.candidateCommit === PRIOR_G31_CANDIDATE &&
+    entry.evidenceCommit === PRIOR_G31_EVIDENCE_COMMIT,
+  )) {
+    throw new Error("G31 prior witnessed C/R history is missing");
+  }
+  return { historyEntries: evidence.history.length };
+}
+
 export function assertEvidence(evidence, manifest) {
   if (typeof evidence?.candidateCommit !== "string" || (evidence.candidateCommit !== "CANDIDATE" && !SHA.test(evidence.candidateCommit))) {
     throw new Error("G31 evidence candidateCommit invalid");
@@ -78,7 +104,11 @@ export function assertEvidence(evidence, manifest) {
       throw new Error("G31 candidate tree digest mismatch");
     }
   }
-  return { candidateCommit: evidence.candidateCommit, digestChecked: evidence.candidateCommit !== "CANDIDATE" };
+  return {
+    candidateCommit: evidence.candidateCommit,
+    digestChecked: evidence.candidateCommit !== "CANDIDATE",
+    ...assertEvidenceHistory(evidence),
+  };
 }
 
 export function assertFinalDeploymentIdentity(evidence) {
@@ -142,6 +172,31 @@ export function runSelfTest() {
   try { loadManifest(() => JSON.stringify({ ...manifest, postCandidateOperationalRecoveryPaths: ["scripts/deploy/g31-witness.mjs"] })); } catch (error) { selfAuthorizedFailed = String(error).includes("must not self-authorize"); }
   if (!selfAuthorizedFailed) throw new Error("G31 self-authorized post-C allowlist mutation did not fail");
   const commit = "c".repeat(40);
+  const history = [{
+    candidateCommit: PRIOR_G31_CANDIDATE,
+    sourceCommit: PRIOR_G31_CANDIDATE,
+    evidenceCommit: PRIOR_G31_EVIDENCE_COMMIT,
+    evidencePath: "docs/SDT-G31-deploy-evidence.json",
+    deployedRuntimeCommit: PRIOR_G31_CANDIDATE,
+  }];
+  assertEvidence({
+    candidateCommit: "CANDIDATE",
+    sourceCommit: "CANDIDATE",
+    treeDigests: {
+      algorithm: "sha256(path NUL content NUL, paths sorted)",
+      runtime: "0".repeat(64),
+      runtimeRoots: manifest.runtimeRoots,
+      configuration: "1".repeat(64),
+      configurationRoots: manifest.configurationRoots,
+    },
+    history,
+  }, manifest);
+  let missingHistoryFailed = false;
+  try { assertEvidence({ candidateCommit: "CANDIDATE", sourceCommit: "CANDIDATE", treeDigests: { algorithm: "sha256(path NUL content NUL, paths sorted)", runtime: "0".repeat(64), runtimeRoots: manifest.runtimeRoots, configuration: "1".repeat(64), configurationRoots: manifest.configurationRoots } }, manifest); } catch (error) { missingHistoryFailed = String(error).includes("retain at least one prior C/R"); }
+  if (!missingHistoryFailed) throw new Error("G31 historical C/R removal mutation did not fail");
+  let historyFailed = false;
+  try { assertEvidence({ candidateCommit: "CANDIDATE", sourceCommit: "CANDIDATE", treeDigests: { algorithm: "sha256(path NUL content NUL, paths sorted)", runtime: "0".repeat(64), runtimeRoots: manifest.runtimeRoots, configuration: "1".repeat(64), configurationRoots: manifest.configurationRoots }, history: [{ ...history[0], deployedRuntimeCommit: "d".repeat(40) }] }, manifest); } catch (error) { historyFailed = String(error).includes("historical deployed runtime"); }
+  if (!historyFailed) throw new Error("G31 historical C/R identity mutation did not fail");
   const final = {
     candidateCommit: commit,
     sourceCommit: commit,
@@ -172,7 +227,7 @@ export function runSelfTest() {
   return {
     requiredRoots: manifest.requiredRoots.length,
     declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length,
-    mutations: ["missing-file", "declared-root-removal", "self-authorized-allowlist", "deployment-identity", "deployment-required", "old-suid-gc", "strict-R-operational-edit", "retained-sha"],
+    mutations: ["missing-file", "declared-root-removal", "self-authorized-allowlist", "historical-c-r-removal", "historical-c-r-identity", "deployment-identity", "deployment-required", "old-suid-gc", "strict-R-operational-edit", "retained-sha"],
   };
 }
 

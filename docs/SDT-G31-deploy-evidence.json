@@ -1,8 +1,8 @@
 {
   "task": "SDT-G31",
-  "status": "R complete: sealed final-C witnessed deployment evidence recorded",
-  "candidateCommit": "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c",
-  "sourceCommit": "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c",
+  "status": "C-FIX-1 placeholder: prior C/R retained below; one new final-C witnessed deploy is pending",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
     "candidate": "One immutable C contains runtime, migrations, sample, CI, tests, documentation, witness tooling, candidate gates, manifest, and placeholder evidence.",
     "bookkeeping": "R changes only this evidence document and appends C once to the retained-candidate fetch list.",
@@ -20,6 +20,16 @@
       "old-SUID-after-GC"
     ]
   },
+  "history": [
+    {
+      "candidateCommit": "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c",
+      "sourceCommit": "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c",
+      "evidenceCommit": "dae254c1c4311e185cdfd62570a00efb6d3fd83a",
+      "evidencePath": "docs/SDT-G31-deploy-evidence.json",
+      "deployedRuntimeCommit": "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c",
+      "status": "prior witnessed C/R retained as SDT-G31-FIX-1 evidence history"
+    }
+  ],
   "recoveryContext": {
     "supersededAttempt": {
       "candidateCommit": "23c4bd4244a95afd21585bde5a12120571f8578c",

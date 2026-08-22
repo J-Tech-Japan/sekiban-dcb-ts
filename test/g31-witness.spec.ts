@@ -30,7 +30,7 @@ const expected = {
     sourceTarget: "unique-indexed-point-read",
     activeReceipt: "generation-definition-bound",
     safeHead: "unique-source-required",
-    maxPointReads: 252,
+    maxPointReads: 254,
   },
   directDoorbell: true,
   allowedViews: ["RoomProjector", "ReservationProjector"],

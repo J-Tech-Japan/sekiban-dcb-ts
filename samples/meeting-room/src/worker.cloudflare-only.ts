@@ -251,7 +251,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
         sourceTarget: "unique-indexed-point-read",
         activeReceipt: "generation-definition-bound",
         safeHead: "unique-source-required",
-        maxPointReads: 252,
+        maxPointReads: 254,
       },
       directDoorbell: config.enabled,
       allowedViews: config.allowedViews,

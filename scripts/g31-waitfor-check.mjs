@@ -23,14 +23,22 @@ function main() {
   const queryWorker = text("packages/dcb-runtime/src/http/SerializedQueryWorker.ts");
   const waitCore = scoped(queryWorker, "async function readD1WaitFacts", "function endpointFromPath", "d1-mv wait core");
   const waitLoop = scoped(queryWorker, "async function waitForD1Projection", "async function waitForProjection", "d1-mv wait loop");
-  required(queryWorker, "export const D1_WAIT_MAX_ITERATIONS = 125", "iteration cap");
-  required(queryWorker, "export const D1_WAIT_MAX_POINT_READS = 252", "point-read budget");
+  required(queryWorker, "export const D1_WAIT_MAX_ITERATIONS = 126", "deadline-preserving iteration cap");
+  required(queryWorker, "export const D1_WAIT_MAX_POINT_READS = 254", "point-read budget");
   required(waitCore, "readWaitForTarget", "unique source target lookup");
   required(waitCore, "readWaitForState", "generation-bound MV state lookup");
   required(waitCore, "target.kind === \"unavailable\"", "incident-before-success gate");
   required(waitLoop, "const deadline = requestStartedAt + safeWindowMs(dynamicLagBoundMs)", "absolute request deadline");
   required(waitLoop, "const confirmed = await probe()", "success recheck");
   required(waitLoop, "safeWindowCeilingExceeded(dynamicLagBoundMs)", "safe-window timeout gate");
+  required(queryWorker, "Math.min(iteration, 6)", "1000ms backoff cap");
+  required(waitLoop, "sleepToD1WaitDeadline", "read-cap deadline preservation");
+  required(waitLoop, "if (now() > deadline) return \"timeout\"", "no post-deadline probe");
+  const ceilingGate = waitLoop.indexOf("if (safeWindowCeilingExceeded(dynamicLagBoundMs)) return \"timeout\"");
+  const successGate = waitLoop.indexOf("if (d1WaitSucceeded(facts))");
+  if (ceilingGate < 0 || successGate < 0 || ceilingGate > successGate) {
+    throw new Error("SDT-G31 ceiling must fail closed after incident gating and before success");
+  }
   if (waitCore.includes("readAllEvents") || waitLoop.includes("readAllEvents")) {
     throw new Error("SDT-G31 d1-mv waitFor must not revive a source history scan");
   }
@@ -67,10 +75,21 @@ function main() {
   required(worker, "/conformance/v1/g31-config", "authenticated topology witness");
   required(worker, "/conformance/v1/g31-wait-state", "authenticated GC-state witness");
   required(worker, "waitForSortableUniqueId", "application-to-runtime wait propagation");
+
+  const waitFixture = text("test/g31-waitfor.spec.ts");
+  required(waitFixture, "records an active-generation wait receipt for stored no-change", "no-change receipt fixture");
+  required(waitFixture, "records an active-generation wait receipt for stored patch-not-found", "patch-not-found receipt fixture");
+  required(waitFixture, "records an active-generation wait receipt for stored delete-without-row", "delete-without-row receipt fixture");
+  required(waitFixture, "fails a non-stored SUID collision", "SUID collision fixture");
+  required(waitFixture, "fails a non-stored lineage mismatch", "lineage mismatch fixture");
+  required(waitFixture, "rechecks a real D1 rebuild-required", "mid-wait rebuild fixture");
+  required(waitFixture, "rechecks a real D1 target poison", "mid-wait poison fixture");
+  required(waitFixture, "actual D1 statement and rows-read budgets", "actual D1 SQL budget fixture");
+  required(waitFixture, "keeps 503 projection_unavailable status, code, and exact keys", "503 wire fixture");
   console.log(JSON.stringify({
     task: "SDT-G31",
     wait: "indexed source + generation-bound MV point reads",
-    budget: { maxIterations: 125, maxPointReads: 252 },
+    budget: { maxIterationSlots: 126, maxPointReads: 254 },
     sample: "one newest-first server wait list refresh",
   }, null, 2));
 }

@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
+import type { MaterializedViewMutationPlan } from "@sekiban/dcb-core";
 // @ts-expect-error Vite raw migration fixture.
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
@@ -109,6 +110,30 @@ function mutation(eventId: string, suid: string) {
   };
 }
 
+function noChangeMutation(): MaterializedViewMutationPlan {
+  return { rowUpserts: [], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] };
+}
+
+function patchNotFoundMutation(suid: string): MaterializedViewMutationPlan {
+  return {
+    rowUpserts: [],
+    rowPatches: [{ kind: "json_patch", rowKey: "missing", patch: { value: "x" }, rowVersion: 1, sourceSuid: suid, indexEntries: [] }],
+    rowDeletes: [],
+    indexEntries: [],
+    indexDeletes: [],
+  };
+}
+
+function deleteWithoutRowMutation(): MaterializedViewMutationPlan {
+  return {
+    rowUpserts: [],
+    rowPatches: [],
+    rowDeletes: [{ rowKey: "missing" }],
+    indexEntries: [],
+    indexDeletes: [],
+  };
+}
+
 async function sourceWithTarget(serviceId: string, eventId: string, suid: string): Promise<D1EventStore> {
   const source = new D1EventStore(d1());
   await source.initialize();
@@ -121,6 +146,133 @@ async function activeView(serviceId: string, lastSuid = ""): Promise<D1Materiali
   await views.initialize();
   await views.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: 1, updatedAt: 1, lastSuid });
   return views;
+}
+
+async function setLagBound(serviceId: string, estimateMs: number): Promise<void> {
+  await d1().prepare(
+    `INSERT INTO serialized_dcb_lag_estimates (service_id, estimate_ms, observed_at)
+     VALUES (?, ?, 0)
+     ON CONFLICT (service_id) DO UPDATE SET estimate_ms = excluded.estimate_ms, observed_at = excluded.observed_at`,
+  ).bind(serviceId, estimateMs).run();
+}
+
+/**
+ * This wraps real Miniflare D1 statements rather than a source/view port. It
+ * records the actual indexed source and MV wait SQL executions and rows read.
+ */
+class D1WaitSqlBudget {
+  statements = 0;
+  rowsRead = 0;
+  waitStatements = 0;
+  waitRowsRead = 0;
+  readonly database: D1Database;
+
+  constructor(
+    database: D1Database,
+    private readonly waitSql: (sql: string) => boolean,
+  ) {
+    this.database = new Proxy(database, {
+      get: (target, property) => {
+        if (property === "prepare") {
+          return (sql: string) => this.wrapStatement(target.prepare(sql), sql);
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as D1Database;
+  }
+
+  reset(): void {
+    this.statements = 0;
+    this.rowsRead = 0;
+    this.waitStatements = 0;
+    this.waitRowsRead = 0;
+  }
+
+  private record(sql: string, rowsRead: number): void {
+    this.statements += 1;
+    this.rowsRead += rowsRead;
+    if (this.waitSql(sql)) {
+      this.waitStatements += 1;
+      this.waitRowsRead += rowsRead;
+    }
+  }
+
+  private wrapStatement(statement: D1PreparedStatement, sql: string): D1PreparedStatement {
+    return new Proxy(statement, {
+      get: (target, property) => {
+        if (property === "bind") {
+          return (...values: unknown[]) => this.wrapStatement(target.bind(...values), sql);
+        }
+        if (property === "first") {
+          return async (columnName?: string) => {
+            const row = columnName === undefined ? await target.first() : await target.first(columnName);
+            this.record(sql, row === null ? 0 : 1);
+            return row;
+          };
+        }
+        if (property === "all") {
+          return async () => {
+            const result = await target.all();
+            this.record(sql, result.results.length);
+            return result;
+          };
+        }
+        if (property === "run") {
+          return async () => {
+            const result = await target.run();
+            this.record(sql, result.results.length);
+            return result;
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as D1PreparedStatement;
+  }
+}
+
+function sourceWaitSql(sql: string): boolean {
+  return sql.includes("WITH target AS") && sql.includes("serialized_dcb_wait_target_incidents");
+}
+
+function materializedViewWaitSql(sql: string): boolean {
+  return sql.includes("WITH active AS") && sql.includes("mv_wait_receipts");
+}
+
+async function runActualD1PendingWait(lagBoundMs: number): Promise<{
+  readonly response: Response;
+  readonly now: () => number;
+  readonly sleeps: readonly number[];
+  readonly sourceBudget: D1WaitSqlBudget;
+  readonly viewBudget: D1WaitSqlBudget;
+}> {
+  const serviceId = `g31-actual-budget-${crypto.randomUUID()}`;
+  const eventId = "g31-actual-budget-event";
+  const suid = "suid-00000000000000000000000000000310";
+  await sourceWithTarget(serviceId, eventId, suid);
+  await activeView(serviceId);
+  await setLagBound(serviceId, lagBoundMs);
+
+  const sourceBudget = new D1WaitSqlBudget(d1(), sourceWaitSql);
+  const viewBudget = new D1WaitSqlBudget(mvDatabase(), materializedViewWaitSql);
+  const source = new D1EventStore(sourceBudget.database);
+  const views = new D1MaterializedViewStore(viewBudget.database);
+  await source.initialize();
+  await views.initialize();
+  sourceBudget.reset();
+  viewBudget.reset();
+
+  let clock = 0;
+  const sleeps: number[] = [];
+  const response = await queryD1(source, views, serviceId, suid, {
+    now: () => clock,
+    sleep: async (milliseconds) => {
+      sleeps.push(milliseconds);
+      clock += milliseconds;
+    },
+  });
+  return { response, now: () => clock, sleeps, sourceBudget, viewBudget };
 }
 
 async function queryD1(
@@ -157,6 +309,8 @@ class FakeSource implements QueryProjectionStore, WaitForTargetSourcePort {
   targetReads = 0;
   lagReads = 0;
   fullScans = 0;
+  lagBoundMs = 0;
+  lagSamples: readonly number[] | undefined;
 
   async readWaitForTarget(): Promise<WaitForTargetLookup> {
     this.targetReads += 1;
@@ -170,7 +324,7 @@ class FakeSource implements QueryProjectionStore, WaitForTargetSourcePort {
 
   async currentLagBound(): Promise<number> {
     this.lagReads += 1;
-    return 0;
+    return this.lagSamples?.[Math.min(this.lagReads - 1, this.lagSamples.length - 1)] ?? this.lagBoundMs;
   }
 
   async listProjectionTags(): Promise<string[]> { return []; }
@@ -201,6 +355,64 @@ class FlappingMaterializedView implements MaterializedViewQueryPort {
   }
 }
 
+function flipRealD1WaitState(
+  views: D1MaterializedViewStore,
+  afterFirstRead: () => Promise<void>,
+): { readonly port: MaterializedViewQueryPort; readonly reads: () => number } {
+  let reads = 0;
+  return {
+    reads: () => reads,
+    port: {
+      initialize: () => views.initialize(),
+      queryRows: (...args) => views.queryRows(...args),
+      queryRowsWithTotal: (...args) => views.queryRowsWithTotal(...args),
+      hasTargetReceipt: (...args) => views.hasTargetReceipt(...args),
+      hasCheckpointAheadFinding: (...args) => views.hasCheckpointAheadFinding(...args),
+      readWaitForState: async (...args) => {
+        const result = await views.readWaitForState(...args);
+        reads += 1;
+        if (reads === 1) await afterFirstRead();
+        return result;
+      },
+    },
+  };
+}
+
+async function expectProjectionUnavailable(response: Response): Promise<void> {
+  expect(response.status).toBe(503);
+  const body = await response.json<Record<string, unknown>>();
+  expect(Object.keys(body).sort()).toEqual(["code", "error"]);
+  expect(body).toMatchObject({ code: "projection_unavailable" });
+  expect(typeof body.error).toBe("string");
+}
+
+async function assertStoredOutcomeReceipt(
+  outcome: "no-change" | "patch-not-found" | "delete-without-row",
+  mutations: MaterializedViewMutationPlan,
+): Promise<void> {
+  const serviceId = `g31-${outcome}-${crypto.randomUUID()}`;
+  const eventId = `${outcome}-event`;
+  const suid = `suid-0000000000000000000000000000${outcome.length.toString().padStart(2, "0")}`;
+  const source = await sourceWithTarget(serviceId, eventId, suid);
+  const views = await activeView(serviceId);
+  await expect(views.unsafeWindow().apply({
+    serviceId,
+    viewId: VIEW_ID,
+    generation: 0,
+    eventId,
+    suid,
+    safeHead: "",
+    updatedAt: 2,
+    mutations,
+  })).resolves.toMatchObject({ outcome, duplicate: false });
+  expect(await views.readWaitForState(serviceId, VIEW_ID, { eventId, suid })).toMatchObject({
+    activeGeneration: 0,
+    activeDefinitionVersion: 1,
+    targetReceipt: true,
+  });
+  expect((await queryD1(source, views, serviceId, suid)).status).toBe(200);
+}
+
 describe("SDT-G31 d1-mv waitFor", () => {
   beforeAll(async () => {
     await d1().batch(statements(d1(), `${pipelineMigration as string}\n${identityMigration as string}\n${waitIncidentMigration as string}`));
@@ -209,7 +421,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
     }
   });
 
-  it("succeeds via the active-generation receipt, then via the unique-source plus safe-head branch after receipt GC", async () => {
+  it("fast-path-satisfied: succeeds through the active-generation target receipt", async () => {
     const serviceId = `g31-receipt-${crypto.randomUUID()}`;
     const eventId = "g31-receipt-event";
     const suid = "suid-00000000000000000000000000000031";
@@ -226,8 +438,27 @@ describe("SDT-G31 d1-mv waitFor", () => {
       updatedAt: 2,
       mutations: mutation(eventId, suid),
     });
+    expect((await views.readWaitForState(serviceId, VIEW_ID, { eventId, suid })).targetReceipt).toBe(true);
     expect((await queryD1(source, views, serviceId, suid)).status).toBe(200);
+  });
 
+  it("queue-fallback-satisfied: succeeds through unique source plus active safe head after receipt GC", async () => {
+    const serviceId = `g31-receipt-gc-${crypto.randomUUID()}`;
+    const eventId = "g31-receipt-gc-event";
+    const suid = "suid-00000000000000000000000000000032";
+    const source = await sourceWithTarget(serviceId, eventId, suid);
+    const views = await activeView(serviceId);
+    const unsafe = views.unsafeWindow();
+    await unsafe.apply({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      eventId,
+      suid,
+      safeHead: "",
+      updatedAt: 2,
+      mutations: mutation(eventId, suid),
+    });
     await views.applyMutationsAndAdvanceCheckpoint({
       serviceId,
       viewId: VIEW_ID,
@@ -244,7 +475,24 @@ describe("SDT-G31 d1-mv waitFor", () => {
       "SELECT COUNT(*) AS count FROM mv_wait_receipts WHERE service_id = ? AND view_id = ? AND event_id = ?",
     ).bind(serviceId, VIEW_ID, eventId).first<{ count: number }>();
     expect(Number(receipts?.count)).toBe(0);
+    expect(await views.readWaitForState(serviceId, VIEW_ID, { eventId, suid })).toMatchObject({
+      targetReceipt: false,
+      safeContiguousHead: suid,
+    });
     expect((await queryD1(source, views, serviceId, suid)).status).toBe(200);
+  });
+
+  it("records an active-generation wait receipt for stored no-change", async () => {
+    await assertStoredOutcomeReceipt("no-change", noChangeMutation());
+  });
+
+  it("records an active-generation wait receipt for stored patch-not-found", async () => {
+    const suid = "suid-00000000000000000000000000000015";
+    await assertStoredOutcomeReceipt("patch-not-found", patchNotFoundMutation(suid));
+  });
+
+  it("records an active-generation wait receipt for stored delete-without-row", async () => {
+    await assertStoredOutcomeReceipt("delete-without-row", deleteWithoutRowMutation());
   });
 
   it("binds a receipt to the active generation and definition rather than an old view instance", async () => {
@@ -295,71 +543,181 @@ describe("SDT-G31 d1-mv waitFor", () => {
     expect(source.fullScans).toBe(0);
   });
 
-  it("returns 503 before either success branch for collision aliases, lineage aliases, checkpoint-ahead, rebuild, and poison", async () => {
+  it("fails a non-stored SUID collision before its aliased receipt can satisfy waitFor", async () => {
     const collisionService = `g31-collision-${crypto.randomUUID()}`;
     const collisionSuid = "suid-00000000000000000000000000000061";
     const collisionSource = await sourceWithTarget(collisionService, "first", collisionSuid);
-    const collisionViews = await activeView(collisionService, collisionSuid);
+    const collisionViews = await activeView(collisionService);
+    await collisionViews.unsafeWindow().apply({
+      serviceId: collisionService,
+      viewId: VIEW_ID,
+      generation: 0,
+      eventId: "first",
+      suid: collisionSuid,
+      safeHead: "",
+      updatedAt: 2,
+      mutations: mutation("first", collisionSuid),
+    });
     expect((await collisionSource.recordDelivery(message(collisionService, "aliased", collisionSuid), 1)).outcome).toBe("suid-collision");
-    expect((await queryD1(collisionSource, collisionViews, collisionService, collisionSuid)).status).toBe(503);
+    await expectProjectionUnavailable(await queryD1(collisionSource, collisionViews, collisionService, collisionSuid));
+  });
 
+  it("fails a non-stored lineage mismatch instead of degrading it to a timeout", async () => {
     const lineageService = `g31-lineage-${crypto.randomUUID()}`;
     const lineageSource = await sourceWithTarget(lineageService, "first", "suid-00000000000000000000000000000062");
     const lineageSuid = "suid-00000000000000000000000000000063";
     expect((await lineageSource.recordDelivery(message(lineageService, "wrong-lineage", lineageSuid, "wrong-lineage"), 1)).outcome).toBe("lineage-mismatch");
     const lineageViews = await activeView(lineageService, lineageSuid);
-    expect((await queryD1(lineageSource, lineageViews, lineageService, lineageSuid)).status).toBe(503);
-
-    for (const gate of ["checkpoint", "rebuild", "poison"] as const) {
-      const serviceId = `g31-${gate}-${crypto.randomUUID()}`;
-      const suid = "suid-00000000000000000000000000000070";
-      const source = await sourceWithTarget(serviceId, `${gate}-event`, suid);
-      const views = await activeView(serviceId, suid);
-      if (gate === "checkpoint") {
-        await views.recordCheckpointAhead({ serviceId, viewId: VIEW_ID, generation: 0, checkpointSuid: suid, storeMaxSuid: "", observedAt: 2 });
-      } else if (gate === "rebuild") {
-        await mvDatabase().prepare(
-          `INSERT INTO mv_unsafe_arrivals (service_id, view_id, generation, safe_head, arrival_watermark, rebuild_required)
-           VALUES (?, ?, 0, ?, ?, 1)`,
-        ).bind(serviceId, VIEW_ID, suid, suid).run();
-      } else {
-        await views.recordUnsafeFailureFinding({ serviceId, viewId: VIEW_ID, eventId: `${gate}-event`, suid, observedAt: 2 });
-      }
-      expect((await queryD1(source, views, serviceId, suid)).status).toBe(503);
-    }
+    await expectProjectionUnavailable(await queryD1(lineageSource, lineageViews, lineageService, lineageSuid));
   });
 
-  it("rechecks incident gates immediately before success and treats a contradictory source target as unavailable", async () => {
-    const serviceId = `g31-race-${crypto.randomUUID()}`;
-    const suid = "suid-00000000000000000000000000000080";
-    const source = new FakeSource();
-    source.target = { kind: "stored", eventId: "g31-race-event", suid };
-    const flipToCheckpointAhead = new FakeMaterializedView([
-      state({ targetReceipt: true }),
-      state({ targetReceipt: true, checkpointAhead: true }),
-    ]);
-    expect((await queryD1(source, flipToCheckpointAhead, serviceId, suid)).status).toBe(503);
-    expect(source.targetReads).toBe(2);
-    expect(flipToCheckpointAhead.stateReads).toBe(2);
+  it("fails closed on an already-open CHECKPOINT_AHEAD finding", async () => {
+    const serviceId = `g31-checkpoint-${crypto.randomUUID()}`;
+    const eventId = "checkpoint-event";
+    const suid = "suid-00000000000000000000000000000070";
+    const source = await sourceWithTarget(serviceId, eventId, suid);
+    const views = await activeView(serviceId, suid);
+    await views.recordCheckpointAhead({ serviceId, viewId: VIEW_ID, generation: 0, checkpointSuid: suid, storeMaxSuid: "", observedAt: 2 });
+    await expectProjectionUnavailable(await queryD1(source, views, serviceId, suid));
+  });
 
-    const contradictory = new FakeSource();
-    contradictory.target = { kind: "unavailable", reason: "suid-contradiction" };
+  it("rechecks a real D1 CHECKPOINT_AHEAD finding immediately before success", async () => {
+    const serviceId = `g31-checkpoint-flip-${crypto.randomUUID()}`;
+    const eventId = "checkpoint-flip-event";
+    const suid = "suid-00000000000000000000000000000080";
+    const source = await sourceWithTarget(serviceId, eventId, suid);
+    const views = await activeView(serviceId);
+    await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
+    const flipped = flipRealD1WaitState(views, () => views.recordCheckpointAhead({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      checkpointSuid: suid,
+      storeMaxSuid: "",
+      observedAt: 3,
+    }));
+    await expectProjectionUnavailable(await queryD1(source, flipped.port, serviceId, suid));
+    expect(flipped.reads()).toBe(2);
+  });
+
+  it("rechecks a real D1 rebuild-required finding immediately before success", async () => {
+    const serviceId = `g31-rebuild-flip-${crypto.randomUUID()}`;
+    const eventId = "rebuild-flip-event";
+    const suid = "suid-00000000000000000000000000000081";
+    const source = await sourceWithTarget(serviceId, eventId, suid);
+    const views = await activeView(serviceId);
+    await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
+    const flipped = flipRealD1WaitState(views, async () => {
+      await mvDatabase().prepare(
+        `INSERT INTO mv_unsafe_arrivals (service_id, view_id, generation, safe_head, arrival_watermark, rebuild_required)
+         VALUES (?, ?, 0, ?, ?, 1)`,
+      ).bind(serviceId, VIEW_ID, suid, suid).run();
+    });
+    await expectProjectionUnavailable(await queryD1(source, flipped.port, serviceId, suid));
+    expect(flipped.reads()).toBe(2);
+  });
+
+  it("rechecks a real D1 target poison finding immediately before success", async () => {
+    const serviceId = `g31-poison-flip-${crypto.randomUUID()}`;
+    const eventId = "poison-flip-event";
+    const suid = "suid-00000000000000000000000000000082";
+    const source = await sourceWithTarget(serviceId, eventId, suid);
+    const views = await activeView(serviceId);
+    await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
+    const flipped = flipRealD1WaitState(views, () => views.recordUnsafeFailureFinding({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      eventId,
+      suid,
+      observedAt: 3,
+    }));
+    await expectProjectionUnavailable(await queryD1(source, flipped.port, serviceId, suid));
+    expect(flipped.reads()).toBe(2);
+  });
+
+  it("keeps a contradictory source target unavailable before any MV read", async () => {
+    const source = new FakeSource();
+    source.target = { kind: "unavailable", reason: "suid-contradiction" };
     const views = new FakeMaterializedView([state({ targetReceipt: true })]);
-    expect((await queryD1(contradictory, views, serviceId, suid)).status).toBe(503);
+    await expectProjectionUnavailable(await queryD1(source, views, `g31-contradictory-${crypto.randomUUID()}`, "suid-contradictory"));
     expect(views.stateReads).toBe(0);
   });
 
-  it("snapshots one absolute deadline and caps source/MV point reads without a full scan or N+1 growth", async () => {
+  it("honors the 20s floor exactly with actual D1 statement and rows-read budgets", async () => {
+    const result = await runActualD1PendingWait(0);
+    expect(result.response.status).toBe(504);
+    expect(result.now()).toBe(20_000);
+    expect(result.sleeps).toHaveLength(25);
+    expect(result.sleeps.slice(0, 7)).toEqual([25, 50, 100, 200, 400, 800, 1_000]);
+    expect(result.sleeps.at(-1)).toBe(425);
+    expect(Math.max(...result.sleeps)).toBe(1_000);
+    expect(result.sleeps.reduce((total, milliseconds) => total + milliseconds, 0)).toBe(20_000);
+    expect(result.sourceBudget.waitStatements).toBe(26);
+    expect(result.viewBudget.waitStatements).toBe(26);
+    expect(result.sourceBudget.waitRowsRead).toBe(26);
+    expect(result.viewBudget.waitRowsRead).toBe(26);
+    expect(result.sourceBudget.statements).toBe(27); // one lag snapshot plus 26 source target probes
+    expect(result.viewBudget.statements).toBe(27); // one initial CHECKPOINT_AHEAD gate plus 26 MV wait probes
+    expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(53); // the empty initial checkpoint gate reads zero rows
+  });
+
+  it("clock-advance honors the 120s ceiling exactly with actual D1 statement and rows-read budgets", async () => {
+    const result = await runActualD1PendingWait(120_000);
+    expect(result.response.status).toBe(504);
+    expect(result.now()).toBe(120_000);
+    expect(result.sleeps).toHaveLength(125);
+    expect(result.sleeps.slice(0, 7)).toEqual([25, 50, 100, 200, 400, 800, 1_000]);
+    expect(result.sleeps.at(-1)).toBe(425);
+    expect(Math.max(...result.sleeps)).toBe(1_000);
+    expect(result.sleeps.reduce((total, milliseconds) => total + milliseconds, 0)).toBe(120_000);
+    expect(result.sourceBudget.waitStatements).toBe(126);
+    expect(result.viewBudget.waitStatements).toBe(126);
+    expect(result.sourceBudget.waitRowsRead).toBe(126);
+    expect(result.viewBudget.waitRowsRead).toBe(126);
+    expect(result.sourceBudget.statements).toBe(127); // one lag snapshot plus 126 source target probes
+    expect(result.viewBudget.statements).toBe(127); // one initial CHECKPOINT_AHEAD gate plus 126 MV wait probes
+    expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(253); // the empty initial checkpoint gate reads zero rows
+  });
+
+  it("does not spend its final 120s poll slot before a healthy late receipt becomes visible", async () => {
+    const serviceId = `g31-late-success-${crypto.randomUUID()}`;
+    const suid = "suid-00000000000000000000000000000090";
+    const source = new FakeSource();
+    source.target = { kind: "stored", eventId: "late-success", suid };
+    source.lagBoundMs = 120_000;
+    let now = 0;
+    let stateReads = 0;
+    const views: MaterializedViewQueryPort = {
+      queryRows: async () => [],
+      readWaitForState: async () => {
+        stateReads += 1;
+        return state({ targetReceipt: now >= 119_900 });
+      },
+    };
+    const response = await queryD1(source, views, serviceId, suid, {
+      now: () => now,
+      sleep: async (milliseconds) => { now += milliseconds; },
+    });
+    expect(response.status).toBe(200);
+    expect(now).toBe(120_000);
+    expect(source.targetReads).toBe(127);
+    expect(stateReads).toBe(127);
+    expect(source.targetReads * 2).toBe(D1_WAIT_MAX_POINT_READS);
+  });
+
+  it("snapshots one absolute request-start deadline and caps reads without a full scan or N+1 growth", async () => {
     const serviceId = `g31-budget-${crypto.randomUUID()}`;
     const source = new FakeSource();
+    source.lagSamples = [0, 120_000];
     const views = new FakeMaterializedView([state({ safeContiguousHead: "suid-z" })]);
-    let now = 100;
+    let now = 0;
     const response = await queryD1(source, views, serviceId, "suid-not-stored", {
       now: () => now,
       sleep: async (milliseconds) => { now += milliseconds; },
     });
     expect(response.status).toBe(504);
-    expect(now).toBe(20_100);
+    expect(now).toBe(20_000);
     expect(source.lagReads).toBe(1);
     expect(source.fullScans).toBe(0);
     expect(source.targetReads).toBe(views.stateReads);
@@ -386,9 +744,33 @@ describe("SDT-G31 d1-mv waitFor", () => {
       sleep: async () => {},
     });
     expect(flapping.status).toBe(504);
-    expect(flappingSource.targetReads).toBe(126);
-    expect(flappingViews.stateReads).toBe(126);
+    expect(flappingSource.targetReads).toBe(127);
+    expect(flappingViews.stateReads).toBe(127);
     expect(flappingSource.targetReads * 2).toBe(D1_WAIT_MAX_POINT_READS);
+  });
+
+  it("ceiling: returns an immediate indeterminate timeout even when a receipt is ready", async () => {
+    const source = new FakeSource();
+    source.target = { kind: "stored", eventId: "ceiling-event", suid: "suid-ceiling" };
+    source.lagBoundMs = 120_001;
+    const views = new FakeMaterializedView([state({ targetReceipt: true })]);
+    let sleeps = 0;
+    const response = await queryD1(source, views, `g31-ceiling-${crypto.randomUUID()}`, "suid-ceiling", {
+      now: () => 0,
+      sleep: async () => { sleeps += 1; },
+    });
+    expect(response.status).toBe(504);
+    expect(source.targetReads).toBe(1);
+    expect(views.stateReads).toBe(1);
+    expect(sleeps).toBe(0);
+  });
+
+  it("keeps 503 projection_unavailable status, code, and exact keys independent of the timeout wire oracle", async () => {
+    const source = new FakeSource();
+    source.target = { kind: "unavailable", reason: "incident" };
+    const views = new FakeMaterializedView([state({ targetReceipt: true })]);
+    await expectProjectionUnavailable(await queryD1(source, views, `g31-unavailable-${crypto.randomUUID()}`, "suid-unavailable"));
+    expect(views.stateReads).toBe(0);
   });
 
   it("keeps timeout status/code/keys stable while changing only its read-oriented text", async () => {

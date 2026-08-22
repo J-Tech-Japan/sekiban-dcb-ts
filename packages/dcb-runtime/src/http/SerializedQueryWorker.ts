@@ -151,14 +151,18 @@ function realSleep(milliseconds: number): Promise<void> {
 }
 
 /**
- * G31 bounds each d1-mv wait to 125 loop iterations / 126 source+MV probes.
- * Backoff is 25, 50, 100, 200, 400, 800, then at most 1000ms; over the 120s
- * SafeWindow that is at most 252 point-read statements including the
- * mandatory final success recheck. The cap also makes a stalled test clock
- * deterministic instead of issuing unbounded reads.
+ * G31 reserves a final loop slot so a healthy pending 120s waiter does not
+ * stop polling before its absolute deadline: 126 loop slots / at most 126
+ * source+MV probes plus one final confirmation. Backoff is 25, 50, 100, 200,
+ * 400, 800, then 1000ms. A normal pending waiter therefore makes 26 paired
+ * probes at the 20s floor and 126 at the 120s ceiling; a mandatory
+ * final-success recheck raises the global maximum to 127 paired probes / 254
+ * point-read statements. The cap
+ * also makes a stalled test clock deterministic instead of issuing unbounded
+ * reads.
  */
-export const D1_WAIT_MAX_ITERATIONS = 125;
-export const D1_WAIT_MAX_POINT_READS = 252;
+export const D1_WAIT_MAX_ITERATIONS = 126;
+export const D1_WAIT_MAX_POINT_READS = 254;
 const D1_WAIT_MAX_PROBES = D1_WAIT_MAX_POINT_READS / 2;
 const D1_WAIT_INITIAL_BACKOFF_MS = 25;
 const D1_WAIT_MAX_BACKOFF_MS = 1_000;
@@ -219,7 +223,27 @@ async function readD1WaitFacts(
 }
 
 function d1WaitBackoff(iteration: number): number {
-  return Math.min(D1_WAIT_MAX_BACKOFF_MS, D1_WAIT_INITIAL_BACKOFF_MS * 2 ** Math.min(iteration, 5));
+  return Math.min(D1_WAIT_MAX_BACKOFF_MS, D1_WAIT_INITIAL_BACKOFF_MS * 2 ** Math.min(iteration, 6));
+}
+
+/**
+ * A non-normal flapping success proof can exhaust the global read budget
+ * before the deadline. Preserve the published deadline in that case without
+ * issuing another point read. The progress check keeps an injected frozen
+ * clock deterministic in the test seam.
+ */
+async function sleepToD1WaitDeadline(
+  deadline: number,
+  sleep: (milliseconds: number) => Promise<void>,
+  now: () => number,
+): Promise<void> {
+  let observedAt = now();
+  while (observedAt < deadline) {
+    await sleep(Math.min(D1_WAIT_MAX_BACKOFF_MS, deadline - observedAt));
+    const advancedAt = now();
+    if (advancedAt <= observedAt) return;
+    observedAt = advancedAt;
+  }
 }
 
 async function waitForD1Projection(
@@ -245,21 +269,36 @@ async function waitForD1Projection(
   };
 
   for (let iteration = 0; iteration < D1_WAIT_MAX_ITERATIONS; iteration += 1) {
+    // A sleep that resumes exactly at the boundary gets one final proof and,
+    // when ready, its mandatory confirmation. A late resumption gets no
+    // post-deadline probe, so sleep overhead cannot widen the SafeWindow.
+    if (now() > deadline) return "timeout";
     const facts = await probe();
-    if (facts === undefined) return "timeout";
+    if (facts === undefined) {
+      await sleepToD1WaitDeadline(deadline, sleep, now);
+      return "timeout";
+    }
     if (facts.unavailable) return "unavailable";
+    // An over-ceiling estimate remains indeterminate after (and only after)
+    // the initial incident gate. It must not be bypassed by a ready receipt.
+    if (safeWindowCeilingExceeded(dynamicLagBoundMs)) return "timeout";
     if (d1WaitSucceeded(facts)) {
       // A state can change between the first proof and response creation.
       // Re-read incident/rebuild/poison and the generation-bound receipt just
       // before success; this is deliberately not a cached boolean.
       const confirmed = await probe();
-      if (confirmed === undefined) return "timeout";
+      if (confirmed === undefined) {
+        await sleepToD1WaitDeadline(deadline, sleep, now);
+        return "timeout";
+      }
       if (confirmed.unavailable) return "unavailable";
       if (d1WaitSucceeded(confirmed)) return "visible";
     }
-    // An over-ceiling lag is a timeout only after the initial incident gate;
-    // it never reclassifies a 503 operational finding as a 504.
-    if (safeWindowCeilingExceeded(dynamicLagBoundMs) || now() >= deadline || iteration + 1 >= D1_WAIT_MAX_ITERATIONS) {
+    if (now() >= deadline) {
+      return "timeout";
+    }
+    if (probes >= D1_WAIT_MAX_PROBES || iteration + 1 >= D1_WAIT_MAX_ITERATIONS) {
+      await sleepToD1WaitDeadline(deadline, sleep, now);
       return "timeout";
     }
     await sleep(Math.min(d1WaitBackoff(iteration), Math.max(1, deadline - now())));

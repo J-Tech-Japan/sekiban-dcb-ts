@@ -12,8 +12,14 @@ single server-side post-commit list refresh.
   target plus active safe head; a safe head alone cannot alias a missing SUID.
 - Gates every wait probe, including the last success proof, on collision or
   lineage incidents, checkpoint-ahead, rebuild, and target poison. The loop
-  has a fixed 125-iteration / 252 point-read maximum and one absolute
-  request-start deadline.
+  reserves 126 loop slots / 254 wait point reads so the 120-second healthy
+  pending case reaches its final pre-deadline poll; it has one absolute
+  request-start deadline and a true 1000ms backoff cap.
+- Adds separate real D1-MV receipt oracles for stored no-change,
+  patch-not-found, and delete-without-row, plus separate non-stored collision
+  and lineage gates. Real-D1 mid-wait rebuild/poison/checkpoint flips, exact
+  20s/120s statement-and-row budgets, and independent 503 wire-shape checks
+  close the review findings.
 - Adds immutable D1 migrations for target incident aliases and active wait
   receipts; receipt GC is deliberately followed by the unique-source plus
   active-safe-head branch.
@@ -38,4 +44,6 @@ documentation, witness tooling, manifest, and candidate gate material. Its
 tree digests are computed before deployment. R changes only the final evidence
 and appends C exactly once to the CI retained-candidate list. The candidate
 gate rejects all other post-C material changes, a non-final deployment, a
-digest mismatch, or a source/deployed runtime mismatch.
+digest mismatch, or a source/deployed runtime mismatch. The prior G31 C/R is
+retained as a checked evidence-history entry; SDT-G31-FIX-1 seals one new C
+only after every review correction is present, then redeploys that C once.

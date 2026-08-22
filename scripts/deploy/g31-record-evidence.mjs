@@ -45,14 +45,14 @@ function expectedTopology() {
       sourceTarget: "unique-indexed-point-read",
       activeReceipt: "generation-definition-bound",
       safeHead: "unique-source-required",
-      maxPointReads: 252,
+      maxPointReads: 254,
     },
     directDoorbell: true,
     allowedViews: ["RoomProjector", "ReservationProjector"],
   };
 }
 
-export function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology) {
+export function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology, history) {
   const identity = assertFinalWitnessIdentity(sourceCommit, pre, post);
   const stable = assertWitnessStable(pre, post, expectedTopology());
   const dataPreservation = assertPreWitnessSetPreserved(pre.data, post.data);
@@ -81,9 +81,12 @@ export function buildEvidence(sourceCommit, pre, post, measurement, manifest, re
   if (probeWrites.some((sample) => typeof sample.roomId !== "string" || typeof sample.reservationId !== "string" || typeof sample.suid !== "string")) {
     throw new Error("G31 fixed-N probe write identities are incomplete");
   }
+  if (!Array.isArray(history) || history.length === 0) {
+    throw new Error("G31 final evidence must retain the prior C/R history");
+  }
   return {
     task: "SDT-G31",
-    status: "R complete: sealed final-C witnessed deployment evidence recorded",
+    status: "R-FIX-1 complete: sealed final-C witnessed deployment evidence recorded",
     candidateCommit: sourceCommit,
     sourceCommit,
     protocol: {
@@ -93,6 +96,7 @@ export function buildEvidence(sourceCommit, pre, post, measurement, manifest, re
       deploymentRequired: true,
       witnessOrder: ["preflight", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy-with-token-rotation", "post-witness", "source-commit-assertion", "fixed-N=10", "old-SUID-after-GC"],
     },
+    history,
     treeDigests: {
       algorithm: "sha256(path NUL content NUL, paths sorted)",
       runtime: digestAtCommit(sourceCommit, manifest.runtimeRoots),
@@ -167,7 +171,9 @@ function main() {
   const post = readJson(argument("--post", ".artifacts/g31-post-witness.json"));
   const receiverTopology = readJson(argument("--receiver-topology", ".artifacts/g31-receiver-consumer-topology.json"));
   const manifest = readJson("docs/SDT-G31-required-roots.json");
-  const evidence = buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology);
+  const priorEvidence = readJson(output);
+  const history = Array.isArray(priorEvidence.history) ? priorEvidence.history : [];
+  const evidence = buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology, history);
   writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
   console.log(JSON.stringify({ candidateCommit: sourceCommit, deployedRuntimeCommit: evidence.remoteDeployment.deployedRuntimeCommit, samples: evidence.fixedNMeasurement.latency.sampleCount }, null, 2));
 }
