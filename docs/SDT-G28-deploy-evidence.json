@@ -1,0 +1,107 @@
+{
+  "task": "SDT-G28",
+  "status": "FINAL candidate C''=5951844348bfd0ffadddb5c7c3c2bb0f57b100c6; bookkeeping R'' records C'' self-digests and retained-list append",
+  "candidateCommit": "5951844348bfd0ffadddb5c7c3c2bb0f57b100c6",
+  "sourceCommit": "5951844348bfd0ffadddb5c7c3c2bb0f57b100c6",
+  "protocol": {
+    "candidate": "C'' contains the F7/F8 review fixes, package, runtime bridge, CI, tests, README, oracle map, PR body, and this evidence placeholder",
+    "bookkeeping": "R'' updates only this evidence document and appends the immutable C'' SHA once to the retained candidate fetch list",
+    "postCandidateAllowlist": [
+      "docs/SDT-G28-deploy-evidence.json",
+      ".github/workflows/ci.yml: one exact addition of C'' to the retained candidate fetch list"
+    ],
+    "selfReference": false,
+    "secrets": "redacted"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "16251db9123973f936a0c8a1bad820269eeec7c869d6f7901967a9b777554a0f",
+    "runtimeRoots": [
+      "packages/dcb-domain/src",
+      "packages/dcb-runtime/src"
+    ],
+    "configuration": "bab9476b748211d73d2a42715f0b8a07fb5eb8955f8cc92b08c2a1a7b3749347",
+    "configurationRoots": [
+      ".github/workflows/ci.yml",
+      "docs/SDT-G28-oracle-map.md",
+      "docs/SDT-G28-pr-body.md",
+      "eslint.config.mjs",
+      "package-lock.json",
+      "package.json",
+      "packages/dcb-domain/README.md",
+      "packages/dcb-domain/boundary-fixtures",
+      "packages/dcb-domain/diagnostic-fixtures",
+      "packages/dcb-domain/package.json",
+      "packages/dcb-domain/tsconfig.build.json",
+      "packages/dcb-domain/tsconfig.json",
+      "packages/dcb-domain/tsconfig.typecheck.json",
+      "packages/dcb-domain/typecheck-fixtures",
+      "scripts/dcb-domain-boundary-check.mjs",
+      "scripts/dcb-domain-compile-fail-check.mjs",
+      "scripts/g20-candidate-check.mjs",
+      "test/dcb-domain.spec.ts",
+      "tsconfig.json",
+      "vitest.config.ts"
+    ]
+  },
+  "localValidation": {
+    "npm run lint": "PASS",
+    "npm run typecheck": "PASS",
+    "npm run test:g28:compile-fail": "PASS — dedicated tsconfig plus six pinned diagnostic fixtures (TS2554/TS2345/TS2339)",
+    "npm run test:g28:boundaries": {
+      "status": "PASS",
+      "sourceFiles": 10,
+      "negativeFixtures": 12
+    },
+    "npm run test:g28:boundary:source": "PASS — independent source/import/global gate",
+    "npm run test:g28:boundary:negative": "PASS — independent negative-fixture gate",
+    "npm run test:g28:boundary:package": "PASS — independent manifest/npm-pack gate",
+    "npm run test:g28": {
+      "status": "PASS",
+      "testFiles": 1,
+      "tests": 20
+    },
+    "npm test": {
+      "status": "PASS",
+      "testFiles": 37,
+      "tests": 275
+    },
+    "npm run check": "PASS",
+    "git diff --check": "PASS",
+    "forcedRed": {
+      "SDT_G28_COMPILE_FAIL_FORCE_FAILURE=1 npm run test:g28:compile-fail:forced-red": "EXPECTED-RED",
+      "SDT_G28_FORCE_FAILURE=1 npm run test:g28:forced-red": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE=1 npm run test:g28:boundaries": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=source npm run test:g28:boundary:source": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=negative-fixtures npm run test:g28:boundary:negative": "EXPECTED-RED",
+      "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=package-manifest npm run test:g28:boundary:package": "EXPECTED-RED",
+      "SDT_G28_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate": "EXPECTED-RED"
+    },
+    "existingLanes": {
+      "npm run test:store-contract": "PASS",
+      "npm run test:d1": "PASS — 9 tests",
+      "npm run test:mv": "PASS — 18 tests",
+      "npm run test:boundaries": "PASS",
+      "npm run test:consumer": "PASS",
+      "npm run test:g20": "PASS — 2 tests",
+      "npm run test:g20:gate": "PASS",
+      "npm run test:g25": "PASS — 3 tests",
+      "npm run test:g26": "PASS — 32 tests",
+      "npm run test:g27": "PASS — 17 tests",
+      "npm run test:g26:topology": "PASS — 4 tests"
+    }
+  },
+  "mutationMatrix": {
+    "compileFail": "The dedicated typecheck project plus six unsuppressed fixtures pin TS diagnostic code/message fragments; removing a target constraint produces a mismatch or unused-@ts-expect-error failure.",
+    "boundary": "Source/import/global, negative-fixture, and package-manifest/npm-pack gates have independent commands, selected completion attestation, per-gate forced-red proofs, and aggregate missing-gate attestation.",
+    "session": "Exact propagation values, 2x2 eager/late eligibility, stored v1→v2 tags, snapshot heads, whole-log seal, 0/1/N discard, changing-clock retry, cross-boundary parse provenance, and downstream zero-call assertions are isolated in test/dcb-domain.spec.ts.",
+    "bridge": "toRuntimeDomain authored commands use a read-only conflict barrier, admission, one allocator vector, commit, and same immutable candidate/attempt/vector reconcile; composeRuntime commands use the real runtime /admit, /acquire, /allocate, and /append path with g27 canonical identity/provenance.",
+    "candidateProtocol": "C''/R'' is non-self-referential; the configuration digest includes the compile-fail checker and diagnostic-fixtures tree."
+  },
+  "remoteDeployment": {
+    "status": "not-run",
+    "reason": "G28 is an adapter-neutral library layer; no deployment credential is used on the implementation seat.",
+    "secrets": "redacted"
+  },
+  "candidateGate": "PASS at C'' tree: R'' must append this C'' SHA exactly once to the retained candidate fetch list and change only this evidence document plus that list"
+}

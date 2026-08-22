@@ -37,6 +37,12 @@ export const candidateEvidenceRules = Object.freeze([
     evidenceGlobs: Object.freeze(["docs/SDT-G27-*evidence*.json", "docs/SDT-G27-*evidence*.md"]),
     bookkeepingPath: ".github/workflows/ci.yml",
   }),
+  Object.freeze({
+    id: "g28-domain-authoring-session",
+    evidencePath: "docs/SDT-G28-deploy-evidence.json",
+    evidenceGlobs: Object.freeze(["docs/SDT-G28-*evidence*.json", "docs/SDT-G28-*evidence*.md"]),
+    bookkeepingPath: ".github/workflows/ci.yml",
+  }),
 ]);
 
 function matchesGlob(path, glob) {
@@ -146,7 +152,13 @@ function main() {
   if (process.env.SDT_G25_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G25 candidate gate forced failure");
   if (process.env.SDT_G26_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G26 candidate gate forced failure");
   if (process.env.SDT_G27_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G27 candidate gate forced failure");
+  if (process.env.SDT_G28_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G28 candidate gate forced failure");
   if (process.argv.includes("--self-test")) return runSelfTest();
+  // A new packet's FINAL candidate supersedes the live post-candidate path
+  // check for older retained candidates. Their immutable evidence and tree
+  // digests remain checked; only the newest rule may accept the one
+  // evidence/retained-list bookkeeping delta in the current PR.
+  const latestRule = candidateEvidenceRules[candidateEvidenceRules.length - 1];
   for (const rule of candidateEvidenceRules) {
     const evidencePath = join(root, rule.evidencePath);
     if (!existsSync(evidencePath)) throw new Error(`${rule.id} deployed evidence document is required`);
@@ -158,13 +170,14 @@ function main() {
     assertRecordedEvidenceSelfDigest(evidence, rule);
     const treeDigestProof = assertCandidateTreeDigests(evidence);
     const status = candidateGateStatus(evidence.candidateCommit);
-    const postCandidatePaths = status.active ? changedPaths(evidence.candidateCommit) : [];
-    if (status.active) assertPostCandidatePaths(postCandidatePaths, rule, evidence.candidateCommit);
+    const liveRule = rule === latestRule;
+    const postCandidatePaths = liveRule && status.active ? changedPaths(evidence.candidateCommit) : [];
+    if (liveRule && status.active) assertPostCandidatePaths(postCandidatePaths, rule, evidence.candidateCommit);
     console.log(JSON.stringify({
       rule: rule.id,
       candidateCommit: evidence.candidateCommit,
-      protocol: status.active ? "active" : "protocol-not-active",
-      reason: status.reason,
+      protocol: liveRule && status.active ? "active" : "retained-or-not-active",
+      reason: liveRule ? status.reason : "superseded-by-latest-candidate",
       postCandidatePaths,
       mutationProof: { runtimePath: "fail-as-required", evidenceDocument: "accepted" },
       evidenceSelfDigest: "validated-without-head-comparison",

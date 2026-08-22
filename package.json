@@ -6,6 +6,7 @@
   "type": "module",
   "workspaces": [
     "packages/dcb-core",
+    "packages/dcb-domain",
     "packages/dcb-runtime",
     "packages/dcb-client",
     "samples/meeting-room"
@@ -60,12 +61,20 @@
     "test:g26": "npm run build:packages && vitest run --config vitest.config.ts test/g26-delivery.spec.ts test/g26-doorbell.spec.ts test/g26-fanout.spec.ts test/g26-integration.spec.ts",
     "test:g27": "npm run build:packages && vitest run --config vitest.config.ts test/g27-identity.spec.ts",
     "test:g27:forced-red": "npm run test:g27 && node -e \"if (process.env.SDT_G27_FORCE_FAILURE === '1') throw new Error('SDT-G27 forced-red CI wiring proof')\"",
+    "test:g28": "npm run build:packages && vitest run --config vitest.config.ts test/dcb-domain.spec.ts",
+    "test:g28:compile-fail": "tsc -p packages/dcb-domain/tsconfig.typecheck.json --noEmit && node scripts/dcb-domain-compile-fail-check.mjs",
+    "test:g28:compile-fail:forced-red": "npm run test:g28:compile-fail && node -e \"if (process.env.SDT_G28_COMPILE_FAIL_FORCE_FAILURE === '1') throw new Error('SDT-G28 compile-fail forced-red CI wiring proof')\"",
+    "test:g28:boundaries": "node scripts/dcb-domain-boundary-check.mjs",
+    "test:g28:boundary:source": "node scripts/dcb-domain-boundary-check.mjs --gate source",
+    "test:g28:boundary:negative": "node scripts/dcb-domain-boundary-check.mjs --gate negative-fixtures",
+    "test:g28:boundary:package": "node scripts/dcb-domain-boundary-check.mjs --gate package-manifest",
+    "test:g28:forced-red": "npm run test:g28 && node -e \"if (process.env.SDT_G28_FORCE_FAILURE === '1') throw new Error('SDT-G28 forced-red CI wiring proof')\"",
     "test:g26:topology": "vitest run --config vitest.g24-deploy.config.ts test/g26-topology.spec.mjs",
     "test:g26:forced-red": "npm run test:g26 && node -e \"if (process.env.SDT_G26_FORCE_FAILURE === '1') throw new Error('SDT-G26 forced-red CI wiring proof')\"",
     "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
     "build:g20": "npm run build:packages && wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/g20-cloudflare-build --outfile .artifacts/g20-cloudflare-build/worker.js --metafile .artifacts/g20-cloudflare-build/bundle-meta.json",
     "test:watch": "vitest --config vitest.config.ts",
-    "check": "npm run lint && npm run typecheck && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g26 && npm run test:g27 && npm run test:g26:topology && npm run test:g20:candidate"
+    "check": "npm run lint && npm run typecheck && npm run test:g28:compile-fail && npm run test:g28:boundaries && npm run test:g28:boundary:source && npm run test:g28:boundary:negative && npm run test:g28:boundary:package && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g26 && npm run test:g27 && npm run test:g28 && npm run test:g26:topology && npm run test:g20:candidate"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",
