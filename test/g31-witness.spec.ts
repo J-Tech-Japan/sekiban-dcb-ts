@@ -6,7 +6,7 @@ import {
   expectedTopology,
   shouldRetryConformanceStatus,
 } from "../scripts/deploy/g31-witness.mjs";
-import { summarizeMeasurements } from "../scripts/deploy/g31-measure.mjs";
+import { assertMeasurementTopology, summarizeMeasurements } from "../scripts/deploy/g31-measure.mjs";
 // @ts-expect-error JavaScript topology CLI is exercised directly by Vitest.
 import { assertPrimaryConsumerExclusive, needsReceiverConsumerRemoval } from "../scripts/deploy/g31-receiver-consumer-topology.mjs";
 // @ts-expect-error Vite raw receiver deployment config fixture.
@@ -71,6 +71,14 @@ function publicPreWitness() {
 describe("SDT-G31 witnessed deployment and one-list-redraw oracles", () => {
   it("uses the deployed 254-point-read ceiling in its authenticated topology contract", () => {
     expect(expectedTopology(expected.serviceId)).toEqual(expected);
+  });
+
+  it("rejects the stale 252-point-read measurement topology before fixed-N evidence can begin", () => {
+    expect(assertMeasurementTopology({ task: "SDT-G31", ...expected })).toEqual(expected);
+    const staleCap = structuredClone({ task: "SDT-G31", ...expected });
+    staleCap.waitFor.maxPointReads = 252;
+    expect(() => assertMeasurementTopology(staleCap)).toThrow("G31 topology verification failed");
+    expect(measureScriptText).toContain("assertMeasurementTopology(config.body)");
   });
 
   it("preserves the pre-captured witness set and requires the authenticated final-C source identity", () => {

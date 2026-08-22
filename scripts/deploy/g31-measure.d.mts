@@ -25,4 +25,6 @@ export function summarizeMeasurements(values: readonly G31Measurement[]): {
   readonly errorCount: number;
 };
 
+export function assertMeasurementTopology(config: unknown): unknown;
+
 export function measure(baseUrl: string, samples: number, timeoutMs: number, token: string): Promise<unknown>;

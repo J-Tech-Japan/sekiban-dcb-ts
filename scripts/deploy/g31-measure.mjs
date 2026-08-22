@@ -2,6 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { expectedTopology } from "./g31-witness.mjs";
 
 function argument(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -111,6 +112,27 @@ export function summarizeMeasurements(values) {
   };
 }
 
+/**
+ * Keep the fixed-N gate on the same topology authority as the post-deploy
+ * witness.  A stale local cap must stop measurement before it can produce
+ * evidence for a different runtime contract.
+ */
+export function assertMeasurementTopology(config) {
+  const serviceId = typeof config?.serviceId === "string" ? config.serviceId : "";
+  const expected = expectedTopology(serviceId);
+  if (
+    config?.task !== "SDT-G31" ||
+    config?.worker !== expected.worker ||
+    config?.waitFor?.sourceTarget !== expected.waitFor.sourceTarget ||
+    config?.waitFor?.activeReceipt !== expected.waitFor.activeReceipt ||
+    config?.waitFor?.safeHead !== expected.waitFor.safeHead ||
+    config?.waitFor?.maxPointReads !== expected.waitFor.maxPointReads ||
+    config?.directDoorbell !== expected.directDoorbell ||
+    JSON.stringify(config?.allowedViews) !== JSON.stringify(expected.allowedViews)
+  ) throw new Error("G31 topology verification failed");
+  return expected;
+}
+
 function g31ListPath(suid) {
   return `/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=${encodeURIComponent(suid)}`;
 }
@@ -202,13 +224,8 @@ async function main() {
   const samples = integer("--samples", argument("--samples", "10"), 10);
   const timeoutMs = integer("--gc-timeout-ms", argument("--gc-timeout-ms", "120000"), 1);
   const config = await request(baseUrl, `/conformance/v1/g31-config?g31_measure=${crypto.randomUUID()}`, { headers: { authorization: `Bearer ${token}` } });
-  if (
-    config.response.status !== 200 || config.body?.task !== "SDT-G31" ||
-    config.body?.waitFor?.sourceTarget !== "unique-indexed-point-read" ||
-    config.body?.waitFor?.activeReceipt !== "generation-definition-bound" ||
-    config.body?.waitFor?.safeHead !== "unique-source-required" ||
-    config.body?.waitFor?.maxPointReads !== 252
-  ) throw new Error(`G31 topology verification failed: HTTP ${config.response.status}`);
+  if (config.response.status !== 200) throw new Error(`G31 topology verification failed: HTTP ${config.response.status}`);
+  assertMeasurementTopology(config.body);
   const evidence = {
     task: "SDT-G31",
     baseUrl,
