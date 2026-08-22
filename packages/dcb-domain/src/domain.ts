@@ -11,6 +11,8 @@ export interface DomainViewDefinition {
   readonly id: string;
   readonly source: string;
   readonly projector?: string;
+  /** Domain-owned half of the per-view delivery policy. */
+  readonly deliveryClass?: "immediate-preferred" | "queued";
 }
 
 export interface AuthoringDomain<

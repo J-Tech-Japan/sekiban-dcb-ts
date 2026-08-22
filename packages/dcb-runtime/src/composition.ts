@@ -35,6 +35,8 @@ export interface RuntimeQueryDefinition {
 export interface RuntimeWorkerConfig {
   /** Domain layer of the two-layer direct-delivery opt-in. */
   readonly deliveryClass?: DeliveryClass;
+  /** Domain-owned per-view policy; deployment may only select from these views. */
+  readonly deliveryViews?: readonly { readonly id: string; readonly deliveryClass: DeliveryClass }[];
   readonly queries?: readonly RuntimeQueryDefinition[];
   readonly queryDefinitions?: readonly RuntimeQueryDefinition[];
   readonly projectorPayloadNames?: Readonly<Record<string, string>>;
@@ -91,6 +93,7 @@ export interface RuntimeDomainLike {
   readonly commands?: readonly unknown[];
   readonly projectors?: readonly unknown[];
   readonly queries?: readonly RuntimeQueryDefinition[];
+  readonly views?: readonly { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: DeliveryClass }[];
 }
 
 /** The commit authority is the active domain registry, never a V1 caller field. */
@@ -139,10 +142,25 @@ function projectorFromDefinition(
     const identity = resolveDeliveryIdentity({ eventType: event.eventType, provenance: event.provenance }, "queue");
     const eventName = identity.legacy ? eventNameFromPayload(payload, definition) : identity.eventPayloadName;
     if (eventName === undefined) return state;
+    const normalizedEventType = identity.legacy && definition.subscribedEventTypes.includes(eventName)
+      ? eventName
+      : identity.legacy
+        ? `${eventName}:1`
+        : identity.key;
+    // Polling visits every registered projector for each discovered tag. A
+    // projector must therefore turn an event from another family into a
+    // state-preserving no-op before the authored bridge sees it. This is also
+    // the legacy compatibility boundary: sniffing is allowed only after the
+    // pre-G27 provenance gate above, never for a canonical message.
+    if (!definition.subscribedEventTypes.includes(normalizedEventType)) return state;
     return definition.apply(state, {
       eventName,
       eventPayloadName: eventName,
-      ...(identity.legacy ? {} : { eventType: identity.key }),
+      // The legacy lane is only entered after provenance admission has
+      // proven a pre-G27 row. The authored projector still requires the
+      // canonical eventType field, so normalize that historical name to the
+      // immutable v1 registry identity before calling the real reducer.
+      eventType: normalizedEventType,
       payload: payload as JsonValue,
     });
   };

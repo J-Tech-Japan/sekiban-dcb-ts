@@ -57,12 +57,13 @@ tests, and a Wrangler dry-run build.
 
 ## Meeting-room consumer sample
 
-`samples/meeting-room` is the SDT-G14/G15 consumer sample. It imports only the
-public `@sekiban/dcb-core`, `@sekiban/dcb-client`, and `@sekiban/dcb-runtime`
-entrypoints. A consumer composes its domain into the runtime with
-`createRuntimeWorker({ domain, config })`; the runtime's projector/query
-registries remain private. The sample exposes its application command API and
-keeps raw V1 routes behind the authenticated `/conformance/v1` lane. Its
+`samples/meeting-room` is the SDT-G14/G15/G29 consumer sample. Its domain is
+authored with the public `@sekiban/dcb-domain` event/state/projector/command
+surface and bridged with `toRuntimeDomain()`; the runtime's
+projector/query registries remain private. A consumer composes its domain into
+the runtime with `createRuntimeWorker({ domain, config })`. The sample exposes
+its application command API and keeps raw V1 routes behind the authenticated
+`/conformance/v1` lane. Its
 framework-free `public/` frontend calls only the application command/read API
 and uses the V1 sortable-id head to report pending, visible, conflict,
 rejected, and partial outcomes honestly. Run `npm run deploy:g15` to deploy

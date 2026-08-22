@@ -43,6 +43,12 @@ export const candidateEvidenceRules = Object.freeze([
     evidenceGlobs: Object.freeze(["docs/SDT-G28-*evidence*.json", "docs/SDT-G28-*evidence*.md"]),
     bookkeepingPath: ".github/workflows/ci.yml",
   }),
+  Object.freeze({
+    id: "g29-sample-portability",
+    evidencePath: "docs/SDT-G29-deploy-evidence.json",
+    evidenceGlobs: Object.freeze(["docs/SDT-G29-*evidence*.json", "docs/SDT-G29-*evidence*.md"]),
+    bookkeepingPath: ".github/workflows/ci.yml",
+  }),
 ]);
 
 function matchesGlob(path, glob) {
@@ -67,7 +73,7 @@ export function assertPostCandidatePaths(paths, rule, candidate, run = (args) =>
   if (unsupported.length > 0 || paths.filter((path) => path === rule.bookkeepingPath).length > 1) {
     throw new Error(`${rule.id} candidate protocol violation; post-candidate paths: ${paths.join(", ")}`);
   }
-  if (!paths.includes(rule.bookkeepingPath)) return;
+  if (rule.bookkeepingPath === undefined || !paths.includes(rule.bookkeepingPath)) return;
   const diff = run(["diff", "--unified=0", `${candidate}..HEAD`, "--", rule.bookkeepingPath]);
   const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
   const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
@@ -144,7 +150,13 @@ export function runSelfTest() {
   const unresolved = candidateGateStatus(candidate, (args) => { if (args[0] === "cat-file") throw new Error("missing"); return ""; });
   const nonAncestor = candidateGateStatus(candidate, (args) => { if (args[0] === "merge-base") throw new Error("not ancestor"); return ""; });
   if (!active.active || unresolved.active || nonAncestor.active || unresolved.reason !== "candidate-unresolved" || nonAncestor.reason !== "candidate-not-ancestor") throw new Error("candidate gate focused verification failed");
-  console.log(JSON.stringify({ active, unresolved, nonAncestor }, null, 2));
+  const g29Rule = candidateEvidenceRules.find((rule) => rule.id === "g29-sample-portability");
+  if (g29Rule === undefined) throw new Error("G29 candidate rule is missing");
+  const g29Paths = [g29Rule.evidencePath, g29Rule.bookkeepingPath];
+  const diff = () => `+${candidate}\n`;
+  assertPostCandidatePaths(g29Paths, g29Rule, candidate, diff);
+  expectMutationToFail("g29-post-c-operational-path", () => assertPostCandidatePaths([...g29Paths, "scripts/deploy/g29-witness.mjs"], g29Rule, candidate, diff));
+  console.log(JSON.stringify({ active, unresolved, nonAncestor, g29Protocol: "strict-evidence-and-retained-append", g29OperationalMutation: "fail-as-required" }, null, 2));
 }
 
 function main() {
@@ -153,7 +165,9 @@ function main() {
   if (process.env.SDT_G26_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G26 candidate gate forced failure");
   if (process.env.SDT_G27_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G27 candidate gate forced failure");
   if (process.env.SDT_G28_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G28 candidate gate forced failure");
+  if (process.env.SDT_G29_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G29 candidate gate forced failure");
   if (process.argv.includes("--self-test")) return runSelfTest();
+  runSelfTest();
   // A new packet's FINAL candidate supersedes the live post-candidate path
   // check for older retained candidates. Their immutable evidence and tree
   // digests remain checked; only the newest rule may accept the one

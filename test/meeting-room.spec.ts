@@ -3,38 +3,36 @@ import { createRuntimeWorker } from "@sekiban/dcb-runtime";
 import { createMeetingRoomWorker, type MeetingRoomEnv } from "../samples/meeting-room/src/worker";
 import { createV1Transport } from "../samples/meeting-room/src/transport";
 import { bookRoomWorkflow } from "../samples/meeting-room/src/workflow";
-import {
-  cancelReservationCommand,
-  createRoomCommand,
-  meetingRoomDomain,
-  meetingRoomRuntimeConfig,
-  releaseRoomCommand,
-  reserveRoomCommand,
-} from "../samples/meeting-room/src/domain";
+import { meetingRoomAuthoringDomain, meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 
 describe("SDT-G14 meeting-room consumer", () => {
-  it("defines the required domain surface and exercises claim-ledger command verbs", () => {
+  it("defines the authored domain surface and exercises the bridged command verbs", async () => {
     expect(meetingRoomDomain.events.map((event) => event.name)).toEqual([
       "RoomCreated",
       "RoomReserved",
       "ReservationCancelled",
       "RoomReleased",
     ]);
-    expect(meetingRoomDomain.commands).toHaveLength(4);
+    expect(meetingRoomAuthoringDomain.commands).toHaveLength(4);
     expect(meetingRoomDomain.projectors).toHaveLength(2);
-    expect(meetingRoomDomain.queries).toHaveLength(2);
+    expect(meetingRoomRuntimeConfig.queries).toHaveLength(2);
 
-    const created = createRoomCommand.execute({ roomId: "r-1", name: "Boardroom" });
+    const command = (id: string) => {
+      const selected = meetingRoomDomain.commands.find((candidate) => candidate.id === id);
+      if (selected === undefined) throw new Error(`missing command ${id}`);
+      return selected;
+    };
+    const created = await command("create-room").execute({ roomId: "r-1", name: "Boardroom" });
     expect(created.kind).toBe("committed");
     expect(created.events).toHaveLength(1);
-    expect(created.events[0]?.event.eventPayloadName).toBe("RoomCreated");
-    expect(reserveRoomCommand.execute({ roomId: "missing", reservationId: "res-1" }).kind).toBe("rejected");
-    expect(cancelReservationCommand.execute({ reservationId: "missing" }).kind).toBe("rejected");
-    expect(releaseRoomCommand.execute({ roomId: "missing" }).kind).toBe("rejected");
-    expect(releaseRoomCommand.execute(
+    expect(created.events[0]?.eventName).toBe("RoomCreated");
+    expect((await command("reserve-room").execute({ roomId: "missing", reservationId: "res-1" })).kind).toBe("rejected");
+    expect((await command("cancel-reservation").execute({ reservationId: "missing" })).kind).toBe("rejected");
+    expect((await command("release-room").execute({ roomId: "missing" })).kind).toBe("rejected");
+    expect((await command("release-room").execute(
       { roomId: "r-1" },
-      { state: { "room:r-1": { status: "released" } } },
-    ).kind).toBe("noop");
+      { state: { "room:r-1": { status: "released", version: 1, roomId: "r-1", name: "Boardroom" } }, now: 1 },
+    )).kind).toBe("noop");
   });
 
   it("composes the public runtime registration API without exposing private registries", async () => {

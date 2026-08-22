@@ -7,9 +7,20 @@ domain definitions live in `src/domain.ts`; it does not deep-import a package
 The application surface is `/api/commands/{create-room,reserve-room,cancel-reservation,release-room}`
 plus the read-only `/api/read/room?roomId=...` and
 `/api/read/reservation?reservationId=...` wrappers used by the browser. Each
-command uses the claim-ledger executor through the internal `RUNTIME` service
-binding. The booking workflow is deliberately two commits: if the reservation
-step conflicts, the durable room creation is retained.
+command is authored with `@sekiban/dcb-domain` and reaches the runtime through
+`toRuntimeDomain()` and the internal `RUNTIME` service binding. The booking
+workflow is deliberately two commits: if the reservation step conflicts, the
+durable room creation is retained. `RoomProjector` and `ReservationProjector`
+are both immediate-preferred in the production sample, preserving the G26
+doorbell behavior while keeping the checked-in per-view delivery policy
+authoritative; deployment variables only provide the second opt-in and safety
+budget.
+
+`src/domain.ts` is the executable C#⇄TypeScript authoring example. Events own
+their tags, state is a closed `status` union, command reads are declared with
+`read`/`readSet`, and the command clock is captured separately from the
+allocator `OrderClock`. See [`docs/domain-authoring.md`](../../docs/domain-authoring.md)
+and the G29 mapping/compatibility artifacts for the portable contract.
 
 `public/` is served directly by Workers Assets. There is no frontend framework
 or build step: `index.html` loads `app.js`, which uses `fetch` only against the

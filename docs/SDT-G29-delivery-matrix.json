@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "descriptor": {
+    "RoomProjector": "immediate-preferred",
+    "ReservationProjector": "immediate-preferred"
+  },
+  "rows": [
+    {
+      "rowId": "immediate-enabled-allowed",
+      "domainClass": "immediate-preferred",
+      "deployment": "enabled",
+      "allowlist": "allowed",
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
+      "expectedStatus": "ready",
+      "expectedReason": "direct_doorbell_capability_ready",
+      "expectedViews": ["RoomProjector", "ReservationProjector"],
+      "directInvocations": 2,
+      "queueInvocations": 0
+    },
+    {
+      "rowId": "immediate-enabled-not-allowed",
+      "domainClass": "immediate-preferred",
+      "deployment": "enabled",
+      "allowlist": "not-allowed",
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
+      "expectedStatus": "fail-fast",
+      "expectedReason": "immediate_preferred_requires_allowed_views",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 0
+    },
+    {
+      "rowId": "immediate-disabled-allowed",
+      "domainClass": "immediate-preferred",
+      "deployment": "disabled",
+      "allowlist": "allowed",
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
+      "expectedStatus": "fail-fast",
+      "expectedReason": "deployment_direct_doorbell_disabled",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 0
+    },
+    {
+      "rowId": "immediate-disabled-not-allowed",
+      "domainClass": "immediate-preferred",
+      "deployment": "disabled",
+      "allowlist": "not-allowed",
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
+      "expectedStatus": "fail-fast",
+      "expectedReason": "deployment_direct_doorbell_disabled",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 0
+    },
+    {
+      "rowId": "queued-enabled-allowed",
+      "domainClass": "queued",
+      "deployment": "enabled",
+      "allowlist": "allowed",
+      "expectedDescriptor": { "domainClass": "queued", "viewClasses": { "RoomProjector": "queued", "ReservationProjector": "queued" } },
+      "expectedStatus": "disabled",
+      "expectedReason": "domain_delivery_class_queued",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 2
+    },
+    {
+      "rowId": "queued-enabled-not-allowed",
+      "domainClass": "queued",
+      "deployment": "enabled",
+      "allowlist": "not-allowed",
+      "expectedDescriptor": { "domainClass": "queued", "viewClasses": { "RoomProjector": "queued", "ReservationProjector": "queued" } },
+      "expectedStatus": "disabled",
+      "expectedReason": "domain_delivery_class_queued",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 2
+    },
+    {
+      "rowId": "queued-disabled-allowed",
+      "domainClass": "queued",
+      "deployment": "disabled",
+      "allowlist": "allowed",
+      "expectedDescriptor": { "domainClass": "queued", "viewClasses": { "RoomProjector": "queued", "ReservationProjector": "queued" } },
+      "expectedStatus": "disabled",
+      "expectedReason": "domain_delivery_class_queued",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 2
+    },
+    {
+      "rowId": "queued-disabled-not-allowed",
+      "domainClass": "queued",
+      "deployment": "disabled",
+      "allowlist": "not-allowed",
+      "expectedDescriptor": { "domainClass": "queued", "viewClasses": { "RoomProjector": "queued", "ReservationProjector": "queued" } },
+      "expectedStatus": "disabled",
+      "expectedReason": "domain_delivery_class_queued",
+      "expectedViews": [],
+      "directInvocations": 0,
+      "queueInvocations": 2
+    }
+  ]
+}

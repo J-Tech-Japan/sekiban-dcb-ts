@@ -21,6 +21,10 @@
     "packages/dcb-client/src/**/*.ts",
     "samples/meeting-room/src/**/*.ts",
     "test/**/*.ts",
+    "scripts/g29-mapping-contract.d.mts",
+    "scripts/g29-delivery-matrix.d.mts",
+    "scripts/deploy/g29-witness.d.mts",
+    "scripts/deploy/g29-measure.d.mts",
     "vitest.config.ts",
     "worker.ts"
   ]

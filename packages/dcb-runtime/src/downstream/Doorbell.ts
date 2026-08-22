@@ -12,6 +12,7 @@ export interface DownstreamDoorbellBinding {
 
 export interface DirectDoorbellDeploymentConfig {
   readonly deliveryClass: DeliveryClass;
+  readonly domainViewDeliveryClasses?: Readonly<Record<string, DeliveryClass>>;
   readonly enabled: boolean;
   readonly allowedViews: readonly string[];
   readonly maxServiceBindingInvocations: number;
@@ -88,6 +89,7 @@ export function readDomainDeliveryClass(
 export function readDirectDoorbellConfig(
   env: Record<string, unknown>,
   domainDeliveryClass?: DeliveryClass,
+  domainViewDeliveryClasses?: Readonly<Record<string, DeliveryClass>>,
 ): DirectDoorbellDeploymentConfig {
   // The deployment half starts at DIRECT_DOORBELL. A deployment variable must
   // not silently override the domain-owned delivery class.
@@ -102,6 +104,7 @@ export function readDirectDoorbellConfig(
   }
   return {
     deliveryClass,
+    ...(domainViewDeliveryClasses === undefined ? {} : { domainViewDeliveryClasses }),
     enabled: parseBoolean(envString(env, "DIRECT_DOORBELL"), false),
     allowedViews: parseAllowedViews(envString(env, "DIRECT_DOORBELL_ALLOWED_VIEWS")),
     maxServiceBindingInvocations: parsePositiveInteger(
@@ -168,7 +171,8 @@ export function selectDirectDoorbellViews<T extends { readonly id: string }>(
 ): readonly T[] {
   if (config.deliveryClass !== "immediate-preferred" || !config.enabled) return [];
   const allowed = new Set(config.allowedViews);
-  return views.filter((view) => allowed.has(view.id));
+  return views.filter((view) => allowed.has(view.id) &&
+    (config.domainViewDeliveryClasses?.[view.id] ?? config.deliveryClass) === "immediate-preferred");
 }
 
 /** Stable bytes used by local and deployed byte-equality oracles. */

@@ -1,0 +1,1559 @@
+{
+  "task": "SDT-G29",
+  "status": "R'''' complete: F9 final C'''' witnessed deployment evidence recorded",
+  "candidateCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+  "sourceCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+  "protocol": {
+    "candidate": "One immutable C'''' contains the complete runtime, configuration, CI, documentation, witness tooling, candidate gates, required-root manifest, and placeholder evidence.",
+    "bookkeeping": "R'''' changes only this evidence document and appends C'''' once to the retained-candidate fetch list.",
+    "selfReference": false,
+    "deploymentRequired": true,
+    "witnessOrder": [
+      "preflight",
+      "pre-witness",
+      "receiver-consumer-check-or-remove",
+      "receiver-deploy",
+      "primary-deploy-with-token-rotation",
+      "post-witness",
+      "source-commit-assertion",
+      "five-endpoint-conformance",
+      "raw-v1-404",
+      "fixed-N=10"
+    ]
+  },
+  "finalWitness": {
+    "finding": "F9",
+    "primaryDeployment": "deployed-final-c",
+    "receiverTopology": "service-binding-only receiver; primary exclusively owns the outbox Queue consumer",
+    "witnessRule": "every pre-captured row, head, and list entry is required to remain semantically identical after deployment; aggregate counts are recorded but are not an equality gate",
+    "preWitnessIdentitySource": "public-pre-deploy-data",
+    "postWitnessIdentitySource": "remote-g29-conformance"
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "a1b29d920df1c8b6cb7d78ddf52cc5c400cab54d085cd9d0de2fe09a2c2d7221",
+    "runtimeRoots": [
+      "packages/dcb-domain/src",
+      "packages/dcb-runtime/src"
+    ],
+    "configuration": "fc6ff8eb0090d9f80b606621a03c049f3e5c000f292235f68947c4de87c6ac73",
+    "configurationRoots": [
+      ".github/workflows/ci.yml",
+      "README.md",
+      "docs/SDT-G29-required-roots.json",
+      "docs/SDT-G29-mapping.json",
+      "docs/SDT-G29-delivery-matrix.json",
+      "docs/SDT-G29-compatibility.json",
+      "docs/SDT-G29-oracle-map.md",
+      "docs/SDT-G29-pr-body.md",
+      "docs/domain-authoring.md",
+      "eslint.config.mjs",
+      "package.json",
+      "package-lock.json",
+      "samples/meeting-room/src",
+      "samples/meeting-room/public",
+      "samples/meeting-room/README.md",
+      "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+      "samples/meeting-room/wrangler.cloudflare-only-doorbell.jsonc",
+      "samples/meeting-room/wrangler.meeting-room-doorbell.jsonc",
+      "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc",
+      "samples/meeting-room/wrangler.direct-doorbell.jsonc",
+      "samples/meeting-room/wrangler.doorbell.jsonc",
+      "scripts/g29-mapping-contract.mjs",
+      "scripts/g29-domain-source-check.mjs",
+      "scripts/g29-authoring-doc-check.mjs",
+      "scripts/g29-delivery-matrix.mjs",
+      "scripts/g29-candidate-check.mjs",
+      "scripts/g20-candidate-check.mjs",
+      "scripts/g29-mapping-contract.d.mts",
+      "scripts/g29-delivery-matrix.d.mts",
+      "scripts/deploy/g29-witness.mjs",
+      "scripts/deploy/g29-witness.d.mts",
+      "scripts/deploy/g29-measure.mjs",
+      "scripts/deploy/g29-measure.d.mts",
+      "scripts/deploy/g29-deploy-witness.sh",
+      "scripts/deploy/g29-record-evidence.mjs",
+      "scripts/deploy/g29-receiver-consumer-topology.mjs",
+      "migrations/d1",
+      "test/g29-mapping.spec.ts",
+      "test/g29-delivery.spec.ts",
+      "test/g29-diagnostics.spec.ts",
+      "test/g29-compatibility.spec.ts",
+      "test/g29-meeting-room.spec.ts",
+      "test/g29-witness.spec.ts",
+      "test/fixtures/g29-pre-rewrite-stored-outbox.json",
+      "test/meeting-room.spec.ts",
+      "tsconfig.json",
+      "vitest.config.ts"
+    ]
+  },
+  "remoteDeployment": {
+    "status": "completed final-C witnessed redeploy",
+    "sourceCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+    "deployedRuntimeCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "serviceId": "g25-38219c8-20260820f",
+    "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+    "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+    "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+    "generation": "v2",
+    "receiverMode": "separate",
+    "directDoorbell": true,
+    "degradation": "queued-degraded",
+    "identityAndDataPolicy": "existing names/IDs/namespaces/generation/serviceId retained; no reseed or fresh service identity",
+    "receiverQueueTopology": {
+      "task": "SDT-G29",
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "receiver": "sekiban-dcb-meeting-room-doorbell",
+      "primary": "sekiban-dcb-meeting-room-cloudflare-only",
+      "receiverConsumerRemoved": false,
+      "before": [
+        {
+          "script": "sekiban-dcb-meeting-room-cloudflare-only",
+          "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq",
+          "settings": {
+            "batch_size": 10,
+            "max_retries": 3,
+            "max_wait_time_ms": 1000,
+            "retry_delay": 0
+          },
+          "consumer_id": "876a35d6382d4bafbbed5be24ee47842",
+          "type": "worker"
+        }
+      ],
+      "after": [
+        {
+          "script": "sekiban-dcb-meeting-room-cloudflare-only",
+          "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq",
+          "settings": {
+            "batch_size": 10,
+            "max_retries": 3,
+            "max_wait_time_ms": 1000,
+            "retry_delay": 0
+          },
+          "consumer_id": "876a35d6382d4bafbbed5be24ee47842",
+          "type": "worker"
+        }
+      ],
+      "primaryExclusive": true,
+      "primaryConsumer": {
+        "script": "sekiban-dcb-meeting-room-cloudflare-only",
+        "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq",
+        "settings": {
+          "batch_size": 10,
+          "max_retries": 3,
+          "max_wait_time_ms": 1000,
+          "retry_delay": 0
+        },
+        "consumer_id": "876a35d6382d4bafbbed5be24ee47842",
+        "type": "worker"
+      }
+    }
+  },
+  "preWitness": {
+    "capturedAt": "2026-08-22T08:59:11.652Z",
+    "endpoint": null,
+    "identitySource": "public-pre-deploy-data",
+    "identityVerified": false,
+    "sourceCommit": null,
+    "data": {
+      "listQuery": {
+        "status": 200,
+        "body": {
+          "resultJson": "{\"count\":135}"
+        }
+      },
+      "reservationList": {
+        "status": 200,
+        "body": {
+          "itemsJson": "[{\"reservationId\":\"abcd2345\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd23456\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r000\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r001\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r002\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r003\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r004\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r005\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r006\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r007\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r008\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r009\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-tail-bcbc0a\",\"roomId\":\"perf-x\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r000\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r001\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r002\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r003\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r004\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r005\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r006\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r007\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r008\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r000\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r001\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r002\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r003\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r004\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r005\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r006\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r007\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r008\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r009\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r0\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r1\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r2\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r3\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd234567\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00001\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00002\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00003\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00004\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r0\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r1\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r2\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r3\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r4\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r5\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r6\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r7\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00005\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00006\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b244460f-f06\",\"roomId\":\"g29-room-b554dcff-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e48c02bf-1e6\",\"roomId\":\"g29-room-0c2d625c-a03\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-2457ca6d-cbd\",\"roomId\":\"g29-room-28d17d12-9c9\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e06e7085-36d\",\"roomId\":\"g29-room-26001d18-995\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-371b34ad-e9b\",\"roomId\":\"g29-room-4ec1ce38-cd6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8512ca1b-b93\",\"roomId\":\"g29-room-55db770a-806\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-5c8dee3a-e5a\",\"roomId\":\"g29-room-9b94bfac-07d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-37cf8add-02a\",\"roomId\":\"g29-room-ebb7ae88-1bd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ee87097f-d1a\",\"roomId\":\"g29-room-a75d9100-2cd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-c460298a-9a7\",\"roomId\":\"g29-room-a0229d04-943\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6bab0c72-8b5\",\"roomId\":\"g29-room-a945f70b-815\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-3bd45848-e5b\",\"roomId\":\"g29-room-14d9b781-c20\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-dc887247-8cc\",\"roomId\":\"g29-room-ce998911-cdd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ac1090e1-9c1\",\"roomId\":\"g29-room-c3077b6b-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b14d1a79-55a\",\"roomId\":\"g29-room-c8fc1c0b-848\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6dcd3a60-c5c\",\"roomId\":\"g29-room-ea2cfb83-1c4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-78b72109-b3c\",\"roomId\":\"g29-room-6883e824-527\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-cbf33b11-1ec\",\"roomId\":\"g29-room-7be26187-370\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-42d8053b-68c\",\"roomId\":\"g29-room-b569578e-1fd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6b7ae3ff-bd7\",\"roomId\":\"g29-room-fceea222-4b6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-d53953ad\",\"roomId\":\"g29-debug-room-3704467e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-921c7abd\",\"roomId\":\"g29-debug-room-a6246cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-bef5c7d3\",\"roomId\":\"g29-debug-room-8c4d16ce\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-deaec80f-43c\",\"roomId\":\"g29-observed-room-7c936bf5-ef8\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-35d4f464-ef8\",\"roomId\":\"g29-observed-room-24158432-8ea\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-7d5cbe6a-498\",\"roomId\":\"g29-observed-room-7e01d795-845\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-59b8899d-097\",\"roomId\":\"g29-observed-room-dd97a221-50f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-c9e3808f-8aa\",\"roomId\":\"g29-observed-room-f4b2cae7-a7b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-ec3264dc-21a\",\"roomId\":\"g29-observed-room-ef151519-3ed\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-bd2855fd-bbc\",\"roomId\":\"g29-observed-room-fdb2291c-294\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-27274c4d-aa8\",\"roomId\":\"g29-observed-room-8a06782c-c2d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-6f8e1300-174\",\"roomId\":\"g29-observed-room-7bc6b7ae-b64\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-cda9dfc7-11e\",\"roomId\":\"g29-observed-room-ba6afb2e-399\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-res-4c350fd0\",\"roomId\":\"g29-fix0-room-9782104f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-1a9bcc1b-b40\",\"roomId\":\"g29-room-41f21f47-779\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ef12d9e8-94f\",\"roomId\":\"g29-room-a023c657-e2a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e45f3d8c-224\",\"roomId\":\"g29-room-94c2383d-3b4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-93a2153f-663\",\"roomId\":\"g29-room-87adc3c8-705\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-29cf14e7-584\",\"roomId\":\"g29-room-b758acec-671\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8556d405-d00\",\"roomId\":\"g29-room-b88c8eb7-0ba\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-fb093284-cf3\",\"roomId\":\"g29-room-c093ce85-22a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-7112dceb-b8c\",\"roomId\":\"g29-room-d300b461-8bf\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-0280230b-ecf\",\"roomId\":\"g29-room-750aa8ee-01a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8822a74d-dd0\",\"roomId\":\"g29-room-5feb3681-7de\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-tail-res-89ad5477\",\"roomId\":\"g29-fix0-tail-room-db10b02b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e6fad0a9-188\",\"roomId\":\"g29-room-6da306c2-cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-61bb7682-472\",\"roomId\":\"g29-room-4d5542dd-d5a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-90e894b6-42f\",\"roomId\":\"g29-room-6bf46cf2-9bb\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6a1d1e8d-397\",\"roomId\":\"g29-room-1f83c5ed-6fb\",\"status\":\"reserved\",\"version\":1}]",
+          "totalCount": 138,
+          "totalPages": 2,
+          "currentPage": 1,
+          "pageSize": 100
+        }
+      },
+      "knownRooms": [
+        {
+          "roomId": "abcd",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "abcd",
+            "tagStateId": "room:abcd:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "abcd",
+              "name": "Tomos"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000001787380308078"
+          }
+        },
+        {
+          "roomId": "perf-c77ca0",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-c77ca0",
+            "tagStateId": "room:perf-c77ca0:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-c77ca0",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000058"
+          }
+        },
+        {
+          "roomId": "perf-x",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-x",
+            "tagStateId": "room:perf-x:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-x",
+              "name": "x"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000060"
+          }
+        },
+        {
+          "roomId": "perf-bb04ac",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-bb04ac",
+            "tagStateId": "room:perf-bb04ac:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-bb04ac",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000070"
+          }
+        },
+        {
+          "roomId": "perf-0373f7",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-0373f7",
+            "tagStateId": "room:perf-0373f7:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-0373f7",
+              "name": "perf"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000082"
+          }
+        }
+      ],
+      "knownReservations": [
+        {
+          "reservationId": "abcd2345",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd2345",
+            "tagStateId": "reservation:abcd2345:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd2345",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000045"
+          }
+        },
+        {
+          "reservationId": "abcd23456",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd23456",
+            "tagStateId": "reservation:abcd23456:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd23456",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000046"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r000",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r000",
+            "tagStateId": "reservation:perf-c77ca0-r000:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r000",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000049"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r001",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r001",
+            "tagStateId": "reservation:perf-c77ca0-r001:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r001",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000050"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r002",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r002",
+            "tagStateId": "reservation:perf-c77ca0-r002:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r002",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000051"
+          }
+        }
+      ],
+      "eventHeads": {
+        "rooms": {
+          "abcd": "suid-00000000000000000001787380308078",
+          "perf-c77ca0": "suid-00000000000000000000000000000058",
+          "perf-x": "suid-00000000000000000000000000000060",
+          "perf-bb04ac": "suid-00000000000000000000000000000070",
+          "perf-0373f7": "suid-00000000000000000000000000000082"
+        },
+        "reservations": {
+          "abcd2345": "suid-00000000000000000000000000000045",
+          "abcd23456": "suid-00000000000000000000000000000046",
+          "perf-c77ca0-r000": "suid-00000000000000000000000000000049",
+          "perf-c77ca0-r001": "suid-00000000000000000000000000000050",
+          "perf-c77ca0-r002": "suid-00000000000000000000000000000051"
+        }
+      },
+      "digest": "64e8df3b946b82dd64f7796465c39baeaf1770155cb5bcf2499c225f9ce03a68"
+    },
+    "rawV1": {
+      "status": 404
+    }
+  },
+  "postWitness": {
+    "capturedAt": "2026-08-22T08:59:38.606Z",
+    "endpoint": "/conformance/v1/g29-config",
+    "identitySource": "remote-g29-conformance",
+    "identityVerified": true,
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "sourceCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+    "serviceId": "g25-38219c8-20260820f",
+    "viewCount": 2,
+    "allowedViews": [
+      "RoomProjector",
+      "ReservationProjector"
+    ],
+    "domainDeliveryClass": "immediate-preferred",
+    "resolvedDeliveryClass": "immediate-preferred",
+    "domainViewDeliveryClasses": {
+      "RoomProjector": "immediate-preferred",
+      "ReservationProjector": "immediate-preferred"
+    },
+    "directDoorbell": true,
+    "receiverMode": "separate",
+    "degradation": "queued-degraded",
+    "maxServiceBindingInvocations": 32,
+    "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+    "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+    "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+    "generation": "v2",
+    "data": {
+      "listQuery": {
+        "status": 200,
+        "body": {
+          "resultJson": "{\"count\":135}"
+        }
+      },
+      "reservationList": {
+        "status": 200,
+        "body": {
+          "itemsJson": "[{\"reservationId\":\"abcd2345\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd23456\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r000\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r001\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r002\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r003\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r004\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r005\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r006\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r007\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r008\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r009\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-tail-bcbc0a\",\"roomId\":\"perf-x\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r000\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r001\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r002\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r003\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r004\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r005\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r006\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r007\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r008\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r000\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r001\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r002\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r003\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r004\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r005\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r006\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r007\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r008\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r009\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r0\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r1\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r2\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r3\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd234567\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00001\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00002\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00003\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00004\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r0\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r1\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r2\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r3\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r4\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r5\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r6\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r7\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00005\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00006\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b244460f-f06\",\"roomId\":\"g29-room-b554dcff-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e48c02bf-1e6\",\"roomId\":\"g29-room-0c2d625c-a03\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-2457ca6d-cbd\",\"roomId\":\"g29-room-28d17d12-9c9\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e06e7085-36d\",\"roomId\":\"g29-room-26001d18-995\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-371b34ad-e9b\",\"roomId\":\"g29-room-4ec1ce38-cd6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8512ca1b-b93\",\"roomId\":\"g29-room-55db770a-806\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-5c8dee3a-e5a\",\"roomId\":\"g29-room-9b94bfac-07d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-37cf8add-02a\",\"roomId\":\"g29-room-ebb7ae88-1bd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ee87097f-d1a\",\"roomId\":\"g29-room-a75d9100-2cd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-c460298a-9a7\",\"roomId\":\"g29-room-a0229d04-943\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6bab0c72-8b5\",\"roomId\":\"g29-room-a945f70b-815\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-3bd45848-e5b\",\"roomId\":\"g29-room-14d9b781-c20\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-dc887247-8cc\",\"roomId\":\"g29-room-ce998911-cdd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ac1090e1-9c1\",\"roomId\":\"g29-room-c3077b6b-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b14d1a79-55a\",\"roomId\":\"g29-room-c8fc1c0b-848\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6dcd3a60-c5c\",\"roomId\":\"g29-room-ea2cfb83-1c4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-78b72109-b3c\",\"roomId\":\"g29-room-6883e824-527\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-cbf33b11-1ec\",\"roomId\":\"g29-room-7be26187-370\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-42d8053b-68c\",\"roomId\":\"g29-room-b569578e-1fd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6b7ae3ff-bd7\",\"roomId\":\"g29-room-fceea222-4b6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-d53953ad\",\"roomId\":\"g29-debug-room-3704467e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-921c7abd\",\"roomId\":\"g29-debug-room-a6246cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-bef5c7d3\",\"roomId\":\"g29-debug-room-8c4d16ce\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-deaec80f-43c\",\"roomId\":\"g29-observed-room-7c936bf5-ef8\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-35d4f464-ef8\",\"roomId\":\"g29-observed-room-24158432-8ea\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-7d5cbe6a-498\",\"roomId\":\"g29-observed-room-7e01d795-845\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-59b8899d-097\",\"roomId\":\"g29-observed-room-dd97a221-50f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-c9e3808f-8aa\",\"roomId\":\"g29-observed-room-f4b2cae7-a7b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-ec3264dc-21a\",\"roomId\":\"g29-observed-room-ef151519-3ed\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-bd2855fd-bbc\",\"roomId\":\"g29-observed-room-fdb2291c-294\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-27274c4d-aa8\",\"roomId\":\"g29-observed-room-8a06782c-c2d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-6f8e1300-174\",\"roomId\":\"g29-observed-room-7bc6b7ae-b64\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-cda9dfc7-11e\",\"roomId\":\"g29-observed-room-ba6afb2e-399\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-res-4c350fd0\",\"roomId\":\"g29-fix0-room-9782104f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-1a9bcc1b-b40\",\"roomId\":\"g29-room-41f21f47-779\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ef12d9e8-94f\",\"roomId\":\"g29-room-a023c657-e2a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e45f3d8c-224\",\"roomId\":\"g29-room-94c2383d-3b4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-93a2153f-663\",\"roomId\":\"g29-room-87adc3c8-705\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-29cf14e7-584\",\"roomId\":\"g29-room-b758acec-671\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8556d405-d00\",\"roomId\":\"g29-room-b88c8eb7-0ba\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-fb093284-cf3\",\"roomId\":\"g29-room-c093ce85-22a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-7112dceb-b8c\",\"roomId\":\"g29-room-d300b461-8bf\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-0280230b-ecf\",\"roomId\":\"g29-room-750aa8ee-01a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8822a74d-dd0\",\"roomId\":\"g29-room-5feb3681-7de\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-tail-res-89ad5477\",\"roomId\":\"g29-fix0-tail-room-db10b02b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e6fad0a9-188\",\"roomId\":\"g29-room-6da306c2-cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-61bb7682-472\",\"roomId\":\"g29-room-4d5542dd-d5a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-90e894b6-42f\",\"roomId\":\"g29-room-6bf46cf2-9bb\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6a1d1e8d-397\",\"roomId\":\"g29-room-1f83c5ed-6fb\",\"status\":\"reserved\",\"version\":1}]",
+          "totalCount": 138,
+          "totalPages": 2,
+          "currentPage": 1,
+          "pageSize": 100
+        }
+      },
+      "knownRooms": [
+        {
+          "roomId": "abcd",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "abcd",
+            "tagStateId": "room:abcd:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "abcd",
+              "name": "Tomos"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000001787380308078"
+          }
+        },
+        {
+          "roomId": "perf-c77ca0",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-c77ca0",
+            "tagStateId": "room:perf-c77ca0:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-c77ca0",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000058"
+          }
+        },
+        {
+          "roomId": "perf-x",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-x",
+            "tagStateId": "room:perf-x:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-x",
+              "name": "x"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000060"
+          }
+        },
+        {
+          "roomId": "perf-bb04ac",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-bb04ac",
+            "tagStateId": "room:perf-bb04ac:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-bb04ac",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000070"
+          }
+        },
+        {
+          "roomId": "perf-0373f7",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-0373f7",
+            "tagStateId": "room:perf-0373f7:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-0373f7",
+              "name": "perf"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000082"
+          }
+        }
+      ],
+      "knownReservations": [
+        {
+          "reservationId": "abcd2345",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd2345",
+            "tagStateId": "reservation:abcd2345:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd2345",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000045"
+          }
+        },
+        {
+          "reservationId": "abcd23456",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd23456",
+            "tagStateId": "reservation:abcd23456:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd23456",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000046"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r000",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r000",
+            "tagStateId": "reservation:perf-c77ca0-r000:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r000",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000049"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r001",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r001",
+            "tagStateId": "reservation:perf-c77ca0-r001:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r001",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000050"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r002",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r002",
+            "tagStateId": "reservation:perf-c77ca0-r002:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r002",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000051"
+          }
+        }
+      ],
+      "eventHeads": {
+        "rooms": {
+          "abcd": "suid-00000000000000000001787380308078",
+          "perf-c77ca0": "suid-00000000000000000000000000000058",
+          "perf-x": "suid-00000000000000000000000000000060",
+          "perf-bb04ac": "suid-00000000000000000000000000000070",
+          "perf-0373f7": "suid-00000000000000000000000000000082"
+        },
+        "reservations": {
+          "abcd2345": "suid-00000000000000000000000000000045",
+          "abcd23456": "suid-00000000000000000000000000000046",
+          "perf-c77ca0-r000": "suid-00000000000000000000000000000049",
+          "perf-c77ca0-r001": "suid-00000000000000000000000000000050",
+          "perf-c77ca0-r002": "suid-00000000000000000000000000000051"
+        }
+      },
+      "digest": "64e8df3b946b82dd64f7796465c39baeaf1770155cb5bcf2499c225f9ce03a68"
+    },
+    "rawV1": {
+      "status": 404
+    }
+  },
+  "rawWitness": {
+    "pre": {
+      "listQuery": {
+        "status": 200,
+        "body": {
+          "resultJson": "{\"count\":135}"
+        }
+      },
+      "reservationList": {
+        "status": 200,
+        "body": {
+          "itemsJson": "[{\"reservationId\":\"abcd2345\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd23456\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r000\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r001\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r002\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r003\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r004\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r005\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r006\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r007\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r008\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r009\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-tail-bcbc0a\",\"roomId\":\"perf-x\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r000\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r001\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r002\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r003\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r004\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r005\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r006\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r007\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r008\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r000\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r001\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r002\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r003\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r004\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r005\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r006\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r007\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r008\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r009\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r0\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r1\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r2\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r3\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd234567\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00001\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00002\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00003\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00004\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r0\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r1\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r2\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r3\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r4\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r5\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r6\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r7\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00005\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00006\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b244460f-f06\",\"roomId\":\"g29-room-b554dcff-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e48c02bf-1e6\",\"roomId\":\"g29-room-0c2d625c-a03\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-2457ca6d-cbd\",\"roomId\":\"g29-room-28d17d12-9c9\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e06e7085-36d\",\"roomId\":\"g29-room-26001d18-995\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-371b34ad-e9b\",\"roomId\":\"g29-room-4ec1ce38-cd6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8512ca1b-b93\",\"roomId\":\"g29-room-55db770a-806\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-5c8dee3a-e5a\",\"roomId\":\"g29-room-9b94bfac-07d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-37cf8add-02a\",\"roomId\":\"g29-room-ebb7ae88-1bd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ee87097f-d1a\",\"roomId\":\"g29-room-a75d9100-2cd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-c460298a-9a7\",\"roomId\":\"g29-room-a0229d04-943\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6bab0c72-8b5\",\"roomId\":\"g29-room-a945f70b-815\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-3bd45848-e5b\",\"roomId\":\"g29-room-14d9b781-c20\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-dc887247-8cc\",\"roomId\":\"g29-room-ce998911-cdd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ac1090e1-9c1\",\"roomId\":\"g29-room-c3077b6b-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b14d1a79-55a\",\"roomId\":\"g29-room-c8fc1c0b-848\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6dcd3a60-c5c\",\"roomId\":\"g29-room-ea2cfb83-1c4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-78b72109-b3c\",\"roomId\":\"g29-room-6883e824-527\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-cbf33b11-1ec\",\"roomId\":\"g29-room-7be26187-370\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-42d8053b-68c\",\"roomId\":\"g29-room-b569578e-1fd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6b7ae3ff-bd7\",\"roomId\":\"g29-room-fceea222-4b6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-d53953ad\",\"roomId\":\"g29-debug-room-3704467e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-921c7abd\",\"roomId\":\"g29-debug-room-a6246cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-bef5c7d3\",\"roomId\":\"g29-debug-room-8c4d16ce\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-deaec80f-43c\",\"roomId\":\"g29-observed-room-7c936bf5-ef8\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-35d4f464-ef8\",\"roomId\":\"g29-observed-room-24158432-8ea\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-7d5cbe6a-498\",\"roomId\":\"g29-observed-room-7e01d795-845\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-59b8899d-097\",\"roomId\":\"g29-observed-room-dd97a221-50f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-c9e3808f-8aa\",\"roomId\":\"g29-observed-room-f4b2cae7-a7b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-ec3264dc-21a\",\"roomId\":\"g29-observed-room-ef151519-3ed\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-bd2855fd-bbc\",\"roomId\":\"g29-observed-room-fdb2291c-294\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-27274c4d-aa8\",\"roomId\":\"g29-observed-room-8a06782c-c2d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-6f8e1300-174\",\"roomId\":\"g29-observed-room-7bc6b7ae-b64\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-cda9dfc7-11e\",\"roomId\":\"g29-observed-room-ba6afb2e-399\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-res-4c350fd0\",\"roomId\":\"g29-fix0-room-9782104f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-1a9bcc1b-b40\",\"roomId\":\"g29-room-41f21f47-779\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ef12d9e8-94f\",\"roomId\":\"g29-room-a023c657-e2a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e45f3d8c-224\",\"roomId\":\"g29-room-94c2383d-3b4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-93a2153f-663\",\"roomId\":\"g29-room-87adc3c8-705\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-29cf14e7-584\",\"roomId\":\"g29-room-b758acec-671\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8556d405-d00\",\"roomId\":\"g29-room-b88c8eb7-0ba\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-fb093284-cf3\",\"roomId\":\"g29-room-c093ce85-22a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-7112dceb-b8c\",\"roomId\":\"g29-room-d300b461-8bf\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-0280230b-ecf\",\"roomId\":\"g29-room-750aa8ee-01a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8822a74d-dd0\",\"roomId\":\"g29-room-5feb3681-7de\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-tail-res-89ad5477\",\"roomId\":\"g29-fix0-tail-room-db10b02b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e6fad0a9-188\",\"roomId\":\"g29-room-6da306c2-cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-61bb7682-472\",\"roomId\":\"g29-room-4d5542dd-d5a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-90e894b6-42f\",\"roomId\":\"g29-room-6bf46cf2-9bb\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6a1d1e8d-397\",\"roomId\":\"g29-room-1f83c5ed-6fb\",\"status\":\"reserved\",\"version\":1}]",
+          "totalCount": 138,
+          "totalPages": 2,
+          "currentPage": 1,
+          "pageSize": 100
+        }
+      },
+      "knownRooms": [
+        {
+          "roomId": "abcd",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "abcd",
+            "tagStateId": "room:abcd:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "abcd",
+              "name": "Tomos"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000001787380308078"
+          }
+        },
+        {
+          "roomId": "perf-c77ca0",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-c77ca0",
+            "tagStateId": "room:perf-c77ca0:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-c77ca0",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000058"
+          }
+        },
+        {
+          "roomId": "perf-x",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-x",
+            "tagStateId": "room:perf-x:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-x",
+              "name": "x"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000060"
+          }
+        },
+        {
+          "roomId": "perf-bb04ac",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-bb04ac",
+            "tagStateId": "room:perf-bb04ac:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-bb04ac",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000070"
+          }
+        },
+        {
+          "roomId": "perf-0373f7",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-0373f7",
+            "tagStateId": "room:perf-0373f7:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-0373f7",
+              "name": "perf"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000082"
+          }
+        }
+      ],
+      "knownReservations": [
+        {
+          "reservationId": "abcd2345",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd2345",
+            "tagStateId": "reservation:abcd2345:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd2345",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000045"
+          }
+        },
+        {
+          "reservationId": "abcd23456",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd23456",
+            "tagStateId": "reservation:abcd23456:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd23456",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000046"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r000",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r000",
+            "tagStateId": "reservation:perf-c77ca0-r000:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r000",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000049"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r001",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r001",
+            "tagStateId": "reservation:perf-c77ca0-r001:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r001",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000050"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r002",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r002",
+            "tagStateId": "reservation:perf-c77ca0-r002:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r002",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000051"
+          }
+        }
+      ],
+      "eventHeads": {
+        "rooms": {
+          "abcd": "suid-00000000000000000001787380308078",
+          "perf-c77ca0": "suid-00000000000000000000000000000058",
+          "perf-x": "suid-00000000000000000000000000000060",
+          "perf-bb04ac": "suid-00000000000000000000000000000070",
+          "perf-0373f7": "suid-00000000000000000000000000000082"
+        },
+        "reservations": {
+          "abcd2345": "suid-00000000000000000000000000000045",
+          "abcd23456": "suid-00000000000000000000000000000046",
+          "perf-c77ca0-r000": "suid-00000000000000000000000000000049",
+          "perf-c77ca0-r001": "suid-00000000000000000000000000000050",
+          "perf-c77ca0-r002": "suid-00000000000000000000000000000051"
+        }
+      },
+      "digest": "64e8df3b946b82dd64f7796465c39baeaf1770155cb5bcf2499c225f9ce03a68"
+    },
+    "post": {
+      "listQuery": {
+        "status": 200,
+        "body": {
+          "resultJson": "{\"count\":135}"
+        }
+      },
+      "reservationList": {
+        "status": 200,
+        "body": {
+          "itemsJson": "[{\"reservationId\":\"abcd2345\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd23456\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r000\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r001\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r002\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r003\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r004\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r005\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r006\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r007\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r008\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-c77ca0-r009\",\"roomId\":\"perf-c77ca0\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-tail-bcbc0a\",\"roomId\":\"perf-x\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r000\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r001\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r002\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r003\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r004\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r005\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r006\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r007\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-bb04ac-r008\",\"roomId\":\"perf-bb04ac\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r000\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r001\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r002\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r003\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r004\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r005\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r006\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r007\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r008\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-0373f7-r009\",\"roomId\":\"perf-0373f7\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r0\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r1\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r2\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-12ff6e-r3\",\"roomId\":\"perf-12ff6e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd234567\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00001\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00002\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00003\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00004\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r0\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r1\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r2\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r3\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r4\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r5\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r6\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"perf-db-27a478-r7\",\"roomId\":\"perf-db-27a478\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00005\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"abcd00006\",\"roomId\":\"abcd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b244460f-f06\",\"roomId\":\"g29-room-b554dcff-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e48c02bf-1e6\",\"roomId\":\"g29-room-0c2d625c-a03\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-2457ca6d-cbd\",\"roomId\":\"g29-room-28d17d12-9c9\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e06e7085-36d\",\"roomId\":\"g29-room-26001d18-995\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-371b34ad-e9b\",\"roomId\":\"g29-room-4ec1ce38-cd6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8512ca1b-b93\",\"roomId\":\"g29-room-55db770a-806\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-5c8dee3a-e5a\",\"roomId\":\"g29-room-9b94bfac-07d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-37cf8add-02a\",\"roomId\":\"g29-room-ebb7ae88-1bd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ee87097f-d1a\",\"roomId\":\"g29-room-a75d9100-2cd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-c460298a-9a7\",\"roomId\":\"g29-room-a0229d04-943\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6bab0c72-8b5\",\"roomId\":\"g29-room-a945f70b-815\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-3bd45848-e5b\",\"roomId\":\"g29-room-14d9b781-c20\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-dc887247-8cc\",\"roomId\":\"g29-room-ce998911-cdd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ac1090e1-9c1\",\"roomId\":\"g29-room-c3077b6b-4dc\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-b14d1a79-55a\",\"roomId\":\"g29-room-c8fc1c0b-848\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6dcd3a60-c5c\",\"roomId\":\"g29-room-ea2cfb83-1c4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-78b72109-b3c\",\"roomId\":\"g29-room-6883e824-527\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-cbf33b11-1ec\",\"roomId\":\"g29-room-7be26187-370\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-42d8053b-68c\",\"roomId\":\"g29-room-b569578e-1fd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6b7ae3ff-bd7\",\"roomId\":\"g29-room-fceea222-4b6\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-d53953ad\",\"roomId\":\"g29-debug-room-3704467e\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-921c7abd\",\"roomId\":\"g29-debug-room-a6246cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-debug-res-bef5c7d3\",\"roomId\":\"g29-debug-room-8c4d16ce\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-deaec80f-43c\",\"roomId\":\"g29-observed-room-7c936bf5-ef8\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-35d4f464-ef8\",\"roomId\":\"g29-observed-room-24158432-8ea\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-7d5cbe6a-498\",\"roomId\":\"g29-observed-room-7e01d795-845\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-59b8899d-097\",\"roomId\":\"g29-observed-room-dd97a221-50f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-c9e3808f-8aa\",\"roomId\":\"g29-observed-room-f4b2cae7-a7b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-ec3264dc-21a\",\"roomId\":\"g29-observed-room-ef151519-3ed\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-bd2855fd-bbc\",\"roomId\":\"g29-observed-room-fdb2291c-294\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-27274c4d-aa8\",\"roomId\":\"g29-observed-room-8a06782c-c2d\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-6f8e1300-174\",\"roomId\":\"g29-observed-room-7bc6b7ae-b64\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-observed-reservation-cda9dfc7-11e\",\"roomId\":\"g29-observed-room-ba6afb2e-399\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-res-4c350fd0\",\"roomId\":\"g29-fix0-room-9782104f\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-1a9bcc1b-b40\",\"roomId\":\"g29-room-41f21f47-779\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-ef12d9e8-94f\",\"roomId\":\"g29-room-a023c657-e2a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e45f3d8c-224\",\"roomId\":\"g29-room-94c2383d-3b4\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-93a2153f-663\",\"roomId\":\"g29-room-87adc3c8-705\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-29cf14e7-584\",\"roomId\":\"g29-room-b758acec-671\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8556d405-d00\",\"roomId\":\"g29-room-b88c8eb7-0ba\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-fb093284-cf3\",\"roomId\":\"g29-room-c093ce85-22a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-7112dceb-b8c\",\"roomId\":\"g29-room-d300b461-8bf\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-0280230b-ecf\",\"roomId\":\"g29-room-750aa8ee-01a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-8822a74d-dd0\",\"roomId\":\"g29-room-5feb3681-7de\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-fix0-tail-res-89ad5477\",\"roomId\":\"g29-fix0-tail-room-db10b02b\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-e6fad0a9-188\",\"roomId\":\"g29-room-6da306c2-cbd\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-61bb7682-472\",\"roomId\":\"g29-room-4d5542dd-d5a\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-90e894b6-42f\",\"roomId\":\"g29-room-6bf46cf2-9bb\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g29-reservation-6a1d1e8d-397\",\"roomId\":\"g29-room-1f83c5ed-6fb\",\"status\":\"reserved\",\"version\":1}]",
+          "totalCount": 138,
+          "totalPages": 2,
+          "currentPage": 1,
+          "pageSize": 100
+        }
+      },
+      "knownRooms": [
+        {
+          "roomId": "abcd",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "abcd",
+            "tagStateId": "room:abcd:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "abcd",
+              "name": "Tomos"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000001787380308078"
+          }
+        },
+        {
+          "roomId": "perf-c77ca0",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-c77ca0",
+            "tagStateId": "room:perf-c77ca0:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-c77ca0",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000058"
+          }
+        },
+        {
+          "roomId": "perf-x",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-x",
+            "tagStateId": "room:perf-x:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-x",
+              "name": "x"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000060"
+          }
+        },
+        {
+          "roomId": "perf-bb04ac",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-bb04ac",
+            "tagStateId": "room:perf-bb04ac:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-bb04ac",
+              "name": "perf check"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000070"
+          }
+        },
+        {
+          "roomId": "perf-0373f7",
+          "status": 200,
+          "body": {
+            "projection": "room",
+            "roomId": "perf-0373f7",
+            "tagStateId": "room:perf-0373f7:RoomProjector",
+            "state": {
+              "status": "created",
+              "version": 1,
+              "roomId": "perf-0373f7",
+              "name": "perf"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000082"
+          }
+        }
+      ],
+      "knownReservations": [
+        {
+          "reservationId": "abcd2345",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd2345",
+            "tagStateId": "reservation:abcd2345:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd2345",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000045"
+          }
+        },
+        {
+          "reservationId": "abcd23456",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "abcd23456",
+            "tagStateId": "reservation:abcd23456:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "abcd23456",
+              "roomId": "abcd"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000046"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r000",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r000",
+            "tagStateId": "reservation:perf-c77ca0-r000:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r000",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000049"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r001",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r001",
+            "tagStateId": "reservation:perf-c77ca0-r001:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r001",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000050"
+          }
+        },
+        {
+          "reservationId": "perf-c77ca0-r002",
+          "status": 200,
+          "body": {
+            "projection": "reservation",
+            "reservationId": "perf-c77ca0-r002",
+            "tagStateId": "reservation:perf-c77ca0-r002:ReservationProjector",
+            "state": {
+              "status": "reserved",
+              "version": 1,
+              "reservationId": "perf-c77ca0-r002",
+              "roomId": "perf-c77ca0"
+            },
+            "version": 1,
+            "lastSortedUniqueId": "suid-00000000000000000000000000000051"
+          }
+        }
+      ],
+      "eventHeads": {
+        "rooms": {
+          "abcd": "suid-00000000000000000001787380308078",
+          "perf-c77ca0": "suid-00000000000000000000000000000058",
+          "perf-x": "suid-00000000000000000000000000000060",
+          "perf-bb04ac": "suid-00000000000000000000000000000070",
+          "perf-0373f7": "suid-00000000000000000000000000000082"
+        },
+        "reservations": {
+          "abcd2345": "suid-00000000000000000000000000000045",
+          "abcd23456": "suid-00000000000000000000000000000046",
+          "perf-c77ca0-r000": "suid-00000000000000000000000000000049",
+          "perf-c77ca0-r001": "suid-00000000000000000000000000000050",
+          "perf-c77ca0-r002": "suid-00000000000000000000000000000051"
+        }
+      },
+      "digest": "64e8df3b946b82dd64f7796465c39baeaf1770155cb5bcf2499c225f9ce03a68"
+    },
+    "rowsHeadsCountsLists": "captured in preWitness/postWitness data; secrets redacted"
+  },
+  "fiveEndpointConformance": {
+    "source": "fixed-N topology probe",
+    "topology": {
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "serviceId": "g25-38219c8-20260820f",
+      "viewCount": 2,
+      "allowedViews": [
+        "RoomProjector",
+        "ReservationProjector"
+      ],
+      "domainDeliveryClass": "immediate-preferred",
+      "resolvedDeliveryClass": "immediate-preferred",
+      "domainViewDeliveryClasses": {
+        "RoomProjector": "immediate-preferred",
+        "ReservationProjector": "immediate-preferred"
+      },
+      "directDoorbell": true,
+      "receiverMode": "separate",
+      "degradation": "queued-degraded",
+      "maxServiceBindingInvocations": 32,
+      "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "generation": "v2"
+    },
+    "rawV1": {
+      "pre": {
+        "status": 404
+      },
+      "post": {
+        "status": 404
+      },
+      "expectedStatus": 404
+    }
+  },
+  "fixedNMeasurement": {
+    "task": "SDT-G29",
+    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "startedAt": "2026-08-22T08:59:38.742Z",
+    "topology": {
+      "task": "SDT-G29",
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "sourceCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+      "serviceId": "g25-38219c8-20260820f",
+      "viewCount": 2,
+      "allowedViews": [
+        "RoomProjector",
+        "ReservationProjector"
+      ],
+      "domainDeliveryClass": "immediate-preferred",
+      "domainViewDeliveryClasses": {
+        "RoomProjector": "immediate-preferred",
+        "ReservationProjector": "immediate-preferred"
+      },
+      "resolvedDeliveryClass": "immediate-preferred",
+      "directDoorbell": true,
+      "receiverMode": "separate",
+      "degradation": "queued-degraded",
+      "maxServiceBindingInvocations": 32,
+      "pipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "materializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "generation": "v2"
+    },
+    "latency": {
+      "sampleCount": 10,
+      "commandStartToResponseMs": {
+        "p50": 2484.1569579999996,
+        "p95": 3889.268624999997,
+        "max": 3889.268624999997,
+        "samples": 10
+      },
+      "responseToVisibleMs": {
+        "p50": 611.3750419999997,
+        "p95": 993.2079169999997,
+        "max": 993.2079169999997,
+        "samples": 10
+      },
+      "commandStartToVisibleMs": {
+        "p50": 3194.4083339999997,
+        "p95": 4391.864249999999,
+        "max": 4391.864249999999,
+        "samples": 10
+      },
+      "statusRaw": [
+        {
+          "index": 0,
+          "roomId": "g29-room-063a92a8-809",
+          "reservationId": "g29-reservation-5870d888-88b",
+          "commandStartAt": "2026-08-22T08:59:41.985Z",
+          "responseAt": "2026-08-22T08:59:44.605Z",
+          "visibleAt": "2026-08-22T08:59:45.217Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 1,
+          "roomId": "g29-room-cf1b04de-d9a",
+          "reservationId": "g29-reservation-2efe8545-a82",
+          "commandStartAt": "2026-08-22T08:59:47.587Z",
+          "responseAt": "2026-08-22T08:59:50.071Z",
+          "visibleAt": "2026-08-22T08:59:50.498Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 2,
+          "roomId": "g29-room-271089fb-0a2",
+          "reservationId": "g29-reservation-7f3f5ac3-946",
+          "commandStartAt": "2026-08-22T08:59:53.633Z",
+          "responseAt": "2026-08-22T08:59:55.681Z",
+          "visibleAt": "2026-08-22T08:59:56.663Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 3,
+          "roomId": "g29-room-dc820ef4-a2f",
+          "reservationId": "g29-reservation-cb1bd5a5-1c4",
+          "commandStartAt": "2026-08-22T08:59:58.559Z",
+          "responseAt": "2026-08-22T09:00:00.857Z",
+          "visibleAt": "2026-08-22T09:00:01.753Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 4,
+          "roomId": "g29-room-3065fb53-b47",
+          "reservationId": "g29-reservation-878d5c70-75e",
+          "commandStartAt": "2026-08-22T09:00:03.674Z",
+          "responseAt": "2026-08-22T09:00:06.658Z",
+          "visibleAt": "2026-08-22T09:00:07.156Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 5,
+          "roomId": "g29-room-874cb5ba-1d8",
+          "reservationId": "g29-reservation-edba0f8b-196",
+          "commandStartAt": "2026-08-22T09:00:09.573Z",
+          "responseAt": "2026-08-22T09:00:13.463Z",
+          "visibleAt": "2026-08-22T09:00:13.965Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 6,
+          "roomId": "g29-room-b4263c9d-880",
+          "reservationId": "g29-reservation-6b582201-5a2",
+          "commandStartAt": "2026-08-22T09:00:15.890Z",
+          "responseAt": "2026-08-22T09:00:18.162Z",
+          "visibleAt": "2026-08-22T09:00:19.021Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 7,
+          "roomId": "g29-room-4eb686fe-407",
+          "reservationId": "g29-reservation-8d03583b-082",
+          "commandStartAt": "2026-08-22T09:00:20.782Z",
+          "responseAt": "2026-08-22T09:00:24.025Z",
+          "visibleAt": "2026-08-22T09:00:24.475Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 8,
+          "roomId": "g29-room-64d9d698-a8d",
+          "reservationId": "g29-reservation-70b0fcb3-ab9",
+          "commandStartAt": "2026-08-22T09:00:26.703Z",
+          "responseAt": "2026-08-22T09:00:29.226Z",
+          "visibleAt": "2026-08-22T09:00:30.219Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        },
+        {
+          "index": 9,
+          "roomId": "g29-room-7250d8d3-c8a",
+          "reservationId": "g29-reservation-6f980477-e1d",
+          "commandStartAt": "2026-08-22T09:00:32.316Z",
+          "responseAt": "2026-08-22T09:00:34.311Z",
+          "visibleAt": "2026-08-22T09:00:35.180Z",
+          "httpStatus": 200,
+          "kind": "committed",
+          "code": null,
+          "fallback": false
+        }
+      ],
+      "errorCount": 0,
+      "fallbackCount": 0,
+      "samples": [
+        {
+          "index": 0,
+          "roomId": "g29-room-063a92a8-809",
+          "reservationId": "g29-reservation-5870d888-88b",
+          "commandStartAt": "2026-08-22T08:59:41.985Z",
+          "commandStartedAt": "2026-08-22T08:59:41.985Z",
+          "responseAt": "2026-08-22T08:59:44.605Z",
+          "visibleAt": "2026-08-22T08:59:45.217Z",
+          "commandStartToResponseMs": 2620.517167,
+          "responseToVisibleMs": 611.3750419999997,
+          "commandStartToVisibleMs": 3231.8922089999996,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 1,
+          "roomId": "g29-room-cf1b04de-d9a",
+          "reservationId": "g29-reservation-2efe8545-a82",
+          "commandStartAt": "2026-08-22T08:59:47.587Z",
+          "commandStartedAt": "2026-08-22T08:59:47.587Z",
+          "responseAt": "2026-08-22T08:59:50.071Z",
+          "visibleAt": "2026-08-22T08:59:50.498Z",
+          "commandStartToResponseMs": 2484.1569579999996,
+          "responseToVisibleMs": 427.37729200000103,
+          "commandStartToVisibleMs": 2911.5342500000006,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 2,
+          "roomId": "g29-room-271089fb-0a2",
+          "reservationId": "g29-reservation-7f3f5ac3-946",
+          "commandStartAt": "2026-08-22T08:59:53.633Z",
+          "commandStartedAt": "2026-08-22T08:59:53.633Z",
+          "responseAt": "2026-08-22T08:59:55.681Z",
+          "visibleAt": "2026-08-22T08:59:56.663Z",
+          "commandStartToResponseMs": 2047.9379590000008,
+          "responseToVisibleMs": 982.1665409999987,
+          "commandStartToVisibleMs": 3030.1044999999995,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 3,
+          "roomId": "g29-room-dc820ef4-a2f",
+          "reservationId": "g29-reservation-cb1bd5a5-1c4",
+          "commandStartAt": "2026-08-22T08:59:58.559Z",
+          "commandStartedAt": "2026-08-22T08:59:58.559Z",
+          "responseAt": "2026-08-22T09:00:00.857Z",
+          "visibleAt": "2026-08-22T09:00:01.753Z",
+          "commandStartToResponseMs": 2298.592417,
+          "responseToVisibleMs": 895.8159169999999,
+          "commandStartToVisibleMs": 3194.4083339999997,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 4,
+          "roomId": "g29-room-3065fb53-b47",
+          "reservationId": "g29-reservation-878d5c70-75e",
+          "commandStartAt": "2026-08-22T09:00:03.674Z",
+          "commandStartedAt": "2026-08-22T09:00:03.674Z",
+          "responseAt": "2026-08-22T09:00:06.658Z",
+          "visibleAt": "2026-08-22T09:00:07.156Z",
+          "commandStartToResponseMs": 2984.263959,
+          "responseToVisibleMs": 497.7960410000014,
+          "commandStartToVisibleMs": 3482.0600000000013,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 5,
+          "roomId": "g29-room-874cb5ba-1d8",
+          "reservationId": "g29-reservation-edba0f8b-196",
+          "commandStartAt": "2026-08-22T09:00:09.573Z",
+          "commandStartedAt": "2026-08-22T09:00:09.573Z",
+          "responseAt": "2026-08-22T09:00:13.463Z",
+          "visibleAt": "2026-08-22T09:00:13.965Z",
+          "commandStartToResponseMs": 3889.268624999997,
+          "responseToVisibleMs": 502.59562500000175,
+          "commandStartToVisibleMs": 4391.864249999999,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 6,
+          "roomId": "g29-room-b4263c9d-880",
+          "reservationId": "g29-reservation-6b582201-5a2",
+          "commandStartAt": "2026-08-22T09:00:15.890Z",
+          "commandStartedAt": "2026-08-22T09:00:15.890Z",
+          "responseAt": "2026-08-22T09:00:18.162Z",
+          "visibleAt": "2026-08-22T09:00:19.021Z",
+          "commandStartToResponseMs": 2271.5510829999985,
+          "responseToVisibleMs": 859.3845839999994,
+          "commandStartToVisibleMs": 3130.935666999998,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 7,
+          "roomId": "g29-room-4eb686fe-407",
+          "reservationId": "g29-reservation-8d03583b-082",
+          "commandStartAt": "2026-08-22T09:00:20.782Z",
+          "commandStartedAt": "2026-08-22T09:00:20.782Z",
+          "responseAt": "2026-08-22T09:00:24.025Z",
+          "visibleAt": "2026-08-22T09:00:24.475Z",
+          "commandStartToResponseMs": 3242.741541999996,
+          "responseToVisibleMs": 449.99900000000343,
+          "commandStartToVisibleMs": 3692.7405419999996,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 8,
+          "roomId": "g29-room-64d9d698-a8d",
+          "reservationId": "g29-reservation-70b0fcb3-ab9",
+          "commandStartAt": "2026-08-22T09:00:26.703Z",
+          "commandStartedAt": "2026-08-22T09:00:26.703Z",
+          "responseAt": "2026-08-22T09:00:29.226Z",
+          "visibleAt": "2026-08-22T09:00:30.219Z",
+          "commandStartToResponseMs": 2522.995999999999,
+          "responseToVisibleMs": 993.2079169999997,
+          "commandStartToVisibleMs": 3516.203916999999,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        },
+        {
+          "index": 9,
+          "roomId": "g29-room-7250d8d3-c8a",
+          "reservationId": "g29-reservation-6f980477-e1d",
+          "commandStartAt": "2026-08-22T09:00:32.316Z",
+          "commandStartedAt": "2026-08-22T09:00:32.316Z",
+          "responseAt": "2026-08-22T09:00:34.311Z",
+          "visibleAt": "2026-08-22T09:00:35.180Z",
+          "commandStartToResponseMs": 1994.5652499999997,
+          "responseToVisibleMs": 868.7364579999994,
+          "commandStartToVisibleMs": 2863.301707999999,
+          "status": 200,
+          "kind": "committed",
+          "fallback": false,
+          "statusRaw": {
+            "httpStatus": 200,
+            "kind": "committed",
+            "code": null,
+            "fallback": false
+          }
+        }
+      ],
+      "interpretation": "response-to-visible is the measured visibility interval; command-start-to-response and command-start-to-visible include the POST and total is required to remain non-sub-second"
+    },
+    "secrets": "redacted"
+  },
+  "tokenRotation": {
+    "status": "completed",
+    "value": "redacted",
+    "oldToken": "redacted and intentionally invalidated",
+    "localFileAfterMeasurement": "deleted by deploy trap",
+    "dataD1DurableObjectPolicy": "token-only change; no data, D1, or Durable Object mutation"
+  },
+  "dataPreservation": {
+    "stable": true,
+    "rule": "pre-captured rows, heads, and list entries are a required preserved subset; aggregate counts are observed but not an equality gate",
+    "preSetDigest": "587824acedd349813ec8c413ef6b1f334f6bd32b96f906132ae1477dfc2f050d",
+    "preserved": {
+      "reservationListEntries": 100,
+      "knownRooms": 5,
+      "knownReservations": 5
+    },
+    "counts": {
+      "before": {
+        "roomQuery": 135,
+        "reservations": 138
+      },
+      "after": {
+        "roomQuery": 135,
+        "reservations": 138
+      }
+    },
+    "countDelta": {
+      "roomQuery": 0,
+      "reservations": 0
+    },
+    "countDeltaCause": {
+      "preToPost": "the deploy script makes no data probe write before post-witness; aggregate deltas are observed only and any non-zero value is recorded as concurrent/external rather than attributed to the fixed-N phase",
+      "preToPostScriptWrites": [],
+      "fixedNProbeWrites": [
+        {
+          "index": 0,
+          "roomId": "g29-room-063a92a8-809",
+          "reservationId": "g29-reservation-5870d888-88b"
+        },
+        {
+          "index": 1,
+          "roomId": "g29-room-cf1b04de-d9a",
+          "reservationId": "g29-reservation-2efe8545-a82"
+        },
+        {
+          "index": 2,
+          "roomId": "g29-room-271089fb-0a2",
+          "reservationId": "g29-reservation-7f3f5ac3-946"
+        },
+        {
+          "index": 3,
+          "roomId": "g29-room-dc820ef4-a2f",
+          "reservationId": "g29-reservation-cb1bd5a5-1c4"
+        },
+        {
+          "index": 4,
+          "roomId": "g29-room-3065fb53-b47",
+          "reservationId": "g29-reservation-878d5c70-75e"
+        },
+        {
+          "index": 5,
+          "roomId": "g29-room-874cb5ba-1d8",
+          "reservationId": "g29-reservation-edba0f8b-196"
+        },
+        {
+          "index": 6,
+          "roomId": "g29-room-b4263c9d-880",
+          "reservationId": "g29-reservation-6b582201-5a2"
+        },
+        {
+          "index": 7,
+          "roomId": "g29-room-4eb686fe-407",
+          "reservationId": "g29-reservation-8d03583b-082"
+        },
+        {
+          "index": 8,
+          "roomId": "g29-room-64d9d698-a8d",
+          "reservationId": "g29-reservation-70b0fcb3-ab9"
+        },
+        {
+          "index": 9,
+          "roomId": "g29-room-7250d8d3-c8a",
+          "reservationId": "g29-reservation-6f980477-e1d"
+        }
+      ],
+      "fixedNPhase": "runs after the post-witness; each listed room/reservation pair is the deliberate post-witness write source"
+    }
+  },
+  "candidateImpact": {
+    "candidateCommit": "c5fff88620af3883b95639004dda08197618cc7e",
+    "deploymentRequired": true,
+    "workerBundleChanged": false,
+    "rationale": "Final-C deployment and witness are required by AC8/AC9; the final C is both deployment and digest authority."
+  },
+  "oracleMap": "docs/SDT-G29-oracle-map.md",
+  "candidateGate": "C'''' remains the immutable deployed source authority; the post-C gate allows exactly this evidence document and one retained-candidate append.",
+  "ci": {
+    "workflowRun": 32563245249,
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/32563245249",
+    "verify": "passed",
+    "cosmosEmulator": "passed"
+  }
+}
