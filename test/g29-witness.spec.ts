@@ -20,6 +20,12 @@ const expected = {
   generation: "v2",
 };
 
+const legacyExpected = {
+  ...expected,
+  allowedViews: ["RoomProjector"],
+  domainViewDeliveryClasses: { RoomProjector: "immediate-preferred", ReservationProjector: "queued" },
+};
+
 function witness() {
   return {
     ...expected,
@@ -36,6 +42,13 @@ describe("SDT-G29 witnessed deploy and measurement oracles", () => {
     expect(() => assertWitnessStable(witness(), { ...witness(), data: { digest: "changed" } }, expected)).toThrow("data witness");
     expect(() => assertWitnessStable(witness(), { ...witness(), rawV1: { status: 200 } }, expected)).toThrow("public V1");
     expect(() => assertWitnessStable({ ...witness(), identityVerified: false }, witness(), expected)).toThrow("full G29 topology");
+  });
+
+  it("allows only the declared C3-to-C4 delivery policy transition", () => {
+    const legacy = { ...witness(), ...legacyExpected };
+    expect(assertWitnessStable(legacy, witness(), expected, legacyExpected).stable).toBe(true);
+    expect(() => assertWitnessStable({ ...legacy, serviceId: "other-service" }, witness(), expected, legacyExpected)).toThrow("before");
+    expect(() => assertWitnessStable(legacy, { ...witness(), domainViewDeliveryClasses: legacyExpected.domainViewDeliveryClasses }, expected, legacyExpected)).toThrow("after");
   });
 
   it("keeps three timing distributions and status/fallback raw evidence", () => {

@@ -50,7 +50,10 @@ self-consistency, and candidate tree digests.
 The deploy script follows the normative order: checked-in config/bundle
 preflight → remote migration read → pre-witness → checked-in additive
 migrations → receiver deploy → primary deploy → post-witness/identity
-comparison → fixed-N measurement. It never applies a destructive migration,
-reseeds data, creates a fresh service identity, or emits a secret. The evidence
-reports command-start→response, response→visible, and command-start→visible
-distributions independently.
+comparison → fixed-N measurement. When an intentional policy transition is
+part of the fix, the comparison supplies separate before/after topology
+fixtures; worker/service/D1/Queue/DO identity, raw V1 closure, and data witness
+remain strict while only the declared policy delta is admitted. It never
+applies a destructive migration, reseeds data, creates a fresh service
+identity, or emits a secret. The evidence reports command-start→response,
+response→visible, and command-start→visible distributions independently.

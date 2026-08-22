@@ -9,6 +9,7 @@ readonly RECEIVER_CONFIG="samples/meeting-room/wrangler.meeting-room-doorbell.js
 readonly SERVICE_ID="${G29_SERVICE_ID:-g25-38219c8-20260820f}"
 readonly BASE_URL="${G29_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
 readonly EXPECTED_FILE="${REPO_ROOT}/.artifacts/g29-witness-expected.json"
+readonly BEFORE_EXPECTED_FILE="${REPO_ROOT}/.artifacts/g29-witness-before-expected.json"
 readonly PRE_FILE="${REPO_ROOT}/.artifacts/g29-pre-witness.json"
 readonly POST_FILE="${REPO_ROOT}/.artifacts/g29-post-witness.json"
 
@@ -20,6 +21,7 @@ if [[ ! "${SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
 fi
 mkdir -p .artifacts
 node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[2],viewCount:2,allowedViews:["RoomProjector","ReservationProjector"],domainDeliveryClass:"immediate-preferred",resolvedDeliveryClass:"immediate-preferred",domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"immediate-preferred"},directDoorbell:true,receiverMode:"separate",degradation:"queued-degraded",maxServiceBindingInvocations:32,pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2"},null,2)+"\n")' "${EXPECTED_FILE}" "${SERVICE_ID}"
+node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[2],viewCount:2,allowedViews:["RoomProjector"],domainDeliveryClass:"immediate-preferred",resolvedDeliveryClass:"immediate-preferred",domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"queued"},directDoorbell:true,receiverMode:"separate",degradation:"queued-degraded",maxServiceBindingInvocations:32,pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2"},null,2)+"\n")' "${BEFORE_EXPECTED_FILE}" "${SERVICE_ID}"
 
 # Phase 1: checked-in config and bundle preflight. No deployment or data write.
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}"
@@ -48,7 +50,7 @@ node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOK
 
 # Phase 4: post-witness must prove the same identity/topology before any fixed-N command.
 node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${POST_FILE}"
-node scripts/deploy/g29-witness.mjs --mode compare --before "${PRE_FILE}" --after "${POST_FILE}" --expected "${EXPECTED_FILE}"
+node scripts/deploy/g29-witness.mjs --mode compare --before "${PRE_FILE}" --after "${POST_FILE}" --expected "${EXPECTED_FILE}" --before-expected "${BEFORE_EXPECTED_FILE}"
 
 # Phase 5: fixed N is intentionally last and records response->visible apart
 # from total command->visible; total is never described as sub-second.

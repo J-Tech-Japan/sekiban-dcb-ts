@@ -108,10 +108,15 @@ export async function captureWitness(baseUrl, token, expected) {
   });
 }
 
-export function assertWitnessStable(before, after, expected) {
+function assertExpectedFields(witness, expected, phase) {
   for (const [field, value] of Object.entries(expected)) {
-    if (JSON.stringify(before[field]) !== JSON.stringify(value) || JSON.stringify(after[field]) !== JSON.stringify(value)) throw new Error(`G29 witness identity/topology mismatch at ${field}`);
+    if (JSON.stringify(witness[field]) !== JSON.stringify(value)) throw new Error(`G29 ${phase} witness identity/topology mismatch at ${field}`);
   }
+}
+
+export function assertWitnessStable(before, after, expected, beforeExpected = expected) {
+  assertExpectedFields(before, beforeExpected, "before");
+  assertExpectedFields(after, expected, "after");
   if (!before.identityVerified || !after.identityVerified) throw new Error("G29 witness did not verify the full G29 topology endpoint");
   if (before.worker !== after.worker || before.serviceId !== after.serviceId || before.pipelineDatabaseId !== after.pipelineDatabaseId || before.materializedViewDatabaseId !== after.materializedViewDatabaseId || before.queue !== after.queue || before.generation !== after.generation) {
     throw new Error("G29 witness detected a namespace, service, queue, or generation change");
@@ -128,7 +133,9 @@ async function main() {
     const before = JSON.parse(readFileSync(required("--before", argument("--before")), "utf8"));
     const after = JSON.parse(readFileSync(required("--after", argument("--after")), "utf8"));
     const expected = JSON.parse(readFileSync(required("--expected", argument("--expected")), "utf8"));
-    console.log(JSON.stringify(assertWitnessStable(before, after, expected), null, 2));
+    const beforeExpectedPath = argument("--before-expected", undefined);
+    const beforeExpected = beforeExpectedPath === undefined ? expected : JSON.parse(readFileSync(beforeExpectedPath, "utf8"));
+    console.log(JSON.stringify(assertWitnessStable(before, after, expected, beforeExpected), null, 2));
     return;
   }
   const tokenFile = required("--token-file", argument("--token-file", process.env.G29_CONFORMANCE_TOKEN_FILE));
