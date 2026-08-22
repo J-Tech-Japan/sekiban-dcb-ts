@@ -1,14 +1,14 @@
 {
   "task": "SDT-G28",
-  "status": "FINAL candidate C'=6308fb446335000d8729d490b170b189734461a4; bookkeeping R' records C' self-digests and retained-list append",
-  "candidateCommit": "6308fb446335000d8729d490b170b189734461a4",
-  "sourceCommit": "6308fb446335000d8729d490b170b189734461a4",
+  "status": "FINAL candidate C''=CANDIDATE; bookkeeping R'' will record C'' self-digests and retained-list append",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
-    "candidate": "C' contains the review fixes, package, runtime bridge, CI, tests, README, oracle map, PR body, and this evidence placeholder",
-    "bookkeeping": "R' updates only this evidence document and appends the immutable C' SHA once to the retained candidate fetch list",
+    "candidate": "C'' contains the F7/F8 review fixes, package, runtime bridge, CI, tests, README, oracle map, PR body, and this evidence placeholder",
+    "bookkeeping": "R'' updates only this evidence document and appends the immutable C'' SHA once to the retained candidate fetch list",
     "postCandidateAllowlist": [
       "docs/SDT-G28-deploy-evidence.json",
-      ".github/workflows/ci.yml: one exact addition of C to the retained candidate fetch list"
+      ".github/workflows/ci.yml: one exact addition of C'' to the retained candidate fetch list"
     ],
     "selfReference": false,
     "secrets": "redacted"
@@ -30,12 +30,14 @@
       "package.json",
       "packages/dcb-domain/README.md",
       "packages/dcb-domain/boundary-fixtures",
+      "packages/dcb-domain/diagnostic-fixtures",
       "packages/dcb-domain/package.json",
       "packages/dcb-domain/tsconfig.build.json",
       "packages/dcb-domain/tsconfig.json",
       "packages/dcb-domain/tsconfig.typecheck.json",
       "packages/dcb-domain/typecheck-fixtures",
       "scripts/dcb-domain-boundary-check.mjs",
+      "scripts/dcb-domain-compile-fail-check.mjs",
       "scripts/g20-candidate-check.mjs",
       "test/dcb-domain.spec.ts",
       "tsconfig.json",
@@ -57,12 +59,12 @@
     "npm run test:g28": {
       "status": "PASS",
       "testFiles": 1,
-      "tests": 19
+      "tests": 20
     },
     "npm test": {
       "status": "PASS",
       "testFiles": 37,
-      "tests": 274
+      "tests": 275
     },
     "npm run check": "PASS",
     "git diff --check": "PASS",
@@ -93,12 +95,13 @@
     "compileFail": "The dedicated typecheck project plus six unsuppressed fixtures pin TS diagnostic code/message fragments; removing a target constraint produces a mismatch or unused-@ts-expect-error failure.",
     "boundary": "Source/import/global, negative-fixture, and package-manifest/npm-pack gates have independent commands, selected completion attestation, per-gate forced-red proofs, and aggregate missing-gate attestation.",
     "session": "Exact propagation values, 2x2 eager/late eligibility, stored v1→v2 tags, snapshot heads, whole-log seal, 0/1/N discard, changing-clock retry, cross-boundary parse provenance, and downstream zero-call assertions are isolated in test/dcb-domain.spec.ts.",
-    "bridge": "toRuntimeDomain authored commands use a read-only conflict barrier, admission, one allocator vector, commit, same-candidate reconcile, and g27 canonical identity/provenance."
+    "bridge": "toRuntimeDomain authored commands use a read-only conflict barrier, admission, one allocator vector, commit, and same immutable candidate/attempt/vector reconcile; composeRuntime commands use the real runtime /admit, /acquire, /allocate, and /append path with g27 canonical identity/provenance.",
+    "candidateProtocol": "C''/R'' is non-self-referential; the configuration digest includes the compile-fail checker and diagnostic-fixtures tree."
   },
   "remoteDeployment": {
     "status": "not-run",
     "reason": "G28 is an adapter-neutral library layer; no deployment credential is used on the implementation seat.",
     "secrets": "redacted"
   },
-  "candidateGate": "PASS at C' tree: R' must append this C' SHA exactly once to the retained candidate fetch list and change only this evidence document plus that list"
+  "candidateGate": "PENDING C'': R'' must append this C'' SHA exactly once to the retained candidate fetch list and change only this evidence document plus that list"
 }

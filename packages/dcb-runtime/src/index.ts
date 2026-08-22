@@ -98,7 +98,22 @@ export type {
   DownstreamDoorbellBinding,
 } from "./downstream/Doorbell";
 export type { JsonValue, MaterializedViewRowPatch } from "@sekiban/dcb-core";
-export type { RuntimeDomainLike, RuntimeQueryDefinition, RuntimeWorkerConfig } from "./composition";
+export {
+  composeRuntime,
+  createRuntimeCommitPort,
+  RuntimeCommandRegistry,
+} from "./composition";
+export type {
+  RuntimeCommitAllocationLike,
+  RuntimeCommitCandidateLike,
+  RuntimeCommitPort,
+  RuntimeCommitPortOptions,
+  RuntimeCommitPortResult,
+  RuntimeCommandLike,
+  RuntimeDomainLike,
+  RuntimeQueryDefinition,
+  RuntimeWorkerConfig,
+} from "./composition";
 export { POSTGRES_STORE_PROVIDER, createPostgresBootstrapAdapter, createPostgresStoreProvider } from "./store/provider";
 export type { StoreProvider, StoreProviderEnvironment } from "./store/provider";
 export {

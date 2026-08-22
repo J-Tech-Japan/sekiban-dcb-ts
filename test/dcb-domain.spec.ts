@@ -1,3 +1,4 @@
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -31,7 +32,11 @@ import {
   UndeclaredReadError,
   type Tag,
 } from "@sekiban/dcb-domain";
-import { composeRuntime } from "../packages/dcb-runtime/src/composition";
+import {
+  composeRuntime,
+  createRuntimeCommitPort,
+  registeredEventVersions,
+} from "../packages/dcb-runtime/src/composition";
 import { evolveTable, given } from "@sekiban/dcb-domain/testing";
 
 const order = tagFamily("order");
@@ -572,13 +577,38 @@ describe("SDT-G28 authoring surface", () => {
     expect(commits).toBe(1);
 
     let reconciles = 0;
+    let unknownAdmissions = 0;
+    let unknownAllocations = 0;
+    let unknownCommits = 0;
+    let firstCandidate: unknown;
+    let firstAllocation: unknown;
     const unknownOutcome = await runtimeCommand.execute({ orderId: "runtime-unknown" }, {
       runtimePort: {
-        admit: () => ({ kind: "accepted" as const }),
-        allocate: () => ({ candidates: [{ ordinal: "0", suid: "suid-runtime-vector-2" }] }),
-        commit: () => ({ kind: "unknown" as const, attemptId: "same-attempt" }),
-        reconcile: (_candidate, outcomeValue) => {
+        admit: () => {
+          unknownAdmissions += 1;
+          return { kind: "accepted" as const, attemptId: "same-attempt" };
+        },
+        allocate: () => {
+          unknownAllocations += 1;
+          return { attemptId: "same-attempt", candidates: [{ ordinal: "0", suid: "suid-runtime-vector-2" }] };
+        },
+        commit: (candidate, allocation) => {
+          unknownCommits += 1;
+          firstCandidate = candidate;
+          firstAllocation = allocation;
+          return { kind: "unknown" as const, attemptId: "same-attempt" };
+        },
+        reconcile: (context, outcomeValue) => {
           reconciles += 1;
+          // The inverse mutation that constructs a fresh candidate for
+          // reconcile must fail these identity and zero-new-work assertions.
+          expect(context.candidate).toBe(firstCandidate);
+          expect(context.allocation).toBe(firstAllocation);
+          expect(context.candidateKey).toEqual(expect.any(String));
+          expect(context.attemptId).toBe("same-attempt");
+          expect(Object.isFrozen(context)).toBe(true);
+          expect(Object.isFrozen(context.candidate)).toBe(true);
+          expect(context.allocation === undefined || Object.isFrozen(context.allocation)).toBe(true);
           expect(outcomeValue).toMatchObject({ kind: "unknown", attemptId: "same-attempt" });
           return { kind: "accepted" as const };
         },
@@ -586,6 +616,75 @@ describe("SDT-G28 authoring surface", () => {
     });
     expect(unknownOutcome.kind).toBe("committed");
     expect(reconciles).toBe(1);
+    expect(unknownAdmissions).toBe(1);
+    expect(unknownAllocations).toBe(1);
+    expect(unknownCommits).toBe(1);
+  });
+
+  it("routes composed authored commands through the real runtime commit path", async () => {
+    const authoredCommand = (await import("@sekiban/dcb-domain")).command({
+      id: "runtime-real-command",
+      input: z.object({ orderId: z.string() }),
+      reads: (input) => read(orderProjector, order.of(input.orderId)),
+      handle: (input, context) => {
+        context.append(placed, placed.make(input));
+        return done({ orderId: input.orderId });
+      },
+    });
+    const runtimeDomain = toRuntimeDomain(domain({
+      events: [placed, cancelled],
+      projectors: [orderProjector],
+      commands: [authoredCommand],
+    }));
+    const composed = composeRuntime(runtimeDomain);
+    expect(composed.commands.resolve("runtime-real-command")).toBeDefined();
+
+    const paths: string[] = [];
+    const tracedNamespace = (namespace: DurableObjectNamespace): DurableObjectNamespace => ({
+      idFromName: (name: string) => namespace.idFromName(name),
+      get: (id: DurableObjectId) => {
+        const stub = namespace.get(id);
+        return {
+          fetch: async (input: RequestInfo, init?: RequestInit) => {
+            const inputValue: unknown = input;
+            const url = inputValue instanceof Request
+              ? inputValue.url
+              : inputValue instanceof URL
+                ? inputValue.toString()
+                : String(inputValue);
+            paths.push(new URL(url).pathname);
+            return stub.fetch(input, init);
+          },
+        } as unknown as DurableObjectStub;
+      },
+    } as unknown as DurableObjectNamespace);
+    const testEnv = env as unknown as {
+      JOURNAL: DurableObjectNamespace;
+      TAG: DurableObjectNamespace;
+      ALLOCATOR: DurableObjectNamespace;
+      BOOTSTRAP: DurableObjectNamespace;
+    };
+    const runtimeEnv = {
+      ...env,
+      JOURNAL: tracedNamespace(testEnv.JOURNAL),
+      TAG: tracedNamespace(testEnv.TAG),
+      ALLOCATOR: tracedNamespace(testEnv.ALLOCATOR),
+      BOOTSTRAP: tracedNamespace(testEnv.BOOTSTRAP),
+    } as unknown as Parameters<typeof createRuntimeCommitPort>[0];
+    const port = createRuntimeCommitPort(runtimeEnv, {
+      registeredEventVersions: registeredEventVersions(runtimeDomain),
+    });
+    const outcome = await composed.commands.execute(
+      "runtime-real-command",
+      { orderId: `runtime-real-${crypto.randomUUID()}` },
+      { now: 17, runtimePort: port },
+    );
+
+    expect(outcome).toMatchObject({ kind: "committed" });
+    expect(paths).toContain("/admit");
+    expect(paths).toContain("/acquire");
+    expect(paths).toContain("/allocate");
+    expect(paths).toContain("/append");
   });
 
   it("attributes each parse bypass to its own boundary before downstream dispatch", () => {

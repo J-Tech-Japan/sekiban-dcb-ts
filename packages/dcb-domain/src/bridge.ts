@@ -72,10 +72,23 @@ export interface RuntimeCommandCandidateEnvelope {
 export interface RuntimeAllocationVector {
   readonly candidates: readonly { readonly ordinal: string; readonly suid: string }[];
   readonly allocatorLineageId?: string;
+  /** Durable attempt identity returned by the runtime allocator/admission path. */
+  readonly attemptId?: string;
+}
+
+/**
+ * Immutable response-loss context. Reconciliation must use this exact
+ * candidate and allocation rather than constructing a fresh submission.
+ */
+export interface RuntimeCommandAttemptContext {
+  readonly candidateKey: string;
+  readonly attemptId: string;
+  readonly candidate: RuntimeCommandCandidateEnvelope;
+  readonly allocation?: RuntimeAllocationVector;
 }
 
 export type RuntimeCommandPortResult =
-  | { readonly kind: "accepted" }
+  | { readonly kind: "accepted"; readonly attemptId?: string }
   | { readonly kind: "consistency-conflict"; readonly error?: unknown }
   | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
   | { readonly kind: "rejected"; readonly error?: unknown; readonly reason?: string; readonly code?: string };
@@ -89,8 +102,8 @@ export interface RuntimeCommandPort {
   readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector;
   /** Commit receives the one allocated vector and the same canonical G27 event identity. */
   readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
-  /** An unknown outcome is reconciled against the same candidate/attempt, never resubmitted as new work. */
-  readonly reconcile?: (candidate: RuntimeCommandCandidateEnvelope, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  /** An unknown outcome is reconciled against the same immutable candidate/attempt/vector, never resubmitted as new work. */
+  readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
 }
 
 export interface RuntimeCommandExecutionOptions {
@@ -239,6 +252,43 @@ function runtimeCandidateFrom(envelope: CandidateEnvelope): RuntimeCommandCandid
   });
 }
 
+function candidateKey(candidate: RuntimeCommandCandidateEnvelope): string {
+  return JSON.stringify({
+    now: candidate.now.toString(),
+    events: candidate.events.map((event) => ({
+      eventType: event.eventType,
+      eventName: event.eventName,
+      payload: event.payload,
+      tags: event.tags.map((tag) => tag.id),
+      ordinal: event.ordinal,
+    })),
+    tags: candidate.tags.map((tag) => tag.id),
+    readClaims: candidate.readClaims.map((claim) => ({ kind: claim.kind, projectorId: claim.projectorId, tag: claim.tag.id, head: claim.head })),
+  });
+}
+
+function freezeAllocation(allocation: RuntimeAllocationVector | undefined): RuntimeAllocationVector | undefined {
+  if (allocation === undefined) return undefined;
+  return Object.freeze({
+    ...allocation,
+    candidates: Object.freeze(allocation.candidates.map((candidate) => Object.freeze({ ...candidate }))),
+  });
+}
+
+function attemptContext(
+  candidate: RuntimeCommandCandidateEnvelope,
+  allocation: RuntimeAllocationVector | undefined,
+  attemptId: string | undefined,
+): RuntimeCommandAttemptContext {
+  const key = candidateKey(candidate);
+  return Object.freeze({
+    candidateKey: key,
+    attemptId: attemptId ?? allocation?.attemptId ?? key,
+    candidate,
+    ...(allocation === undefined ? {} : { allocation }),
+  });
+}
+
 function defaultRuntimeSnapshots(options: RuntimeCommandExecutionOptions): SnapshotReader {
   if (options.snapshots !== undefined) return options.snapshots;
   const states = options.state ?? {};
@@ -262,21 +312,24 @@ async function commitThroughRuntimePort(
   const barrier = port.conflictBarrier === undefined ? { kind: "accepted" as const } : await port.conflictBarrier(candidate);
   if (barrier.kind !== "accepted") {
     return barrier.kind === "unknown" && port.reconcile !== undefined
-      ? await port.reconcile(candidate, barrier)
+      ? await port.reconcile(attemptContext(candidate, undefined, barrier.attemptId), barrier)
       : barrier;
   }
   const admitted = port.admit === undefined ? { kind: "accepted" as const } : await port.admit(candidate);
   if (admitted.kind !== "accepted") {
     return admitted.kind === "unknown" && port.reconcile !== undefined
-      ? await port.reconcile(candidate, admitted)
+      ? await port.reconcile(attemptContext(candidate, undefined, admitted.attemptId), admitted)
       : admitted;
   }
-  const allocation = port.allocate === undefined ? undefined : await port.allocate(candidate);
+  const allocation = freezeAllocation(port.allocate === undefined ? undefined : await port.allocate(candidate));
   const committed = port.commit === undefined
     ? { kind: "accepted" as const }
     : await port.commit(candidate, allocation);
   return committed.kind === "unknown" && port.reconcile !== undefined
-    ? await port.reconcile(candidate, committed)
+    ? await port.reconcile(
+      attemptContext(candidate, allocation, committed.attemptId ?? allocation?.attemptId ?? admitted.attemptId),
+      committed,
+    )
     : committed;
 }
 
