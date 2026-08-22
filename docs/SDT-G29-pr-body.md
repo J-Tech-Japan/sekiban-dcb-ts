@@ -55,13 +55,16 @@ into CI with forced-red reachability checks.
 
 This PR follows the non-self-referential `C'''`/`R'''` protocol. `C'''` is the complete
 implementation/deployment/digest authority and carries the required-root
-manifest plus placeholder evidence. `R` updates only the evidence document and
-appends the immutable candidate SHA once to the retained-candidate fetch list.
-The final live witness is run from one immutable candidate `C'''`; no
-post-candidate source or configuration edits are made. The candidate checker
-validates exact configuration roots, sorted tree digests, candidate ancestry,
-deployed/source commit identity, deploymentRequired, and the post-candidate
-allowlist.
+manifest plus placeholder evidence. The SDT-G29-UNBLOCK-2 design ruling permits
+only the fixed manifest-declared post-C receiver-topology/witness recovery
+paths, the evidence document, and one immutable candidate SHA append; the
+candidate gate rejects any manifest allowlist expansion, and all other
+post-candidate paths remain rejected. The final live witness accepts the
+already-deployed immutable `C'''` only after its source identity is observed,
+then deploys the service-binding-only receiver config and records primary Queue
+consumer exclusivity. The candidate checker validates exact configuration
+roots, sorted tree digests, candidate ancestry, deployed/source commit identity,
+deploymentRequired, and the constrained post-candidate allowlist.
 
 ## Witness evidence
 

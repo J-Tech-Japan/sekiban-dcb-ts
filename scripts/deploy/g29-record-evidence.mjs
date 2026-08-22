@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { assertPreWitnessSetPreserved } from "./g29-witness.mjs";
 
 const root = process.cwd();
 
@@ -51,12 +52,26 @@ function witnessTopology(witness) {
   };
 }
 
-function buildEvidence(sourceCommit, pre, post, measurement, manifest) {
+function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology, primaryDeployMode) {
+  if (pre.sourceCommit !== sourceCommit) throw new Error(`G29 pre-witness source commit mismatch: ${pre.sourceCommit}`);
   if (post.sourceCommit !== sourceCommit) throw new Error(`G29 deployed source commit mismatch: ${post.sourceCommit}`);
-  if (pre.data?.digest !== post.data?.digest) throw new Error("G29 pre/post data witness changed");
+  const dataPreservation = assertPreWitnessSetPreserved(pre.data, post.data);
   if (measurement.latency?.sampleCount !== 10 || measurement.latency?.samples?.length !== 10) throw new Error("G29 final evidence requires exactly N=10 raw samples");
+  const probeWrites = measurement.latency.samples.map((sample) => ({ index: sample.index, roomId: sample.roomId, reservationId: sample.reservationId })).filter((sample) => typeof sample.roomId === "string" && typeof sample.reservationId === "string");
+  if (probeWrites.length !== 10) throw new Error("G29 fixed-N probe write identities are incomplete");
+  if (
+    receiverTopology?.primaryExclusive !== true ||
+    receiverTopology?.receiverConsumerRemoved === undefined ||
+    receiverTopology.queue !== post.queue ||
+    receiverTopology.receiver !== "sekiban-dcb-meeting-room-doorbell" ||
+    receiverTopology.primary !== post.worker ||
+    !Array.isArray(receiverTopology.after) ||
+    receiverTopology.after.length !== 1 ||
+    receiverTopology.after[0]?.script !== post.worker ||
+    receiverTopology.primaryConsumer?.script !== post.worker
+  ) throw new Error("G29 receiver Queue topology evidence is invalid");
   const remoteDeployment = {
-    status: "completed final-C witnessed redeploy",
+    status: primaryDeployMode === "accepted-existing-final-c" ? "completed final-C accepted primary deployment with receiver topology recovery" : "completed final-C witnessed redeploy",
     sourceCommit,
     deployedRuntimeCommit: post.sourceCommit,
     worker: post.worker,
@@ -69,6 +84,7 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest) {
     directDoorbell: post.directDoorbell,
     degradation: post.degradation,
     identityAndDataPolicy: "existing names/IDs/namespaces/generation/serviceId retained; no reseed or fresh service identity",
+    receiverQueueTopology: receiverTopology,
   };
   return {
     task: "SDT-G29",
@@ -77,10 +93,10 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest) {
     sourceCommit,
     protocol: {
       candidate: "One immutable C''' contains the complete F5/F6 implementation, compatibility table, candidate gate, recorder, and placeholder evidence.",
-      bookkeeping: "R''' updates only this evidence document and appends the immutable C''' once to the retained candidate fetch list.",
+      bookkeeping: "R''' records evidence and the retained candidate; SDT-G29-UNBLOCK-2 permits only the manifest-declared operational recovery paths needed to prove the already-deployed C''' receiver topology and witness rule.",
       selfReference: false,
       deploymentRequired: true,
-      witnessOrder: ["preflight", "token-rotation", "pre-witness", "additive-migrations", "receiver-deploy", "primary-deploy", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
+      witnessOrder: ["preflight", "token-rotation", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy-or-accepted-C", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
     },
     treeDigests: {
       algorithm: "sha256(path NUL content NUL, paths sorted)",
@@ -111,10 +127,13 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest) {
       dataD1DurableObjectPolicy: "token-only change; no data, D1, or Durable Object mutation",
     },
     dataPreservation: {
-      stable: true,
-      preDigest: pre.data.digest,
-      postDigest: post.data.digest,
-      rawRowsHeadsCountsListsEqual: JSON.stringify(pre.data) === JSON.stringify(post.data),
+      ...dataPreservation,
+      countDeltaCause: {
+        preToPost: "the deploy script makes no data probe write before post-witness; aggregate deltas are observed only and any non-zero value is recorded as concurrent/external rather than attributed to the fixed-N phase",
+        preToPostScriptWrites: [],
+        fixedNProbeWrites: probeWrites,
+        fixedNPhase: "runs after the post-witness; each listed room/reservation pair is the deliberate post-witness write source",
+      },
     },
     candidateImpact: {
       candidateCommit: sourceCommit,
@@ -123,7 +142,7 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest) {
       rationale: "Final-C deployment and witness are required by AC8 even though F5/F6 changes are test/portable-observation/compatibility surfaces.",
     },
     oracleMap: "docs/SDT-G29-oracle-map.md",
-    candidateGate: "C''' is the complete implementation candidate; R''' is restricted to evidence plus one retained-candidate append.",
+    candidateGate: "C''' remains the immutable deployed source authority; the candidate checker allows only the SDT-G29-UNBLOCK-2 manifest-declared operational recovery paths plus evidence and one retained-candidate append.",
     ci: {
       status: "pending-after-push",
       verify: "pending",
@@ -145,8 +164,10 @@ function main() {
   const measurementPath = required("--measurement", argument("--measurement", ".artifacts/g29-measurement.json"));
   const prePath = argument("--pre", ".artifacts/g29-pre-witness.json");
   const postPath = argument("--post", ".artifacts/g29-post-witness.json");
+  const receiverTopologyPath = argument("--receiver-topology", ".artifacts/g29-receiver-consumer-topology.json");
+  const primaryDeployMode = argument("--primary-deploy-mode", "deployed-final-c");
   const manifest = readJson("docs/SDT-G29-required-roots.json");
-  const evidence = buildEvidence(sourceCommit, readJson(prePath), readJson(postPath), readJson(measurementPath), manifest);
+  const evidence = buildEvidence(sourceCommit, readJson(prePath), readJson(postPath), readJson(measurementPath), manifest, readJson(receiverTopologyPath), primaryDeployMode);
   writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
   console.log(JSON.stringify({ candidateCommit: sourceCommit, deployedRuntimeCommit: evidence.remoteDeployment.deployedRuntimeCommit, samples: evidence.fixedNMeasurement.latency.sampleCount }, null, 2));
 }

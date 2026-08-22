@@ -10,5 +10,22 @@ export interface G29WitnessExpected {
   readonly [key: string]: unknown;
 }
 
-export function assertWitnessStable(before: G29WitnessSnapshot, after: G29WitnessSnapshot, expected: G29WitnessExpected, beforeExpected?: G29WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataDigest: string };
+export interface G29DataPreservation {
+  readonly stable: true;
+  readonly rule: string;
+  readonly preSetDigest: string;
+  readonly preserved: {
+    readonly reservationListEntries: number;
+    readonly knownRooms: number;
+    readonly knownReservations: number;
+  };
+  readonly counts: {
+    readonly before: { readonly roomQuery: number | null; readonly reservations: number | null };
+    readonly after: { readonly roomQuery: number | null; readonly reservations: number | null };
+  };
+  readonly countDelta: { readonly roomQuery: number | null; readonly reservations: number | null };
+}
+
+export function assertPreWitnessSetPreserved(before: G29WitnessSnapshot["data"], after: G29WitnessSnapshot["data"]): G29DataPreservation;
+export function assertWitnessStable(before: G29WitnessSnapshot, after: G29WitnessSnapshot, expected: G29WitnessExpected, beforeExpected?: G29WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataPreservation: G29DataPreservation };
 export function assertSourceCommit(witness: G29WitnessSnapshot, sourceCommit: string): { readonly sourceCommit: string; readonly match: true };

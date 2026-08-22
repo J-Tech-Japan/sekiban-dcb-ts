@@ -5,14 +5,24 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 readonly PRIMARY_CONFIG="samples/meeting-room/wrangler.cloudflare-only-doorbell.jsonc"
-readonly RECEIVER_CONFIG="samples/meeting-room/wrangler.meeting-room-doorbell.jsonc"
+# The non-public receiver is a service-binding target only.  The primary owns
+# the outbox Queue consumer, so this production config intentionally has no
+# queues.consumers block.
+readonly RECEIVER_CONFIG="samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc"
 readonly SERVICE_ID="${G29_SERVICE_ID:-g25-38219c8-20260820f}"
 readonly SOURCE_COMMIT="${G29_SOURCE_COMMIT:-$(git rev-parse HEAD)}"
+readonly ACCEPT_DEPLOYED_C="${G29_ACCEPT_DEPLOYED_C:-0}"
 readonly BASE_URL="${G29_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
+readonly QUEUE_NAME="sekiban-dcb-meeting-room-cloudflare-outbox"
+readonly RECEIVER_WORKER="sekiban-dcb-meeting-room-doorbell"
+readonly PRIMARY_WORKER="sekiban-dcb-meeting-room-cloudflare-only"
 readonly EXPECTED_FILE="${REPO_ROOT}/.artifacts/g29-witness-expected.json"
 readonly BEFORE_EXPECTED_FILE="${REPO_ROOT}/.artifacts/g29-witness-before-expected.json"
 readonly PRE_FILE="${REPO_ROOT}/.artifacts/g29-pre-witness.json"
 readonly POST_FILE="${REPO_ROOT}/.artifacts/g29-post-witness.json"
+readonly CONSUMERS_BEFORE_FILE="${REPO_ROOT}/.artifacts/g29-receiver-consumers-before.json"
+readonly CONSUMERS_AFTER_FILE="${REPO_ROOT}/.artifacts/g29-receiver-consumers-after.json"
+readonly CONSUMER_TOPOLOGY_FILE="${REPO_ROOT}/.artifacts/g29-receiver-consumer-topology.json"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
@@ -51,14 +61,32 @@ trap 'rm -f "${TOKEN_FILE}"' EXIT
 # Phase 2: pre-witness is captured before either Worker is changed.
 node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${PRE_FILE}"
 
-# Phase 3: apply only the checked-in additive migrations, then deploy the
-# non-public receiver and primary with the same service identity and the same
-# D1/Queue/DO names. No destructive migration, reseed, or fresh identity is
-# permitted here.
-"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
-"${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+# Phase 3: accept an already-deployed immutable C only after the pre-witness
+# proves its sourceCommit.  The UNBLOCK-2 recovery does not touch D1/DO or
+# redeploy the primary in this mode.
+PRIMARY_DEPLOY_MODE="deployed-final-c"
+if [[ "${ACCEPT_DEPLOYED_C}" == "1" ]]; then
+  node scripts/deploy/g29-witness.mjs --mode assert-source --witness "${PRE_FILE}" --source-commit "${SOURCE_COMMIT}"
+  PRIMARY_DEPLOY_MODE="accepted-existing-final-c"
+else
+  "${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+  "${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote
+fi
+
+# Remove only an incorrect receiver consumer, never the primary consumer. The
+# production receiver config below has no Queue consumer and cannot recreate it.
+"${WRANGLER_BIN}" queues consumer worker list "${QUEUE_NAME}" --json > "${CONSUMERS_BEFORE_FILE}"
+RECEIVER_CONSUMER_REMOVED=false
+if node scripts/deploy/g29-receiver-consumer-topology.mjs --mode needs-removal --input "${CONSUMERS_BEFORE_FILE}" --receiver "${RECEIVER_WORKER}" --primary "${PRIMARY_WORKER}"; then
+  "${WRANGLER_BIN}" queues consumer worker remove "${QUEUE_NAME}" "${RECEIVER_WORKER}"
+  RECEIVER_CONSUMER_REMOVED=true
+fi
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --keep-vars --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}" --message "SDT-G29 witnessed receiver redeploy ${SERVICE_ID}"
-"${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --keep-vars --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}" --message "SDT-G29 witnessed primary redeploy ${SERVICE_ID}"
+if [[ "${ACCEPT_DEPLOYED_C}" != "1" ]]; then
+  "${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --keep-vars --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}" --message "SDT-G29 witnessed primary redeploy ${SERVICE_ID}"
+fi
+"${WRANGLER_BIN}" queues consumer worker list "${QUEUE_NAME}" --json > "${CONSUMERS_AFTER_FILE}"
+node scripts/deploy/g29-receiver-consumer-topology.mjs --mode record --queue "${QUEUE_NAME}" --before "${CONSUMERS_BEFORE_FILE}" --after "${CONSUMERS_AFTER_FILE}" --receiver "${RECEIVER_WORKER}" --primary "${PRIMARY_WORKER}" --removed "${RECEIVER_CONSUMER_REMOVED}" --output "${CONSUMER_TOPOLOGY_FILE}"
 
 # Phase 4: post-witness must prove the same identity/topology before any fixed-N command.
 node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${POST_FILE}"
@@ -67,4 +95,4 @@ node scripts/deploy/g29-witness.mjs --mode compare --before "${PRE_FILE}" --afte
 # Phase 5: fixed N is intentionally last and records response->visible apart
 # from total command->visible; total is never described as sub-second.
 node scripts/deploy/g29-measure.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --samples "${G29_SAMPLES:-10}" --report "${G29_REPORT:-.artifacts/g29-measurement.json}"
-node scripts/deploy/g29-record-evidence.mjs --source-commit "${SOURCE_COMMIT}" --measurement "${G29_REPORT:-.artifacts/g29-measurement.json}" --output docs/SDT-G29-deploy-evidence.json
+node scripts/deploy/g29-record-evidence.mjs --source-commit "${SOURCE_COMMIT}" --measurement "${G29_REPORT:-.artifacts/g29-measurement.json}" --receiver-topology "${CONSUMER_TOPOLOGY_FILE}" --primary-deploy-mode "${PRIMARY_DEPLOY_MODE}" --output docs/SDT-G29-deploy-evidence.json

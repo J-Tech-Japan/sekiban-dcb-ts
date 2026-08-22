@@ -52,6 +52,21 @@
     "tsconfig.json",
     "vitest.config.ts"
   ],
+  "postCandidateOperationalRecoveryPaths": [
+    "docs/SDT-G29-oracle-map.md",
+    "docs/SDT-G29-pr-body.md",
+    "docs/SDT-G29-required-roots.json",
+    "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc",
+    "scripts/deploy/g29-deploy-witness.sh",
+    "scripts/deploy/g29-record-evidence.mjs",
+    "scripts/deploy/g29-receiver-consumer-topology.mjs",
+    "scripts/deploy/g29-witness.mjs",
+    "scripts/deploy/g29-witness.d.mts",
+    "scripts/deploy/g29-measure.mjs",
+    "scripts/deploy/g29-measure.d.mts",
+    "scripts/g29-candidate-check.mjs",
+    "test/g29-witness.spec.ts"
+  ],
   "requiredRoots": [
     { "rootId": "ci", "path": ".github/workflows/ci.yml", "kind": "file" },
     { "rootId": "mapping", "path": "docs/SDT-G29-mapping.json", "kind": "file" },
@@ -64,6 +79,8 @@
     { "rootId": "sample-assets", "path": "samples/meeting-room/public", "kind": "directory" },
     { "rootId": "sample-config", "path": "samples/meeting-room/wrangler.cloudflare-only.jsonc", "kind": "file" },
     { "rootId": "receiver-config", "path": "samples/meeting-room/wrangler.meeting-room-doorbell.jsonc", "kind": "file" },
+    { "rootId": "receiver-production-config", "path": "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc", "kind": "file" },
+    { "rootId": "receiver-topology-runner", "path": "scripts/deploy/g29-receiver-consumer-topology.mjs", "kind": "file" },
     { "rootId": "mapping-runner", "path": "scripts/g29-mapping-contract.mjs", "kind": "file" },
     { "rootId": "domain-source-lint", "path": "scripts/g29-domain-source-check.mjs", "kind": "file" },
     { "rootId": "authoring-doc-check", "path": "scripts/g29-authoring-doc-check.mjs", "kind": "file" },

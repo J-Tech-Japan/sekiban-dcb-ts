@@ -38,6 +38,8 @@ export function summarizeMeasurements(values) {
     commandStartToVisibleMs: distribution(values.map((value) => value.commandStartToVisibleMs)),
     statusRaw: values.map((value) => ({
       index: value.index,
+      roomId: value.roomId,
+      reservationId: value.reservationId,
       commandStartAt: value.commandStartAt ?? value.commandStartedAt,
       responseAt: value.responseAt,
       visibleAt: value.visibleAt,
@@ -64,6 +66,8 @@ export async function measure(baseUrl, samples, timeoutMs) {
     const becameVisible = await visible(baseUrl, reservationId, timeoutMs);
     values.push({
       index,
+      roomId,
+      reservationId,
       commandStartAt: commandStartedAt,
       commandStartedAt,
       responseAt,

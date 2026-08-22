@@ -286,6 +286,7 @@ jobs:
           13e8006be334454dc8a4a3c40972ba8ec15707b0
           12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d
           41e3665c055a366eb3f0d1ebff49be5d9414fa99
+          b8024fccca140d4cc3c76e715d4e5dd6c368b847
       - uses: actions/setup-node@v4
         with:
           node-version: 24
