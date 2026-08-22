@@ -1,8 +1,8 @@
 {
   "task": "SDT-G29",
   "status": "R evidence; local and preflight evidence complete, live witnessed deploy blocked by protected conformance token availability",
-  "candidateCommit": "cc4d0a86b749dc3ba09fe366a470c70b329bd10f",
-  "sourceCommit": "cc4d0a86b749dc3ba09fe366a470c70b329bd10f",
+  "candidateCommit": "4a67b0a62120c85ec6aec855f09e38aca430557f",
+  "sourceCommit": "4a67b0a62120c85ec6aec855f09e38aca430557f",
   "protocol": {
     "candidate": "C contains sample authoring rewrite, mapping/compatibility/diagnostic fixtures, runtime per-view policy, witness tooling, oracle map, PR body, and this placeholder",
     "bookkeeping": "R changes only this evidence document and appends C once to the retained-candidate fetch list",
@@ -15,7 +15,7 @@
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "a1b29d920df1c8b6cb7d78ddf52cc5c400cab54d085cd9d0de2fe09a2c2d7221",
     "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
-    "configuration": "ee25e33f478c6985286c71fcb5712e5da2a13cc0c446899464dbf50b452c4baf",
+    "configuration": "ee8cc956578241f3b2c9f59319b593aa53b156dec81d6816e7966ca5064d9d0e",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
@@ -75,5 +75,5 @@
     "identityPolicy": "existing g25-38219c8-20260820 only; no reseed, fresh serviceId, namespace, generation, or destructive migration"
   },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "C=cc4d0a86b749dc3ba09fe366a470c70b329bd10f; R updates only this evidence and appends C once to the retained-candidate fetch list"
+  "candidateGate": "C=4a67b0a62120c85ec6aec855f09e38aca430557f; R updates only this evidence and appends C once to the retained-candidate fetch list"
 }
