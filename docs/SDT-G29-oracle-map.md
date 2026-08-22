@@ -61,20 +61,24 @@ focused test) queue both views and expose the exact degradation reason.
 
 ## Candidate C/R protocol
 
-C''' remains the immutable deployed runtime/config/CI/docs/sample/test tree,
-the required-root manifest, oracle map, PR body, and a placeholder evidence
-document. The candidate checker computes sorted `sha256(path NUL content NUL)`
-digests from `C` and requires `sourceCommit=C`. Under the SDT-G29-UNBLOCK-2
-design ruling, bookkeeping may additionally change only the fixed
-manifest-declared receiver-topology/witness recovery paths, the evidence
-document, and append the immutable `C` SHA once to the retained candidate fetch
-list in `ci.yml`; the checker requires that manifest list to equal the fixed
-SDT-G29-UNBLOCK-2 list, so it cannot be expanded after C. Every other post-C
-path remains rejected. The shared G20 candidate gate delegates G29 to this
-same fixed list, preventing a generic CI rule from silently narrowing the
-design-approved recovery. The checker itself validates required-root removal and
-empty-directory mutations, retained-list append cardinality, evidence
-self-consistency, final deployment identity, and candidate tree digests.
+C'''' is the immutable deployed runtime/config/CI/docs/sample/test tree. It
+contains the receiver production config, deploy/witness/measure/topology
+scripts, witness fixture, both candidate checkers, required-root manifest,
+oracle map, PR body, and placeholder evidence. The manifest declares every
+operational material path as a runtime or configuration root; the placeholder
+evidence is intentionally replaced by R'''' and therefore remains outside that
+immutable tree digest. The candidate checker computes sorted
+`sha256(path NUL content NUL)` digests from C'''' while requiring
+`sourceCommit=C''''`.
+
+R'''' changes exactly two paths: `docs/SDT-G29-deploy-evidence.json` and the
+one immutable C'''' SHA append in `.github/workflows/ci.yml`. There is no
+post-C operational-recovery allowlist. The G29 checker rejects an operational
+path, an incomplete evidence-only R, a non-exact retained-list append, an
+accepted-existing deployment mode, a deployment-required downgrade, and a
+deployed/source mismatch. The shared G20 candidate gate applies the same
+evidence-plus-bookkeeping restriction. Required-root removal, empty-directory,
+and final-material mutation probes remain CI-reachable.
 
 ## Witness order
 

@@ -9,36 +9,12 @@ const manifestPath = resolve(root, "docs/SDT-G29-required-roots.json");
 const evidencePath = resolve(root, "docs/SDT-G29-deploy-evidence.json");
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-export const SDT_G29_UNBLOCK_2_RECOVERY_PATHS = Object.freeze([
-  "docs/SDT-G29-oracle-map.md",
-  "docs/SDT-G29-pr-body.md",
-  "docs/SDT-G29-required-roots.json",
-  "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc",
-  "scripts/deploy/g29-deploy-witness.sh",
-  "scripts/deploy/g29-record-evidence.mjs",
-  "scripts/deploy/g29-receiver-consumer-topology.mjs",
-  "scripts/deploy/g29-witness.mjs",
-  "scripts/deploy/g29-witness.d.mts",
-  "scripts/deploy/g29-measure.mjs",
-  "scripts/deploy/g29-measure.d.mts",
-  "scripts/g20-candidate-check.mjs",
-  "scripts/g29-candidate-check.mjs",
-  "test/g29-witness.spec.ts",
-]);
-
-export function assertUnblock2RecoveryManifest(paths) {
-  if (JSON.stringify(paths) !== JSON.stringify(SDT_G29_UNBLOCK_2_RECOVERY_PATHS)) {
-    throw new Error("G29 post-C operational recovery manifest does not equal the SDT-G29-UNBLOCK-2 fixed allowlist");
-  }
-  return { operationalRecoveryPaths: paths.length };
-}
 
 export function loadManifest(read = (path) => readFileSync(path, "utf8")) {
   const manifest = JSON.parse(read(manifestPath));
   if (manifest.schemaVersion !== 1 || !Array.isArray(manifest.runtimeRoots) || !Array.isArray(manifest.configurationRoots) || !Array.isArray(manifest.requiredRoots)) throw new Error("G29 required-root manifest schema invalid");
   if (manifest.requiredRoots.some((entry) => typeof entry?.rootId !== "string" || typeof entry.path !== "string" || (entry.kind !== "file" && entry.kind !== "directory"))) throw new Error("G29 required-root entry invalid");
-  if (!Array.isArray(manifest.postCandidateOperationalRecoveryPaths) || manifest.postCandidateOperationalRecoveryPaths.some((path) => typeof path !== "string" || path.length === 0)) throw new Error("G29 post-C operational recovery manifest invalid");
-  assertUnblock2RecoveryManifest(manifest.postCandidateOperationalRecoveryPaths);
+  if (Object.hasOwn(manifest, "postCandidateOperationalRecoveryPaths")) throw new Error("G29 final C/R manifest must not self-authorize post-candidate operational recovery paths");
   return manifest;
 }
 
@@ -87,21 +63,20 @@ export function assertFinalDeploymentIdentity(evidence) {
   if (evidence?.candidateCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
   if (evidence?.candidateImpact?.deploymentRequired === false) throw new Error("G29 final candidate cannot declare deploymentRequired:false");
   if (evidence?.remoteDeployment?.deployedRuntimeCommit !== evidence?.sourceCommit) throw new Error("G29 final witness deployedRuntimeCommit must equal sourceCommit");
+  if (evidence?.finalWitness?.primaryDeployment !== "deployed-final-c") throw new Error("G29 final witness must redeploy the sealed final candidate");
   return { checked: true, sourceCommit: evidence.sourceCommit };
 }
 
-export function assertPostCandidatePaths(paths, evidenceCommit, recoveryPaths = SDT_G29_UNBLOCK_2_RECOVERY_PATHS, run = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" })) {
-  assertUnblock2RecoveryManifest(recoveryPaths);
+export function assertPostCandidatePaths(paths, evidenceCommit, run = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" })) {
   if (evidenceCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
-  const supported = new Set([".github/workflows/ci.yml", "docs/SDT-G29-deploy-evidence.json", ...recoveryPaths]);
+  const supported = new Set([".github/workflows/ci.yml", "docs/SDT-G29-deploy-evidence.json"]);
   const unsupported = paths.filter((path) => !supported.has(path));
   if (unsupported.length > 0) throw new Error(`G29 post-candidate paths not allowlisted: ${unsupported.join(",")}`);
-  if (paths.includes(".github/workflows/ci.yml")) {
-    const diff = run(["diff", "--unified=0", `${evidenceCommit}..HEAD`, "--", ".github/workflows/ci.yml"]);
-    const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
-    const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
-    if (removals.length > 0 || additions.length !== 1 || additions[0].slice(1).trim() !== evidenceCommit) throw new Error("G29 retained-candidate list must append exactly the candidate");
-  }
+  if (paths.length !== 2 || !paths.includes(".github/workflows/ci.yml") || !paths.includes("docs/SDT-G29-deploy-evidence.json")) throw new Error("G29 final R must contain exactly evidence and the retained-candidate append");
+  const diff = run(["diff", "--unified=0", `${evidenceCommit}..HEAD`, "--", ".github/workflows/ci.yml"]);
+  const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+  const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
+  if (removals.length > 0 || additions.length !== 1 || additions[0].slice(1).trim() !== evidenceCommit) throw new Error("G29 retained-candidate list must append exactly the candidate");
   return { checked: true };
 }
 
@@ -125,8 +100,14 @@ export function runSelfTest() {
   let declaredFailed = false;
   try { assertDeclaredRoots(manifest, paths.filter((path) => path !== "README.md")); } catch (error) { declaredFailed = String(error).includes("declared-root:README.md:missing"); }
   if (!declaredFailed) throw new Error("G29 declared-root mutation did not fail");
+  let sealedMaterialFailed = false;
+  try { assertDeclaredRoots(manifest, paths.filter((path) => path !== "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc")); } catch (error) { sealedMaterialFailed = String(error).includes("wrangler.meeting-room-doorbell-production.jsonc:missing"); }
+  if (!sealedMaterialFailed) throw new Error("G29 sealed receiver-config root mutation did not fail");
+  let selfAuthorizedAllowlistFailed = false;
+  try { loadManifest(() => JSON.stringify({ ...manifest, postCandidateOperationalRecoveryPaths: ["scripts/deploy/g29-witness.mjs"] })); } catch (error) { selfAuthorizedAllowlistFailed = String(error).includes("must not self-authorize"); }
+  if (!selfAuthorizedAllowlistFailed) throw new Error("G29 self-authorized post-C allowlist mutation did not fail");
   const commit = "c".repeat(40);
-  const final = { candidateCommit: commit, sourceCommit: commit, candidateImpact: { deploymentRequired: true }, remoteDeployment: { deployedRuntimeCommit: commit } };
+  const final = { candidateCommit: commit, sourceCommit: commit, candidateImpact: { deploymentRequired: true }, remoteDeployment: { deployedRuntimeCommit: commit }, finalWitness: { primaryDeployment: "deployed-final-c" } };
   assertFinalDeploymentIdentity(final);
   let deploymentIdentityFailed = false;
   try { assertFinalDeploymentIdentity({ ...final, remoteDeployment: { deployedRuntimeCommit: "d".repeat(40) } }); } catch (error) { deploymentIdentityFailed = String(error).includes("deployedRuntimeCommit"); }
@@ -134,13 +115,18 @@ export function runSelfTest() {
   let deploymentRequiredFailed = false;
   try { assertFinalDeploymentIdentity({ ...final, candidateImpact: { deploymentRequired: false } }); } catch (error) { deploymentRequiredFailed = String(error).includes("deploymentRequired:false"); }
   if (!deploymentRequiredFailed) throw new Error("G29 deploymentRequired mutation did not fail");
-  let recoveryAllowlistFailed = false;
-  try { assertPostCandidatePaths(["packages/dcb-runtime/src/unrelated.ts"], commit, manifest.postCandidateOperationalRecoveryPaths); } catch (error) { recoveryAllowlistFailed = String(error).includes("post-candidate paths not allowlisted"); }
-  if (!recoveryAllowlistFailed) throw new Error("G29 post-C recovery allowlist mutation did not fail");
-  let recoveryExpansionFailed = false;
-  try { assertUnblock2RecoveryManifest([...manifest.postCandidateOperationalRecoveryPaths, "packages/dcb-runtime/src/unrelated.ts"]); } catch (error) { recoveryExpansionFailed = String(error).includes("fixed allowlist"); }
-  if (!recoveryExpansionFailed) throw new Error("G29 post-C recovery allowlist expansion mutation did not fail");
-  return { requiredRoots: manifest.requiredRoots.length, declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, mutations: ["missing-file", "empty-directory", "declared-root-removal", "deployment-identity", "deployment-required", "recovery-allowlist", "recovery-allowlist-expansion"] };
+  const diff = () => `+${commit}\n`;
+  assertPostCandidatePaths(["docs/SDT-G29-deploy-evidence.json", ".github/workflows/ci.yml"], commit, diff);
+  let operationalEditFailed = false;
+  try { assertPostCandidatePaths(["docs/SDT-G29-deploy-evidence.json", ".github/workflows/ci.yml", "scripts/deploy/g29-witness.mjs"], commit, diff); } catch (error) { operationalEditFailed = String(error).includes("post-candidate paths not allowlisted"); }
+  if (!operationalEditFailed) throw new Error("G29 post-C operational edit mutation did not fail");
+  let incompleteRFailed = false;
+  try { assertPostCandidatePaths(["docs/SDT-G29-deploy-evidence.json"], commit, diff); } catch (error) { incompleteRFailed = String(error).includes("final R must contain exactly"); }
+  if (!incompleteRFailed) throw new Error("G29 evidence-only incomplete R mutation did not fail");
+  let redeployFailed = false;
+  try { assertFinalDeploymentIdentity({ ...final, finalWitness: { primaryDeployment: "accepted-existing-final-c" } }); } catch (error) { redeployFailed = String(error).includes("redeploy"); }
+  if (!redeployFailed) throw new Error("G29 accepted-existing deployment mutation did not fail");
+  return { requiredRoots: manifest.requiredRoots.length, declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, mutations: ["missing-file", "empty-directory", "declared-root-removal", "sealed-material-root", "self-authorized-allowlist", "deployment-identity", "deployment-required", "strict-R-operational-edit", "strict-R-incomplete", "final-redeploy"] };
 }
 
 function main() {
@@ -155,7 +141,7 @@ function main() {
   const candidate = evidence.candidateCommit;
   const active = candidate !== "CANDIDATE" && SHA.test(candidate) && (() => { try { execFileSync("git", ["merge-base", "--is-ancestor", candidate, "HEAD"], { cwd: root }); return true; } catch { return false; } })();
   const paths = active ? execFileSync("git", ["diff", "--name-only", `${candidate}..HEAD`], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean) : [];
-  const post = assertPostCandidatePaths(paths, candidate, manifest.postCandidateOperationalRecoveryPaths);
+  const post = assertPostCandidatePaths(paths, candidate);
   console.log(JSON.stringify({ ...proof, deployment, manifest: { ...assertDeclaredRoots(manifest), ...assertRequiredRoots(manifest) }, postCandidate: post }, null, 2));
 }
 

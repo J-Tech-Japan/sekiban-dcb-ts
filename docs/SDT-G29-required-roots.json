@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contract": "SDT-G29 complete candidate root manifest",
+  "contract": "SDT-G29 final C/R root manifest",
   "runtimeRoots": [
     "packages/dcb-domain/src",
     "packages/dcb-runtime/src"
@@ -24,6 +24,7 @@
     "samples/meeting-room/wrangler.cloudflare-only.jsonc",
     "samples/meeting-room/wrangler.cloudflare-only-doorbell.jsonc",
     "samples/meeting-room/wrangler.meeting-room-doorbell.jsonc",
+    "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc",
     "samples/meeting-room/wrangler.direct-doorbell.jsonc",
     "samples/meeting-room/wrangler.doorbell.jsonc",
     "scripts/g29-mapping-contract.mjs",
@@ -40,6 +41,7 @@
     "scripts/deploy/g29-measure.d.mts",
     "scripts/deploy/g29-deploy-witness.sh",
     "scripts/deploy/g29-record-evidence.mjs",
+    "scripts/deploy/g29-receiver-consumer-topology.mjs",
     "migrations/d1",
     "test/g29-mapping.spec.ts",
     "test/g29-delivery.spec.ts",
@@ -51,22 +53,6 @@
     "test/meeting-room.spec.ts",
     "tsconfig.json",
     "vitest.config.ts"
-  ],
-  "postCandidateOperationalRecoveryPaths": [
-    "docs/SDT-G29-oracle-map.md",
-    "docs/SDT-G29-pr-body.md",
-    "docs/SDT-G29-required-roots.json",
-    "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc",
-    "scripts/deploy/g29-deploy-witness.sh",
-    "scripts/deploy/g29-record-evidence.mjs",
-    "scripts/deploy/g29-receiver-consumer-topology.mjs",
-    "scripts/deploy/g29-witness.mjs",
-    "scripts/deploy/g29-witness.d.mts",
-    "scripts/deploy/g29-measure.mjs",
-    "scripts/deploy/g29-measure.d.mts",
-    "scripts/g20-candidate-check.mjs",
-    "scripts/g29-candidate-check.mjs",
-    "test/g29-witness.spec.ts"
   ],
   "requiredRoots": [
     { "rootId": "ci", "path": ".github/workflows/ci.yml", "kind": "file" },

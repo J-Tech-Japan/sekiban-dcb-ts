@@ -53,6 +53,7 @@ function witnessTopology(witness) {
 }
 
 function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverTopology, primaryDeployMode) {
+  if (primaryDeployMode !== "deployed-final-c") throw new Error("G29 final evidence requires a witnessed deployment of the sealed final candidate");
   if (pre.sourceCommit !== sourceCommit) throw new Error(`G29 pre-witness source commit mismatch: ${pre.sourceCommit}`);
   if (post.sourceCommit !== sourceCommit) throw new Error(`G29 deployed source commit mismatch: ${post.sourceCommit}`);
   const dataPreservation = assertPreWitnessSetPreserved(pre.data, post.data);
@@ -71,7 +72,7 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
     receiverTopology.primaryConsumer?.script !== post.worker
   ) throw new Error("G29 receiver Queue topology evidence is invalid");
   const remoteDeployment = {
-    status: primaryDeployMode === "accepted-existing-final-c" ? "completed final-C accepted primary deployment with receiver topology recovery" : "completed final-C witnessed redeploy",
+    status: "completed final-C witnessed redeploy",
     sourceCommit,
     deployedRuntimeCommit: post.sourceCommit,
     worker: post.worker,
@@ -88,18 +89,18 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
   };
   return {
     task: "SDT-G29",
-    status: "R''' complete: F8 final C''' witnessed receiver-topology recovery evidence recorded",
+    status: "R'''' complete: F9 final C'''' witnessed deployment evidence recorded",
     candidateCommit: sourceCommit,
     sourceCommit,
     protocol: {
-      candidate: "One immutable C''' contains the complete F5/F6 implementation, compatibility table, candidate gate, recorder, and placeholder evidence.",
-      bookkeeping: "R''' records evidence and the retained candidate; SDT-G29-UNBLOCK-2 permits only the manifest-declared operational recovery paths needed to prove the already-deployed C''' receiver topology and witness rule.",
+      candidate: "One immutable C'''' contains the complete runtime, configuration, CI, documentation, witness tooling, candidate gates, required-root manifest, and placeholder evidence.",
+      bookkeeping: "R'''' changes only this evidence document and appends C'''' once to the retained-candidate fetch list.",
       selfReference: false,
       deploymentRequired: true,
-      witnessOrder: ["preflight", "token-rotation", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy-or-accepted-C", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
+      witnessOrder: ["preflight", "token-rotation", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
     },
-    unblock2: {
-      finding: "F8",
+    finalWitness: {
+      finding: "F9",
       primaryDeployment: primaryDeployMode,
       receiverTopology: "service-binding-only receiver; primary exclusively owns the outbox Queue consumer",
       witnessRule: "every pre-captured row, head, and list entry is required to remain semantically identical after deployment; aggregate counts are recorded but are not an equality gate",
@@ -145,10 +146,10 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
       candidateCommit: sourceCommit,
       deploymentRequired: true,
       workerBundleChanged: false,
-      rationale: "Final-C deployment and witness are required by AC8 even though F5/F6 changes are test/portable-observation/compatibility surfaces.",
+      rationale: "Final-C deployment and witness are required by AC8/AC9; the final C is both deployment and digest authority.",
     },
     oracleMap: "docs/SDT-G29-oracle-map.md",
-    candidateGate: "C''' remains the immutable deployed source authority; the candidate checker allows only the SDT-G29-UNBLOCK-2 manifest-declared operational recovery paths plus evidence and one retained-candidate append.",
+    candidateGate: "C'''' remains the immutable deployed source authority; the post-C gate allows exactly this evidence document and one retained-candidate append.",
     ci: {
       status: "pending-after-push",
       verify: "pending",

@@ -41,10 +41,10 @@ This draft PR implements the SDT-G29 sample rewrite and portability closure.
   assertions, and per-quadrant mutation failures.
 - Adds authenticated topology witness and fixed-N measurement tooling for the
   existing production identity. No reseed, fresh serviceId, destructive
-  migration, or secret value is exposed by the deploy script. For the
-  SDT-G29-UNBLOCK-2 recovery, the already-deployed immutable C''' is accepted
-  only after source identity is witnessed, so no D1 migration or primary
-  redeploy runs.
+  migration, or secret value is exposed by the deploy script. The final
+  witnessed sequence redeploys the sealed candidate's receiver and primary
+  Workers while keeping the receiver service-binding-only and the primary as
+  the sole outbox Queue consumer.
 
 ## Verification
 
@@ -55,20 +55,21 @@ into CI with forced-red reachability checks.
 
 ## Candidate protocol
 
-This PR follows the non-self-referential `C'''`/`R'''` protocol. `C'''` is the complete
-implementation/deployment/digest authority and carries the required-root
-manifest plus placeholder evidence. The SDT-G29-UNBLOCK-2 design ruling permits
-only the fixed manifest-declared post-C receiver-topology/witness recovery
-paths, the evidence document, and one immutable candidate SHA append; the
-candidate gate rejects any manifest allowlist expansion, and all other
-post-candidate paths remain rejected. The final live witness accepts the
-already-deployed immutable `C'''` only after its source identity is observed,
-then deploys the service-binding-only receiver config and records primary Queue
-consumer exclusivity. The candidate checker validates exact configuration
-roots, sorted tree digests, candidate ancestry, deployed/source commit identity,
-deploymentRequired, and the constrained post-candidate allowlist. The shared
-G20 candidate gate delegates G29 to the same fixed list, so it cannot
-accidentally reject the design-approved recovery paths.
+This PR follows the non-self-referential `C''''`/`R''''` protocol. `C''''` is the
+complete implementation/deployment/digest authority: it includes the receiver
+production config; deploy, witness, measurement, topology, and evidence
+scripts; the witness test; both candidate checkers; the required-roots manifest;
+the oracle map; this PR body; and placeholder evidence. Every operational
+material path is a runtime or configuration root in C''''; the placeholder
+evidence is intentionally replaced by R'''' and therefore outside that immutable
+digest. `R''''` may change only the final evidence document and append the
+immutable C'''' SHA once to the retained-candidate list in `ci.yml`; no
+operational recovery allowlist exists. The final live witness redeploys C''''
+and records `deployedRuntimeCommit === sourceCommit === C''''`, primary Queue
+consumer exclusivity, and pre-captured witness-set preservation. The candidate
+checkers reject any other post-C path, an incomplete R, an inexact retained
+append, accepted-existing deployment, `deploymentRequired:false`, a
+deployed/source mismatch, or a digest mismatch.
 
 ## Witness evidence
 
@@ -80,19 +81,12 @@ response→visible versus total latency distributions. The live deployment
 script requires an explicit protected conformance token file and aborts before
 deployment when the witness or identity preconditions are not available.
 
-### F8 receiver-topology recovery
+### F9 final-C reset
 
-The final witness used C''' `b8024fccca140d4cc3c76e715d4e5dd6c368b847` and
-CI run `32558302189` (verify + cosmos-emulator green). The receiver was
-redeployed from a production-only config with no `queues.consumers`; the
-outbox Queue `sekiban-dcb-meeting-room-cloudflare-outbox` remained exclusively
-owned by primary `sekiban-dcb-meeting-room-cloudflare-only` before and after
-the deploy. No incorrect receiver consumer remained to remove.
-
-Pre/post witness preserved all 100 captured reservation-list entries, five
-room rows/heads, and five reservation rows/heads, with aggregate counts
-unchanged (room query 125; reservations 128). The fixed-N=10 probe had zero
-errors and zero fallbacks: response→visible p50 was 511 ms (p95 1397 ms), while
-total command-start→visible p50 was 3146 ms and is deliberately not described
-as sub-second. Each probe's room/reservation identity and raw timestamps are
-in the evidence document; secrets are redacted.
+The previous C''' witness established the receiver-consumer and witness-set
+semantics. F9 seals those materials into C'''' before deployment, so their
+configuration, tests, scripts, manifest, and candidate gates are all digest
+authority rather than a post-C exception. `docs/SDT-G29-deploy-evidence.json`
+will carry the new C'''' raw pre/post witness and fixed-N=10 result; its
+historical measurement fields remain explicitly separated into response→visible
+and total latency, and secrets remain redacted.

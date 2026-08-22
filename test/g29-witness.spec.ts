@@ -110,6 +110,8 @@ describe("SDT-G29 witnessed deploy and measurement oracles", () => {
     expect(receiverDeployConfig.queues).toBeUndefined();
     expect(primaryConfig.queues.consumers).toHaveLength(1);
     expect(deployScriptText).toContain("wrangler.meeting-room-doorbell-production.jsonc");
+    expect(deployScriptText).not.toContain("G29_ACCEPT_DEPLOYED_C");
+    expect(deployScriptText).toContain('--primary-deploy-mode "deployed-final-c"');
     const primary = "sekiban-dcb-meeting-room-cloudflare-only";
     const receiver = "sekiban-dcb-meeting-room-doorbell";
     expect(needsReceiverConsumerRemoval([{ script: receiver }, { script: primary }], receiver, primary)).toBe(true);
