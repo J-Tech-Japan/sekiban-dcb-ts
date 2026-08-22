@@ -290,6 +290,7 @@ async function applyMeetingRoomUnsafeView(
       await handle.store.recordUnsafeFailureFinding({
         serviceId,
         viewId: handle.id,
+        generation: active.generation,
         eventId: event.eventId,
         suid: event.suid,
         observedAt: nowMs,

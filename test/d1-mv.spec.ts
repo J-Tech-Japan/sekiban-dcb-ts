@@ -11,6 +11,12 @@ import migration from "../migrations/mv/0001_materialized_views.sql?raw";
 import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import hardeningMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import unsafeFailureMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 
 import { defineRowMaterializer, type MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import {
@@ -163,7 +169,7 @@ const STORED_MATERIALIZER: MaterializedViewRowMaterializer<StoredEvent> = define
 
 describe("SDT-G19 D1 materialized-view store", () => {
   beforeAll(async () => {
-    const statements = [migration as string, unsafeMigration as string, hardeningMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
+    const statements = [migration as string, unsafeMigration as string, hardeningMigration as string, unsafeFailureMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string].flatMap((migrationText) => migrationText.replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((statement) => statement.trim())
       .filter((statement) => statement.length > 0));

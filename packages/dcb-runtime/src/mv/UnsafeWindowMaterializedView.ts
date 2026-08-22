@@ -230,6 +230,31 @@ export class UnsafeWindowMaterializedViewStore {
       `INSERT INTO mv_unsafe_receipts (service_id, view_id, event_id, suid, outcome, observed_at)
        VALUES (?, ?, ?, ?, 'applied', ?)`,
     ).bind(input.serviceId, input.viewId, input.eventId, input.suid, input.updatedAt));
+    // G31 keeps a separate receipt whose identity is bound to the active
+    // generation and definition. The historical unsafe receipt above remains
+    // cross-generation for G23/G26 duplicate and GC semantics.
+    statements.push(this.database.prepare(
+      `INSERT INTO mv_wait_receipts
+         (service_id, view_id, generation, definition_version, event_id, suid, observed_at)
+       SELECT ?, ?, ?, instance.definition_version, ?, ?, ?
+         FROM mv_instances instance
+         JOIN mv_active_generations active
+           ON active.service_id = instance.service_id
+          AND active.view_id = instance.view_id
+          AND active.generation = instance.generation
+        WHERE instance.service_id = ? AND instance.view_id = ? AND instance.generation = ?
+       ON CONFLICT DO NOTHING`,
+    ).bind(
+      input.serviceId,
+      input.viewId,
+      input.generation,
+      input.eventId,
+      input.suid,
+      input.updatedAt,
+      input.serviceId,
+      input.viewId,
+      input.generation,
+    ));
     statements.push(this.database.prepare(
       `INSERT INTO mv_unsafe_kicks (service_id, view_id, target_suid, dirty)
        VALUES (?, ?, ?, 1)
@@ -366,6 +391,28 @@ export class UnsafeWindowMaterializedViewStore {
     statements.push(this.database.prepare(
       `INSERT INTO mv_unsafe_receipts (service_id, view_id, event_id, suid, outcome, observed_at) VALUES (?, ?, ?, ?, ?, ?)`,
     ).bind(input.serviceId, input.viewId, input.eventId, input.suid, outcome, input.updatedAt));
+    statements.push(this.database.prepare(
+      `INSERT INTO mv_wait_receipts
+         (service_id, view_id, generation, definition_version, event_id, suid, observed_at)
+       SELECT ?, ?, ?, instance.definition_version, ?, ?, ?
+         FROM mv_instances instance
+         JOIN mv_active_generations active
+           ON active.service_id = instance.service_id
+          AND active.view_id = instance.view_id
+          AND active.generation = instance.generation
+        WHERE instance.service_id = ? AND instance.view_id = ? AND instance.generation = ?
+       ON CONFLICT DO NOTHING`,
+    ).bind(
+      input.serviceId,
+      input.viewId,
+      input.generation,
+      input.eventId,
+      input.suid,
+      input.updatedAt,
+      input.serviceId,
+      input.viewId,
+      input.generation,
+    ));
     statements.push(this.database.prepare(
       `INSERT INTO mv_unsafe_kicks (service_id, view_id, target_suid, dirty)
        VALUES (?, ?, ?, 1)
@@ -511,6 +558,7 @@ export class UnsafeWindowMaterializedViewStore {
       this.database.prepare(`DELETE FROM mv_unsafe_index_entries WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`).bind(input.serviceId, input.viewId, input.generation, input.rowKey),
       this.database.prepare(`DELETE FROM mv_unsafe_markers WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ?`).bind(input.serviceId, input.viewId, input.generation, input.rowKey),
       this.database.prepare(`DELETE FROM mv_unsafe_receipts WHERE service_id = ? AND view_id = ? AND suid = ?`).bind(input.serviceId, input.viewId, input.expectedSourceSuid),
+      this.database.prepare(`DELETE FROM mv_wait_receipts WHERE service_id = ? AND view_id = ? AND generation = ? AND suid = ?`).bind(input.serviceId, input.viewId, input.generation, input.expectedSourceSuid),
       this.database.prepare(`DELETE FROM mv_unsafe_rows WHERE service_id = ? AND view_id = ? AND generation = ? AND row_key = ? AND row_version = ? AND source_suid COLLATE BINARY = ? COLLATE BINARY`).bind(input.serviceId, input.viewId, input.generation, input.rowKey, input.expectedRowVersion, input.expectedSourceSuid),
       this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id LIKE ?").bind(`${operation}:%`),
     ];
@@ -565,11 +613,12 @@ export class UnsafeWindowMaterializedViewStore {
     return collected;
   }
 
-  async queryComposedPage(serviceId: string, viewId: string, generation: number, limit: number, offset: number): Promise<UnsafeComposedPage> {
+  async queryComposedPage(serviceId: string, viewId: string, generation: number, limit: number, offset: number, descending = false): Promise<UnsafeComposedPage> {
     const meta = await this.readMeta(serviceId, viewId, generation);
     if (meta.rebuildRequired) throw new UnsafeWindowMaterializedViewError("UNSAFE_BEHIND_FRONTIER", false, "Unsafe window is rebuilding after a behind-frontier arrival");
     // One statement owns winner selection, tombstone exclusion, deterministic
     // ordering and COUNT OVER. No Worker full-table materialization is needed.
+    const direction = descending ? "DESC" : "ASC";
     const result = await this.database.prepare(
       `WITH candidates AS (
          SELECT row_key, value_json, row_version, source_suid, 0 AS tombstone, 0 AS unsafe_layer FROM mv_rows
@@ -583,7 +632,7 @@ export class UnsafeWindowMaterializedViewStore {
          SELECT *, COUNT(*) OVER() AS total_count FROM ranked WHERE winner_rank = 1 AND tombstone = 0
        )
        SELECT row_key, value_json, row_version, source_suid, total_count FROM live
-       ORDER BY source_suid COLLATE BINARY ASC, row_key COLLATE BINARY ASC LIMIT ? OFFSET ?`,
+       ORDER BY source_suid COLLATE BINARY ${direction}, row_key COLLATE BINARY ${direction} LIMIT ? OFFSET ?`,
     ).bind(serviceId, viewId, generation, serviceId, viewId, generation, limit, offset).all<D1Row>();
     const rows = result.results.map((row) => ({
       serviceId,

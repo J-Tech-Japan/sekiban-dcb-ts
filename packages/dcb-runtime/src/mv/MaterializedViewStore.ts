@@ -137,6 +137,24 @@ export interface MaterializedViewQueryOptions {
   /** `null` means unbounded; omitted retains the port's 100-row default. */
   readonly limit?: number | null;
   readonly offset?: number;
+  /** Fixed boolean order selector; request data never becomes a SQL fragment. */
+  readonly descending?: boolean;
+}
+
+/**
+ * One active-generation snapshot used by the SDT-G31 d1-mv waitFor path.
+ * `targetReceipt` is deliberately separate from `safeContiguousHead`: the
+ * latter can only complete a wait after the source target has been proved
+ * unique by the paired PipelineStore point lookup.
+ */
+export interface MaterializedViewWaitForState {
+  readonly activeGeneration: number | undefined;
+  readonly activeDefinitionVersion: number | undefined;
+  readonly safeContiguousHead: string;
+  readonly targetReceipt: boolean;
+  readonly checkpointAhead: boolean;
+  readonly rebuildRequired: boolean;
+  readonly poison: boolean;
 }
 
 function asString(value: unknown, name: string): string {
@@ -340,13 +358,14 @@ export class D1MaterializedViewStore {
     }
     if (options.indexId === undefined) {
       const limitClause = limit === null ? "" : " LIMIT ? OFFSET ?";
+      const direction = options.descending === true ? "DESC" : "ASC";
       const values: (string | number)[] = [serviceId, viewId, selected];
       if (limit !== null) values.push(limit, offset);
       const result = await this.database.prepare(
         `SELECT service_id, view_id, generation, row_key, value_json, row_version, source_suid
            FROM mv_rows
           WHERE service_id = ? AND view_id = ? AND generation = ?
-          ORDER BY row_key COLLATE BINARY ASC${limitClause}`,
+          ORDER BY row_key COLLATE BINARY ${direction}${limitClause}`,
       ).bind(...values).all<D1Row>();
       return result.results.map((row) => this.rowFrom(row));
     }
@@ -361,6 +380,7 @@ export class D1MaterializedViewStore {
         : valueType === "real"
           ? "index_entry.real_value"
           : "index_entry.row_key";
+    const direction = options.descending === true ? "DESC" : "ASC";
     const indexPredicate = options.indexId === undefined ? "" : " AND index_entry.index_id = ?";
     const typePredicate = valueType === undefined ? "" : " AND index_entry.value_type = ?";
     const values: (string | number)[] = [serviceId, viewId, selected];
@@ -378,7 +398,7 @@ export class D1MaterializedViewStore {
           AND row.generation = index_entry.generation
           AND row.row_key = index_entry.row_key
         WHERE row.service_id = ? AND row.view_id = ? AND row.generation = ?${indexPredicate}${typePredicate}
-        ORDER BY ${orderColumn} COLLATE BINARY ASC, row.row_key COLLATE BINARY ASC${limitClause}`,
+        ORDER BY ${orderColumn} COLLATE BINARY ${direction}, row.row_key COLLATE BINARY ${direction}${limitClause}`,
     ).bind(...values).all<D1Row>();
     return result.results.map((row) => this.rowFrom(row));
   }
@@ -395,7 +415,7 @@ export class D1MaterializedViewStore {
     if (!Number.isSafeInteger(limit) || limit < -1 || !Number.isSafeInteger(offset) || offset < 0) {
       throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs limit -1 or a non-negative limit/offset");
     }
-    return this.unsafe.queryComposedPage(serviceId, viewId, selected, limit, offset);
+    return this.unsafe.queryComposedPage(serviceId, viewId, selected, limit, offset, options.descending === true);
   }
 
   /** Explicit unsafe port: callers must choose this exceptional immediate lane. */
@@ -415,21 +435,140 @@ export class D1MaterializedViewStore {
     return this.unsafe.hasTargetReceipt(serviceId, viewId, eventId, suid);
   }
 
+  /**
+   * Read all G31 wait facts in one static D1 statement. Every table access is
+   * keyed by service/view/active generation (and target identity where
+   * applicable); no row or source-history scan is permitted on this path.
+   */
+  async readWaitForState(
+    serviceId: string,
+    viewId: string,
+    target: { readonly eventId?: string; readonly suid: string },
+  ): Promise<MaterializedViewWaitForState> {
+    this.ready("initialize");
+    const row = await this.database.prepare(
+      `WITH active AS (
+         SELECT instance.generation, instance.definition_version, instance.last_suid
+           FROM mv_active_generations pointer
+           JOIN mv_instances instance
+             ON instance.service_id = pointer.service_id
+            AND instance.view_id = pointer.view_id
+            AND instance.generation = pointer.generation
+          WHERE pointer.service_id = ? AND pointer.view_id = ?
+       )
+       SELECT
+         (SELECT generation FROM active) AS active_generation,
+         (SELECT definition_version FROM active) AS active_definition_version,
+         COALESCE((SELECT last_suid FROM active), '') AS safe_contiguous_head,
+         CASE WHEN EXISTS (
+           SELECT 1
+             FROM mv_wait_receipts receipt
+             JOIN active
+               ON active.generation = receipt.generation
+              AND active.definition_version = receipt.definition_version
+            WHERE receipt.service_id = ? AND receipt.view_id = ?
+              AND receipt.event_id = ? AND receipt.suid = ?
+         ) THEN 1 ELSE 0 END AS target_receipt,
+         CASE WHEN EXISTS (
+           SELECT 1
+             FROM mv_checkpoint_ahead_findings finding
+             JOIN active
+               ON active.generation = finding.generation
+            WHERE finding.service_id = ? AND finding.view_id = ?
+         ) THEN 1 ELSE 0 END AS checkpoint_ahead,
+         COALESCE((
+           SELECT arrival.rebuild_required
+             FROM mv_unsafe_arrivals arrival
+             JOIN active
+               ON active.generation = arrival.generation
+            WHERE arrival.service_id = ? AND arrival.view_id = ?
+         ), 0) AS rebuild_required,
+         CASE WHEN EXISTS (
+           SELECT 1
+             FROM mv_wait_target_poison finding
+             JOIN active
+               ON active.generation = finding.generation
+              AND active.definition_version = finding.definition_version
+            WHERE finding.service_id = ? AND finding.view_id = ?
+              AND finding.suid = ?
+              AND (? IS NULL OR finding.event_id = ?)
+         ) THEN 1 ELSE 0 END AS poison`,
+    ).bind(
+      serviceId,
+      viewId,
+      serviceId,
+      viewId,
+      target.eventId ?? "",
+      target.suid,
+      serviceId,
+      viewId,
+      serviceId,
+      viewId,
+      serviceId,
+      viewId,
+      target.suid,
+      target.eventId ?? null,
+      target.eventId ?? null,
+    ).first<D1Row>();
+    if (row === null || row === undefined) {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "D1 wait-state query returned no row");
+    }
+    const generation = row.active_generation === null || row.active_generation === undefined
+      ? undefined
+      : asInteger(row.active_generation, "active_generation");
+    const definitionVersion = row.active_definition_version === null || row.active_definition_version === undefined
+      ? undefined
+      : asInteger(row.active_definition_version, "active_definition_version");
+    return {
+      activeGeneration: generation,
+      activeDefinitionVersion: definitionVersion,
+      safeContiguousHead: asString(row.safe_contiguous_head, "safe_contiguous_head"),
+      targetReceipt: asInteger(row.target_receipt, "target_receipt") === 1,
+      checkpointAhead: asInteger(row.checkpoint_ahead, "checkpoint_ahead") === 1,
+      rebuildRequired: asInteger(row.rebuild_required, "rebuild_required") === 1,
+      poison: asInteger(row.poison, "poison") === 1,
+    };
+  }
+
   /** Idempotent operational fact: a stored Queue event needs unsafe retry/DLQ attention. */
   async recordUnsafeFailureFinding(input: {
     readonly serviceId: string;
     readonly viewId: string;
+    /** The failed view generation when known; omitted binds the active one. */
+    readonly generation?: number;
     readonly eventId: string;
     readonly suid: string;
     readonly observedAt: number;
   }): Promise<void> {
     this.ready("apply");
-    await this.database.prepare(
+    const legacyFinding = this.database.prepare(
       `INSERT INTO mv_unsafe_failure_findings
          (service_id, view_id, event_id, suid, classification, observed_at)
        VALUES (?, ?, ?, ?, 'UNSAFE_APPLY_RETRY', ?)
        ON CONFLICT (service_id, view_id, event_id, suid, classification) DO NOTHING`,
-    ).bind(input.serviceId, input.viewId, input.eventId, input.suid, input.observedAt).run();
+    ).bind(input.serviceId, input.viewId, input.eventId, input.suid, input.observedAt);
+    const targetPoison = input.generation === undefined
+      ? this.database.prepare(
+        `INSERT INTO mv_wait_target_poison
+           (service_id, view_id, generation, definition_version, event_id, suid, classification, observed_at)
+         SELECT instance.service_id, instance.view_id, instance.generation, instance.definition_version, ?, ?, 'UNSAFE_APPLY_RETRY', ?
+           FROM mv_active_generations active
+           JOIN mv_instances instance
+             ON instance.service_id = active.service_id
+            AND instance.view_id = active.view_id
+            AND instance.generation = active.generation
+          WHERE active.service_id = ? AND active.view_id = ?
+         ON CONFLICT DO NOTHING`,
+      ).bind(input.eventId, input.suid, input.observedAt, input.serviceId, input.viewId)
+      : this.database.prepare(
+        `INSERT INTO mv_wait_target_poison
+           (service_id, view_id, generation, definition_version, event_id, suid, classification, observed_at)
+         SELECT instance.service_id, instance.view_id, instance.generation, instance.definition_version, ?, ?, 'UNSAFE_APPLY_RETRY', ?
+           FROM mv_instances instance
+          WHERE instance.service_id = ? AND instance.view_id = ? AND instance.generation = ?
+         ON CONFLICT DO NOTHING`,
+      ).bind(input.eventId, input.suid, input.observedAt, input.serviceId, input.viewId, input.generation);
+    await this.database.batch([legacyFinding, targetPoison]);
   }
 
   /**
@@ -783,6 +922,7 @@ export type MaterializedViewStore = Pick<
   | "queryRows"
   | "queryRowsWithTotal"
   | "hasTargetReceipt"
+  | "readWaitForState"
   | "recordCheckpointAhead"
   | "hasCheckpointAheadFinding"
   | "applyMutationsAndAdvanceCheckpoint"

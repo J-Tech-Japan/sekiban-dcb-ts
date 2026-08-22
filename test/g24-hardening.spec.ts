@@ -6,6 +6,12 @@ import migration0001 from "../migrations/mv/0001_materialized_views.sql?raw";
 import migration0002 from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import migration0003 from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import migration0004 from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import migration0005 from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import migration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 // @ts-expect-error Vite raw source import for the literal-restoration mutation oracle.
 import serviceIdentitySource from "../packages/dcb-runtime/src/http/testServiceId.ts?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
@@ -101,6 +107,9 @@ describe("SDT-G24 hardening guards", () => {
     await database().batch(statements(migration0001 as string));
     await database().batch(statements(migration0002 as string));
     await database().batch(statements(migration0003 as string));
+    await database().batch(statements(migration0004 as string));
+    await database().batch(statements(migration0005 as string));
+    await database().batch(statements(migration0006 as string));
   });
 
   it("records only the idempotent CHECKPOINT_AHEAD finding for a legal store-behind-checkpoint fixture, without rollback", async () => {

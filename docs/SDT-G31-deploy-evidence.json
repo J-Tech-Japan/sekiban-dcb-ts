@@ -1,0 +1,60 @@
+{
+  "task": "SDT-G31",
+  "status": "placeholder before sealed final-C witness",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "protocol": {
+    "candidate": "The final sealed C is the immutable runtime/configuration/deployment authority.",
+    "bookkeeping": "R changes only this evidence and one retained-C CI append.",
+    "selfReference": false,
+    "deploymentRequired": true
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtimeRoots": [
+      "packages/dcb-runtime/src"
+    ],
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configurationRoots": [
+      ".github/workflows/ci.yml",
+      "package.json",
+      "package-lock.json",
+      "migrations/d1",
+      "migrations/mv",
+      "samples/meeting-room/src",
+      "samples/meeting-room/public",
+      "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+      "samples/meeting-room/wrangler.cloudflare-only-doorbell.jsonc",
+      "samples/meeting-room/wrangler.meeting-room-doorbell-production.jsonc",
+      "scripts/g29-candidate-check.mjs",
+      "scripts/g31-waitfor-check.mjs",
+      "scripts/g31-candidate-check.mjs",
+      "scripts/deploy/g31-witness.mjs",
+      "scripts/deploy/g31-witness.d.mts",
+      "scripts/deploy/g31-measure.mjs",
+      "scripts/deploy/g31-measure.d.mts",
+      "scripts/deploy/g31-record-evidence.mjs",
+      "scripts/deploy/g31-deploy-witness.sh",
+      "scripts/deploy/g31-receiver-consumer-topology.mjs",
+      "docs/SDT-G31-required-roots.json",
+      "docs/SDT-G31-oracle-map.md",
+      "docs/SDT-G31-pr-body.md",
+      "test",
+      "tsconfig.json",
+      "vitest.config.ts"
+    ]
+  },
+  "candidateImpact": {
+    "deploymentRequired": true
+  },
+  "remoteDeployment": {
+    "deployedRuntimeCommit": null
+  },
+  "finalWitness": {
+    "primaryDeployment": "pending-final-c"
+  },
+  "ci": {
+    "status": "pending-final-c"
+  }
+}

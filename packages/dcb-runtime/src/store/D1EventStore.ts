@@ -1,4 +1,5 @@
 import { decayedLagEstimateMs } from "../safeWindow";
+import type { WaitForTargetLookup, WaitForTargetSourcePort } from "../query/ProjectionQueryStore";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
 import {
@@ -203,7 +204,7 @@ function jsonArray(values: readonly string[]): string {
  * are one predeclared D1 batch; there is no interactive transaction or
  * TypeScript read/branch between statements in the durable mutation.
  */
-export class D1EventStore implements EventStore, DetectorStore, ProjectionStore {
+export class D1EventStore implements EventStore, DetectorStore, ProjectionStore, WaitForTargetSourcePort {
   private initialized = false;
 
   constructor(
@@ -254,6 +255,26 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.serviceId,
         message.allocatorLineageId,
       ),
+      // G31 needs a target-SUID point gate even though a rejected lineage
+      // delivery has no serialized_dcb_events row. Keep this compact alias
+      // separate from the historical incident identity used by operators.
+      this.database.prepare(
+        `INSERT INTO serialized_dcb_wait_target_incidents
+           (service_id, suid, classification, event_id, observed_at)
+         SELECT ?, ?, 'LINEAGE_MISMATCH', ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM serialized_dcb_allocator_bindings
+             WHERE service_id = ? AND allocator_lineage_id <> ?
+          )
+         ON CONFLICT (service_id, suid, classification) DO NOTHING`,
+      ).bind(
+        message.serviceId,
+        message.suid,
+        message.eventId,
+        arrivedAt,
+        message.serviceId,
+        message.allocatorLineageId,
+      ),
       // SUID collision is a typed incident rather than a UNIQUE exception.
       this.database.prepare(
         `INSERT INTO serialized_dcb_delivery_incidents
@@ -276,6 +297,31 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
         message.eventId,
         message.eventId,
         message.eventId,
+        message.eventId,
+        arrivedAt,
+        message.serviceId,
+        message.suid,
+        message.eventId,
+        message.serviceId,
+        message.allocatorLineageId,
+      ),
+      this.database.prepare(
+        `INSERT INTO serialized_dcb_wait_target_incidents
+           (service_id, suid, classification, event_id, observed_at)
+         SELECT ?, ?, 'SUID_COLLISION', ?, ?
+          WHERE EXISTS (
+            SELECT 1 FROM serialized_dcb_events
+             WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY
+               AND event_id <> ?
+          )
+            AND NOT EXISTS (
+              SELECT 1 FROM serialized_dcb_allocator_bindings
+               WHERE service_id = ? AND allocator_lineage_id <> ?
+            )
+         ON CONFLICT (service_id, suid, classification) DO NOTHING`,
+      ).bind(
+        message.serviceId,
+        message.suid,
         message.eventId,
         arrivedAt,
         message.serviceId,
@@ -489,6 +535,48 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore 
       since,
     );
     return Promise.all(rows.map((row) => this.eventFromRow(row)));
+  }
+
+  /**
+   * G31 source proof: one indexed target-SUID lookup distinguishes pending,
+   * unique stored, and contradictory/incident states. It intentionally never
+   * delegates to readAllEvents, which would make waitFor history-size bound.
+   */
+  async readWaitForTarget(serviceId: string, suid: string): Promise<WaitForTargetLookup> {
+    this.ready();
+    const row = await this.database.prepare(
+      `WITH target AS (
+         SELECT event_id
+           FROM serialized_dcb_events
+          WHERE service_id = ? AND suid COLLATE BINARY = ? COLLATE BINARY
+          ORDER BY event_id COLLATE BINARY ASC
+          LIMIT 2
+       )
+       SELECT
+         (SELECT COUNT(*) FROM target) AS target_count,
+         (SELECT event_id FROM target ORDER BY event_id COLLATE BINARY ASC LIMIT 1) AS event_id,
+         CASE WHEN EXISTS (
+           SELECT 1
+             FROM serialized_dcb_wait_target_incidents incident
+            WHERE incident.service_id = ? AND incident.suid COLLATE BINARY = ? COLLATE BINARY
+              AND incident.classification IN ('SUID_COLLISION', 'LINEAGE_MISMATCH')
+         ) OR EXISTS (
+           SELECT 1
+             FROM serialized_dcb_delivery_incidents incident
+            WHERE incident.service_id = ? AND incident.suid COLLATE BINARY = ? COLLATE BINARY
+              AND incident.classification = 'SUID_COLLISION'
+         ) THEN 1 ELSE 0 END AS target_incident`,
+    ).bind(serviceId, suid, serviceId, suid, serviceId, suid).first<D1Row>();
+    if (row === null || row === undefined) throw new Error("D1 wait target lookup returned no row");
+    if (asNumber(row.target_incident, "target_incident") === 1) {
+      return { kind: "unavailable", reason: "incident" };
+    }
+    const count = asNumber(row.target_count, "target_count");
+    if (count === 0) return { kind: "pending" };
+    if (count !== 1 || typeof row.event_id !== "string" || row.event_id.length === 0) {
+      return { kind: "unavailable", reason: "suid-contradiction" };
+    }
+    return { kind: "stored", eventId: row.event_id, suid };
   }
 
   async currentLagBound(serviceId: string, nowMs?: number): Promise<number> {

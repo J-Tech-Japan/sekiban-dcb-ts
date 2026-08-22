@@ -12,7 +12,7 @@ import {
   type CloudflareOnlyEnv,
   type DeliveryCoreOptions,
 } from "@sekiban/dcb-runtime/cloudflare";
-import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
+import { createD1StoreProvider, D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
@@ -23,6 +23,8 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly ASSETS?: Fetcher;
   readonly CONFORMANCE_TOKEN?: string;
   readonly G29_SOURCE_COMMIT?: string;
+  /** Sealed SDT-G31 source identity exposed only to the authenticated witness. */
+  readonly G31_SOURCE_COMMIT?: string;
   /** In-process integration seam; never configured by a deployed Worker. */
   readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
     readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
@@ -153,12 +155,18 @@ async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: E
   const isRoomQuery = url.pathname === "/api/read/room-query";
   if (!isReservations && !isRoomQuery) return json({ error: "Query route was not found", code: "not_found" }, 404);
   let queryParams: Record<string, unknown>;
+  let waitForSortableUniqueId: string | undefined;
   if (isReservations) {
     const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
     if (pageNumber instanceof Response) return pageNumber;
     const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
     if (pageSize instanceof Response) return pageSize;
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize };
+    const newestFirst = url.searchParams.get("newestFirst");
+    if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
+    const requestedWait = url.searchParams.get("waitForSortableUniqueId");
+    if (requestedWait !== null && requestedWait.length === 0) return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
+    waitForSortableUniqueId = requestedWait ?? undefined;
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
   } else {
     const roomId = url.searchParams.get("roomId");
     queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
@@ -166,7 +174,11 @@ async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: E
   const response = await runtimeFetch(new Request(`https://runtime.internal/api/sekiban/serialized/${isReservations ? "list-query" : "query"}`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({ queryType: isReservations ? "GetReservationListQuery" : "GetRoomStateQuery", queryParamsJson: JSON.stringify(queryParams) }),
+    body: JSON.stringify({
+      queryType: isReservations ? "GetReservationListQuery" : "GetRoomStateQuery",
+      queryParamsJson: JSON.stringify(queryParams),
+      ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
+    }),
   }), env, ctx);
   let body: unknown;
   try { body = await response.json(); } catch { return json({ error: `Query read returned HTTP ${response.status}`, code: "transport" }, 502); }
@@ -222,6 +234,54 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
       queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
       generation: "v2",
+    });
+  }
+  if (url.pathname === "/conformance/v1/g31-config") {
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    return json({
+      task: "SDT-G31",
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      sourceCommit: env.G31_SOURCE_COMMIT ?? null,
+      serviceId: env.SDT_SERVICE_ID,
+      pipelineDatabaseId: "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
+      generation: "v2",
+      waitFor: {
+        sourceTarget: "unique-indexed-point-read",
+        activeReceipt: "generation-definition-bound",
+        safeHead: "unique-source-required",
+        maxPointReads: 252,
+      },
+      directDoorbell: config.enabled,
+      allowedViews: config.allowedViews,
+    });
+  }
+  if (url.pathname === "/conformance/v1/g31-wait-state") {
+    const suid = url.searchParams.get("suid");
+    if (suid === null || suid.length === 0) {
+      return json({ error: "suid is required", code: "validation_error" }, 400);
+    }
+    if (env.D1 === undefined || env.D1_MV === undefined || env.SDT_SERVICE_ID === undefined) {
+      return json({ error: "G31 wait-state bindings are unavailable", code: "projection_unavailable" }, 503);
+    }
+    // This authenticated diagnostic reads the same two point-lookup ports as
+    // the list-query wait. It deliberately fixes the opted-in list view so a
+    // witness cannot turn arbitrary request data into a storage selector.
+    const source = new D1EventStore(env.D1);
+    const views = new D1MaterializedViewStore(env.D1_MV);
+    await Promise.all([source.initialize(), views.initialize()]);
+    const target = await source.readWaitForTarget(env.SDT_SERVICE_ID, suid);
+    const state = await views.readWaitForState(env.SDT_SERVICE_ID, "ReservationProjector", {
+      ...(target.kind === "stored" ? { eventId: target.eventId } : {}),
+      suid,
+    });
+    return json({
+      task: "SDT-G31",
+      serviceId: env.SDT_SERVICE_ID,
+      viewId: "ReservationProjector",
+      target,
+      state,
     });
   }
   url.pathname = url.pathname.slice("/conformance/v1".length) || "/";

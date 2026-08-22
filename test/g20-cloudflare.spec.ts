@@ -5,11 +5,19 @@ import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw asset import
 import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
 // @ts-expect-error Vite raw asset import
+import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
+// @ts-expect-error Vite raw asset import
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw asset import
 import unsafeMvMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import hardeningMvMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import unsafeFailureMvMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import { D1EventStore } from "../packages/dcb-runtime/src/d1";
 import { createCloudflareOnlyRuntimeWorker } from "../packages/dcb-runtime/src/cloudflare";
 import { createD1StoreProvider } from "../packages/dcb-runtime/src/d1";
@@ -59,8 +67,8 @@ function event(serviceId: string): DownstreamOutboxMessage {
 
 describe("SDT-G20 Cloudflare-only composition", () => {
   beforeAll(async () => {
-    await database().batch(statements(`${pipelineMigration as string}\n${identityMigration as string}`));
-    await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
+    await database().batch(statements(`${pipelineMigration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`));
+    await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string, unsafeFailureMvMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
       .filter(Boolean).map((value) => mvDatabase().prepare(value)));
   });
 

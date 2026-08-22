@@ -7,11 +7,14 @@ import {
   projectionHasObserved,
   readRowsPageFromBacking,
   selectQueryBacking,
+  compareSuid,
   type ProjectedQueryEntry,
   type QueryBacking,
   type QueryBackingSelection,
   type MaterializedViewQueryPort,
   type QueryProjectionStore,
+  type WaitForTargetLookup,
+  type WaitForTargetSourcePort,
 } from "../query/ProjectionQueryStore";
 import { D1MaterializedViewStore } from "../mv/MaterializedViewStore";
 import {
@@ -61,6 +64,7 @@ interface QueryRequest {
 interface Pagination {
   currentPage: number;
   pageSize: number;
+  newestFirst: boolean;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -118,13 +122,15 @@ function paginationFrom(value: unknown): { value?: Pagination; error?: string } 
   }
   const currentPage = value.PageNumber ?? 1;
   const pageSize = value.PageSize ?? 20;
+  const newestFirst = value.NewestFirst ?? false;
   if (
     typeof currentPage !== "number" || !Number.isSafeInteger(currentPage) || currentPage < 1 ||
-    typeof pageSize !== "number" || !Number.isSafeInteger(pageSize) || pageSize < 1
+    typeof pageSize !== "number" || !Number.isSafeInteger(pageSize) || pageSize < 1 ||
+    typeof newestFirst !== "boolean"
   ) {
-    return { error: "PageNumber and PageSize must be positive integers" };
+    return { error: "PageNumber and PageSize must be positive integers and NewestFirst must be a boolean" };
   }
-  return { value: { currentPage, pageSize } };
+  return { value: { currentPage, pageSize, newestFirst } };
 }
 
 function decodePayload(entry: ProjectedQueryEntry): unknown {
@@ -142,6 +148,123 @@ function decodePayload(entry: ProjectedQueryEntry): unknown {
 
 function realSleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+/**
+ * G31 bounds each d1-mv wait to 125 loop iterations / 126 source+MV probes.
+ * Backoff is 25, 50, 100, 200, 400, 800, then at most 1000ms; over the 120s
+ * SafeWindow that is at most 252 point-read statements including the
+ * mandatory final success recheck. The cap also makes a stalled test clock
+ * deterministic instead of issuing unbounded reads.
+ */
+export const D1_WAIT_MAX_ITERATIONS = 125;
+export const D1_WAIT_MAX_POINT_READS = 252;
+const D1_WAIT_MAX_PROBES = D1_WAIT_MAX_POINT_READS / 2;
+const D1_WAIT_INITIAL_BACKOFF_MS = 25;
+const D1_WAIT_MAX_BACKOFF_MS = 1_000;
+
+type D1WaitResult = "visible" | "timeout" | "unavailable";
+
+interface D1WaitFacts {
+  readonly target: WaitForTargetLookup;
+  readonly unavailable: boolean;
+  readonly targetReceipt: boolean;
+  readonly safeContiguousHead: string;
+  readonly activeGeneration: number | undefined;
+}
+
+function isWaitForTargetSourcePort(value: QueryProjectionStore): value is QueryProjectionStore & WaitForTargetSourcePort {
+  return typeof (value as Partial<WaitForTargetSourcePort>).readWaitForTarget === "function";
+}
+
+function d1WaitSucceeded(facts: D1WaitFacts): boolean {
+  if (facts.unavailable || facts.target.kind !== "stored") return false;
+  // Receipt and safe-head are separate success branches. In particular, a
+  // head without a unique source target can never satisfy this condition.
+  return facts.targetReceipt || (
+    facts.activeGeneration !== undefined &&
+    compareSuid(facts.safeContiguousHead, facts.target.suid) >= 0
+  );
+}
+
+async function readD1WaitFacts(
+  source: QueryProjectionStore & WaitForTargetSourcePort,
+  materializedView: MaterializedViewQueryPort,
+  serviceId: string,
+  viewId: string,
+  requestedSuid: string,
+): Promise<D1WaitFacts> {
+  const target = await source.readWaitForTarget(serviceId, requestedSuid);
+  // SUID collision/lineage mismatch is an incident gate before any success
+  // evaluation. A contradictory two-row source target is equivalently
+  // unavailable, rather than a candidate for safe-head aliasing.
+  if (target.kind === "unavailable") {
+    return { target, unavailable: true, targetReceipt: false, safeContiguousHead: "", activeGeneration: undefined };
+  }
+  if (materializedView.readWaitForState === undefined) {
+    throw new Error("D1 materialized-view waitFor state port is not configured");
+  }
+  const state = await materializedView.readWaitForState(serviceId, viewId, {
+    ...(target.kind === "stored" ? { eventId: target.eventId } : {}),
+    suid: requestedSuid,
+  });
+  const unavailable = state.checkpointAhead || state.rebuildRequired || state.poison;
+  return {
+    target,
+    unavailable,
+    targetReceipt: state.targetReceipt,
+    safeContiguousHead: state.safeContiguousHead,
+    activeGeneration: state.activeGeneration,
+  };
+}
+
+function d1WaitBackoff(iteration: number): number {
+  return Math.min(D1_WAIT_MAX_BACKOFF_MS, D1_WAIT_INITIAL_BACKOFF_MS * 2 ** Math.min(iteration, 5));
+}
+
+async function waitForD1Projection(
+  source: QueryProjectionStore & WaitForTargetSourcePort,
+  materializedView: MaterializedViewQueryPort,
+  serviceId: string,
+  viewId: string,
+  requestedSuid: string,
+  requestStartedAt: number,
+  options: QueryExecutionOptions,
+): Promise<D1WaitResult> {
+  const now = options.now ?? Date.now;
+  // The lag estimate and deadline are both anchored at request start. Later
+  // samples must not stretch a request's published SafeWindow.
+  const dynamicLagBoundMs = await source.currentLagBound(serviceId, requestStartedAt);
+  const deadline = requestStartedAt + safeWindowMs(dynamicLagBoundMs);
+  const sleep = options.sleep ?? realSleep;
+  let probes = 0;
+  const probe = async (): Promise<D1WaitFacts | undefined> => {
+    if (probes >= D1_WAIT_MAX_PROBES) return undefined;
+    probes += 1;
+    return readD1WaitFacts(source, materializedView, serviceId, viewId, requestedSuid);
+  };
+
+  for (let iteration = 0; iteration < D1_WAIT_MAX_ITERATIONS; iteration += 1) {
+    const facts = await probe();
+    if (facts === undefined) return "timeout";
+    if (facts.unavailable) return "unavailable";
+    if (d1WaitSucceeded(facts)) {
+      // A state can change between the first proof and response creation.
+      // Re-read incident/rebuild/poison and the generation-bound receipt just
+      // before success; this is deliberately not a cached boolean.
+      const confirmed = await probe();
+      if (confirmed === undefined) return "timeout";
+      if (confirmed.unavailable) return "unavailable";
+      if (d1WaitSucceeded(confirmed)) return "visible";
+    }
+    // An over-ceiling lag is a timeout only after the initial incident gate;
+    // it never reclassifies a 503 operational finding as a 504.
+    if (safeWindowCeilingExceeded(dynamicLagBoundMs) || now() >= deadline || iteration + 1 >= D1_WAIT_MAX_ITERATIONS) {
+      return "timeout";
+    }
+    await sleep(Math.min(d1WaitBackoff(iteration), Math.max(1, deadline - now())));
+  }
+  return "timeout";
 }
 
 async function waitForProjection(
@@ -169,18 +292,6 @@ async function waitForProjection(
     await sleep(Math.min(pollIntervalMs, deadline - now()));
   }
   return false;
-}
-
-async function hasTargetReceipt(
-  selection: QueryBackingSelection,
-  source: QueryProjectionStore | undefined,
-  serviceId: string,
-  viewId: string,
-  requestedSuid: string,
-): Promise<boolean | undefined> {
-  if (selection.backing !== "d1-mv" || selection.store.hasTargetReceipt === undefined || source === undefined) return undefined;
-  const target = (await source.readAllEvents(serviceId, "")).find((event) => event.suid === requestedSuid);
-  return target === undefined ? false : selection.store.hasTargetReceipt(serviceId, viewId, target.eventId, requestedSuid);
 }
 
 function endpointFromPath(path: string): QueryEndpoint | undefined {
@@ -218,6 +329,7 @@ export async function handleSerializedQuery(
   env: QueryWorkerEnv,
   options: QueryExecutionOptions = {},
 ): Promise<Response> {
+  const requestStartedAt = (options.now ?? Date.now)();
   const endpoint = endpointFromPath(new URL(request.url).pathname);
   const serviceId = serviceIdForRequest(request, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
@@ -254,12 +366,14 @@ export async function handleSerializedQuery(
     let requestStoreValue: PipelineStore | undefined;
     let waitStore: QueryProjectionStore | undefined = options.store;
     let selection: QueryBackingSelection;
+    let d1MaterializedView: MaterializedViewQueryPort | undefined;
     if (backing === "d1-mv") {
       const materializedView = options.materializedViewQueryPort ??
         (env.D1_MV === undefined ? undefined : new D1MaterializedViewStore(env.D1_MV));
       if (materializedView === undefined) {
         return error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable");
       }
+      d1MaterializedView = materializedView;
       await materializedView.initialize?.();
       selection = selectQueryBacking({ backing, materializedView });
       if (await materializedView.hasCheckpointAheadFinding?.(serviceId, definition.materializedViewId ?? definition.tagProjector)) {
@@ -288,19 +402,36 @@ export async function handleSerializedQuery(
       }
       selection = selectQueryBacking({ backing, memory: waitStore });
     }
-    const targetReceipt = parsed.value.waitForSortableUniqueId === undefined ? undefined : await hasTargetReceipt(
-      selection,
-      waitStore,
-      serviceId,
-      definition.materializedViewId ?? definition.tagProjector,
-      parsed.value.waitForSortableUniqueId,
-    );
-    if (parsed.value.waitForSortableUniqueId !== undefined && (targetReceipt ?? (waitStore !== undefined && await waitForProjection(waitStore, serviceId, definition, parsed.value.waitForSortableUniqueId, options))) !== true) {
-      return error(
-        504,
-        "timeout",
-        "Outcome is undetermined: reread tag heads and event/query state before retrying; blind retry may create duplicate events",
-      );
+    if (parsed.value.waitForSortableUniqueId !== undefined) {
+      let waitResult: D1WaitResult | undefined;
+      if (selection.backing === "d1-mv") {
+        if (waitStore === undefined || d1MaterializedView === undefined || !isWaitForTargetSourcePort(waitStore)) {
+          return error(503, "projection_unavailable", "The D1 materialized-view waitFor source is unavailable");
+        }
+        waitResult = await waitForD1Projection(
+          waitStore,
+          d1MaterializedView,
+          serviceId,
+          definition.materializedViewId ?? definition.tagProjector,
+          parsed.value.waitForSortableUniqueId,
+          requestStartedAt,
+          options,
+        );
+      } else if (waitStore === undefined || !await waitForProjection(waitStore, serviceId, definition, parsed.value.waitForSortableUniqueId, options)) {
+        waitResult = "timeout";
+      } else {
+        waitResult = "visible";
+      }
+      if (waitResult === "unavailable") {
+        return error(503, "projection_unavailable", "The mapped query projection is unavailable");
+      }
+      if (waitResult !== "visible") {
+        return error(
+          504,
+          "timeout",
+          "Projection did not reach the requested sortableUniqueId within the published SafeWindow; refresh this read to inspect current state",
+        );
+      }
     }
     const requestedPage = pagination.value;
     const supportsServerPaging = selection.backing === "d1-mv" && selection.store.queryRowsWithTotal !== undefined;
@@ -309,7 +440,13 @@ export async function handleSerializedQuery(
       serviceId,
       definition.materializedViewId ?? definition.tagProjector,
       definition,
-      requestedPage === undefined || !supportsServerPaging ? { limit: null } : { limit: requestedPage.pageSize, offset: (requestedPage.currentPage - 1) * requestedPage.pageSize },
+      requestedPage === undefined || !supportsServerPaging
+        ? { limit: null }
+        : {
+          limit: requestedPage.pageSize,
+          offset: (requestedPage.currentPage - 1) * requestedPage.pageSize,
+          ...(requestedPage.newestFirst ? { descending: true } : {}),
+        },
     );
     return resultResponse(endpoint, page.entries, pagination.value, page.totalCount, page.serverPaged);
   } catch {

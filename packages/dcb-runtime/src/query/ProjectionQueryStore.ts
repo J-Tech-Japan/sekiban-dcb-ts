@@ -1,7 +1,11 @@
 import { projectionIdFor } from "../projection/ProjectionRuntime";
 import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import type { QueryDefinition } from "./QueryRegistry";
-import type { MaterializedViewQueryOptions, MaterializedViewRow } from "../mv/MaterializedViewStore";
+import type {
+  MaterializedViewQueryOptions,
+  MaterializedViewRow,
+  MaterializedViewWaitForState,
+} from "../mv/MaterializedViewStore";
 import type { UnsafeComposedPage } from "../mv/UnsafeWindowMaterializedView";
 
 /** The query surface can only inspect durable source and projection facts. */
@@ -9,6 +13,21 @@ export type QueryProjectionStore = Pick<
   ProjectionStore,
   "readAllEvents" | "currentLagBound" | "listProjectionTags" | "readProjectionCheckpoint"
 >;
+
+/**
+ * SDT-G31's source-side wait lookup.  A D1 implementation must distinguish a
+ * missing target from a contradictory target/incident; callers must never
+ * turn either unavailable result into a successful safe-head observation.
+ */
+export type WaitForTargetLookup =
+  | { readonly kind: "pending" }
+  | { readonly kind: "stored"; readonly eventId: string; readonly suid: string }
+  | { readonly kind: "unavailable"; readonly reason: "incident" | "suid-contradiction" };
+
+/** Indexed D1 source port used only by the d1-mv waitFor implementation. */
+export interface WaitForTargetSourcePort {
+  readWaitForTarget(serviceId: string, suid: string): Promise<WaitForTargetLookup>;
+}
 
 /** The backing choice is typed and deploy-time; it never changes the V1 wire. */
 export type QueryBacking = "memory" | "d1-mv";
@@ -21,6 +40,16 @@ export interface MaterializedViewQueryPort {
   hasTargetReceipt?(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>;
   /** SDT-G24 active-generation finding; true means every composed read is unavailable. */
   hasCheckpointAheadFinding?(serviceId: string, viewId: string): Promise<boolean>;
+  /**
+   * SDT-G31 active-generation wait facts.  This deliberately combines only
+   * indexed point reads; its receipt is generation/definition-bound and its
+   * hard gates are evaluated before a wait can report success.
+   */
+  readWaitForState?(
+    serviceId: string,
+    viewId: string,
+    target: { readonly eventId?: string; readonly suid: string },
+  ): Promise<MaterializedViewWaitForState>;
   /** D1-backed implementations may need to verify the versioned schema first. */
   initialize?: () => Promise<void>;
 }
@@ -228,7 +257,8 @@ export async function readRowsFromBacking(
       return bySuid === 0 ? compareSuid(left.eventId, right.eventId) : bySuid;
     });
   }
-  return readProjectedEntries(selection.store, serviceId, definition);
+  const entries = await readProjectedEntries(selection.store, serviceId, definition);
+  return options.descending === true ? [...entries].reverse() : entries;
 }
 
 /** Page in the backing when it supports composed SQL, otherwise preserve the legacy port. */

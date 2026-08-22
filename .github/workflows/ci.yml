@@ -210,6 +210,14 @@ jobs:
             echo "SDT-G29 witness forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G31 bounded d1-mv waitFor and sample auto-refresh lane
+        run: npm run test:g31
+      - name: Prove SDT-G31 forced-red CI reachability
+        run: |
+          if SDT_G31_FORCE_FAILURE=1 npm run test:g31:forced-red; then
+            echo "SDT-G31 forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
@@ -354,5 +362,13 @@ jobs:
         run: |
           if SDT_G29_CANDIDATE_FORCE_FAILURE=1 npm run test:g29:candidate:forced-red; then
             echo "SDT-G29 candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Verify SDT-G31 required-root candidate protocol
+        run: npm run test:g31:candidate
+      - name: Prove SDT-G31 candidate retention gate forced failure
+        run: |
+          if SDT_G31_CANDIDATE_FORCE_FAILURE=1 npm run test:g31:candidate:forced-red; then
+            echo "SDT-G31 candidate forced-red probe unexpectedly passed"
             exit 1
           fi
