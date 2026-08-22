@@ -58,6 +58,17 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
+function decodeJsonBytes(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    const binary = atob(value);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return value;
+  }
+}
+
 /** The public V1 transport remains byte-compatible; authoring owns the candidate above it. */
 export function createV1Transport(fetcher: InternalRuntimeFetcher, serviceId?: string): SerializedDcbTransport {
   const call = async (path: string, body: unknown, signal?: AbortSignal): Promise<CommitHttpResult> => {
@@ -130,15 +141,16 @@ function snapshotReader(transport: SerializedDcbTransport): SnapshotReader {
       if (responseTag !== tag.id || value.tagProjector !== projector.id) {
         throw new Error("Runtime tag-state response crossed a tag/projector boundary");
       }
-      const snapshotState = isRecord(value.payload) && value.payload.status === "empty"
+      const decodedPayload = decodeJsonBytes(value.payload);
+      const snapshotState = isRecord(decodedPayload) && decodedPayload.status === "empty"
         ? typeof projector.initialState === "function" ? projector.initialState() : projector.initialState
-        : value.payload;
+        : decodedPayload;
       const snapshot: PortableSnapshot = Object.freeze({
         projectorId: projector.id,
         tag,
         head: value.lastSortedUniqueId.length === 0 ? null : value.lastSortedUniqueId,
         state: snapshotState,
-        exists: stateExists(value.payload),
+        exists: stateExists(decodedPayload),
       });
       snapshots.set(key, snapshot);
       return snapshot;
@@ -185,9 +197,18 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
-function publicResult(commandId: string, result: Awaited<ReturnType<typeof executeCommand>>): ExecuteResult {
+function publicResult(
+  commandId: string,
+  result: Awaited<ReturnType<typeof executeCommand>>,
+  commitResponseBody?: unknown,
+): ExecuteResult {
   if (result.status === "accepted") {
-    return { kind: "committed", attempts: result.attempts, status: 200, response: result.decision.kind === "done" ? result.decision.value : undefined };
+    return {
+      kind: "committed",
+      attempts: result.attempts,
+      status: 200,
+      response: commitResponseBody ?? (result.decision.kind === "done" ? result.decision.value : undefined),
+    };
   }
   if (result.status === "discarded") {
     if (result.decision.kind === "none") return { kind: "noop", attempts: result.attempts, reason: result.decision.reason };
@@ -232,18 +253,26 @@ export function commandExecutor(environment: MeetingRoomCommandEnvironment): Mee
       const command = commandFor(commandId);
       if (command === undefined) return { kind: "invalid", attempts: 0, error: "Unknown meeting-room command", code: "command_not_found" };
       try {
+        let commitResponseBody: unknown;
         const result = await executeCommand(command, input, {
           maxConflictRetries: 1,
           snapshots: snapshotReader(transport),
           timeProvider: { now: () => new Date().toISOString() },
           commit: async (envelope) => {
             const response = await transport.commit(v1CandidateEnvelope(envelope));
+            if (isRecord(response) && isRecord(response.body)) commitResponseBody = response.body;
             return commitOutcome(response);
           },
         });
-        return publicResult(commandId, result);
+        return publicResult(commandId, result, commitResponseBody);
       } catch (error) {
-        return { kind: "invalid", attempts: 1, error: errorMessage(error), code: errorCode(error) ?? "invalid_command_input" };
+        const code = errorCode(error);
+        return {
+          kind: "invalid",
+          attempts: 1,
+          error: errorMessage(error),
+          code: code === "COMMAND_INPUT_INVALID" ? "invalid_command_input" : code ?? "invalid_command_input",
+        };
       }
     },
   };
