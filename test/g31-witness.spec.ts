@@ -3,6 +3,7 @@ import {
   assertFinalWitnessIdentity,
   assertSourceCommit,
   assertWitnessStable,
+  expectedTopology,
   shouldRetryConformanceStatus,
 } from "../scripts/deploy/g31-witness.mjs";
 import { summarizeMeasurements } from "../scripts/deploy/g31-measure.mjs";
@@ -68,6 +69,10 @@ function publicPreWitness() {
 }
 
 describe("SDT-G31 witnessed deployment and one-list-redraw oracles", () => {
+  it("uses the deployed 254-point-read ceiling in its authenticated topology contract", () => {
+    expect(expectedTopology(expected.serviceId)).toEqual(expected);
+  });
+
   it("preserves the pre-captured witness set and requires the authenticated final-C source identity", () => {
     expect(assertWitnessStable(witness(), witness(), expected).stable).toBe(true);
     expect(assertWitnessStable(publicPreWitness(), witness(), expected).stable).toBe(true);

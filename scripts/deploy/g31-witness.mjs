@@ -202,7 +202,7 @@ async function captureRawV1Witness(baseUrl) {
   return { status: result.status };
 }
 
-function expectedTopology(serviceId) {
+export function expectedTopology(serviceId) {
   return {
     worker: "sekiban-dcb-meeting-room-cloudflare-only",
     serviceId,
@@ -214,7 +214,7 @@ function expectedTopology(serviceId) {
       sourceTarget: "unique-indexed-point-read",
       activeReceipt: "generation-definition-bound",
       safeHead: "unique-source-required",
-      maxPointReads: 252,
+      maxPointReads: 254,
     },
     directDoorbell: true,
     allowedViews: ["RoomProjector", "ReservationProjector"],

@@ -27,6 +27,7 @@ export interface G31DataPreservation {
 }
 
 export function shouldRetryConformanceStatus(status: number): boolean;
+export function expectedTopology(serviceId: string): G31WitnessExpected;
 export function assertPreWitnessSetPreserved(before: G31WitnessSnapshot["data"], after: G31WitnessSnapshot["data"]): G31DataPreservation;
 export function assertWitnessStable(before: G31WitnessSnapshot, after: G31WitnessSnapshot, expected: G31WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataPreservation: G31DataPreservation };
 export function assertFinalWitnessIdentity(sourceCommit: string, pre: G31WitnessSnapshot, post: G31WitnessSnapshot): { readonly preIdentitySource: unknown; readonly postSourceCommit: unknown; readonly match: true };
