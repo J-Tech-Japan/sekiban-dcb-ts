@@ -1,10 +1,10 @@
 {
   "task": "SDT-G29",
-  "status": "R evidence; local and preflight evidence complete, live witnessed deploy blocked by protected conformance token availability",
-  "candidateCommit": "4a67b0a62120c85ec6aec855f09e38aca430557f",
-  "sourceCommit": "4a67b0a62120c85ec6aec855f09e38aca430557f",
+  "status": "R3 evidence; local and preflight evidence complete, live witnessed deploy blocked by protected conformance token availability",
+  "candidateCommit": "2db888bc9e57e04b66b4525270d312e8ddf78530",
+  "sourceCommit": "2db888bc9e57e04b66b4525270d312e8ddf78530",
   "protocol": {
-    "candidate": "C contains sample authoring rewrite, mapping/compatibility/diagnostic fixtures, runtime per-view policy, witness tooling, oracle map, PR body, and this placeholder",
+    "candidate": "C3 contains the sample authoring rewrite, V1-compatible command transport response mapping, mapping/compatibility/diagnostic fixtures, runtime per-view policy, witness tooling, oracle map, PR body, and this placeholder",
     "bookkeeping": "R changes only this evidence document and appends C once to the retained-candidate fetch list",
     "preDeployOrder": ["config-and-bundle-diff", "pre-witness", "receiver-deploy", "primary-deploy", "post-witness", "fixed-N-measurement"],
     "deploymentIdentity": "existing g25-38219c8-20260820; no reseed, fresh serviceId, namespace, D1, Queue, or DO generation",
@@ -15,7 +15,7 @@
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "a1b29d920df1c8b6cb7d78ddf52cc5c400cab54d085cd9d0de2fe09a2c2d7221",
     "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
-    "configuration": "ee8cc956578241f3b2c9f59319b593aa53b156dec81d6816e7966ca5064d9d0e",
+    "configuration": "e6bc5360bd3652f3a8ab1ddebdaee849c720db30c25d1367df280415ca2a7b8a",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
@@ -65,7 +65,7 @@
     "deliveryMatrix": "passed: 8 branches plus runtime selection oracle",
     "diagnostics": "passed: 8 tests across six raw fields and four derived quadrants",
     "compatibility": "passed: five lanes and identity fail-closed oracle",
-    "sample": "passed: 12 tests including canonical materializer dispatch and legacy replay",
+    "sample": "passed: 12 focused tests including canonical materializer dispatch and legacy replay; clean Miniflare G15 and G16 app-layer E2E passed; full suite 304 tests passed",
     "witness": "passed: 2 local witness tests; remote live witness not run"
   },
   "remoteDeployment": {
@@ -75,5 +75,5 @@
     "identityPolicy": "existing g25-38219c8-20260820 only; no reseed, fresh serviceId, namespace, generation, or destructive migration"
   },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "C=4a67b0a62120c85ec6aec855f09e38aca430557f; R updates only this evidence and appends C once to the retained-candidate fetch list"
+  "candidateGate": "C=2db888bc9e57e04b66b4525270d312e8ddf78530; R3 updates only this evidence and appends C3 once to the retained-candidate fetch list"
 }
