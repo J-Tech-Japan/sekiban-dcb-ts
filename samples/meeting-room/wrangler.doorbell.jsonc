@@ -7,7 +7,7 @@
   "vars": {
     "DOMAIN_DELIVERY_CLASS": "immediate-preferred",
     "DIRECT_DOORBELL": "true",
-    "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector",
+    "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector,ReservationProjector",
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
     "DIRECT_DOORBELL_DEGRADATION": "fail-fast",
     "DIRECT_DOORBELL_RECEIVER_MODE": "separate",

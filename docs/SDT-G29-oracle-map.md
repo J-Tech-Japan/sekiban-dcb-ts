@@ -24,13 +24,13 @@ immediate-preferred}`, deployment `{enabled, disabled}`, and allowlist
 `{allowed, not-allowed}`. The sample descriptor is:
 
 ```json
-{"RoomProjector":"immediate-preferred","ReservationProjector":"queued"}
+{"RoomProjector":"immediate-preferred","ReservationProjector":"immediate-preferred"}
 ```
 
 The runtime derives `directInvocations` from the selected view set. A ready
-sample request invokes the direct port for `RoomProjector` and queues
-`ReservationProjector`; queued-domain rows invoke no direct port and queue both
-views; fail-fast rows invoke neither port; queued-degraded rows (covered by the
+sample requests invoke the direct port for both deployed views; queued-domain
+rows invoke no direct port and queue both views; fail-fast rows invoke neither
+port; queued-degraded rows (covered by the
 focused test) queue both views and expose the exact degradation reason.
 
 ## Candidate C/R protocol

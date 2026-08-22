@@ -10,10 +10,11 @@ plus the read-only `/api/read/room?roomId=...` and
 command is authored with `@sekiban/dcb-domain` and reaches the runtime through
 `toRuntimeDomain()` and the internal `RUNTIME` service binding. The booking
 workflow is deliberately two commits: if the reservation step conflicts, the
-durable room creation is retained. `RoomProjector` is the immediate-preferred
-view and `ReservationProjector` is queue-owned; the checked-in delivery policy
-is authoritative per view, while deployment variables only provide the second
-opt-in and safety budget.
+durable room creation is retained. `RoomProjector` and `ReservationProjector`
+are both immediate-preferred in the production sample, preserving the G26
+doorbell behavior while keeping the checked-in per-view delivery policy
+authoritative; deployment variables only provide the second opt-in and safety
+budget.
 
 `src/domain.ts` is the executable C#⇄TypeScript authoring example. Events own
 their tags, state is a closed `status` union, command reads are declared with

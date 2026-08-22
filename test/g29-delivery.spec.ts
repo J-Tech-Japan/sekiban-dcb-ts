@@ -47,13 +47,13 @@ describe("SDT-G29 per-view delivery policy", () => {
     expect(assertDeliveryMatrix(actual, matrix)).toEqual({ rows: 8 });
   });
 
-  it("does not let the deployment global class select a queued domain view", () => {
+  it("keeps the deployment global class subordinate to the per-view descriptor", () => {
     const config = readDirectDoorbellConfig({
       ...enabled,
       DOMAIN_DELIVERY_CLASS: "queued",
     }, "immediate-preferred", meetingRoomDeliveryPolicy);
     expect(config.deliveryClass).toBe("immediate-preferred");
-    expect(selectDirectDoorbellViews(views, config).map((view) => view.id)).toEqual(["RoomProjector"]);
+    expect(selectDirectDoorbellViews(views, config).map((view) => view.id)).toEqual(["RoomProjector", "ReservationProjector"]);
   });
 
   it("keeps descriptor-absent legacy migration explicit", () => {

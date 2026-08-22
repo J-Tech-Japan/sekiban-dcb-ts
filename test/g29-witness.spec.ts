@@ -4,12 +4,12 @@ import { summarizeMeasurements } from "../scripts/deploy/g29-measure.mjs";
 
 const expected = {
   worker: "sekiban-dcb-meeting-room-cloudflare-only",
-  serviceId: "g25-38219c8-20260820",
+  serviceId: "g25-38219c8-20260820f",
   viewCount: 2,
-  allowedViews: ["RoomProjector"],
+  allowedViews: ["RoomProjector", "ReservationProjector"],
   domainDeliveryClass: "immediate-preferred",
   resolvedDeliveryClass: "immediate-preferred",
-  domainViewDeliveryClasses: { RoomProjector: "immediate-preferred", ReservationProjector: "queued" },
+  domainViewDeliveryClasses: { RoomProjector: "immediate-preferred", ReservationProjector: "immediate-preferred" },
   directDoorbell: true,
   receiverMode: "separate",
   degradation: "queued-degraded",

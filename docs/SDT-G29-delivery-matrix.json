@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "descriptor": {
     "RoomProjector": "immediate-preferred",
-    "ReservationProjector": "queued"
+    "ReservationProjector": "immediate-preferred"
   },
   "rows": [
     {
@@ -10,19 +10,19 @@
       "domainClass": "immediate-preferred",
       "deployment": "enabled",
       "allowlist": "allowed",
-      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "queued" } },
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
       "expectedStatus": "ready",
       "expectedReason": "direct_doorbell_capability_ready",
-      "expectedViews": ["RoomProjector"],
-      "directInvocations": 1,
-      "queueInvocations": 1
+      "expectedViews": ["RoomProjector", "ReservationProjector"],
+      "directInvocations": 2,
+      "queueInvocations": 0
     },
     {
       "rowId": "immediate-enabled-not-allowed",
       "domainClass": "immediate-preferred",
       "deployment": "enabled",
       "allowlist": "not-allowed",
-      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "queued" } },
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
       "expectedStatus": "fail-fast",
       "expectedReason": "immediate_preferred_requires_allowed_views",
       "expectedViews": [],
@@ -34,7 +34,7 @@
       "domainClass": "immediate-preferred",
       "deployment": "disabled",
       "allowlist": "allowed",
-      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "queued" } },
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
       "expectedStatus": "fail-fast",
       "expectedReason": "deployment_direct_doorbell_disabled",
       "expectedViews": [],
@@ -46,7 +46,7 @@
       "domainClass": "immediate-preferred",
       "deployment": "disabled",
       "allowlist": "not-allowed",
-      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "queued" } },
+      "expectedDescriptor": { "domainClass": "immediate-preferred", "viewClasses": { "RoomProjector": "immediate-preferred", "ReservationProjector": "immediate-preferred" } },
       "expectedStatus": "fail-fast",
       "expectedReason": "deployment_direct_doorbell_disabled",
       "expectedViews": [],

@@ -85,7 +85,7 @@ async function main() {
   const samples = integer("--samples", argument("--samples", "10"), 10);
   const timeoutMs = integer("--timeout-ms", argument("--timeout-ms", "15000"), 1);
   const witness = await request(baseUrl, `/conformance/v1/g29-config?g29_measure=${crypto.randomUUID()}`, { headers: { authorization: `Bearer ${token}` } });
-  if (witness.response.status !== 200 || witness.body?.task !== "SDT-G29" || witness.body?.viewCount !== 2 || JSON.stringify(witness.body?.allowedViews) !== JSON.stringify(["RoomProjector"])) throw new Error(`G29 topology verification failed: HTTP ${witness.response.status}`);
+  if (witness.response.status !== 200 || witness.body?.task !== "SDT-G29" || witness.body?.viewCount !== 2 || JSON.stringify(witness.body?.allowedViews) !== JSON.stringify(["RoomProjector", "ReservationProjector"])) throw new Error(`G29 topology verification failed: HTTP ${witness.response.status}`);
   const evidence = { task: "SDT-G29", baseUrl, startedAt: new Date().toISOString(), topology: witness.body, latency: await measure(baseUrl, samples, timeoutMs), secrets: "redacted" };
   mkdirSync(dirname(report), { recursive: true }); writeFileSync(report, `${JSON.stringify(evidence, null, 2)}\n`, "utf8"); console.log(JSON.stringify(evidence, null, 2));
 }

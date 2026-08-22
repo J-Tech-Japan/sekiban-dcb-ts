@@ -309,12 +309,12 @@ const reservationQuery = {
 
 export const meetingRoomViews = Object.freeze([
   { id: "RoomProjector", source: "RoomProjector", projector: "RoomProjector", deliveryClass: "immediate-preferred" },
-  { id: "ReservationProjector", source: "ReservationProjector", projector: "ReservationProjector", deliveryClass: "queued" },
+  { id: "ReservationProjector", source: "ReservationProjector", projector: "ReservationProjector", deliveryClass: "immediate-preferred" },
 ] satisfies readonly DomainViewDefinition[]);
 
 export const meetingRoomDeliveryPolicy = {
   RoomProjector: "immediate-preferred",
-  ReservationProjector: "queued",
+  ReservationProjector: "immediate-preferred",
 } satisfies Readonly<Record<string, "immediate-preferred" | "queued">>;
 
 export const meetingRoomAuthoringDomain = domain({
