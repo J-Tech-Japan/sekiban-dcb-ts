@@ -8,6 +8,7 @@ import {
   requestPostCommitReservationList,
 } from "../samples/meeting-room/public/reservation-auto-refresh.js";
 import { createMeetingRoomWorker, type MeetingRoomEnv } from "../samples/meeting-room/src/worker";
+import { runMeetingRoomScheduledMaintenance } from "../samples/meeting-room/src/worker.cloudflare-only";
 
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -84,5 +85,20 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
     expect(source).toContain("waitForSortableUniqueId = requestedWait ?? undefined");
     expect(source).toContain("NewestFirst: true");
     expect(source).toContain("...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId })");
+  });
+
+  it("runs MV safe catch-up and receipt-GC before generic scheduled polling can fail or stall", async () => {
+    const calls: string[] = [];
+    await expect(runMeetingRoomScheduledMaintenance({
+      catchUp: async () => { calls.push("catch-up"); },
+      drainUnsafeKicks: async () => { calls.push("drain"); },
+      runGenericScheduledWork: async () => {
+        calls.push("generic");
+        throw new Error("generic scheduled polling failed");
+      },
+    })).rejects.toThrow("generic scheduled polling failed");
+    expect(calls).toEqual(["catch-up", "drain", "generic"]);
+    const scheduled = (cloudflareOnlySource as string).slice((cloudflareOnlySource as string).indexOf("async scheduled"));
+    expect(scheduled).toContain("runMeetingRoomScheduledMaintenance");
   });
 });

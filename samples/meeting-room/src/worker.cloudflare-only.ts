@@ -71,6 +71,21 @@ const runtime = createCloudflareOnlyRuntimeWorker({
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
+/**
+ * Safe MV convergence is the first scheduled duty.  Generic downstream and
+ * tag-state polling may be expensive on a historical service, but must never
+ * starve the receipt-GC path that proves a stored target through safe head.
+ */
+export async function runMeetingRoomScheduledMaintenance(input: {
+  readonly catchUp: () => Promise<void>;
+  readonly drainUnsafeKicks: () => Promise<void>;
+  readonly runGenericScheduledWork: () => Promise<void>;
+}): Promise<void> {
+  await input.catchUp();
+  await input.drainUnsafeKicks();
+  await input.runGenericScheduledWork();
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -310,9 +325,11 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   },
   async queue(batch, env, ctx) { await runtime.queue?.(batch, env, ctx); },
   async scheduled(controller, env, ctx) {
-    await runtime.scheduled?.(controller, env, ctx);
-    await catchUpMeetingRoomMaterializedViews(env);
-    await drainMeetingRoomUnsafeKicks(env);
+    await runMeetingRoomScheduledMaintenance({
+      catchUp: () => catchUpMeetingRoomMaterializedViews(env),
+      drainUnsafeKicks: () => drainMeetingRoomUnsafeKicks(env),
+      runGenericScheduledWork: async () => { await runtime.scheduled?.(controller, env, ctx); },
+    });
   },
 };
 

@@ -28,7 +28,9 @@ single server-side post-commit list refresh.
   and does not create browser polling or automatic retries.
 - Adds authenticated G31 config and wait-state witness endpoints, fixed-N=10
   command-response→one-list-redraw measurement, and a GC'd old-SUID success
-  probe using the existing worker/service/D1/DO/Queue identity.
+  probe using the existing worker/service/D1/DO/Queue identity. Scheduled MV
+  safe catch-up/GC runs before generic scheduled polling so historical tag
+  polling cannot starve the receipt-GC proof.
 
 ## Verification
 
