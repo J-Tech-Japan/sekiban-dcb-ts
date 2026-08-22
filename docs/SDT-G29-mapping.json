@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "contract": "SDT-G29 portability mapping",
+  "authority": "This file is the only expectation table for the G29 mapping runner.",
+  "columns": [
+    "field",
+    "wire",
+    "owner",
+    "doTs",
+    "portable",
+    "version",
+    "unsupported"
+  ],
+  "rows": [
+    {
+      "rowId": "event-payload",
+      "field": "event payload",
+      "wire": "V1 eventCandidates[].payload (base64 JSON); stored payload is lossless JSON",
+      "owner": "registered event definition schema",
+      "doTs": "event.make(payload) and event.create(payload)",
+      "portable": "JsonValue payload without runtime brands",
+      "version": "event definition version, default 1",
+      "unsupported": "caller-selected eventPayloadVersion"
+    },
+    {
+      "rowId": "business-time",
+      "field": "business time",
+      "wire": "DecisionLog.now / command candidate now",
+      "owner": "single command execution clock capture",
+      "doTs": "context.now()",
+      "portable": "FixedNow (string | number | bigint)",
+      "version": "one value for every retry attempt",
+      "unsupported": "allocator time used as business time"
+    },
+    {
+      "rowId": "canonical-identity",
+      "field": "canonical identity",
+      "wire": "eventPayloadName:decimalVersion",
+      "owner": "registered domain definition at commit admission",
+      "doTs": "event.eventType",
+      "portable": "eventType string",
+      "version": "name-local decimal version",
+      "unsupported": "identity derived from eventId or payload sniffing"
+    },
+    {
+      "rowId": "event-id",
+      "field": "eventId",
+      "wire": "StoredEvent.eventId / downstream envelope eventId",
+      "owner": "allocator and commit admission",
+      "doTs": "absent from authoring decision",
+      "portable": "optional transport metadata only",
+      "version": "G27 runtime identity",
+      "unsupported": "authoring command manufactures eventId"
+    },
+    {
+      "rowId": "suid",
+      "field": "SUID",
+      "wire": "StoredEvent.suid / receipt key",
+      "owner": "OrderClock allocator",
+      "doTs": "absent from authoring decision",
+      "portable": "optional transport metadata only",
+      "version": "monotone allocated ordinal",
+      "unsupported": "business clock or client ordinal as SUID"
+    },
+    {
+      "rowId": "tags",
+      "field": "tags",
+      "wire": "eventCandidates[].tags and stored eventTags",
+      "owner": "event definition tag deriver",
+      "doTs": "event.tags(payload)",
+      "portable": "readonly Tag[] with family/value/id",
+      "version": "derived once and preserved per hop",
+      "unsupported": "re-derived tags from mutable payload after append"
+    },
+    {
+      "rowId": "state",
+      "field": "state",
+      "wire": "tag-state payload and materialized row",
+      "owner": "projector state union",
+      "doTs": "projector.validateState / projector handlers",
+      "portable": "JSON-serializable discriminated state",
+      "version": "projector definition version",
+      "unsupported": "unvalidated arbitrary state cast"
+    },
+    {
+      "rowId": "projector",
+      "field": "projector",
+      "wire": "tagProjector and projector version",
+      "owner": "registered projector definition",
+      "doTs": "projector(id, tag family, events)",
+      "portable": "projector id/version descriptor",
+      "version": "positive projector version",
+      "unsupported": "projector inferred from payload discriminator"
+    },
+    {
+      "rowId": "command-input",
+      "field": "command input",
+      "wire": "V1 request commandId/input",
+      "owner": "command input schema",
+      "doTs": "command.parseInput",
+      "portable": "validated JSON input",
+      "version": "command definition id",
+      "unsupported": "handler-side unchecked object cast"
+    },
+    {
+      "rowId": "read-set",
+      "field": "read-set",
+      "wire": "consistencyTags and candidate read claims",
+      "owner": "command reads declaration",
+      "doTs": "read/readSet/readExists",
+      "portable": "immutable per-tag head claims",
+      "version": "one claim per declared projector/tag cell",
+      "unsupported": "undeclared snapshot read"
+    },
+    {
+      "rowId": "decision-log",
+      "field": "DecisionLog",
+      "wire": "internal diagnostic only; never V1 body",
+      "owner": "session lifecycle",
+      "doTs": "executeCommand session log",
+      "portable": "now, staged events, read claims, terminal decision",
+      "version": "schemaVersion 1",
+      "unsupported": "eventId/SUID allocation fields"
+    },
+    {
+      "rowId": "terminal-outcome",
+      "field": "terminal outcome",
+      "wire": "committed/noop/rejected/typed conflict",
+      "owner": "command decision plus commit port",
+      "doTs": "done/none/reject",
+      "portable": "discriminated outcome union",
+      "version": "V1-compatible result mapping",
+      "unsupported": "silent fallback from typed reject"
+    },
+    {
+      "rowId": "view-descriptor",
+      "field": "view descriptor",
+      "wire": "tagProjector/query view identity; no V1 shape change",
+      "owner": "domain view registration and deployment policy",
+      "doTs": "domain.views entry",
+      "portable": "id/source/projector/deliveryClass descriptor",
+      "version": "descriptor schemaVersion 1",
+      "unsupported": "global deployment variable overriding a view"
+    }
+  ]
+}

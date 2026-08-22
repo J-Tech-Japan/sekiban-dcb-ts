@@ -13,7 +13,7 @@ import {
 } from "@sekiban/dcb-runtime/cloudflare";
 import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
-import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
+import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
@@ -29,7 +29,7 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
  */
 export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
   async deliver(message: unknown) {
-    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
+    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
     const result = await processDownstreamDoorbell(message, this.env, {
       storeProvider: createD1StoreProvider(),
       views: selectDirectDoorbellViews(meetingRoomDeliveryViews(this.env), config),
@@ -180,17 +180,39 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
   if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
   const url = new URL(request.url);
   if (url.pathname === "/conformance/v1/g26-config") {
-    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass);
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
     return json({
       task: "SDT-G26",
       viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
       allowedViews: config.allowedViews,
       domainDeliveryClass: meetingRoomRuntimeConfig.deliveryClass,
       resolvedDeliveryClass: config.deliveryClass,
+      domainViewDeliveryClasses: config.domainViewDeliveryClasses,
       directDoorbell: config.enabled,
       receiverMode: config.receiverMode,
       degradation: config.degradation,
       maxServiceBindingInvocations: config.maxServiceBindingInvocations,
+    });
+  }
+  if (url.pathname === "/conformance/v1/g29-config") {
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    return json({
+      task: "SDT-G29",
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      serviceId: env.SDT_SERVICE_ID,
+      viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
+      allowedViews: config.allowedViews,
+      domainDeliveryClass: meetingRoomRuntimeConfig.deliveryClass,
+      domainViewDeliveryClasses: config.domainViewDeliveryClasses,
+      resolvedDeliveryClass: config.deliveryClass,
+      directDoorbell: config.enabled,
+      receiverMode: config.receiverMode,
+      degradation: config.degradation,
+      maxServiceBindingInvocations: config.maxServiceBindingInvocations,
+      pipelineDatabaseId: "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
+      generation: "v2",
     });
   }
   url.pathname = url.pathname.slice("/conformance/v1".length) || "/";

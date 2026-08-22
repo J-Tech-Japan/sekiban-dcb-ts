@@ -1,28 +1,18 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "sekiban-dcb-g26-meeting-room",
+  "name": "sekiban-dcb-meeting-room-doorbell",
   "main": "src/worker.cloudflare-only.ts",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
-    "AUTO_DRAIN_OUTBOX": "true",
     "DOMAIN_DELIVERY_CLASS": "immediate-preferred",
     "DIRECT_DOORBELL": "true",
     "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector",
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
-    "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
+    "DIRECT_DOORBELL_DEGRADATION": "fail-fast",
     "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
     "G26_VIEW_COUNT": "2"
   },
-  "assets": { "directory": "public" },
-  "triggers": { "crons": ["* * * * *"] },
-  "services": [
-    {
-      "binding": "DOWNSTREAM_DOORBELL",
-      "service": "sekiban-dcb-g26-doorbell",
-      "entrypoint": "MeetingRoomDownstreamDoorbell"
-    }
-  ],
   "d1_databases": [
     {
       "binding": "D1",
@@ -38,12 +28,11 @@
     }
   ],
   "queues": {
-    "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-g26-outbox" }],
     "consumers": [{
-      "queue": "sekiban-dcb-g26-outbox",
+      "queue": "sekiban-dcb-meeting-room-cloudflare-outbox",
       "max_batch_timeout": 1,
       "max_retries": 3,
-      "dead_letter_queue": "sekiban-dcb-g26-outbox-dlq"
+      "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq"
     }]
   },
   "durable_objects": {
@@ -54,5 +43,8 @@
       { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] }, { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
+    { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }
+  ]
 }

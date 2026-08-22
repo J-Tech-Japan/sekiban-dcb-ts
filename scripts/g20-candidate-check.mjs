@@ -43,6 +43,12 @@ export const candidateEvidenceRules = Object.freeze([
     evidenceGlobs: Object.freeze(["docs/SDT-G28-*evidence*.json", "docs/SDT-G28-*evidence*.md"]),
     bookkeepingPath: ".github/workflows/ci.yml",
   }),
+  Object.freeze({
+    id: "g29-sample-portability",
+    evidencePath: "docs/SDT-G29-deploy-evidence.json",
+    evidenceGlobs: Object.freeze(["docs/SDT-G29-*evidence*.json", "docs/SDT-G29-*evidence*.md"]),
+    bookkeepingPath: ".github/workflows/ci.yml",
+  }),
 ]);
 
 function matchesGlob(path, glob) {
@@ -153,6 +159,7 @@ function main() {
   if (process.env.SDT_G26_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G26 candidate gate forced failure");
   if (process.env.SDT_G27_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G27 candidate gate forced failure");
   if (process.env.SDT_G28_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G28 candidate gate forced failure");
+  if (process.env.SDT_G29_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G29 candidate gate forced failure");
   if (process.argv.includes("--self-test")) return runSelfTest();
   // A new packet's FINAL candidate supersedes the live post-candidate path
   // check for older retained candidates. Their immutable evidence and tree

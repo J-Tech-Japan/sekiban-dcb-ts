@@ -10,7 +10,7 @@ import {
 import { executeCommand, type ExecuteCommandResult } from "./session";
 import type { CommandDefinition } from "./command";
 import type { EventDefinition, RuntimeEventValue } from "./event";
-import type { AuthoringDomain } from "./domain";
+import type { AuthoringDomain, DomainViewDefinition } from "./domain";
 import type { ProjectorDefinition } from "./state";
 
 export interface RuntimeProjectionEvent {
@@ -138,6 +138,7 @@ export interface RuntimeDomainDefinition {
   readonly events: readonly RuntimeEventDefinition[];
   readonly commands: readonly RuntimeCommandDefinition[];
   readonly projectors: readonly RuntimeProjectorDefinition[];
+  readonly views: readonly DomainViewDefinition[];
   readonly queries: readonly [];
   readonly materializedViews: readonly [];
   readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>;
@@ -160,6 +161,7 @@ interface LegacyDomainDefinition {
   readonly events?: readonly LegacyEventDefinition[];
   readonly commands?: readonly RuntimeCommandDefinition[];
   readonly projectors?: readonly RuntimeProjectorDefinition[];
+  readonly views?: readonly DomainViewDefinition[];
 }
 
 function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): RuntimeEventDefinition {
@@ -422,6 +424,7 @@ export function toRuntimeDomain(
     events: Object.freeze(events),
     commands: Object.freeze(commands),
     projectors: Object.freeze(projectors),
+    views: Object.freeze([...(domain.views ?? [])]),
     queries: Object.freeze([]) as readonly [],
     materializedViews: Object.freeze([]) as readonly [],
     eventByName: byName,

@@ -150,6 +150,50 @@ jobs:
             echo "topology forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G29 mapping contract lane
+        run: npm run test:g29:mapping
+      - name: Prove SDT-G29 mapping forced-red reachability
+        run: |
+          if SDT_G29_MAPPING_FORCE_FAILURE=1 npm run test:g29:mapping:forced-red; then
+            echo "SDT-G29 mapping forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G29 delivery matrix lane
+        run: npm run test:g29:delivery
+      - name: Prove SDT-G29 delivery forced-red reachability
+        run: |
+          if SDT_G29_DELIVERY_FORCE_FAILURE=1 npm run test:g29:delivery:forced-red; then
+            echo "SDT-G29 delivery forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G29 diagnostics and compatibility lanes
+        run: npm run test:g29:diagnostics && npm run test:g29:compatibility
+      - name: Prove SDT-G29 diagnostics and compatibility forced-red reachability
+        run: |
+          if SDT_G29_DIAGNOSTICS_FORCE_FAILURE=1 npm run test:g29:diagnostics:forced-red; then
+            echo "SDT-G29 diagnostics forced-red probe unexpectedly passed"
+            exit 1
+          fi
+          if SDT_G29_COMPATIBILITY_FORCE_FAILURE=1 npm run test:g29:compatibility:forced-red; then
+            echo "SDT-G29 compatibility forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G29 rewritten meeting-room sample lane
+        run: npm run test:g29:sample
+      - name: Prove SDT-G29 sample forced-red reachability
+        run: |
+          if SDT_G29_SAMPLE_FORCE_FAILURE=1 npm run test:g29:sample:forced-red; then
+            echo "SDT-G29 sample forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G29 witness and fixed-N oracle lane
+        run: npm run test:g29:witness
+      - name: Prove SDT-G29 witness forced-red reachability
+        run: |
+          if SDT_G29_WITNESS_FORCE_FAILURE=1 npm run test:g29:witness:forced-red; then
+            echo "SDT-G29 witness forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
@@ -277,5 +321,13 @@ jobs:
         run: |
           if SDT_G28_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then
             echo "candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Verify SDT-G29 required-root candidate protocol
+        run: npm run test:g29:candidate
+      - name: Prove SDT-G29 candidate retention gate forced failure
+        run: |
+          if SDT_G29_CANDIDATE_FORCE_FAILURE=1 npm run test:g29:candidate:forced-red; then
+            echo "SDT-G29 candidate forced-red probe unexpectedly passed"
             exit 1
           fi

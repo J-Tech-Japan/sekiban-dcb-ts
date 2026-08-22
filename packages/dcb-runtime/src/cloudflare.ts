@@ -23,7 +23,7 @@ import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
-import { composeRuntime, registeredEventVersions, type RuntimeWorkerConfig } from "./composition";
+import { composeRuntime, registeredEventVersions, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
@@ -57,7 +57,7 @@ export interface CloudflareOnlyEnv {
 }
 
 export interface CloudflareOnlyWorkerOptions {
-  readonly domain?: DomainDefinition;
+  readonly domain?: DomainDefinition | RuntimeDomainLike;
   readonly config?: RuntimeWorkerConfig;
   /** Optional deployment read-model rebuild that must finish before READY. */
   readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;

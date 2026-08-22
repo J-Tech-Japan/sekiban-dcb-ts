@@ -1,0 +1,50 @@
+# SDT-G29: rewrite sample and portability closure
+
+Closes #64
+
+This draft PR implements the SDT-G29 sample rewrite and portability closure.
+
+## Delivered
+
+- Rewrites `samples/meeting-room` on `@sekiban/dcb-domain` with typed,
+  event-declared tags, discriminated state unions, per-event Validate/Evolve,
+  typed Decider outcomes, and a real `toRuntimeDomain` bridge. The old domain
+  definition and `as` casts are absent from the sample domain source.
+- Preserves V1 behavior and mixed legacy/new replay, including identity,
+  tags, release noop, and the existing UI/runtime fixtures.
+- Documents the C#⇄TS authoring correspondence and two-clock rule in
+  `docs/domain-authoring.md`.
+- Adds the per-view deliveryClass descriptor and executable 2×2×2 matrix,
+  including descriptor-absent migration and explicit fail-fast/
+  queued-degraded outcomes.
+- Adds the versioned three-runtime mapping artifact, five compatibility lanes,
+  six raw diagnostic fields/four derived quadrants, and independent mutation
+  oracles.
+- Adds authenticated topology witness and fixed-N measurement tooling for the
+  existing production identity. No reseed, fresh serviceId, destructive
+  migration, or secret is part of the deploy script; only the
+  checked-in additive G27 migration is applied during the deploy phase.
+
+## Verification
+
+The oracle correspondence is in [docs/SDT-G29-oracle-map.md](./SDT-G29-oracle-map.md).
+The mapping, delivery, compatibility, diagnostics, sample, typecheck, lint,
+and prior G13–G28 lanes are wired into CI with forced-red reachability checks.
+
+## Candidate protocol
+
+This PR follows the non-self-referential `C`/`R` protocol. `C` is the complete
+implementation/deployment/digest authority and carries the required-root
+manifest plus placeholder evidence. `R` updates only the evidence document and
+appends the immutable candidate SHA once to the retained-candidate fetch list.
+The candidate checker validates exact configuration roots, sorted tree digests,
+candidate ancestry, and the post-candidate allowlist.
+
+## Witness evidence
+
+The final evidence document is `docs/SDT-G29-deploy-evidence.json`. It records
+the exact candidate, topology witness, preserved worker/service/D1/DO/Queue
+identity, and response→visible versus total latency distributions. The live
+deployment script requires an explicit protected conformance token file and
+aborts before deployment when the witness or identity preconditions are not
+available.

@@ -1,141 +1,277 @@
+import { z } from "zod";
 import {
-  defineCommand,
-  defineDomain,
-  defineEvent,
-  defineProjector,
-  defineTag,
-  type DomainComponentDefinition,
-  type JsonValue,
-} from "@sekiban/dcb-core";
+  command,
+  done,
+  domain,
+  event,
+  evolve,
+  none,
+  projector,
+  read,
+  readSet,
+  reject,
+  stateUnion,
+  tagFamily,
+  toRuntimeDomain,
+  validate,
+  validationReject,
+  type DomainViewDefinition,
+  type ProjectorDefinition,
+  type ProjectorEvent,
+  type RejectKind,
+  type RuntimeDomainDefinition,
+} from "@sekiban/dcb-domain";
 
-const objectPayload = (value: unknown): JsonValue => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error("meeting-room event payload must be an object");
-  }
-  return value as JsonValue;
-};
+const room = tagFamily("room");
+const reservation = tagFamily("reservation");
 
-const roomCreated = defineEvent("RoomCreated", objectPayload);
-const roomReserved = defineEvent("RoomReserved", objectPayload);
-const reservationCancelled = defineEvent("ReservationCancelled", objectPayload);
-const roomReleased = defineEvent("RoomReleased", objectPayload);
+export const roomTag = (roomId: string) => room.of(roomId);
+export const reservationTag = (reservationId: string) => reservation.of(reservationId);
 
-export const roomTag = (roomId: string) => defineTag("room", roomId);
-export const reservationTag = (reservationId: string) => defineTag("reservation", reservationId);
+const roomInput = z.object({ roomId: z.string().min(1), name: z.string().optional() });
+const reservationInput = z.object({ roomId: z.string().min(1), reservationId: z.string().min(1), userId: z.string().optional() });
+const reservationOnlyInput = z.object({ reservationId: z.string().min(1) });
 
-interface RoomInput { readonly roomId: string; readonly name?: string; }
-interface ReservationInput { readonly roomId: string; readonly reservationId: string; readonly userId?: string; }
-interface ReservationOnlyInput { readonly reservationId: string; }
+export type RoomInput = z.infer<typeof roomInput>;
+export type ReservationInput = z.infer<typeof reservationInput>;
+export type ReservationOnlyInput = z.infer<typeof reservationOnlyInput>;
 
-const nonEmpty = (value: unknown, field: string): string => {
-  if (typeof value !== "string" || value.length === 0) throw new Error(`${field} is required`);
-  return value;
-};
+const roomCreated = event("RoomCreated", z.object({
+  roomId: z.string().min(1),
+  name: z.string(),
+}), {
+  tags: (payload) => [room.of(payload.roomId)],
+});
 
-const roomInput = (value: unknown): RoomInput => {
-  if (typeof value !== "object" || value === null) throw new Error("room input must be an object");
-  const record = value as Record<string, unknown>;
-  const roomId = nonEmpty(record.roomId, "roomId");
-  return typeof record.name === "string" ? { roomId, name: record.name } : { roomId };
-};
+const roomReserved = event("RoomReserved", z.object({
+  roomId: z.string().min(1),
+  reservationId: z.string().min(1),
+  userId: z.string(),
+}), {
+  tags: (payload) => [room.of(payload.roomId), reservation.of(payload.reservationId)],
+});
 
-const reservationInput = (value: unknown): ReservationInput => {
-  if (typeof value !== "object" || value === null) throw new Error("reservation input must be an object");
-  const record = value as Record<string, unknown>;
-  const roomId = nonEmpty(record.roomId, "roomId");
-  const reservationId = nonEmpty(record.reservationId, "reservationId");
-  return typeof record.userId === "string" ? { roomId, reservationId, userId: record.userId } : { roomId, reservationId };
-};
+const reservationCancelled = event("ReservationCancelled", z.object({
+  reservationId: z.string().min(1),
+  roomId: z.string().min(1).optional(),
+}), {
+  tags: (payload) => [reservation.of(payload.reservationId)],
+});
 
-const reservationOnlyInput = (value: unknown): ReservationOnlyInput => {
-  if (typeof value !== "object" || value === null) throw new Error("reservation input must be an object");
-  return { reservationId: nonEmpty((value as Record<string, unknown>).reservationId, "reservationId") };
-};
+const roomReleased = event("RoomReleased", z.object({
+  roomId: z.string().min(1),
+}), {
+  tags: (payload) => [room.of(payload.roomId)],
+});
 
-export const createRoomCommand = defineCommand<RoomInput>({
-  id: "create-room",
-  parseInput: roomInput,
-  handler: (input, ctx) => {
-    const tag = roomTag(input.roomId);
-    ctx.assertEmpty(tag);
-    ctx.append(roomCreated, {
-      eventType: roomCreated.eventName,
-      roomId: input.roomId,
-      name: input.name ?? "",
-    }, [tag]);
-    return ctx.done({ roomId: input.roomId, name: input.name ?? "" });
+type RoomState =
+  | { readonly status: "empty"; readonly version: number; readonly roomId: null; readonly name: string }
+  | { readonly status: "created"; readonly version: number; readonly roomId: string; readonly name: string }
+  | { readonly status: "released"; readonly version: number; readonly roomId: string; readonly name: string };
+
+type ReservationState =
+  | { readonly status: "empty"; readonly version: number; readonly reservationId: null; readonly roomId: null }
+  | { readonly status: "reserved"; readonly version: number; readonly reservationId: string; readonly roomId: string }
+  | { readonly status: "cancelled"; readonly version: number; readonly reservationId: string; readonly roomId: string | null };
+
+const roomState = stateUnion(z.discriminatedUnion("status", [
+  z.object({ status: z.literal("empty"), version: z.number().int().nonnegative(), roomId: z.null(), name: z.string() }),
+  z.object({ status: z.literal("created"), version: z.number().int().nonnegative(), roomId: z.string(), name: z.string() }),
+  z.object({ status: z.literal("released"), version: z.number().int().nonnegative(), roomId: z.string(), name: z.string() }),
+]), {
+  discriminator: "status",
+  initial: { status: "empty", version: 0, roomId: null, name: "" },
+});
+
+const reservationState = stateUnion(z.discriminatedUnion("status", [
+  z.object({ status: z.literal("empty"), version: z.number().int().nonnegative(), reservationId: z.null(), roomId: z.null() }),
+  z.object({ status: z.literal("reserved"), version: z.number().int().nonnegative(), reservationId: z.string(), roomId: z.string() }),
+  z.object({ status: z.literal("cancelled"), version: z.number().int().nonnegative(), reservationId: z.string(), roomId: z.string().nullable() }),
+]), {
+  discriminator: "status",
+  initial: { status: "empty", version: 0, reservationId: null, roomId: null },
+});
+
+const roomInitialState: RoomState = { status: "empty", version: 0, roomId: null, name: "" };
+const reservationInitialState: ReservationState = { status: "empty", version: 0, reservationId: null, roomId: null };
+
+type RoomEvent = typeof roomCreated | typeof roomReleased;
+type ReservationEvent = typeof roomReserved | typeof reservationCancelled;
+
+function roomCreatedEvent(eventValue: ProjectorEvent<RoomEvent>): ProjectorEvent<typeof roomCreated> {
+  return {
+    definition: roomCreated,
+    eventType: roomCreated.eventType,
+    payload: roomCreated.make(eventValue.payload),
+    tags: eventValue.tags,
+  };
+}
+
+function roomReleasedEvent(eventValue: ProjectorEvent<RoomEvent>): ProjectorEvent<typeof roomReleased> {
+  return {
+    definition: roomReleased,
+    eventType: roomReleased.eventType,
+    payload: roomReleased.make(eventValue.payload),
+    tags: eventValue.tags,
+  };
+}
+
+function roomReservedEvent(eventValue: ProjectorEvent<ReservationEvent>): ProjectorEvent<typeof roomReserved> {
+  return {
+    definition: roomReserved,
+    eventType: roomReserved.eventType,
+    payload: roomReserved.make(eventValue.payload),
+    tags: eventValue.tags,
+  };
+}
+
+function reservationCancelledEvent(eventValue: ProjectorEvent<ReservationEvent>): ProjectorEvent<typeof reservationCancelled> {
+  return {
+    definition: reservationCancelled,
+    eventType: reservationCancelled.eventType,
+    payload: reservationCancelled.make(eventValue.payload),
+    tags: eventValue.tags,
+  };
+}
+
+export const validateCreateRoom = validate<RoomState, RoomInput, RejectKind>((state) =>
+  state.status === "empty"
+    ? undefined
+    : validationReject("conflict", "room already exists", "room_exists"));
+
+export const validateReserveRoom = validate<RoomState, ReservationInput, RejectKind>((state) =>
+  state.status === "empty"
+    ? validationReject("not-found", "room does not exist", "room_missing")
+    : undefined);
+
+export const validateCancelReservation = validate<ReservationState, ReservationOnlyInput, RejectKind>((state) =>
+  state.status === "empty"
+    ? validationReject("not-found", "reservation does not exist", "reservation_missing")
+    : undefined);
+
+export const validateReleaseRoom = validate<RoomState, RoomInput, RejectKind>((state) =>
+  state.status === "empty"
+    ? validationReject("not-found", "room does not exist", "room_missing")
+    : undefined);
+
+export const evolveRoomCreated = evolve<RoomState, typeof roomCreated>((state, eventValue) => {
+  const payload = roomCreated.parse(eventValue.payload);
+  return { status: "created", version: state.version + 1, roomId: payload.roomId, name: payload.name };
+});
+
+export const evolveRoomReleased = evolve<RoomState, typeof roomReleased>((state) => {
+  if (state.status === "empty") return state;
+  return { status: "released", version: state.version + 1, roomId: state.roomId, name: state.name };
+});
+
+export const evolveRoomReserved = evolve<ReservationState, typeof roomReserved>((state, eventValue) => {
+  const payload = roomReserved.parse(eventValue.payload);
+  return { status: "reserved", version: state.version + 1, reservationId: payload.reservationId, roomId: payload.roomId };
+});
+
+export const evolveReservationCancelled = evolve<ReservationState, typeof reservationCancelled>((state) => {
+  if (state.status === "empty") return state;
+  return { status: "cancelled", version: state.version + 1, reservationId: state.reservationId, roomId: state.roomId };
+});
+
+const roomProjector: ProjectorDefinition<RoomState, "room", [typeof roomCreated, typeof roomReleased]> = projector({
+  id: "RoomProjector",
+  version: 1,
+  tag: room,
+  state: roomState,
+  events: [roomCreated, roomReleased],
+  initialState: roomInitialState,
+  handlers: {
+    RoomCreated: (state, eventValue) => evolveRoomCreated(state, roomCreatedEvent(eventValue)),
+    RoomReleased: (state, eventValue) => evolveRoomReleased(state, roomReleasedEvent(eventValue)),
   },
 });
 
-export const reserveRoomCommand = defineCommand<ReservationInput>({
+const reservationProjector: ProjectorDefinition<ReservationState, "reservation", [typeof roomReserved, typeof reservationCancelled]> = projector({
+  id: "ReservationProjector",
+  version: 1,
+  tag: reservation,
+  state: reservationState,
+  events: [roomReserved, reservationCancelled],
+  initialState: reservationInitialState,
+  handlers: {
+    RoomReserved: (state, eventValue) => evolveRoomReserved(state, roomReservedEvent(eventValue)),
+    ReservationCancelled: (state, eventValue) => evolveReservationCancelled(state, reservationCancelledEvent(eventValue)),
+  },
+});
+
+function validationDecision(result: {
+  readonly kind: "reject";
+  readonly rejectKind: RejectKind;
+  readonly reason: string;
+  readonly details?: unknown;
+} | undefined) {
+  return result === undefined ? undefined : reject(result.rejectKind, result.reason, result.details);
+}
+
+export const createRoomCommand = command({
+  id: "create-room",
+  input: roomInput,
+  reads: (input) => read(roomProjector, roomTag(input.roomId)),
+  handle: async (input, context) => {
+    const state = await context.state(roomProjector, roomTag(input.roomId));
+    const invalid = validationDecision(validateCreateRoom(state, input));
+    if (invalid !== undefined) return invalid;
+    context.append(roomCreated, roomCreated.make({ roomId: input.roomId, name: input.name ?? "" }));
+    return done({ roomId: input.roomId, name: input.name ?? "" });
+  },
+});
+
+export const reserveRoomCommand = command({
   id: "reserve-room",
-  parseInput: reservationInput,
-  handler: (input, ctx) => {
-    const room = ctx.state<{ readonly status?: string }>(roomTag(input.roomId));
-    if (room === undefined) return ctx.reject("room does not exist", "room_missing");
-    ctx.append(roomReserved, {
-      eventType: roomReserved.eventName,
+  input: reservationInput,
+  reads: (input) => readSet(
+    read(roomProjector, roomTag(input.roomId)),
+    read(reservationProjector, reservationTag(input.reservationId)),
+  ),
+  handle: async (input, context) => {
+    const roomStateValue = await context.state(roomProjector, roomTag(input.roomId));
+    const roomInvalid = validationDecision(validateReserveRoom(roomStateValue, input));
+    if (roomInvalid !== undefined) return roomInvalid;
+    const reservationStateValue = await context.state(reservationProjector, reservationTag(input.reservationId));
+    if (reservationStateValue.status !== "empty") return reject("conflict", "reservation already exists", "reservation_exists");
+    context.append(roomReserved, roomReserved.make({
       roomId: input.roomId,
       reservationId: input.reservationId,
       userId: input.userId ?? "",
-    }, [roomTag(input.roomId), reservationTag(input.reservationId)]);
-    return ctx.done({ roomId: input.roomId, reservationId: input.reservationId });
+    }));
+    return done({ roomId: input.roomId, reservationId: input.reservationId });
   },
 });
 
-export const cancelReservationCommand = defineCommand<ReservationOnlyInput>({
+export const cancelReservationCommand = command({
   id: "cancel-reservation",
-  parseInput: reservationOnlyInput,
-  handler: (input, ctx) => {
-    const reservation = ctx.state<{ readonly status?: string; readonly roomId?: string }>(reservationTag(input.reservationId));
-    if (reservation === undefined) return ctx.reject("reservation does not exist", "reservation_missing");
-    ctx.append(reservationCancelled, {
-      eventType: reservationCancelled.eventName,
+  input: reservationOnlyInput,
+  reads: (input) => read(reservationProjector, reservationTag(input.reservationId)),
+  handle: async (input, context) => {
+    const state = await context.state(reservationProjector, reservationTag(input.reservationId));
+    const invalid = validationDecision(validateCancelReservation(state, input));
+    if (invalid !== undefined) return invalid;
+    const roomId = state.status === "empty" ? undefined : state.roomId;
+    context.append(reservationCancelled, reservationCancelled.make({
       reservationId: input.reservationId,
-      ...(typeof reservation.roomId === "string" ? { roomId: reservation.roomId } : {}),
-    }, [reservationTag(input.reservationId)]);
-    return ctx.done({ reservationId: input.reservationId });
+      ...(roomId === null || roomId === undefined ? {} : { roomId }),
+    }));
+    return done({ reservationId: input.reservationId });
   },
 });
 
-export const releaseRoomCommand = defineCommand<RoomInput>({
+export const releaseRoomCommand = command({
   id: "release-room",
-  parseInput: roomInput,
-  handler: (input, ctx) => {
-    const room = ctx.state<{ readonly status?: string }>(roomTag(input.roomId));
-    if (room === undefined) return ctx.reject("room does not exist", "room_missing");
-    if (room.status === "released") return ctx.noop("room is already released");
-    ctx.append(roomReleased, {
-      eventType: roomReleased.eventName,
-      roomId: input.roomId,
-    }, [roomTag(input.roomId)]);
-    return ctx.done({ roomId: input.roomId });
-  },
-});
-
-const roomProjector = defineProjector({
-  id: "RoomProjector",
-  version: 1,
-  initialState: { version: 0, status: "empty", roomId: null as string | null, name: "" },
-  handlers: {
-    RoomCreated: (state, event) => {
-      const payload = event.payload as { readonly roomId: string; readonly name?: string };
-      return { version: state.version + 1, status: "created", roomId: payload.roomId, name: payload.name ?? "" };
-    },
-    RoomReleased: (state) => ({ ...state, version: state.version + 1, status: "released" }),
-  },
-});
-
-const reservationProjector = defineProjector({
-  id: "ReservationProjector",
-  version: 1,
-  initialState: { version: 0, status: "empty", reservationId: null as string | null, roomId: null as string | null },
-  handlers: {
-    RoomReserved: (state, event) => {
-      const payload = event.payload as { readonly roomId: string; readonly reservationId: string };
-      return { version: state.version + 1, status: "reserved", reservationId: payload.reservationId, roomId: payload.roomId };
-    },
-    ReservationCancelled: (state) => ({ ...state, version: state.version + 1, status: "cancelled" }),
+  input: roomInput,
+  reads: (input) => read(roomProjector, roomTag(input.roomId)),
+  handle: async (input, context) => {
+    const state = await context.state(roomProjector, roomTag(input.roomId));
+    const invalid = validationDecision(validateReleaseRoom(state, input));
+    if (invalid !== undefined) return invalid;
+    if (state.status === "released") return none("room is already released");
+    context.append(roomReleased, roomReleased.make({ roomId: input.roomId }));
+    return done({ roomId: input.roomId });
   },
 });
 
@@ -143,36 +279,79 @@ const roomQuery = {
   id: "GetRoomStateQuery",
   version: 1,
   queryType: "GetRoomStateQuery",
-  endpoint: "query" as const,
+  endpoint: "query",
   tagGroup: "room",
   tagProjector: "RoomProjector",
+} satisfies {
+  readonly id: string;
+  readonly version: number;
+  readonly queryType: string;
+  readonly endpoint: "query";
+  readonly tagGroup: string;
+  readonly tagProjector: string;
 };
+
 const reservationQuery = {
   id: "GetReservationListQuery",
   version: 1,
   queryType: "GetReservationListQuery",
-  endpoint: "list-query" as const,
+  endpoint: "list-query",
   tagGroup: "reservation",
   tagProjector: "ReservationProjector",
+} satisfies {
+  readonly id: string;
+  readonly version: number;
+  readonly queryType: string;
+  readonly endpoint: "list-query";
+  readonly tagGroup: string;
+  readonly tagProjector: string;
 };
 
-export const meetingRoomDomain = defineDomain({
+export const meetingRoomViews = Object.freeze([
+  { id: "RoomProjector", source: "RoomProjector", projector: "RoomProjector", deliveryClass: "immediate-preferred" },
+  { id: "ReservationProjector", source: "ReservationProjector", projector: "ReservationProjector", deliveryClass: "queued" },
+] satisfies readonly DomainViewDefinition[]);
+
+export const meetingRoomDeliveryPolicy = {
+  RoomProjector: "immediate-preferred",
+  ReservationProjector: "queued",
+} satisfies Readonly<Record<string, "immediate-preferred" | "queued">>;
+
+export const meetingRoomAuthoringDomain = domain({
   events: [roomCreated, roomReserved, reservationCancelled, roomReleased],
   commands: [createRoomCommand, reserveRoomCommand, cancelReservationCommand, releaseRoomCommand],
   projectors: [roomProjector, reservationProjector],
-  queries: [roomQuery as DomainComponentDefinition, reservationQuery as DomainComponentDefinition],
-  materializedViews: [{ id: "MeetingRoomSummary", version: 1 }],
+  views: meetingRoomViews,
 });
 
+/** Runtime consumers receive only the G28 bridge, never the old define* API. */
+export const meetingRoomDomain: RuntimeDomainDefinition = toRuntimeDomain(meetingRoomAuthoringDomain);
+
 export const meetingRoomRuntimeConfig = {
-  /** Domain layer of the G26 two-layer opt-in; deployment still enables the doorbell. */
-  deliveryClass: "immediate-preferred" as const,
+  deliveryClass: "immediate-preferred",
+  deliveryViews: Object.freeze([
+    { id: "RoomProjector", deliveryClass: meetingRoomDeliveryPolicy.RoomProjector },
+    { id: "ReservationProjector", deliveryClass: meetingRoomDeliveryPolicy.ReservationProjector },
+  ]),
   projectorPayloadNames: {
     RoomProjector: "RoomState",
     ReservationProjector: "ReservationState",
   },
   queries: [roomQuery, reservationQuery],
-} as const;
+} satisfies {
+  readonly deliveryClass: "immediate-preferred" | "queued";
+  readonly deliveryViews: readonly { readonly id: string; readonly deliveryClass: "immediate-preferred" | "queued" }[];
+  readonly projectorPayloadNames: Readonly<Record<string, string>>;
+  readonly queries: readonly {
+    readonly id: string;
+    readonly version: number;
+    readonly queryType: string;
+    readonly endpoint: "query" | "list-query";
+    readonly tagGroup: string;
+    readonly tagProjector: string;
+  }[];
+};
 
 export const meetingRoomProjectors = { roomProjector, reservationProjector };
 export const meetingRoomEvents = { roomCreated, roomReserved, reservationCancelled, roomReleased };
+export const meetingRoomCommands = { createRoomCommand, reserveRoomCommand, cancelReservationCommand, releaseRoomCommand };

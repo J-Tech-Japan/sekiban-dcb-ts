@@ -25,6 +25,9 @@ interface StoredEventLike {
   readonly eventId: string;
   readonly payload: string;
   readonly eventTags: readonly string[];
+  /** G27 identity is authoritative whenever the row carries it. */
+  readonly eventType?: string;
+  readonly provenance?: "g27" | "pre-g27";
 }
 
 function decodePayload(value: string): Record<string, unknown> {
@@ -37,6 +40,21 @@ function decodePayload(value: string): Record<string, unknown> {
 
 function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * New rows dispatch by the stored canonical identity. Payload sniffing is
+ * retained only for the immutable pre-G27 history lane, where the old V1
+ * payload discriminator is the proven migration marker.
+ */
+function eventTypeFromStored(event: StoredEventLike, payload: Record<string, unknown>): string | undefined {
+  if (event.eventType !== undefined) return event.eventType;
+  if (event.provenance === "pre-g27") {
+    const legacyName = stringField(payload.eventType);
+    if (legacyName === undefined) return undefined;
+    return legacyName.includes(":") ? legacyName : `${legacyName}:1`;
+  }
+  return undefined;
 }
 
 /** One row per reservation, updated by reservation events in SUID order. */
@@ -53,9 +71,9 @@ export const reservationMaterializer = defineRowMaterializer<StoredEventLike>({
     const payload = decodePayload(event.payload);
     const reservationId = stringField(payload.reservationId);
     if (reservationId === undefined) return {};
-    const eventType = stringField(payload.eventType);
-    if (eventType !== "RoomReserved" && eventType !== "ReservationCancelled") return {};
-    if (eventType === "ReservationCancelled") {
+    const eventType = eventTypeFromStored(event, payload);
+    if (eventType !== "RoomReserved:1" && eventType !== "ReservationCancelled:1") return {};
+    if (eventType === "ReservationCancelled:1") {
       // Cancellation carries only changed fields. The database JSON patch
       // preserves the roomId written by the preceding reservation event.
       return {
@@ -97,16 +115,16 @@ export const roomMaterializer = defineRowMaterializer<StoredEventLike>({
     const payload = decodePayload(event.payload);
     const roomId = stringField(payload.roomId);
     if (roomId === undefined) return {};
-    const eventType = stringField(payload.eventType);
-    if (eventType !== "RoomCreated" && eventType !== "RoomReleased") return {};
+    const eventType = eventTypeFromStored(event, payload);
+    if (eventType !== "RoomCreated:1" && eventType !== "RoomReleased:1") return {};
     return {
       rowUpserts: [{
         rowKey: roomId,
         value: {
           roomId,
           name: stringField(payload.name) ?? "",
-          status: eventType === "RoomCreated" ? "created" : "released",
-          version: eventType === "RoomCreated" ? 1 : 2,
+          status: eventType === "RoomCreated:1" ? "created" : "released",
+          version: eventType === "RoomCreated:1" ? 1 : 2,
         },
       }],
     };
