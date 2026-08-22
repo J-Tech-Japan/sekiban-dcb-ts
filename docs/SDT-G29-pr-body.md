@@ -41,8 +41,10 @@ This draft PR implements the SDT-G29 sample rewrite and portability closure.
   assertions, and per-quadrant mutation failures.
 - Adds authenticated topology witness and fixed-N measurement tooling for the
   existing production identity. No reseed, fresh serviceId, destructive
-  migration, or secret is part of the deploy script; only the checked-in
-  additive G27 migration is applied during the deploy phase.
+  migration, or secret value is exposed by the deploy script. For the
+  SDT-G29-UNBLOCK-2 recovery, the already-deployed immutable C''' is accepted
+  only after source identity is witnessed, so no D1 migration or primary
+  redeploy runs.
 
 ## Verification
 
@@ -75,3 +77,20 @@ and per-cycle command-start/response/visible timestamps with raw status beside
 response→visible versus total latency distributions. The live deployment
 script requires an explicit protected conformance token file and aborts before
 deployment when the witness or identity preconditions are not available.
+
+### F8 receiver-topology recovery
+
+The final witness used C''' `b8024fccca140d4cc3c76e715d4e5dd6c368b847` and
+CI run `32558302189` (verify + cosmos-emulator green). The receiver was
+redeployed from a production-only config with no `queues.consumers`; the
+outbox Queue `sekiban-dcb-meeting-room-cloudflare-outbox` remained exclusively
+owned by primary `sekiban-dcb-meeting-room-cloudflare-only` before and after
+the deploy. No incorrect receiver consumer remained to remove.
+
+Pre/post witness preserved all 100 captured reservation-list entries, five
+room rows/heads, and five reservation rows/heads, with aggregate counts
+unchanged (room query 125; reservations 128). The fixed-N=10 probe had zero
+errors and zero fallbacks: response→visible p50 was 511 ms (p95 1397 ms), while
+total command-start→visible p50 was 3146 ms and is deliberately not described
+as sub-second. Each probe's room/reservation identity and raw timestamps are
+in the evidence document; secrets are redacted.

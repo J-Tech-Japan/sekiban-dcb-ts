@@ -88,7 +88,7 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
   };
   return {
     task: "SDT-G29",
-    status: "R''' complete: final C''' witnessed deployment and F5/F6 evidence recorded",
+    status: "R''' complete: F8 final C''' witnessed receiver-topology recovery evidence recorded",
     candidateCommit: sourceCommit,
     sourceCommit,
     protocol: {
@@ -97,6 +97,12 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
       selfReference: false,
       deploymentRequired: true,
       witnessOrder: ["preflight", "token-rotation", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy-or-accepted-C", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
+    },
+    unblock2: {
+      finding: "F8",
+      primaryDeployment: primaryDeployMode,
+      receiverTopology: "service-binding-only receiver; primary exclusively owns the outbox Queue consumer",
+      witnessRule: "every pre-captured row, head, and list entry is required to remain semantically identical after deployment; aggregate counts are recorded but are not an equality gate",
     },
     treeDigests: {
       algorithm: "sha256(path NUL content NUL, paths sorted)",
