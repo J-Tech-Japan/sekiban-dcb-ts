@@ -14,6 +14,8 @@ import receiverDeployConfigText from "../samples/meeting-room/wrangler.meeting-r
 import primaryDeployConfigText from "../samples/meeting-room/wrangler.cloudflare-only-doorbell.jsonc?raw";
 // @ts-expect-error Vite raw deployment script fixture.
 import deployScriptText from "../scripts/deploy/g31-deploy-witness.sh?raw";
+// @ts-expect-error Vite raw data-witness implementation fixture.
+import witnessScriptText from "../scripts/deploy/g31-witness.mjs?raw";
 // @ts-expect-error Vite raw measurement fixture.
 import measureScriptText from "../scripts/deploy/g31-measure.mjs?raw";
 
@@ -125,6 +127,8 @@ describe("SDT-G31 witnessed deployment and one-list-redraw oracles", () => {
     expect(receiverConfig.queues).toBeUndefined();
     expect(primaryConfig.queues.consumers).toHaveLength(1);
     expect(deployScriptText).toContain("G31_SOURCE_COMMIT must equal the sealed checked-out final candidate");
+    expect(witnessScriptText).toContain("pageNumber=1&pageSize=100&newestFirst=false&g31_witness=");
+    expect(witnessScriptText).not.toContain("pageNumber=1&pageSize=100&newestFirst=true&g31_witness=");
     expect(deployScriptText).toContain("--mode pre-deploy-public");
     expect(deployScriptText).toContain('--secrets-file "${SECRETS_FILE}"');
     expect(deployScriptText).toContain('--source-commit "${SOURCE_COMMIT}"');

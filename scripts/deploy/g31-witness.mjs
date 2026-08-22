@@ -172,7 +172,10 @@ export function assertPreWitnessSetPreserved(before, after) {
 
 async function captureDataWitness(baseUrl) {
   const roomQuery = await requestJson(baseUrl, `/api/read/room-query?g31_witness=${crypto.randomUUID()}`);
-  const reservationList = await requestJson(baseUrl, `/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true&g31_witness=${crypto.randomUUID()}`);
+  // Deployment witness rows must use the stable historical ordering. `newestFirst`
+  // is itself a G31 behavior change, so using it here would turn an intended
+  // ordering change into a false data-preservation failure between pre and post.
+  const reservationList = await requestJson(baseUrl, `/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=false&g31_witness=${crypto.randomUUID()}`);
   if (roomQuery.status !== 200 || reservationList.status !== 200) throw new Error(`G31 data witness query failed: room=${roomQuery.status} reservations=${reservationList.status}`);
   const reservations = parseItems(reservationList.body);
   const roomIds = [...new Set(reservations.map((item) => item?.roomId).filter((value) => typeof value === "string" && value.length > 0))].slice(0, 5);
