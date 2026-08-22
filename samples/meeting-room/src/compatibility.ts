@@ -1,16 +1,16 @@
 export type CompatibilityLane =
-  | "old-client-new-runtime"
-  | "new-client-old-runtime"
-  | "old-history-new-replay"
-  | "new-history-old-replay"
-  | "downgrade-replay";
+  | "old-to-old"
+  | "old-to-new"
+  | "new-to-new"
+  | "new-to-old"
+  | "upgrade-downgrade-replay";
 
 export type CompatibilityOutcome = "accepted" | "typed-rejected";
 
 export const LEGACY_MIGRATION_MARKER = "sekiban-dcb-pre-g27-migration-v1";
 
 export function compatibilityOutcome(lane: CompatibilityLane): CompatibilityOutcome {
-  return lane === "new-client-old-runtime" ? "typed-rejected" : "accepted";
+  return lane === "new-to-old" ? "typed-rejected" : "accepted";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,10 +103,10 @@ export function downgradeReplay(
 
 export function compatibilityLaneIds(): readonly CompatibilityLane[] {
   return Object.freeze([
-    "old-client-new-runtime",
-    "new-client-old-runtime",
-    "old-history-new-replay",
-    "new-history-old-replay",
-    "downgrade-replay",
+    "old-to-old",
+    "old-to-new",
+    "new-to-new",
+    "new-to-old",
+    "upgrade-downgrade-replay",
   ]);
 }

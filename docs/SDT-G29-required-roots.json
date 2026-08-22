@@ -39,6 +39,7 @@
     "scripts/deploy/g29-measure.mjs",
     "scripts/deploy/g29-measure.d.mts",
     "scripts/deploy/g29-deploy-witness.sh",
+    "scripts/deploy/g29-record-evidence.mjs",
     "migrations/d1",
     "test/g29-mapping.spec.ts",
     "test/g29-delivery.spec.ts",

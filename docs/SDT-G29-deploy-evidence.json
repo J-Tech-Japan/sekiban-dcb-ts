@@ -1,11 +1,11 @@
 {
   "task": "SDT-G29",
-  "status": "R'' complete: F3/F5/F6/F7 review closure and candidate evidence recorded",
-  "candidateCommit": "41e3665c055a366eb3f0d1ebff49be5d9414fa99",
-  "sourceCommit": "41e3665c055a366eb3f0d1ebff49be5d9414fa99",
+  "status": "C''' placeholder: F5/F6 implementation complete; final witnessed deployment is required",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
-    "candidate": "One immutable C'' contains the complete F3/F5/F6/F7 closure, oracle map, required-root manifest, deployment witness wiring, and placeholder evidence.",
-    "bookkeeping": "R'' updates only this evidence document and appends the immutable C'' once to the retained-candidate fetch list.",
+    "candidate": "One immutable C''' contains the complete F5/F6 closure, oracle map, required-root manifest, deployment witness wiring, recorder, and placeholder evidence.",
+    "bookkeeping": "R''' updates only this evidence document and appends the immutable C''' once to the retained-candidate fetch list.",
     "preDeployOrder": [
       "config-and-bundle-diff",
       "pre-witness",
@@ -76,6 +76,7 @@
       "scripts/deploy/g29-measure.mjs",
       "scripts/deploy/g29-measure.d.mts",
       "scripts/deploy/g29-deploy-witness.sh",
+      "scripts/deploy/g29-record-evidence.mjs",
       "migrations/d1",
       "test/g29-mapping.spec.ts",
       "test/g29-delivery.spec.ts",
@@ -130,9 +131,9 @@
     ]
   },
   "remoteDeployment": {
-    "status": "inherited prior witnessed deployment; no deployed worker bundle or production topology change in F3/F5/F6/F7",
-    "deployedRuntimeCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
-    "sourceCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
+    "status": "pending final C''' witnessed redeploy",
+    "deployedRuntimeCommit": "CANDIDATE",
+    "sourceCommit": "CANDIDATE",
     "commitEquality": {
       "deployedRuntimeCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
       "sourceCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
@@ -1621,12 +1622,12 @@
     }
   },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "C'' is the complete implementation candidate; R'' is restricted to live evidence plus one retained-candidate append.",
+  "candidateGate": "C''' is the complete implementation candidate; R''' is restricted to live evidence plus one retained-candidate append.",
   "candidateImpact": {
-    "candidateCommit": "41e3665c055a366eb3f0d1ebff49be5d9414fa99",
-    "deploymentRequired": false,
+    "candidateCommit": "CANDIDATE",
+    "deploymentRequired": true,
     "workerBundleChanged": false,
-    "rationale": "F3/F5/F6/F7 changes are documentation, executable test/portable observation, compatibility fixtures, and diagnostics fixtures; none is imported by the deployed worker entrypoint. The prior witnessed production identity/data witness is retained unchanged."
+    "rationale": "Final-C deployment and witness are required by AC8 even though F5/F6 changes are test/portable-observation/compatibility surfaces."
   },
   "ci": {
     "workflowRun": 32553790351,

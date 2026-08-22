@@ -58,6 +58,13 @@ export function assertEvidence(evidence, manifest) {
   return { candidateCommit: evidence.candidateCommit, digestChecked: evidence.candidateCommit !== "CANDIDATE" };
 }
 
+export function assertFinalDeploymentIdentity(evidence) {
+  if (evidence?.candidateCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
+  if (evidence?.candidateImpact?.deploymentRequired === false) throw new Error("G29 final candidate cannot declare deploymentRequired:false");
+  if (evidence?.remoteDeployment?.deployedRuntimeCommit !== evidence?.sourceCommit) throw new Error("G29 final witness deployedRuntimeCommit must equal sourceCommit");
+  return { checked: true, sourceCommit: evidence.sourceCommit };
+}
+
 export function assertPostCandidatePaths(paths, evidenceCommit, run = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" })) {
   if (evidenceCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
   const unsupported = paths.filter((path) => path !== ".github/workflows/ci.yml" && path !== "docs/SDT-G29-deploy-evidence.json");
@@ -91,7 +98,16 @@ export function runSelfTest() {
   let declaredFailed = false;
   try { assertDeclaredRoots(manifest, paths.filter((path) => path !== "README.md")); } catch (error) { declaredFailed = String(error).includes("declared-root:README.md:missing"); }
   if (!declaredFailed) throw new Error("G29 declared-root mutation did not fail");
-  return { requiredRoots: manifest.requiredRoots.length, declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, mutations: ["missing-file", "empty-directory", "declared-root-removal"] };
+  const commit = "c".repeat(40);
+  const final = { candidateCommit: commit, sourceCommit: commit, candidateImpact: { deploymentRequired: true }, remoteDeployment: { deployedRuntimeCommit: commit } };
+  assertFinalDeploymentIdentity(final);
+  let deploymentIdentityFailed = false;
+  try { assertFinalDeploymentIdentity({ ...final, remoteDeployment: { deployedRuntimeCommit: "d".repeat(40) } }); } catch (error) { deploymentIdentityFailed = String(error).includes("deployedRuntimeCommit"); }
+  if (!deploymentIdentityFailed) throw new Error("G29 deployed/source commit mutation did not fail");
+  let deploymentRequiredFailed = false;
+  try { assertFinalDeploymentIdentity({ ...final, candidateImpact: { deploymentRequired: false } }); } catch (error) { deploymentRequiredFailed = String(error).includes("deploymentRequired:false"); }
+  if (!deploymentRequiredFailed) throw new Error("G29 deploymentRequired mutation did not fail");
+  return { requiredRoots: manifest.requiredRoots.length, declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, mutations: ["missing-file", "empty-directory", "declared-root-removal", "deployment-identity", "deployment-required"] };
 }
 
 function main() {
@@ -102,11 +118,12 @@ function main() {
   assertDeclaredRoots(manifest);
   assertRequiredRoots(manifest);
   const proof = assertEvidence(evidence, manifest);
+  const deployment = assertFinalDeploymentIdentity(evidence);
   const candidate = evidence.candidateCommit;
   const active = candidate !== "CANDIDATE" && SHA.test(candidate) && (() => { try { execFileSync("git", ["merge-base", "--is-ancestor", candidate, "HEAD"], { cwd: root }); return true; } catch { return false; } })();
   const paths = active ? execFileSync("git", ["diff", "--name-only", `${candidate}..HEAD`], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean) : [];
   const post = assertPostCandidatePaths(paths, candidate);
-  console.log(JSON.stringify({ ...proof, manifest: { ...assertDeclaredRoots(manifest), ...assertRequiredRoots(manifest) }, postCandidate: post }, null, 2));
+  console.log(JSON.stringify({ ...proof, deployment, manifest: { ...assertDeclaredRoots(manifest), ...assertRequiredRoots(manifest) }, postCandidate: post }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

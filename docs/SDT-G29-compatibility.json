@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "lanes": [
-    { "laneId": "old-client-new-runtime", "client": "V1 client", "runtime": "G29 runtime", "outcome": "accepted", "identity": "registry v1 at admission" },
-    { "laneId": "new-client-old-runtime", "client": "identity-bearing client", "runtime": "pre-G27 runtime", "outcome": "typed-rejected", "identity": "old runtime cannot silently store identity-less data" },
-    { "laneId": "old-history-new-replay", "client": "stored pre-G27 history", "runtime": "G29 projector", "outcome": "accepted", "identity": "provenance-proven legacy replay" },
-    { "laneId": "new-history-old-replay", "client": "G27 stored history", "runtime": "old replay consumer", "outcome": "accepted", "identity": "unknown additive metadata ignored by old consumer" },
-    { "laneId": "downgrade-replay", "client": "mixed old/new dump", "runtime": "downgraded reader", "outcome": "accepted", "identity": "replay is read-only and never creates identity-less storage" }
+    { "laneId": "old-to-old", "client": "V1 client", "runtime": "pre-G27 runtime adapter", "outcome": "accepted", "identity": "legacy V1 wire remains accepted by the old boundary" },
+    { "laneId": "old-to-new", "client": "V1 client", "runtime": "G29 runtime adapter", "outcome": "accepted", "identity": "registered event definition supplies canonical v1 identity at admission" },
+    { "laneId": "new-to-new", "client": "authored identity-bearing command", "runtime": "G29 runtime bridge and CommitWorker", "outcome": "accepted", "identity": "canonical identity is preserved through the runtime adapter" },
+    { "laneId": "new-to-old", "client": "authored identity-bearing command", "runtime": "pre-G27 runtime adapter", "outcome": "typed-rejected", "identity": "old runtime cannot silently downgrade an identity-bearing candidate" },
+    { "laneId": "upgrade-downgrade-replay", "client": "mixed old/new history", "runtime": "upgrade and downgrade replay adapters", "outcome": "accepted", "identity": "provenance-gated replay is read-only and does not create identity-less storage" }
   ]
 }

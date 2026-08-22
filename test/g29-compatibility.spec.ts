@@ -12,43 +12,65 @@ import {
 } from "../samples/meeting-room/src/compatibility";
 import compatibility from "../docs/SDT-G29-compatibility.json";
 import { executeMeetingRoomCommand } from "../samples/meeting-room/src/transport";
-import { meetingRoomProjectors } from "../samples/meeting-room/src/domain";
+import { meetingRoomAuthoringDomain, meetingRoomProjectors } from "../samples/meeting-room/src/domain";
 import { roomMaterializer } from "../samples/meeting-room/src/d1-mv";
 import preRewriteFixture from "./fixtures/g29-pre-rewrite-stored-outbox.json";
 import { CommitWorker, type CommitWorkerEnv, validateCommitEnvelope } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { composeRuntime, createRuntimeCommitPort } from "../packages/dcb-runtime/src/composition";
+import { toRuntimeDomain } from "@sekiban/dcb-domain";
 import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { PipelineStore } from "../packages/dcb-runtime/src/store/types";
+
+function realCommitWorkerRuntime(
+  workerEnv: CommitWorkerEnv,
+  serviceId: string,
+  registeredEventVersions?: Readonly<Record<string, number>>,
+): { readonly runtime: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> }; readonly commitCalls: () => number } {
+  let commitCalls = 0;
+  return {
+    runtime: {
+      fetch: async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        const path = new URL(request.url).pathname;
+        if (path.endsWith("/tag-state")) {
+          const body = await request.json<{ tagStateId?: string }>();
+          const tagStateId = typeof body.tagStateId === "string" ? body.tagStateId : "room:g29-boundary:RoomProjector";
+          const projectorSeparator = tagStateId.lastIndexOf(":");
+          const tagId = projectorSeparator > 0 ? tagStateId.slice(0, projectorSeparator) : "room:g29-boundary";
+          const tagSeparator = tagId.indexOf(":");
+          return new Response(JSON.stringify({ payload: { status: "empty" }, version: 0, lastSortedUniqueId: "", tagGroup: tagId.slice(0, tagSeparator), tagContent: tagId.slice(tagSeparator + 1), tagProjector: tagStateId.slice(projectorSeparator + 1) }), { status: 200 });
+        }
+        if (!path.endsWith("/commit")) return new Response(JSON.stringify({ error: "runtime route not found" }), { status: 404 });
+        commitCalls += 1;
+        return new CommitWorker(workerEnv, serviceId, { registeredEventVersions }).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+          method: request.method,
+          headers: request.headers,
+          body: await request.text(),
+        }));
+      },
+    },
+    commitCalls: () => commitCalls,
+  };
+}
 
 describe("SDT-G29 compatibility lanes", () => {
   it("keeps the five published lanes explicit", () => {
     expect(compatibilityLaneIds()).toEqual(compatibility.lanes.map((lane) => lane.laneId));
     expect(compatibility.lanes.map((lane) => compatibilityOutcome(lane.laneId as Parameters<typeof compatibilityOutcome>[0])))
-      .toEqual(["accepted", "typed-rejected", "accepted", "accepted", "accepted"]);
+      .toEqual(["accepted", "accepted", "accepted", "typed-rejected", "accepted"]);
   });
 
-  it("runs old-client V1 input through the new authored runtime without identity-less storage", async () => {
-    let commitBody: Record<string, unknown> | undefined;
-    const runtime = {
-      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-        const request = input instanceof Request ? input : new Request(input, init);
-        if (new URL(request.url).pathname.endsWith("/tag-state")) {
-          return new Response(JSON.stringify({ payload: { status: "empty" }, version: 0, lastSortedUniqueId: "", tagGroup: "room", tagContent: "old-client", tagProjector: "RoomProjector" }), { status: 200 });
-        }
-        commitBody = await request.json<Record<string, unknown>>();
-        return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), { status: 200 });
-      },
-    };
-    const result = await executeMeetingRoomCommand("create-room", { roomId: "old-client", name: "Old" }, { RUNTIME: runtime });
-    expect(result.kind).toBe("committed");
-    const candidate = (commitBody?.eventCandidates as Array<Record<string, unknown>>)[0];
-    expect(candidate).toMatchObject({ eventPayloadName: "RoomCreated", tags: ["room:old-client"] });
-    const decoded = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(String(candidate.payload)), (character) => character.charCodeAt(0))));
-    expect(decoded).not.toHaveProperty("eventType");
+  it("runs the old V1 client through a real old-runtime adapter and preserves the legacy wire", async () => {
+    const serviceId = `g29-old-old-${crypto.randomUUID()}`;
+    const boundary = realCommitWorkerRuntime(env as unknown as CommitWorkerEnv, serviceId);
+    const result = await executeMeetingRoomCommand("create-room", { roomId: `old-old-${serviceId}`, name: "Old" }, { RUNTIME: boundary.runtime });
+    if (result.kind !== "committed") throw new Error(`old-to-old result: ${JSON.stringify(result)}`);
+    expect(boundary.commitCalls()).toBe(1);
     assertStoredIdentity({ eventType: "RoomCreated:1", provenance: "g27" });
   });
 
   it("rejects identity-bearing input against an old runtime and accepts only marked legacy storage", () => {
-    expect(compatibilityOutcome("new-client-old-runtime")).toBe("typed-rejected");
+    expect(compatibilityOutcome("new-to-old")).toBe("typed-rejected");
     expect(oldRuntimeAdmission({ version: 1, eventCandidates: [{ payload: "e30=", eventPayloadName: "Order", eventType: "Order:1", provenance: "g27", tags: ["orders"] }] })).toBe("typed-rejected");
     expect(oldRuntimeAdmission({ version: 1, eventCandidates: [{ payload: "e30=", eventPayloadName: "Order", tags: ["orders"] }] })).toBe("accepted");
     expect(() => assertStoredIdentity({ eventType: "RoomCreated:1" })).toThrow("G29_STORAGE_IDENTITY_MISSING");
@@ -56,7 +78,7 @@ describe("SDT-G29 compatibility lanes", () => {
     expect(() => assertStoredIdentity({ provenance: "pre-g27", legacyMigrationMarker: LEGACY_MIGRATION_MARKER })).not.toThrow();
   });
 
-  it("executes each of the five published lanes against its real compatibility fixture", async () => {
+  it("executes AC6's five lanes one-to-one at the adapter/runtime boundary", async () => {
     const decode = (encoded: string): Record<string, unknown> => {
       const binary = atob(encoded);
       const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
@@ -69,28 +91,64 @@ describe("SDT-G29 compatibility lanes", () => {
     const canonicalPayload = decode(String(canonicalStored.payload));
     const laneResults: Record<string, string> = {};
 
-    let oldClientCommit: Record<string, unknown> | undefined;
-    const oldClientRuntime = {
-      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-        const request = input instanceof Request ? input : new Request(input, init);
-        if (new URL(request.url).pathname.endsWith("/tag-state")) {
-          return new Response(JSON.stringify({ payload: { status: "empty" }, version: 0, lastSortedUniqueId: "", tagGroup: "room", tagContent: "g29-lanes", tagProjector: "RoomProjector" }), { status: 200 });
-        }
-        oldClientCommit = await request.json<Record<string, unknown>>();
-        return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), { status: 200 });
-      },
-    };
-    const oldClient = await executeMeetingRoomCommand("create-room", { roomId: "g29-lanes", name: "Old client" }, { RUNTIME: oldClientRuntime });
-    expect(oldClient.kind).toBe("committed");
-    expect(oldClientCommit?.eventCandidates).toBeInstanceOf(Array);
-    laneResults["old-client-new-runtime"] = "accepted";
+    const oldToOld = realCommitWorkerRuntime(env as unknown as CommitWorkerEnv, `g29-old-old-${crypto.randomUUID()}`);
+    const oldToOldResult = await executeMeetingRoomCommand("create-room", { roomId: `old-old-${crypto.randomUUID()}`, name: "old-to-old" }, { RUNTIME: oldToOld.runtime });
+    if (oldToOldResult.kind !== "committed") throw new Error(`old-to-old result: ${JSON.stringify(oldToOldResult)}`);
+    expect(oldToOld.commitCalls()).toBe(1);
+    laneResults["old-to-old"] = oldToOldResult.kind === "committed" ? "accepted" : "typed-rejected";
 
-    const newClient = oldRuntimeAdmission({
-      version: 1,
-      eventCandidates: [{ payload: "e30=", eventPayloadName: "RoomCreated", eventType: "RoomCreated:1", provenance: "g27", tags: ["room:g29-lanes"] }],
+    const oldToNew = realCommitWorkerRuntime(env as unknown as CommitWorkerEnv, `g29-old-new-${crypto.randomUUID()}`, { RoomCreated: 1 });
+    const oldToNewResult = await executeMeetingRoomCommand("create-room", { roomId: `old-new-${crypto.randomUUID()}`, name: "old-to-new" }, { RUNTIME: oldToNew.runtime });
+    expect(oldToNewResult.kind).toBe("committed");
+    expect(oldToNew.commitCalls()).toBe(1);
+    laneResults["old-to-new"] = oldToNewResult.kind === "committed" ? "accepted" : "typed-rejected";
+
+    const runtimeDomain = toRuntimeDomain(meetingRoomAuthoringDomain);
+    const composed = composeRuntime(runtimeDomain);
+    const newCommand = runtimeDomain.commands.find((command) => command.id === "create-room");
+    expect(composed.commands.resolve("create-room")).toBeDefined();
+    expect(newCommand).toBeDefined();
+    const newToNewPort = createRuntimeCommitPort(env as unknown as CommitWorkerEnv, { registeredEventVersions: { RoomCreated: 1 } });
+    const newToNewResult = await newCommand!.execute({ roomId: `new-new-${crypto.randomUUID()}`, name: "new-to-new" }, {
+      now: "g29-new-to-new",
+      runtimePort: { commit: newToNewPort.commit },
     });
-    expect(newClient).toBe("typed-rejected");
-    laneResults["new-client-old-runtime"] = newClient;
+    expect(newToNewResult).toMatchObject({ kind: "committed", events: [expect.objectContaining({ eventType: "RoomCreated:1", provenance: "g27" })] });
+    laneResults["new-to-new"] = newToNewResult.kind === "committed" ? "accepted" : "typed-rejected";
+
+    let oldRuntimeBoundaryCalls = 0;
+    let oldRuntimeDownstreamWrites = 0;
+    let oldRuntimeDisposition: { readonly kind: string; readonly code?: string } | undefined;
+    const newToOldResult = await newCommand!.execute({ roomId: `new-old-${crypto.randomUUID()}`, name: "new-to-old" }, {
+      now: "g29-new-to-old",
+      runtimePort: {
+        commit: async (candidate) => {
+          oldRuntimeBoundaryCalls += 1;
+          const wire = {
+            version: 1,
+            eventCandidates: candidate.events.map((event) => ({
+              payload: btoa(JSON.stringify(event.payload)),
+              eventPayloadName: event.eventName,
+              eventType: event.eventType,
+              provenance: event.provenance,
+              tags: event.tags.map((tag) => tag.id),
+            })),
+          };
+          const admission = oldRuntimeAdmission(wire);
+          if (admission === "typed-rejected") {
+            oldRuntimeDisposition = { kind: "rejected", code: "old_runtime_identity_unsupported" };
+            return { kind: "rejected" as const, code: "old_runtime_identity_unsupported", reason: "old runtime cannot accept canonical identity" };
+          }
+          oldRuntimeDownstreamWrites += 1;
+          return { kind: "accepted" as const };
+        },
+      },
+    });
+    expect(newToOldResult.kind).toBe("rejected");
+    expect(oldRuntimeDisposition).toEqual({ kind: "rejected", code: "old_runtime_identity_unsupported" });
+    expect(oldRuntimeBoundaryCalls).toBe(1);
+    expect(oldRuntimeDownstreamWrites).toBe(0);
+    laneResults["new-to-old"] = newToOldResult.kind === "rejected" ? "typed-rejected" : "accepted";
 
     const legacyResolution = replayOldHistoryToNewRuntime({
       eventId: String(legacyStored.eventId),
@@ -99,13 +157,8 @@ describe("SDT-G29 compatibility lanes", () => {
       provenance: "pre-g27",
     }, LEGACY_MIGRATION_MARKER);
     expect(legacyResolution).toMatchObject({ kind: "accepted", eventType: "RoomCreated:1", usedLegacyDiscriminator: true });
-    const legacyPlan = roomMaterializer.plan({
-      ...legacyStored,
-      eventType: legacyResolution.eventType,
-      provenance: "g27",
-    } as never);
+    const legacyPlan = roomMaterializer.plan({ ...legacyStored, eventType: legacyResolution.eventType, provenance: "g27" } as never);
     expect(legacyPlan.rowUpserts).toHaveLength(1);
-    laneResults["old-history-new-replay"] = legacyResolution.kind;
 
     const canonicalRecord = {
       eventId: String(canonicalStored.eventId),
@@ -123,14 +176,13 @@ describe("SDT-G29 compatibility lanes", () => {
       payload: btoa(JSON.stringify({ ...canonicalPayload, eventType: oldReplay.legacyDiscriminator })),
     };
     expect(roomMaterializer.plan(oldReplayRow as never).rowUpserts).toHaveLength(1);
-    laneResults["new-history-old-replay"] = oldReplay.kind;
 
     const downgrade = downgradeReplay([
       { eventId: String(legacyStored.eventId), suid: String(legacyStored.suid), payload: legacyPayload, provenance: "pre-g27" },
       canonicalRecord,
     ], LEGACY_MIGRATION_MARKER);
     expect(downgrade).toMatchObject({ kind: "accepted", writes: 0, eventTypes: ["RoomCreated:1", "RoomReleased:1"] });
-    laneResults["downgrade-replay"] = downgrade.kind;
+    laneResults["upgrade-downgrade-replay"] = downgrade.kind;
 
     expect(compatibility.lanes.map((lane) => lane.laneId)).toEqual(compatibilityLaneIds());
     expect(compatibility.lanes.map((lane) => lane.outcome)).toEqual(

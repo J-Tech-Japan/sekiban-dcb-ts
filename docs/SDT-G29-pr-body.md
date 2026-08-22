@@ -21,18 +21,21 @@ This draft PR implements the SDT-G29 sample rewrite and portability closure.
   through the real `MeetingRoomDownstreamDoorbell.deliver` and Queue wrapper,
   including the Room-only/Reservation-queued C3 regression.
 - Keeps the mapping JSON as expectation authority while observations come
-  from one shared fixture executed by the real DO-ts session and portable
-  snapshot restore path. DecisionLog bytes, claims, outcome, canonical
-  identity, restored snapshot, event types, view manifest, and the runtime
-  bridge are compared; the JavaScript runner no longer duplicates the
-  13×7 expectation table.
+  from one shared fixture executed by real CommitWorker admission/storage, the
+  DO-ts session, and the portable snapshot restore path. Admission evidence,
+  DecisionLog bytes, claims, outcome, canonical identity, restored snapshot,
+  event types, view manifest, and the runtime bridge are compared; observation
+  code does not carry a parallel 13×7 expectation table.
 - Pins the C# Validate/Evolve, ICommandWithHandler/ICommandContext, and
   EventOrNone source snippets at Sekiban@4fbd867 with matching TypeScript
   command/context/terminal snippets, and checks every exact source anchor.
-- Executes all five compatibility lanes against real CommitWorker,
-  materializer, old-runtime shim, replay-direction, and downgrade fixtures.
-  Residual discriminator plus widened post-G27 fallback is rejected before
-  downstream store dispatch with zero calls.
+- Executes the exact AC6 lanes old→old, old→new, new→new, new→old, and
+  upgrade+downgrade replay through real V1/CommitWorker and
+  toRuntimeDomain/CommitWorker adapter boundaries. Identity-bearing new→old
+  is typed-rejected before downstream writes; both replay directions and the
+  read-only downgrade use the committed bytes fixture. Residual discriminator
+  plus widened post-G27 fallback is rejected before downstream store dispatch
+  with zero calls.
 - Adds six raw diagnostic fields with fresh/stale × version-match/mismatch
   fixtures using distinct expected/actual versions, exact raw field
   assertions, and per-quadrant mutation failures.
@@ -50,14 +53,15 @@ into CI with forced-red reachability checks.
 
 ## Candidate protocol
 
-This PR follows the non-self-referential `C`/`R` protocol. `C` is the complete
+This PR follows the non-self-referential `C'''`/`R'''` protocol. `C'''` is the complete
 implementation/deployment/digest authority and carries the required-root
 manifest plus placeholder evidence. `R` updates only the evidence document and
 appends the immutable candidate SHA once to the retained-candidate fetch list.
-The final live witness is run from one immutable candidate `C`; no
+The final live witness is run from one immutable candidate `C'''`; no
 post-candidate source or configuration edits are made. The candidate checker
 validates exact configuration roots, sorted tree digests, candidate ancestry,
-and the post-candidate allowlist.
+deployed/source commit identity, deploymentRequired, and the post-candidate
+allowlist.
 
 ## Witness evidence
 

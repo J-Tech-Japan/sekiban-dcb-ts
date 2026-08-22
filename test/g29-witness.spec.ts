@@ -73,4 +73,5 @@ describe("SDT-G29 witnessed deploy and measurement oracles", () => {
     expect(summary.fallbackCount).toBe(0);
     expect(summary.statusRaw).toHaveLength(10);
   });
+
 });

@@ -34,8 +34,19 @@ if [[ "${G29_DEPLOY_LIVE:-0}" != "1" ]]; then
   printf 'G29 preflight PASS; set G29_DEPLOY_LIVE=1 with G29_CONFORMANCE_TOKEN_FILE for witnessed deploy\n'
   exit 0
 fi
-readonly TOKEN_FILE="${G29_CONFORMANCE_TOKEN_FILE:-}"
+TOKEN_FILE="${G29_CONFORMANCE_TOKEN_FILE:-}"
+if [[ -z "${TOKEN_FILE}" ]]; then
+  TOKEN_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g29-token.XXXXXX")"
+  chmod 600 "${TOKEN_FILE}"
+  openssl rand -base64 48 | tr -d '\n' > "${TOKEN_FILE}"
+fi
 test -f "${TOKEN_FILE}"
+trap 'rm -f "${TOKEN_FILE}"' EXIT
+
+# Rotate the conformance secret from protected file input.  The value is never
+# placed in arguments, logs, or evidence.  This changes only the bearer secret;
+# it does not touch D1, Durable Objects, Queue state, or the service identity.
+"${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "sekiban-dcb-meeting-room-cloudflare-only" < "${TOKEN_FILE}"
 
 # Phase 2: pre-witness is captured before either Worker is changed.
 node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${PRE_FILE}"
@@ -56,3 +67,4 @@ node scripts/deploy/g29-witness.mjs --mode compare --before "${PRE_FILE}" --afte
 # Phase 5: fixed N is intentionally last and records response->visible apart
 # from total command->visible; total is never described as sub-second.
 node scripts/deploy/g29-measure.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --samples "${G29_SAMPLES:-10}" --report "${G29_REPORT:-.artifacts/g29-measurement.json}"
+node scripts/deploy/g29-record-evidence.mjs --source-commit "${SOURCE_COMMIT}" --measurement "${G29_REPORT:-.artifacts/g29-measurement.json}" --output docs/SDT-G29-deploy-evidence.json
