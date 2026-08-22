@@ -1,24 +1,85 @@
 {
   "task": "SDT-G32",
   "phase": "bridge-freeze",
-  "status": "placeholder before the sealed B deployment",
-  "candidateCommit": "BRIDGE_CANDIDATE",
-  "sourceCommit": "BRIDGE_CANDIDATE",
+  "status": "sealed B deployed and freeze acknowledged before final-C new-store cutover",
+  "candidateCommit": "43029a8b8b0298b6cc30c531639d7398f6295805",
+  "sourceCommit": "43029a8b8b0298b6cc30c531639d7398f6295805",
+  "bridgeConfigDigest": "3f3f40f32ba5ccf448c4f97d2d88b46b95f718a908a55492ba8b4fdc2d1f03c2",
+  "freezeTokenFingerprint": "redacted-sha256-recorded-in-local-witness",
   "protocol": {
-    "candidate": "B is an immutable old-format freeze-only candidate. It contains bridge source, deployed configs, writer coverage manifest, acknowledgement/settlement tooling, and this placeholder.",
-    "bookkeeping": "The B evidence record is written after live acknowledgement; it cannot alter the bridge runtime or deployment configs.",
+    "candidate": "B is immutable old-format freeze-only code. It contains no G32 event-record reader or writer.",
+    "bookkeeping": "This evidence was recorded after B deployment; it cannot change B's source/configuration/digest authority.",
     "oldFormatOnly": true,
-    "freezeOnly": true
+    "freezeOnly": true,
+    "requiredBeforeFinalC": true
   },
-  "expectedComponents": ["primary", "receiver"],
-  "writerEntrypoints": [
-    "commit-http",
-    "queue-consumer",
-    "tag-do-outbox-alarm",
-    "cron",
-    "bootstrap-import-dump-restore",
-    "mv-apply",
-    "doorbell-receiver"
-  ],
+  "freezeAcknowledgements": {
+    "components": [
+      {
+        "component": "primary",
+        "sourceCommit": "43029a8b8b0298b6cc30c531639d7398f6295805",
+        "configDigest": "3f3f40f32ba5ccf448c4f97d2d88b46b95f718a908a55492ba8b4fdc2d1f03c2",
+        "tokenFingerprint": "redacted",
+        "writerEntrypoints": [
+          "bootstrap-import-dump-restore",
+          "commit-http",
+          "cron",
+          "mv-apply",
+          "queue-consumer",
+          "tag-do-outbox-alarm"
+        ]
+      },
+      {
+        "component": "receiver",
+        "sourceCommit": "43029a8b8b0298b6cc30c531639d7398f6295805",
+        "configDigest": "3f3f40f32ba5ccf448c4f97d2d88b46b95f718a908a55492ba8b4fdc2d1f03c2",
+        "tokenFingerprint": "redacted",
+        "writerEntrypoints": ["doorbell-receiver"]
+      }
+    ],
+    "componentSet": ["primary", "receiver"],
+    "writerEntrypointSet": [
+      "bootstrap-import-dump-restore",
+      "commit-http",
+      "cron",
+      "doorbell-receiver",
+      "mv-apply",
+      "queue-consumer",
+      "tag-do-outbox-alarm"
+    ]
+  },
+  "freezePreconditions": {
+    "inFlight": 0,
+    "pendingOutbox": {
+      "disposition": "explicitly-discarded",
+      "tagInventory": 379,
+      "discardedRows": 572
+    },
+    "queueDisposition": "The B primary queue handler explicitly ACK-discarded old-format messages. Final C binds a different queue, so stale messages have no new-store path.",
+    "durableObjectAlarms": {
+      "allocator": null,
+      "bootstrap": null,
+      "tag": "each enumerated tag was explicitly quiesced/discarded; no bridge alarm may append"
+    },
+    "legacyPipelineInventory": {
+      "eventRows": 382,
+      "pendingArrivalRows": 382,
+      "deliveryIncidentRows": 0,
+      "classification": "old-store diagnostic inventory only; pending_arrivals is not an in-flight writer and is intentionally discarded with the full old D1 database"
+    }
+  },
+  "deployedVersions": {
+    "receiver": "13e30ae3-7c83-483c-a16a-325e37be3877",
+    "primary": "a7e6bb03-7513-49f5-ab6b-efbf5d526cd2"
+  },
+  "cutoverBoundary": {
+    "oldServiceId": "g25-38219c8-20260820f",
+    "oldDatabases": [
+      "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "5db45136-f1dd-4f4d-bfe3-b6328193a1ac"
+    ],
+    "oldFormatReader": "not present in bridge",
+    "finalCRequired": "new D1 database IDs, new Queue, new serviceId, and G32 30-digit-only ingress gates"
+  },
   "secrets": "redacted"
 }
