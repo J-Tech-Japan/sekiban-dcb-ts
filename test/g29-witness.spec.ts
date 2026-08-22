@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertWitnessStable } from "../scripts/deploy/g29-witness.mjs";
+import { assertSourceCommit, assertWitnessStable } from "../scripts/deploy/g29-witness.mjs";
 import { summarizeMeasurements } from "../scripts/deploy/g29-measure.mjs";
 
 const expected = {
@@ -30,7 +30,8 @@ function witness() {
   return {
     ...expected,
     identityVerified: true,
-    data: { digest: "data-witness" },
+    sourceCommit: "c".repeat(40),
+    data: { digest: "data-witness", rows: [{ id: "fixture", status: "created" }], heads: { fixture: "suid-1" }, counts: { rows: 1 }, list: ["fixture"] },
     rawV1: { status: 404 },
   };
 }
@@ -40,8 +41,11 @@ describe("SDT-G29 witnessed deploy and measurement oracles", () => {
     expect(assertWitnessStable(witness(), witness(), expected).stable).toBe(true);
     expect(() => assertWitnessStable({ ...witness(), serviceId: "fresh-service" }, witness(), expected)).toThrow("serviceId");
     expect(() => assertWitnessStable(witness(), { ...witness(), data: { digest: "changed" } }, expected)).toThrow("data witness");
+    expect(() => assertWitnessStable(witness(), { ...witness(), data: { digest: "data-witness", rows: [{ id: "fixture", status: "released" }], heads: { fixture: "suid-1" }, counts: { rows: 1 }, list: ["fixture"] } }, expected)).toThrow("raw data witness");
     expect(() => assertWitnessStable(witness(), { ...witness(), rawV1: { status: 200 } }, expected)).toThrow("public V1");
     expect(() => assertWitnessStable({ ...witness(), identityVerified: false }, witness(), expected)).toThrow("full G29 topology");
+    expect(assertSourceCommit(witness(), "c".repeat(40))).toEqual({ sourceCommit: "c".repeat(40), match: true });
+    expect(() => assertSourceCommit(witness(), "d".repeat(40))).toThrow("sourceCommit mismatch");
   });
 
   it("allows only the declared C3-to-C4 delivery policy transition", () => {

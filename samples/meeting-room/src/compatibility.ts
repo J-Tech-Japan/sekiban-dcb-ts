@@ -17,6 +17,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * The old V1 runtime has no canonical-identity storage lane.  New clients
+ * therefore get a typed rejection instead of an identity-bearing request
+ * being silently downgraded into a legacy row.
+ */
+export function oldRuntimeAdmission(value: unknown): CompatibilityOutcome {
+  if (!isRecord(value) || !Array.isArray(value.eventCandidates)) return "typed-rejected";
+  const identityBearing = value.eventCandidates.some((candidate) =>
+    isRecord(candidate) && (Object.prototype.hasOwnProperty.call(candidate, "eventType") || Object.prototype.hasOwnProperty.call(candidate, "provenance") || Object.prototype.hasOwnProperty.call(candidate, "eventPayloadVersion")));
+  return identityBearing ? "typed-rejected" : "accepted";
+}
+
 /** Storage is fail-closed unless G27 identity or an immutable legacy marker is present. */
 export function assertStoredIdentity(value: unknown): void {
   if (!isRecord(value)) throw new Error("G29_STORAGE_IDENTITY_MISSING");

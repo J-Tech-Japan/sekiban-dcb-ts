@@ -20,6 +20,7 @@ import {
 } from "../samples/meeting-room/src/domain";
 import { reservationMaterializer, roomMaterializer } from "../samples/meeting-room/src/d1-mv";
 import mapping from "../docs/SDT-G29-mapping.json";
+import preRewriteFixture from "./fixtures/g29-pre-rewrite-stored-outbox.json";
 
 function initialState(projector: ProjectorLike): unknown {
   return typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
@@ -35,6 +36,83 @@ function snapshotReader(states: Readonly<Record<string, unknown>> = {}): Snapsho
       exists: states[`${projector.id}:${tag.id}`] !== undefined,
     }),
   };
+}
+
+function decodeFixtureBytes(encoded: string): Record<string, unknown> {
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const text = new TextDecoder().decode(bytes);
+  const parsed: unknown = JSON.parse(text);
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("G29 pre-rewrite fixture row must be an object");
+  if (JSON.stringify(parsed) !== text) throw new Error("G29 pre-rewrite fixture changed byte representation during decode");
+  return parsed as Record<string, unknown>;
+}
+
+function encodeFixtureBytes(value: Record<string, unknown>): string {
+  const text = JSON.stringify(value);
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function decodePayload(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") throw new Error("G29 pre-rewrite stored payload is not bytes");
+  const binary = atob(value);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) throw new Error("G29 pre-rewrite payload is not an object");
+  return parsed as Record<string, unknown>;
+}
+
+function replayCommittedPreRewriteBytes(value = preRewriteFixture) {
+  const stored = value.storedBytes.map(decodeFixtureBytes);
+  const outbox = value.outboxBytes.map(decodeFixtureBytes);
+  if (stored.length !== 2 || outbox.length !== 2) throw new Error("G29 pre-rewrite fixture must contain two stored and two outbox rows");
+
+  const first = stored[0]!;
+  const second = stored[1]!;
+  const firstPayload = decodePayload(first.payload);
+  if (first.eventType !== undefined || first.provenance !== "pre-g27" || typeof firstPayload.eventType !== "string") {
+    throw new Error("G29 legacy discriminator/provenance fixture boundary was lost");
+  }
+  if (second.eventType !== value.expected.canonicalEventType || second.provenance !== "g27") {
+    throw new Error("G29 canonical identity/provenance fixture boundary was lost");
+  }
+  const firstOutbox = outbox[0]!;
+  const secondOutbox = outbox[1]!;
+  if (firstOutbox.eventId !== first.eventId || firstOutbox.provenance !== "pre-g27-queue" ||
+      (firstOutbox.payload as Record<string, unknown>)?.eventType !== "RoomCreated") {
+    throw new Error("G29 legacy outbox discriminator was lost");
+  }
+  if (secondOutbox.eventId !== second.eventId || secondOutbox.eventType !== second.eventType || secondOutbox.provenance !== "g27") {
+    throw new Error("G29 G27 outbox identity was lost");
+  }
+
+  const projector = meetingRoomProjectors.roomProjector;
+  const initial = typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
+  const records: EventRecord[] = [
+    {
+      eventType: `${firstPayload.eventType}:1`,
+      eventName: String(firstPayload.eventType),
+      payload: firstPayload,
+      tags: [roomTag(value.expected.roomId)],
+      ordinal: "0",
+    },
+    {
+      eventType: String(second.eventType),
+      eventName: String(second.eventType).split(":")[0],
+      payload: decodePayload(second.payload),
+      tags: [roomTag(value.expected.roomId)],
+      ordinal: "1",
+    },
+  ];
+  for (const [index, row] of stored.entries()) {
+    const plan = roomMaterializer.plan(row as never);
+    if (plan.rowUpserts.length !== 1) throw new Error(`G29 rewritten materializer dropped fixture row ${index}`);
+  }
+  const afterCreated = projector.apply(initial, records[0]!);
+  return projector.apply(afterCreated, records[1]!);
 }
 
 describe("SDT-G29 meeting-room authoring portability", () => {
@@ -79,6 +157,30 @@ describe("SDT-G29 meeting-room authoring portability", () => {
     const afterCreated = projector.apply(initial, created);
     const afterReleased = projector.apply(afterCreated, released);
     expect(afterReleased).toEqual({ status: "released", version: 2, roomId: "r-mixed", name: "Legacy" });
+  });
+
+  it("replays immutable pre-rewrite stored/outbox bytes through the real materializer and preserves identity", () => {
+    expect(replayCommittedPreRewriteBytes()).toEqual({ status: "released", version: 2, roomId: "r-g29-bytes", name: "Legacy bytes" });
+    for (const bytes of [...preRewriteFixture.storedBytes, ...preRewriteFixture.outboxBytes]) {
+      const decoded = decodeFixtureBytes(bytes);
+      expect(encodeFixtureBytes(decoded)).toBe(bytes);
+    }
+  });
+
+  it("makes loss of either the legacy discriminator or G27 provenance an exact replay failure", () => {
+    const withoutLegacyDiscriminator = structuredClone(preRewriteFixture);
+    const legacy = decodeFixtureBytes(withoutLegacyDiscriminator.storedBytes[0]!);
+    const legacyPayload = decodePayload(legacy.payload);
+    delete legacyPayload.eventType;
+    legacy.payload = encodeFixtureBytes(legacyPayload);
+    withoutLegacyDiscriminator.storedBytes[0] = encodeFixtureBytes(legacy);
+    expect(() => replayCommittedPreRewriteBytes(withoutLegacyDiscriminator)).toThrow("legacy discriminator");
+
+    const withoutG27Provenance = structuredClone(preRewriteFixture);
+    const canonical = decodeFixtureBytes(withoutG27Provenance.storedBytes[1]!);
+    delete canonical.provenance;
+    withoutG27Provenance.storedBytes[1] = encodeFixtureBytes(canonical);
+    expect(() => replayCommittedPreRewriteBytes(withoutG27Provenance)).toThrow("canonical identity/provenance");
   });
 
   it("preserves the two-tag reservation candidate and release noop", async () => {

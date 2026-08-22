@@ -8,28 +8,36 @@ This draft PR implements the SDT-G29 sample rewrite and portability closure.
 
 - Rewrites `samples/meeting-room` on `@sekiban/dcb-domain` with typed,
   event-declared tags, discriminated state unions, per-event Validate/Evolve,
-  typed Decider outcomes, and a real `toRuntimeDomain` bridge. The old domain
-  definition and `as` casts are absent from the sample domain source.
-- Preserves V1 behavior and mixed legacy/new replay, including identity,
-  tags, release noop, and the existing UI/runtime fixtures.
-- Documents the C#⇄TS authoring correspondence and two-clock rule in
-  `docs/domain-authoring.md`.
-- Adds the per-view deliveryClass descriptor and executable 2×2×2 matrix,
-  including descriptor-absent migration and explicit fail-fast/
-  queued-degraded outcomes.
-- Adds the versioned three-runtime mapping artifact, five compatibility lanes,
-  six raw diagnostic fields/four derived quadrants, and independent mutation
-  oracles.
+  typed Decider outcomes, and a real `toRuntimeDomain` bridge. The domain
+  source has a CI-wired no-cast rule and exact `as` mutation probe.
+- Preserves V1 behavior and mixed legacy/new replay through a committed
+  pre-rewrite stored/outbox byte fixture, including legacy discriminator,
+  G27 provenance, identity, tags, release noop, and the existing UI/runtime
+  fixtures.
+- Documents the C#⇄TS authoring correspondence with pinned
+  `Sekiban@4fbd867` `EquipmentReservationCancelled` source and matching TS
+  snippets; CI checks the anchors and content.
+- Adds the per-view deliveryClass descriptor and executable 2×2×2 matrix
+  through the real `MeetingRoomDownstreamDoorbell.deliver` and Queue wrapper,
+  including the Room-only/Reservation-queued C3 regression.
+- Keeps the mapping JSON as expectation authority while observations come
+  from the real DO-ts session, DecisionLog serialization, event registry,
+  tag/read declarations, and runtime bridge. The actual CommitWorker
+  admission/storage path is exercised for compatibility and missing identity
+  remains zero-dispatch.
+- Adds six raw diagnostic fields with four independent quadrant fixtures and
+  exact per-branch mutation failures.
 - Adds authenticated topology witness and fixed-N measurement tooling for the
   existing production identity. No reseed, fresh serviceId, destructive
-  migration, or secret is part of the deploy script; only the
-  checked-in additive G27 migration is applied during the deploy phase.
+  migration, or secret is part of the deploy script; only the checked-in
+  additive G27 migration is applied during the deploy phase.
 
 ## Verification
 
 The oracle correspondence is in [docs/SDT-G29-oracle-map.md](./SDT-G29-oracle-map.md).
 The mapping, delivery, compatibility, diagnostics, sample, typecheck, lint,
-and prior G13–G28 lanes are wired into CI with forced-red reachability checks.
+domain-source, pinned-authoring-document, and prior G13–G28 lanes are wired
+into CI with forced-red reachability checks.
 
 ## Candidate protocol
 
@@ -37,14 +45,17 @@ This PR follows the non-self-referential `C`/`R` protocol. `C` is the complete
 implementation/deployment/digest authority and carries the required-root
 manifest plus placeholder evidence. `R` updates only the evidence document and
 appends the immutable candidate SHA once to the retained-candidate fetch list.
-The candidate checker validates exact configuration roots, sorted tree digests,
-candidate ancestry, and the post-candidate allowlist.
+The final live witness is run from one immutable candidate `C`; no
+post-candidate source or configuration edits are made. The candidate checker
+validates exact configuration roots, sorted tree digests, candidate ancestry,
+and the post-candidate allowlist.
 
 ## Witness evidence
 
 The final evidence document is `docs/SDT-G29-deploy-evidence.json`. It records
-the exact candidate, topology witness, preserved worker/service/D1/DO/Queue
-identity, and response→visible versus total latency distributions. The live
-deployment script requires an explicit protected conformance token file and
-aborts before deployment when the witness or identity preconditions are not
-available.
+the exact candidate, `deployedRuntimeCommit === sourceCommit`, raw pre/post
+witness rows/heads/counts/lists, preserved worker/service/D1/DO/Queue identity,
+and per-cycle command-start/response/visible timestamps with raw status beside
+response→visible versus total latency distributions. The live deployment
+script requires an explicit protected conformance token file and aborts before
+deployment when the witness or identity preconditions are not available.

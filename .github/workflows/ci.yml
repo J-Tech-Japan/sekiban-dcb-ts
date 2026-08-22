@@ -178,6 +178,22 @@ jobs:
             echo "SDT-G29 compatibility forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G29 domain source lint mutation lane
+        run: npm run test:g29:domain-source
+      - name: Prove SDT-G29 domain source lint forced-red reachability
+        run: |
+          if SDT_G29_DOMAIN_SOURCE_FORCE_FAILURE=1 npm run test:g29:domain-source:forced-red; then
+            echo "SDT-G29 domain source forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Run SDT-G29 pinned authoring correspondence lane
+        run: npm run test:g29:authoring-doc
+      - name: Prove SDT-G29 authoring correspondence forced-red reachability
+        run: |
+          if SDT_G29_AUTHORING_DOC_FORCE_FAILURE=1 npm run test:g29:authoring-doc:forced-red; then
+            echo "SDT-G29 authoring correspondence forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - name: Run SDT-G29 rewritten meeting-room sample lane
         run: npm run test:g29:sample
       - name: Prove SDT-G29 sample forced-red reachability

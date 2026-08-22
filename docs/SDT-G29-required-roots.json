@@ -27,6 +27,8 @@
     "samples/meeting-room/wrangler.direct-doorbell.jsonc",
     "samples/meeting-room/wrangler.doorbell.jsonc",
     "scripts/g29-mapping-contract.mjs",
+    "scripts/g29-domain-source-check.mjs",
+    "scripts/g29-authoring-doc-check.mjs",
     "scripts/g29-delivery-matrix.mjs",
     "scripts/g29-candidate-check.mjs",
     "scripts/g20-candidate-check.mjs",
@@ -44,6 +46,7 @@
     "test/g29-compatibility.spec.ts",
     "test/g29-meeting-room.spec.ts",
     "test/g29-witness.spec.ts",
+    "test/fixtures/g29-pre-rewrite-stored-outbox.json",
     "test/meeting-room.spec.ts",
     "tsconfig.json",
     "vitest.config.ts"
@@ -61,6 +64,8 @@
     { "rootId": "sample-config", "path": "samples/meeting-room/wrangler.cloudflare-only.jsonc", "kind": "file" },
     { "rootId": "receiver-config", "path": "samples/meeting-room/wrangler.meeting-room-doorbell.jsonc", "kind": "file" },
     { "rootId": "mapping-runner", "path": "scripts/g29-mapping-contract.mjs", "kind": "file" },
+    { "rootId": "domain-source-lint", "path": "scripts/g29-domain-source-check.mjs", "kind": "file" },
+    { "rootId": "authoring-doc-check", "path": "scripts/g29-authoring-doc-check.mjs", "kind": "file" },
     { "rootId": "delivery-runner", "path": "scripts/g29-delivery-matrix.mjs", "kind": "file" },
     { "rootId": "candidate-runner", "path": "scripts/g29-candidate-check.mjs", "kind": "file" },
     { "rootId": "deploy-witness", "path": "scripts/deploy/g29-deploy-witness.sh", "kind": "file" },
@@ -69,6 +74,7 @@
     { "rootId": "diagnostics-fixture", "path": "test/g29-diagnostics.spec.ts", "kind": "file" },
     { "rootId": "compatibility-fixture", "path": "test/g29-compatibility.spec.ts", "kind": "file" },
     { "rootId": "sample-fixture", "path": "test/g29-meeting-room.spec.ts", "kind": "file" },
-    { "rootId": "witness-fixture", "path": "test/g29-witness.spec.ts", "kind": "file" }
+    { "rootId": "witness-fixture", "path": "test/g29-witness.spec.ts", "kind": "file" },
+    { "rootId": "pre-rewrite-bytes-fixture", "path": "test/fixtures/g29-pre-rewrite-stored-outbox.json", "kind": "file" }
   ]
 }

@@ -89,6 +89,7 @@ export async function captureWitness(baseUrl, token, expected) {
     identitySource: identityVerified ? "remote-g29-conformance" : "legacy-g26-conformance-fallback",
     identityVerified,
     worker: body.worker ?? expected.worker,
+    sourceCommit: typeof body.sourceCommit === "string" ? body.sourceCommit : null,
     serviceId: body.serviceId ?? expected.serviceId,
     viewCount: body.viewCount,
     allowedViews: Array.isArray(body.allowedViews) ? body.allowedViews : [],
@@ -114,6 +115,13 @@ function assertExpectedFields(witness, expected, phase) {
   }
 }
 
+function rawDataWithoutDigest(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+  const copy = { ...value };
+  delete copy.digest;
+  return copy;
+}
+
 export function assertWitnessStable(before, after, expected, beforeExpected = expected) {
   assertExpectedFields(before, beforeExpected, "before");
   assertExpectedFields(after, expected, "after");
@@ -123,7 +131,14 @@ export function assertWitnessStable(before, after, expected, beforeExpected = ex
   }
   if (before.rawV1?.status !== 404 || after.rawV1?.status !== 404) throw new Error("G29 public V1 surface is not closed");
   if (before.data?.digest !== after.data?.digest) throw new Error("G29 data witness changed across redeploy");
+  if (JSON.stringify(rawDataWithoutDigest(before.data)) !== JSON.stringify(rawDataWithoutDigest(after.data))) throw new Error("G29 raw data witness rows/heads/counts changed across redeploy");
   return { stable: true, fields: Object.keys(expected), dataDigest: before.data.digest };
+}
+
+export function assertSourceCommit(witness, sourceCommit) {
+  if (typeof sourceCommit !== "string" || sourceCommit.length === 0) throw new Error("G29 source commit assertion requires a non-empty commit");
+  if (witness?.sourceCommit !== sourceCommit) throw new Error(`G29 deployed runtime sourceCommit mismatch: expected ${sourceCommit}, observed ${String(witness?.sourceCommit)}`);
+  return { sourceCommit, match: true };
 }
 
 async function main() {
@@ -135,7 +150,10 @@ async function main() {
     const expected = JSON.parse(readFileSync(required("--expected", argument("--expected")), "utf8"));
     const beforeExpectedPath = argument("--before-expected", undefined);
     const beforeExpected = beforeExpectedPath === undefined ? expected : JSON.parse(readFileSync(beforeExpectedPath, "utf8"));
-    console.log(JSON.stringify(assertWitnessStable(before, after, expected, beforeExpected), null, 2));
+    const sourceCommit = argument("--source-commit", undefined);
+    const stable = assertWitnessStable(before, after, expected, beforeExpected);
+    const source = sourceCommit === undefined ? { sourceCommit: after.sourceCommit ?? null, sourceCommitChecked: false } : assertSourceCommit(after, sourceCommit);
+    console.log(JSON.stringify({ ...stable, ...source }, null, 2));
     return;
   }
   const tokenFile = required("--token-file", argument("--token-file", process.env.G29_CONFORMANCE_TOKEN_FILE));

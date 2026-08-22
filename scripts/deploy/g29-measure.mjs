@@ -36,7 +36,13 @@ export function summarizeMeasurements(values) {
     commandStartToResponseMs: distribution(values.map((value) => value.commandStartToResponseMs)),
     responseToVisibleMs: distribution(values.map((value) => value.responseToVisibleMs)),
     commandStartToVisibleMs: distribution(values.map((value) => value.commandStartToVisibleMs)),
-    statusRaw: values.map((value) => ({ status: value.status, kind: value.kind, fallback: value.fallback })),
+    statusRaw: values.map((value) => ({
+      index: value.index,
+      commandStartAt: value.commandStartAt ?? value.commandStartedAt,
+      responseAt: value.responseAt,
+      visibleAt: value.visibleAt,
+      ...(value.statusRaw ?? { status: value.status, kind: value.kind, fallback: value.fallback }),
+    })),
     errorCount: values.filter((value) => value.status < 200 || value.status >= 300 || value.kind !== "committed").length,
     fallbackCount: values.filter((value) => value.fallback).length,
   };
@@ -58,6 +64,7 @@ export async function measure(baseUrl, samples, timeoutMs) {
     const becameVisible = await visible(baseUrl, reservationId, timeoutMs);
     values.push({
       index,
+      commandStartAt: commandStartedAt,
       commandStartedAt,
       responseAt,
       visibleAt: becameVisible.observedAt,
@@ -67,6 +74,12 @@ export async function measure(baseUrl, samples, timeoutMs) {
       status: response.response.status,
       kind: response.body?.kind,
       fallback: response.body?.fallback === true || response.body?.kind === "timeout",
+      statusRaw: {
+        httpStatus: response.response.status,
+        kind: response.body?.kind ?? null,
+        code: response.body?.code ?? null,
+        fallback: response.body?.fallback === true || response.body?.kind === "timeout",
+      },
     });
   }
   if (values.length !== samples) throw new Error(`G29 fixed-N omitted samples: expected ${samples}, observed ${values.length}`);

@@ -10,6 +10,7 @@ import {
   selectDirectDoorbellViews,
   TagDurableObject,
   type CloudflareOnlyEnv,
+  type DeliveryCoreOptions,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
@@ -21,6 +22,11 @@ export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurab
 export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly ASSETS?: Fetcher;
   readonly CONFORMANCE_TOKEN?: string;
+  readonly G29_SOURCE_COMMIT?: string;
+  /** In-process integration seam; never configured by a deployed Worker. */
+  readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
+    readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
+  };
 }
 
 /**
@@ -29,13 +35,15 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
  */
 export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
   async deliver(message: unknown) {
-    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    const testOverrides = this.env.__G29_DOORBELL_TEST__;
+    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy);
+    const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(this.env);
     const result = await processDownstreamDoorbell(message, this.env, {
-      storeProvider: createD1StoreProvider(),
-      views: selectDirectDoorbellViews(meetingRoomDeliveryViews(this.env), config),
-      afterDelivery: async () => {
+      ...(testOverrides?.store === undefined ? { storeProvider: createD1StoreProvider() } : { store: testOverrides.store }),
+      views: selectDirectDoorbellViews(configuredViews, config),
+      afterDelivery: testOverrides?.afterDelivery ?? (async () => {
         this.ctx.waitUntil(drainMeetingRoomUnsafeKicks(this.env));
-      },
+      }),
     });
     console.log("direct_doorbell_core", {
       correlationId: result.correlationId,
@@ -199,6 +207,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     return json({
       task: "SDT-G29",
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      sourceCommit: env.G29_SOURCE_COMMIT ?? null,
       serviceId: env.SDT_SERVICE_ID,
       viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
       allowedViews: config.allowedViews,

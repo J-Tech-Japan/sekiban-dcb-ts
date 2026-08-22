@@ -44,4 +44,22 @@ export default tseslint.config(
       }],
     },
   },
+  {
+    // The sample domain is the authoring boundary.  A cast here can hide a
+    // legacy payload/tag shape and therefore must be caught by the same lint
+    // lane that checks the rest of the repository.
+    files: ["samples/meeting-room/src/domain.ts", "**/.g29-domain-source-*/src/domain.ts"],
+    rules: {
+      "no-restricted-syntax": ["error",
+        {
+          selector: "TSAsExpression",
+          message: "Domain authoring source must not use `as` casts; keep the parsed event/tag contract typed.",
+        },
+        {
+          selector: "TSTypeAssertion",
+          message: "Domain authoring source must not use type assertions; keep the parsed event/tag contract typed.",
+        },
+      ],
+    },
+  },
 );

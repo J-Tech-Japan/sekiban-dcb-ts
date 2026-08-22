@@ -11,6 +11,75 @@ The design decision is recorded in
 and the source means in
 [means/15-domain-authoring](https://github.com/J-Tech-Japan/SekibanDcbTsHost/blob/main/intents/sekiban-dcb-ts/intent-tree/means/15-domain-authoring.md).
 
+The C# side below is pinned to the checked-in template at
+[`Sekiban@4fbd867`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/templates/Sekiban.Dcb.Templates/content/Sekiban.Dcb.Orleans.Decider/SekibanDcbDecider.MeetingRoomModels/Events/EquipmentReservation/EquipmentReservationCancelled.cs).
+The snippets are copied from that source, rather than from a generic API
+description. `scripts/g29-authoring-doc-check.mjs` checks the pin, anchors, and
+the corresponding TypeScript source in CI.
+
+## Pinned event correspondence
+
+| C# template (`EquipmentReservationCancelled.cs`) | TypeScript sample (`samples/meeting-room/src/domain.ts`) |
+| --- | --- |
+| ```csharp
+using Dcb.MeetingRoomModels.Tags;
+using Sekiban.Dcb.Events;
+namespace Dcb.MeetingRoomModels.Events.EquipmentReservation;
+
+public record EquipmentReservationCancelled(
+    Guid EquipmentReservationId,
+    string Reason,
+    DateTime CancelledAt) : IEventPayload
+{
+    public EventPayloadWithTags GetEventWithTags() =>
+        new(this, new EquipmentReservationTag(EquipmentReservationId));
+}
+``` | ```ts
+const reservationCancelled = event("ReservationCancelled", z.object({
+  reservationId: z.string().min(1),
+  roomId: z.string().min(1).optional(),
+}), {
+  tags: (payload) => [reservation.of(payload.reservationId)],
+});
+``` |
+
+The C# record's payload, event implementation, and `GetEventWithTags()` are
+the pinned anchors. The TS `event(...)` schema and tag deriver are the same
+three responsibilities: validate the payload, register the event identity,
+and derive the tag from the parsed payload. The example uses different
+business names because the repository sample models a room reservation rather
+than equipment inventory; the shape and ownership correspondence is what is
+portable.
+
+## Pinned decider/projector correspondence
+
+| C# template concern | TypeScript source anchor |
+| --- | --- |
+| An event payload is a record with typed fields and an event-owned tag method. | `const reservationCancelled = event(...)` and its `tags: (payload) => ...` deriver. |
+| A decider validates before emitting a payload and evolves a closed state. | `validateCancelReservation`, `evolveReservationCancelled`, and `cancelReservationCommand`. |
+| A projector registers the event and tag family. | `reservationProjector = projector({ id: "ReservationProjector", tag: reservation, events: [roomReserved, reservationCancelled], ... })`. |
+
+The corresponding command is deliberately explicit in the source:
+
+```ts
+export const cancelReservationCommand = command({
+  id: "cancel-reservation",
+  input: reservationOnlyInput,
+  reads: (input) => read(reservationProjector, reservationTag(input.reservationId)),
+  handle: async (input, context) => {
+    const state = await context.state(reservationProjector, reservationTag(input.reservationId));
+    const invalid = validationDecision(validateCancelReservation(state, input));
+    if (invalid !== undefined) return invalid;
+    const roomId = state.status === "empty" ? undefined : state.roomId;
+    context.append(reservationCancelled, reservationCancelled.make({
+      reservationId: input.reservationId,
+      ...(roomId === null || roomId === undefined ? {} : { roomId }),
+    }));
+    return done({ reservationId: input.reservationId });
+  },
+});
+```
+
 | Concern | C# authoring shape | TypeScript authoring shape | Portability rule |
 | --- | --- | --- | --- |
 | Event | `Event<TPayload>` / event definition | `event("RoomCreated", z.object(...), { tags })` | The registered definition assigns `RoomCreated:1`; the caller cannot choose a version. |

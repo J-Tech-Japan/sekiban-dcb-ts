@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "format": "sdt-g29-pre-rewrite-stored-outbox-bytes-v1",
+  "legacyDiscriminator": "payload.eventType is retained only for provenance-proven pre-G27 rows",
+  "storedBytes": [
+    "eyJsYW5lIjoicHJlLWcyNy1zdG9yZWQiLCJldmVudElkIjoiZzI5LWxlZ2FjeS1yb29tIiwic3VpZCI6InN1aWQtMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDEiLCJwYXlsb2FkIjoiZXlKbGRtVnVkRlI1Y0dVaU9pSlNiMjl0UTNKbFlYUmxaQ0lzSW5KdmIyMUpaQ0k2SW5JdFp6STVMV0o1ZEdWeklpd2libUZ0WlNJNklreGxaMkZqZVNCaWVYUmxjeUo5IiwiZXZlbnRUYWdzIjpbInJvb206ci1nMjktYnl0ZXMiXSwicHJvdmVuYW5jZSI6InByZS1nMjcifQ==",
+    "eyJsYW5lIjoiZzI3LXN0b3JlZCIsImV2ZW50SWQiOiJnMjktY2Fub25pY2FsLXJlbGVhc2UiLCJzdWlkIjoic3VpZC0wMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMiIsInBheWxvYWQiOiJleUp5YjI5dFNXUWlPaUp5TFdjeU9TMWllWFJsY3lKOSIsImV2ZW50VGFncyI6WyJyb29tOnItZzI5LWJ5dGVzIl0sImV2ZW50VHlwZSI6IlJvb21SZWxlYXNlZDoxIiwicHJvdmVuYW5jZSI6ImcyNyJ9"
+  ],
+  "outboxBytes": [
+    "eyJldmVudElkIjoiZzI5LWxlZ2FjeS1yb29tIiwicGF5bG9hZCI6eyJldmVudFR5cGUiOiJSb29tQ3JlYXRlZCJ9LCJwcm92ZW5hbmNlIjoicHJlLWcyNy1xdWV1ZSJ9",
+    "eyJldmVudElkIjoiZzI5LWNhbm9uaWNhbC1yZWxlYXNlIiwiZXZlbnRUeXBlIjoiUm9vbVJlbGVhc2VkOjEiLCJwcm92ZW5hbmNlIjoiZzI3In0="
+  ],
+  "expected": {
+    "legacyEventType": "RoomCreated:1",
+    "canonicalEventType": "RoomReleased:1",
+    "roomId": "r-g29-bytes",
+    "finalStatus": "released",
+    "finalVersion": 2
+  }
+}
