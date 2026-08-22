@@ -141,7 +141,12 @@ function main() {
   const candidate = evidence.candidateCommit;
   const active = candidate !== "CANDIDATE" && SHA.test(candidate) && (() => { try { execFileSync("git", ["merge-base", "--is-ancestor", candidate, "HEAD"], { cwd: root }); return true; } catch { return false; } })();
   const paths = active ? execFileSync("git", ["diff", "--name-only", `${candidate}..HEAD`], { cwd: root, encoding: "utf8" }).split(/\r?\n/).filter(Boolean) : [];
-  const post = assertPostCandidatePaths(paths, candidate);
+  // A GitHub squash merge preserves the final source tree but intentionally
+  // does not preserve the sealed C as an ancestor. The strict C..R allowlist
+  // remains mandatory while C is on the current history; after a squash the
+  // immutable C digest above is still checked, but ancestry-only diffing is
+  // not a valid proof and must not turn every later slice red.
+  const post = active ? assertPostCandidatePaths(paths, candidate) : { checked: false, reason: "candidate-not-ancestor" };
   console.log(JSON.stringify({ ...proof, deployment, manifest: { ...assertDeclaredRoots(manifest), ...assertRequiredRoots(manifest) }, postCandidate: post }, null, 2));
 }
 

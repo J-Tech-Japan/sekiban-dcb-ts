@@ -362,9 +362,9 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
     }), {}, { store, now: () => 1_000 });
     const body = await response.clone().json<{ error: string }>();
     await expectSection6(response, 504, "timeout");
-    expect(body.error).toContain("Outcome is undetermined");
-    expect(body.error).toContain("reread tag heads and event/query state");
-    expect(body.error).toContain("blind retry may create duplicate events");
+    expect(body.error).toContain("Projection did not reach the requested sortableUniqueId");
+    expect(body.error).toContain("refresh this read");
+    expect(body.error).not.toContain("duplicate events");
   });
 
   it("keeps list pages SUID-ordered and stable while an unsafe concurrent append arrives", async () => {

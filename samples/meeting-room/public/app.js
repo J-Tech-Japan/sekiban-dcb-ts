@@ -7,6 +7,9 @@ import {
   roomQueryView,
   visibilityState,
 } from "./ui-model.js";
+import {
+  requestPostCommitReservationList,
+} from "./reservation-auto-refresh.js";
 
 const statusElement = document.querySelector("#status");
 const projectionElement = document.querySelector("#projection");
@@ -104,7 +107,7 @@ async function observeProjection(kind, id, commitSuid) {
   }
 }
 
-async function sendCommand(commandId, input, projection) {
+async function sendCommand(commandId, input, projection, options = {}) {
   setStatus(`Sending ${commandId}…`, "pending");
   const response = await fetch(`/api/commands/${commandId}`, {
     method: "POST",
@@ -120,6 +123,10 @@ async function sendCommand(commandId, input, projection) {
   }
   showProjection(body, "committed");
   const suid = commitSortableUniqueId(body);
+  if (options.refreshReservations === true && suid !== undefined) {
+    await refreshReservationsAfterCommit(suid);
+    return;
+  }
   if (suid === undefined || projection === undefined) {
     setStatus(message, "success");
     return;
@@ -152,12 +159,47 @@ function renderReservationRows(rows) {
 const RESERVATION_PAGE_SIZE = 20;
 const RESERVATIONS_ENDPOINT = "/api/read/reservations";
 
-async function fetchReservationPage(pageNumber) {
-  const response = await fetch(
-    `${RESERVATIONS_ENDPOINT}?pageNumber=${pageNumber}&pageSize=${RESERVATION_PAGE_SIZE}`,
-    { headers: { Accept: "application/json" } },
-  );
+async function fetchReservationPage(pageNumber, options = {}) {
+  const pageSize = options.pageSize ?? RESERVATION_PAGE_SIZE;
+  const response = options.waitForSortableUniqueId === undefined
+    ? await fetch(
+      `${RESERVATIONS_ENDPOINT}?pageNumber=${pageNumber}&pageSize=${pageSize}${options.newestFirst === true ? "&newestFirst=true" : ""}`,
+      { headers: { Accept: "application/json" } },
+    )
+    : await requestPostCommitReservationList(fetch, options.waitForSortableUniqueId);
   return reservationListView(response.status, await responseBody(response));
+}
+
+/**
+ * Reserve/cancel completes through exactly one list-query carrying the commit
+ * SUID. The runtime owns the bounded wait; this browser path deliberately
+ * does not retry or poll after a 504.
+ */
+async function refreshReservationsAfterCommit(commitSuid) {
+  setQueryState(reservationsState, "Refreshing reservations after committed change…", "pending");
+  try {
+    const view = await fetchReservationPage(1, { waitForSortableUniqueId: commitSuid });
+    if (view.kind === "error") {
+      renderReservationRows([]);
+      if (view.status === 504 || view.code === "timeout") {
+        setQueryState(reservationsState, "Reservations are still catching up. Use Refresh to read the latest list.", "timeout");
+      } else {
+        setQueryState(reservationsState, `Error: ${view.error}`, "error");
+      }
+      return;
+    }
+    setReadHead(reservationsHead, view.readHead);
+    const newestFirst = view.rows.slice(0, RESERVATION_PAGE_SIZE);
+    renderReservationRows(newestFirst);
+    setQueryState(
+      reservationsState,
+      view.kind === "empty" ? "No reservations found." : `${view.totalCount} reservation(s) — showing newest ${newestFirst.length}`,
+      view.kind === "empty" ? "empty" : "ready",
+    );
+  } catch (error) {
+    renderReservationRows([]);
+    setQueryState(reservationsState, `Error: ${error instanceof Error ? error.message : "Network request failed"}`, "error");
+  }
 }
 
 async function loadReservations() {
@@ -247,7 +289,7 @@ reservationForm.addEventListener("submit", (event) => {
     roomId: form.get("roomId"),
     reservationId: form.get("reservationId"),
     userId: form.get("userId"),
-  }, { kind: "reservation", id: form.get("reservationId") });
+  }, { kind: "reservation", id: form.get("reservationId") }, { refreshReservations: true });
 });
 
 cancelForm.addEventListener("submit", (event) => {
@@ -255,7 +297,7 @@ cancelForm.addEventListener("submit", (event) => {
   const form = new FormData(cancelForm);
   void sendCommand("cancel-reservation", {
     reservationId: form.get("reservationId"),
-  }, { kind: "reservation", id: form.get("reservationId") });
+  }, { kind: "reservation", id: form.get("reservationId") }, { refreshReservations: true });
 });
 
 reservationsRefresh.addEventListener("click", () => {

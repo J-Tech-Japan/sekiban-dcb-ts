@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw source migration import.
 import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw source migration import.
+import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
 // @ts-expect-error Vite raw source import.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw source import.
@@ -12,6 +14,10 @@ import unsafeMigration from "../migrations/mv/0002_unsafe_window_materialized_vi
 import hardeningMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
 // @ts-expect-error Vite raw source import.
 import failureMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
+// @ts-expect-error Vite raw source migration import.
+import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
+// @ts-expect-error Vite raw source migration import.
+import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView";
 import { processDeliveryCore, type DeliveryCoreResult, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
@@ -294,9 +300,9 @@ async function runBoundary(boundary: Boundary, options: {
 describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
   beforeAll(async () => {
     const pipeline = database("D1");
-    await pipeline.batch(statements(pipeline, `${pipelineMigration as string}\n${identityMigration as string}`));
+    await pipeline.batch(statements(pipeline, `${pipelineMigration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`));
     const mv = database("D1_MV");
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
       await mv.batch(statements(mv, migration as string));
     }
   });

@@ -8,6 +8,8 @@ import { beforeAll } from "vitest";
 import migration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw asset import
 import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw asset import
+import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
 import { runPipelineContract } from "../scripts/store-contract.mjs";
 import { createD1StoreProvider, D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/d1";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -43,7 +45,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
     // The test harness does not apply Wrangler migrations automatically. The
     // fixture applies the committed versioned migration once; production
     // deploys use `wrangler d1 migrations apply`, never runtime DDL.
-    const migrationText = `${migration as string}\n${identityMigration as string}`;
+    const migrationText = `${migration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`;
     const statements: string[] = migrationText.replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((statement) => statement.trim())
@@ -274,6 +276,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_lag_estimates",
       "serialized_dcb_pending_arrivals",
       "serialized_dcb_projection_checkpoints",
+      "serialized_dcb_wait_target_incidents",
     ]);
     const eventSql = await database().prepare(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_events'",

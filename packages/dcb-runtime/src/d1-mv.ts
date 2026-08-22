@@ -16,6 +16,7 @@ export type {
   MaterializedViewPromoteInput,
   MaterializedViewQueryOptions,
   MaterializedViewRow,
+  MaterializedViewWaitForState,
   MaterializedViewStore,
   MaterializedViewStoreErrorCode,
   MaterializedViewStoreOperation,

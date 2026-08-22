@@ -181,12 +181,22 @@ async function readApplicationQuery(
   if (!isReservations && !isRoomQuery) return json({ error: "Query route was not found", code: "not_found" }, 404);
 
   let queryParams: Record<string, unknown>;
+  let waitForSortableUniqueId: string | undefined;
   if (isReservations) {
     const pageNumber = positiveInteger(url.searchParams.get("pageNumber"), "pageNumber", 1);
     if (pageNumber instanceof Response) return pageNumber;
     const pageSize = positiveInteger(url.searchParams.get("pageSize"), "pageSize", 20);
     if (pageSize instanceof Response) return pageSize;
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize };
+    const newestFirst = url.searchParams.get("newestFirst");
+    if (newestFirst !== null && newestFirst !== "true" && newestFirst !== "false") {
+      return json({ error: "newestFirst must be true or false", code: "validation_error" }, 400);
+    }
+    const requestedWait = url.searchParams.get("waitForSortableUniqueId");
+    if (requestedWait !== null && requestedWait.length === 0) {
+      return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
+    }
+    waitForSortableUniqueId = requestedWait ?? undefined;
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
   } else {
     const roomId = url.searchParams.get("roomId");
     queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
@@ -198,7 +208,11 @@ async function readApplicationQuery(
   const response = await runtimeFetcher(env, ctx, runtimeHandler).fetch("https://runtime.internal/api/sekiban/serialized/" + (isReservations ? "list-query" : "query"), {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({ queryType, queryParamsJson: JSON.stringify(queryParams) }),
+    body: JSON.stringify({
+      queryType,
+      queryParamsJson: JSON.stringify(queryParams),
+      ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
+    }),
   });
   return relayRuntimeJson(response);
 }

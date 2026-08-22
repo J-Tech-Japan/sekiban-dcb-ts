@@ -6,6 +6,12 @@ import migration0001 from "../migrations/mv/0001_materialized_views.sql?raw";
 import migration0002 from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0003 from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0004 from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0005 from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import fixture from "./fixtures/g23-csharp-fixture.generated.json";
 // @ts-expect-error Vite raw asset import preserves the committed C# generator bytes.
 import fixtureBytes from "./fixtures/g23-csharp-fixture.generated.json?raw";
@@ -74,6 +80,9 @@ describe("SDT-G23 unsafe-window MV core", () => {
     try { await database().prepare("SELECT 1 FROM mv_unsafe_rows LIMIT 1").all(); } catch { upgradeSawMissingUnsafeTable = true; }
     await database().batch(statements(migration0002 as string));
     await database().batch(statements(migration0003 as string));
+    await database().batch(statements(migration0004 as string));
+    await database().batch(statements(migration0005 as string));
+    await database().batch(statements(migration0006 as string));
   });
 
   it("upgrades a G20 database with 0001 already applied by applying deployable 0002 only", async () => {

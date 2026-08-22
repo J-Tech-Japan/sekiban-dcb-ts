@@ -26,6 +26,8 @@
     "deploy:g26:topology": "bash scripts/deploy/g26-deploy-topology.sh",
     "deploy:g29:witness": "bash scripts/deploy/g29-deploy-witness.sh",
     "measure:g29": "node scripts/deploy/g29-measure.mjs",
+    "deploy:g31:witness": "bash scripts/deploy/g31-deploy-witness.sh",
+    "measure:g31": "node scripts/deploy/g31-measure.mjs",
     "e2e:g15": "python3 scripts/deploy/g15-e2e.py",
     "e2e:g15:local": "bash scripts/deploy/g15-local-e2e.sh",
     "e2e:g16": "python3 scripts/deploy/g15-e2e.py --include-query-views",
@@ -90,12 +92,16 @@
   "test:g29:witness:forced-red": "npm run test:g29:witness && node -e \"if (process.env.SDT_G29_WITNESS_FORCE_FAILURE === '1') throw new Error('SDT-G29 witness forced-red CI wiring proof')\"",
   "test:g29:candidate": "node scripts/g29-candidate-check.mjs --self-test && node scripts/g29-candidate-check.mjs",
   "test:g29:candidate:forced-red": "npm run test:g29:candidate",
+  "test:g31": "npm run build:packages && vitest run --config vitest.config.ts test/g31-waitfor.spec.ts test/g31-sample.spec.ts test/g31-witness.spec.ts && node scripts/g31-waitfor-check.mjs",
+  "test:g31:forced-red": "npm run test:g31 && node -e \"if (process.env.SDT_G31_FORCE_FAILURE === '1') throw new Error('SDT-G31 forced-red CI wiring proof')\"",
+  "test:g31:candidate": "node scripts/g31-candidate-check.mjs --self-test && node scripts/g31-candidate-check.mjs",
+  "test:g31:candidate:forced-red": "npm run test:g31:candidate",
     "test:g26:topology": "vitest run --config vitest.g24-deploy.config.ts test/g26-topology.spec.mjs",
     "test:g26:forced-red": "npm run test:g26 && node -e \"if (process.env.SDT_G26_FORCE_FAILURE === '1') throw new Error('SDT-G26 forced-red CI wiring proof')\"",
     "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
     "build:g20": "npm run build:packages && wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/g20-cloudflare-build --outfile .artifacts/g20-cloudflare-build/worker.js --metafile .artifacts/g20-cloudflare-build/bundle-meta.json",
     "test:watch": "vitest --config vitest.config.ts",
-    "check": "npm run lint && npm run typecheck && npm run test:g28:compile-fail && npm run test:g28:boundaries && npm run test:g28:boundary:source && npm run test:g28:boundary:negative && npm run test:g28:boundary:package && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g26 && npm run test:g27 && npm run test:g28 && npm run test:g29:domain-source && npm run test:g29:authoring-doc && npm run test:g29:mapping && npm run test:g29:delivery && npm run test:g29:diagnostics && npm run test:g29:compatibility && npm run test:g29:sample && npm run test:g26:topology && npm run test:g20:candidate && npm run test:g29:candidate"
+    "check": "npm run lint && npm run typecheck && npm run test:g28:compile-fail && npm run test:g28:boundaries && npm run test:g28:boundary:source && npm run test:g28:boundary:negative && npm run test:g28:boundary:package && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g26 && npm run test:g27 && npm run test:g28 && npm run test:g29:domain-source && npm run test:g29:authoring-doc && npm run test:g29:mapping && npm run test:g29:delivery && npm run test:g29:diagnostics && npm run test:g29:compatibility && npm run test:g29:sample && npm run test:g31 && npm run test:g26:topology && npm run test:g20:candidate && npm run test:g29:candidate && npm run test:g31:candidate"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",

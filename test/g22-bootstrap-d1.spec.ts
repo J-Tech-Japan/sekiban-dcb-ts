@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import migration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw asset import keeps migration execution tied to the committed SQL.
 import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
+// @ts-expect-error Vite raw asset import keeps migration execution tied to the committed SQL.
+import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
 import { createD1BootstrapAdapter, D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/d1";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { runG22BootstrapProviderContract } from "./helpers/g22-bootstrap-provider-contract";
@@ -17,7 +19,7 @@ function database(): D1Database {
 
 describe("SDT-G22 D1 bootstrap provider adapter", () => {
   beforeAll(async () => {
-    const statements = `${migration as string}\n${identityMigration as string}`.replace(/^\s*--.*$/gm, "").split(";").map((statement) => statement.trim()).filter(Boolean);
+    const statements = `${migration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`.replace(/^\s*--.*$/gm, "").split(";").map((statement) => statement.trim()).filter(Boolean);
     await database().batch(statements.map((statement) => database().prepare(statement)));
   });
 
