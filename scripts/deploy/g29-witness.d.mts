@@ -27,7 +27,7 @@ export interface G29DataPreservation {
 }
 
 export function assertPreWitnessSetPreserved(before: G29WitnessSnapshot["data"], after: G29WitnessSnapshot["data"]): G29DataPreservation;
-export function assertCaptureWitnessProfile(witness: G29WitnessSnapshot, expected: G29WitnessExpected, allowLegacyG26Fallback?: boolean): { readonly profile: "g29" | "legacy-g26"; readonly identitySource: unknown };
-export function assertWitnessStable(before: G29WitnessSnapshot, after: G29WitnessSnapshot, expected: G29WitnessExpected, beforeExpected?: G29WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataPreservation: G29DataPreservation };
+export function shouldRetryConformanceStatus(status: number): boolean;
+export function assertWitnessStable(before: G29WitnessSnapshot, after: G29WitnessSnapshot, expected: G29WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataPreservation: G29DataPreservation };
 export function assertFinalWitnessIdentity(sourceCommit: string, pre: G29WitnessSnapshot, post: G29WitnessSnapshot): { readonly preIdentitySource: unknown; readonly postSourceCommit: unknown; readonly match: true };
 export function assertSourceCommit(witness: G29WitnessSnapshot, sourceCommit: string): { readonly sourceCommit: string; readonly match: true };

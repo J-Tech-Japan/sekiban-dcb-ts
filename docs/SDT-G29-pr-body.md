@@ -79,10 +79,11 @@ witness rows/heads/counts/lists, preserved worker/service/D1/DO/Queue identity,
 and per-cycle command-start/response/visible timestamps with raw status beside
 response→visible versus total latency distributions. The live deployment
 script uses a protected file-backed conformance token (creating a temporary
-rotation value when one is not supplied) and aborts before deployment when the
-declared pre-witness profile is not available. The only legacy pre-witness is
-the authenticated C3 G26 Room-fast/Reservation-queued profile; the post-witness
-must use G29 and report the sealed candidate commit.
+rotation value when one is not supplied) as part of the final primary C
+deployment. The pre-witness is public rows/heads/counts/lists plus raw-V1
+closure, so it never needs the prior token or creates an intermediate
+secret-only deployment. The post-witness must use G29 and report the sealed
+candidate commit.
 
 ### F9 final-C reset
 

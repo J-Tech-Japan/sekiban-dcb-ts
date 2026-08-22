@@ -87,12 +87,14 @@ preflight → remote migration read → pre-witness → checked-in additive
 migrations → receiver deploy → primary deploy → post-witness/identity
 comparison → fixed-N measurement. When an intentional policy transition is
 part of the fix, the comparison supplies separate before/after topology
-fixtures. A pre-deploy C3 Worker may use only the authenticated
-`/conformance/v1/g26-config` fallback with its declared
-Room-fast/Reservation-queued profile; the post-witness must use
-`/conformance/v1/g29-config` and report the sealed candidate commit. This
-permits the declared policy delta while worker/service/D1/Queue/DO identity,
-raw V1 closure, and the pre-captured data witness remain strict. It never
+fixtures. The pre-witness is intentionally public data only, preserving its
+rows, heads, counts, lists, and raw-V1 closure without requiring the prior
+bearer token. The final primary C deployment supplies the rotated token from a
+protected `--secrets-file`; the post-witness must use
+`/conformance/v1/g29-config` and report the sealed candidate commit. Thus
+worker/service/D1/Queue/DO identity, raw V1 closure, and the pre-captured data
+witness remain strict without creating an intermediate secret-only Worker
+version. It never
 applies a destructive migration, reseeds data, creates a fresh service
 identity, or emits a secret. The evidence reports command-start→response,
 response→visible, and command-start→visible distributions independently.

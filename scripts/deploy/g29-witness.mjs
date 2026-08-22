@@ -24,14 +24,39 @@ async function requestJson(baseUrl, path, init = {}) {
   return { status: response.status, body, raw };
 }
 
-async function readConformance(baseUrl, token) {
-  for (const path of ["/conformance/v1/g29-config", "/conformance/v1/g26-config"]) {
-    const result = await requestJson(baseUrl, `${path}?g29_witness=${crypto.randomUUID()}`, {
+function positiveInteger(name, value, fallback) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${name} must be a positive integer`);
+  return parsed;
+}
+
+function nonNegativeInteger(name, value, fallback) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${name} must be a non-negative integer`);
+  return parsed;
+}
+
+export function shouldRetryConformanceStatus(status) {
+  return status === 403 || status === 404;
+}
+
+async function readConformance(baseUrl, token, { attempts = 1, delayMs = 0 } = {}) {
+  let lastStatus = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await requestJson(baseUrl, `/conformance/v1/g29-config?g29_witness=${crypto.randomUUID()}`, {
       headers: { authorization: `Bearer ${token}` },
     });
-    if (result.status === 200 && result.body !== null && typeof result.body === "object" && !Array.isArray(result.body)) return { endpoint: path, body: result.body };
+    if (result.status === 200 && result.body !== null && typeof result.body === "object" && !Array.isArray(result.body)) {
+      return { endpoint: "/conformance/v1/g29-config", body: result.body };
+    }
+    lastStatus = result.status;
+    if (attempt < attempts && shouldRetryConformanceStatus(result.status)) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      continue;
+    }
+    break;
   }
-  throw new Error("authenticated G29/G26 conformance witness failed");
+  throw new Error(`authenticated G29 conformance witness failed (HTTP ${String(lastStatus)})`);
 }
 
 function parseItems(body) {
@@ -185,8 +210,8 @@ async function captureRawV1Witness(baseUrl) {
   return { status: result.status };
 }
 
-export async function captureWitness(baseUrl, token, expected) {
-  const captured = await readConformance(baseUrl, token);
+export async function captureWitness(baseUrl, token, expected, retry = {}) {
+  const captured = await readConformance(baseUrl, token, retry);
   const body = captured.body;
   const requiredTopologyFields = ["worker", "serviceId", "pipelineDatabaseId", "materializedViewDatabaseId", "queue", "generation"];
   const identityVerified = captured.endpoint === "/conformance/v1/g29-config" && requiredTopologyFields.every((field) => typeof body[field] === "string" && body[field].length > 0);
@@ -219,24 +244,31 @@ export async function captureWitness(baseUrl, token, expected) {
   });
 }
 
+export async function capturePublicPreWitness(baseUrl) {
+  const data = await captureDataWitness(baseUrl);
+  const rawV1 = await captureRawV1Witness(baseUrl);
+  if (rawV1.status !== 404) throw new Error(`G29 raw V1 public surface expected 404, got ${rawV1.status}`);
+  return Object.freeze({
+    capturedAt: new Date().toISOString(),
+    endpoint: null,
+    identitySource: "public-pre-deploy-data",
+    identityVerified: false,
+    sourceCommit: null,
+    data,
+    rawV1,
+  });
+}
+
 function isVerifiedG29Witness(witness) {
   return witness?.identityVerified === true &&
     witness?.endpoint === "/conformance/v1/g29-config" &&
     witness?.identitySource === "remote-g29-conformance";
 }
 
-function isLegacyG26Witness(witness) {
+function isPublicPreWitness(witness) {
   return witness?.identityVerified === false &&
-    witness?.endpoint === "/conformance/v1/g26-config" &&
-    witness?.identitySource === "legacy-g26-conformance-fallback";
-}
-
-function legacyG26Expected(expected) {
-  return {
-    ...expected,
-    allowedViews: ["RoomProjector"],
-    domainViewDeliveryClasses: { RoomProjector: "immediate-preferred", ReservationProjector: "queued" },
-  };
+    witness?.endpoint === null &&
+    witness?.identitySource === "public-pre-deploy-data";
 }
 
 function assertExpectedFields(witness, expected, phase) {
@@ -245,26 +277,15 @@ function assertExpectedFields(witness, expected, phase) {
   }
 }
 
-export function assertCaptureWitnessProfile(witness, expected, allowLegacyG26Fallback = false) {
-  if (isVerifiedG29Witness(witness)) {
-    assertExpectedFields(witness, expected, "capture");
-    return Object.freeze({ profile: "g29", identitySource: witness.identitySource });
+export function assertWitnessStable(before, after, expected) {
+  const publicPreWitness = isPublicPreWitness(before);
+  if (!publicPreWitness) {
+    assertExpectedFields(before, expected, "before");
+    if (!isVerifiedG29Witness(before)) throw new Error("G29 pre-witness did not verify the permitted public or G29 topology endpoint");
   }
-  if (allowLegacyG26Fallback && isLegacyG26Witness(witness)) {
-    assertExpectedFields(witness, legacyG26Expected(expected), "legacy pre-capture");
-    return Object.freeze({ profile: "legacy-g26", identitySource: witness.identitySource });
-  }
-  throw new Error("G29 witness requires /conformance/v1/g29-config unless the pre-witness explicitly permits the authenticated G26 fallback");
-}
-
-export function assertWitnessStable(before, after, expected, beforeExpected = expected) {
-  // A pre-deploy C3 Worker exposes only the authenticated G26 topology
-  // endpoint. Its declared C3 delivery profile is the sole permitted legacy
-  // shape; a full G29 pre-witness instead uses the final profile directly.
-  assertExpectedFields(before, isLegacyG26Witness(before) ? beforeExpected : expected, "before");
   assertExpectedFields(after, expected, "after");
-  if (!isVerifiedG29Witness(after) || (!isVerifiedG29Witness(before) && !isLegacyG26Witness(before))) throw new Error("G29 witness did not verify the permitted pre/post topology endpoints");
-  if (before.worker !== after.worker || before.serviceId !== after.serviceId || before.pipelineDatabaseId !== after.pipelineDatabaseId || before.materializedViewDatabaseId !== after.materializedViewDatabaseId || before.queue !== after.queue || before.generation !== after.generation) {
+  if (!isVerifiedG29Witness(after)) throw new Error("G29 post-witness did not verify the G29 topology endpoint");
+  if (!publicPreWitness && (before.worker !== after.worker || before.serviceId !== after.serviceId || before.pipelineDatabaseId !== after.pipelineDatabaseId || before.materializedViewDatabaseId !== after.materializedViewDatabaseId || before.queue !== after.queue || before.generation !== after.generation)) {
     throw new Error("G29 witness detected a namespace, service, queue, or generation change");
   }
   if (before.rawV1?.status !== 404 || after.rawV1?.status !== 404) throw new Error("G29 public V1 surface is not closed");
@@ -275,7 +296,7 @@ export function assertWitnessStable(before, after, expected, beforeExpected = ex
 export function assertFinalWitnessIdentity(sourceCommit, pre, post) {
   if (typeof sourceCommit !== "string" || sourceCommit.length === 0) throw new Error("G29 final witness source commit is required");
   if (!isVerifiedG29Witness(post)) throw new Error("G29 final post-witness did not verify the G29 topology endpoint");
-  if (!isVerifiedG29Witness(pre) && !isLegacyG26Witness(pre)) throw new Error("G29 final pre-witness did not verify an allowed topology endpoint");
+  if (!isVerifiedG29Witness(pre) && !isPublicPreWitness(pre)) throw new Error("G29 final pre-witness did not verify the public data or G29 topology endpoint");
   if (post.sourceCommit !== sourceCommit) throw new Error(`G29 deployed runtime sourceCommit mismatch: expected ${sourceCommit}, observed ${String(post.sourceCommit)}`);
   return Object.freeze({ preIdentitySource: pre.identitySource, postSourceCommit: post.sourceCommit, match: true });
 }
@@ -293,10 +314,8 @@ async function main() {
     const before = JSON.parse(readFileSync(required("--before", argument("--before")), "utf8"));
     const after = JSON.parse(readFileSync(required("--after", argument("--after")), "utf8"));
     const expected = JSON.parse(readFileSync(required("--expected", argument("--expected")), "utf8"));
-    const beforeExpectedPath = argument("--before-expected", undefined);
-    const beforeExpected = beforeExpectedPath === undefined ? expected : JSON.parse(readFileSync(beforeExpectedPath, "utf8"));
     const sourceCommit = argument("--source-commit", undefined);
-    const stable = assertWitnessStable(before, after, expected, beforeExpected);
+    const stable = assertWitnessStable(before, after, expected);
     const source = sourceCommit === undefined ? { sourceCommit: after.sourceCommit ?? null, sourceCommitChecked: false } : assertSourceCommit(after, sourceCommit);
     console.log(JSON.stringify({ ...stable, ...source }, null, 2));
     return;
@@ -306,9 +325,17 @@ async function main() {
     console.log(JSON.stringify(assertSourceCommit(witness, required("--source-commit", argument("--source-commit"))), null, 2));
     return;
   }
+  const baseUrl = required("--base-url", argument("--base-url", process.env.G29_BASE_URL));
+  if (mode === "pre-deploy-public") {
+    const witness = await capturePublicPreWitness(baseUrl);
+    writeFileSync(output, `${JSON.stringify(witness, null, 2)}\n`, "utf8");
+    console.log(JSON.stringify(witness, null, 2));
+    return;
+  }
   const tokenFile = required("--token-file", argument("--token-file", process.env.G29_CONFORMANCE_TOKEN_FILE));
   const token = readFileSync(tokenFile, "utf8").trim();
-  const allowLegacyG26Fallback = process.argv.includes("--allow-legacy-g26-fallback");
+  const conformanceRetryAttempts = positiveInteger("--conformance-retry-attempts", argument("--conformance-retry-attempts", "1"), 1);
+  const conformanceRetryDelayMs = nonNegativeInteger("--conformance-retry-delay-ms", argument("--conformance-retry-delay-ms", "0"), 0);
   const expected = {
     worker: required("--worker", argument("--worker", "sekiban-dcb-meeting-room-cloudflare-only")),
     serviceId: required("--service-id", argument("--service-id", process.env.G29_SERVICE_ID)),
@@ -326,8 +353,9 @@ async function main() {
     queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
     generation: "v2",
   };
-  const witness = await captureWitness(required("--base-url", argument("--base-url", process.env.G29_BASE_URL)), token, expected);
-  assertCaptureWitnessProfile(witness, expected, allowLegacyG26Fallback);
+  const witness = await captureWitness(baseUrl, token, expected, { attempts: conformanceRetryAttempts, delayMs: conformanceRetryDelayMs });
+  if (!isVerifiedG29Witness(witness)) throw new Error("G29 post-witness requires /conformance/v1/g29-config");
+  assertExpectedFields(witness, expected, "capture");
   writeFileSync(output, `${JSON.stringify(witness, null, 2)}\n`, "utf8");
   console.log(JSON.stringify(witness, null, 2));
 }

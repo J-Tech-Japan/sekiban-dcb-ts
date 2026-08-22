@@ -96,7 +96,7 @@ function buildEvidence(sourceCommit, pre, post, measurement, manifest, receiverT
       bookkeeping: "R'''' changes only this evidence document and appends C'''' once to the retained-candidate fetch list.",
       selfReference: false,
       deploymentRequired: true,
-      witnessOrder: ["preflight", "token-rotation", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
+      witnessOrder: ["preflight", "pre-witness", "receiver-consumer-check-or-remove", "receiver-deploy", "primary-deploy-with-token-rotation", "post-witness", "source-commit-assertion", "five-endpoint-conformance", "raw-v1-404", "fixed-N=10"],
     },
     finalWitness: {
       finding: "F9",

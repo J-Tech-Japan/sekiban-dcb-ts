@@ -22,7 +22,6 @@ readonly QUEUE_NAME="sekiban-dcb-meeting-room-cloudflare-outbox"
 readonly RECEIVER_WORKER="sekiban-dcb-meeting-room-doorbell"
 readonly PRIMARY_WORKER="sekiban-dcb-meeting-room-cloudflare-only"
 readonly EXPECTED_FILE="${REPO_ROOT}/.artifacts/g29-witness-expected.json"
-readonly BEFORE_EXPECTED_FILE="${REPO_ROOT}/.artifacts/g29-witness-before-expected.json"
 readonly PRE_FILE="${REPO_ROOT}/.artifacts/g29-pre-witness.json"
 readonly POST_FILE="${REPO_ROOT}/.artifacts/g29-post-witness.json"
 readonly CONSUMERS_BEFORE_FILE="${REPO_ROOT}/.artifacts/g29-receiver-consumers-before.json"
@@ -36,7 +35,7 @@ if [[ ! "${SERVICE_ID}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
   exit 2
 fi
 mkdir -p .artifacts
-node -e 'const fs=require("fs"); const final={worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[3],viewCount:2,allowedViews:["RoomProjector","ReservationProjector"],domainDeliveryClass:"immediate-preferred",resolvedDeliveryClass:"immediate-preferred",domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"immediate-preferred"},directDoorbell:true,receiverMode:"separate",degradation:"queued-degraded",maxServiceBindingInvocations:32,pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2"}; const legacy={...final,allowedViews:["RoomProjector"],domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"queued"}}; fs.writeFileSync(process.argv[1],JSON.stringify(final,null,2)+"\n"); fs.writeFileSync(process.argv[2],JSON.stringify(legacy,null,2)+"\n")' "${EXPECTED_FILE}" "${BEFORE_EXPECTED_FILE}" "${SERVICE_ID}"
+node -e 'const fs=require("fs"); fs.writeFileSync(process.argv[1], JSON.stringify({worker:"sekiban-dcb-meeting-room-cloudflare-only",serviceId:process.argv[2],viewCount:2,allowedViews:["RoomProjector","ReservationProjector"],domainDeliveryClass:"immediate-preferred",resolvedDeliveryClass:"immediate-preferred",domainViewDeliveryClasses:{RoomProjector:"immediate-preferred",ReservationProjector:"immediate-preferred"},directDoorbell:true,receiverMode:"separate",degradation:"queued-degraded",maxServiceBindingInvocations:32,pipelineDatabaseId:"3c3b1641-7969-4d72-97a9-2ea65085c9bb",materializedViewDatabaseId:"5db45136-f1dd-4f4d-bfe3-b6328193a1ac",queue:"sekiban-dcb-meeting-room-cloudflare-outbox",generation:"v2"},null,2)+"\n")' "${EXPECTED_FILE}" "${SERVICE_ID}"
 
 # Phase 1: checked-in config and bundle preflight. No deployment or data write.
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}"
@@ -48,6 +47,16 @@ if [[ "${G29_DEPLOY_LIVE:-0}" != "1" ]]; then
   printf 'G29 preflight PASS; set G29_DEPLOY_LIVE=1 with G29_CONFORMANCE_TOKEN_FILE for witnessed deploy\n'
   exit 0
 fi
+
+# Phase 2: pre-witness is intentionally public data only. The existing token
+# is not required or read: these are the rows, heads, counts, lists, and raw
+# V1 closure that must survive the final-C deployment.
+node scripts/deploy/g29-witness.mjs --mode pre-deploy-public --base-url "${BASE_URL}" --output "${PRE_FILE}"
+
+# Phase 3: the sealed final C is always deployed after the pre-witness. A
+# fresh bearer token is supplied only as part of the primary final-C deploy;
+# never use `wrangler secret put`, which would create an intermediate Worker
+# version before the witness ordering is complete.
 TOKEN_FILE="${G29_CONFORMANCE_TOKEN_FILE:-}"
 if [[ -z "${TOKEN_FILE}" ]]; then
   TOKEN_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g29-token.XXXXXX")"
@@ -55,22 +64,13 @@ if [[ -z "${TOKEN_FILE}" ]]; then
   openssl rand -base64 48 | tr -d '\n' > "${TOKEN_FILE}"
 fi
 test -f "${TOKEN_FILE}"
-trap 'rm -f "${TOKEN_FILE}"' EXIT
+SECRETS_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g29-secrets.XXXXXX")"
+chmod 600 "${SECRETS_FILE}"
+trap 'rm -f "${TOKEN_FILE}" "${SECRETS_FILE}"' EXIT
+node -e 'const fs=require("fs"); const token=fs.readFileSync(process.argv[1],"utf8").trim(); if(token.length===0) throw new Error("G29 conformance token file is empty"); fs.writeFileSync(process.argv[2],JSON.stringify({CONFORMANCE_TOKEN:token})+"\n",{mode:0o600})' "${TOKEN_FILE}" "${SECRETS_FILE}"
 
-# Rotate the conformance secret from protected file input.  The value is never
-# placed in arguments, logs, or evidence.  This changes only the bearer secret;
-# it does not touch D1, Durable Objects, Queue state, or the service identity.
-"${WRANGLER_BIN}" secret put CONFORMANCE_TOKEN --name "sekiban-dcb-meeting-room-cloudflare-only" < "${TOKEN_FILE}"
-
-# Phase 2: pre-witness is captured before either Worker is changed. The
-# deployed C3 runtime has the authenticated G26 endpoint and may expose only
-# its declared Room-fast/Reservation-queued profile; this explicit flag is
-# restricted to the pre-witness invocation.
-node scripts/deploy/g29-witness.mjs --allow-legacy-g26-fallback --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${PRE_FILE}"
-
-# Phase 3: the sealed final C is always deployed after the pre-witness.  The
-# migration commands are retained as checked-in no-op-or-additive checks; no
-# data reset, new service identity, or destructive migration is permitted.
+# The migration commands are retained as checked-in no-op-or-additive checks;
+# no data reset, new service identity, or destructive migration is permitted.
 "${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-pipeline --cwd "${D1_CONFIG_DIR}" --config "${D1_CONFIG}" --remote
 "${WRANGLER_BIN}" d1 migrations apply sekiban-dcb-meeting-room-cloudflare-mv --cwd "${D1_CONFIG_DIR}" --config "${D1_CONFIG}" --remote
 
@@ -83,13 +83,13 @@ if node scripts/deploy/g29-receiver-consumer-topology.mjs --mode needs-removal -
   RECEIVER_CONSUMER_REMOVED=true
 fi
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --keep-vars --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}" --message "SDT-G29 witnessed receiver redeploy ${SERVICE_ID}"
-"${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --keep-vars --strict --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}" --message "SDT-G29 witnessed primary redeploy ${SERVICE_ID}"
+"${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" --var "SDT_SERVICE_ID:${SERVICE_ID}" --var "G29_SOURCE_COMMIT:${SOURCE_COMMIT}" --message "SDT-G29 witnessed primary redeploy ${SERVICE_ID}"
 "${WRANGLER_BIN}" queues consumer worker list "${QUEUE_NAME}" --json > "${CONSUMERS_AFTER_FILE}"
 node scripts/deploy/g29-receiver-consumer-topology.mjs --mode record --queue "${QUEUE_NAME}" --before "${CONSUMERS_BEFORE_FILE}" --after "${CONSUMERS_AFTER_FILE}" --receiver "${RECEIVER_WORKER}" --primary "${PRIMARY_WORKER}" --removed "${RECEIVER_CONSUMER_REMOVED}" --output "${CONSUMER_TOPOLOGY_FILE}"
 
 # Phase 4: post-witness must prove the same identity/topology before any fixed-N command.
-node scripts/deploy/g29-witness.mjs --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${POST_FILE}"
-node scripts/deploy/g29-witness.mjs --mode compare --before "${PRE_FILE}" --after "${POST_FILE}" --expected "${EXPECTED_FILE}" --before-expected "${BEFORE_EXPECTED_FILE}" --source-commit "${SOURCE_COMMIT}"
+node scripts/deploy/g29-witness.mjs --conformance-retry-attempts 15 --conformance-retry-delay-ms 1000 --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --service-id "${SERVICE_ID}" --output "${POST_FILE}"
+node scripts/deploy/g29-witness.mjs --mode compare --before "${PRE_FILE}" --after "${POST_FILE}" --expected "${EXPECTED_FILE}" --source-commit "${SOURCE_COMMIT}"
 
 # Phase 5: fixed N is intentionally last and records response->visible apart
 # from total command->visible; total is never described as sub-second.

@@ -8,12 +8,11 @@
     "bookkeeping": "R'''' updates only this evidence document and appends the immutable C'''' once to the retained-candidate fetch list.",
     "preDeployOrder": [
       "config-and-bundle-preflight",
-      "token-rotation",
       "pre-witness",
       "checked-in-additive-migration-apply",
       "receiver-consumer-check-or-remove",
       "receiver-deploy",
-      "primary-deploy",
+      "primary-deploy-with-token-rotation",
       "post-witness",
       "source-commit-assertion",
       "five-endpoint-conformance",
@@ -32,7 +31,7 @@
       "packages/dcb-domain/src",
       "packages/dcb-runtime/src"
     ],
-    "configuration": "287fd89e6eb4b9641acee43ab7cd86bff4e4e49328bf5556b42dfde09683f94e",
+    "configuration": "fc6ff8eb0090d9f80b606621a03c049f3e5c000f292235f68947c4de87c6ac73",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",

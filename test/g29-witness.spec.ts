@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertCaptureWitnessProfile, assertFinalWitnessIdentity, assertSourceCommit, assertWitnessStable } from "../scripts/deploy/g29-witness.mjs";
+import { assertFinalWitnessIdentity, assertSourceCommit, assertWitnessStable, shouldRetryConformanceStatus } from "../scripts/deploy/g29-witness.mjs";
 import { summarizeMeasurements } from "../scripts/deploy/g29-measure.mjs";
 // @ts-expect-error JavaScript topology CLI is exercised directly by Vitest.
 import { assertPrimaryConsumerExclusive, needsReceiverConsumerRemoval } from "../scripts/deploy/g29-receiver-consumer-topology.mjs";
@@ -28,12 +28,6 @@ const expected = {
   generation: "v2",
 };
 
-const legacyExpected = {
-  ...expected,
-  allowedViews: ["RoomProjector"],
-  domainViewDeliveryClasses: { RoomProjector: "immediate-preferred", ReservationProjector: "queued" },
-};
-
 function witness() {
   return {
     ...expected,
@@ -53,14 +47,15 @@ function witness() {
   };
 }
 
-function legacyWitness() {
+function publicPreWitness() {
   return {
-    ...witness(),
-    ...legacyExpected,
-    endpoint: "/conformance/v1/g26-config",
-    identitySource: "legacy-g26-conformance-fallback",
+    capturedAt: "2026-08-22T00:00:00.000Z",
+    endpoint: null,
+    identitySource: "public-pre-deploy-data",
     identityVerified: false,
     sourceCommit: null,
+    data: structuredClone(witness().data),
+    rawV1: { status: 404 },
   };
 }
 
@@ -86,23 +81,23 @@ describe("SDT-G29 witnessed deploy and measurement oracles", () => {
     Reflect.deleteProperty(missingItems.data.reservationList.body, "itemsJson");
     expect(() => assertWitnessStable(witness(), missingItems, expected)).toThrow("items are missing");
     expect(() => assertWitnessStable(witness(), { ...witness(), rawV1: { status: 200 } }, expected)).toThrow("public V1");
-    expect(() => assertWitnessStable({ ...witness(), identityVerified: false }, witness(), expected)).toThrow("permitted pre/post topology");
+    expect(() => assertWitnessStable({ ...witness(), identityVerified: false }, witness(), expected)).toThrow("pre-witness");
     expect(assertSourceCommit(witness(), "c".repeat(40))).toEqual({ sourceCommit: "c".repeat(40), match: true });
     expect(() => assertSourceCommit(witness(), "d".repeat(40))).toThrow("sourceCommit mismatch");
   });
 
-  it("allows only the declared authenticated C3 G26 fallback before the C4 G29 deployment", () => {
-    const legacy = legacyWitness();
-    expect(assertCaptureWitnessProfile(legacy, expected, true)).toEqual({ profile: "legacy-g26", identitySource: "legacy-g26-conformance-fallback" });
-    expect(() => assertCaptureWitnessProfile(legacy, expected)).toThrow("explicitly permits");
-    expect(() => assertCaptureWitnessProfile({ ...legacy, allowedViews: ["ReservationProjector"] }, expected, true)).toThrow("legacy pre-capture");
-    expect(assertWitnessStable(legacy, witness(), expected, legacyExpected).stable).toBe(true);
-    expect(() => assertWitnessStable({ ...legacy, serviceId: "other-service" }, witness(), expected, legacyExpected)).toThrow("before");
-    expect(() => assertWitnessStable(legacy, { ...witness(), domainViewDeliveryClasses: legacyExpected.domainViewDeliveryClasses }, expected, legacyExpected)).toThrow("after");
-    expect(() => assertWitnessStable(legacy, { ...witness(), endpoint: "/conformance/v1/g26-config", identitySource: "legacy-g26-conformance-fallback", identityVerified: false }, expected, legacyExpected)).toThrow("permitted pre/post topology");
-    expect(assertFinalWitnessIdentity("c".repeat(40), legacy, witness())).toEqual({ preIdentitySource: "legacy-g26-conformance-fallback", postSourceCommit: "c".repeat(40), match: true });
-    expect(() => assertFinalWitnessIdentity("c".repeat(40), { ...legacy, identitySource: "untrusted" }, witness())).toThrow("pre-witness");
-    expect(() => assertFinalWitnessIdentity("d".repeat(40), legacy, witness())).toThrow("sourceCommit mismatch");
+  it("preserves a public pre-witness set and requires the authenticated final-C G29 post-witness", () => {
+    const pre = publicPreWitness();
+    expect(assertWitnessStable(pre, witness(), expected).stable).toBe(true);
+    expect(() => assertWitnessStable({ ...pre, identitySource: "untrusted" }, witness(), expected)).toThrow("before");
+    expect(() => assertWitnessStable(pre, { ...witness(), identityVerified: false }, expected)).toThrow("post-witness");
+    expect(assertFinalWitnessIdentity("c".repeat(40), pre, witness())).toEqual({ preIdentitySource: "public-pre-deploy-data", postSourceCommit: "c".repeat(40), match: true });
+    expect(() => assertFinalWitnessIdentity("c".repeat(40), { ...pre, endpoint: "/conformance/v1/g26-config" }, witness())).toThrow("pre-witness");
+    expect(() => assertFinalWitnessIdentity("d".repeat(40), pre, witness())).toThrow("sourceCommit mismatch");
+    expect(shouldRetryConformanceStatus(403)).toBe(true);
+    expect(shouldRetryConformanceStatus(404)).toBe(true);
+    expect(shouldRetryConformanceStatus(200)).toBe(false);
+    expect(shouldRetryConformanceStatus(500)).toBe(false);
   });
 
   it("keeps three timing distributions and status/fallback raw evidence", () => {
@@ -134,9 +129,10 @@ describe("SDT-G29 witnessed deploy and measurement oracles", () => {
     expect(deployScriptText).not.toContain("--config samples/meeting-room/wrangler.cloudflare-only.jsonc --remote");
     expect(deployScriptText).not.toContain("G29_ACCEPT_DEPLOYED_C");
     expect(deployScriptText).toContain('--primary-deploy-mode "deployed-final-c"');
-    expect(deployScriptText).toContain("--allow-legacy-g26-fallback");
-    expect(deployScriptText.match(/--allow-legacy-g26-fallback/g)).toHaveLength(1);
-    expect(deployScriptText).toContain('"${BEFORE_EXPECTED_FILE}"');
+    expect(deployScriptText).toContain("--mode pre-deploy-public");
+    expect(deployScriptText).toContain('--secrets-file "${SECRETS_FILE}"');
+    expect(deployScriptText).not.toContain("secret put CONFORMANCE_TOKEN");
+    expect(deployScriptText).toContain("--conformance-retry-attempts 15 --conformance-retry-delay-ms 1000");
     const primary = "sekiban-dcb-meeting-room-cloudflare-only";
     const receiver = "sekiban-dcb-meeting-room-doorbell";
     expect(needsReceiverConsumerRemoval([{ script: receiver }, { script: primary }], receiver, primary)).toBe(true);
