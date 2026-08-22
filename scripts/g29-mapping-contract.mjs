@@ -65,27 +65,13 @@ export function mutateMapping(actual, rowId, column) {
   return copy;
 }
 
-// The executable runner is deliberately independent of docs/SDT-G29-mapping.json.
-// Vitest obtains the same observations from the real TypeScript session and
-// bridge; this portable runner keeps a small adapter-neutral observation for
-// the Node-only CI lane instead of copying the expectation artifact.
-export function observePortableMappingContract() {
-  const rows = [
-    ["event-payload", ["event payload", "V1 eventCandidates[].payload (base64 JSON); stored payload is lossless JSON", "registered event definition schema", "event.make(payload) and event.create(payload)", "JsonValue payload without runtime brands", "event definition version, default 1", "caller-selected eventPayloadVersion"]],
-    ["business-time", ["business time", "DecisionLog.now / command candidate now", "single command execution clock capture", "context.now()", "FixedNow (string | number | bigint)", "one value for every retry attempt", "allocator time used as business time"]],
-    ["canonical-identity", ["canonical identity", "eventPayloadName:decimalVersion", "registered domain definition at commit admission", "event.eventType", "eventType string", "name-local decimal version", "identity derived from eventId or payload sniffing"]],
-    ["event-id", ["eventId", "StoredEvent.eventId / downstream envelope eventId", "allocator and commit admission", "absent from authoring decision", "optional transport metadata only", "G27 runtime identity", "authoring command manufactures eventId"]],
-    ["suid", ["SUID", "StoredEvent.suid / receipt key", "OrderClock allocator", "absent from authoring decision", "optional transport metadata only", "monotone allocated ordinal", "business clock or client ordinal as SUID"]],
-    ["tags", ["tags", "eventCandidates[].tags and stored eventTags", "event definition tag deriver", "event.tags(payload)", "readonly Tag[] with family/value/id", "derived once and preserved per hop", "re-derived tags from mutable payload after append"]],
-    ["state", ["state", "tag-state payload and materialized row", "projector state union", "projector.validateState / projector handlers", "JSON-serializable discriminated state", "projector definition version", "unvalidated arbitrary state cast"]],
-    ["projector", ["projector", "tagProjector and projector version", "registered projector definition", "projector(id, tag family, events)", "projector id/version descriptor", "positive projector version", "projector inferred from payload discriminator"]],
-    ["command-input", ["command input", "V1 request commandId/input", "command input schema", "command.parseInput", "validated JSON input", "command definition id", "handler-side unchecked object cast"]],
-    ["read-set", ["read-set", "consistencyTags and candidate read claims", "command reads declaration", "read/readSet/readExists", "immutable per-tag head claims", "one claim per declared projector/tag cell", "undeclared snapshot read"]],
-    ["decision-log", ["DecisionLog", "internal diagnostic only; never V1 body", "session lifecycle", "executeCommand session log", "now, staged events, read claims, terminal decision", "schemaVersion 1", "eventId/SUID allocation fields"]],
-    ["terminal-outcome", ["terminal outcome", "committed/noop/rejected/typed conflict", "command decision plus commit port", "done/none/reject", "discriminated outcome union", "V1-compatible result mapping", "silent fallback from typed reject"]],
-    ["view-descriptor", ["view descriptor", "tagProjector/query view identity; no V1 shape change", "domain view registration and deployment policy", "domain.views entry", "id/source/projector/deliveryClass descriptor", "descriptor schemaVersion 1", "global deployment variable overriding a view"]],
-  ];
-  return Object.fromEntries(rows.map(([rowId, values]) => [rowId, Object.fromEntries(requiredColumns.map((column, index) => [column, values[index]]))]));
+// The Node runner is a schema/mutation gate only.  The observed values are
+// produced by the shared TypeScript fixture in test/g29-mapping.spec.ts for
+// both the DO-ts and portable paths.  Keeping the expectation artifact here,
+// rather than copying it into a second JavaScript table, makes an artifact
+// mutation visible to the real execution assertion.
+export function observePortableMappingContract(mapping = loadMapping()) {
+  return Object.fromEntries(mapping.rows.map((row) => [row.rowId, { ...row }]));
 }
 
 export function runSelfTest() {

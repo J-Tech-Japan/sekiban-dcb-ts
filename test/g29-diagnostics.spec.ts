@@ -1,33 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { assertRawDiagnosticContract, diagnosticQuadrant, rawDiagnosticFields } from "../samples/meeting-room/src/raw-diagnostics";
 
-const fixture = {
-  rawSourceTimestamp: 100,
-  observedTimestamp: 120,
-  checkpoint: "suid-1",
-  head: "suid-2",
-  expectedVersion: 3,
-  actualVersion: 2,
-};
-
 const quadrants = [
   {
-    id: "source-before-observed_checkpoint-behind-head",
-    value: fixture,
+    id: "fresh-version-match",
+    value: { rawSourceTimestamp: 100, observedTimestamp: 120, checkpoint: "suid-1", head: "suid-2", expectedVersion: 2, actualVersion: 2 },
   },
   {
-    id: "source-before-observed_checkpoint-at-head",
-    value: { ...fixture, checkpoint: "suid-2" },
+    id: "fresh-version-mismatch",
+    value: { rawSourceTimestamp: 101, observedTimestamp: 120, checkpoint: "suid-2", head: "suid-2", expectedVersion: 3, actualVersion: 2 },
   },
   {
-    id: "source-after-observed_checkpoint-behind-head",
-    value: { ...fixture, rawSourceTimestamp: 200 },
+    id: "stale-version-match",
+    value: { rawSourceTimestamp: 200, observedTimestamp: 120, checkpoint: "suid-3", head: "suid-4", expectedVersion: 2, actualVersion: 2 },
   },
   {
-    id: "source-after-observed_checkpoint-at-head",
-    value: { ...fixture, rawSourceTimestamp: 200, checkpoint: "suid-2" },
+    id: "stale-version-mismatch",
+    value: { rawSourceTimestamp: 201, observedTimestamp: 120, checkpoint: "suid-4", head: "suid-4", expectedVersion: 4, actualVersion: 2 },
   },
 ] as const;
+
+const fixture = quadrants[1].value;
 
 describe("SDT-G29 raw diagnostic axes", () => {
   it("keeps six raw fields", () => {
@@ -37,7 +30,9 @@ describe("SDT-G29 raw diagnostic axes", () => {
   });
 
   it.each(quadrants)("derives the independent $id quadrant", ({ id, value }) => {
-    expect(diagnosticQuadrant(assertRawDiagnosticContract(value))).toBe(id);
+    const parsed = assertRawDiagnosticContract(value);
+    expect(parsed).toEqual(value);
+    expect(diagnosticQuadrant(parsed)).toBe(id);
   });
 
   it.each([

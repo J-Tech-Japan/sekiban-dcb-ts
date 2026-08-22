@@ -21,12 +21,21 @@ This draft PR implements the SDT-G29 sample rewrite and portability closure.
   through the real `MeetingRoomDownstreamDoorbell.deliver` and Queue wrapper,
   including the Room-only/Reservation-queued C3 regression.
 - Keeps the mapping JSON as expectation authority while observations come
-  from the real DO-ts session, DecisionLog serialization, event registry,
-  tag/read declarations, and runtime bridge. The actual CommitWorker
-  admission/storage path is exercised for compatibility and missing identity
-  remains zero-dispatch.
-- Adds six raw diagnostic fields with four independent quadrant fixtures and
-  exact per-branch mutation failures.
+  from one shared fixture executed by the real DO-ts session and portable
+  snapshot restore path. DecisionLog bytes, claims, outcome, canonical
+  identity, restored snapshot, event types, view manifest, and the runtime
+  bridge are compared; the JavaScript runner no longer duplicates the
+  13×7 expectation table.
+- Pins the C# Validate/Evolve, ICommandWithHandler/ICommandContext, and
+  EventOrNone source snippets at Sekiban@4fbd867 with matching TypeScript
+  command/context/terminal snippets, and checks every exact source anchor.
+- Executes all five compatibility lanes against real CommitWorker,
+  materializer, old-runtime shim, replay-direction, and downgrade fixtures.
+  Residual discriminator plus widened post-G27 fallback is rejected before
+  downstream store dispatch with zero calls.
+- Adds six raw diagnostic fields with fresh/stale × version-match/mismatch
+  fixtures using distinct expected/actual versions, exact raw field
+  assertions, and per-quadrant mutation failures.
 - Adds authenticated topology witness and fixed-N measurement tooling for the
   existing production identity. No reseed, fresh serviceId, destructive
   migration, or secret is part of the deploy script; only the checked-in

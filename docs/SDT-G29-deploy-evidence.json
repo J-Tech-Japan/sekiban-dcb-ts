@@ -1,8 +1,8 @@
 {
   "task": "SDT-G29",
-  "status": "R complete: final single-C witnessed deployment and F1-F8 evidence recorded",
-  "candidateCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
-  "sourceCommit": "12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d",
+  "status": "C'' placeholder: F3/F5/F6/F7 review closure is complete locally; evidence-only R'' updates the immutable candidate and retained-C line",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
     "candidate": "One immutable C contains the complete F1-F8 implementation, oracle map, required-root manifest, deployment source-commit witness wiring, and placeholder evidence.",
     "bookkeeping": "R updates only this evidence document and appends the immutable C once to the retained-candidate fetch list.",

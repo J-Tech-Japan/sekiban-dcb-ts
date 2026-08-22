@@ -8,10 +8,10 @@ export interface RawProjectionDiagnostics {
 }
 
 export type ProjectionDiagnosticQuadrant =
-  | "source-before-observed_checkpoint-behind-head"
-  | "source-before-observed_checkpoint-at-head"
-  | "source-after-observed_checkpoint-behind-head"
-  | "source-after-observed_checkpoint-at-head";
+  | "fresh-version-match"
+  | "fresh-version-mismatch"
+  | "stale-version-match"
+  | "stale-version-mismatch";
 
 const rawFields = Object.freeze([
   "rawSourceTimestamp",
@@ -48,9 +48,10 @@ export function parseRawProjectionDiagnostics(value: unknown): RawProjectionDiag
 }
 
 export function diagnosticQuadrant(value: RawProjectionDiagnostics): ProjectionDiagnosticQuadrant {
-  const sourceBeforeObserved = value.rawSourceTimestamp === null || value.rawSourceTimestamp <= value.observedTimestamp;
-  const checkpointAtHead = value.checkpoint === value.head;
-  return `${sourceBeforeObserved ? "source-before-observed" : "source-after-observed"}_${checkpointAtHead ? "checkpoint-at-head" : "checkpoint-behind-head"}` as ProjectionDiagnosticQuadrant;
+  const fresh = value.rawSourceTimestamp === null || value.rawSourceTimestamp <= value.observedTimestamp;
+  const versionMatches = value.expectedVersion === value.actualVersion;
+  if (fresh) return versionMatches ? "fresh-version-match" : "fresh-version-mismatch";
+  return versionMatches ? "stale-version-match" : "stale-version-mismatch";
 }
 
 export function assertRawDiagnosticContract(value: unknown): RawProjectionDiagnostics {

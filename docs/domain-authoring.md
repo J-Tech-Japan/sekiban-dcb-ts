@@ -51,6 +51,120 @@ business names because the repository sample models a room reservation rather
 than equipment inventory; the shape and ownership correspondence is what is
 portable.
 
+## Pinned decider and command contracts
+
+The following snippets are also copied from `Sekiban@4fbd867`; they are kept
+as source-pinned correspondence points rather than paraphrased API prose.
+The URLs deliberately point at the exact reviewed commit.
+
+### Validate / Evolve
+
+[`EquipmentReservationCancelledDecider.cs`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/templates/Sekiban.Dcb.Templates/content/Sekiban.Dcb.Orleans.Decider/SekibanDcbDecider.MeetingRoomModels/States/EquipmentReservation/Deciders/EquipmentReservationCancelledDecider.cs):
+
+```csharp
+public static void Validate(this EquipmentReservationState.EquipmentReservationCheckedOut state)
+{
+    throw new InvalidOperationException("Cannot cancel reservation with checked out equipment. Return items first.");
+}
+
+public static EquipmentReservationState Evolve(this EquipmentReservationState state, EquipmentReservationCancelled cancelled) =>
+    state switch
+    {
+        EquipmentReservationState.EquipmentReservationPending => new EquipmentReservationState.EquipmentReservationCancelled(
+            cancelled.EquipmentReservationId,
+            cancelled.Reason,
+            cancelled.CancelledAt),
+        EquipmentReservationState.EquipmentReservationAssigned => new EquipmentReservationState.EquipmentReservationCancelled(
+            cancelled.EquipmentReservationId,
+            cancelled.Reason,
+            cancelled.CancelledAt),
+        _ => state // Idempotency: cannot cancel if checked out, returned, or already cancelled
+    };
+```
+
+The corresponding TS functions are the executable sample's validation and
+pure evolution hooks:
+
+```ts
+export const validateCancelReservation = validate<ReservationState, ReservationOnlyInput, RejectKind>((state) =>
+  state.status === "empty"
+    ? validationReject("not-found", "reservation does not exist", "reservation_missing")
+    : undefined);
+
+export const evolveReservationCancelled = evolve<ReservationState, typeof reservationCancelled>((state) => {
+  if (state.status === "empty") return state;
+  return { status: "cancelled", version: state.version + 1, reservationId: state.reservationId, roomId: state.roomId };
+});
+```
+
+### ICommandWithHandler / ICommandContext
+
+The command interfaces are pinned to the WithResult model:
+
+[`ICommandWithHandler.cs`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/dcb/src/Sekiban.Dcb.WithResult.Model/Commands/ICommandWithHandler.cs)
+
+```csharp
+public interface ICommandWithHandler<TSelf> : ICommand, ICommandHandler<TSelf> where TSelf : ICommandWithHandler<TSelf>
+{
+}
+```
+
+[`ICommandContext.cs`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/dcb/src/Sekiban.Dcb.WithResult.Model/Commands/ICommandContext.cs)
+
+```csharp
+public interface ICommandContext : ICoreCommandContext
+{
+}
+```
+
+The TS command definition makes the same handler/context boundary explicit;
+the inferred context is used only through declared reads, state, and append:
+
+```ts
+export const cancelReservationCommand = command({
+  id: "cancel-reservation",
+  input: reservationOnlyInput,
+  reads: (input) => read(reservationProjector, reservationTag(input.reservationId)),
+  handle: async (input, context) => {
+    const state = await context.state(reservationProjector, reservationTag(input.reservationId));
+    const invalid = validationDecision(validateCancelReservation(state, input));
+    if (invalid !== undefined) return invalid;
+    context.append(reservationCancelled, reservationCancelled.make({ reservationId: input.reservationId }));
+    return done({ reservationId: input.reservationId });
+  },
+});
+```
+
+### EventOrNone
+
+[`EventOrNone.cs`](https://github.com/J-Tech-Japan/Sekiban/blob/4fbd8679b3a2eb2ef2e0694bc3152a59e6dda411/dcb/src/Sekiban.Dcb.Core.Model/Events/EventOrNone.cs)
+is the pinned optional-event result shape:
+
+```csharp
+public record EventOrNone(EventPayloadWithTags? EventPayloadWithTags, bool HasEvent)
+{
+    public static EventOrNone Empty => new(default, false);
+
+    public static EventOrNone FromValue(EventPayloadWithTags eventWithTags) =>
+        new(eventWithTags, true);
+
+    public EventPayloadWithTags GetValue() =>
+        HasEvent && EventPayloadWithTags is not null
+            ? EventPayloadWithTags
+            : throw new InvalidOperationException("No value");
+}
+```
+
+The TS terminal union preserves that distinction without a nullable event
+payload: `context.append(...)` creates an event, `done(...)` commits it, and
+`none(...)` is the explicit no-event branch.
+
+```ts
+if (state.status === "released") return none("room is already released");
+context.append(roomReleased, roomReleased.make({ roomId: input.roomId }));
+return done({ roomId: input.roomId });
+```
+
 ## Pinned decider/projector correspondence
 
 | C# template concern | TypeScript source anchor |

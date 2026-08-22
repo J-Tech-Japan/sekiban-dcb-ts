@@ -1,12 +1,20 @@
 import {
+  deserializePortableSnapshot,
   executeCommand,
+  executePortableCommand,
+  serializePortableSnapshot,
   serializeDecisionLog,
   type CandidateEnvelope,
   type DecisionLog,
+  type PortableSnapshot,
+  type ProjectorLike,
+  type SnapshotReader,
 } from "@sekiban/dcb-domain";
 import {
   createRoomCommand,
   meetingRoomEvents,
+  meetingRoomAuthoringDomain,
+  meetingRoomDomain,
   meetingRoomProjectors,
   meetingRoomRuntimeConfig,
   reserveRoomCommand,
@@ -15,6 +23,69 @@ import {
 } from "./domain";
 
 export const MAPPING_COLUMNS = Object.freeze(["field", "wire", "owner", "doTs", "portable", "version", "unsupported"] as const);
+
+const MAPPING_INPUT = Object.freeze({ roomId: "g29-mapping-shared", name: "Observed" });
+const MAPPING_NOW = "mapping-fixed-now" as const;
+
+type MappingRun = Readonly<{
+  readonly candidate: CandidateEnvelope;
+  readonly decisionLog: DecisionLog;
+  readonly decisionLogBytes: string;
+  readonly outcome: string;
+  readonly claims: readonly string[];
+}>;
+
+export type MappingExecutionObservation = Readonly<{
+  readonly contract: ReturnType<typeof observeMappingContract>;
+  readonly doTs: MappingRun;
+  readonly portable: MappingRun;
+  readonly portableSnapshot: PortableSnapshot;
+  readonly restoredSnapshot: PortableSnapshot;
+  readonly eventTypes: readonly string[];
+  readonly viewManifest: readonly { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: string }[];
+  readonly runtimeBridgeOutcome: string;
+}>;
+
+function snapshotWire(): string {
+  return serializePortableSnapshot({
+    projectorId: "RoomProjector",
+    tag: roomTag(MAPPING_INPUT.roomId),
+    head: null,
+    state: { status: "empty", version: 0, roomId: null, name: "" },
+    exists: false,
+  });
+}
+
+function snapshotReaderFromWire(serialized: string): SnapshotReader {
+  const restored = deserializePortableSnapshot(serialized);
+  return {
+    read: (projector: ProjectorLike, tag) => {
+      if (projector.id !== restored.projectorId || tag.id !== restored.tag.id) {
+        throw new Error(`G29 mapping portable snapshot boundary mismatch:${projector.id}:${tag.id}`);
+      }
+      return restored;
+    },
+  };
+}
+
+function summarizeRun(result: Awaited<ReturnType<typeof executeCommand>>): MappingRun {
+  if (result.envelope === undefined) throw new Error("G29 mapping fixture did not produce a candidate");
+  return Object.freeze({
+    candidate: result.envelope,
+    decisionLog: result.log,
+    decisionLogBytes: serializeDecisionLog(result.log),
+    outcome: result.decision.kind,
+    claims: Object.freeze(result.log.readClaims.map((claim) => `${claim.kind}:${claim.projectorId ?? "-"}:${claim.tag.id}:${claim.head ?? ""}`)),
+  });
+}
+
+function eventTypes(): readonly string[] {
+  return Object.freeze(meetingRoomAuthoringDomain.events.map((definition) => definition.eventType));
+}
+
+function viewManifest(): readonly { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: string }[] {
+  return Object.freeze(meetingRoomAuthoringDomain.views.map((view) => Object.freeze({ ...view })));
+}
 
 function observationSnapshot() {
   const roomCreated = meetingRoomEvents.roomCreated;
@@ -158,22 +229,42 @@ export async function observePortableMappingExecution(): Promise<{
   readonly candidate: CandidateEnvelope;
   readonly decisionLog: DecisionLog;
   readonly decisionLogBytes: string;
+  readonly execution: MappingExecutionObservation;
 }> {
-  let candidate: CandidateEnvelope | undefined;
-  const result = await executeCommand(createRoomCommand, { roomId: "g29-mapping-runtime", name: "Observed" }, {
+  const doTsResult = await executeCommand(createRoomCommand, MAPPING_INPUT, {
     timeProvider: { now: () => "mapping-fixed-now" },
-    commit: (envelope) => {
-      candidate = envelope;
-      return { kind: "accepted" };
-    },
   });
-  if (candidate === undefined || result.status !== "accepted") throw new Error("G29 mapping DO-ts command execution did not commit");
-  const decisionLogBytes = serializeDecisionLog(result.log);
-  return Object.freeze({
+  const portableSnapshot = deserializePortableSnapshot(snapshotWire());
+  const portableResult = await executePortableCommand(createRoomCommand, MAPPING_INPUT, {
+    timeProvider: { now: () => MAPPING_NOW },
+    snapshots: snapshotReaderFromWire(snapshotWire()),
+  });
+  if (doTsResult.status !== "accepted" || portableResult.status !== "accepted") throw new Error("G29 mapping shared fixture did not commit");
+  const doTs = summarizeRun(doTsResult);
+  const portable = summarizeRun(portableResult);
+  const restoredSnapshot = deserializePortableSnapshot(serializePortableSnapshot(portableSnapshot));
+  const runtimeCommand = meetingRoomDomain.commands.find((command) => command.id === createRoomCommand.id);
+  if (runtimeCommand === undefined) throw new Error("G29 mapping runtime bridge command is not registered");
+  const runtimeResult = await runtimeCommand.execute(MAPPING_INPUT, {
+    now: MAPPING_NOW,
+    snapshots: snapshotReaderFromWire(snapshotWire()),
+  });
+  const execution = Object.freeze({
     contract: observeMappingContract(),
-    candidate,
-    decisionLog: result.log,
-    decisionLogBytes,
+    doTs,
+    portable,
+    portableSnapshot,
+    restoredSnapshot,
+    eventTypes: eventTypes(),
+    viewManifest: viewManifest(),
+    runtimeBridgeOutcome: (runtimeResult as { readonly kind?: string }).kind ?? "unknown",
+  });
+  return Object.freeze({
+    contract: execution.contract,
+    candidate: doTs.candidate,
+    decisionLog: doTs.decisionLog,
+    decisionLogBytes: doTs.decisionLogBytes,
+    execution,
   });
 }
 
