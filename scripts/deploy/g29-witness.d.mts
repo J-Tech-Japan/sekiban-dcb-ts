@@ -9,4 +9,4 @@ export interface G29WitnessExpected {
   readonly [key: string]: unknown;
 }
 
-export function assertWitnessStable(before: G29WitnessSnapshot, after: G29WitnessSnapshot, expected: G29WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataDigest: string };
+export function assertWitnessStable(before: G29WitnessSnapshot, after: G29WitnessSnapshot, expected: G29WitnessExpected, beforeExpected?: G29WitnessExpected): { readonly stable: true; readonly fields: readonly string[]; readonly dataDigest: string };
