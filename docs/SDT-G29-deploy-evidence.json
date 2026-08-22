@@ -1,11 +1,11 @@
 {
   "task": "SDT-G29",
-  "status": "FIX-0 R5 witnessed deploy complete; direct doorbell restored for both views and fixed-N response visibility returned to sub-second p50",
-  "candidateCommit": "d6bfb5c5b4f5da1d44985199a4820786be6e89a1",
-  "sourceCommit": "d6bfb5c5b4f5da1d44985199a4820786be6e89a1",
+  "status": "FIX-0 R6 witnessed deploy evidence retained; direct doorbell restored for both views and fixed-N response visibility returned to sub-second p50",
+  "candidateCommit": "13e8006be334454dc8a4a3c40972ba8ec15707b0",
+  "sourceCommit": "13e8006be334454dc8a4a3c40972ba8ec15707b0",
   "protocol": {
-    "candidate": "C5 contains the C3 sample rewrite plus the direct-doorbell recovery, both-view production policy, explicit C3-to-C5 witness transition oracle, and measurement tooling",
-    "bookkeeping": "R changes only this evidence document and appends C5 once to the retained-candidate fetch list",
+    "candidate": "C6 contains C5's C3 sample rewrite, direct-doorbell recovery, both-view production policy, explicit C3-to-C5 witness transition oracle, measurement tooling, and the matching witness declaration for the four-argument transition oracle; the deployed runtime bundle remains C5 because C6 changes only the checked-in declaration",
+    "bookkeeping": "R6 changes only this evidence document and appends C6 once to the retained-candidate fetch list",
     "preDeployOrder": ["config-and-bundle-diff", "pre-witness", "checked-in-additive-migration-apply", "receiver-deploy", "primary-deploy", "post-witness", "five-endpoint-conformance", "raw-v1-404", "fixed-N-measurement"],
     "deploymentIdentity": "existing g25-38219c8-20260820f; no reseed, fresh serviceId, namespace, Queue, or DO generation",
     "secrets": "new protected conformance token rotated by file-fed Wrangler secret input for FIX-0; old token intentionally invalidated; value redacted; rotation did not touch data, D1, or DO state; local token file removed after measurement",
@@ -15,7 +15,7 @@
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
     "runtime": "a1b29d920df1c8b6cb7d78ddf52cc5c400cab54d085cd9d0de2fe09a2c2d7221",
     "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
-    "configuration": "497a3e2cd482593abb63c98a5ca0cc6b256ce60b6479c4fbc61194521e422ebc",
+    "configuration": "a88ce929c84f4fba5ea7d0f6aacd0f7158ea7e1bb3858220885fdae10c77fce8",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
@@ -66,10 +66,11 @@
     "diagnostics": "passed: 8 tests across six raw fields and four derived quadrants",
     "compatibility": "passed: five lanes and identity fail-closed oracle",
     "sample": "passed: 12 focused tests including canonical materializer dispatch and legacy replay; clean Miniflare G15 and G16 app-layer E2E passed; full suite 304 tests passed",
-    "witness": "passed: C3-to-C5 transition oracle, 3 witness tests, remote pre/post identity/data comparison, five-endpoint conformance, raw V1 closure, and post-fix direct-doorbell tail evidence"
+    "witness": "passed: C3-to-C5 transition oracle, 3 witness tests, remote pre/post identity/data comparison, five-endpoint conformance, raw V1 closure, post-fix direct-doorbell tail evidence, and C6 declaration/typecheck alignment"
   },
   "remoteDeployment": {
     "status": "completed",
+    "deployedRuntimeCommit": "d6bfb5c5b4f5da1d44985199a4820786be6e89a1",
     "preflight": "PASS: C5 receiver and primary strict bundles; pipeline and MV both reported no migrations to apply",
     "migration": "no migration was applied during FIX-0; existing pipeline/MV schemas were preserved",
     "fixDiagnosis": {
@@ -182,5 +183,5 @@
     }
   },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "C=d6bfb5c5b4f5da1d44985199a4820786be6e89a1; R5 updates only this evidence and appends C5 once to the retained-candidate fetch list"
+  "candidateGate": "C=13e8006be334454dc8a4a3c40972ba8ec15707b0; R6 updates only this evidence and appends C6 once to the retained-candidate fetch list"
 }
