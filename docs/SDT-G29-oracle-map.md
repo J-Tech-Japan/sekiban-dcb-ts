@@ -70,7 +70,9 @@ manifest-declared receiver-topology/witness recovery paths, the evidence
 document, and append the immutable `C` SHA once to the retained candidate fetch
 list in `ci.yml`; the checker requires that manifest list to equal the fixed
 SDT-G29-UNBLOCK-2 list, so it cannot be expanded after C. Every other post-C
-path remains rejected. The checker itself validates required-root removal and
+path remains rejected. The shared G20 candidate gate delegates G29 to this
+same fixed list, preventing a generic CI rule from silently narrowing the
+design-approved recovery. The checker itself validates required-root removal and
 empty-directory mutations, retained-list append cardinality, evidence
 self-consistency, final deployment identity, and candidate tree digests.
 

@@ -66,7 +66,9 @@ already-deployed immutable `C'''` only after its source identity is observed,
 then deploys the service-binding-only receiver config and records primary Queue
 consumer exclusivity. The candidate checker validates exact configuration
 roots, sorted tree digests, candidate ancestry, deployed/source commit identity,
-deploymentRequired, and the constrained post-candidate allowlist.
+deploymentRequired, and the constrained post-candidate allowlist. The shared
+G20 candidate gate delegates G29 to the same fixed list, so it cannot
+accidentally reject the design-approved recovery paths.
 
 ## Witness evidence
 

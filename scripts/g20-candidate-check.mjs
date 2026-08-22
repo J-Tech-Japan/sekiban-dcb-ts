@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
+import { assertUnblock2RecoveryManifest, SDT_G29_UNBLOCK_2_RECOVERY_PATHS } from "./g29-candidate-check.mjs";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const SHA = /^[0-9a-f]{40}$/;
@@ -48,6 +49,7 @@ export const candidateEvidenceRules = Object.freeze([
     evidencePath: "docs/SDT-G29-deploy-evidence.json",
     evidenceGlobs: Object.freeze(["docs/SDT-G29-*evidence*.json", "docs/SDT-G29-*evidence*.md"]),
     bookkeepingPath: ".github/workflows/ci.yml",
+    postCandidateRecovery: "sdt-g29-unblock-2",
   }),
 ]);
 
@@ -62,18 +64,26 @@ export function assertEvidenceOnlyPaths(paths, rule) {
   }
 }
 
+function recoveryPathsFor(rule) {
+  if (rule.postCandidateRecovery === undefined) return [];
+  if (rule.postCandidateRecovery !== "sdt-g29-unblock-2") throw new Error(`${rule.id} candidate protocol has an unknown post-candidate recovery rule`);
+  assertUnblock2RecoveryManifest(SDT_G29_UNBLOCK_2_RECOVERY_PATHS);
+  return SDT_G29_UNBLOCK_2_RECOVERY_PATHS;
+}
+
 /**
  * G26 has one non-evidence post-candidate path: the retained-candidate fetch
  * list.  It is deliberately checked as a single exact append so an unrelated
  * CI edit cannot hide behind the bookkeeping exception.
  */
 export function assertPostCandidatePaths(paths, rule, candidate, run = (args) => execFileSync("git", args, { cwd: root, encoding: "utf8" })) {
-  if (rule.bookkeepingPath === undefined) return assertEvidenceOnlyPaths(paths, rule);
-  const unsupported = paths.filter((path) => path !== rule.bookkeepingPath && !rule.evidenceGlobs.some((glob) => matchesGlob(path, glob)));
+  const recoveryPaths = recoveryPathsFor(rule);
+  if (rule.bookkeepingPath === undefined && recoveryPaths.length === 0) return assertEvidenceOnlyPaths(paths, rule);
+  const unsupported = paths.filter((path) => path !== rule.bookkeepingPath && !recoveryPaths.includes(path) && !rule.evidenceGlobs.some((glob) => matchesGlob(path, glob)));
   if (unsupported.length > 0 || paths.filter((path) => path === rule.bookkeepingPath).length > 1) {
     throw new Error(`${rule.id} candidate protocol violation; post-candidate paths: ${paths.join(", ")}`);
   }
-  if (!paths.includes(rule.bookkeepingPath)) return;
+  if (rule.bookkeepingPath === undefined || !paths.includes(rule.bookkeepingPath)) return;
   const diff = run(["diff", "--unified=0", `${candidate}..HEAD`, "--", rule.bookkeepingPath]);
   const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
   const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
@@ -150,7 +160,13 @@ export function runSelfTest() {
   const unresolved = candidateGateStatus(candidate, (args) => { if (args[0] === "cat-file") throw new Error("missing"); return ""; });
   const nonAncestor = candidateGateStatus(candidate, (args) => { if (args[0] === "merge-base") throw new Error("not ancestor"); return ""; });
   if (!active.active || unresolved.active || nonAncestor.active || unresolved.reason !== "candidate-unresolved" || nonAncestor.reason !== "candidate-not-ancestor") throw new Error("candidate gate focused verification failed");
-  console.log(JSON.stringify({ active, unresolved, nonAncestor }, null, 2));
+  const g29Rule = candidateEvidenceRules.find((rule) => rule.id === "g29-sample-portability");
+  if (g29Rule === undefined) throw new Error("G29 candidate rule is missing");
+  const g29Paths = [g29Rule.evidencePath, g29Rule.bookkeepingPath, ...SDT_G29_UNBLOCK_2_RECOVERY_PATHS];
+  const diff = () => `+${candidate}\n`;
+  assertPostCandidatePaths(g29Paths, g29Rule, candidate, diff);
+  expectMutationToFail("g29-unblock-2-recovery-path", () => assertPostCandidatePaths([...g29Paths, "packages/dcb-runtime/src/index.ts"], g29Rule, candidate, diff));
+  console.log(JSON.stringify({ active, unresolved, nonAncestor, g29Recovery: "accepted-with-fixed-list", g29RecoveryMutation: "fail-as-required" }, null, 2));
 }
 
 function main() {
@@ -161,6 +177,7 @@ function main() {
   if (process.env.SDT_G28_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G28 candidate gate forced failure");
   if (process.env.SDT_G29_CANDIDATE_FORCE_FAILURE === "1") throw new Error("SDT-G29 candidate gate forced failure");
   if (process.argv.includes("--self-test")) return runSelfTest();
+  runSelfTest();
   // A new packet's FINAL candidate supersedes the live post-candidate path
   // check for older retained candidates. Their immutable evidence and tree
   // digests remain checked; only the newest rule may accept the one

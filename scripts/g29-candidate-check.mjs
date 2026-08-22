@@ -9,7 +9,7 @@ const manifestPath = resolve(root, "docs/SDT-G29-required-roots.json");
 const evidencePath = resolve(root, "docs/SDT-G29-deploy-evidence.json");
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
-const SDT_G29_UNBLOCK_2_RECOVERY_PATHS = Object.freeze([
+export const SDT_G29_UNBLOCK_2_RECOVERY_PATHS = Object.freeze([
   "docs/SDT-G29-oracle-map.md",
   "docs/SDT-G29-pr-body.md",
   "docs/SDT-G29-required-roots.json",
@@ -21,6 +21,7 @@ const SDT_G29_UNBLOCK_2_RECOVERY_PATHS = Object.freeze([
   "scripts/deploy/g29-witness.d.mts",
   "scripts/deploy/g29-measure.mjs",
   "scripts/deploy/g29-measure.d.mts",
+  "scripts/g20-candidate-check.mjs",
   "scripts/g29-candidate-check.mjs",
   "test/g29-witness.spec.ts",
 ]);
