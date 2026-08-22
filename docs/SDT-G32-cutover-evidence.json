@@ -1,21 +1,39 @@
 {
   "task": "SDT-G32",
-  "status": "placeholder evidence carried by sealed final C; R replaces this only after the witnessed production cutover",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "R complete: bridge B to final C wipe cutover witnessed with fixed-N conformance",
+  "candidateCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+  "sourceCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
   "bridge": {
     "candidateCommit": "43029a8b8b0298b6cc30c531639d7398f6295805",
-    "evidencePath": "docs/SDT-G32-bridge-evidence.json"
+    "evidencePath": "docs/SDT-G32-bridge-evidence.json",
+    "oldServiceId": "g25-38219c8-20260820f",
+    "frozenBeforeFinalC": true
   },
   "protocol": {
-    "candidate": "B is the sealed old-format freeze-only bridge. C is the single final authority for runtime, configuration, CI, docs, tooling, tests, manifests, and this placeholder.",
-    "bookkeeping": "After C, R may change only this evidence document and append C exactly once to ci.yml's retained-candidate list.",
+    "candidate": "B is the sealed old-format freeze-only bridge. C is the one sealed final runtime/configuration/CI/docs/tools/manifest/evidence-placeholder authority.",
+    "bookkeeping": "R changes only this cutover evidence document and appends C once to the retained-candidate fetch list.",
     "selfReference": false,
-    "deploymentRequired": true
+    "deploymentRequired": true,
+    "postCandidateAllowlist": [
+      "docs/SDT-G32-cutover-evidence.json",
+      ".github/workflows/ci.yml (one retained-C append)"
+    ],
+    "witnessOrder": [
+      "B-freeze",
+      "preflight",
+      "pre-witness",
+      "new-D1-baseline-migrations",
+      "receiver-final-C",
+      "primary-final-C",
+      "queue-topology",
+      "post-witness",
+      "source-commit-assertion",
+      "fixed-N=10"
+    ]
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtime": "60b572866ded3c57c9c3707eeb67cffaed2f899d7760f852c4ebb2a5e1e34e28",
     "runtimeRoots": [
       "packages/dcb-core/src",
       "packages/dcb-domain/src",
@@ -23,7 +41,7 @@
       "packages/dcb-client/src",
       "samples/meeting-room/src"
     ],
-    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "0418efa94321c9fb10185ed17b99874e3085205388647876f604ca5765fbb976",
     "configurationRoots": [
       ".gitignore",
       ".github/workflows/ci.yml",
@@ -73,12 +91,816 @@
   },
   "deploymentConfig": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "digest": "CANDIDATE",
-    "paths": "resolved from scripts/deploy/g32-config-digest.mjs at C"
+    "digest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
+    "paths": [
+      "contracts/g32-cutover.json",
+      "contracts/event-store-ddl.json",
+      "migrations/d1/g32",
+      "migrations/mv",
+      "packages/dcb-runtime/src",
+      "samples/meeting-room/src/compatibility.ts",
+      "samples/meeting-room/src/d1-mv.ts",
+      "samples/meeting-room/src/domain.ts",
+      "samples/meeting-room/src/transport.ts",
+      "samples/meeting-room/src/worker.cloudflare-only.ts",
+      "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+      "samples/meeting-room/wrangler.g32-final-receiver.jsonc"
+    ]
+  },
+  "remoteDeployment": {
+    "status": "completed final-C cutover on new bindings",
+    "sourceCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+    "deployedRuntimeCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "receiver": "sekiban-dcb-meeting-room-doorbell",
+    "serviceId": "g32-9043d626fe1149cb",
+    "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+    "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+    "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+    "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
+    "durableObjectNamespaces": [
+      "AllocatorDurableObject",
+      "JournalDurableObject",
+      "TagDurableObject",
+      "BootstrapCoordinatorDurableObject"
+    ],
+    "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
+    "cutoverFenceFingerprint": "f798974e2725498201154c6996f80d40e6b5a82df01daca5ca555f010aa96356",
+    "oldBindingsClosed": "final C exposes only fresh G32 bindings; the old bridge route is authenticated-404 and the B freeze credential was rotated during final deployment"
+  },
+  "finalWitness": {
+    "postFinalCDeployment": true,
+    "sourceCommitMatch": true,
+    "otherServicesUnchanged": true,
+    "dataPreservation": "not-applicable-full-wipe",
+    "preWitnessPhase": "pre-final-c",
+    "postWitnessPhase": "post-final-c-before-writes",
+    "oldFormatClosure": {
+      "rawV1": 404,
+      "staleBridge": 404
+    }
+  },
+  "dataPreservation": {
+    "status": "not-applicable-full-wipe",
+    "rationale": "G32 specifies a new serviceId and new D1 databases because old prefixed SUID values cannot coexist with C# 30-digit SUIDs. No old application rows are copied or read.",
+    "wipeAllowlistInventory": {
+      "oldPipelineDatabaseId": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+      "oldMaterializedViewDatabaseId": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "oldServiceId": "g25-38219c8-20260820f",
+      "oldQueue": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "preInventory": {
+        "events": 382,
+        "pendingArrivals": 382,
+        "materializedViewRows": 371
+      }
+    },
+    "newBaseline": {
+      "pipelineSchemaBeforeMigrationDigest": "02fdcb946fc5d5feccf3f624c24bd4fb400fbb724debf40a25d323ab266f8022",
+      "materializedViewSchemaBeforeMigrationDigest": "02fdcb946fc5d5feccf3f624c24bd4fb400fbb724debf40a25d323ab266f8022",
+      "preWriteEventCount": 0,
+      "legacySerializedEventTablePresent": false
+    }
+  },
+  "preWitness": {
+    "task": "SDT-G32",
+    "phase": "pre-final-c",
+    "capturedAt": "2026-08-22T23:23:28.858Z",
+    "dataPreservation": "not-applicable-full-wipe",
+    "oldStoreInventory": {
+      "pipeline": {
+        "events": 382,
+        "pendingArrivals": 382,
+        "deliveryIncidents": 0
+      },
+      "materializedViews": {
+        "rows": 371,
+        "receipts": 80
+      }
+    },
+    "newStoreBeforeMigration": {
+      "pipelineSchema": [
+        {
+          "name": "_cf_KV",
+          "type": "table"
+        },
+        {
+          "name": "d1_migrations",
+          "type": "table"
+        },
+        {
+          "name": "sqlite_autoindex_d1_migrations_1",
+          "type": "index"
+        },
+        {
+          "name": "sqlite_sequence",
+          "type": "table"
+        }
+      ],
+      "materializedViewSchema": [
+        {
+          "name": "_cf_KV",
+          "type": "table"
+        },
+        {
+          "name": "d1_migrations",
+          "type": "table"
+        },
+        {
+          "name": "sqlite_autoindex_d1_migrations_1",
+          "type": "index"
+        },
+        {
+          "name": "sqlite_sequence",
+          "type": "table"
+        }
+      ],
+      "pipelineSchemaDigest": "02fdcb946fc5d5feccf3f624c24bd4fb400fbb724debf40a25d323ab266f8022",
+      "materializedViewSchemaDigest": "02fdcb946fc5d5feccf3f624c24bd4fb400fbb724debf40a25d323ab266f8022"
+    },
+    "otherServiceWitness": {
+      "beforeDigest": "962a8cdacdb8f8ab0281443aab4c18d2b0c250669f78015470e82b27c1391d83",
+      "resources": {
+        "d1": [
+          {
+            "uuid": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+            "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
+            "created_at": "2026-08-22T22:36:07.946Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 24576,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+            "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
+            "created_at": "2026-08-22T22:36:03.482Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 24576,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+            "name": "sekiban-dcb-meeting-room-cloudflare-mv",
+            "created_at": "2026-08-19T21:31:34.567Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 10985472,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+            "name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+            "created_at": "2026-08-19T21:31:30.027Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 5246976,
+            "jurisdiction": null
+          }
+        ],
+        "queues": "⛅️ wrangler 4.125.0\n────────────────────\n┌──────────────────────────────────┬──────────────────────────────────────────────────────────┬─────────────────────────────┬─────────────────────────────┬───────────┬───────────┐\n│ id                               │ name                                                     │ created_on                  │ modified_on                 │ producers │ consumers │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ f66824d9da4a462dac913dc7b3ea5247 │ sekiban-dcb-g26-outbox                                   │ 2026-08-21T04:27:18.317127Z │ 2026-08-21T04:27:18.317127Z │ 1         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 969db07663b74715a813e7c0f102343e │ sekiban-dcb-g26-outbox-dlq                               │ 2026-08-21T04:27:25.479556Z │ 2026-08-21T04:27:25.479556Z │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 3b375bb4e5d8483bae87855d7b32f59f │ sekiban-dcb-meeting-room-cloudflare-outbox               │ 2026-08-19T21:31:52.677077Z │ 2026-08-19T21:31:52.677077Z │ 2         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 291d155f2cb84aa689a95f0cf916bb3b │ sekiban-dcb-meeting-room-cloudflare-outbox-dlq           │ 2026-08-20T15:21:02.65316Z  │ 2026-08-20T15:21:02.65316Z  │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ a8f591e7053743e79e2e9ade49e52ba4 │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox     │ 2026-08-22T22:36:17.163684Z │ 2026-08-22T22:36:17.163684Z │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 6e67ddcde0dd48faac784548ad3e185d │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq │ 2026-08-22T22:36:11.87905Z  │ 2026-08-22T22:36:11.87905Z  │ 0         │ 0         │\n└──────────────────────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────┴─────────────────────────────┴───────────┴───────────┘"
+      },
+      "excludedCutoverResources": [
+        "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+        "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+        "sekiban-dcb-meeting-room-cloudflare-outbox",
+        "eccf6048-7fc8-4412-a157-9fa180353f6d",
+        "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+        "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq"
+      ]
+    }
+  },
+  "postWitness": {
+    "task": "SDT-G32",
+    "phase": "post-final-c-before-writes",
+    "capturedAt": "2026-08-22T23:23:57.139Z",
+    "primary": {
+      "task": "SDT-G32",
+      "phase": "final-g32",
+      "sourceCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "component": "primary",
+      "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
+      "serviceId": "g32-9043d626fe1149cb",
+      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+      "freezeRelease": "after-new-bindings",
+      "cutoverFenceFingerprint": "f798974e2725498201154c6996f80d40e6b5a82df01daca5ca555f010aa96356",
+      "sortableUniqueId": {
+        "digits": 30,
+        "format": "dotnet-ticks-19-plus-crypto-id-11",
+        "legacyUnsupported": true
+      },
+      "eventRecord": {
+        "eventType": "eventPayloadName",
+        "payload": "utf8-json-byte-identical",
+        "id": "uuid-v7",
+        "tags": "family:value-emission-order"
+      },
+      "directDoorbell": true,
+      "allowedViews": [
+        "RoomProjector",
+        "ReservationProjector"
+      ],
+      "rawV1PublicStatus": 404
+    },
+    "receiver": {
+      "task": "SDT-G32",
+      "phase": "final-g32",
+      "sourceCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "component": "receiver",
+      "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
+      "serviceId": "g32-9043d626fe1149cb",
+      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+      "freezeRelease": "after-new-bindings",
+      "cutoverFenceFingerprint": "f798974e2725498201154c6996f80d40e6b5a82df01daca5ca555f010aa96356",
+      "sortableUniqueId": {
+        "digits": 30,
+        "format": "dotnet-ticks-19-plus-crypto-id-11",
+        "legacyUnsupported": true
+      },
+      "eventRecord": {
+        "eventType": "eventPayloadName",
+        "payload": "utf8-json-byte-identical",
+        "id": "uuid-v7",
+        "tags": "family:value-emission-order"
+      },
+      "directDoorbell": true,
+      "allowedViews": [
+        "RoomProjector",
+        "ReservationProjector"
+      ],
+      "rawV1PublicStatus": 404
+    },
+    "componentAcks": [
+      {
+        "component": "primary",
+        "sourceCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+        "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2"
+      },
+      {
+        "component": "receiver",
+        "sourceCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+        "configDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2"
+      }
+    ],
+    "newStoreState": {
+      "task": "SDT-G32",
+      "serviceId": "g32-9043d626fe1149cb",
+      "eventCount": 0,
+      "eventOpsCount": 0,
+      "materializedViewRowCount": 0,
+      "materializedViewReceiptCount": 0,
+      "legacySerializedEventTablePresent": false
+    },
+    "rawV1": {
+      "status": 404,
+      "body": {
+        "error": "Raw V1 routes are available only through the authenticated conformance lane",
+        "code": "not_found"
+      }
+    },
+    "staleBridgeRoute": {
+      "status": 404,
+      "body": {
+        "raw": "Journal control route not found"
+      }
+    },
+    "otherServiceWitness": {
+      "afterDigest": "120942094b9733bbc1bdbb5155aa40ad8e21186eedf61aadf29bbc692dce171f",
+      "resources": {
+        "d1": [
+          {
+            "uuid": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+            "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
+            "created_at": "2026-08-22T22:36:07.946Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 24576,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+            "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
+            "created_at": "2026-08-22T22:36:03.482Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 24576,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+            "name": "sekiban-dcb-meeting-room-cloudflare-mv",
+            "created_at": "2026-08-19T21:31:34.567Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 10985472,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
+            "name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+            "created_at": "2026-08-19T21:31:30.027Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 5246976,
+            "jurisdiction": null
+          }
+        ],
+        "queues": "⛅️ wrangler 4.125.0\n────────────────────\n┌──────────────────────────────────┬──────────────────────────────────────────────────────────┬─────────────────────────────┬─────────────────────────────┬───────────┬───────────┐\n│ id                               │ name                                                     │ created_on                  │ modified_on                 │ producers │ consumers │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ f66824d9da4a462dac913dc7b3ea5247 │ sekiban-dcb-g26-outbox                                   │ 2026-08-21T04:27:18.317127Z │ 2026-08-21T04:27:18.317127Z │ 1         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 969db07663b74715a813e7c0f102343e │ sekiban-dcb-g26-outbox-dlq                               │ 2026-08-21T04:27:25.479556Z │ 2026-08-21T04:27:25.479556Z │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 3b375bb4e5d8483bae87855d7b32f59f │ sekiban-dcb-meeting-room-cloudflare-outbox               │ 2026-08-19T21:31:52.677077Z │ 2026-08-19T21:31:52.677077Z │ 1         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 291d155f2cb84aa689a95f0cf916bb3b │ sekiban-dcb-meeting-room-cloudflare-outbox-dlq           │ 2026-08-20T15:21:02.65316Z  │ 2026-08-20T15:21:02.65316Z  │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ a8f591e7053743e79e2e9ade49e52ba4 │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox     │ 2026-08-22T22:36:17.163684Z │ 2026-08-22T22:36:17.163684Z │ 1         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 6e67ddcde0dd48faac784548ad3e185d │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq │ 2026-08-22T22:36:11.87905Z  │ 2026-08-22T22:36:11.87905Z  │ 0         │ 0         │\n└──────────────────────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────┴─────────────────────────────┴───────────┴───────────┘"
+      }
+    }
+  },
+  "queueTopology": {
+    "task": "SDT-G32",
+    "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+    "primary": "sekiban-dcb-meeting-room-cloudflare-only",
+    "receiver": "sekiban-dcb-meeting-room-doorbell",
+    "consumers": [
+      {
+        "script": "sekiban-dcb-meeting-room-cloudflare-only",
+        "dead_letter_queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
+        "settings": {
+          "batch_size": 10,
+          "max_retries": 3,
+          "max_wait_time_ms": 1000,
+          "retry_delay": 0
+        },
+        "consumer_id": "a9301d10d35a4e529d682b00981c67a0",
+        "type": "worker"
+      }
+    ],
+    "primaryExclusive": true,
+    "receiverServiceBindingOnly": true
+  },
+  "fixedNMeasurement": {
+    "task": "SDT-G32",
+    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "startedAt": "2026-08-22T23:23:57.188Z",
+    "latency": {
+      "sampleCount": 10,
+      "commandStartToResponseMs": {
+        "p50": 1412.751833000002,
+        "p95": 2072.884542,
+        "max": 2072.884542,
+        "samples": 10
+      },
+      "responseToListRedrawMs": {
+        "p50": 436.53099999999904,
+        "p95": 748.2009170000001,
+        "max": 748.2009170000001,
+        "samples": 10
+      },
+      "commandStartToListRedrawMs": {
+        "p50": 2026.8939999999998,
+        "p95": 2468.938709,
+        "max": 2468.938709,
+        "samples": 10
+      },
+      "statusRaw": [
+        {
+          "index": 0,
+          "roomId": "g32-room-0f0041d0-4a3",
+          "reservationId": "g32-reservation-682b0be4-8ec",
+          "commitSuid": "063923037840592000002015070535",
+          "commandStartAt": "2026-08-22T23:23:59.612Z",
+          "responseAt": "2026-08-22T23:24:01.024Z",
+          "listRequestStartedAt": "2026-08-22T23:24:01.024Z",
+          "listRenderedAt": "2026-08-22T23:24:01.639Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 1,
+          "roomId": "g32-room-c637b524-e51",
+          "reservationId": "g32-reservation-51ac5ccc-1de",
+          "commitSuid": "063923037843735000001361394274",
+          "commandStartAt": "2026-08-22T23:24:02.748Z",
+          "responseAt": "2026-08-22T23:24:04.036Z",
+          "listRequestStartedAt": "2026-08-22T23:24:04.036Z",
+          "listRenderedAt": "2026-08-22T23:24:04.784Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 2,
+          "roomId": "g32-room-ea78ff5a-64f",
+          "reservationId": "g32-reservation-d7744c60-15c",
+          "commitSuid": "063923037847547000000016677164",
+          "commandStartAt": "2026-08-22T23:24:06.482Z",
+          "responseAt": "2026-08-22T23:24:07.937Z",
+          "listRequestStartedAt": "2026-08-22T23:24:07.937Z",
+          "listRenderedAt": "2026-08-22T23:24:08.456Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 3,
+          "roomId": "g32-room-422a11b0-a87",
+          "reservationId": "g32-reservation-e845553a-949",
+          "commitSuid": "063923037850822000000041488708",
+          "commandStartAt": "2026-08-22T23:24:09.325Z",
+          "responseAt": "2026-08-22T23:24:11.398Z",
+          "listRequestStartedAt": "2026-08-22T23:24:11.398Z",
+          "listRenderedAt": "2026-08-22T23:24:11.794Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 4,
+          "roomId": "g32-room-9ca3ffd3-6dd",
+          "reservationId": "g32-reservation-7df2cd9a-0c2",
+          "commitSuid": "063923037854314000002001895223",
+          "commandStartAt": "2026-08-22T23:24:13.425Z",
+          "responseAt": "2026-08-22T23:24:14.608Z",
+          "listRequestStartedAt": "2026-08-22T23:24:14.608Z",
+          "listRenderedAt": "2026-08-22T23:24:15.016Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 5,
+          "roomId": "g32-room-4568b6c0-4f6",
+          "reservationId": "g32-reservation-646316cf-94c",
+          "commitSuid": "063923037857478000000082069654",
+          "commandStartAt": "2026-08-22T23:24:16.521Z",
+          "responseAt": "2026-08-22T23:24:17.888Z",
+          "listRequestStartedAt": "2026-08-22T23:24:17.888Z",
+          "listRenderedAt": "2026-08-22T23:24:18.275Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 6,
+          "roomId": "g32-room-b7b7d559-cbf",
+          "reservationId": "g32-reservation-93a095ef-0b5",
+          "commitSuid": "063923037861014000001283184013",
+          "commandStartAt": "2026-08-22T23:24:19.635Z",
+          "responseAt": "2026-08-22T23:24:21.366Z",
+          "listRequestStartedAt": "2026-08-22T23:24:21.366Z",
+          "listRenderedAt": "2026-08-22T23:24:21.774Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 7,
+          "roomId": "g32-room-bc162e67-0e8",
+          "reservationId": "g32-reservation-66342dfe-b1e",
+          "commitSuid": "063923037864310000001291983111",
+          "commandStartAt": "2026-08-22T23:24:23.185Z",
+          "responseAt": "2026-08-22T23:24:24.597Z",
+          "listRequestStartedAt": "2026-08-22T23:24:24.597Z",
+          "listRenderedAt": "2026-08-22T23:24:25.034Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 8,
+          "roomId": "g32-room-136ca195-7ed",
+          "reservationId": "g32-reservation-aca4768d-f44",
+          "commitSuid": "063923037867659000000423979223",
+          "commandStartAt": "2026-08-22T23:24:26.282Z",
+          "responseAt": "2026-08-22T23:24:28.007Z",
+          "listRequestStartedAt": "2026-08-22T23:24:28.007Z",
+          "listRenderedAt": "2026-08-22T23:24:28.582Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        },
+        {
+          "index": 9,
+          "roomId": "g32-room-f47d92a5-044",
+          "reservationId": "g32-reservation-e4c12176-5dd",
+          "commitSuid": "063923037871622000000547247633",
+          "commandStartAt": "2026-08-22T23:24:30.183Z",
+          "responseAt": "2026-08-22T23:24:31.882Z",
+          "listRequestStartedAt": "2026-08-22T23:24:31.882Z",
+          "listRenderedAt": "2026-08-22T23:24:32.323Z",
+          "createStatus": 200,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null
+        }
+      ],
+      "errorCount": 0,
+      "samples": [
+        {
+          "index": 0,
+          "roomId": "g32-room-0f0041d0-4a3",
+          "reservationId": "g32-reservation-682b0be4-8ec",
+          "commitSuid": "063923037840592000002015070535",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:23:59.612Z",
+          "responseAt": "2026-08-22T23:24:01.024Z",
+          "listRequestStartedAt": "2026-08-22T23:24:01.024Z",
+          "listRenderedAt": "2026-08-22T23:24:01.639Z",
+          "commandStartToResponseMs": 1411.9108749999996,
+          "responseToListRedrawMs": 614.9831250000002,
+          "commandStartToListRedrawMs": 2026.8939999999998,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037840592000002015070535"
+        },
+        {
+          "index": 1,
+          "roomId": "g32-room-c637b524-e51",
+          "reservationId": "g32-reservation-51ac5ccc-1de",
+          "commitSuid": "063923037843735000001361394274",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:02.748Z",
+          "responseAt": "2026-08-22T23:24:04.036Z",
+          "listRequestStartedAt": "2026-08-22T23:24:04.036Z",
+          "listRenderedAt": "2026-08-22T23:24:04.784Z",
+          "commandStartToResponseMs": 1288.283375,
+          "responseToListRedrawMs": 748.2009170000001,
+          "commandStartToListRedrawMs": 2036.484292,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037843735000001361394274"
+        },
+        {
+          "index": 2,
+          "roomId": "g32-room-ea78ff5a-64f",
+          "reservationId": "g32-reservation-d7744c60-15c",
+          "commitSuid": "063923037847547000000016677164",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:06.482Z",
+          "responseAt": "2026-08-22T23:24:07.937Z",
+          "listRequestStartedAt": "2026-08-22T23:24:07.937Z",
+          "listRenderedAt": "2026-08-22T23:24:08.456Z",
+          "commandStartToResponseMs": 1455.2369589999998,
+          "responseToListRedrawMs": 519.2370410000003,
+          "commandStartToListRedrawMs": 1974.4740000000002,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037847547000000016677164"
+        },
+        {
+          "index": 3,
+          "roomId": "g32-room-422a11b0-a87",
+          "reservationId": "g32-reservation-e845553a-949",
+          "commitSuid": "063923037850822000000041488708",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:09.325Z",
+          "responseAt": "2026-08-22T23:24:11.398Z",
+          "listRequestStartedAt": "2026-08-22T23:24:11.398Z",
+          "listRenderedAt": "2026-08-22T23:24:11.794Z",
+          "commandStartToResponseMs": 2072.884542,
+          "responseToListRedrawMs": 396.05416700000023,
+          "commandStartToListRedrawMs": 2468.938709,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037850822000000041488708"
+        },
+        {
+          "index": 4,
+          "roomId": "g32-room-9ca3ffd3-6dd",
+          "reservationId": "g32-reservation-7df2cd9a-0c2",
+          "commitSuid": "063923037854314000002001895223",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:13.425Z",
+          "responseAt": "2026-08-22T23:24:14.608Z",
+          "listRequestStartedAt": "2026-08-22T23:24:14.608Z",
+          "listRenderedAt": "2026-08-22T23:24:15.016Z",
+          "commandStartToResponseMs": 1182.8312910000004,
+          "responseToListRedrawMs": 408.2562089999992,
+          "commandStartToListRedrawMs": 1591.0874999999996,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037854314000002001895223"
+        },
+        {
+          "index": 5,
+          "roomId": "g32-room-4568b6c0-4f6",
+          "reservationId": "g32-reservation-646316cf-94c",
+          "commitSuid": "063923037857478000000082069654",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:16.521Z",
+          "responseAt": "2026-08-22T23:24:17.888Z",
+          "listRequestStartedAt": "2026-08-22T23:24:17.888Z",
+          "listRenderedAt": "2026-08-22T23:24:18.275Z",
+          "commandStartToResponseMs": 1366.851416999998,
+          "responseToListRedrawMs": 386.9044580000009,
+          "commandStartToListRedrawMs": 1753.755874999999,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037857478000000082069654"
+        },
+        {
+          "index": 6,
+          "roomId": "g32-room-b7b7d559-cbf",
+          "reservationId": "g32-reservation-93a095ef-0b5",
+          "commitSuid": "063923037861014000001283184013",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:19.635Z",
+          "responseAt": "2026-08-22T23:24:21.366Z",
+          "listRequestStartedAt": "2026-08-22T23:24:21.366Z",
+          "listRenderedAt": "2026-08-22T23:24:21.774Z",
+          "commandStartToResponseMs": 1730.166792,
+          "responseToListRedrawMs": 407.96199999999953,
+          "commandStartToListRedrawMs": 2138.1287919999995,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037861014000001283184013"
+        },
+        {
+          "index": 7,
+          "roomId": "g32-room-bc162e67-0e8",
+          "reservationId": "g32-reservation-66342dfe-b1e",
+          "commitSuid": "063923037864310000001291983111",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:23.185Z",
+          "responseAt": "2026-08-22T23:24:24.597Z",
+          "listRequestStartedAt": "2026-08-22T23:24:24.597Z",
+          "listRenderedAt": "2026-08-22T23:24:25.034Z",
+          "commandStartToResponseMs": 1412.751833000002,
+          "responseToListRedrawMs": 436.53099999999904,
+          "commandStartToListRedrawMs": 1849.2828330000011,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037864310000001291983111"
+        },
+        {
+          "index": 8,
+          "roomId": "g32-room-136ca195-7ed",
+          "reservationId": "g32-reservation-aca4768d-f44",
+          "commitSuid": "063923037867659000000423979223",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:26.282Z",
+          "responseAt": "2026-08-22T23:24:28.007Z",
+          "listRequestStartedAt": "2026-08-22T23:24:28.007Z",
+          "listRenderedAt": "2026-08-22T23:24:28.582Z",
+          "commandStartToResponseMs": 1725.5597080000007,
+          "responseToListRedrawMs": 574.8977500000001,
+          "commandStartToListRedrawMs": 2300.4574580000008,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037867659000000423979223"
+        },
+        {
+          "index": 9,
+          "roomId": "g32-room-f47d92a5-044",
+          "reservationId": "g32-reservation-e4c12176-5dd",
+          "commitSuid": "063923037871622000000547247633",
+          "createStatus": 200,
+          "commandStartAt": "2026-08-22T23:24:30.183Z",
+          "responseAt": "2026-08-22T23:24:31.882Z",
+          "listRequestStartedAt": "2026-08-22T23:24:31.882Z",
+          "listRenderedAt": "2026-08-22T23:24:32.323Z",
+          "commandStartToResponseMs": 1698.656667000003,
+          "responseToListRedrawMs": 440.65787499999715,
+          "commandStartToListRedrawMs": 2139.314542,
+          "commandStatus": 200,
+          "commandKind": "committed",
+          "listStatus": 200,
+          "listCode": null,
+          "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923037871622000000547247633"
+        }
+      ],
+      "firstNewWrite": {
+        "command": "create-room",
+        "roomId": "g32-room-0f0041d0-4a3",
+        "at": "2026-08-22T23:23:57.190Z",
+        "status": 200
+      },
+      "staleNegatives": [
+        {
+          "id": "old-37-character-suid-list",
+          "status": 400,
+          "code": "validation_error",
+          "outcome": "typed-rejected-before-list-dispatch",
+          "value": "suid-00000000000000000001787414836102"
+        }
+      ],
+      "fiveEndpointConformance": [
+        {
+          "endpoint": "/conformance/v1/g32-config",
+          "status": 200
+        },
+        {
+          "endpoint": "/conformance/v1/g32-store-state",
+          "status": 200
+        },
+        {
+          "endpoint": "/api/commands/create-room",
+          "status": 200
+        },
+        {
+          "endpoint": "/api/commands/reserve-room",
+          "status": 200
+        },
+        {
+          "endpoint": "/api/read/reservations?waitForSortableUniqueId=<30-digit>",
+          "status": 200
+        }
+      ],
+      "rawV1": {
+        "endpoint": "/api/sekiban/serialized",
+        "status": 404
+      },
+      "finalStoreState": {
+        "task": "SDT-G32",
+        "serviceId": "g32-9043d626fe1149cb",
+        "eventCount": 20,
+        "eventOpsCount": 20,
+        "materializedViewRowCount": 3,
+        "materializedViewReceiptCount": 40,
+        "legacySerializedEventTablePresent": false
+      },
+      "abortForwardFix": {
+        "abortAllowedThrough": "final-C deploy and post-witness before first new-store command",
+        "firstNewStoreWrite": {
+          "command": "create-room",
+          "roomId": "g32-room-0f0041d0-4a3",
+          "at": "2026-08-22T23:23:57.190Z",
+          "status": 200
+        },
+        "afterFirstWrite": "forward-fix-only; this script never rolls back new bindings or recreates the old service"
+      },
+      "interpretation": "Each sample records command response, exactly one server wait/list redraw, and total independently; no client poll/retry loop is included."
+    },
+    "secrets": "redacted"
+  },
+  "tokenRotation": {
+    "conformance": "rotated inside the primary/receiver final-C deployment; value redacted",
+    "bridgeFreezeCredential": "rotated to an unrelated final-deployment value; final code has no bridge route",
+    "finalFence": "generated file-fed token with matching public fingerprint only; value redacted",
+    "localFilesAfterMeasurement": "deleted by deploy-script trap",
+    "dataD1DurableObjectPolicy": "secret rotation does not mutate old or new application data, D1 rows, or Durable Object storage"
+  },
+  "abortForwardFix": {
+    "beforeFirstApplicationWrite": "abort permitted through final-C deployment, migration baseline verification, and post-witness before the first sample command writes a new logical event",
+    "firstApplicationWrite": {
+      "command": "create-room",
+      "roomId": "g32-room-0f0041d0-4a3",
+      "at": "2026-08-22T23:23:57.190Z",
+      "status": 200
+    },
+    "afterFirstApplicationWrite": "forward-fix-only; no rollback to old serviceId, old D1, old Queue, or old SUID format is permitted"
   },
   "candidateImpact": {
+    "candidateCommit": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
     "deploymentRequired": true,
-    "reason": "The old prefixed SUID format cannot coexist with the C# 30-digit format, so final C must deploy the fresh service/D1/Queue cutover."
+    "newServiceId": true,
+    "newD1Databases": true,
+    "oneTimeResetReason": "prefixed old SUID ordering is incompatible with 30-digit C# SUID ordering"
+  },
+  "oracleMap": "docs/SDT-G32-oracle-map.md",
+  "candidateGate": "C is the deployment and digest authority. R is limited to this evidence and one retained-C append; any other post-C diff requires a fresh C and witnessed deployment.",
+  "ci": {
+    "status": "pending-after-push",
+    "verify": "pending",
+    "cosmosEmulator": "pending"
   },
   "secrets": "redacted"
 }
