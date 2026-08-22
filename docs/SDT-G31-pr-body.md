@@ -17,9 +17,11 @@ single server-side post-commit list refresh.
   request-start deadline and a true 1000ms backoff cap.
 - Adds separate real D1-MV receipt oracles for stored no-change,
   patch-not-found, and delete-without-row, plus separate non-stored collision
-  and lineage gates. Real-D1 mid-wait rebuild/poison/checkpoint flips, exact
-  20s/120s statement-and-row budgets, and independent 503 wire-shape checks
-  close the review findings.
+  and lineage gates. Real-D1 mid-wait rebuild/poison/checkpoint flips include
+  a zero post-wait page-read barrier: the exact rebuild-gate removal reaches
+  one page read and makes its named fixture red. Exact 20s/120s
+  statement-and-row budgets and independent 503 wire-shape checks close the
+  review findings.
 - Adds immutable D1 migrations for target incident aliases and active wait
   receipts; receipt GC is deliberately followed by the unique-source plus
   active-safe-head branch.

@@ -1,8 +1,8 @@
 {
   "task": "SDT-G31",
-  "status": "R-FIX-1-RECOVERY complete: final-C witnessed recovery evidence recorded; R CI follows the evidence-only push",
-  "candidateCommit": "0cef60307a37964b5a4a4423f5abdc3d50b01e21",
-  "sourceCommit": "0cef60307a37964b5a4a4423f5abdc3d50b01e21",
+  "status": "C-FIX-2-ADDENDUM placeholder: prior C/R retained below; one new final-C witnessed deploy is pending",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
   "protocol": {
     "candidate": "One immutable C contains runtime, migrations, sample, CI, tests, documentation, witness tooling, candidate gates, manifest, and placeholder evidence.",
     "bookkeeping": "R changes only this evidence document and appends C once to the retained-candidate fetch list.",
@@ -28,6 +28,14 @@
       "evidencePath": "docs/SDT-G31-deploy-evidence.json",
       "deployedRuntimeCommit": "87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c",
       "status": "prior witnessed C/R retained as SDT-G31-FIX-1 evidence history"
+    },
+    {
+      "candidateCommit": "0cef60307a37964b5a4a4423f5abdc3d50b01e21",
+      "sourceCommit": "0cef60307a37964b5a4a4423f5abdc3d50b01e21",
+      "evidenceCommit": "aa3889976769f73ef430b85de2a8cd6c243eaced",
+      "evidencePath": "docs/SDT-G31-deploy-evidence.json",
+      "deployedRuntimeCommit": "0cef60307a37964b5a4a4423f5abdc3d50b01e21",
+      "status": "prior final-C recovery C/R retained for SDT-G31-FIX-2-ADDENDUM"
     }
   ],
   "recoveryHistory": {
@@ -79,9 +87,9 @@
     }
   },
   "orchestrationDelivery": {
-    "taskId": "SDT-G31-FIX-1-RECOVERY",
-    "canonicalReport": "issued after the evidence-only R CI is green",
-    "deferredRoutingFallback": "this evidence preserves the recovery facts and outcome if host routing is deferred"
+    "taskId": "SDT-G31-FIX-2-ADDENDUM",
+    "canonicalReport": "issued after the new final-C evidence-only R CI is green",
+    "deferredRoutingFallback": "this placeholder preserves prior recovery history; the new R records its witness outcome if host routing is deferred"
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
@@ -1574,10 +1582,10 @@
     }
   },
   "candidateImpact": {
-    "candidateCommit": "0cef60307a37964b5a4a4423f5abdc3d50b01e21",
+    "candidateCommit": "CANDIDATE",
     "deploymentRequired": true,
-    "workerBundleChanged": true,
-    "rationale": "AC7/AC8 require final-C deployment, source identity proof, sampled server wait/list latency, and an old-SUID GC probe."
+    "workerBundleChanged": false,
+    "rationale": "The F5 fix is a test-oracle/documentation correction, but AC7/AC8 still require a newly sealed final-C deployment, source identity proof, sampled server wait/list latency, and an old-SUID GC probe."
   },
   "oracleMap": "docs/SDT-G31-oracle-map.md",
   "candidateGate": "The sealed C is the immutable deployment and digest authority; post-C changes are exactly evidence plus one retained-C append.",

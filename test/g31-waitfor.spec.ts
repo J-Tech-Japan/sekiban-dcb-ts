@@ -358,14 +358,22 @@ class FlappingMaterializedView implements MaterializedViewQueryPort {
 function flipRealD1WaitState(
   views: D1MaterializedViewStore,
   afterFirstRead: () => Promise<void>,
-): { readonly port: MaterializedViewQueryPort; readonly reads: () => number } {
+): { readonly port: MaterializedViewQueryPort; readonly reads: () => number; readonly postWaitQueryRows: () => number } {
   let reads = 0;
+  let postWaitQueryRows = 0;
   return {
     reads: () => reads,
+    postWaitQueryRows: () => postWaitQueryRows,
     port: {
       initialize: () => views.initialize(),
-      queryRows: (...args) => views.queryRows(...args),
-      queryRowsWithTotal: (...args) => views.queryRowsWithTotal(...args),
+      queryRows: (...args) => {
+        postWaitQueryRows += 1;
+        return views.queryRows(...args);
+      },
+      queryRowsWithTotal: (...args) => {
+        postWaitQueryRows += 1;
+        return views.queryRowsWithTotal(...args);
+      },
       hasTargetReceipt: (...args) => views.hasTargetReceipt(...args),
       hasCheckpointAheadFinding: (...args) => views.hasCheckpointAheadFinding(...args),
       readWaitForState: async (...args) => {
@@ -598,6 +606,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
     }));
     await expectProjectionUnavailable(await queryD1(source, flipped.port, serviceId, suid));
     expect(flipped.reads()).toBe(2);
+    expect(flipped.postWaitQueryRows()).toBe(0);
   });
 
   it("rechecks a real D1 rebuild-required finding immediately before success", async () => {
@@ -615,6 +624,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
     });
     await expectProjectionUnavailable(await queryD1(source, flipped.port, serviceId, suid));
     expect(flipped.reads()).toBe(2);
+    expect(flipped.postWaitQueryRows()).toBe(0);
   });
 
   it("rechecks a real D1 target poison finding immediately before success", async () => {
@@ -634,6 +644,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
     }));
     await expectProjectionUnavailable(await queryD1(source, flipped.port, serviceId, suid));
     expect(flipped.reads()).toBe(2);
+    expect(flipped.postWaitQueryRows()).toBe(0);
   });
 
   it("keeps a contradictory source target unavailable before any MV read", async () => {
