@@ -1,8 +1,8 @@
 {
   "task": "SDT-G29",
-  "status": "CANDIDATE placeholder; witnessed deployment is captured only after the immutable candidate is cut",
-  "candidateCommit": "CANDIDATE",
-  "sourceCommit": "CANDIDATE",
+  "status": "R evidence; local and preflight evidence complete, live witnessed deploy blocked by protected conformance token availability",
+  "candidateCommit": "cc4d0a86b749dc3ba09fe366a470c70b329bd10f",
+  "sourceCommit": "cc4d0a86b749dc3ba09fe366a470c70b329bd10f",
   "protocol": {
     "candidate": "C contains sample authoring rewrite, mapping/compatibility/diagnostic fixtures, runtime per-view policy, witness tooling, oracle map, PR body, and this placeholder",
     "bookkeeping": "R changes only this evidence document and appends C once to the retained-candidate fetch list",
@@ -13,9 +13,9 @@
   },
   "treeDigests": {
     "algorithm": "sha256(path NUL content NUL, paths sorted)",
-    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "runtime": "a1b29d920df1c8b6cb7d78ddf52cc5c400cab54d085cd9d0de2fe09a2c2d7221",
     "runtimeRoots": ["packages/dcb-domain/src", "packages/dcb-runtime/src"],
-    "configuration": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "ee25e33f478c6985286c71fcb5712e5da2a13cc0c446899464dbf50b452c4baf",
     "configurationRoots": [
       ".github/workflows/ci.yml",
       "README.md",
@@ -61,13 +61,19 @@
     ]
   },
   "localValidation": {
-    "mapping": "pending candidate run",
-    "deliveryMatrix": "pending candidate run",
-    "diagnostics": "pending candidate run",
-    "compatibility": "pending candidate run",
-    "witness": "not-run until candidate is immutable"
+    "mapping": "passed: 13 rows x 7 columns plus mutation oracle",
+    "deliveryMatrix": "passed: 8 branches plus runtime selection oracle",
+    "diagnostics": "passed: 8 tests across six raw fields and four derived quadrants",
+    "compatibility": "passed: five lanes and identity fail-closed oracle",
+    "sample": "passed: 12 tests including canonical materializer dispatch and legacy replay",
+    "witness": "passed: 2 local witness tests; remote live witness not run"
   },
-  "remoteDeployment": { "status": "not-run", "reason": "candidate placeholder" },
+  "remoteDeployment": {
+    "status": "blocked",
+    "reason": "dry-run preflight PASS; live witness requires the protected G29_CONFORMANCE_TOKEN_FILE, which is not available in this seat",
+    "preflight": "receiver and primary strict bundles passed; remote pipeline reports checked-in 0002_g27_event_identity.sql pending; MV has no pending migration",
+    "identityPolicy": "existing g25-38219c8-20260820 only; no reseed, fresh serviceId, namespace, generation, or destructive migration"
+  },
   "oracleMap": "docs/SDT-G29-oracle-map.md",
-  "candidateGate": "CANDIDATE placeholder; final C/R gate recomputes both tree digests and requires one retained-C append"
+  "candidateGate": "C=cc4d0a86b749dc3ba09fe366a470c70b329bd10f; R updates only this evidence and appends C once to the retained-candidate fetch list"
 }
