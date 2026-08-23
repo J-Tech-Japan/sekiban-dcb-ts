@@ -98,11 +98,6 @@ interface TagStateResponse {
   updatedAt: string;
 }
 
-interface HandledCommitResponse {
-  readonly response: Response;
-  readonly scope: CommitTraceScope;
-}
-
 interface CommitTraceRequestState {
   readonly trace: CommitTrace;
   scope: CommitTraceScope;

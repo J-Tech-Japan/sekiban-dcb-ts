@@ -33,9 +33,10 @@ import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEve
 import {
   DurableObjectActivation,
   enterNativeActorHandleSpan,
+  noOpNativeTracing,
   type DurableObjectActivationObservation,
+  type NativeTracing,
 } from "../trace/CommitTrace";
-import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -890,6 +891,7 @@ export class TagDurableObject implements DurableObject {
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly env: TagDurableObjectEnv,
+    private readonly nativeTracing: NativeTracing = noOpNativeTracing,
   ) {}
 
   async fetch(request: Request): Promise<Response> {
@@ -995,7 +997,7 @@ export class TagDurableObject implements DurableObject {
     callback: (body: unknown) => Promise<Response>,
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
-      cloudflareTracing(),
+      this.nativeTracing,
       { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation },
       async () => {
         const body = await this.jsonBody(request.clone());
@@ -1026,7 +1028,7 @@ export class TagDurableObject implements DurableObject {
     callback: () => Promise<Response>,
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
-      cloudflareTracing(),
+      this.nativeTracing,
       { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation },
       async () => undefined,
       callback,

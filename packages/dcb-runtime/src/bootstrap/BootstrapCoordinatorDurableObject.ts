@@ -2,8 +2,13 @@ import { parseBootstrapDump } from "./manifest";
 import type { BootstrapManifestError } from "./manifest";
 import type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord } from "./types";
 import { allocatorNameForService } from "../allocator/types";
-import { DurableObjectActivation, enterNativeActorHandleSpan, type DurableObjectActivationObservation } from "../trace/CommitTrace";
-import { cloudflareTracing } from "../trace/CloudflareTracing";
+import {
+  DurableObjectActivation,
+  enterNativeActorHandleSpan,
+  noOpNativeTracing,
+  type DurableObjectActivationObservation,
+  type NativeTracing,
+} from "../trace/CommitTrace";
 
 const CONTROL = "bootstrap-control";
 const DUMP = "bootstrap-dump";
@@ -35,7 +40,11 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
   /** Constructor-scoped observation only; never persisted or used for control. */
   private readonly activation = new DurableObjectActivation();
 
-  constructor(private readonly ctx: DurableObjectState, private readonly env: BootstrapCoordinatorEnv) {}
+  constructor(
+    private readonly ctx: DurableObjectState,
+    private readonly env: BootstrapCoordinatorEnv,
+    private readonly nativeTracing: NativeTracing = noOpNativeTracing,
+  ) {}
 
   async fetch(request: Request): Promise<Response> {
     // Flip before this handler performs its first await.
@@ -64,7 +73,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     action: "admit" | "finalize" | "release",
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
-      cloudflareTracing(),
+      this.nativeTracing,
       { actorClass: "BOOTSTRAP", actorKey: `bootstrap:${serviceId}`, activation },
       async () => {
         let body: unknown;

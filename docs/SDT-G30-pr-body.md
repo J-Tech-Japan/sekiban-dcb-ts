@@ -23,8 +23,9 @@ Closes #70
 
 `npm run test:g30` runs the runtime trace/verifier fixtures, B0 cohort and
 telemetry-anchor fixtures, manifest `--check` and mutations, exact G30 config
-check, production-source trace mutations, candidate-independent recorder test,
-and shell syntax check. CI runs this lane plus a forced-red proof. Existing
+check, a Node/provider import-boundary probe, production-source trace mutations,
+candidate-independent recorder test, and shell syntax check. CI runs this lane
+plus a forced-red proof. Existing
 G13–G32 lanes remain required, including the G13 five-endpoint byte oracle.
 
 ## Candidate and evidence protocol

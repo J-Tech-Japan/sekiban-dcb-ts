@@ -8,9 +8,9 @@
  * unchanged Postgres composition.
  */
 import type { DomainDefinition } from "@sekiban/dcb-core";
-import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { AllocatorDurableObject as RuntimeAllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { allocatorNameForService } from "./allocator/types";
-import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
+import { BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
@@ -22,14 +22,14 @@ import type { DeliveryCoreResult, DeliveryViewHandler } from "./downstream/Deliv
 import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
-import { JournalDurableObject } from "./journal/JournalDurableObject";
+import { JournalDurableObject as RuntimeJournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
-import { TagDurableObject } from "./tag/TagDurableObject";
+import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
 
@@ -79,6 +79,35 @@ export interface CloudflareOnlyWorkerOptions {
   }) => Promise<void>;
 }
 
+/**
+ * Keep the portable runtime free of a `cloudflare:workers` runtime import.
+ * These entrypoint-owned wrappers inject the active Cloudflare custom-span
+ * API into every Durable Object constructor used by the deployed Worker.
+ */
+export class AllocatorDurableObject extends RuntimeAllocatorDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, undefined, cloudflareTracing());
+  }
+}
+
+export class BootstrapCoordinatorDurableObject extends RuntimeBootstrapCoordinatorDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, cloudflareTracing());
+  }
+}
+
+export class JournalDurableObject extends RuntimeJournalDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, cloudflareTracing());
+  }
+}
+
+export class TagDurableObject extends RuntimeTagDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, cloudflareTracing());
+  }
+}
+
 /** Compose the named two-D1 Cloudflare-only Worker. */
 export function createCloudflareOnlyRuntimeWorker(
   options: CloudflareOnlyWorkerOptions = {},
@@ -108,7 +137,7 @@ export function createCloudflareOnlyRuntimeWorker(
         });
       }
       if (url.pathname === "/operator/repair") {
-        return handleOperatorRepair(request, env);
+        return handleOperatorRepair(request, env, cloudflareTracing(ctx));
       }
       if (url.pathname.startsWith("/operator/bootstrap/")) {
         return handleOperatorBootstrap(request, env, storeProvider, {
@@ -200,7 +229,6 @@ export function createCloudflareOnlyRuntimeWorker(
   };
 }
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 export { processDownstreamDoorbell } from "./downstream/DownstreamAdapter";
 export {
   downstreamEnvelopeBytes,

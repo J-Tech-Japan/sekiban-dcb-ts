@@ -18,7 +18,7 @@ import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
 import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
-import { cloudflareTracing } from "./trace/CloudflareTracing";
+import { nativeTracingFromContext } from "./trace/CommitTrace";
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
@@ -57,6 +57,8 @@ export {
   enterNativeActorHandleSpan,
   enterNativeCommitSpan,
   enterNativeReconcileRootSpan,
+  nativeTracingFromContext,
+  noOpNativeTracing,
   observedIdleGapLowerBoundMs,
   stableTraceHash,
   traceManifest,
@@ -266,7 +268,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
-          nativeTracing: cloudflareTracing(ctx),
+          nativeTracing: nativeTracingFromContext(ctx),
         });
       }
       if (
@@ -282,7 +284,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         });
       }
       if (url.pathname === "/operator/repair") {
-        return handleOperatorRepair(request, env);
+        return handleOperatorRepair(request, env, nativeTracingFromContext(ctx));
       }
       if (url.pathname.startsWith("/operator/bootstrap/")) {
         return handleOperatorBootstrap(request, env, storeProvider);

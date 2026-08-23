@@ -18,8 +18,9 @@ import {
   enterNativeActorHandleSpan,
   enterNativeCommitSpan,
   type DurableObjectActivationObservation,
+  noOpNativeTracing,
+  type NativeTracing,
 } from "../trace/CommitTrace";
-import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
@@ -164,6 +165,7 @@ export class AllocatorDurableObject implements DurableObject {
     private readonly ctx: DurableObjectState,
     private readonly env?: { BOOTSTRAP?: DurableObjectNamespace },
     private readonly orderClock: OrderClock = systemOrderClock,
+    private readonly nativeTracing: NativeTracing = noOpNativeTracing,
   ) {}
 
   async fetch(request: Request): Promise<Response> {
@@ -172,7 +174,7 @@ export class AllocatorDurableObject implements DurableObject {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/allocate") {
       return enterNativeActorHandleSpan(
-        cloudflareTracing(),
+        this.nativeTracing,
         { actorClass: "ALLOCATOR", actorKey: "allocator", activation },
         async () => {
           const parsed = allocateFrom(await request.clone().json<unknown>());
@@ -198,7 +200,7 @@ export class AllocatorDurableObject implements DurableObject {
     }
     if (request.method === "GET" && url.pathname.startsWith("/attempts/")) {
       return enterNativeActorHandleSpan(
-        cloudflareTracing(),
+        this.nativeTracing,
         { actorClass: "ALLOCATOR", actorKey: "allocator", activation },
         async () => undefined,
         async () => {
@@ -244,7 +246,7 @@ export class AllocatorDurableObject implements DurableObject {
     const input = parsed.value;
     if (input.serviceId !== undefined && this.env?.BOOTSTRAP !== undefined) {
       const admitted = await enterNativeCommitSpan(
-        cloudflareTracing(),
+        this.nativeTracing,
         "allocator.bootstrap.finalize",
         {
           schema: "sdt.commit/v1",

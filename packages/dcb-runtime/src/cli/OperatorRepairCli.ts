@@ -1,6 +1,6 @@
 import { BindingExclusionLookupClient } from "../downstream/ExclusionLookup";
 import { RepairWorker, RepairWorkerFailure, type RepairExecutionInput, type RepairFault, type RepairMode } from "../repair/RepairWorker";
-import { cloudflareTracing } from "../trace/CloudflareTracing";
+import { noOpNativeTracing, type NativeTracing } from "../trace/CommitTrace";
 
 type JsonObject = Record<string, unknown>;
 
@@ -92,7 +92,11 @@ function testFaultFromRequest(request: Request): RepairFault | undefined {
 }
 
 /** Authenticated, bounded control-plane command; it is not a V1 public wire endpoint. */
-export async function handleOperatorRepair(request: Request, env: OperatorRepairEnv): Promise<Response> {
+export async function handleOperatorRepair(
+  request: Request,
+  env: OperatorRepairEnv,
+  nativeTracing: NativeTracing = noOpNativeTracing,
+): Promise<Response> {
   if (request.method !== "POST") {
     return error(404, "operator_repair_route_not_found", "Operator repair requires POST");
   }
@@ -115,7 +119,7 @@ export async function handleOperatorRepair(request: Request, env: OperatorRepair
       env,
       new BindingExclusionLookupClient(env.REPAIR_EXCLUSION_LOOKUP),
       env.SDT_SERVICE_ID,
-      { nativeTracing: cloudflareTracing() },
+      { nativeTracing },
     );
     const result = await worker.execute(parsed.value);
     return json(result, result.interrupted === undefined ? 200 : 202);

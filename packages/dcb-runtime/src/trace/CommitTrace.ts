@@ -55,6 +55,37 @@ export interface NativeTracing {
   ): T;
 }
 
+const NOOP_NATIVE_TRACE_SPAN: NativeTraceSpan = Object.freeze({
+  isTraced: false,
+  setAttribute: () => undefined,
+});
+
+/**
+ * The portable runtime must remain importable from Node-side provider and
+ * contract tooling.  Cloudflare-only entrypoints inject the real tracer;
+ * this adapter preserves the trace-only, fail-open contract everywhere else.
+ */
+export const noOpNativeTracing: NativeTracing = Object.freeze({
+  enterSpan<T, A extends unknown[]>(
+    _name: string,
+    callback: (span: NativeTraceSpan, ...args: A) => T,
+    ...args: A
+  ): T {
+    return callback(NOOP_NATIVE_TRACE_SPAN, ...args);
+  },
+});
+
+/**
+ * A request handler can use the platform context without importing the
+ * Cloudflare-only module into the portable Node/provider graph.
+ */
+export function nativeTracingFromContext(
+  context?: Pick<ExecutionContext, "tracing">,
+): NativeTracing {
+  const native = context?.tracing as unknown as NativeTracing | undefined;
+  return native ?? noOpNativeTracing;
+}
+
 export interface CommitTraceClock {
   now(): number;
 }
@@ -335,12 +366,6 @@ export interface CommitTraceSpanOptions {
   readonly attributes?: Readonly<Record<string, TraceAttributeValue>>;
   readonly zeroDurationPlatformLimited?: boolean;
   readonly clockDomain?: "caller" | "callee";
-}
-
-interface OpenSpan {
-  readonly row: ManifestRow;
-  readonly span: CommitTraceSpan;
-  readonly native?: NativeTraceSpan;
 }
 
 interface ScopeState {

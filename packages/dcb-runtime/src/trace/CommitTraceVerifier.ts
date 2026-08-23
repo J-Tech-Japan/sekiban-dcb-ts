@@ -1,5 +1,4 @@
 import {
-  type CommitTraceFace,
   type CommitTraceSnapshot,
   type CommitTraceSpan,
   type TraceAttributeValue,

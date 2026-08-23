@@ -29,13 +29,13 @@ import {
   enterNativeActorHandleSpan,
   enterNativeCommitSpan,
   enterNativeReconcileRootSpan,
+  noOpNativeTracing,
   stableTraceHash,
   traceManifest,
   type DurableObjectActivationObservation,
   type NativeCommitSpanInput,
   type NativeTracing,
 } from "../trace/CommitTrace";
-import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -826,8 +826,8 @@ export class JournalDurableObject implements DurableObject {
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly env: CommitRecoveryEnv,
-    /** Optional test adapter; production always uses Cloudflare active context. */
-    private readonly nativeTracing: NativeTracing = cloudflareTracing(),
+    /** Cloudflare entrypoints inject active context; portable paths remain fail-open. */
+    private readonly nativeTracing: NativeTracing = noOpNativeTracing,
   ) {}
 
   async fetch(request: Request): Promise<Response> {
@@ -1160,7 +1160,13 @@ export class JournalDurableObject implements DurableObject {
         await txn.deleteAlarm();
       } else {
         if (updated.state === "SEALING" && updated.takeover === null) {
-          updated.alarm = input.alarmFaults !== undefined && input.alarmFaults.length > 0
+          // The fence-install crash hook is a commit.test-only fixture. Keep
+          // its first recovery behind an explicit debug wake so an unrelated
+          // Miniflare alarm cannot consume the one-shot fault before the
+          // fixture observes its durable intermediate state.
+          const deferTestRecovery = input.alarmFaults !== undefined && input.alarmFaults.length > 0
+            || updated.commitContext?.testFenceInstallFaultOnce === true;
+          updated.alarm = deferTestRecovery
             ? testFaultAlarm(record.alarm)
             : immediateAlarm(record.alarm);
           await txn.setAlarm(updated.alarm.dueAt);
