@@ -910,13 +910,17 @@ export class DurableObjectActivation {
   }
 }
 
-const workerIsolateInstanceId = crypto.randomUUID();
+// Workerd forbids random generation while evaluating a module. Keep the
+// isolate identity module-scoped once observed, but create it at the first
+// request-handler boundary rather than during Worker startup.
+let workerIsolateInstanceId: string | undefined;
 let workerIsolateFirstInvocation = true;
 
 export function beginWorkerInvocationObservation(): Readonly<{
   isolateInstanceId: string;
   firstInvocation: boolean;
 }> {
+  workerIsolateInstanceId ??= crypto.randomUUID();
   const firstInvocation = workerIsolateFirstInvocation;
   workerIsolateFirstInvocation = false;
   return Object.freeze({ isolateInstanceId: workerIsolateInstanceId, firstInvocation });

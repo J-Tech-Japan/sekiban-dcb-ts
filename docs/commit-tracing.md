@@ -25,6 +25,10 @@ Activation IDs are constructor-local observations. They are never stored in a
 Durable Object, used as a control input, or returned through a public route.
 Idle evidence is collected from an external complete-trace ledger at exactly
 2 s, 15 s, and 180 s; elapsed time alone never assigns a reactivation cause.
+Each idle observation names a B request that exists in both the client ledger
+and exported trace cohort. Its `activationFirst`, `scriptVersion`, and `colo`
+must exactly equal the matching S00 root attributes; a declaration alone is
+not evidence.
 
 ## Repeating B0
 
@@ -67,7 +71,9 @@ does not assert a performance pass/fail.
    ledger by the S00 ray/request identifier. It rejects missing traces,
    replacements, incomplete schema rows, an export after the 10-minute
    deadline, or any accepted request whose caller-union unattributed ratio is
-   above 5%.
+   above 5%. It also retains only safe provider span names per B trace, so
+   refresh exclusion is calculated from the exported trace cohort rather than
+   an operator-supplied boolean.
 
 The live run writes only raw evidence artifacts and the summary evidence.
 After it succeeds, make bookkeeping commit R with exactly the evidence files
@@ -79,7 +85,12 @@ candidate and a new B0 acquisition.
 
 The B0 validator requires one independently attributable or excluded record
 for each hypothesis: Worker-isolate first invocation, Durable Object wake,
-token rotation, and queue/doorbell backpressure. The records preserve raw
-facts used for the judgment. Token rotation is excluded unless an actual
-refresh span exists on the commit path; queue/doorbell is a fault-barrier
-exclusion probe and must never be labelled a queue-backlog cause.
+token rotation, and queue/doorbell backpressure. Every raw record cites a B
+request present in both the ledger and trace cohort. Worker-isolate values are
+cross-checked against the cited root's version and colo. Token rotation is
+excluded only when the exporter finds no refresh span on any B trace; an
+operator cannot supply `refreshSpanPresent`. Queue/doorbell remains a
+fault-barrier exclusion probe and its bound is calculated from the cited
+ledger/root timings, never from an operator-supplied `withinBound` flag. The
+runbook validates these joins before it copies any supplied raw evidence under
+`docs/`.

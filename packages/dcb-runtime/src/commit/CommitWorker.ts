@@ -399,6 +399,10 @@ export class CommitWorker {
     });
     return trace.root("S00", {
       actorKey: `root:${this.serviceId}`,
+      // This is a trace-only observation generated at the handler boundary.
+      // It is intentionally not persisted, used for control, or returned on
+      // the V1 response.
+      attributes: { "activation.first": workerObservation.firstInvocation },
     }, async (root) => {
       const state: CommitTraceRequestState = { trace, scope: root };
       const response = await this.handleUntraced(request, state);

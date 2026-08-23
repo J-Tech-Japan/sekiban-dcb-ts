@@ -86,7 +86,10 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     id: "activation-uses-module-scope-id",
     file: source.trace,
     from: "  readonly activationId = crypto.randomUUID();",
-    to: "  readonly activationId = workerIsolateInstanceId;",
+    // The production Worker identity is initialized at the first handler
+    // boundary. Keep this mutant type-correct while still substituting that
+    // identity for the DO-local activation ID once a request has begun.
+    to: "  readonly activationId = workerIsolateInstanceId ?? \"worker-isolate-not-initialized\";",
     target: "uses the literal 2s/15s/180s idle experiment schedule and keeps activation IDs independent",
     unrelated: "rejects a raw tag attribute before it can become telemetry",
   },

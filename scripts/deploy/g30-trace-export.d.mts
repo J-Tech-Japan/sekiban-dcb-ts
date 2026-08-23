@@ -7,6 +7,8 @@ export interface G30NormalizedTrace {
   runtimeVerified: boolean;
   exportedAtMs: number;
   callerCoverageIntervals: readonly string[];
+  /** Safe names from every provider span retained on the same trace. */
+  providerSpanNames: readonly string[];
   spans: G30NormalizedTraceSpan[];
 }
 

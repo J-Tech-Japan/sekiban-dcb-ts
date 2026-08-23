@@ -266,15 +266,99 @@ export function assertAaaDrift(a, b, aprime) {
   });
 }
 
+const TOKEN_REFRESH_SPAN_NAMES = new Set([
+  "auth.refresh",
+  "auth.token.refresh",
+  "token.refresh",
+]);
+
 /**
- * The activation proof is an external trace/export ledger.  It records the
- * exact experiment schedule and the values that may be observed, while
- * proving that none became Durable Object storage, a control input, or a
- * public response field.
+ * Operator-supplied evidence is not authoritative merely because it is
+ * structurally well-formed. Every observation must name one independently
+ * retained B ledger request and its exported trace; no arrival-order or time
+ * proximity fallback is allowed.
  */
-export function assertActivationIdleEvidence(activationIdle) {
+function evidenceTraceIndex(ledger, traces, label) {
+  if (!Array.isArray(ledger) || !Array.isArray(traces)) fail(`${label}-trace-input`, `${label} requires a ledger and exported trace array`);
+  const ledgerByRequestId = new Map();
+  for (const [index, record] of ledger.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `${label}.ledger[${index}].requestId`);
+    if (ledgerByRequestId.has(requestId)) fail(`${label}-ledger-duplicate`, `${label} ledger repeats requestId ${requestId}`);
+    ledgerByRequestId.set(requestId, record);
+  }
+  const traceByRequestId = new Map();
+  for (const [index, trace] of traces.entries()) {
+    const requestId = nonEmptyString(trace?.requestId, `${label}.traces[${index}].requestId`);
+    if (!ledgerByRequestId.has(requestId) || traceByRequestId.has(requestId)) {
+      fail(`${label}-trace-join`, `${label} trace requestId ${requestId} is missing from or duplicated in the B ledger`);
+    }
+    traceByRequestId.set(requestId, trace);
+  }
+  return Object.freeze({ ledgerByRequestId, traceByRequestId });
+}
+
+function evidenceReference(requestIdValue, index, label) {
+  const requestId = nonEmptyString(requestIdValue, `${label}.requestId`);
+  const ledger = index.ledgerByRequestId.get(requestId);
+  const trace = index.traceByRequestId.get(requestId);
+  if (ledger === undefined || trace === undefined) {
+    fail(`${label}-trace-join`, `${label} requestId ${requestId} is not jointly present in the B ledger and exported traces`);
+  }
+  const roots = Array.isArray(trace.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
+  if (roots.length !== 1) fail(`${label}-trace-root`, `${label} requestId ${requestId} must have exactly one S00 trace root`);
+  const attributes = object(roots[0]?.attributes);
+  if (attributes === undefined) fail(`${label}-trace-root`, `${label} requestId ${requestId} root attributes are missing`);
+  return Object.freeze({ requestId, ledger, trace, root: roots[0], rootAttributes: attributes });
+}
+
+function rootBoolean(reference, attribute, label) {
+  const value = reference.rootAttributes[attribute];
+  if (typeof value !== "boolean") fail(`${label}-trace-root`, `${label} trace root lacks boolean ${attribute}`);
+  return value;
+}
+
+function rootString(reference, attribute, label) {
+  const value = reference.rootAttributes[attribute];
+  if (typeof value !== "string" || value.length === 0) fail(`${label}-trace-root`, `${label} trace root lacks string ${attribute}`);
+  return value;
+}
+
+function rootDuration(reference, label) {
+  const start = finiteNumber(reference.root?.startMs, `${label}.S00.startMs`);
+  const end = finiteNumber(reference.root?.endMs, `${label}.S00.endMs`);
+  if (end < start) fail(`${label}-trace-root`, `${label} trace root ends before it starts`);
+  return end - start;
+}
+
+function providerSpanNames(reference, label) {
+  if (!Array.isArray(reference.trace?.providerSpanNames)) {
+    fail(`${label}-provider-spans`, `${label} trace must retain provider span names for refresh exclusion`);
+  }
+  if (reference.trace.providerSpanNames.length === 0) {
+    fail(`${label}-provider-spans`, `${label} trace has no provider span names from which to exclude refresh`);
+  }
+  return reference.trace.providerSpanNames.map((value, index) => nonEmptyString(value, `${label}.providerSpanNames[${index}]`));
+}
+
+function refreshRequestIds(index, label) {
+  const observed = new Set();
+  for (const [requestId, trace] of index.traceByRequestId) {
+    const names = providerSpanNames({ trace }, `${label}.${requestId}`);
+    if (names.some((name) => TOKEN_REFRESH_SPAN_NAMES.has(name.toLowerCase()))) observed.add(requestId);
+  }
+  return observed;
+}
+
+/**
+ * The activation proof is an external trace/export ledger. It records the
+ * exact experiment schedule and values observed in the matching root row,
+ * while proving that none became Durable Object storage, a control input, or
+ * a public response field.
+ */
+export function assertActivationIdleEvidence(activationIdle, ledger, traces) {
   const evidence = object(activationIdle);
   if (evidence === undefined) fail("activation-idle", "activation/idle evidence is missing");
+  const traceIndex = evidenceTraceIndex(ledger, traces, "activation");
   if (!same(evidence.scheduleMs, G30_IDLE_SCHEDULE_MS)) {
     fail("idle-schedule", "idle experiment must use exactly 2000/15000/180000ms");
   }
@@ -290,8 +374,18 @@ export function assertActivationIdleEvidence(activationIdle) {
     observedSchedule.add(scheduledGapMs);
     finiteNumber(observation.actualGapMs, `idle[${index}].actualGapMs`);
     if (typeof observation.activationFirst !== "boolean") fail("activation-first", `idle observation ${index} needs activation.first`);
-    nonEmptyString(observation.scriptVersion, `idle[${index}].scriptVersion`);
-    nonEmptyString(observation.colo, `idle[${index}].colo`);
+    const scriptVersion = nonEmptyString(observation.scriptVersion, `idle[${index}].scriptVersion`);
+    const colo = nonEmptyString(observation.colo, `idle[${index}].colo`);
+    const reference = evidenceReference(observation.requestId, traceIndex, `activation[${index}]`);
+    if (rootBoolean(reference, "activation.first", `activation[${index}]`) !== observation.activationFirst) {
+      fail("activation-trace-activation-first", `idle observation ${index} activation.first differs from trace ${reference.requestId}`);
+    }
+    if (rootString(reference, "script.version", `activation[${index}]`) !== scriptVersion) {
+      fail("activation-trace-script-version", `idle observation ${index} scriptVersion differs from trace ${reference.requestId}`);
+    }
+    if (rootString(reference, "colo", `activation[${index}]`) !== colo) {
+      fail("activation-trace-colo", `idle observation ${index} colo differs from trace ${reference.requestId}`);
+    }
     if (typeof observation.previousComplete !== "boolean") fail("idle-ledger", `idle observation ${index} needs previousComplete`);
     const lowerBound = observation.observedIdleGapLowerBoundMs;
     if (observation.previousComplete === false && lowerBound !== null) {
@@ -313,20 +407,26 @@ export function assertActivationIdleEvidence(activationIdle) {
   return Object.freeze({ scheduleMs: G30_IDLE_SCHEDULE_MS, observations: evidence.observations.length });
 }
 
-function evidenceObject(outlier, hypothesis) {
+function evidenceObjects(outlier, hypothesis) {
   if (!Array.isArray(outlier.rawEvidence) || outlier.rawEvidence.length === 0) {
     fail("outlier-evidence", `${hypothesis} lacks raw evidence`);
   }
-  const evidence = outlier.rawEvidence.map(object).find((value) => value !== undefined);
-  if (evidence === undefined) fail("outlier-evidence", `${hypothesis} raw evidence must contain an object`);
-  return evidence;
+  return outlier.rawEvidence.map((entry, index) => {
+    const evidence = object(entry);
+    if (evidence === undefined) fail("outlier-evidence", `${hypothesis} raw evidence ${index} must be an object`);
+    return evidence;
+  });
 }
 
-function assertWorkerIsolateEvidence(evidence) {
+function assertWorkerIsolateEvidence(evidence, reference) {
   nonEmptyString(evidence.isolateInstanceId, "worker-isolate-first.isolateInstanceId");
   if (typeof evidence.firstInvocation !== "boolean") fail("outlier-evidence", "worker-isolate-first.firstInvocation must be boolean");
-  nonEmptyString(evidence.rootVersion, "worker-isolate-first.rootVersion");
-  nonEmptyString(evidence.colo, "worker-isolate-first.colo");
+  if (nonEmptyString(evidence.rootVersion, "worker-isolate-first.rootVersion") !== rootString(reference, "script.version", "worker-isolate-first")) {
+    fail("worker-isolate-trace-version", "worker-isolate-first rootVersion differs from its trace root");
+  }
+  if (nonEmptyString(evidence.colo, "worker-isolate-first.colo") !== rootString(reference, "colo", "worker-isolate-first")) {
+    fail("worker-isolate-trace-colo", "worker-isolate-first colo differs from its trace root");
+  }
   finiteNumber(evidence.cpuTimeMs, "worker-isolate-first.cpuTimeMs");
   finiteNumber(evidence.wallTimeMs, "worker-isolate-first.wallTimeMs");
   nonEmptyString(evidence.warmComparison, "worker-isolate-first.warmComparison");
@@ -341,25 +441,40 @@ function assertDurableObjectWakeEvidence(evidence) {
   if (evidence.variedOneClass !== true) fail("outlier-evidence", "durable-object-wake must vary exactly one actor class");
 }
 
-function assertTokenRotationEvidence(evidence, disposition) {
+function assertTokenRotationEvidence(evidence, disposition, references, traceIndex) {
   if (evidence.authBranch !== "synchronous-string-comparison") {
     fail("outlier-evidence", "token-rotation must record the synchronous auth branch");
   }
   nonEmptyString(evidence.deployedVersion, "token-rotation.deployedVersion");
   nonEmptyString(evidence.configDigest, "token-rotation.configDigest");
   finiteNumber(evidence.httpOutcome, "token-rotation.httpOutcome");
-  if (typeof evidence.refreshSpanPresent !== "boolean") fail("outlier-evidence", "token-rotation.refreshSpanPresent must be boolean");
-  if (evidence.refreshSpanPresent === false && disposition !== "excluded") {
-    fail("token-rotation", "token rotation without a refresh span must be excluded from the commit path");
+  if (Object.hasOwn(evidence, "refreshSpanPresent")) {
+    fail("token-rotation-declaration", "token-rotation refreshSpanPresent is computed from exported traces, never operator-declared");
+  }
+  const refreshes = refreshRequestIds(traceIndex, "token-rotation");
+  if (refreshes.size === 0 && disposition !== "excluded") {
+    fail("token-rotation", "token rotation without an exported refresh span must be excluded from the commit path");
+  }
+  if (refreshes.size > 0 && disposition !== "attributed") {
+    fail("token-rotation", "an exported refresh span must be attributed to token rotation");
+  }
+  if (refreshes.size > 0 && !references.some((reference) => refreshes.has(reference.requestId))) {
+    fail("token-rotation", "token rotation must cite an exported trace that contains the refresh span");
   }
 }
 
-function assertQueueDoorbellEvidence(evidence, disposition) {
+function assertQueueDoorbellEvidence(evidence, disposition, reference) {
   if (evidence.faultBarrier !== true) fail("outlier-evidence", "queue/doorbell evidence must use the fault barrier");
-  finiteNumber(evidence.appendResponse, "queue-doorbell-backpressure.appendResponse");
-  finiteNumber(evidence.followingStateRead, "queue-doorbell-backpressure.followingStateRead");
-  finiteNumber(evidence.rootLatencyMs, "queue-doorbell-backpressure.rootLatencyMs");
-  if (typeof evidence.withinBound !== "boolean") fail("outlier-evidence", "queue/doorbell evidence needs withinBound");
+  const appendResponse = finiteNumber(evidence.appendResponse, "queue-doorbell-backpressure.appendResponse");
+  const followingStateRead = finiteNumber(evidence.followingStateRead, "queue-doorbell-backpressure.followingStateRead");
+  if (Object.hasOwn(evidence, "withinBound")) {
+    fail("queue-bound-declaration", "queue/doorbell withinBound is computed from measured ledger and trace values, never operator-declared");
+  }
+  const traceRootLatency = rootDuration(reference, "queue-doorbell-backpressure");
+  const ledgerResponseLatency = finiteNumber(reference.ledger?.responseLatencyMs, "queue-doorbell-backpressure.ledger.responseLatencyMs");
+  if (appendResponse > ledgerResponseLatency || followingStateRead > ledgerResponseLatency || traceRootLatency > ledgerResponseLatency) {
+    fail("queue-bound", "queue/doorbell measurements exceed the joined client-ledger response bound");
+  }
   if (!["no-queue-difference", "same-tag-event-loop-or-input-ordering"].includes(evidence.classification)) {
     fail("queue-classification", "queue/doorbell evidence must not name queue backlog as the cause");
   }
@@ -371,10 +486,11 @@ function assertQueueDoorbellEvidence(evidence, disposition) {
  * one independently attributable-or-excluded record for every design
  * hypothesis, with the raw fields needed to reproduce that judgment.
  */
-export function assertOutlierClassification(outliers) {
+export function assertOutlierClassification(outliers, ledger, traces) {
   if (!Array.isArray(outliers) || outliers.length !== OUTLIER_HYPOTHESES.length) {
     fail("outliers", "outlier discrimination must contain exactly the four required hypotheses");
   }
+  const traceIndex = evidenceTraceIndex(ledger, traces, "outlier");
   const seen = new Set();
   for (const outlier of outliers) {
     const hypothesis = outlier?.hypothesis;
@@ -385,11 +501,12 @@ export function assertOutlierClassification(outliers) {
     if (outlier?.classified !== true || !["attributed", "excluded"].includes(outlier?.disposition)) {
       fail("outlier", `${hypothesis} must be explicitly attributed or excluded`);
     }
-    const evidence = evidenceObject(outlier, hypothesis);
-    if (hypothesis === "worker-isolate-first") assertWorkerIsolateEvidence(evidence);
-    if (hypothesis === "durable-object-wake") assertDurableObjectWakeEvidence(evidence);
-    if (hypothesis === "token-rotation") assertTokenRotationEvidence(evidence, outlier.disposition);
-    if (hypothesis === "queue-doorbell-backpressure") assertQueueDoorbellEvidence(evidence, outlier.disposition);
+    const evidence = evidenceObjects(outlier, hypothesis);
+    const references = evidence.map((entry, index) => evidenceReference(entry.requestId, traceIndex, `${hypothesis}[${index}]`));
+    if (hypothesis === "worker-isolate-first") assertWorkerIsolateEvidence(evidence[0], references[0]);
+    if (hypothesis === "durable-object-wake") assertDurableObjectWakeEvidence(evidence[0]);
+    if (hypothesis === "token-rotation") assertTokenRotationEvidence(evidence[0], outlier.disposition, references, traceIndex);
+    if (hypothesis === "queue-doorbell-backpressure") assertQueueDoorbellEvidence(evidence[0], outlier.disposition, references[0]);
   }
   if (!same([...seen].sort(), [...OUTLIER_HYPOTHESES].sort())) fail("outlier", "one or more required hypotheses is absent");
   return Object.freeze({ classifiedOutliers: seen.size, unclassifiedOutliers: 0 });
@@ -408,8 +525,8 @@ export function assertB0Evidence(evidence) {
   const warmup = Object.fromEntries(G30_PHASES.map((phase) => [phase, assertWarmupProof(phase, phases?.[phase]?.warmup)]));
   const traces = assertTraceCohort(phases.B.ledger, evidence.traces, evidence.traceExportCompletedAtMs);
   const latency = assertAaaDrift(phases.A.ledger, phases.B.ledger, phases["A-prime"].ledger);
-  const activationIdle = assertActivationIdleEvidence(evidence.activationIdle);
-  const outliers = assertOutlierClassification(evidence.outlierDiscrimination);
+  const activationIdle = assertActivationIdleEvidence(evidence.activationIdle, phases.B.ledger, evidence.traces);
+  const outliers = assertOutlierClassification(evidence.outlierDiscrimination, phases.B.ledger, evidence.traces);
   return Object.freeze({ windows, config, warmup, traces, latency, activationIdle, outliers });
 }
 
@@ -455,6 +572,11 @@ function makeTrace(record) {
       ...(/^S05[a-e]$/.test(rowId) ? { "phase.ordinal": "abcde".indexOf(rowId.at(-1)) } : {}),
       ...(manifest.attributeMatrix.attributes["member.index"].rowScope?.includes(rowId) ? { "member.index": 0 } : {}),
       ...(manifest.attributeMatrix.attributes["tag.key_hash"].rowScope?.includes(rowId) ? { "tag.key_hash": "b".repeat(64) } : {}),
+      ...(rowId === "S00" ? {
+        "activation.first": Number(record.requestId.slice(record.requestId.lastIndexOf("-") + 1)) === 2,
+        "script.version": "g30-synthetic",
+        colo: "test-colo",
+      } : {}),
     };
     return {
       rowId,
@@ -481,6 +603,7 @@ function makeTrace(record) {
     boundary: "success",
     exportedAtMs: end + 1,
     callerCoverageIntervals: ["S01"],
+    providerSpanNames: ["sdt.commit"],
     spans,
   };
 }
@@ -489,6 +612,7 @@ function makeActivationIdle() {
   return {
     scheduleMs: [...G30_IDLE_SCHEDULE_MS],
     observations: G30_IDLE_SCHEDULE_MS.map((scheduledGapMs, index) => ({
+      requestId: `b-${index}`,
       scheduledGapMs,
       actualGapMs: scheduledGapMs + index,
       activationFirst: index === 2,
@@ -511,6 +635,7 @@ function makeOutlierDiscrimination() {
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "b-10",
         isolateInstanceId: "isolate-synthetic",
         firstInvocation: true,
         rootVersion: "g30-synthetic",
@@ -525,6 +650,7 @@ function makeOutlierDiscrimination() {
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "b-11",
         actorClass: "TAG",
         idleGapMs: 15_001,
         constructorToHandlerMs: 2,
@@ -538,11 +664,11 @@ function makeOutlierDiscrimination() {
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "b-12",
         authBranch: "synchronous-string-comparison",
         deployedVersion: "g30-synthetic",
         configDigest: "d".repeat(64),
         httpOutcome: 200,
-        refreshSpanPresent: false,
       }],
     },
     {
@@ -550,11 +676,10 @@ function makeOutlierDiscrimination() {
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "b-13",
         faultBarrier: true,
         appendResponse: 20,
         followingStateRead: 10,
-        rootLatencyMs: 100,
-        withinBound: true,
         classification: "no-queue-difference",
       }],
     },
@@ -594,8 +719,15 @@ export function selfTest() {
     ["outlier-unclassified", (value) => { value.outlierDiscrimination[0].classified = false; }, "outlier"],
     ["outlier-collapsed", (value) => { value.outlierDiscrimination[1].hypothesis = "worker-isolate-first"; }, "outlier"],
     ["outlier-evidence-free", (value) => { delete value.outlierDiscrimination[0].rawEvidence[0].warmComparison; }, "string"],
+    ["outlier-raw-evidence-missing", (value) => { value.outlierDiscrimination[0].rawEvidence = []; }, "outlier-evidence"],
     ["idle-schedule", (value) => { value.activationIdle.scheduleMs[2] = 179_000; }, "idle-schedule"],
     ["activation-storage", (value) => { value.activationIdle.observations[0].storageWrites = 1; }, "activation-isolation"],
+    ["activation-unknown-request", (value) => { value.activationIdle.observations[0].requestId = "missing-request"; }, "activation[0]-trace-join"],
+    ["activation-first-mismatch", (value) => { value.activationIdle.observations[0].activationFirst = !value.activationIdle.observations[0].activationFirst; }, "activation-trace-activation-first"],
+    ["activation-script-version-mismatch", (value) => { value.activationIdle.observations[0].scriptVersion = "different-script"; }, "activation-trace-script-version"],
+    ["activation-colo-mismatch", (value) => { value.activationIdle.observations[0].colo = "different-colo"; }, "activation-trace-colo"],
+    ["token-refresh-declaration", (value) => { value.outlierDiscrimination[2].rawEvidence[0].refreshSpanPresent = true; }, "token-rotation-declaration"],
+    ["outlier-unknown-request", (value) => { value.outlierDiscrimination[0].rawEvidence[0].requestId = "missing-request"; }, "worker-isolate-first[0]-trace-join"],
   ]) {
     const altered = structuredClone(evidence);
     mutate(altered);

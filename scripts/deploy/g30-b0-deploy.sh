@@ -133,8 +133,17 @@ deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A-prime "${APRIME_WITNESS_FILE}"
 node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A-prime --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${APRIME_WITNESS_FILE}" --output "${APRIME_FILE}"
 
-# R is evidence only. Preserve raw phase/export inputs under the allowed docs
-# evidence paths, then bind them to the sealed candidate without hard-coding it.
+# Validate every operator-supplied activation/outlier fact against the B
+# ledger and exported traces before anything is copied under docs/. A
+# structurally plausible declaration must never become retained evidence.
+node "${SCRIPT_DIR}/g30-b0-record-evidence.mjs" --source-commit "${SOURCE_COMMIT}" \
+  --phase-a "${A_FILE}" --phase-b "${B_FILE}" --phase-a-prime "${APRIME_FILE}" --traces "${TRACES_FILE}" \
+  --activation "${ACTIVATION_PROOF_FILE}" --outliers "${OUTLIER_EVIDENCE_FILE}" --preflight "${PRELIGHT_FILE}" \
+  --output docs/SDT-G30-b0-evidence.json --markdown-output docs/SDT-G30-b0-evidence.md
+
+# R is evidence only. The recorder above has already trace-bound every raw
+# supplied observation; now retain the raw phase/export inputs under the
+# allowed docs evidence paths without hard-coding the sealed candidate.
 cp "${A_FILE}" docs/SDT-G30-B0-evidence-A.json
 cp "${B_FILE}" docs/SDT-G30-B0-evidence-B.json
 cp "${APRIME_FILE}" docs/SDT-G30-B0-evidence-A-prime.json
@@ -144,9 +153,5 @@ cp "${B_WITNESS_FILE}" docs/SDT-G30-B0-evidence-B-deployment.json
 cp "${APRIME_WITNESS_FILE}" docs/SDT-G30-B0-evidence-A-prime-deployment.json
 cp "${ACTIVATION_PROOF_FILE}" docs/SDT-G30-B0-evidence-activation.json
 cp "${OUTLIER_EVIDENCE_FILE}" docs/SDT-G30-B0-evidence-outliers.json
-node "${SCRIPT_DIR}/g30-b0-record-evidence.mjs" --source-commit "${SOURCE_COMMIT}" \
-  --phase-a "${A_FILE}" --phase-b "${B_FILE}" --phase-a-prime "${APRIME_FILE}" --traces "${TRACES_FILE}" \
-  --activation "${ACTIVATION_PROOF_FILE}" --outliers "${OUTLIER_EVIDENCE_FILE}" --preflight "${PRELIGHT_FILE}" \
-  --output docs/SDT-G30-b0-evidence.json --markdown-output docs/SDT-G30-b0-evidence.md
 
 printf 'G30 B0 complete at %s; token files are deleted by trap and R may change only SDT-G30 evidence docs plus one retained candidate line\n' "${SOURCE_COMMIT}"

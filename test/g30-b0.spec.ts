@@ -62,6 +62,12 @@ function traceAttributes(rowId: string, requestId: string): Record<string, strin
   if (/^S05([a-e])$/.test(rowId)) attributes["phase.ordinal"] = "abcde".indexOf(rowId.at(-1)!);
   if (manifest.attributeMatrix.attributes["member.index"].rowScope?.includes(rowId)) attributes["member.index"] = 0;
   if (manifest.attributeMatrix.attributes["tag.key_hash"].rowScope?.includes(rowId)) attributes["tag.key_hash"] = "b".repeat(64);
+  if (rowId === "S00") {
+    const requestIndex = Number(requestId.slice(requestId.lastIndexOf("-") + 1));
+    attributes["activation.first"] = requestIndex === 2;
+    attributes["script.version"] = "g30-test";
+    attributes.colo = "test-colo";
+  }
   return attributes;
 }
 
@@ -114,6 +120,7 @@ function activationIdleEvidence() {
   return {
     scheduleMs: [...G30_IDLE_SCHEDULE_MS],
     observations: G30_IDLE_SCHEDULE_MS.map((scheduledGapMs, index) => ({
+      requestId: `B-${index}`,
       scheduledGapMs,
       actualGapMs: scheduledGapMs + index,
       activationFirst: index === 2,
@@ -141,6 +148,7 @@ function outlierDiscrimination(): Array<{
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "B-10",
         isolateInstanceId: "test-isolate",
         firstInvocation: true,
         rootVersion: "g30-test",
@@ -155,6 +163,7 @@ function outlierDiscrimination(): Array<{
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "B-11",
         actorClass: "TAG",
         idleGapMs: 15_000,
         constructorToHandlerMs: 3,
@@ -168,11 +177,11 @@ function outlierDiscrimination(): Array<{
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "B-12",
         authBranch: "synchronous-string-comparison",
         deployedVersion: "g30-test",
         configDigest: "d".repeat(64),
         httpOutcome: 200,
-        refreshSpanPresent: false,
       }],
     },
     {
@@ -180,11 +189,10 @@ function outlierDiscrimination(): Array<{
       disposition: "excluded",
       classified: true,
       rawEvidence: [{
+        requestId: "B-13",
         faultBarrier: true,
         appendResponse: 10,
         followingStateRead: 10,
-        rootLatencyMs: 100,
-        withinBound: true,
         classification: "no-queue-difference",
       }],
     },
@@ -347,21 +355,99 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
   });
 
   it("requires all four independently evidenced outlier hypotheses and the exact idle schedule", () => {
-    expect(assertOutlierClassification(outlierDiscrimination())).toEqual({ classifiedOutliers: 4, unclassifiedOutliers: 0 });
+    const ledger = records("B", 108);
+    const traces = normalizeTelemetryExport(rawTelemetry(ledger), 1_300_000);
+    expect(assertOutlierClassification(outlierDiscrimination(), ledger, traces)).toEqual({ classifiedOutliers: 4, unclassifiedOutliers: 0 });
     const collapsed = outlierDiscrimination();
     collapsed[1]!.hypothesis = "worker-isolate-first";
-    expect(() => assertOutlierClassification(collapsed)).toThrow(/outlier/);
+    expect(() => assertOutlierClassification(collapsed, ledger, traces)).toThrow(/outlier/);
     const evidenceFree = outlierDiscrimination();
     delete evidenceFree[0]!.rawEvidence[0]!.warmComparison;
-    expect(() => assertOutlierClassification(evidenceFree)).toThrow(/warmComparison/);
+    expect(() => assertOutlierClassification(evidenceFree, ledger, traces)).toThrow(/warmComparison/);
 
-    expect(assertActivationIdleEvidence(activationIdleEvidence())).toMatchObject({ scheduleMs: [2_000, 15_000, 180_000] });
+    expect(assertActivationIdleEvidence(activationIdleEvidence(), ledger, traces)).toMatchObject({ scheduleMs: [2_000, 15_000, 180_000] });
     const wrongSchedule = activationIdleEvidence();
     (wrongSchedule.scheduleMs as number[])[2] = 179_000;
-    expect(() => assertActivationIdleEvidence(wrongSchedule)).toThrow(/idle experiment/);
+    expect(() => assertActivationIdleEvidence(wrongSchedule, ledger, traces)).toThrow(/idle experiment/);
     const storageWrite = activationIdleEvidence();
     storageWrite.observations[0]!.storageWrites = 1;
-    expect(() => assertActivationIdleEvidence(storageWrite)).toThrow(/observation-only/);
+    expect(() => assertActivationIdleEvidence(storageWrite, ledger, traces)).toThrow(/observation-only/);
+  });
+
+  it("rejects an activation observation that cites no B ledger/exported-trace request", () => {
+    const document = evidence();
+    document.activationIdle.observations[0]!.requestId = "B-not-exported";
+    expect(() => assertB0Evidence(document)).toThrow(/activation\[0\]-trace-join/);
+  });
+
+  it("rejects an activation.first value that differs from its joined S00 root", () => {
+    const document = evidence();
+    document.activationIdle.observations[0]!.activationFirst = true;
+    expect(() => assertB0Evidence(document)).toThrow(/activation-trace-activation-first/);
+  });
+
+  it("rejects an activation scriptVersion that differs from its joined S00 root", () => {
+    const document = evidence();
+    document.activationIdle.observations[0]!.scriptVersion = "different-script";
+    expect(() => assertB0Evidence(document)).toThrow(/activation-trace-script-version/);
+  });
+
+  it("rejects an activation colo that differs from its joined S00 root", () => {
+    const document = evidence();
+    document.activationIdle.observations[0]!.colo = "different-colo";
+    expect(() => assertB0Evidence(document)).toThrow(/activation-trace-colo/);
+  });
+
+  it("rejects an operator-declared token refresh result instead of calculating it from exported traces", () => {
+    const document = evidence();
+    document.outlierDiscrimination[2]!.rawEvidence[0]!.refreshSpanPresent = true;
+    expect(() => assertB0Evidence(document)).toThrow(/token-rotation-declaration/);
+  });
+
+  it("calculates token rotation from a non-schema provider refresh span on the joined B trace", () => {
+    const document = evidence();
+    const bLedger = document.phases.B.ledger as Array<Record<string, unknown>>;
+    const raw = rawTelemetry(bLedger);
+    raw.events.push({
+      attributes: { operation: "auth.refresh" },
+      $metadata: { traceId: "trace-B-12", startMs: 1_024_000, endMs: 1_024_001 },
+    });
+    document.traces = normalizeTelemetryExport(raw, document.traceExportCompletedAtMs);
+    expect(document.traces.find((trace) => trace.requestId === "B-12")!.providerSpanNames).toContain("auth.refresh");
+    expect(() => assertB0Evidence(document)).toThrow(/exported refresh span must be attributed/);
+    document.outlierDiscrimination[2]!.disposition = "attributed";
+    expect(assertB0Evidence(document)).toMatchObject({ outliers: { classifiedOutliers: 4 } });
+  });
+
+  it("does not mistake a same-trace telemetry log for a provider refresh span", () => {
+    const document = evidence();
+    const bLedger = document.phases.B.ledger as Array<Record<string, unknown>>;
+    const raw = rawTelemetry(bLedger);
+    raw.events.push({
+      attributes: { operation: "auth.refresh" },
+      $metadata: { traceId: "trace-B-12" },
+    });
+    document.traces = normalizeTelemetryExport(raw, document.traceExportCompletedAtMs);
+    expect(document.traces.find((trace) => trace.requestId === "B-12")!.providerSpanNames).not.toContain("auth.refresh");
+    expect(assertB0Evidence(document)).toMatchObject({ outliers: { classifiedOutliers: 4 } });
+  });
+
+  it("calculates the queue/doorbell exclusion bound from the joined ledger and S00 duration", () => {
+    const document = evidence();
+    document.outlierDiscrimination[3]!.rawEvidence[0]!.appendResponse = 109;
+    expect(() => assertB0Evidence(document)).toThrow(/queue-bound/);
+  });
+
+  it("rejects an outlier hypothesis whose raw evidence has no trace-bound request", () => {
+    const document = evidence();
+    document.outlierDiscrimination[0]!.rawEvidence = [];
+    expect(() => assertB0Evidence(document)).toThrow(/outlier-evidence/);
+  });
+
+  it("rejects raw outlier evidence that cites a request absent from the B trace cohort", () => {
+    const document = evidence();
+    document.outlierDiscrimination[0]!.rawEvidence[0]!.requestId = "B-not-exported";
+    expect(() => assertB0Evidence(document)).toThrow(/worker-isolate-first\[0\]-trace-join/);
   });
 
   it("keeps B0 attribution-only and fails every accepted trace above the union budget", () => {

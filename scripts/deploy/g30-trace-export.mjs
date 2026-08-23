@@ -142,6 +142,43 @@ function rawEvents(raw) {
 }
 
 /**
+ * Preserve only the provider span name needed to prove that a credential
+ * refresh was (or was not) on the same exported request trace.  Raw provider
+ * attributes remain in the local source artifact and are never copied into
+ * the candidate evidence document.
+ */
+function providerSpanName(event) {
+  const attributes = attributesFor(event);
+  const metadata = metadataFor(event);
+  const candidates = [
+    attributes["span.name"],
+    attributes.spanName,
+    attributes.operation,
+    metadata.name,
+    metadata.operationName,
+    event?.name,
+    event?.operationName,
+  ];
+  return candidates.find((value) => typeof value === "string" && value.length > 0);
+}
+
+function hasSpanTiming(event) {
+  const metadata = metadataFor(event);
+  const start = metadataField(metadata, event, ["startTime", "startMs", "timestamp"]);
+  const end = metadataField(metadata, event, ["endTime", "endMs"]);
+  const duration = metadataField(metadata, event, ["duration", "durationMs"]);
+  return start !== undefined && (end !== undefined || duration !== undefined);
+}
+
+function traceGroup(groups, traceId) {
+  const existing = groups.get(traceId);
+  if (existing !== undefined) return existing;
+  const next = { traceId, events: [], providerSpanNames: new Set() };
+  groups.set(traceId, next);
+  return next;
+}
+
+/**
  * Groups custom spans by Cloudflare trace ID and anchors the group to the
  * S00 request's ray/request identifier. No chronological "nearest span"
  * fallback is allowed, so a propagation break remains visible as trace loss.
@@ -151,11 +188,19 @@ export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
   for (const event of rawEvents(raw)) {
     const metadata = metadataFor(event);
     const traceId = metadataField(metadata, event, ["traceId", "trace_id"]);
-    const span = normalizedSpan(event, typeof traceId === "string" ? traceId : "");
-    if (span === undefined) continue;
-    if (typeof traceId !== "string" || traceId.length === 0) fail("trace-id", `custom ${span.rowId} span has no trace id`);
-    const group = groups.get(traceId) ?? { traceId, events: [] };
-    group.events.push({ span, metadata }); groups.set(traceId, group);
+    const attributes = attributesFor(event);
+    const isCommitSchemaSpan = attributes["schema.version"] === "sdt.commit/v1";
+    if (typeof traceId !== "string" || traceId.length === 0) {
+      if (isCommitSchemaSpan) fail("trace-id", "custom sdt.commit/v1 span has no trace id");
+      continue;
+    }
+    const group = traceGroup(groups, traceId);
+    // A telemetry log may share a trace ID but is not evidence of a refresh
+    // span. Retain names only from timestamped span records.
+    const name = hasSpanTiming(event) ? providerSpanName(event) : undefined;
+    if (name !== undefined) group.providerSpanNames.add(name);
+    const span = normalizedSpan(event, traceId);
+    if (span !== undefined) group.events.push({ span, metadata });
   }
   const output = [];
   for (const group of groups.values()) {
@@ -175,6 +220,7 @@ export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
       complete,
       exportedAtMs,
       callerCoverageIntervals: manifest.schemas["sdt.commit/v1"].callerCoverageIntervals,
+      providerSpanNames: [...group.providerSpanNames].sort(),
       spans,
     };
     if (complete) verifyRuntimeSuccessTrace(trace);

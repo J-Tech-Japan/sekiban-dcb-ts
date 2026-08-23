@@ -265,6 +265,13 @@ jobs:
           G15_LOCAL_SERVICE_ID: ci-g15-local
           G15_LOCAL_PERSIST_DIR: ${{ runner.temp }}/sdt-g15-wrangler-state
         run: npm run e2e:g15:local
+      - name: Upload G15 local Worker log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g15-wrangler-log
+          path: .artifacts/g15-wrangler.log
+          if-no-files-found: warn
       - name: Isolate G16 E2E PostgreSQL database
         env:
           PGPASSWORD: postgres

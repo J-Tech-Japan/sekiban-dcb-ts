@@ -17,7 +17,13 @@ Closes #70
 - Computes per-accepted-request caller-interval union attribution, observes
   activation/idle out of Durable Object storage, and adds the A/B/A′ B0
   runner, trace exporter, cohort contract, evidence recorder, and candidate
-  retention gate.
+  retention gate. Operator-provided activation/outlier records are accepted
+  only after request-level joins to both the B ledger and exported S00 trace
+  roots; refresh and queue bounds are calculated from exported/ledger facts.
+- Defers Worker isolate randomness to the first request-handler boundary,
+  which preserves per-isolate tracing while keeping the local workerd module
+  loader free of forbidden global-scope random generation. CI retains the G15
+  Wrangler log when the local Worker startup lane fails.
 
 ## Verification
 

@@ -12,6 +12,8 @@ export interface G30Trace {
   boundary: string;
   exportedAtMs: number;
   callerCoverageIntervals: readonly string[];
+  /** Names retained from every exported provider span on this request trace. */
+  providerSpanNames: readonly string[];
   spans: G30TraceSpan[];
 }
 
@@ -33,8 +35,16 @@ export function assertTraceCohort(
   exportCompletedAtMs: number,
 ): Readonly<{ requestCount: number; exportDeadlineMs: number }>;
 export function assertWarmupProof(phase: string, warmup: unknown): Readonly<Record<string, unknown>>;
-export function assertActivationIdleEvidence(activationIdle: unknown): Readonly<Record<string, unknown>>;
-export function assertOutlierClassification(outliers: unknown): Readonly<{ classifiedOutliers: number; unclassifiedOutliers: number }>;
+export function assertActivationIdleEvidence(
+  activationIdle: unknown,
+  ledger: readonly object[],
+  traces: readonly G30Trace[],
+): Readonly<Record<string, unknown>>;
+export function assertOutlierClassification(
+  outliers: unknown,
+  ledger: readonly object[],
+  traces: readonly G30Trace[],
+): Readonly<{ classifiedOutliers: number; unclassifiedOutliers: number }>;
 export function assertB0Evidence(evidence: unknown): Readonly<Record<string, unknown>>;
 export function assertEligiblePhaseWindow(phase: string, records: readonly object[], rawAttempts?: readonly unknown[]): Readonly<Record<string, unknown>>;
 export function assertPhaseConfiguration(phases: unknown): Readonly<Record<string, unknown>>;
