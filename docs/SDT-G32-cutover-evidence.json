@@ -2734,12 +2734,12 @@
   },
   "forwardRedeployC3": {
     "task": "SDT-G32",
-    "status": "C3 prepared: F1-F5 attribution/runtime parity corrections await one forward-only redeploy",
-    "candidateCommit": "CANDIDATE",
-    "sourceCommit": "CANDIDATE",
-    "reason": "C3 closes the G32 review's independent mutation attribution gaps and fixes the discovered C# variable-fraction UTC import defect. It is a forward-only deployment on C2's retained bindings; cutover is not repeated.",
+    "status": "R3 complete: C3 forward-only redeploy/witness after F1-F5 attribution and real C# provider-path corrections",
+    "candidateCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+    "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+    "reason": "C3 closes F1-F5 with production mutation runners, live provider introspection, public CommitWorker zero-call admission oracles, full rebuild-tag field comparison, and pinned C# serialization/provider-to-real-TS import/replay/list-query paths. It also accepts C#'s 1–7 digit UTC fraction without reserializing payload bytes.",
     "protocol": {
-      "candidate": "C3 is one sealed material candidate containing all F1-F5 runtime, oracle, C# provider runner, audit, deployment tooling, documentation, manifest, and this non-self-referential placeholder changes.",
+      "candidate": "C3 is one sealed material candidate containing all F1-F5 runtime, oracle, C# provider runner, audit, deployment tooling, documentation, manifest, and non-self-referential placeholder changes.",
       "bookkeeping": "R3 changes only this evidence document and appends C3 once to the retained-candidate fetch list.",
       "selfReference": false,
       "deploymentRequired": true,
@@ -2769,11 +2769,11 @@
       "rejectedPreparedCandidateRemoteEffects": "none-before-wrangler",
       "c2Candidate": "0b38755443cce9d4a1a4383e18ba42499c390f63",
       "c2EvidenceCommit": "acc1dc1746a7310410ced0ae556ec7f87e4970a2",
-      "c2Reason": "C2 was a G22 real-Cosmos fixture refresh with unchanged runtime/deployment digest; C3 supersedes it because F1-F5 require real runtime and provider-path attribution."
+      "c2Reason": "C2 was a G22 real-Cosmos fixture refresh with unchanged runtime/deployment digest; C3 adds reviewed runtime/provider-path corrections and therefore has changed digests."
     },
     "treeDigests": {
       "algorithm": "sha256(path NUL content NUL, paths sorted)",
-      "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+      "runtime": "2a54c8f75c544b48760f8655ddd47a47b772adc0cf3e8fe875da1756f59ac90b",
       "runtimeRoots": [
         "packages/dcb-core/src",
         "packages/dcb-domain/src",
@@ -2781,7 +2781,7 @@
         "packages/dcb-client/src",
         "samples/meeting-room/src"
       ],
-      "configuration": "1111111111111111111111111111111111111111111111111111111111111111",
+      "configuration": "d7b1bcd1d5744a0a0a097ed7475229ffb344ba2fad2e3a085f73abdb4b93f006",
       "configurationRoots": [
         ".gitignore",
         ".github/workflows/ci.yml",
@@ -2842,7 +2842,7 @@
     },
     "deploymentConfig": {
       "algorithm": "sha256(path NUL content NUL, paths sorted)",
-      "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "digest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
       "paths": [
         "contracts/g32-cutover.json",
         "contracts/event-store-ddl.json",
@@ -2858,14 +2858,21 @@
         "samples/meeting-room/wrangler.g32-final-receiver.jsonc"
       ]
     },
-    "runtimeDigestComparison": null,
+    "runtimeDigestComparison": {
+      "c2RuntimeDigest": "60b572866ded3c57c9c3707eeb67cffaed2f899d7760f852c4ebb2a5e1e34e28",
+      "c3RuntimeDigest": "2a54c8f75c544b48760f8655ddd47a47b772adc0cf3e8fe875da1756f59ac90b",
+      "c2DeploymentConfigDigest": "bd51c1e3db48aacc521cf065ff7704bb3e4c00a0e3727132eacdf788aff302c2",
+      "c3DeploymentConfigDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
+      "changed": true,
+      "explanation": "C3 includes runtime fixes (notably C# variable-fraction UTC record ingress) and deployed source changes; both runtime and deployment/config digests intentionally differ from C2."
+    },
     "candidateImpact": {
-      "candidateCommit": "CANDIDATE",
+      "candidateCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
       "deploymentRequired": true,
       "newServiceId": false,
       "newD1Database": false,
       "wipe": false,
-      "deploymentReason": "C3 includes runtime source changes and must publish the C3 identity while retaining C2 data and bindings."
+      "deploymentReason": "The worker must publish C3 source identity and a newly rotated conformance token while retaining C2 data and bindings."
     },
     "deployment": {
       "forwardOnly": true,
@@ -2873,20 +2880,2562 @@
       "migrationsApplied": false,
       "resourcesCreated": false,
       "existingBindingsRetained": true,
-      "workerDeployOrder": ["receiver", "primary"],
+      "workerDeployOrder": [
+        "receiver",
+        "primary"
+      ],
       "noBridgeFreezeWipeOrReseed": true
     },
-    "remoteDeployment": null,
-    "preWitness": null,
-    "postWitness": null,
-    "dataPreservation": null,
-    "queueTopology": null,
-    "fixedNMeasurement": null,
-    "legacyIngressAudit": null,
-    "tokenRotation": null,
-    "ingressRecheck": null,
+    "preflightCompatibility": {
+      "wranglerVersion": "4.125.0",
+      "sealedScriptDatabaseNameAttempt": {
+        "operands": [
+          "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
+          "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv"
+        ],
+        "result": "blocked-before-live",
+        "errorCode": 7403,
+        "effect": "No receiver or primary deploy, token rotation, application write, or migration ran before the preflight stopped."
+      },
+      "bindingEquivalentMigrationChecks": [
+        {
+          "binding": "D1",
+          "databaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+          "result": "No migrations to apply"
+        },
+        {
+          "binding": "D1_MV",
+          "databaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+          "result": "No migrations to apply"
+        }
+      ],
+      "temporaryHarness": {
+        "trackedSourceChanged": false,
+        "change": "Only the two read-only wrangler d1 migrations list operands were replaced with their corresponding config binding names; deploy, token, witness, and measurement steps remained byte-for-byte the sealed C3 sequence."
+      }
+    },
+    "remoteDeployment": {
+      "status": "completed C3 forward-only redeploy on retained G32 bindings",
+      "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+      "deployedRuntimeCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+      "receiver": "sekiban-dcb-meeting-room-doorbell",
+      "serviceId": "g32-9043d626fe1149cb",
+      "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+      "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+      "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+      "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
+      "durableObjectNamespaces": [
+        "AllocatorDurableObject",
+        "JournalDurableObject",
+        "TagDurableObject",
+        "BootstrapCoordinatorDurableObject"
+      ],
+      "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
+      "cutoverFenceFingerprint": "c1489c8eecda965455c3c5ebaf678720872e214dab903505d30296f54e00b475"
+    },
+    "preWitness": {
+      "task": "SDT-G32",
+      "phase": "c3-pre-forward-deploy-public",
+      "capturedAt": "2026-08-23T02:16:07.337Z",
+      "identityVerified": false,
+      "identitySource": "public-pre-deploy-data",
+      "sourceCommit": null,
+      "data": {
+        "roomQuery": {
+          "status": 200,
+          "body": {
+            "resultJson": "{\"count\":20}"
+          }
+        },
+        "reservationList": {
+          "status": 200,
+          "body": {
+            "totalCount": 20,
+            "totalPages": 1,
+            "currentPage": 1,
+            "pageSize": 20,
+            "items": [
+              {
+                "reservationId": "g32-reservation-682b0be4-8ec",
+                "roomId": "g32-room-0f0041d0-4a3",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-51ac5ccc-1de",
+                "roomId": "g32-room-c637b524-e51",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-d7744c60-15c",
+                "roomId": "g32-room-ea78ff5a-64f",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-e845553a-949",
+                "roomId": "g32-room-422a11b0-a87",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-7df2cd9a-0c2",
+                "roomId": "g32-room-9ca3ffd3-6dd",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-646316cf-94c",
+                "roomId": "g32-room-4568b6c0-4f6",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-93a095ef-0b5",
+                "roomId": "g32-room-b7b7d559-cbf",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-66342dfe-b1e",
+                "roomId": "g32-room-bc162e67-0e8",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-aca4768d-f44",
+                "roomId": "g32-room-136ca195-7ed",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-e4c12176-5dd",
+                "roomId": "g32-room-f47d92a5-044",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-ef3a77c6-dde",
+                "roomId": "g32-room-588d2105-6c5",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-1654285b-43e",
+                "roomId": "g32-room-cca6dad9-834",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-474617a4-df0",
+                "roomId": "g32-room-1386c6cf-066",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-e6a9f8df-330",
+                "roomId": "g32-room-95301a1b-19a",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-1e70f40e-c81",
+                "roomId": "g32-room-bbbc6c9d-04b",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-44c9f165-252",
+                "roomId": "g32-room-9a8c9cbb-08b",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-7256e746-848",
+                "roomId": "g32-room-bd1ad1b2-d99",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-3fd73854-259",
+                "roomId": "g32-room-c1900064-00f",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-0cc89995-d92",
+                "roomId": "g32-room-0ebb9863-278",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-c05cae63-346",
+                "roomId": "g32-room-aee35ef6-b5a",
+                "status": "reserved",
+                "version": 1
+              }
+            ],
+            "pageNumber": 1
+          },
+          "totalCount": 20
+        },
+        "knownRooms": [
+          {
+            "roomId": "g32-room-0f0041d0-4a3",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-0f0041d0-4a3",
+              "tagStateId": "room:g32-room-0f0041d0-4a3:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-0f0041d0-4a3",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037840592000002015070535"
+            }
+          },
+          {
+            "roomId": "g32-room-c637b524-e51",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-c637b524-e51",
+              "tagStateId": "room:g32-room-c637b524-e51:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-c637b524-e51",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037843735000001361394274"
+            }
+          },
+          {
+            "roomId": "g32-room-ea78ff5a-64f",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-ea78ff5a-64f",
+              "tagStateId": "room:g32-room-ea78ff5a-64f:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-ea78ff5a-64f",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037847547000000016677164"
+            }
+          },
+          {
+            "roomId": "g32-room-422a11b0-a87",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-422a11b0-a87",
+              "tagStateId": "room:g32-room-422a11b0-a87:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-422a11b0-a87",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037850822000000041488708"
+            }
+          },
+          {
+            "roomId": "g32-room-9ca3ffd3-6dd",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-9ca3ffd3-6dd",
+              "tagStateId": "room:g32-room-9ca3ffd3-6dd:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-9ca3ffd3-6dd",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037854314000002001895223"
+            }
+          },
+          {
+            "roomId": "g32-room-4568b6c0-4f6",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-4568b6c0-4f6",
+              "tagStateId": "room:g32-room-4568b6c0-4f6:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-4568b6c0-4f6",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037857478000000082069654"
+            }
+          },
+          {
+            "roomId": "g32-room-b7b7d559-cbf",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-b7b7d559-cbf",
+              "tagStateId": "room:g32-room-b7b7d559-cbf:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-b7b7d559-cbf",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037861014000001283184013"
+            }
+          },
+          {
+            "roomId": "g32-room-bc162e67-0e8",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-bc162e67-0e8",
+              "tagStateId": "room:g32-room-bc162e67-0e8:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-bc162e67-0e8",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037864310000001291983111"
+            }
+          },
+          {
+            "roomId": "g32-room-136ca195-7ed",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-136ca195-7ed",
+              "tagStateId": "room:g32-room-136ca195-7ed:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-136ca195-7ed",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037867659000000423979223"
+            }
+          },
+          {
+            "roomId": "g32-room-f47d92a5-044",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-f47d92a5-044",
+              "tagStateId": "room:g32-room-f47d92a5-044:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-f47d92a5-044",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037871622000000547247633"
+            }
+          },
+          {
+            "roomId": "g32-room-588d2105-6c5",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-588d2105-6c5",
+              "tagStateId": "room:g32-room-588d2105-6c5:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-588d2105-6c5",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040832397000002127848006"
+            }
+          },
+          {
+            "roomId": "g32-room-cca6dad9-834",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-cca6dad9-834",
+              "tagStateId": "room:g32-room-cca6dad9-834:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-cca6dad9-834",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040836662000001258957785"
+            }
+          },
+          {
+            "roomId": "g32-room-1386c6cf-066",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-1386c6cf-066",
+              "tagStateId": "room:g32-room-1386c6cf-066:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-1386c6cf-066",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040840368000000058732867"
+            }
+          },
+          {
+            "roomId": "g32-room-95301a1b-19a",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-95301a1b-19a",
+              "tagStateId": "room:g32-room-95301a1b-19a:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-95301a1b-19a",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040844603000001539693326"
+            }
+          },
+          {
+            "roomId": "g32-room-bbbc6c9d-04b",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-bbbc6c9d-04b",
+              "tagStateId": "room:g32-room-bbbc6c9d-04b:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-bbbc6c9d-04b",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040848140000001070420525"
+            }
+          },
+          {
+            "roomId": "g32-room-9a8c9cbb-08b",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-9a8c9cbb-08b",
+              "tagStateId": "room:g32-room-9a8c9cbb-08b:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-9a8c9cbb-08b",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040851685000002064559808"
+            }
+          },
+          {
+            "roomId": "g32-room-bd1ad1b2-d99",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-bd1ad1b2-d99",
+              "tagStateId": "room:g32-room-bd1ad1b2-d99:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-bd1ad1b2-d99",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040855581000001282417512"
+            }
+          },
+          {
+            "roomId": "g32-room-c1900064-00f",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-c1900064-00f",
+              "tagStateId": "room:g32-room-c1900064-00f:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-c1900064-00f",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040859433000002036924699"
+            }
+          },
+          {
+            "roomId": "g32-room-0ebb9863-278",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-0ebb9863-278",
+              "tagStateId": "room:g32-room-0ebb9863-278:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-0ebb9863-278",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040863266000000847314656"
+            }
+          },
+          {
+            "roomId": "g32-room-aee35ef6-b5a",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-aee35ef6-b5a",
+              "tagStateId": "room:g32-room-aee35ef6-b5a:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-aee35ef6-b5a",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040867611000000744022443"
+            }
+          }
+        ],
+        "knownReservations": [
+          {
+            "reservationId": "g32-reservation-682b0be4-8ec",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-682b0be4-8ec",
+              "tagStateId": "reservation:g32-reservation-682b0be4-8ec:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-682b0be4-8ec",
+                "roomId": "g32-room-0f0041d0-4a3"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037840592000002015070535"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-51ac5ccc-1de",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-51ac5ccc-1de",
+              "tagStateId": "reservation:g32-reservation-51ac5ccc-1de:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-51ac5ccc-1de",
+                "roomId": "g32-room-c637b524-e51"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037843735000001361394274"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-d7744c60-15c",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-d7744c60-15c",
+              "tagStateId": "reservation:g32-reservation-d7744c60-15c:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-d7744c60-15c",
+                "roomId": "g32-room-ea78ff5a-64f"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037847547000000016677164"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-e845553a-949",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-e845553a-949",
+              "tagStateId": "reservation:g32-reservation-e845553a-949:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-e845553a-949",
+                "roomId": "g32-room-422a11b0-a87"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037850822000000041488708"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-7df2cd9a-0c2",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-7df2cd9a-0c2",
+              "tagStateId": "reservation:g32-reservation-7df2cd9a-0c2:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-7df2cd9a-0c2",
+                "roomId": "g32-room-9ca3ffd3-6dd"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037854314000002001895223"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-646316cf-94c",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-646316cf-94c",
+              "tagStateId": "reservation:g32-reservation-646316cf-94c:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-646316cf-94c",
+                "roomId": "g32-room-4568b6c0-4f6"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037857478000000082069654"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-93a095ef-0b5",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-93a095ef-0b5",
+              "tagStateId": "reservation:g32-reservation-93a095ef-0b5:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-93a095ef-0b5",
+                "roomId": "g32-room-b7b7d559-cbf"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037861014000001283184013"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-66342dfe-b1e",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-66342dfe-b1e",
+              "tagStateId": "reservation:g32-reservation-66342dfe-b1e:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-66342dfe-b1e",
+                "roomId": "g32-room-bc162e67-0e8"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037864310000001291983111"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-aca4768d-f44",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-aca4768d-f44",
+              "tagStateId": "reservation:g32-reservation-aca4768d-f44:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-aca4768d-f44",
+                "roomId": "g32-room-136ca195-7ed"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037867659000000423979223"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-e4c12176-5dd",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-e4c12176-5dd",
+              "tagStateId": "reservation:g32-reservation-e4c12176-5dd:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-e4c12176-5dd",
+                "roomId": "g32-room-f47d92a5-044"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037871622000000547247633"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-ef3a77c6-dde",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-ef3a77c6-dde",
+              "tagStateId": "reservation:g32-reservation-ef3a77c6-dde:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-ef3a77c6-dde",
+                "roomId": "g32-room-588d2105-6c5"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040832397000002127848006"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-1654285b-43e",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-1654285b-43e",
+              "tagStateId": "reservation:g32-reservation-1654285b-43e:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-1654285b-43e",
+                "roomId": "g32-room-cca6dad9-834"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040836662000001258957785"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-474617a4-df0",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-474617a4-df0",
+              "tagStateId": "reservation:g32-reservation-474617a4-df0:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-474617a4-df0",
+                "roomId": "g32-room-1386c6cf-066"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040840368000000058732867"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-e6a9f8df-330",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-e6a9f8df-330",
+              "tagStateId": "reservation:g32-reservation-e6a9f8df-330:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-e6a9f8df-330",
+                "roomId": "g32-room-95301a1b-19a"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040844603000001539693326"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-1e70f40e-c81",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-1e70f40e-c81",
+              "tagStateId": "reservation:g32-reservation-1e70f40e-c81:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-1e70f40e-c81",
+                "roomId": "g32-room-bbbc6c9d-04b"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040848140000001070420525"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-44c9f165-252",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-44c9f165-252",
+              "tagStateId": "reservation:g32-reservation-44c9f165-252:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-44c9f165-252",
+                "roomId": "g32-room-9a8c9cbb-08b"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040851685000002064559808"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-7256e746-848",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-7256e746-848",
+              "tagStateId": "reservation:g32-reservation-7256e746-848:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-7256e746-848",
+                "roomId": "g32-room-bd1ad1b2-d99"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040855581000001282417512"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-3fd73854-259",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-3fd73854-259",
+              "tagStateId": "reservation:g32-reservation-3fd73854-259:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-3fd73854-259",
+                "roomId": "g32-room-c1900064-00f"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040859433000002036924699"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-0cc89995-d92",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-0cc89995-d92",
+              "tagStateId": "reservation:g32-reservation-0cc89995-d92:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-0cc89995-d92",
+                "roomId": "g32-room-0ebb9863-278"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040863266000000847314656"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-c05cae63-346",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-c05cae63-346",
+              "tagStateId": "reservation:g32-reservation-c05cae63-346:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-c05cae63-346",
+                "roomId": "g32-room-aee35ef6-b5a"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040867611000000744022443"
+            }
+          }
+        ],
+        "eventHeads": {
+          "rooms": {
+            "g32-room-0f0041d0-4a3": "063923037840592000002015070535",
+            "g32-room-c637b524-e51": "063923037843735000001361394274",
+            "g32-room-ea78ff5a-64f": "063923037847547000000016677164",
+            "g32-room-422a11b0-a87": "063923037850822000000041488708",
+            "g32-room-9ca3ffd3-6dd": "063923037854314000002001895223",
+            "g32-room-4568b6c0-4f6": "063923037857478000000082069654",
+            "g32-room-b7b7d559-cbf": "063923037861014000001283184013",
+            "g32-room-bc162e67-0e8": "063923037864310000001291983111",
+            "g32-room-136ca195-7ed": "063923037867659000000423979223",
+            "g32-room-f47d92a5-044": "063923037871622000000547247633",
+            "g32-room-588d2105-6c5": "063923040832397000002127848006",
+            "g32-room-cca6dad9-834": "063923040836662000001258957785",
+            "g32-room-1386c6cf-066": "063923040840368000000058732867",
+            "g32-room-95301a1b-19a": "063923040844603000001539693326",
+            "g32-room-bbbc6c9d-04b": "063923040848140000001070420525",
+            "g32-room-9a8c9cbb-08b": "063923040851685000002064559808",
+            "g32-room-bd1ad1b2-d99": "063923040855581000001282417512",
+            "g32-room-c1900064-00f": "063923040859433000002036924699",
+            "g32-room-0ebb9863-278": "063923040863266000000847314656",
+            "g32-room-aee35ef6-b5a": "063923040867611000000744022443"
+          },
+          "reservations": {
+            "g32-reservation-682b0be4-8ec": "063923037840592000002015070535",
+            "g32-reservation-51ac5ccc-1de": "063923037843735000001361394274",
+            "g32-reservation-d7744c60-15c": "063923037847547000000016677164",
+            "g32-reservation-e845553a-949": "063923037850822000000041488708",
+            "g32-reservation-7df2cd9a-0c2": "063923037854314000002001895223",
+            "g32-reservation-646316cf-94c": "063923037857478000000082069654",
+            "g32-reservation-93a095ef-0b5": "063923037861014000001283184013",
+            "g32-reservation-66342dfe-b1e": "063923037864310000001291983111",
+            "g32-reservation-aca4768d-f44": "063923037867659000000423979223",
+            "g32-reservation-e4c12176-5dd": "063923037871622000000547247633",
+            "g32-reservation-ef3a77c6-dde": "063923040832397000002127848006",
+            "g32-reservation-1654285b-43e": "063923040836662000001258957785",
+            "g32-reservation-474617a4-df0": "063923040840368000000058732867",
+            "g32-reservation-e6a9f8df-330": "063923040844603000001539693326",
+            "g32-reservation-1e70f40e-c81": "063923040848140000001070420525",
+            "g32-reservation-44c9f165-252": "063923040851685000002064559808",
+            "g32-reservation-7256e746-848": "063923040855581000001282417512",
+            "g32-reservation-3fd73854-259": "063923040859433000002036924699",
+            "g32-reservation-0cc89995-d92": "063923040863266000000847314656",
+            "g32-reservation-c05cae63-346": "063923040867611000000744022443"
+          }
+        },
+        "digest": "0f2ab494c797468013ecf4875788f3266dd33e66b653e3d27ed216c14bab1546"
+      },
+      "rawV1": {
+        "status": 404,
+        "body": {
+          "error": "Raw V1 routes are available only through the authenticated conformance lane",
+          "code": "not_found"
+        }
+      }
+    },
+    "postWitness": {
+      "task": "SDT-G32",
+      "phase": "c3-post-forward-deploy",
+      "capturedAt": "2026-08-23T02:16:31.089Z",
+      "identityVerified": true,
+      "identitySource": "remote-g32-conformance",
+      "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+      "primary": {
+        "task": "SDT-G32",
+        "phase": "final-g32",
+        "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+        "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+        "component": "primary",
+        "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
+        "serviceId": "g32-9043d626fe1149cb",
+        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+        "freezeRelease": "after-new-bindings",
+        "cutoverFenceFingerprint": "c1489c8eecda965455c3c5ebaf678720872e214dab903505d30296f54e00b475",
+        "sortableUniqueId": {
+          "digits": 30,
+          "format": "dotnet-ticks-19-plus-crypto-id-11",
+          "legacyUnsupported": true
+        },
+        "eventRecord": {
+          "eventType": "eventPayloadName",
+          "payload": "utf8-json-byte-identical",
+          "id": "uuid-v7",
+          "tags": "family:value-emission-order"
+        },
+        "directDoorbell": true,
+        "allowedViews": [
+          "RoomProjector",
+          "ReservationProjector"
+        ],
+        "rawV1PublicStatus": 404
+      },
+      "receiver": {
+        "task": "SDT-G32",
+        "phase": "final-g32",
+        "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+        "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+        "component": "receiver",
+        "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
+        "serviceId": "g32-9043d626fe1149cb",
+        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+        "freezeRelease": "after-new-bindings",
+        "cutoverFenceFingerprint": "c1489c8eecda965455c3c5ebaf678720872e214dab903505d30296f54e00b475",
+        "sortableUniqueId": {
+          "digits": 30,
+          "format": "dotnet-ticks-19-plus-crypto-id-11",
+          "legacyUnsupported": true
+        },
+        "eventRecord": {
+          "eventType": "eventPayloadName",
+          "payload": "utf8-json-byte-identical",
+          "id": "uuid-v7",
+          "tags": "family:value-emission-order"
+        },
+        "directDoorbell": true,
+        "allowedViews": [
+          "RoomProjector",
+          "ReservationProjector"
+        ],
+        "rawV1PublicStatus": 404
+      },
+      "componentAcks": [
+        {
+          "component": "primary",
+          "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+          "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f"
+        },
+        {
+          "component": "receiver",
+          "sourceCommit": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+          "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f"
+        }
+      ],
+      "newStoreState": {
+        "task": "SDT-G32",
+        "serviceId": "g32-9043d626fe1149cb",
+        "eventCount": 40,
+        "eventOpsCount": 40,
+        "materializedViewRowCount": 40,
+        "materializedViewReceiptCount": 40,
+        "legacySerializedEventTablePresent": false
+      },
+      "rawV1": {
+        "status": 404,
+        "body": {
+          "error": "Raw V1 routes are available only through the authenticated conformance lane",
+          "code": "not_found"
+        }
+      },
+      "staleBridgeRoute": {
+        "status": 404,
+        "body": {
+          "raw": "Journal control route not found"
+        }
+      },
+      "data": {
+        "roomQuery": {
+          "status": 200,
+          "body": {
+            "resultJson": "{\"count\":20}"
+          }
+        },
+        "reservationList": {
+          "status": 200,
+          "body": {
+            "totalCount": 20,
+            "totalPages": 1,
+            "currentPage": 1,
+            "pageSize": 20,
+            "items": [
+              {
+                "reservationId": "g32-reservation-682b0be4-8ec",
+                "roomId": "g32-room-0f0041d0-4a3",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-51ac5ccc-1de",
+                "roomId": "g32-room-c637b524-e51",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-d7744c60-15c",
+                "roomId": "g32-room-ea78ff5a-64f",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-e845553a-949",
+                "roomId": "g32-room-422a11b0-a87",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-7df2cd9a-0c2",
+                "roomId": "g32-room-9ca3ffd3-6dd",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-646316cf-94c",
+                "roomId": "g32-room-4568b6c0-4f6",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-93a095ef-0b5",
+                "roomId": "g32-room-b7b7d559-cbf",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-66342dfe-b1e",
+                "roomId": "g32-room-bc162e67-0e8",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-aca4768d-f44",
+                "roomId": "g32-room-136ca195-7ed",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-e4c12176-5dd",
+                "roomId": "g32-room-f47d92a5-044",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-ef3a77c6-dde",
+                "roomId": "g32-room-588d2105-6c5",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-1654285b-43e",
+                "roomId": "g32-room-cca6dad9-834",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-474617a4-df0",
+                "roomId": "g32-room-1386c6cf-066",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-e6a9f8df-330",
+                "roomId": "g32-room-95301a1b-19a",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-1e70f40e-c81",
+                "roomId": "g32-room-bbbc6c9d-04b",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-44c9f165-252",
+                "roomId": "g32-room-9a8c9cbb-08b",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-7256e746-848",
+                "roomId": "g32-room-bd1ad1b2-d99",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-3fd73854-259",
+                "roomId": "g32-room-c1900064-00f",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-0cc89995-d92",
+                "roomId": "g32-room-0ebb9863-278",
+                "status": "reserved",
+                "version": 1
+              },
+              {
+                "reservationId": "g32-reservation-c05cae63-346",
+                "roomId": "g32-room-aee35ef6-b5a",
+                "status": "reserved",
+                "version": 1
+              }
+            ],
+            "pageNumber": 1
+          },
+          "totalCount": 20
+        },
+        "knownRooms": [
+          {
+            "roomId": "g32-room-0f0041d0-4a3",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-0f0041d0-4a3",
+              "tagStateId": "room:g32-room-0f0041d0-4a3:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-0f0041d0-4a3",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037840592000002015070535"
+            }
+          },
+          {
+            "roomId": "g32-room-c637b524-e51",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-c637b524-e51",
+              "tagStateId": "room:g32-room-c637b524-e51:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-c637b524-e51",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037843735000001361394274"
+            }
+          },
+          {
+            "roomId": "g32-room-ea78ff5a-64f",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-ea78ff5a-64f",
+              "tagStateId": "room:g32-room-ea78ff5a-64f:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-ea78ff5a-64f",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037847547000000016677164"
+            }
+          },
+          {
+            "roomId": "g32-room-422a11b0-a87",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-422a11b0-a87",
+              "tagStateId": "room:g32-room-422a11b0-a87:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-422a11b0-a87",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037850822000000041488708"
+            }
+          },
+          {
+            "roomId": "g32-room-9ca3ffd3-6dd",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-9ca3ffd3-6dd",
+              "tagStateId": "room:g32-room-9ca3ffd3-6dd:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-9ca3ffd3-6dd",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037854314000002001895223"
+            }
+          },
+          {
+            "roomId": "g32-room-4568b6c0-4f6",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-4568b6c0-4f6",
+              "tagStateId": "room:g32-room-4568b6c0-4f6:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-4568b6c0-4f6",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037857478000000082069654"
+            }
+          },
+          {
+            "roomId": "g32-room-b7b7d559-cbf",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-b7b7d559-cbf",
+              "tagStateId": "room:g32-room-b7b7d559-cbf:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-b7b7d559-cbf",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037861014000001283184013"
+            }
+          },
+          {
+            "roomId": "g32-room-bc162e67-0e8",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-bc162e67-0e8",
+              "tagStateId": "room:g32-room-bc162e67-0e8:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-bc162e67-0e8",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037864310000001291983111"
+            }
+          },
+          {
+            "roomId": "g32-room-136ca195-7ed",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-136ca195-7ed",
+              "tagStateId": "room:g32-room-136ca195-7ed:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-136ca195-7ed",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037867659000000423979223"
+            }
+          },
+          {
+            "roomId": "g32-room-f47d92a5-044",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-f47d92a5-044",
+              "tagStateId": "room:g32-room-f47d92a5-044:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-f47d92a5-044",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037871622000000547247633"
+            }
+          },
+          {
+            "roomId": "g32-room-588d2105-6c5",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-588d2105-6c5",
+              "tagStateId": "room:g32-room-588d2105-6c5:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-588d2105-6c5",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040832397000002127848006"
+            }
+          },
+          {
+            "roomId": "g32-room-cca6dad9-834",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-cca6dad9-834",
+              "tagStateId": "room:g32-room-cca6dad9-834:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-cca6dad9-834",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040836662000001258957785"
+            }
+          },
+          {
+            "roomId": "g32-room-1386c6cf-066",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-1386c6cf-066",
+              "tagStateId": "room:g32-room-1386c6cf-066:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-1386c6cf-066",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040840368000000058732867"
+            }
+          },
+          {
+            "roomId": "g32-room-95301a1b-19a",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-95301a1b-19a",
+              "tagStateId": "room:g32-room-95301a1b-19a:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-95301a1b-19a",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040844603000001539693326"
+            }
+          },
+          {
+            "roomId": "g32-room-bbbc6c9d-04b",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-bbbc6c9d-04b",
+              "tagStateId": "room:g32-room-bbbc6c9d-04b:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-bbbc6c9d-04b",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040848140000001070420525"
+            }
+          },
+          {
+            "roomId": "g32-room-9a8c9cbb-08b",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-9a8c9cbb-08b",
+              "tagStateId": "room:g32-room-9a8c9cbb-08b:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-9a8c9cbb-08b",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040851685000002064559808"
+            }
+          },
+          {
+            "roomId": "g32-room-bd1ad1b2-d99",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-bd1ad1b2-d99",
+              "tagStateId": "room:g32-room-bd1ad1b2-d99:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-bd1ad1b2-d99",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040855581000001282417512"
+            }
+          },
+          {
+            "roomId": "g32-room-c1900064-00f",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-c1900064-00f",
+              "tagStateId": "room:g32-room-c1900064-00f:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-c1900064-00f",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040859433000002036924699"
+            }
+          },
+          {
+            "roomId": "g32-room-0ebb9863-278",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-0ebb9863-278",
+              "tagStateId": "room:g32-room-0ebb9863-278:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-0ebb9863-278",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040863266000000847314656"
+            }
+          },
+          {
+            "roomId": "g32-room-aee35ef6-b5a",
+            "status": 200,
+            "body": {
+              "projection": "room",
+              "roomId": "g32-room-aee35ef6-b5a",
+              "tagStateId": "room:g32-room-aee35ef6-b5a:RoomProjector",
+              "state": {
+                "status": "created",
+                "version": 1,
+                "roomId": "g32-room-aee35ef6-b5a",
+                "name": "SDT-G32"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040867611000000744022443"
+            }
+          }
+        ],
+        "knownReservations": [
+          {
+            "reservationId": "g32-reservation-682b0be4-8ec",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-682b0be4-8ec",
+              "tagStateId": "reservation:g32-reservation-682b0be4-8ec:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-682b0be4-8ec",
+                "roomId": "g32-room-0f0041d0-4a3"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037840592000002015070535"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-51ac5ccc-1de",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-51ac5ccc-1de",
+              "tagStateId": "reservation:g32-reservation-51ac5ccc-1de:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-51ac5ccc-1de",
+                "roomId": "g32-room-c637b524-e51"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037843735000001361394274"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-d7744c60-15c",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-d7744c60-15c",
+              "tagStateId": "reservation:g32-reservation-d7744c60-15c:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-d7744c60-15c",
+                "roomId": "g32-room-ea78ff5a-64f"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037847547000000016677164"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-e845553a-949",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-e845553a-949",
+              "tagStateId": "reservation:g32-reservation-e845553a-949:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-e845553a-949",
+                "roomId": "g32-room-422a11b0-a87"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037850822000000041488708"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-7df2cd9a-0c2",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-7df2cd9a-0c2",
+              "tagStateId": "reservation:g32-reservation-7df2cd9a-0c2:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-7df2cd9a-0c2",
+                "roomId": "g32-room-9ca3ffd3-6dd"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037854314000002001895223"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-646316cf-94c",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-646316cf-94c",
+              "tagStateId": "reservation:g32-reservation-646316cf-94c:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-646316cf-94c",
+                "roomId": "g32-room-4568b6c0-4f6"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037857478000000082069654"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-93a095ef-0b5",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-93a095ef-0b5",
+              "tagStateId": "reservation:g32-reservation-93a095ef-0b5:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-93a095ef-0b5",
+                "roomId": "g32-room-b7b7d559-cbf"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037861014000001283184013"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-66342dfe-b1e",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-66342dfe-b1e",
+              "tagStateId": "reservation:g32-reservation-66342dfe-b1e:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-66342dfe-b1e",
+                "roomId": "g32-room-bc162e67-0e8"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037864310000001291983111"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-aca4768d-f44",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-aca4768d-f44",
+              "tagStateId": "reservation:g32-reservation-aca4768d-f44:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-aca4768d-f44",
+                "roomId": "g32-room-136ca195-7ed"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037867659000000423979223"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-e4c12176-5dd",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-e4c12176-5dd",
+              "tagStateId": "reservation:g32-reservation-e4c12176-5dd:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-e4c12176-5dd",
+                "roomId": "g32-room-f47d92a5-044"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923037871622000000547247633"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-ef3a77c6-dde",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-ef3a77c6-dde",
+              "tagStateId": "reservation:g32-reservation-ef3a77c6-dde:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-ef3a77c6-dde",
+                "roomId": "g32-room-588d2105-6c5"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040832397000002127848006"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-1654285b-43e",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-1654285b-43e",
+              "tagStateId": "reservation:g32-reservation-1654285b-43e:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-1654285b-43e",
+                "roomId": "g32-room-cca6dad9-834"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040836662000001258957785"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-474617a4-df0",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-474617a4-df0",
+              "tagStateId": "reservation:g32-reservation-474617a4-df0:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-474617a4-df0",
+                "roomId": "g32-room-1386c6cf-066"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040840368000000058732867"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-e6a9f8df-330",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-e6a9f8df-330",
+              "tagStateId": "reservation:g32-reservation-e6a9f8df-330:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-e6a9f8df-330",
+                "roomId": "g32-room-95301a1b-19a"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040844603000001539693326"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-1e70f40e-c81",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-1e70f40e-c81",
+              "tagStateId": "reservation:g32-reservation-1e70f40e-c81:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-1e70f40e-c81",
+                "roomId": "g32-room-bbbc6c9d-04b"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040848140000001070420525"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-44c9f165-252",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-44c9f165-252",
+              "tagStateId": "reservation:g32-reservation-44c9f165-252:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-44c9f165-252",
+                "roomId": "g32-room-9a8c9cbb-08b"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040851685000002064559808"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-7256e746-848",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-7256e746-848",
+              "tagStateId": "reservation:g32-reservation-7256e746-848:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-7256e746-848",
+                "roomId": "g32-room-bd1ad1b2-d99"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040855581000001282417512"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-3fd73854-259",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-3fd73854-259",
+              "tagStateId": "reservation:g32-reservation-3fd73854-259:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-3fd73854-259",
+                "roomId": "g32-room-c1900064-00f"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040859433000002036924699"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-0cc89995-d92",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-0cc89995-d92",
+              "tagStateId": "reservation:g32-reservation-0cc89995-d92:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-0cc89995-d92",
+                "roomId": "g32-room-0ebb9863-278"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040863266000000847314656"
+            }
+          },
+          {
+            "reservationId": "g32-reservation-c05cae63-346",
+            "status": 200,
+            "body": {
+              "projection": "reservation",
+              "reservationId": "g32-reservation-c05cae63-346",
+              "tagStateId": "reservation:g32-reservation-c05cae63-346:ReservationProjector",
+              "state": {
+                "status": "reserved",
+                "version": 1,
+                "reservationId": "g32-reservation-c05cae63-346",
+                "roomId": "g32-room-aee35ef6-b5a"
+              },
+              "version": 1,
+              "lastSortedUniqueId": "063923040867611000000744022443"
+            }
+          }
+        ],
+        "eventHeads": {
+          "rooms": {
+            "g32-room-0f0041d0-4a3": "063923037840592000002015070535",
+            "g32-room-c637b524-e51": "063923037843735000001361394274",
+            "g32-room-ea78ff5a-64f": "063923037847547000000016677164",
+            "g32-room-422a11b0-a87": "063923037850822000000041488708",
+            "g32-room-9ca3ffd3-6dd": "063923037854314000002001895223",
+            "g32-room-4568b6c0-4f6": "063923037857478000000082069654",
+            "g32-room-b7b7d559-cbf": "063923037861014000001283184013",
+            "g32-room-bc162e67-0e8": "063923037864310000001291983111",
+            "g32-room-136ca195-7ed": "063923037867659000000423979223",
+            "g32-room-f47d92a5-044": "063923037871622000000547247633",
+            "g32-room-588d2105-6c5": "063923040832397000002127848006",
+            "g32-room-cca6dad9-834": "063923040836662000001258957785",
+            "g32-room-1386c6cf-066": "063923040840368000000058732867",
+            "g32-room-95301a1b-19a": "063923040844603000001539693326",
+            "g32-room-bbbc6c9d-04b": "063923040848140000001070420525",
+            "g32-room-9a8c9cbb-08b": "063923040851685000002064559808",
+            "g32-room-bd1ad1b2-d99": "063923040855581000001282417512",
+            "g32-room-c1900064-00f": "063923040859433000002036924699",
+            "g32-room-0ebb9863-278": "063923040863266000000847314656",
+            "g32-room-aee35ef6-b5a": "063923040867611000000744022443"
+          },
+          "reservations": {
+            "g32-reservation-682b0be4-8ec": "063923037840592000002015070535",
+            "g32-reservation-51ac5ccc-1de": "063923037843735000001361394274",
+            "g32-reservation-d7744c60-15c": "063923037847547000000016677164",
+            "g32-reservation-e845553a-949": "063923037850822000000041488708",
+            "g32-reservation-7df2cd9a-0c2": "063923037854314000002001895223",
+            "g32-reservation-646316cf-94c": "063923037857478000000082069654",
+            "g32-reservation-93a095ef-0b5": "063923037861014000001283184013",
+            "g32-reservation-66342dfe-b1e": "063923037864310000001291983111",
+            "g32-reservation-aca4768d-f44": "063923037867659000000423979223",
+            "g32-reservation-e4c12176-5dd": "063923037871622000000547247633",
+            "g32-reservation-ef3a77c6-dde": "063923040832397000002127848006",
+            "g32-reservation-1654285b-43e": "063923040836662000001258957785",
+            "g32-reservation-474617a4-df0": "063923040840368000000058732867",
+            "g32-reservation-e6a9f8df-330": "063923040844603000001539693326",
+            "g32-reservation-1e70f40e-c81": "063923040848140000001070420525",
+            "g32-reservation-44c9f165-252": "063923040851685000002064559808",
+            "g32-reservation-7256e746-848": "063923040855581000001282417512",
+            "g32-reservation-3fd73854-259": "063923040859433000002036924699",
+            "g32-reservation-0cc89995-d92": "063923040863266000000847314656",
+            "g32-reservation-c05cae63-346": "063923040867611000000744022443"
+          }
+        },
+        "digest": "0f2ab494c797468013ecf4875788f3266dd33e66b653e3d27ed216c14bab1546"
+      }
+    },
+    "dataPreservation": {
+      "status": "preserved-existing-g32-data",
+      "stable": true,
+      "rule": "every pre-captured list row, detail row, and head is a required preserved subset; aggregate counts are observed but intentionally not an equality gate",
+      "preSetDigest": "b14cb350577441de3fa814d4362d86bbac57abeb1c104f7f8e0b716f0430f429",
+      "preserved": {
+        "reservationListEntries": 20,
+        "knownRooms": 20,
+        "knownReservations": 20
+      },
+      "counts": {
+        "before": {
+          "rooms": 20,
+          "reservations": 20
+        },
+        "after": {
+          "rooms": 20,
+          "reservations": 20
+        }
+      },
+      "countDelta": {
+        "rooms": 0,
+        "reservations": 0
+      },
+      "countDeltaCause": {
+        "preToPost": "The forward deploy script performs no application command before post-witness. Count deltas are recorded but are not the preservation equality condition.",
+        "preToPostScriptWrites": [],
+        "fixedNProbeWrites": [
+          {
+            "index": 0,
+            "roomId": "g32-room-9208b35b-6c0",
+            "reservationId": "g32-reservation-8f029025-b04",
+            "suid": "063923048194987000000916413245"
+          },
+          {
+            "index": 1,
+            "roomId": "g32-room-bafbb9de-77a",
+            "reservationId": "g32-reservation-2441b6b9-1b3",
+            "suid": "063923048198842000000648164717"
+          },
+          {
+            "index": 2,
+            "roomId": "g32-room-754099b3-769",
+            "reservationId": "g32-reservation-5238ecf2-6a8",
+            "suid": "063923048202562000001078607283"
+          },
+          {
+            "index": 3,
+            "roomId": "g32-room-6947a819-3a7",
+            "reservationId": "g32-reservation-45fe9c5c-dc2",
+            "suid": "063923048206052000001820028461"
+          },
+          {
+            "index": 4,
+            "roomId": "g32-room-f2e73342-9c5",
+            "reservationId": "g32-reservation-dd4b2e4c-f42",
+            "suid": "063923048210330000001813981388"
+          },
+          {
+            "index": 5,
+            "roomId": "g32-room-4b13d44d-a63",
+            "reservationId": "g32-reservation-734089a7-c14",
+            "suid": "063923048217595000000541804345"
+          },
+          {
+            "index": 6,
+            "roomId": "g32-room-a64bedea-831",
+            "reservationId": "g32-reservation-d0e192c4-ed7",
+            "suid": "063923048221624000000844650519"
+          },
+          {
+            "index": 7,
+            "roomId": "g32-room-787c4615-b28",
+            "reservationId": "g32-reservation-44cbfde5-85c",
+            "suid": "063923048225449000001434383275"
+          },
+          {
+            "index": 8,
+            "roomId": "g32-room-e670cd09-753",
+            "reservationId": "g32-reservation-4b5c6549-2e3",
+            "suid": "063923048228734000002054105759"
+          },
+          {
+            "index": 9,
+            "roomId": "g32-room-34de0741-356",
+            "reservationId": "g32-reservation-cbdfdf15-e03",
+            "suid": "063923048233054000000382629063"
+          }
+        ],
+        "fixedNPhase": "runs only after post-witness; it is the deliberate 10-cycle conformance write phase"
+      }
+    },
+    "queueTopology": {
+      "task": "SDT-G32",
+      "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+      "primary": "sekiban-dcb-meeting-room-cloudflare-only",
+      "receiver": "sekiban-dcb-meeting-room-doorbell",
+      "consumers": [
+        {
+          "script": "sekiban-dcb-meeting-room-cloudflare-only",
+          "dead_letter_queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
+          "settings": {
+            "batch_size": 10,
+            "max_retries": 3,
+            "max_wait_time_ms": 1000,
+            "retry_delay": 0
+          },
+          "consumer_id": "a9301d10d35a4e529d682b00981c67a0",
+          "type": "worker"
+        }
+      ],
+      "primaryExclusive": true,
+      "receiverServiceBindingOnly": true
+    },
+    "fixedNMeasurement": {
+      "task": "SDT-G32",
+      "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+      "startedAt": "2026-08-23T02:16:31.148Z",
+      "latency": {
+        "sampleCount": 10,
+        "commandStartToResponseMs": {
+          "p50": 1561.486500000001,
+          "p95": 2400.053666,
+          "max": 2400.053666,
+          "samples": 10
+        },
+        "responseToListRedrawMs": {
+          "p50": 608.307624999994,
+          "p95": 4152.416165999999,
+          "max": 4152.416165999999,
+          "samples": 10
+        },
+        "commandStartToListRedrawMs": {
+          "p50": 2105.182084,
+          "p95": 6234.268124999999,
+          "max": 6234.268124999999,
+          "samples": 10
+        },
+        "statusRaw": [
+          {
+            "index": 0,
+            "roomId": "g32-room-9208b35b-6c0",
+            "reservationId": "g32-reservation-8f029025-b04",
+            "commitSuid": "063923048194987000000916413245",
+            "commandStartAt": "2026-08-23T02:16:33.896Z",
+            "responseAt": "2026-08-23T02:16:35.337Z",
+            "listRequestStartedAt": "2026-08-23T02:16:35.337Z",
+            "listRenderedAt": "2026-08-23T02:16:35.901Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 1,
+            "roomId": "g32-room-bafbb9de-77a",
+            "reservationId": "g32-reservation-2441b6b9-1b3",
+            "commitSuid": "063923048198842000000648164717",
+            "commandStartAt": "2026-08-23T02:16:37.384Z",
+            "responseAt": "2026-08-23T02:16:39.101Z",
+            "listRequestStartedAt": "2026-08-23T02:16:39.101Z",
+            "listRenderedAt": "2026-08-23T02:16:39.773Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 2,
+            "roomId": "g32-room-754099b3-769",
+            "reservationId": "g32-reservation-5238ecf2-6a8",
+            "commitSuid": "063923048202562000001078607283",
+            "commandStartAt": "2026-08-23T02:16:41.474Z",
+            "responseAt": "2026-08-23T02:16:42.830Z",
+            "listRequestStartedAt": "2026-08-23T02:16:42.830Z",
+            "listRenderedAt": "2026-08-23T02:16:43.511Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 3,
+            "roomId": "g32-room-6947a819-3a7",
+            "reservationId": "g32-reservation-45fe9c5c-dc2",
+            "commitSuid": "063923048206052000001820028461",
+            "commandStartAt": "2026-08-23T02:16:44.832Z",
+            "responseAt": "2026-08-23T02:16:46.394Z",
+            "listRequestStartedAt": "2026-08-23T02:16:46.394Z",
+            "listRenderedAt": "2026-08-23T02:16:46.819Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 4,
+            "roomId": "g32-room-f2e73342-9c5",
+            "reservationId": "g32-reservation-dd4b2e4c-f42",
+            "commitSuid": "063923048210330000001813981388",
+            "commandStartAt": "2026-08-23T02:16:48.535Z",
+            "responseAt": "2026-08-23T02:16:50.617Z",
+            "listRequestStartedAt": "2026-08-23T02:16:50.617Z",
+            "listRenderedAt": "2026-08-23T02:16:54.770Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 5,
+            "roomId": "g32-room-4b13d44d-a63",
+            "reservationId": "g32-reservation-734089a7-c14",
+            "commitSuid": "063923048217595000000541804345",
+            "commandStartAt": "2026-08-23T02:16:56.048Z",
+            "responseAt": "2026-08-23T02:16:58.448Z",
+            "listRequestStartedAt": "2026-08-23T02:16:58.448Z",
+            "listRenderedAt": "2026-08-23T02:16:58.906Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 6,
+            "roomId": "g32-room-a64bedea-831",
+            "reservationId": "g32-reservation-d0e192c4-ed7",
+            "commitSuid": "063923048221624000000844650519",
+            "commandStartAt": "2026-08-23T02:17:00.347Z",
+            "responseAt": "2026-08-23T02:17:02.077Z",
+            "listRequestStartedAt": "2026-08-23T02:17:02.077Z",
+            "listRenderedAt": "2026-08-23T02:17:03.102Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 7,
+            "roomId": "g32-room-787c4615-b28",
+            "reservationId": "g32-reservation-44cbfde5-85c",
+            "commitSuid": "063923048225449000001434383275",
+            "commandStartAt": "2026-08-23T02:17:04.454Z",
+            "responseAt": "2026-08-23T02:17:05.688Z",
+            "listRequestStartedAt": "2026-08-23T02:17:05.688Z",
+            "listRenderedAt": "2026-08-23T02:17:06.271Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 8,
+            "roomId": "g32-room-e670cd09-753",
+            "reservationId": "g32-reservation-4b5c6549-2e3",
+            "commitSuid": "063923048228734000002054105759",
+            "commandStartAt": "2026-08-23T02:17:07.791Z",
+            "responseAt": "2026-08-23T02:17:09.063Z",
+            "listRequestStartedAt": "2026-08-23T02:17:09.063Z",
+            "listRenderedAt": "2026-08-23T02:17:09.896Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          },
+          {
+            "index": 9,
+            "roomId": "g32-room-34de0741-356",
+            "reservationId": "g32-reservation-cbdfdf15-e03",
+            "commitSuid": "063923048233054000000382629063",
+            "commandStartAt": "2026-08-23T02:17:11.319Z",
+            "responseAt": "2026-08-23T02:17:13.296Z",
+            "listRequestStartedAt": "2026-08-23T02:17:13.296Z",
+            "listRenderedAt": "2026-08-23T02:17:13.904Z",
+            "createStatus": 200,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null
+          }
+        ],
+        "errorCount": 0,
+        "samples": [
+          {
+            "index": 0,
+            "roomId": "g32-room-9208b35b-6c0",
+            "reservationId": "g32-reservation-8f029025-b04",
+            "commitSuid": "063923048194987000000916413245",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:16:33.896Z",
+            "responseAt": "2026-08-23T02:16:35.337Z",
+            "listRequestStartedAt": "2026-08-23T02:16:35.337Z",
+            "listRenderedAt": "2026-08-23T02:16:35.901Z",
+            "commandStartToResponseMs": 1441.5131659999997,
+            "responseToListRedrawMs": 563.4905840000001,
+            "commandStartToListRedrawMs": 2005.0037499999999,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048194987000000916413245"
+          },
+          {
+            "index": 1,
+            "roomId": "g32-room-bafbb9de-77a",
+            "reservationId": "g32-reservation-2441b6b9-1b3",
+            "commitSuid": "063923048198842000000648164717",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:16:37.384Z",
+            "responseAt": "2026-08-23T02:16:39.101Z",
+            "listRequestStartedAt": "2026-08-23T02:16:39.101Z",
+            "listRenderedAt": "2026-08-23T02:16:39.773Z",
+            "commandStartToResponseMs": 1716.631542,
+            "responseToListRedrawMs": 672.0894170000001,
+            "commandStartToListRedrawMs": 2388.720959,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048198842000000648164717"
+          },
+          {
+            "index": 2,
+            "roomId": "g32-room-754099b3-769",
+            "reservationId": "g32-reservation-5238ecf2-6a8",
+            "commitSuid": "063923048202562000001078607283",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:16:41.474Z",
+            "responseAt": "2026-08-23T02:16:42.830Z",
+            "listRequestStartedAt": "2026-08-23T02:16:42.830Z",
+            "listRenderedAt": "2026-08-23T02:16:43.511Z",
+            "commandStartToResponseMs": 1356.3564999999999,
+            "responseToListRedrawMs": 680.6027919999997,
+            "commandStartToListRedrawMs": 2036.9592919999996,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048202562000001078607283"
+          },
+          {
+            "index": 3,
+            "roomId": "g32-room-6947a819-3a7",
+            "reservationId": "g32-reservation-45fe9c5c-dc2",
+            "commitSuid": "063923048206052000001820028461",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:16:44.832Z",
+            "responseAt": "2026-08-23T02:16:46.394Z",
+            "listRequestStartedAt": "2026-08-23T02:16:46.394Z",
+            "listRenderedAt": "2026-08-23T02:16:46.819Z",
+            "commandStartToResponseMs": 1561.486500000001,
+            "responseToListRedrawMs": 425.287875,
+            "commandStartToListRedrawMs": 1986.7743750000009,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048206052000001820028461"
+          },
+          {
+            "index": 4,
+            "roomId": "g32-room-f2e73342-9c5",
+            "reservationId": "g32-reservation-dd4b2e4c-f42",
+            "commitSuid": "063923048210330000001813981388",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:16:48.535Z",
+            "responseAt": "2026-08-23T02:16:50.617Z",
+            "listRequestStartedAt": "2026-08-23T02:16:50.617Z",
+            "listRenderedAt": "2026-08-23T02:16:54.770Z",
+            "commandStartToResponseMs": 2081.8519589999996,
+            "responseToListRedrawMs": 4152.416165999999,
+            "commandStartToListRedrawMs": 6234.268124999999,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048210330000001813981388"
+          },
+          {
+            "index": 5,
+            "roomId": "g32-room-4b13d44d-a63",
+            "reservationId": "g32-reservation-734089a7-c14",
+            "commitSuid": "063923048217595000000541804345",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:16:56.048Z",
+            "responseAt": "2026-08-23T02:16:58.448Z",
+            "listRequestStartedAt": "2026-08-23T02:16:58.448Z",
+            "listRenderedAt": "2026-08-23T02:16:58.906Z",
+            "commandStartToResponseMs": 2400.053666,
+            "responseToListRedrawMs": 458.00266700000066,
+            "commandStartToListRedrawMs": 2858.0563330000004,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048217595000000541804345"
+          },
+          {
+            "index": 6,
+            "roomId": "g32-room-a64bedea-831",
+            "reservationId": "g32-reservation-d0e192c4-ed7",
+            "commitSuid": "063923048221624000000844650519",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:17:00.347Z",
+            "responseAt": "2026-08-23T02:17:02.077Z",
+            "listRequestStartedAt": "2026-08-23T02:17:02.077Z",
+            "listRenderedAt": "2026-08-23T02:17:03.102Z",
+            "commandStartToResponseMs": 1730.811834,
+            "responseToListRedrawMs": 1024.5963749999974,
+            "commandStartToListRedrawMs": 2755.4082089999974,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048221624000000844650519"
+          },
+          {
+            "index": 7,
+            "roomId": "g32-room-787c4615-b28",
+            "reservationId": "g32-reservation-44cbfde5-85c",
+            "commitSuid": "063923048225449000001434383275",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:17:04.454Z",
+            "responseAt": "2026-08-23T02:17:05.688Z",
+            "listRequestStartedAt": "2026-08-23T02:17:05.688Z",
+            "listRenderedAt": "2026-08-23T02:17:06.271Z",
+            "commandStartToResponseMs": 1233.7815420000043,
+            "responseToListRedrawMs": 583.1452499999941,
+            "commandStartToListRedrawMs": 1816.9267919999984,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048225449000001434383275"
+          },
+          {
+            "index": 8,
+            "roomId": "g32-room-e670cd09-753",
+            "reservationId": "g32-reservation-4b5c6549-2e3",
+            "commitSuid": "063923048228734000002054105759",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:17:07.791Z",
+            "responseAt": "2026-08-23T02:17:09.063Z",
+            "listRequestStartedAt": "2026-08-23T02:17:09.063Z",
+            "listRenderedAt": "2026-08-23T02:17:09.896Z",
+            "commandStartToResponseMs": 1271.8543340000033,
+            "responseToListRedrawMs": 833.3277499999967,
+            "commandStartToListRedrawMs": 2105.182084,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048228734000002054105759"
+          },
+          {
+            "index": 9,
+            "roomId": "g32-room-34de0741-356",
+            "reservationId": "g32-reservation-cbdfdf15-e03",
+            "commitSuid": "063923048233054000000382629063",
+            "createStatus": 200,
+            "commandStartAt": "2026-08-23T02:17:11.319Z",
+            "responseAt": "2026-08-23T02:17:13.296Z",
+            "listRequestStartedAt": "2026-08-23T02:17:13.296Z",
+            "listRenderedAt": "2026-08-23T02:17:13.904Z",
+            "commandStartToResponseMs": 1977.143041000003,
+            "responseToListRedrawMs": 608.307624999994,
+            "commandStartToListRedrawMs": 2585.450665999997,
+            "commandStatus": 200,
+            "commandKind": "committed",
+            "listStatus": 200,
+            "listCode": null,
+            "listPath": "/api/read/reservations?pageNumber=1&pageSize=20&newestFirst=true&waitForSortableUniqueId=063923048233054000000382629063"
+          }
+        ],
+        "firstNewWrite": {
+          "command": "create-room",
+          "roomId": "g32-room-9208b35b-6c0",
+          "at": "2026-08-23T02:16:31.150Z",
+          "status": 200
+        },
+        "staleNegatives": [
+          {
+            "id": "old-37-character-suid-list",
+            "status": 400,
+            "code": "validation_error",
+            "outcome": "typed-rejected-before-list-dispatch",
+            "value": "suid-00000000000000000001787414836102"
+          }
+        ],
+        "fiveEndpointConformance": [
+          {
+            "endpoint": "/conformance/v1/g32-config",
+            "status": 200
+          },
+          {
+            "endpoint": "/conformance/v1/g32-store-state",
+            "status": 200
+          },
+          {
+            "endpoint": "/api/commands/create-room",
+            "status": 200
+          },
+          {
+            "endpoint": "/api/commands/reserve-room",
+            "status": 200
+          },
+          {
+            "endpoint": "/api/read/reservations?waitForSortableUniqueId=<30-digit>",
+            "status": 200
+          }
+        ],
+        "rawV1": {
+          "endpoint": "/api/sekiban/serialized",
+          "status": 404
+        },
+        "finalStoreState": {
+          "task": "SDT-G32",
+          "serviceId": "g32-9043d626fe1149cb",
+          "eventCount": 60,
+          "eventOpsCount": 60,
+          "materializedViewRowCount": 44,
+          "materializedViewReceiptCount": 80,
+          "legacySerializedEventTablePresent": false
+        },
+        "abortForwardFix": {
+          "abortAllowedThrough": "final-C deploy and post-witness before first new-store command",
+          "firstNewStoreWrite": {
+            "command": "create-room",
+            "roomId": "g32-room-9208b35b-6c0",
+            "at": "2026-08-23T02:16:31.150Z",
+            "status": 200
+          },
+          "afterFirstWrite": "forward-fix-only; this script never rolls back new bindings or recreates the old service"
+        },
+        "interpretation": "Each sample records command response, exactly one server wait/list redraw, and total independently; no client poll/retry loop is included."
+      },
+      "secrets": "redacted"
+    },
+    "legacyIngressAudit": {
+      "task": "SDT-G32",
+      "positiveIngresses": [
+        "scripts/g22-bootstrap-cosmos-contract.mjs#message",
+        "test/helpers/g22-bootstrap-provider-contract.ts#g32Message",
+        "scripts/store-contract.mjs#message"
+      ],
+      "legacyNegative": [
+        "old-37-character-suid",
+        "legacy-provenance",
+        "identity-less",
+        "eventPayloadVersion"
+      ],
+      "eventPayloadVersionReferences": [
+        "packages/dcb-runtime/src/commit/CommitWorker.ts",
+        "samples/meeting-room/src/mapping-observation.ts",
+        "test/g27-identity.spec.ts",
+        "test/g29-compatibility.spec.ts",
+        "test/g29-mapping.spec.ts",
+        "test/g32-parity.spec.ts"
+      ],
+      "legacyScriptReferences": [
+        "scripts/deploy/g15-e2e.py",
+        "scripts/deploy/g32-measure.mjs",
+        "scripts/g22-bootstrap-cosmos-contract.mjs",
+        "scripts/g32-candidate-check.mjs"
+      ],
+      "legacyFixtureReferences": [
+        "test/commit.spec.ts",
+        "test/d1-mv.spec.ts",
+        "test/dcb-domain.spec.ts",
+        "test/downstream.spec.ts",
+        "test/fixtures/g13-pre-g27-outbox.json",
+        "test/fixtures/g22-csharp-fixture.generated.json",
+        "test/fixtures/g22-csharp-reference/Program.cs",
+        "test/fixtures/g23-csharp-fixture.generated.json",
+        "test/fixtures/g23-csharp-reference/Program.cs",
+        "test/g13-wire-invariance.spec.ts",
+        "test/g15-frontend.spec.ts",
+        "test/g16-frontend.spec.ts",
+        "test/g17-lineage.spec.ts",
+        "test/g19-materializer.spec.ts",
+        "test/g23-unsafe-window.spec.ts",
+        "test/g24-hardening.spec.ts",
+        "test/g26-fanout.spec.ts",
+        "test/g27-identity.spec.ts",
+        "test/g29-compatibility.spec.ts",
+        "test/g29-diagnostics.spec.ts",
+        "test/g29-mapping.spec.ts",
+        "test/g29-meeting-room.spec.ts",
+        "test/g31-sample.spec.ts",
+        "test/g31-waitfor.spec.ts",
+        "test/g32-cutover.spec.ts",
+        "test/g32-parity.spec.ts",
+        "test/g32-suid-rows.spec.ts",
+        "test/meeting-room.spec.ts",
+        "test/mv.spec.ts",
+        "test/projection.spec.ts",
+        "test/repair.spec.ts",
+        "test/tag.spec.ts"
+      ],
+      "ciLane": "cosmos-emulator:test:g22:cosmos",
+      "conclusion": "all executable positive G32 ingress fixtures are 30-digit/UUIDv7/fixed-g32; legacy forms are retained only as typed zero-call negatives"
+    },
+    "tokenRotation": {
+      "conformance": "rotated inside the C3 primary forward deployment using a file-fed secrets file; value redacted",
+      "oldToken": "intentionally invalidated; value redacted",
+      "localFilesAfterMeasurement": "deleted by deploy-script trap",
+      "dataD1DurableObjectPolicy": "token rotation and forward worker deploy do not mutate application data, D1 rows, or Durable Object storage before the explicit N=10 probes"
+    },
+    "ingressRecheck": {
+      "positiveG22Cosmos": "30-digit SUID + UUIDv7 + EventType=eventPayloadName + fixed internal g32 provenance",
+      "retainedNegative": [
+        "old-37-character-suid",
+        "legacy-provenance",
+        "identity-less",
+        "eventPayloadVersion"
+      ],
+      "deployedConfig": {
+        "primaryDigits": 30,
+        "receiverDigits": 30,
+        "legacyUnsupported": true,
+        "eventTypeAuthority": "eventPayloadName",
+        "oldSuidListStatus": 400
+      }
+    },
     "oracleMap": "docs/SDT-G32-oracle-map.md",
-    "ci": { "status": "pending-after-push", "verify": "pending", "cosmosEmulator": "pending" },
+    "ci": {
+      "status": "pending-after-push",
+      "verify": "pending",
+      "cosmosEmulator": "pending"
+    },
     "secrets": "redacted"
   },
   "secrets": "redacted"
