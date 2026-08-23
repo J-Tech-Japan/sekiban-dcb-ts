@@ -17,7 +17,7 @@ function data() {
   };
 }
 
-describe("SDT-G32 C3/C4 forward-only witness", () => {
+describe("SDT-G32 C3/C4/C5 forward-only witness", () => {
   it("requires the pre-captured data set and heads to survive post-candidate deployment", () => {
     const before = data();
     const after = structuredClone(before);
@@ -42,11 +42,12 @@ describe("SDT-G32 C3/C4 forward-only witness", () => {
     expect(() => assertPreWitnessSetPreserved(before, head)).toThrow("event heads changed");
   });
 
-  it("keeps C3/C4 forward-only: no cutover, resource creation, migration apply, or reseed command", () => {
+  it("keeps C3/C4/C5 forward-only: no cutover, resource creation, migration apply, or reseed command", () => {
     const source = forwardRedeploySource;
     const executable = source.split(/\r?\n/).filter((line: string) => !line.trimStart().startsWith("#")).join("\n");
     expect(executable).toContain("G32_FORWARD_DEPLOY_LIVE");
     expect(executable).toContain("G32_FORWARD_CYCLE");
+    expect(executable).toContain("C5) readonly CYCLE_LOWER=\"c5\"");
     expect(executable).toContain("g32-forward-witness.mjs --mode pre-deploy-public");
     expect(executable).toContain("g32-forward-record-evidence.mjs");
     expect(executable).toContain('d1 migrations list "${PIPELINE_DATABASE_BINDING}"');

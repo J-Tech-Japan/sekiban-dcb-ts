@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# SDT-G32 C3/C4 forward-only witness. C1 already performed the one-time
+# SDT-G32 C3/C4/C5 forward-only witness. C1 already performed the one-time
 # bridge, freeze, wipe, and new binding creation; later candidates retain
 # those bindings. This script refuses to run any of those operations again;
 # it only republishes a sealed source identity, rotates file-fed
@@ -25,7 +25,8 @@ readonly FORWARD_CYCLE="${G32_FORWARD_CYCLE:-C3}"
 case "${FORWARD_CYCLE}" in
   C3) readonly CYCLE_LOWER="c3" ;;
   C4) readonly CYCLE_LOWER="c4" ;;
-  *) printf 'G32_FORWARD_CYCLE must be C3 or C4\n' >&2; exit 2 ;;
+  C5) readonly CYCLE_LOWER="c5" ;;
+  *) printf 'G32_FORWARD_CYCLE must be C3, C4, or C5\n' >&2; exit 2 ;;
 esac
 
 readonly PRE_FILE="${REPO_ROOT}/.artifacts/g32-forward-${CYCLE_LOWER}-pre-witness.json"
@@ -63,6 +64,13 @@ case "${FORWARD_CYCLE}" in
     PRIOR_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.forwardRedeployC3.deploymentConfig.digest);')"
     if [[ "${CONFIG_DIGEST}" != "${PRIOR_CONFIG_DIGEST}" ]]; then
       printf 'G32 C4 must retain C3-identical deployment configuration bytes for the test-only repair\n' >&2
+      exit 2
+    fi
+    ;;
+  C5)
+    PRIOR_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.forwardRedeployC4.deploymentConfig.digest);')"
+    if [[ "${CONFIG_DIGEST}" != "${PRIOR_CONFIG_DIGEST}" ]]; then
+      printf 'G32 C5 must retain C4-identical deployment configuration bytes for the C# JSON-transport repair\n' >&2
       exit 2
     fi
     ;;

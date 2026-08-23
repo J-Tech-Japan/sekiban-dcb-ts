@@ -10,6 +10,8 @@ const root = process.cwd();
 const INITIAL_CANDIDATE = "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e";
 const C2_CANDIDATE = "0b38755443cce9d4a1a4383e18ba42499c390f63";
 const C3_CANDIDATE = "c5441dc23e144466d26e13d7ffab4db7eca2e6ae";
+const C4_CANDIDATE = "aff97424b136be9f88e6804ced1562d9b81709cd";
+const C4_EVIDENCE_COMMIT = "be1f251f13b60544744a2427bae82a1ab85f38f7";
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
 
 function argument(name, fallback) {
@@ -94,6 +96,22 @@ function c4PlaceholderOf(prior) {
     throw new Error("G32 C4 evidence replacement requires the sealed C4 placeholder");
   }
   return c4;
+}
+
+function c4Of(prior) {
+  const c4 = prior?.forwardRedeployC4;
+  if (c4?.candidateCommit !== C4_CANDIDATE || c4?.sourceCommit !== C4_CANDIDATE) {
+    throw new Error("G32 C5 must retain actual C4 forward evidence");
+  }
+  return c4;
+}
+
+function c5PlaceholderOf(prior) {
+  const c5 = prior?.forwardRedeployC5;
+  if (c5?.candidateCommit !== "CANDIDATE" || c5?.sourceCommit !== "CANDIDATE") {
+    throw new Error("G32 C5 evidence replacement requires the sealed C5 placeholder");
+  }
+  return c5;
 }
 
 /** Replace C3's placeholder only after the one forward-only live witness. */
@@ -382,9 +400,103 @@ export function buildC4ForwardEvidence({ sourceCommit, prior, manifest, pre, pos
   };
 }
 
+/**
+ * Replace C5's placeholder after its single forward witness. C5 is a
+ * test-runner transport repair, so it reuses C4's runtime/deployment proof
+ * while recording a distinct sealed source identity and new preservation set.
+ */
+export function buildC5ForwardEvidence({ sourceCommit, prior, manifest, pre, post, measurement, topology }) {
+  const c4 = c4Of(prior);
+  c5PlaceholderOf(prior);
+
+  // The C4 recorder already enforces every forward-only witness invariant for
+  // a test-only candidate. Rebind that invariant to C4/C5, then replace the
+  // transport-specific provenance below rather than hand-copying a parallel
+  // evidence implementation.
+  const generated = buildC4ForwardEvidence({
+    sourceCommit,
+    prior: {
+      ...prior,
+      forwardRedeployC3: c4,
+      forwardRedeployC4: prior.forwardRedeployC5,
+    },
+    manifest,
+    pre,
+    post,
+    measurement,
+    topology,
+  });
+  const base = generated.forwardRedeployC4;
+  return {
+    ...prior,
+    forwardRedeployC5: {
+      ...base,
+      status: "R5 complete: C5 forward-only redeploy/witness after the pinned C# runner JSON-transport repair",
+      candidateCommit: sourceCommit,
+      sourceCommit,
+      reason: "C5 fixes the CI-proven pinned C# runner transport defect: compiler warnings from the real Sekiban build must not share stdout with the machine-readable produce artifact. It builds once outside the transport and executes all actual serializer/provider commands with --no-build. Runtime and deployment/config bytes remain C4-identical.",
+      protocol: {
+        candidate: "C5 is one sealed material candidate containing the pinned C# build/stdout separation, C5 candidate/evidence guard, forward witness tooling, documentation, and this non-self-referential placeholder.",
+        bookkeeping: "R5 changes only this evidence document and appends C5 once to the retained-candidate fetch list.",
+        selfReference: false,
+        deploymentRequired: true,
+        forwardOnly: true,
+        cutoverReexecuted: false,
+        postCandidateAllowlist: ["docs/SDT-G32-cutover-evidence.json", ".github/workflows/ci.yml (one retained-C5 append)"],
+        witnessOrder: ["C5-preflight", "public-pre-witness-set", "receiver-forward-deploy", "primary-forward-deploy-with-token-rotation", "post-witness-set-preservation", "N=10", "all-ingress-30-digit-recheck"],
+      },
+      history: {
+        initialCandidate: INITIAL_CANDIDATE,
+        initialEvidenceCommit: "fc89572e2e0a8b84447591f87be5d05d57396435",
+        initialCutover: "completed-once",
+        c2Candidate: C2_CANDIDATE,
+        c2EvidenceCommit: "acc1dc1746a7310410ced0ae556ec7f87e4970a2",
+        c3Candidate: C3_CANDIDATE,
+        c3EvidenceCommit: "6143f0402cfbffd78b8fc041c7127578c3fcf638",
+        c3Reason: "C3 completed F1-F5 runtime/oracle repair and its forward-only witness.",
+        c4Candidate: C4_CANDIDATE,
+        c4EvidenceCommit: C4_EVIDENCE_COMMIT,
+        c4Reason: "C4 repaired the later Miniflare Worker filesystem import boundary while keeping C3 runtime/deployment bytes unchanged. C5 repairs the subsequent CI-only C# compiler-output/JSON transport boundary without changing those retained bytes.",
+      },
+      runtimeDigestComparison: {
+        c4RuntimeDigest: c4.treeDigests.runtime,
+        c5RuntimeDigest: base.treeDigests.runtime,
+        c4DeploymentConfigDigest: c4.deploymentConfig.digest,
+        c5DeploymentConfigDigest: base.deploymentConfig.digest,
+        runtimeUnchanged: true,
+        deploymentConfigUnchanged: true,
+        explanation: "C5 changes only the C# parity runner/configuration material. The deployed runtime and deployment configuration digests are intentionally C4-identical.",
+      },
+      runnerTransport: {
+        buildSeparatedFromJsonStdout: true,
+        buildCommand: "dotnet build --nologo outside C# -> TS JSON transport",
+        executionCommand: "dotnet run --no-build for produce, consume-postgres, and consume-cosmos",
+        oracle: "The real pinned EventSerializationExtensions/SimpleEventTypes/DbEvent/CosmosEvent path emits exactly one parseable JSON artifact after warnings are isolated from stdout.",
+      },
+      candidateImpact: {
+        ...base.candidateImpact,
+        candidateCommit: sourceCommit,
+        deploymentReason: "The worker publishes the sealed C5 source identity and newly rotated conformance token while retaining C4 data and bindings.",
+      },
+      preflightCompatibility: {
+        ...base.preflightCompatibility,
+        rationale: "C5 retains C4's permanent production binding-name migration-list preflight; no cutover resource operation is repeated.",
+      },
+      remoteDeployment: {
+        ...base.remoteDeployment,
+        status: "completed C5 forward-only redeploy on retained G32 bindings",
+      },
+      tokenRotation: {
+        ...base.tokenRotation,
+        conformance: "rotated inside the C5 primary forward deployment using a file-fed secrets file; value redacted",
+      },
+    },
+  };
+}
+
 function main() {
   const cycle = argument("--cycle", "C3");
-  if (cycle !== "C3" && cycle !== "C4") throw new Error("--cycle must be C3 or C4");
+  if (cycle !== "C3" && cycle !== "C4" && cycle !== "C5") throw new Error("--cycle must be C3, C4, or C5");
   const sourceCommit = required("--source-commit", argument("--source-commit", process.env.G32_SOURCE_COMMIT));
   const output = argument("--output", "docs/SDT-G32-cutover-evidence.json");
   const prior = readJson(output);
@@ -398,8 +510,12 @@ function main() {
     measurement: readJson(argument("--measurement", ".artifacts/g32-forward-measurement.json")),
     topology: readJson(argument("--queue-topology", ".artifacts/g32-forward-queue-topology.json")),
   };
-  const evidence = cycle === "C3" ? buildC3ForwardEvidence(artifacts) : buildC4ForwardEvidence(artifacts);
-  const recorded = cycle === "C3" ? evidence.forwardRedeployC3 : evidence.forwardRedeployC4;
+  const evidence = cycle === "C3"
+    ? buildC3ForwardEvidence(artifacts)
+    : cycle === "C4"
+      ? buildC4ForwardEvidence(artifacts)
+      : buildC5ForwardEvidence(artifacts);
+  const recorded = cycle === "C3" ? evidence.forwardRedeployC3 : cycle === "C4" ? evidence.forwardRedeployC4 : evidence.forwardRedeployC5;
   writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
   console.log(JSON.stringify({ cycle, candidateCommit: sourceCommit, deployedRuntimeCommit: recorded.remoteDeployment.deployedRuntimeCommit, samples: recorded.fixedNMeasurement.latency.sampleCount }, null, 2));
 }

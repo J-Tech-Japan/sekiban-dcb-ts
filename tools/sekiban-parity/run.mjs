@@ -46,6 +46,7 @@ function assertPin(source) {
 function csharpArguments(source, command, ...args) {
   return [
     "run",
+    "--no-build",
     "--project",
     project,
     `-p:SekibanSourceRoot=${source}`,
@@ -53,6 +54,18 @@ function csharpArguments(source, command, ...args) {
     command,
     ...args,
   ];
+}
+
+function buildCsharpRunner(source) {
+  // The pinned Sekiban projects can emit compiler warnings.  Build them once
+  // outside the JSON transport, then run the parity program without rebuilding
+  // so C# -> TS has a single, machine-readable stdout artifact.
+  run("dotnet", [
+    "build",
+    project,
+    "--nologo",
+    `-p:SekibanSourceRoot=${source}`,
+  ]);
 }
 
 function csharpArtifact(source) {
@@ -99,6 +112,7 @@ function main() {
   const temporary = mkdtempSync(`${tmpdir()}/sekiban-parity-`);
   try {
     assertPin(source.path);
+    buildCsharpRunner(source.path);
     // C# -> TS begins with the actual pinned serializer, DbEvent.FromEvent,
     // and CosmosEvent.FromEvent. The dedicated Worker fixture then performs
     // real TS D1 import/replay/list-query and writes actual D1/Cosmos rows.

@@ -117,3 +117,22 @@ digest changes. The deployment script permanently uses `D1` and `D1_MV` config
 binding names for Wrangler 4.125.0's read-only migration-list preflight.
 C4 then records the same preservation witness, 30-digit ingress check, and
 fresh N=10. R4 is limited to evidence plus one retained-C4 CI append.
+
+## C5 C# JSON-transport repair after C4 witness
+
+The first C4 CI run proved all F1–F4 oracles and the real C# provider path,
+then exposed an independent C# runner defect: a warning from the pinned
+Sekiban project build was written to stdout ahead of the machine-readable
+`produce` artifact. C5 builds the linked real Sekiban projects once outside
+the JSON transport and invokes `produce`, `consume-postgres`, and
+`consume-cosmos` with `dotnet run --no-build`. The runner therefore still uses
+the actual serializer and provider models while exposing exactly one parseable
+C#→TS artifact.
+
+C5 is a new sealed forward-only candidate, not an amendment of deployed C4.
+It retains the same serviceId, D1 IDs, Queue, worker names, and Durable Object
+namespaces; it does not repeat bridge/freeze/wipe/new-resource provisioning.
+Its runtime and deployment-config digests must be byte-identical to C4 while
+its configuration digest changes. It records a new preservation witness,
+all-30-digit ingress check, and fresh N=10. R5 is limited to the evidence
+document plus one retained-C5 CI append.
