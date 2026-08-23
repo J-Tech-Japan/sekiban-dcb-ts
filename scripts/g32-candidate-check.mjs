@@ -14,6 +14,8 @@ const INITIAL_EVIDENCE_COMMIT = "fc89572e2e0a8b84447591f87be5d05d57396435";
 const REJECTED_FORWARD_PREFLIGHT_CANDIDATE = "a8f98355bb6de0454725d34f0238cd12efd4519c";
 const C2_CANDIDATE = "0b38755443cce9d4a1a4383e18ba42499c390f63";
 const C2_EVIDENCE_COMMIT = "acc1dc1746a7310410ced0ae556ec7f87e4970a2";
+const C3_CANDIDATE = "c5441dc23e144466d26e13d7ffab4db7eca2e6ae";
+const C3_EVIDENCE_COMMIT = "6143f0402cfbffd78b8fc041c7127578c3fcf638";
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
@@ -66,6 +68,13 @@ function c3Of(evidence) {
     throw new Error("G32 C3 forward-redeploy evidence is missing");
   }
   return evidence.forwardRedeployC3;
+}
+
+function c4Of(evidence) {
+  if (evidence?.forwardRedeployC4 === null || typeof evidence?.forwardRedeployC4 !== "object" || Array.isArray(evidence.forwardRedeployC4)) {
+    throw new Error("G32 C4 forward-redeploy evidence is missing");
+  }
+  return evidence.forwardRedeployC4;
 }
 
 export function loadManifest(read = (path) => readFileSync(path, "utf8")) {
@@ -173,6 +182,18 @@ function assertC2EvidenceCommit() {
     throw new Error("G32 C2 retained candidate history is invalid");
   }
   return { candidate: C2_CANDIDATE, evidenceCommit: C2_EVIDENCE_COMMIT };
+}
+
+function assertC3EvidenceCommit() {
+  const paths = gitText(["diff", "--name-only", `${C3_CANDIDATE}..${C3_EVIDENCE_COMMIT}`]).split(/\r?\n/).filter(Boolean).sort();
+  if (!same(paths, [...R_PATHS].sort())) throw new Error("G32 C3/R3 history is not exactly evidence + retained-C");
+  const ciDiff = gitText(["diff", "--unified=0", `${C3_CANDIDATE}..${C3_EVIDENCE_COMMIT}`, "--", ".github/workflows/ci.yml"]);
+  const additions = ciDiff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+  const removals = ciDiff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
+  if (removals.length !== 0 || additions.length !== 1 || additions[0].slice(1).trim() !== C3_CANDIDATE) {
+    throw new Error("G32 C3 retained candidate history is invalid");
+  }
+  return { candidate: C3_CANDIDATE, evidenceCommit: C3_EVIDENCE_COMMIT };
 }
 
 /** The original wipe exception is C1-only historical evidence. */
@@ -336,6 +357,7 @@ function assertC3Protocol(c3) {
 export function assertC3EvidenceShape(c3, manifest) {
   const candidate = c3?.candidateCommit;
   if (candidate !== "CANDIDATE" && !SHA.test(candidate)) throw new Error("G32 C3 candidateCommit is invalid");
+  if (candidate !== "CANDIDATE" && candidate !== C3_CANDIDATE) throw new Error("G32 historical C3 candidate changed");
   if (c3?.sourceCommit !== candidate) throw new Error("G32 C3 sourceCommit must equal candidateCommit");
   assertC3Protocol(c3);
   assertDigestShape(c3?.treeDigests, manifest, "G32 C3", candidate === "CANDIDATE");
@@ -413,16 +435,125 @@ export function assertC3DeploymentIdentity(evidence, cutover) {
   return { checked: true, sourceCommit: candidate, preservedEvents: beforeEvents, finalEvents: Number(latency.finalStoreState.eventCount) };
 }
 
+function assertC4Protocol(c4) {
+  if (
+    c4?.protocol?.selfReference !== false || c4?.protocol?.deploymentRequired !== true ||
+    c4?.protocol?.forwardOnly !== true || c4?.protocol?.cutoverReexecuted !== false ||
+    c4?.candidateImpact?.deploymentRequired !== true || c4?.candidateImpact?.newServiceId !== false ||
+    c4?.candidateImpact?.newD1Database !== false || c4?.candidateImpact?.wipe !== false
+  ) throw new Error("G32 C4 protocol must be deployment-required forward-only without another cutover/wipe");
+  if (
+    c4?.history?.initialCandidate !== INITIAL_CANDIDATE ||
+    c4?.history?.initialEvidenceCommit !== INITIAL_EVIDENCE_COMMIT ||
+    c4?.history?.c2Candidate !== C2_CANDIDATE || c4?.history?.c2EvidenceCommit !== C2_EVIDENCE_COMMIT ||
+    c4?.history?.c3Candidate !== C3_CANDIDATE || c4?.history?.c3EvidenceCommit !== C3_EVIDENCE_COMMIT ||
+    c4?.history?.initialCutover !== "completed-once"
+  ) throw new Error("G32 C4 must retain C1/R1, C2/R2, and C3/R3 history");
+}
+
+/** C4 uses the required-root manifest itself as the only root authority. */
+export function assertC4EvidenceShape(c4, manifest) {
+  const candidate = c4?.candidateCommit;
+  if (candidate !== "CANDIDATE" && !SHA.test(candidate)) throw new Error("G32 C4 candidateCommit is invalid");
+  if (c4?.sourceCommit !== candidate) throw new Error("G32 C4 sourceCommit must equal candidateCommit");
+  assertC4Protocol(c4);
+  const tree = c4?.treeDigests;
+  if (tree?.algorithm !== DIGEST_ALGORITHM || tree?.manifest !== "docs/SDT-G32-required-roots.json") {
+    throw new Error("G32 C4 digest manifest authority is invalid");
+  }
+  for (const field of ["runtime", "configuration"]) {
+    const value = tree?.[field];
+    if (candidate === "CANDIDATE" && (value === "0".repeat(64) || value === "1".repeat(64))) continue;
+    assertSha256(value, `G32 C4 ${field}`);
+  }
+  if (c4?.deploymentConfig?.algorithm !== DIGEST_ALGORITHM || !same(c4?.deploymentConfig?.paths, G32_DEPLOYMENT_CONFIG_PATHS)) {
+    throw new Error("G32 C4 deployment config declaration is invalid");
+  }
+  const deployment = c4?.deploymentConfig?.digest;
+  if (!(candidate === "CANDIDATE" && deployment === "2".repeat(64))) assertSha256(deployment, "G32 C4 deployment config");
+  if (candidate !== "CANDIDATE") {
+    if (
+      digestAtCommit(candidate, manifest.runtimeRoots) !== tree.runtime ||
+      digestAtCommit(candidate, manifest.configurationRoots) !== tree.configuration ||
+      deploymentConfigDigest(candidate) !== deployment
+    ) throw new Error("G32 C4 candidate digest mismatch");
+  }
+  return { candidateCommit: candidate, digestChecked: candidate !== "CANDIDATE" };
+}
+
+/** C4 repairs test-runner loading only, so runtime and deployment bytes remain C3-identical. */
+export function assertC4DeploymentIdentity(evidence, cutover) {
+  const c3 = c3Of(evidence);
+  const c4 = c4Of(evidence);
+  if (c4.candidateCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
+  const candidate = c4.candidateCommit;
+  const remote = c4?.remoteDeployment;
+  if (remote?.sourceCommit !== candidate || remote?.deployedRuntimeCommit !== candidate) throw new Error("G32 C4 deployedRuntimeCommit/sourceCommit mismatch");
+  assertSameBindings(remote, c3.remoteDeployment);
+  if (c4?.deployment?.cutoverReexecuted !== false || c4?.deployment?.migrationsApplied !== false || c4?.deployment?.resourcesCreated !== false) {
+    throw new Error("G32 C4 attempted to repeat the one-time cutover");
+  }
+  if (
+    c4?.runtimeDigestComparison?.c3RuntimeDigest !== c3.treeDigests.runtime ||
+    c4?.runtimeDigestComparison?.c4RuntimeDigest !== c4.treeDigests.runtime ||
+    c4?.runtimeDigestComparison?.c3DeploymentConfigDigest !== c3.deploymentConfig.digest ||
+    c4?.runtimeDigestComparison?.c4DeploymentConfigDigest !== c4.deploymentConfig.digest ||
+    c4?.runtimeDigestComparison?.runtimeUnchanged !== true ||
+    c4?.runtimeDigestComparison?.deploymentConfigUnchanged !== true ||
+    c4.treeDigests.runtime !== c3.treeDigests.runtime ||
+    c4.deploymentConfig.digest !== c3.deploymentConfig.digest ||
+    c4.treeDigests.configuration === c3.treeDigests.configuration
+  ) throw new Error("G32 C4 must prove test-only runtime/config attribution");
+  const post = c4?.postWitness;
+  if (
+    post?.primary?.sourceCommit !== candidate || post?.receiver?.sourceCommit !== candidate ||
+    post?.rawV1?.status !== 404 || post?.staleBridgeRoute?.status !== 404 ||
+    post?.primary?.sortableUniqueId?.digits !== 30 || post?.receiver?.sortableUniqueId?.digits !== 30 ||
+    post?.primary?.sortableUniqueId?.legacyUnsupported !== true || post?.receiver?.sortableUniqueId?.legacyUnsupported !== true ||
+    post?.primary?.eventRecord?.eventType !== "eventPayloadName" || post?.receiver?.eventRecord?.eventType !== "eventPayloadName"
+  ) throw new Error("G32 C4 post-witness lacks C4 identity / 30-digit ingress proof");
+  if (c4?.queueTopology?.primaryExclusive !== true || c4?.queueTopology?.receiverServiceBindingOnly !== true) {
+    throw new Error("G32 C4 Queue topology was not preserved");
+  }
+  const preservation = c4?.dataPreservation;
+  if (
+    preservation?.status !== "preserved-existing-g32-data" || preservation?.stable !== true ||
+    !SHA256.test(preservation?.preSetDigest) || !Number.isSafeInteger(preservation?.preserved?.reservationListEntries) ||
+    preservation.preserved.reservationListEntries < 1
+  ) throw new Error("G32 C4 needs a preserved post-C3 data witness");
+  const latency = c4?.fixedNMeasurement?.latency;
+  const stale = latency?.staleNegatives?.find((entry) => entry?.id === "old-37-character-suid-list");
+  if (
+    latency?.sampleCount !== cutover.final.fixedSamples || latency?.samples?.length !== cutover.final.fixedSamples ||
+    latency?.rawV1?.status !== 404 || stale?.status !== 400 || stale?.outcome !== "typed-rejected-before-list-dispatch" ||
+    latency?.fiveEndpointConformance?.length !== 5 || latency.fiveEndpointConformance.some((entry) => entry?.status !== 200)
+  ) throw new Error("G32 C4 N=10 / ingress evidence is incomplete");
+  const beforeEvents = Number(post?.newStoreState?.eventCount);
+  const beforeOps = Number(post?.newStoreState?.eventOpsCount);
+  if (
+    !Number.isSafeInteger(beforeEvents) || beforeEvents < 1 || !Number.isSafeInteger(beforeOps) || beforeOps < 1 ||
+    Number(latency?.finalStoreState?.eventCount) !== beforeEvents + cutover.final.fixedSamples * 2 ||
+    Number(latency?.finalStoreState?.eventOpsCount) !== beforeOps + cutover.final.fixedSamples * 2 ||
+    latency?.finalStoreState?.legacySerializedEventTablePresent !== false
+  ) throw new Error("G32 C4 measurement does not preserve then extend the post-C3 store");
+  const audit = c4?.legacyIngressAudit;
+  if (audit?.conclusion !== "all executable positive G32 ingress fixtures are 30-digit/UUIDv7/fixed-g32; legacy forms are retained only as typed zero-call negatives" ||
+    !Array.isArray(audit?.legacyNegative) || !audit.legacyNegative.includes("eventPayloadVersion")) {
+    throw new Error("G32 C4 legacy ingress audit evidence is incomplete");
+  }
+  return { checked: true, sourceCommit: candidate, preservedEvents: beforeEvents, finalEvents: Number(latency.finalStoreState.eventCount) };
+}
+
 export function assertPostCandidatePaths(paths, candidate, run = (args) => git(args)) {
   if (candidate === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
   const unsupported = paths.filter((path) => !R_PATHS.includes(path));
   if (unsupported.length > 0) throw new Error(`G32 post-candidate paths not allowlisted: ${unsupported.join(",")}`);
-  if (!same([...paths].sort(), [...R_PATHS].sort())) throw new Error("G32 C3 R must contain exactly evidence and one retained-C append");
+  if (!same([...paths].sort(), [...R_PATHS].sort())) throw new Error("G32 R must contain exactly evidence and one retained-C append");
   const diff = String(run(["diff", "--unified=0", `${candidate}..HEAD`, "--", ".github/workflows/ci.yml"]));
   const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
   const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
   if (removals.length !== 0 || additions.length !== 1 || additions[0].slice(1).trim() !== candidate) {
-    throw new Error("G32 C3 retained-candidate list must append exactly C3 once");
+    throw new Error("G32 retained-candidate list must append exactly the active candidate once");
   }
   return { checked: true };
 }
@@ -446,6 +577,27 @@ export function assertPreparedCandidate(candidate, evidence, manifest) {
     throw new Error("G32 C3 must contain the reviewed runtime correction, not a vacuous C2-equivalent redeploy");
   }
   return { candidate, material, runtime, configuration, deploymentConfig: deployment, runtimeChangedFromC2: true };
+}
+
+export function assertPreparedC4Candidate(candidate, evidence, manifest) {
+  assertSha(candidate, "G32 C4 prepared candidate");
+  const c3 = c3Of(evidence);
+  const c4 = c4Of(evidence);
+  if (c3.candidateCommit !== C3_CANDIDATE || c3.sourceCommit !== C3_CANDIDATE) {
+    throw new Error("G32 prepared C4 must retain actual C3 evidence");
+  }
+  if (c4.candidateCommit !== "CANDIDATE" || c4.sourceCommit !== "CANDIDATE") {
+    throw new Error("G32 prepared C4 must retain its non-self-referential evidence placeholder");
+  }
+  assertC4EvidenceShape(c4, manifest);
+  const material = assertCandidateMaterialCoverage(candidate, manifest);
+  const runtime = digestAtCommit(candidate, manifest.runtimeRoots);
+  const configuration = digestAtCommit(candidate, manifest.configurationRoots);
+  const deployment = deploymentConfigDigest(candidate);
+  if (runtime !== c3.treeDigests.runtime || deployment !== c3.deploymentConfig.digest || configuration === c3.treeDigests.configuration) {
+    throw new Error("G32 C4 must be a real Worker-import/configuration repair with C3-identical runtime/deployment bytes");
+  }
+  return { candidate, material, runtime, configuration, deploymentConfig: deployment, runtimeUnchangedFromC3: true, deploymentConfigUnchangedFromC3: true };
 }
 
 export function runSelfTest() {
@@ -523,11 +675,57 @@ export function runSelfTest() {
   let c3RootsRed = false;
   try { assertC3EvidenceShape({ ...c3Placeholder, treeDigests: { ...c3Placeholder.treeDigests, configurationRoots: [] } }, manifest); } catch (error) { c3RootsRed = String(error).includes("digest roots"); }
   if (!c3RootsRed) throw new Error("G32 C3 root-manifest attribution mutation unexpectedly passed");
+  const c4Placeholder = {
+    candidateCommit: "CANDIDATE",
+    sourceCommit: "CANDIDATE",
+    protocol: { selfReference: false, deploymentRequired: true, forwardOnly: true, cutoverReexecuted: false },
+    candidateImpact: { deploymentRequired: true, newServiceId: false, newD1Database: false, wipe: false },
+    history: {
+      initialCandidate: INITIAL_CANDIDATE,
+      initialEvidenceCommit: INITIAL_EVIDENCE_COMMIT,
+      initialCutover: "completed-once",
+      c2Candidate: C2_CANDIDATE,
+      c2EvidenceCommit: C2_EVIDENCE_COMMIT,
+      c3Candidate: C3_CANDIDATE,
+      c3EvidenceCommit: C3_EVIDENCE_COMMIT,
+    },
+    treeDigests: { algorithm: DIGEST_ALGORITHM, manifest: "docs/SDT-G32-required-roots.json", runtime: "0".repeat(64), configuration: "1".repeat(64) },
+    deploymentConfig: { algorithm: DIGEST_ALGORITHM, digest: "2".repeat(64), paths: G32_DEPLOYMENT_CONFIG_PATHS },
+  };
+  assertC4EvidenceShape(c4Placeholder, manifest);
+  let c4ManifestRed = false;
+  try { assertC4EvidenceShape({ ...c4Placeholder, treeDigests: { ...c4Placeholder.treeDigests, manifest: "docs/other.json" } }, manifest); } catch (error) { c4ManifestRed = String(error).includes("manifest authority"); }
+  if (!c4ManifestRed) throw new Error("G32 C4 manifest-authority mutation unexpectedly passed");
+  const c4Candidate = "d".repeat(40);
+  const c4 = {
+    ...final,
+    candidateCommit: c4Candidate,
+    sourceCommit: c4Candidate,
+    protocol: c4Placeholder.protocol,
+    candidateImpact: { ...c4Placeholder.candidateImpact, candidateCommit: c4Candidate },
+    history: c4Placeholder.history,
+    treeDigests: { algorithm: DIGEST_ALGORITHM, manifest: "docs/SDT-G32-required-roots.json", runtime: c3.treeDigests.runtime, configuration: "i".repeat(64) },
+    deploymentConfig: { algorithm: DIGEST_ALGORITHM, digest: c3.deploymentConfig.digest, paths: G32_DEPLOYMENT_CONFIG_PATHS },
+    runtimeDigestComparison: { c3RuntimeDigest: c3.treeDigests.runtime, c4RuntimeDigest: c3.treeDigests.runtime, c3DeploymentConfigDigest: c3.deploymentConfig.digest, c4DeploymentConfigDigest: c3.deploymentConfig.digest, runtimeUnchanged: true, deploymentConfigUnchanged: true },
+    remoteDeployment: { ...c3.remoteDeployment, sourceCommit: c4Candidate, deployedRuntimeCommit: c4Candidate },
+    postWitness: {
+      ...c3.postWitness,
+      primary: { ...c3.postWitness.primary, sourceCommit: c4Candidate },
+      receiver: { ...c3.postWitness.receiver, sourceCommit: c4Candidate },
+      newStoreState: { eventCount: 40, eventOpsCount: 40 },
+    },
+    fixedNMeasurement: { latency: { ...c3.fixedNMeasurement.latency, finalStoreState: { eventCount: 60, eventOpsCount: 60, legacySerializedEventTablePresent: false } } },
+  };
+  const c4Historical = { ...historical, forwardRedeployC3: c3, forwardRedeployC4: c4 };
+  assertC4DeploymentIdentity(c4Historical, { final: { fixedSamples: 10 } });
+  let c4RuntimeRed = false;
+  try { assertC4DeploymentIdentity({ ...c4Historical, forwardRedeployC4: { ...c4, treeDigests: { ...c4.treeDigests, runtime: "j".repeat(64) } } }, { final: { fixedSamples: 10 } }); } catch (error) { c4RuntimeRed = String(error).includes("test-only runtime/config attribution"); }
+  if (!c4RuntimeRed) throw new Error("G32 C4 runtime-attribution mutation unexpectedly passed");
   assertPostCandidatePaths([...R_PATHS], candidate, () => `+${candidate}\n`);
   let postPathRed = false;
   try { assertPostCandidatePaths([...R_PATHS, "scripts/deploy/g32-forward-redeploy.sh"], candidate, () => `+${candidate}\n`); } catch (error) { postPathRed = String(error).includes("not allowlisted"); }
   if (!postPathRed) throw new Error("G32 post-C operational edit mutation unexpectedly passed");
-  return { declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "self-authorized-post-c", "undeclared-material", "repeat-cutover", "data-preservation", "30-digit-ingress", "c3-runtime-digest", "c3-root-manifest", "post-c-operational-edit"] };
+  return { declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "self-authorized-post-c", "undeclared-material", "repeat-cutover", "data-preservation", "30-digit-ingress", "c3-runtime-digest", "c3-root-manifest", "c4-manifest-authority", "c4-runtime-attribution", "post-c-operational-edit"] };
 }
 
 function argument(name) {
@@ -545,26 +743,30 @@ function main() {
   const evidence = readJson(evidencePath);
   const cutover = readJson(cutoverPath);
   const history = assertInitialCutoverHistory(evidence, cutover);
+  const c3History = assertC3EvidenceCommit();
   const forward = assertForwardEvidenceShape(forwardOf(evidence));
   const c2Deployment = assertForwardDeploymentIdentity(evidence, cutover);
   const c3 = assertC3EvidenceShape(c3Of(evidence), manifest);
   const c3Deployment = assertC3DeploymentIdentity(evidence, cutover);
+  const c4 = assertC4EvidenceShape(c4Of(evidence), manifest);
+  const c4Deployment = assertC4DeploymentIdentity(evidence, cutover);
   const declared = assertDeclaredRoots(manifest);
   const required = assertRequiredRoots(manifest);
   const candidateArgument = argument("--candidate");
   if (candidateArgument !== undefined) {
     if (gitText(["rev-parse", "HEAD"]).trim() !== candidateArgument) throw new Error("G32 prepared candidate must equal checked-out HEAD");
-    console.log(JSON.stringify({ history, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, manifest: { ...declared, ...required }, prepared: assertPreparedCandidate(candidateArgument, evidence, manifest) }, null, 2));
+    if (c4.candidateCommit !== "CANDIDATE") throw new Error("G32 C4 prepared candidate requires its non-self-referential placeholder");
+    console.log(JSON.stringify({ history: { ...history, c3: c3History }, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, c4: { evidence: c4, deployment: c4Deployment }, manifest: { ...declared, ...required }, prepared: assertPreparedC4Candidate(candidateArgument, evidence, manifest) }, null, 2));
     return;
   }
-  const candidate = c3.candidateCommit;
+  const candidate = c4.candidateCommit;
   const active = candidate !== "CANDIDATE" && SHA.test(candidate) && (() => {
     try { git(["merge-base", "--is-ancestor", candidate, "HEAD"]); return true; } catch { return false; }
   })();
   const post = active
     ? assertPostCandidatePaths(gitText(["diff", "--name-only", `${candidate}..HEAD`]).split(/\r?\n/).filter(Boolean), candidate)
     : { checked: false, reason: candidate === "CANDIDATE" ? "placeholder-candidate" : "candidate-not-ancestor" };
-  console.log(JSON.stringify({ history, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, manifest: { ...declared, ...required }, postCandidate: post }, null, 2));
+  console.log(JSON.stringify({ history: { ...history, c3: c3History }, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, c4: { evidence: c4, deployment: c4Deployment }, manifest: { ...declared, ...required }, postCandidate: post }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

@@ -97,3 +97,23 @@ not rerun bridge/freeze/wipe/new-resource provisioning. It must have changed
 runtime and deployment/config digests relative to C2, then execute one
 preservation witness, all 30-digit ingress checks, and fresh N=10. R3 is
 limited to the evidence document plus one retained-C3 CI append.
+
+## C4 CI-boundary repair after C3 witness
+
+C3/R3 exposed a deterministic CI defect after its deployed witness: the real
+Miniflare D1 Worker imports the shared `runPipelineContract`, but the module
+eagerly read the host checkout's DDL manifest through Node filesystem APIs.
+That filesystem facade is intentionally unavailable inside the Worker. C4
+defers the manifest read to the standalone Node Postgres/Cosmos runner, while
+the real Worker import continues to exercise the D1 provider without a host
+filesystem dependency.
+
+C4 is a new sealed forward-only candidate, not an amendment of deployed C3.
+It retains the serviceId, D1 IDs, Queue, worker names, and Durable Object
+namespaces; it does not repeat bridge/freeze/wipe/new-resource provisioning.
+Because the change is test/runner-only, C4 must prove its runtime and
+deployment-config digests are byte-identical to C3 while its configuration
+digest changes. The deployment script permanently uses `D1` and `D1_MV` config
+binding names for Wrangler 4.125.0's read-only migration-list preflight.
+C4 then records the same preservation witness, 30-digit ingress check, and
+fresh N=10. R4 is limited to evidence plus one retained-C4 CI append.

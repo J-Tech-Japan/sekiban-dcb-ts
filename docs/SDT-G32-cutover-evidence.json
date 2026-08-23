@@ -5438,5 +5438,97 @@
     },
     "secrets": "redacted"
   },
+  "forwardRedeployC4": {
+    "task": "SDT-G32",
+    "status": "C4 prepared: Worker-safe store-contract manifest loading awaits one forward-only redeploy",
+    "candidateCommit": "CANDIDATE",
+    "sourceCommit": "CANDIDATE",
+    "reason": "C3/R3 exposed a deterministic CI-only import boundary: the Miniflare D1 Worker imported store-contract.mjs, whose eager Node filesystem manifest load is unavailable in the Worker filesystem facade. C4 defers the standalone Node manifest read while preserving the manifest-derived Postgres/Cosmos runner contract.",
+    "protocol": {
+      "candidate": "C4 is one sealed material candidate containing the Worker-safe manifest-load fix, C4 candidate/evidence guard, permanent binding-name preflight correction, forward witness tooling, documentation, and this non-self-referential placeholder.",
+      "bookkeeping": "R4 changes only this evidence document and appends C4 once to the retained-candidate fetch list.",
+      "selfReference": false,
+      "deploymentRequired": true,
+      "forwardOnly": true,
+      "cutoverReexecuted": false,
+      "postCandidateAllowlist": [
+        "docs/SDT-G32-cutover-evidence.json",
+        ".github/workflows/ci.yml (one retained-C4 append)"
+      ],
+      "witnessOrder": [
+        "C4-preflight",
+        "public-pre-witness-set",
+        "receiver-forward-deploy",
+        "primary-forward-deploy-with-token-rotation",
+        "post-witness-set-preservation",
+        "N=10",
+        "all-ingress-30-digit-recheck"
+      ]
+    },
+    "history": {
+      "initialCandidate": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+      "initialEvidenceCommit": "fc89572e2e0a8b84447591f87be5d05d57396435",
+      "initialCutover": "completed-once",
+      "c2Candidate": "0b38755443cce9d4a1a4383e18ba42499c390f63",
+      "c2EvidenceCommit": "acc1dc1746a7310410ced0ae556ec7f87e4970a2",
+      "c3Candidate": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+      "c3EvidenceCommit": "6143f0402cfbffd78b8fc041c7127578c3fcf638",
+      "c3Reason": "C3 completed the required F1-F5 runtime/oracle repair and forward-only witness. C4 exists solely because CI then exposed an unmounted Worker filesystem boundary in a test runner import; it does not alter deployed runtime or deployment configuration bytes."
+    },
+    "treeDigests": {
+      "algorithm": "sha256(path NUL content NUL, paths sorted)",
+      "manifest": "docs/SDT-G32-required-roots.json",
+      "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+      "configuration": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "deploymentConfig": {
+      "algorithm": "sha256(path NUL content NUL, paths sorted)",
+      "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "paths": [
+        "contracts/g32-cutover.json",
+        "contracts/event-store-ddl.json",
+        "migrations/d1/g32",
+        "migrations/mv",
+        "packages/dcb-runtime/src",
+        "samples/meeting-room/src/compatibility.ts",
+        "samples/meeting-room/src/d1-mv.ts",
+        "samples/meeting-room/src/domain.ts",
+        "samples/meeting-room/src/transport.ts",
+        "samples/meeting-room/src/worker.cloudflare-only.ts",
+        "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+        "samples/meeting-room/wrangler.g32-final-receiver.jsonc"
+      ]
+    },
+    "runtimeDigestComparison": null,
+    "candidateImpact": {
+      "candidateCommit": "CANDIDATE",
+      "deploymentRequired": true,
+      "newServiceId": false,
+      "newD1Database": false,
+      "wipe": false,
+      "deploymentReason": "C4 preserves C3 runtime/config bytes but must publish the sealed C4 source identity and newly rotated conformance credentials on the retained bindings."
+    },
+    "deployment": {
+      "forwardOnly": true,
+      "cutoverReexecuted": false,
+      "migrationsApplied": false,
+      "resourcesCreated": false,
+      "existingBindingsRetained": true,
+      "workerDeployOrder": ["receiver", "primary"],
+      "noBridgeFreezeWipeOrReseed": true
+    },
+    "remoteDeployment": null,
+    "preWitness": null,
+    "postWitness": null,
+    "dataPreservation": null,
+    "queueTopology": null,
+    "fixedNMeasurement": null,
+    "legacyIngressAudit": null,
+    "tokenRotation": null,
+    "ingressRecheck": null,
+    "oracleMap": "docs/SDT-G32-oracle-map.md",
+    "ci": { "status": "pending-after-push", "verify": "pending", "cosmosEmulator": "pending" },
+    "secrets": "redacted"
+  },
   "secrets": "redacted"
 }

@@ -19,7 +19,6 @@ import {
 
 const POSTGRES_URL = process.env.POSTGRES_URL ?? "postgresql://postgres:postgres@127.0.0.1:54329/serialized_dcb";
 const requireRealCosmos = process.argv.includes("--require-real-cosmos");
-const eventStoreManifest = loadEventStoreManifest();
 
 async function configuredCosmosKey() {
   const keyFile = process.env.COSMOS_KEY_FILE;
@@ -208,7 +207,7 @@ function logicalCosmosDocuments(client) {
     .filter((document) => document.sortableUniqueId !== undefined);
 }
 
-function assertCosmosLogicalRecordContract(client, label) {
+function assertCosmosLogicalRecordContract(client, label, eventStoreManifest) {
   const documents = logicalCosmosDocuments(client);
   assert.ok(documents.length > 0, `${label}: expected a persisted logical CosmosEvent document`);
   for (const document of documents) {
@@ -216,7 +215,7 @@ function assertCosmosLogicalRecordContract(client, label) {
   }
 }
 
-async function assertPostgresLogicalRecordContract(connectionString = POSTGRES_URL) {
+async function assertPostgresLogicalRecordContract(eventStoreManifest, connectionString = POSTGRES_URL) {
   const sql = postgres(connectionString);
   try {
     await introspectPostgresEventStore(sql, eventStoreManifest);
@@ -439,12 +438,18 @@ function expectCheckpoint(actual, expected) {
 }
 
 async function main() {
+  // The Node entry point reads the committed manifest directly.  This is
+  // deliberately deferred: runPipelineContract is also imported by the
+  // Miniflare D1 test Worker, where Node's file-system facade cannot read the
+  // host checkout.  The Worker path exercises its actual D1 rows without
+  // weakening the standalone Postgres/Cosmos manifest contract below.
+  const eventStoreManifest = loadEventStoreManifest();
   if (!requireRealCosmos) {
     await withFreshPostgresSchema(async (connectionString) => {
       const store = POSTGRES_STORE_PROVIDER.create({ POSTGRES_URL: connectionString });
       try {
         await store.initialize();
-        await assertPostgresLogicalRecordContract(connectionString);
+        await assertPostgresLogicalRecordContract(eventStoreManifest, connectionString);
         await runPipelineContract("postgres", async () => store);
       } finally {
         await store.close();
@@ -459,7 +464,7 @@ async function main() {
   // The same provider document construction used by the real REST client is
   // compared field-for-field with the independent C# manifest after actual
   // PipelineStore writes, not a hand-written document shape.
-  assertCosmosLogicalRecordContract(memoryCosmosClient, "cosmos-memory");
+  assertCosmosLogicalRecordContract(memoryCosmosClient, "cosmos-memory", eventStoreManifest);
 
   const endpoint = process.env.COSMOS_ENDPOINT;
   const key = await configuredCosmosKey();
