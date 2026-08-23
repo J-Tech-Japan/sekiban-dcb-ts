@@ -17,7 +17,7 @@ function data() {
   };
 }
 
-describe("SDT-G32 C3/C4/C5 forward-only witness", () => {
+describe("SDT-G32 generic forward-only witness", () => {
   it("requires the pre-captured data set and heads to survive post-candidate deployment", () => {
     const before = data();
     const after = structuredClone(before);
@@ -42,16 +42,22 @@ describe("SDT-G32 C3/C4/C5 forward-only witness", () => {
     expect(() => assertPreWitnessSetPreserved(before, head)).toThrow("event heads changed");
   });
 
-  it("keeps C3/C4/C5 forward-only: no cutover, resource creation, migration apply, or reseed command", () => {
+  it("uses input record keys and keeps every forward witness free of cutover/resource/migration/reseed work", () => {
     const source = forwardRedeploySource;
     const executable = source.split(/\r?\n/).filter((line: string) => !line.trimStart().startsWith("#")).join("\n");
     expect(executable).toContain("G32_FORWARD_DEPLOY_LIVE");
     expect(executable).toContain("G32_FORWARD_CYCLE");
-    expect(executable).toContain("C5) readonly CYCLE_LOWER=\"c5\"");
+    expect(executable).toContain("G32_FORWARD_RECORD_KEY");
+    expect(executable).toContain("G32_FORWARD_PRIOR_RECORD_KEY");
+    expect(executable).toContain("G32_FORWARD_PRESEAL");
+    expect(executable).toContain("--record-key");
+    expect(executable).toContain("--prior-key");
     expect(executable).toContain("g32-forward-witness.mjs --mode pre-deploy-public");
     expect(executable).toContain("g32-forward-record-evidence.mjs");
-    expect(executable).toContain('d1 migrations list "${PIPELINE_DATABASE_BINDING}"');
-    expect(executable).toContain('d1 migrations list "${MATERIALIZED_VIEW_DATABASE_BINDING}"');
+    expect(executable).toContain('d1 migrations list "${binding}"');
+    expect(executable).toContain('check_no_remote_migrations "${PIPELINE_DATABASE_BINDING}"');
+    expect(executable).toContain('check_no_remote_migrations "${MATERIALIZED_VIEW_DATABASE_BINDING}"');
+    expect(executable).toContain("No migrations to apply");
     expect(executable).toContain('dirname "${BASH_SOURCE[0]}"');
     expect(executable).not.toContain("$${");
     expect(executable).not.toContain("d1 migrations apply");

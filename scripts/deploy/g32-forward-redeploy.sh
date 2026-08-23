@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# SDT-G32 C3/C4/C5 forward-only witness. C1 already performed the one-time
-# bridge, freeze, wipe, and new binding creation; later candidates retain
-# those bindings. This script refuses to run any of those operations again;
-# it only republishes a sealed source identity, rotates file-fed
+# SDT-G32 forward-only witness. The one-time bridge, freeze, wipe, and new
+# binding creation are historical cutover operations; this script refuses to
+# run them again. It republishes a sealed source identity, rotates file-fed
 # conformance/fence credentials, preserves a pre-captured data set, then
 # performs fresh N=10 probes.
 
@@ -20,14 +19,19 @@ readonly QUEUE_NAME="sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox"
 readonly PRIMARY_BASE_URL="${G32_PRIMARY_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
 readonly RECEIVER_BASE_URL="${G32_RECEIVER_BASE_URL:-https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev}"
 readonly SOURCE_COMMIT="${G32_SOURCE_COMMIT:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
-readonly FORWARD_CYCLE="${G32_FORWARD_CYCLE:-C3}"
+readonly FORWARD_CYCLE="${G32_FORWARD_CYCLE:-forward}"
+readonly RECORD_KEY="${G32_FORWARD_RECORD_KEY:-forwardRedeploy${FORWARD_CYCLE}}"
+readonly PRIOR_RECORD_KEY="${G32_FORWARD_PRIOR_RECORD_KEY:-}"
+readonly CANDIDATE_LABEL="${G32_FORWARD_CANDIDATE_LABEL:-${FORWARD_CYCLE}}"
+readonly CONFIG_RELATION="${G32_FORWARD_CONFIG_RELATION:-unchanged}"
+readonly PRESEAL_MODE="${G32_FORWARD_PRESEAL:-0}"
+readonly PRESEAL_CHECKLIST="${G32_FORWARD_PRESEAL_CHECKLIST:-}"
 
-case "${FORWARD_CYCLE}" in
-  C3) readonly CYCLE_LOWER="c3" ;;
-  C4) readonly CYCLE_LOWER="c4" ;;
-  C5) readonly CYCLE_LOWER="c5" ;;
-  *) printf 'G32_FORWARD_CYCLE must be C3, C4, or C5\n' >&2; exit 2 ;;
-esac
+if [[ ! "${FORWARD_CYCLE}" =~ ^[A-Za-z][A-Za-z0-9_-]*$ || -z "${PRIOR_RECORD_KEY}" ]]; then
+  printf 'G32 forward witness requires a safe cycle label and G32_FORWARD_PRIOR_RECORD_KEY\n' >&2
+  exit 2
+fi
+readonly CYCLE_LOWER="$(printf '%s' "${FORWARD_CYCLE}" | tr '[:upper:]' '[:lower:]')"
 
 readonly PRE_FILE="${REPO_ROOT}/.artifacts/g32-forward-${CYCLE_LOWER}-pre-witness.json"
 readonly POST_FILE="${REPO_ROOT}/.artifacts/g32-forward-${CYCLE_LOWER}-post-witness.json"
@@ -37,43 +41,57 @@ readonly MEASUREMENT_FILE="${REPO_ROOT}/.artifacts/g32-forward-${CYCLE_LOWER}-me
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
-if [[ "$(git rev-parse HEAD)" != "${SOURCE_COMMIT}" || ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
-  printf 'G32_SOURCE_COMMIT must equal the sealed checked-out %s SHA\n' "${FORWARD_CYCLE}" >&2
-  exit 2
-fi
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  printf 'G32 %s must have no tracked working-tree changes before forward witness deployment\n' "${FORWARD_CYCLE}" >&2
+if [[ ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+  printf 'G32_SOURCE_COMMIT must be a full candidate SHA\n' >&2
   exit 2
 fi
 
 # All candidate material must be inside the manifest before any remote
-# operation. Its placeholder remains non-self-referential until R evidence.
-node scripts/g32-candidate-check.mjs --self-test
-node scripts/g32-candidate-check.mjs --candidate "${SOURCE_COMMIT}"
+# operation. A pre-seal pass operates on the exact staged tree with a synthetic
+# candidate; a live pass requires a clean sealed commit.
+if [[ "${PRESEAL_MODE}" == "1" ]]; then
+  if [[ "${G32_FORWARD_DEPLOY_LIVE:-0}" == "1" ]]; then
+    printf 'G32 pre-seal forward preflight must never enter live deployment\n' >&2
+    exit 2
+  fi
+  if ! git diff --quiet; then
+    printf 'G32 pre-seal forward preflight requires all material staged with no unstaged tracked changes\n' >&2
+    exit 2
+  fi
+  readonly INDEX_TREE="$(git write-tree)"
+  readonly CONFIG_DIGEST="${G32_FORWARD_CONFIG_DIGEST:-$(node scripts/deploy/g32-config-digest.mjs "${INDEX_TREE}")}"
+  node scripts/g32-candidate-check.mjs --self-test
+  node scripts/g32-candidate-check.mjs --pre-seal-dry-run --synthetic-candidate "${SOURCE_COMMIT}" --record-key "${RECORD_KEY}" --prior-key "${PRIOR_RECORD_KEY}"
+else
+  if [[ "$(git rev-parse HEAD)" != "${SOURCE_COMMIT}" ]]; then
+    printf 'G32_SOURCE_COMMIT must equal the sealed checked-out %s SHA\n' "${FORWARD_CYCLE}" >&2
+    exit 2
+  fi
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    printf 'G32 %s must have no tracked working-tree changes before forward witness deployment\n' "${FORWARD_CYCLE}" >&2
+    exit 2
+  fi
+  node scripts/g32-candidate-check.mjs --self-test
+  node scripts/g32-candidate-check.mjs --candidate "${SOURCE_COMMIT}"
+  readonly CONFIG_DIGEST="$(node scripts/deploy/g32-config-digest.mjs "${SOURCE_COMMIT}")"
+fi
 node scripts/g32-legacy-ingress-audit.mjs --self-test
-CONFIG_DIGEST="$(node scripts/deploy/g32-config-digest.mjs "${SOURCE_COMMIT}")"
-case "${FORWARD_CYCLE}" in
-  C3)
-    PRIOR_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.forwardRedeploy.deploymentConfig.digest);')"
+readonly PRIOR_CONFIG_DIGEST="$(node -e 'const evidence=require("./docs/SDT-G32-cutover-evidence.json");const key=process.argv[1];const prior=evidence[key];if(!prior?.deploymentConfig?.digest)throw new Error(`missing deployment config digest for ${key}`);process.stdout.write(prior.deploymentConfig.digest);' "${PRIOR_RECORD_KEY}")"
+case "${CONFIG_RELATION}" in
+  unchanged)
+    if [[ "${CONFIG_DIGEST}" != "${PRIOR_CONFIG_DIGEST}" ]]; then
+      printf 'G32 %s must retain the prior deployment configuration digest\n' "${FORWARD_CYCLE}" >&2
+      exit 2
+    fi
+    ;;
+  changed)
     if [[ "${CONFIG_DIGEST}" == "${PRIOR_CONFIG_DIGEST}" ]]; then
-      printf 'G32 C3 must retain the reviewed runtime/config correction rather than redeploy C2-equivalent source\n' >&2
+      printf 'G32 %s must change the prior deployment configuration digest\n' "${FORWARD_CYCLE}" >&2
       exit 2
     fi
     ;;
-  C4)
-    PRIOR_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.forwardRedeployC3.deploymentConfig.digest);')"
-    if [[ "${CONFIG_DIGEST}" != "${PRIOR_CONFIG_DIGEST}" ]]; then
-      printf 'G32 C4 must retain C3-identical deployment configuration bytes for the test-only repair\n' >&2
-      exit 2
-    fi
-    ;;
-  C5)
-    PRIOR_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.forwardRedeployC4.deploymentConfig.digest);')"
-    if [[ "${CONFIG_DIGEST}" != "${PRIOR_CONFIG_DIGEST}" ]]; then
-      printf 'G32 C5 must retain C4-identical deployment configuration bytes for the C# JSON-transport repair\n' >&2
-      exit 2
-    fi
-    ;;
+  either) ;;
+  *) printf 'G32_FORWARD_CONFIG_RELATION must be unchanged, changed, or either\n' >&2; exit 2 ;;
 esac
 
 COMMON_VARS=(
@@ -87,12 +105,27 @@ COMMON_VARS=(
 # create/remove, bridge freeze, wipe, or seed command.
 "${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --dry-run --strict "${COMMON_VARS[@]}" --var "G32_CUTOVER_FENCE_FINGERPRINT:$(printf '0%.0s' {1..64})"
 "${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --dry-run --strict "${COMMON_VARS[@]}" --var "G32_CUTOVER_FENCE_FINGERPRINT:$(printf '0%.0s' {1..64})"
-"${WRANGLER_BIN}" d1 migrations list "${PIPELINE_DATABASE_BINDING}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote
-"${WRANGLER_BIN}" d1 migrations list "${MATERIALIZED_VIEW_DATABASE_BINDING}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote
+check_no_remote_migrations() {
+  local binding="$1"
+  local output
+  output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
+  printf '%s\n' "${output}"
+  if [[ "${output}" != *"No migrations to apply"* ]]; then
+    printf 'G32 %s remote migration preflight for %s must report No migrations to apply\n' "${FORWARD_CYCLE}" "${binding}" >&2
+    exit 1
+  fi
+}
+check_no_remote_migrations "${PIPELINE_DATABASE_BINDING}"
+check_no_remote_migrations "${MATERIALIZED_VIEW_DATABASE_BINDING}"
 
 if [[ "${G32_FORWARD_DEPLOY_LIVE:-0}" != "1" ]]; then
   printf 'G32 %s forward preflight PASS; set G32_FORWARD_DEPLOY_LIVE=1 for the witnessed forward-only redeploy\n' "${FORWARD_CYCLE}"
   exit 0
+fi
+
+if [[ -z "${PRESEAL_CHECKLIST}" || ! -f "${PRESEAL_CHECKLIST}" ]]; then
+  printf 'G32 %s live forward witness requires a completed pre-seal checklist artifact\n' "${FORWARD_CYCLE}" >&2
+  exit 2
 fi
 
 mkdir -p .artifacts
@@ -144,9 +177,10 @@ node scripts/deploy/g32-forward-witness.mjs --mode compare --before "${PRE_FILE}
 # typed rejection and public raw-V1 closure.
 node scripts/deploy/g32-measure.mjs --base-url "${PRIMARY_BASE_URL}" --token-file "${TOKEN_FILE}" --samples 10 --report "${MEASUREMENT_FILE}"
 node scripts/deploy/g32-forward-record-evidence.mjs \
-  --cycle "${FORWARD_CYCLE}" \
   --source-commit "${SOURCE_COMMIT}" --pre "${PRE_FILE}" --post "${POST_FILE}" \
   --measurement "${MEASUREMENT_FILE}" --queue-topology "${QUEUE_TOPOLOGY_FILE}" \
+  --record-key "${RECORD_KEY}" --prior-key "${PRIOR_RECORD_KEY}" --candidate-label "${CANDIDATE_LABEL}" \
+  --preseal "${PRESEAL_CHECKLIST}" \
   --output docs/SDT-G32-cutover-evidence.json
 
 printf 'G32 %s forward-only witnessed redeploy complete; R may change only evidence and one retained-candidate append\n' "${FORWARD_CYCLE}"

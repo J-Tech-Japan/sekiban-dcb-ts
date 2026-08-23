@@ -8994,5 +8994,231 @@
     "ci": { "status": "pending-after-push", "verify": "pending", "cosmosEmulator": "pending" },
     "secrets": "redacted"
   },
+  "unrecordedForwardWitnesses": {
+    "C5": {
+      "task": "SDT-G32",
+      "status": "C5 live forward witness completed, but R5 was not generated because the recorder failed before its evidence write",
+      "candidateCommit": "bc5257d8ec62aee7cf1ff0c133942eebb77c85be",
+      "sourceCommit": "bc5257d8ec62aee7cf1ff0c133942eebb77c85be",
+      "reason": "C5 repaired the pinned C# runner JSON transport. Its live receiver/primary deployment, preserved-set check, Queue topology check, all-ingress gate, and N=10 completed. The old recorder then tried to reuse a C3-specific helper for the C5 record and threw before it wrote R5.",
+      "recordingFailure": {
+        "phase": "after post-witness and N=10, before evidence write",
+        "error": "G32 C4 must retain actual C3 forward evidence",
+        "effect": "R5 was not created; no prior evidence document or retained-candidate list was modified"
+      },
+      "treeDigests": {
+        "algorithm": "sha256(path NUL content NUL, paths sorted)",
+        "runtime": "2a54c8f75c544b48760f8655ddd47a47b772adc0cf3e8fe875da1756f59ac90b",
+        "configuration": "cfe8643bbce924254d316af0a5dc6122e2a30786c63422574b82f9ac5ed81c96"
+      },
+      "deploymentConfig": {
+        "algorithm": "sha256(path NUL content NUL, paths sorted)",
+        "digest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f",
+        "paths": [
+          "contracts/g32-cutover.json",
+          "contracts/event-store-ddl.json",
+          "migrations/d1/g32",
+          "migrations/mv",
+          "packages/dcb-runtime/src",
+          "samples/meeting-room/src/compatibility.ts",
+          "samples/meeting-room/src/d1-mv.ts",
+          "samples/meeting-room/src/domain.ts",
+          "samples/meeting-room/src/transport.ts",
+          "samples/meeting-room/src/worker.cloudflare-only.ts",
+          "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+          "samples/meeting-room/wrangler.g32-final-receiver.jsonc"
+        ]
+      },
+      "remoteDeployment": {
+        "sourceCommit": "bc5257d8ec62aee7cf1ff0c133942eebb77c85be",
+        "deployedRuntimeCommit": "bc5257d8ec62aee7cf1ff0c133942eebb77c85be",
+        "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+        "receiver": "sekiban-dcb-meeting-room-doorbell",
+        "serviceId": "g32-9043d626fe1149cb",
+        "pipelineDatabaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+        "materializedViewDatabaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+        "queue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+        "deadLetterQueue": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
+        "configDigest": "ff2ade35dcda54b4732de91c0fd4e6852c3350ef0c7db1a2bd240b51473b633f"
+      },
+      "preWitness": {
+        "capturedAt": "2026-08-23T03:28:39.728Z",
+        "artifactSha256": "3894419b18e53719709fd93eb42fe6eb6632243fd52e5e61657a6e5f359c8c7c",
+        "counts": { "rooms": 40, "reservations": 40, "knownRooms": 40, "knownReservations": 40 },
+        "rawV1Status": 404
+      },
+      "postWitness": {
+        "capturedAt": "2026-08-23T03:29:01.954Z",
+        "artifactSha256": "626250fcf7edd63f8d90068bc30ec57f987c97372f56dee3575995c2772975ef",
+        "counts": { "rooms": 40, "reservations": 40, "knownRooms": 40, "knownReservations": 40 },
+        "eventCount": 80,
+        "eventOpsCount": 80,
+        "rawV1Status": 404,
+        "staleBridgeStatus": 404
+      },
+      "dataPreservation": {
+        "stable": true,
+        "preSetDigest": "bcdbe3033a6945f376f9b0eb5abfcc74bab4a1fdf9bc7fc35e0a58b19c706348",
+        "counts": { "before": { "rooms": 40, "reservations": 40 }, "after": { "rooms": 40, "reservations": 40 } },
+        "preserved": { "reservationListEntries": 40, "knownRooms": 40, "knownReservations": 40 }
+      },
+      "queueTopology": {
+        "artifactSha256": "0e53f2094684b85a1681ff78654598d97ebdf62b04a7c3333e86a5c8d24a2746",
+        "primaryExclusive": true,
+        "receiverServiceBindingOnly": true
+      },
+      "fixedNMeasurement": {
+        "artifactSha256": "bdeb184c6955966be880babcfba8844bca8e6d4136622838ee9dc75a19349630",
+        "sampleCount": 10,
+        "errorCount": 0,
+        "responseToListRedrawMs": { "p50": 531.3450830000002, "p95": 787.3729159999966, "max": 787.3729159999966 },
+        "commandStartToResponseMs": { "p50": 1621.3527090000007, "p95": 2623.042999999998, "max": 2623.042999999998 },
+        "commandStartToListRedrawMs": { "p50": 2266.9931249999972, "p95": 3144.823833999999, "max": 3144.823833999999 },
+        "finalEventCount": 100,
+        "finalEventOpsCount": 100,
+        "rawV1Status": 404,
+        "old37CharacterSuidStatus": 400,
+        "fiveEndpointConformanceStatuses": [200, 200, 200, 200, 200]
+      },
+      "ingressRecheck": {
+        "primaryDigits": 30,
+        "receiverDigits": 30,
+        "legacyUnsupported": true,
+        "eventTypeAuthority": "eventPayloadName"
+      },
+      "secrets": "redacted"
+    }
+  },
+  "forwardRedeployC6": {
+    "task": "SDT-G32",
+    "status": "C6 prepared: candidate-independent recorder and mandatory pre-seal evidence pipeline dry-run await one forward-only witness",
+    "candidateCommit": "CANDIDATE",
+    "sourceCommit": "CANDIDATE",
+    "reason": "C6 removes the recorder's candidate/generation-specific helper reuse that blocked R5. The recorder now receives candidate SHA, output record key, prior record key, and label as inputs, and its synthetic-candidate oracle rejects both runtime substitution and source-level candidate constants.",
+    "protocol": {
+      "candidate": "C6 is one sealed material candidate containing the generic recorder, synthetic-candidate mutation oracle, exact-tree evidence-pipeline dry-run, forward preflight enforcement, recovered C5 witness history, documentation, manifest, and this non-self-referential placeholder.",
+      "bookkeeping": "R6 changes only this evidence document and appends C6 once to the retained-candidate fetch list.",
+      "selfReference": false,
+      "deploymentRequired": true,
+      "forwardOnly": true,
+      "cutoverReexecuted": false,
+      "postCandidateAllowlist": [
+        "docs/SDT-G32-cutover-evidence.json",
+        ".github/workflows/ci.yml (one retained-C6 append)"
+      ],
+      "witnessOrder": [
+        "all-material-and-CI-complete",
+        "exact-tree-recorder/candidate/digest dry-run",
+        "receiver-and-primary-dry-run plus remote No-migrations preflight",
+        "C6-seal",
+        "public-pre-witness-set",
+        "receiver-forward-deploy",
+        "primary-forward-deploy-with-token-rotation",
+        "post-witness-set-preservation",
+        "N=10",
+        "all-ingress-30-digit-recheck"
+      ]
+    },
+    "recording": {
+      "recordKey": "forwardRedeployC6",
+      "priorRecordKey": "forwardRedeployC4",
+      "candidateLabel": "C6",
+      "candidateInput": "--source-commit",
+      "candidateIndependent": true,
+      "completionStatus": "R6 complete: C6 forward-only redeploy/witness after candidate-independent recorder and pre-seal pipeline proof",
+      "digestRelation": {
+        "runtime": "unchanged",
+        "configuration": "changed",
+        "deploymentConfig": "unchanged"
+      }
+    },
+    "history": {
+      "initialCandidate": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+      "initialEvidenceCommit": "fc89572e2e0a8b84447591f87be5d05d57396435",
+      "initialCutover": "completed-once",
+      "c2Candidate": "0b38755443cce9d4a1a4383e18ba42499c390f63",
+      "c2EvidenceCommit": "acc1dc1746a7310410ced0ae556ec7f87e4970a2",
+      "c3Candidate": "c5441dc23e144466d26e13d7ffab4db7eca2e6ae",
+      "c3EvidenceCommit": "6143f0402cfbffd78b8fc041c7127578c3fcf638",
+      "c4Candidate": "aff97424b136be9f88e6804ced1562d9b81709cd",
+      "c4EvidenceCommit": "be1f251f13b60544744a2427bae82a1ab85f38f7",
+      "c5Candidate": "bc5257d8ec62aee7cf1ff0c133942eebb77c85be",
+      "c5Witness": "completed-and-recovered-under-unrecordedForwardWitnesses.C5",
+      "c5EvidenceCommit": null,
+      "c5Reason": "C5 completed the live preservation/N=10 witness but its fixed-generation recorder failed before R5. C6 is a forward-only repair, not an amendment of C5 or a repeat cutover.",
+      "sealReasons": {
+        "C1": "one-time bridge/freeze/wipe cutover to the new service and D1 bindings",
+        "C2": "stale real-Cosmos fixture refresh and old-format negative-lane conversion",
+        "C3": "F1-F5 mutation attribution and real pinned C# provider-path correction",
+        "C4": "Miniflare Worker-safe manifest-load repair after C3 CI",
+        "C5": "pinned C# compiler-output/JSON transport repair after C4 CI",
+        "C6": "candidate-independent evidence recorder, synthetic-candidate oracle, and mandatory exact-tree pre-seal pipeline after C5 recorder failure"
+      }
+    },
+    "treeDigests": {
+      "algorithm": "sha256(path NUL content NUL, paths sorted)",
+      "manifest": "docs/SDT-G32-required-roots.json",
+      "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+      "configuration": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "deploymentConfig": {
+      "algorithm": "sha256(path NUL content NUL, paths sorted)",
+      "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "paths": [
+        "contracts/g32-cutover.json",
+        "contracts/event-store-ddl.json",
+        "migrations/d1/g32",
+        "migrations/mv",
+        "packages/dcb-runtime/src",
+        "samples/meeting-room/src/compatibility.ts",
+        "samples/meeting-room/src/d1-mv.ts",
+        "samples/meeting-room/src/domain.ts",
+        "samples/meeting-room/src/transport.ts",
+        "samples/meeting-room/src/worker.cloudflare-only.ts",
+        "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+        "samples/meeting-room/wrangler.g32-final-receiver.jsonc"
+      ]
+    },
+    "runtimeDigestComparison": null,
+    "candidateImpact": {
+      "candidateCommit": "CANDIDATE",
+      "deploymentRequired": true,
+      "newServiceId": false,
+      "newD1Database": false,
+      "wipe": false,
+      "deploymentReason": "C6 must publish the sealed source identity and a newly rotated conformance token while retaining the cutover-complete service, databases, Queue, and Durable Object namespaces."
+    },
+    "deployment": {
+      "forwardOnly": true,
+      "cutoverReexecuted": false,
+      "migrationsApplied": false,
+      "resourcesCreated": false,
+      "existingBindingsRetained": true,
+      "workerDeployOrder": ["receiver", "primary"],
+      "noBridgeFreezeWipeOrReseed": true
+    },
+    "preSealChecklist": {
+      "status": "required-before-C6-seal",
+      "items": [
+        "F1-F5 repair set complete",
+        "exact staged tree full CI lane green",
+        "candidate-independent recorder plus candidate check plus digest dry-run",
+        "both Worker dry-runs and both remote migration lists report No migrations to apply"
+      ]
+    },
+    "remoteDeployment": null,
+    "preWitness": null,
+    "postWitness": null,
+    "dataPreservation": null,
+    "queueTopology": null,
+    "fixedNMeasurement": null,
+    "legacyIngressAudit": null,
+    "tokenRotation": null,
+    "ingressRecheck": null,
+    "recorder": null,
+    "oracleMap": "docs/SDT-G32-oracle-map.md",
+    "ci": { "status": "pending-after-push", "verify": "pending", "cosmosEmulator": "pending" },
+    "secrets": "redacted"
+  },
   "secrets": "redacted"
 }

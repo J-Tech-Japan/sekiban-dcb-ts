@@ -136,3 +136,22 @@ Its runtime and deployment-config digests must be byte-identical to C4 while
 its configuration digest changes. It records a new preservation witness,
 all-30-digit ingress check, and fresh N=10. R5 is limited to the evidence
 document plus one retained-C5 CI append.
+
+## C6 recorder recovery after C5 witness
+
+C5's retained-binding deployment completed successfully before the recorder
+defect: its pre/post preservation set was 40 rooms and 40 reservations, and its
+fresh N=10 completed. The recorder then failed before it wrote R5 because it
+reused a helper fixed to an earlier candidate generation. C6 does not amend C5
+or repeat cutover. It records that C5 result as recovered history and makes the
+recorder candidate-independent: the candidate SHA, output record key, prior
+record key, and label are inputs rather than code constants.
+
+The C6 mutation oracle accepts arbitrary synthetic SHA-shaped candidates and
+turns both a substituted candidate and a source-level candidate literal red.
+Before sealing C6, the exact staged tree must complete the non-live evidence
+pipeline preview (candidate gate, recorder, and digest recalculation) and the
+forward preflight (both Worker dry-runs plus both remote D1 migration lists
+reporting `No migrations to apply`). Only then does C6 run its one forward-only
+preservation/N=10 witness. R6 remains restricted to the evidence document and
+one retained-C6 CI append.

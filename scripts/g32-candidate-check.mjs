@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { digestAtCommit as deploymentConfigDigest, G32_DEPLOYMENT_CONFIG_PATHS } from "./deploy/g32-config-digest.mjs";
+import { runCandidateIndependenceSelfTest } from "./deploy/g32-forward-record-evidence.mjs";
 
 const root = process.cwd();
 const manifestPath = resolve(root, "docs/SDT-G32-required-roots.json");
@@ -18,6 +19,7 @@ const C3_CANDIDATE = "c5441dc23e144466d26e13d7ffab4db7eca2e6ae";
 const C3_EVIDENCE_COMMIT = "6143f0402cfbffd78b8fc041c7127578c3fcf638";
 const C4_CANDIDATE = "aff97424b136be9f88e6804ced1562d9b81709cd";
 const C4_EVIDENCE_COMMIT = "be1f251f13b60544744a2427bae82a1ab85f38f7";
+const C5_CANDIDATE = "bc5257d8ec62aee7cf1ff0c133942eebb77c85be";
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
@@ -84,6 +86,13 @@ function c5Of(evidence) {
     throw new Error("G32 C5 forward-redeploy evidence is missing");
   }
   return evidence.forwardRedeployC5;
+}
+
+function c6Of(evidence) {
+  if (evidence?.forwardRedeployC6 === null || typeof evidence?.forwardRedeployC6 !== "object" || Array.isArray(evidence.forwardRedeployC6)) {
+    throw new Error("G32 C6 forward-redeploy evidence is missing");
+  }
+  return evidence.forwardRedeployC6;
 }
 
 export function loadManifest(read = (path) => readFileSync(path, "utf8")) {
@@ -363,20 +372,27 @@ function assertC3Protocol(c3) {
   ) throw new Error("G32 C3 must retain C1/R1 and C2/R2 history");
 }
 
-export function assertC3EvidenceShape(c3, manifest) {
+export function assertC3EvidenceShape(c3) {
   const candidate = c3?.candidateCommit;
   if (candidate !== "CANDIDATE" && !SHA.test(candidate)) throw new Error("G32 C3 candidateCommit is invalid");
   if (candidate !== "CANDIDATE" && candidate !== C3_CANDIDATE) throw new Error("G32 historical C3 candidate changed");
   if (c3?.sourceCommit !== candidate) throw new Error("G32 C3 sourceCommit must equal candidateCommit");
   assertC3Protocol(c3);
-  assertDigestShape(c3?.treeDigests, manifest, "G32 C3", candidate === "CANDIDATE");
+  const historicalRoots = {
+    runtimeRoots: c3?.treeDigests?.runtimeRoots,
+    configurationRoots: c3?.treeDigests?.configurationRoots,
+  };
+  if (!Array.isArray(historicalRoots.runtimeRoots) || historicalRoots.runtimeRoots.length === 0 || !Array.isArray(historicalRoots.configurationRoots) || historicalRoots.configurationRoots.length === 0) {
+    throw new Error("G32 C3 digest roots are invalid");
+  }
+  assertDigestShape(c3?.treeDigests, historicalRoots, "G32 C3", candidate === "CANDIDATE");
   if (c3?.deploymentConfig?.algorithm !== DIGEST_ALGORITHM || !same(c3?.deploymentConfig?.paths, G32_DEPLOYMENT_CONFIG_PATHS)) {
     throw new Error("G32 C3 deployment config declaration is invalid");
   }
   if (candidate !== "CANDIDATE") {
     if (
-      digestAtCommit(candidate, manifest.runtimeRoots) !== c3.treeDigests.runtime ||
-      digestAtCommit(candidate, manifest.configurationRoots) !== c3.treeDigests.configuration ||
+      digestAtCommit(candidate, historicalRoots.runtimeRoots) !== c3.treeDigests.runtime ||
+      digestAtCommit(candidate, historicalRoots.configurationRoots) !== c3.treeDigests.configuration ||
       deploymentConfigDigest(candidate) !== c3.deploymentConfig.digest
     ) throw new Error("G32 C3 candidate digest mismatch");
   }
@@ -663,6 +679,243 @@ export function assertC5DeploymentIdentity(evidence, cutover) {
   return { checked: true, sourceCommit: candidate, preservedEvents: beforeEvents, finalEvents: Number(latency.finalStoreState.eventCount) };
 }
 
+function c5RecoveredOf(evidence) {
+  const recovered = evidence?.unrecordedForwardWitnesses?.C5;
+  if (recovered === null || typeof recovered !== "object" || Array.isArray(recovered)) {
+    throw new Error("G32 C5 recovered witness history is missing");
+  }
+  return recovered;
+}
+
+/** C5 deployed successfully; only its fixed-generation evidence write failed. */
+export function assertC5RecoveredWitness(evidence) {
+  const c4 = c4Of(evidence);
+  const recovered = c5RecoveredOf(evidence);
+  if (
+    recovered?.candidateCommit !== C5_CANDIDATE || recovered?.sourceCommit !== C5_CANDIDATE ||
+    recovered?.remoteDeployment?.sourceCommit !== C5_CANDIDATE || recovered?.remoteDeployment?.deployedRuntimeCommit !== C5_CANDIDATE ||
+    recovered?.recordingFailure?.phase !== "after post-witness and N=10, before evidence write" ||
+    recovered?.recordingFailure?.error !== "G32 C4 must retain actual C3 forward evidence" ||
+    recovered?.recordingFailure?.effect !== "R5 was not created; no prior evidence document or retained-candidate list was modified"
+  ) throw new Error("G32 C5 recovered witness identity/failure history is invalid");
+  for (const field of ["worker", "receiver", "serviceId", "pipelineDatabaseId", "materializedViewDatabaseId", "queue", "deadLetterQueue"]) {
+    if (recovered.remoteDeployment?.[field] !== c4.remoteDeployment?.[field]) throw new Error(`G32 C5 recovered witness changed retained ${field}`);
+  }
+  if (
+    recovered?.treeDigests?.algorithm !== DIGEST_ALGORITHM ||
+    recovered?.treeDigests?.runtime !== c4.treeDigests.runtime ||
+    !SHA256.test(recovered?.treeDigests?.configuration) || recovered.treeDigests.configuration === c4.treeDigests.configuration ||
+    recovered?.deploymentConfig?.algorithm !== DIGEST_ALGORITHM || recovered?.deploymentConfig?.digest !== c4.deploymentConfig.digest ||
+    !same(recovered?.deploymentConfig?.paths, G32_DEPLOYMENT_CONFIG_PATHS)
+  ) throw new Error("G32 C5 recovered digest history is invalid");
+  const pre = recovered?.preWitness;
+  const post = recovered?.postWitness;
+  const preservation = recovered?.dataPreservation;
+  const fixed = recovered?.fixedNMeasurement;
+  if (
+    pre?.counts?.rooms !== 40 || pre?.counts?.reservations !== 40 || post?.counts?.rooms !== 40 || post?.counts?.reservations !== 40 ||
+    post?.eventCount !== 80 || post?.eventOpsCount !== 80 || pre?.rawV1Status !== 404 || post?.rawV1Status !== 404 || post?.staleBridgeStatus !== 404 ||
+    preservation?.stable !== true || preservation?.counts?.before?.rooms !== 40 || preservation?.counts?.after?.rooms !== 40 ||
+    preservation?.counts?.before?.reservations !== 40 || preservation?.counts?.after?.reservations !== 40 ||
+    !SHA256.test(preservation?.preSetDigest) || preservation?.preserved?.reservationListEntries !== 40 ||
+    fixed?.sampleCount !== 10 || fixed?.errorCount !== 0 || fixed?.finalEventCount !== 100 || fixed?.finalEventOpsCount !== 100 ||
+    fixed?.rawV1Status !== 404 || fixed?.old37CharacterSuidStatus !== 400 || !same(fixed?.fiveEndpointConformanceStatuses, [200, 200, 200, 200, 200]) ||
+    recovered?.queueTopology?.primaryExclusive !== true || recovered?.queueTopology?.receiverServiceBindingOnly !== true ||
+    recovered?.ingressRecheck?.primaryDigits !== 30 || recovered?.ingressRecheck?.receiverDigits !== 30 ||
+    recovered?.ingressRecheck?.legacyUnsupported !== true || recovered?.ingressRecheck?.eventTypeAuthority !== "eventPayloadName"
+  ) throw new Error("G32 C5 recovered preservation/N=10 witness is incomplete");
+  return { checked: true, candidateCommit: C5_CANDIDATE, preRooms: pre.counts.rooms, postRooms: post.counts.rooms, samples: fixed.sampleCount };
+}
+
+function assertC6Protocol(c6) {
+  if (
+    c6?.protocol?.selfReference !== false || c6?.protocol?.deploymentRequired !== true ||
+    c6?.protocol?.forwardOnly !== true || c6?.protocol?.cutoverReexecuted !== false ||
+    c6?.candidateImpact?.deploymentRequired !== true || c6?.candidateImpact?.newServiceId !== false ||
+    c6?.candidateImpact?.newD1Database !== false || c6?.candidateImpact?.wipe !== false
+  ) throw new Error("G32 C6 protocol must be deployment-required forward-only without another cutover/wipe");
+  if (
+    c6?.history?.initialCandidate !== INITIAL_CANDIDATE || c6?.history?.initialEvidenceCommit !== INITIAL_EVIDENCE_COMMIT ||
+    c6?.history?.c2Candidate !== C2_CANDIDATE || c6?.history?.c2EvidenceCommit !== C2_EVIDENCE_COMMIT ||
+    c6?.history?.c3Candidate !== C3_CANDIDATE || c6?.history?.c3EvidenceCommit !== C3_EVIDENCE_COMMIT ||
+    c6?.history?.c4Candidate !== C4_CANDIDATE || c6?.history?.c4EvidenceCommit !== C4_EVIDENCE_COMMIT ||
+    c6?.history?.c5Candidate !== C5_CANDIDATE || c6?.history?.c5Witness !== "completed-and-recovered-under-unrecordedForwardWitnesses.C5" ||
+    c6?.history?.c5EvidenceCommit !== null || c6?.history?.initialCutover !== "completed-once"
+  ) throw new Error("G32 C6 must retain C1 through recovered-C5 history");
+  for (const key of ["C1", "C2", "C3", "C4", "C5", "C6"]) {
+    if (typeof c6?.history?.sealReasons?.[key] !== "string" || c6.history.sealReasons[key].length < 12) {
+      throw new Error(`G32 C6 must retain the ${key} seal reason`);
+    }
+  }
+  const recording = c6?.recording;
+  if (
+    recording?.recordKey !== "forwardRedeployC6" || recording?.priorRecordKey !== "forwardRedeployC4" || recording?.candidateLabel !== "C6" ||
+    recording?.candidateInput !== "--source-commit" || recording?.candidateIndependent !== true ||
+    !same(recording?.digestRelation, { runtime: "unchanged", configuration: "changed", deploymentConfig: "unchanged" })
+  ) throw new Error("G32 C6 recorder plan is not candidate-independent");
+}
+
+export function assertC6EvidenceShape(c6, manifest) {
+  const candidate = c6?.candidateCommit;
+  if (candidate !== "CANDIDATE" && !SHA.test(candidate)) throw new Error("G32 C6 candidateCommit is invalid");
+  if (c6?.sourceCommit !== candidate) throw new Error("G32 C6 sourceCommit must equal candidateCommit");
+  assertC6Protocol(c6);
+  const tree = c6?.treeDigests;
+  if (tree?.algorithm !== DIGEST_ALGORITHM || tree?.manifest !== "docs/SDT-G32-required-roots.json") {
+    throw new Error("G32 C6 digest manifest authority is invalid");
+  }
+  for (const field of ["runtime", "configuration"]) {
+    const value = tree?.[field];
+    if (candidate === "CANDIDATE" && (value === "0".repeat(64) || value === "1".repeat(64))) continue;
+    assertSha256(value, `G32 C6 ${field}`);
+  }
+  if (c6?.deploymentConfig?.algorithm !== DIGEST_ALGORITHM || !same(c6?.deploymentConfig?.paths, G32_DEPLOYMENT_CONFIG_PATHS)) {
+    throw new Error("G32 C6 deployment config declaration is invalid");
+  }
+  const deployment = c6?.deploymentConfig?.digest;
+  if (!(candidate === "CANDIDATE" && deployment === "2".repeat(64))) assertSha256(deployment, "G32 C6 deployment config");
+  if (candidate !== "CANDIDATE") {
+    if (
+      digestAtCommit(candidate, manifest.runtimeRoots) !== tree.runtime ||
+      digestAtCommit(candidate, manifest.configurationRoots) !== tree.configuration ||
+      deploymentConfigDigest(candidate) !== deployment
+    ) throw new Error("G32 C6 candidate digest mismatch");
+  }
+  return { candidateCommit: candidate, digestChecked: candidate !== "CANDIDATE" };
+}
+
+function assertC6DigestRelation(candidateDigests, c4, recovered) {
+  if (
+    candidateDigests.runtime !== c4.treeDigests.runtime || candidateDigests.runtime !== recovered.treeDigests.runtime ||
+    candidateDigests.deployment !== c4.deploymentConfig.digest || candidateDigests.deployment !== recovered.deploymentConfig.digest ||
+    candidateDigests.configuration === c4.treeDigests.configuration || candidateDigests.configuration === recovered.treeDigests.configuration
+  ) throw new Error("G32 C6 must preserve runtime/deployment bytes while changing recorder/configuration material");
+}
+
+function assertC6FinalWitness(c6, candidate, cutover) {
+  const post = c6?.postWitness;
+  if (
+    post?.primary?.sourceCommit !== candidate || post?.receiver?.sourceCommit !== candidate ||
+    post?.rawV1?.status !== 404 || post?.staleBridgeRoute?.status !== 404 ||
+    post?.primary?.sortableUniqueId?.digits !== 30 || post?.receiver?.sortableUniqueId?.digits !== 30 ||
+    post?.primary?.sortableUniqueId?.legacyUnsupported !== true || post?.receiver?.sortableUniqueId?.legacyUnsupported !== true ||
+    post?.primary?.eventRecord?.eventType !== "eventPayloadName" || post?.receiver?.eventRecord?.eventType !== "eventPayloadName"
+  ) throw new Error("G32 C6 post-witness lacks source identity / 30-digit ingress proof");
+  if (c6?.queueTopology?.primaryExclusive !== true || c6?.queueTopology?.receiverServiceBindingOnly !== true) {
+    throw new Error("G32 C6 Queue topology was not preserved");
+  }
+  const preservation = c6?.dataPreservation;
+  if (
+    preservation?.status !== "preserved-existing-g32-data" || preservation?.stable !== true ||
+    !SHA256.test(preservation?.preSetDigest) || !Number.isSafeInteger(preservation?.preserved?.reservationListEntries) ||
+    preservation.preserved.reservationListEntries < 1
+  ) throw new Error("G32 C6 needs a preserved post-C5 data witness");
+  const latency = c6?.fixedNMeasurement?.latency;
+  const stale = latency?.staleNegatives?.find((entry) => entry?.id === "old-37-character-suid-list");
+  if (
+    latency?.sampleCount !== cutover.final.fixedSamples || latency?.samples?.length !== cutover.final.fixedSamples || latency?.errorCount !== 0 ||
+    latency?.rawV1?.status !== 404 || stale?.status !== 400 || stale?.outcome !== "typed-rejected-before-list-dispatch" ||
+    latency?.fiveEndpointConformance?.length !== 5 || latency.fiveEndpointConformance.some((entry) => entry?.status !== 200)
+  ) throw new Error("G32 C6 N=10 / ingress evidence is incomplete");
+  const beforeEvents = Number(post?.newStoreState?.eventCount);
+  const beforeOps = Number(post?.newStoreState?.eventOpsCount);
+  if (
+    !Number.isSafeInteger(beforeEvents) || beforeEvents < 1 || !Number.isSafeInteger(beforeOps) || beforeOps < 1 ||
+    Number(latency?.finalStoreState?.eventCount) !== beforeEvents + cutover.final.fixedSamples * 2 ||
+    Number(latency?.finalStoreState?.eventOpsCount) !== beforeOps + cutover.final.fixedSamples * 2 ||
+    latency?.finalStoreState?.legacySerializedEventTablePresent !== false
+  ) throw new Error("G32 C6 measurement does not preserve then extend the post-C5 store");
+}
+
+/** C6 is the forward-only generic-recorder repair over retained C4 bindings. */
+export function assertC6DeploymentIdentity(evidence, cutover) {
+  const c4 = c4Of(evidence);
+  const recovered = assertC5RecoveredWitness(evidence);
+  const c6 = c6Of(evidence);
+  if (c6.candidateCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate", recoveredC5: recovered };
+  const candidate = c6.candidateCommit;
+  const remote = c6?.remoteDeployment;
+  if (remote?.sourceCommit !== candidate || remote?.deployedRuntimeCommit !== candidate) throw new Error("G32 C6 deployedRuntimeCommit/sourceCommit mismatch");
+  assertSameBindings(remote, c4.remoteDeployment);
+  if (c6?.deployment?.cutoverReexecuted !== false || c6?.deployment?.migrationsApplied !== false || c6?.deployment?.resourcesCreated !== false) {
+    throw new Error("G32 C6 attempted to repeat the one-time cutover");
+  }
+  assertC6DigestRelation({ runtime: c6.treeDigests.runtime, configuration: c6.treeDigests.configuration, deployment: c6.deploymentConfig.digest }, c4, c5RecoveredOf(evidence));
+  if (
+    c6?.runtimeDigestComparison?.priorRecordKey !== "forwardRedeployC4" ||
+    !same(c6?.runtimeDigestComparison?.relation, c6.recording.digestRelation) ||
+    c6?.runtimeDigestComparison?.priorRuntimeDigest !== c4.treeDigests.runtime ||
+    c6?.runtimeDigestComparison?.candidateRuntimeDigest !== c6.treeDigests.runtime ||
+    c6?.runtimeDigestComparison?.priorDeploymentConfigDigest !== c4.deploymentConfig.digest ||
+    c6?.runtimeDigestComparison?.candidateDeploymentConfigDigest !== c6.deploymentConfig.digest ||
+    c6?.runtimeDigestComparison?.runtimeUnchanged !== true || c6?.runtimeDigestComparison?.deploymentConfigUnchanged !== true ||
+    c6?.runtimeDigestComparison?.configurationUnchanged !== false ||
+    c6?.recorder?.candidateIndependent !== true || c6?.recorder?.sourceCommitInput !== candidate || c6?.recorder?.dryRun !== false
+  ) throw new Error("G32 C6 recorder/digest attribution is incomplete");
+  const checklist = c6?.preSealChecklist;
+  if (
+    checklist?.status !== "passed" || checklist?.mode !== "non-live-exact-staged-tree" || !SHA.test(checklist?.syntheticCandidate) || !SHA.test(checklist?.indexTree) ||
+    checklist?.checks?.candidateCheck?.status !== "passed" || checklist?.checks?.recorder?.status !== "passed" || checklist?.checks?.recorder?.dryRun !== true ||
+    checklist?.checks?.digestRecalculation?.status !== "passed" || checklist?.checks?.forwardPreflight?.status !== "passed" ||
+    checklist?.checks?.forwardPreflight?.receiverDryRun !== true || checklist?.checks?.forwardPreflight?.primaryDryRun !== true ||
+    checklist?.checks?.forwardPreflight?.remotePipelineNoMigrations !== true || checklist?.checks?.forwardPreflight?.remoteMaterializedViewNoMigrations !== true ||
+    checklist?.liveDeployment !== false
+  ) throw new Error("G32 C6 required pre-seal evidence pipeline/preflight is incomplete");
+  assertC6FinalWitness(c6, candidate, cutover);
+  return { checked: true, sourceCommit: candidate, recoveredC5: recovered, samples: c6.fixedNMeasurement.latency.sampleCount };
+}
+
+export function assertStagedCandidateMaterialCoverage(manifest) {
+  const changed = gitText(["diff", "--cached", "--name-only"]).split(/\r?\n/).filter(Boolean);
+  if (changed.length === 0) throw new Error("G32 pre-seal candidate contains no staged material");
+  const roots = [...manifest.runtimeRoots, ...manifest.configurationRoots];
+  const uncovered = changed.filter((path) => !roots.some((rootPath) => rootCovers(rootPath, path)));
+  if (uncovered.length > 0) throw new Error(`G32 pre-seal material is outside manifest roots: ${uncovered.join(",")}`);
+  const indexTree = gitText(["write-tree"]).trim();
+  assertSha(indexTree, "G32 pre-seal index tree");
+  return { indexTree, materialPaths: changed.length };
+}
+
+export function assertPreparedC6StagedCandidate(syntheticCandidate, evidence, manifest) {
+  assertSha(syntheticCandidate, "G32 pre-seal synthetic candidate");
+  const c4 = c4Of(evidence);
+  const recovered = c5RecoveredOf(evidence);
+  const c6 = c6Of(evidence);
+  if (c6.candidateCommit !== "CANDIDATE" || c6.sourceCommit !== "CANDIDATE") {
+    throw new Error("G32 pre-seal C6 requires its non-self-referential evidence placeholder");
+  }
+  assertC6EvidenceShape(c6, manifest);
+  assertC5RecoveredWitness(evidence);
+  const material = assertStagedCandidateMaterialCoverage(manifest);
+  const digests = {
+    runtime: digestAtCommit(material.indexTree, manifest.runtimeRoots),
+    configuration: digestAtCommit(material.indexTree, manifest.configurationRoots),
+    deployment: deploymentConfigDigest(material.indexTree),
+  };
+  assertC6DigestRelation(digests, c4, recovered);
+  return { syntheticCandidate, material, ...digests, runtimeUnchangedFromC5: true, deploymentConfigUnchangedFromC5: true };
+}
+
+export function assertPreparedC6Candidate(candidate, evidence, manifest) {
+  assertSha(candidate, "G32 C6 prepared candidate");
+  const c4 = c4Of(evidence);
+  const recovered = c5RecoveredOf(evidence);
+  const c6 = c6Of(evidence);
+  if (c6.candidateCommit !== "CANDIDATE" || c6.sourceCommit !== "CANDIDATE") {
+    throw new Error("G32 prepared C6 requires its non-self-referential evidence placeholder");
+  }
+  assertC6EvidenceShape(c6, manifest);
+  assertC5RecoveredWitness(evidence);
+  const material = assertCandidateMaterialCoverage(candidate, manifest);
+  const digests = {
+    runtime: digestAtCommit(candidate, manifest.runtimeRoots),
+    configuration: digestAtCommit(candidate, manifest.configurationRoots),
+    deployment: deploymentConfigDigest(candidate),
+  };
+  assertC6DigestRelation(digests, c4, recovered);
+  return { candidate, material, ...digests, runtimeUnchangedFromC5: true, deploymentConfigUnchangedFromC5: true };
+}
+
 export function assertPostCandidatePaths(paths, candidate, run = (args) => git(args)) {
   if (candidate === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
   const unsupported = paths.filter((path) => !R_PATHS.includes(path));
@@ -742,6 +995,7 @@ export function assertPreparedC5Candidate(candidate, evidence, manifest) {
 
 export function runSelfTest() {
   const manifest = loadManifest();
+  const recorderIndependence = runCandidateIndependenceSelfTest();
   const paths = [...new Set([...manifest.runtimeRoots, ...manifest.configurationRoots, ...manifest.requiredRoots.map((entry) => entry.path)])];
   assertDeclaredRoots(manifest, paths);
   assertRequiredRoots(manifest, paths);
@@ -903,7 +1157,7 @@ export function runSelfTest() {
   let postPathRed = false;
   try { assertPostCandidatePaths([...R_PATHS, "scripts/deploy/g32-forward-redeploy.sh"], candidate, () => `+${candidate}\n`); } catch (error) { postPathRed = String(error).includes("not allowlisted"); }
   if (!postPathRed) throw new Error("G32 post-C operational edit mutation unexpectedly passed");
-  return { declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "self-authorized-post-c", "undeclared-material", "repeat-cutover", "data-preservation", "30-digit-ingress", "c3-runtime-digest", "c3-root-manifest", "c4-manifest-authority", "c4-runtime-attribution", "c5-manifest-authority", "c5-runner-transport-attribution", "post-c-operational-edit"] };
+  return { declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, requiredRoots: manifest.requiredRoots.length, recorderIndependence, mutations: ["missing-root", "self-authorized-post-c", "undeclared-material", "repeat-cutover", "data-preservation", "30-digit-ingress", "c3-runtime-digest", "c3-root-manifest", "c4-manifest-authority", "c4-runtime-attribution", "c5-manifest-authority", "c5-runner-transport-attribution", "recorder-candidate-hard-code", "post-c-operational-edit"] };
 }
 
 function argument(name) {
@@ -930,23 +1184,63 @@ function main() {
   const c4Deployment = assertC4DeploymentIdentity(evidence, cutover);
   const c5 = assertC5EvidenceShape(c5Of(evidence), manifest);
   const c5Deployment = assertC5DeploymentIdentity(evidence, cutover);
+  const c5Recovered = assertC5RecoveredWitness(evidence);
+  const c6 = assertC6EvidenceShape(c6Of(evidence), manifest);
+  const c6Deployment = assertC6DeploymentIdentity(evidence, cutover);
   const declared = assertDeclaredRoots(manifest);
   const required = assertRequiredRoots(manifest);
+  if (process.argv.includes("--pre-seal-dry-run")) {
+    const syntheticCandidate = argument("--synthetic-candidate");
+    const record = argument("--record-key");
+    const prior = argument("--prior-key");
+    if (record !== c6Of(evidence).recording.recordKey || prior !== c6Of(evidence).recording.priorRecordKey) {
+      throw new Error("G32 pre-seal record/prior keys must equal the sealed C6 recorder plan");
+    }
+    console.log(JSON.stringify({
+      history: { ...history, c3: c3History },
+      c2: { forward, deployment: c2Deployment },
+      c3: { evidence: c3, deployment: c3Deployment },
+      c4: { evidence: c4, deployment: c4Deployment },
+      c5: { evidence: c5, deployment: c5Deployment, recovered: c5Recovered },
+      c6: { evidence: c6, deployment: c6Deployment },
+      manifest: { ...declared, ...required },
+      preSeal: assertPreparedC6StagedCandidate(syntheticCandidate, evidence, manifest),
+    }, null, 2));
+    return;
+  }
   const candidateArgument = argument("--candidate");
   if (candidateArgument !== undefined) {
     if (gitText(["rev-parse", "HEAD"]).trim() !== candidateArgument) throw new Error("G32 prepared candidate must equal checked-out HEAD");
-    if (c5.candidateCommit !== "CANDIDATE") throw new Error("G32 C5 prepared candidate requires its non-self-referential placeholder");
-    console.log(JSON.stringify({ history: { ...history, c3: c3History }, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, c4: { evidence: c4, deployment: c4Deployment }, c5: { evidence: c5, deployment: c5Deployment }, manifest: { ...declared, ...required }, prepared: assertPreparedC5Candidate(candidateArgument, evidence, manifest) }, null, 2));
+    if (c6.candidateCommit !== "CANDIDATE") throw new Error("G32 C6 prepared candidate requires its non-self-referential evidence placeholder");
+    console.log(JSON.stringify({
+      history: { ...history, c3: c3History },
+      c2: { forward, deployment: c2Deployment },
+      c3: { evidence: c3, deployment: c3Deployment },
+      c4: { evidence: c4, deployment: c4Deployment },
+      c5: { evidence: c5, deployment: c5Deployment, recovered: c5Recovered },
+      c6: { evidence: c6, deployment: c6Deployment },
+      manifest: { ...declared, ...required },
+      prepared: assertPreparedC6Candidate(candidateArgument, evidence, manifest),
+    }, null, 2));
     return;
   }
-  const candidate = c5.candidateCommit;
+  const candidate = c6.candidateCommit;
   const active = candidate !== "CANDIDATE" && SHA.test(candidate) && (() => {
     try { git(["merge-base", "--is-ancestor", candidate, "HEAD"]); return true; } catch { return false; }
   })();
   const post = active
     ? assertPostCandidatePaths(gitText(["diff", "--name-only", `${candidate}..HEAD`]).split(/\r?\n/).filter(Boolean), candidate)
     : { checked: false, reason: candidate === "CANDIDATE" ? "placeholder-candidate" : "candidate-not-ancestor" };
-  console.log(JSON.stringify({ history: { ...history, c3: c3History }, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, c4: { evidence: c4, deployment: c4Deployment }, c5: { evidence: c5, deployment: c5Deployment }, manifest: { ...declared, ...required }, postCandidate: post }, null, 2));
+  console.log(JSON.stringify({
+    history: { ...history, c3: c3History },
+    c2: { forward, deployment: c2Deployment },
+    c3: { evidence: c3, deployment: c3Deployment },
+    c4: { evidence: c4, deployment: c4Deployment },
+    c5: { evidence: c5, deployment: c5Deployment, recovered: c5Recovered },
+    c6: { evidence: c6, deployment: c6Deployment },
+    manifest: { ...declared, ...required },
+    postCandidate: post,
+  }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
