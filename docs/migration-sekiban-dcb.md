@@ -75,3 +75,10 @@ pre-witness; once that first command writes a fresh logical event, corrections
 are forward-only. The final evidence records source/deployed C identity, the
 new binding IDs, raw 5-endpoint conformance, raw V1 404, old-SUID rejection,
 and ten command-to-single-list-redraw samples.
+
+The **not applicable** preservation exception applies only to that completed
+one-time cutover. A later forward-only redeploy of the new G32 service must
+capture a pre-deploy witness set and prove that every captured row, head, and
+list entry remains present and semantically unchanged after deployment. It
+must retain the existing serviceId/D1/Queue/DO namespace and must not repeat
+the bridge, freeze, wipe, or new-resource provisioning steps.

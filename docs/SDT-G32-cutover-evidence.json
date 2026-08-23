@@ -902,5 +902,100 @@
     "verify": "pending",
     "cosmosEmulator": "pending"
   },
+  "forwardRedeploy": {
+    "task": "SDT-G32",
+    "status": "C2 candidate placeholder: forward-only real-Cosmos fixture correction awaiting witnessed redeploy",
+    "candidateCommit": "CANDIDATE",
+    "sourceCommit": "CANDIDATE",
+    "reason": "G22 real-Cosmos positive fixture was stale. C2 updates it to G32 and retains old SUID/provenance/identity inputs as typed zero-downstream-call negatives.",
+    "protocol": {
+      "candidate": "C2 contains all G22 fixture, audit, candidate-gate, forward-witness, manifest, documentation, and placeholder changes before one forward redeploy.",
+      "bookkeeping": "R2 changes only this evidence document and appends C2 once to the retained-candidate list.",
+      "selfReference": false,
+      "deploymentRequired": true,
+      "forwardOnly": true,
+      "cutoverReexecuted": false,
+      "postCandidateAllowlist": [
+        "docs/SDT-G32-cutover-evidence.json",
+        ".github/workflows/ci.yml (one retained-C2 append)"
+      ]
+    },
+    "history": {
+      "initialCandidate": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
+      "initialEvidenceCommit": "fc89572e2e0a8b84447591f87be5d05d57396435",
+      "initialCutover": "completed-once"
+    },
+    "treeDigests": {
+      "algorithm": "sha256(path NUL content NUL, paths sorted)",
+      "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+      "runtimeRoots": [
+        "packages/dcb-core/src",
+        "packages/dcb-domain/src",
+        "packages/dcb-runtime/src",
+        "packages/dcb-client/src",
+        "samples/meeting-room/src"
+      ],
+      "configuration": "1111111111111111111111111111111111111111111111111111111111111111",
+      "configurationRoots": [
+        ".gitignore",
+        ".github/workflows/ci.yml",
+        "eslint.config.mjs",
+        "package.json",
+        "package-lock.json",
+        "contracts/dcb-tags-derivation.json",
+        "contracts/event-store-ddl.json",
+        "contracts/g32-bridge-writer-coverage.json",
+        "contracts/g32-cutover.json",
+        "fixtures/suid-allocator-golden.json",
+        "migrations/d1/g32",
+        "migrations/mv",
+        "samples/meeting-room/public",
+        "samples/meeting-room/wrangler.g32-bridge-primary.jsonc",
+        "samples/meeting-room/wrangler.g32-bridge-receiver.jsonc",
+        "samples/meeting-room/wrangler.g32-final-primary.jsonc",
+        "samples/meeting-room/wrangler.g32-final-receiver.jsonc",
+        "scripts/g32-suid-coverage.mjs",
+        "scripts/g32-bridge-check.mjs",
+        "scripts/g32-cutover-check.mjs",
+        "scripts/g32-candidate-check.mjs",
+        "scripts/g22-bootstrap-cosmos-contract.mjs",
+        "scripts/g32-legacy-ingress-audit.mjs",
+        "scripts/g32-legacy-ingress-audit.d.mts",
+        "scripts/store-contract.mjs",
+        "scripts/deploy/g32-bridge-freeze.sh",
+        "scripts/deploy/g32-bridge-witness.mjs",
+        "scripts/deploy/g32-bridge-record-evidence.mjs",
+        "scripts/deploy/g32-config-digest.mjs",
+        "scripts/deploy/g32-deploy-cutover.sh",
+        "scripts/deploy/g32-witness.mjs",
+        "scripts/deploy/g32-measure.mjs",
+        "scripts/deploy/g32-queue-topology.mjs",
+        "scripts/deploy/g32-record-evidence.mjs",
+        "scripts/deploy/g32-forward-witness.mjs",
+        "scripts/deploy/g32-forward-witness.d.mts",
+        "scripts/deploy/g32-forward-record-evidence.mjs",
+        "scripts/deploy/g32-forward-redeploy.sh",
+        "tools/derive-dcb-tags",
+        "tools/sekiban-parity",
+        "test",
+        "tsconfig.json",
+        "vitest.config.ts",
+        "docs/SDT-G29-mapping.json",
+        "docs/domain-authoring.md",
+        "docs/migration-sekiban-dcb.md",
+        "docs/SDT-G32-required-roots.json",
+        "docs/SDT-G32-oracle-map.md",
+        "docs/SDT-G32-pr-body.md",
+        "docs/SDT-G32-bridge-evidence.json",
+        "docs/SDT-G32-cutover-evidence.json"
+      ]
+    },
+    "candidateImpact": {
+      "deploymentRequired": true,
+      "newServiceId": false,
+      "newD1Database": false,
+      "wipe": false
+    }
+  },
   "secrets": "redacted"
 }
