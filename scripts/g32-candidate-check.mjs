@@ -11,6 +11,7 @@ const evidencePath = resolve(root, "docs/SDT-G32-cutover-evidence.json");
 const cutoverPath = resolve(root, "contracts/g32-cutover.json");
 const INITIAL_CANDIDATE = "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e";
 const INITIAL_EVIDENCE_COMMIT = "fc89572e2e0a8b84447591f87be5d05d57396435";
+const REJECTED_FORWARD_PREFLIGHT_CANDIDATE = "a8f98355bb6de0454725d34f0238cd12efd4519c";
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
@@ -200,7 +201,9 @@ function assertForwardProtocol(forward) {
   if (
     forward?.history?.initialCandidate !== INITIAL_CANDIDATE ||
     forward?.history?.initialEvidenceCommit !== INITIAL_EVIDENCE_COMMIT ||
-    forward?.history?.initialCutover !== "completed-once"
+    forward?.history?.initialCutover !== "completed-once" ||
+    forward?.history?.rejectedPreparedCandidate !== REJECTED_FORWARD_PREFLIGHT_CANDIDATE ||
+    forward?.history?.rejectedPreparedCandidateRemoteEffects !== "none-before-wrangler"
   ) throw new Error("G32 C2 must retain C1/R1 history");
 }
 
@@ -332,7 +335,13 @@ export function runSelfTest() {
     candidateCommit: candidate, sourceCommit: candidate,
     protocol: { selfReference: false, deploymentRequired: true, forwardOnly: true, cutoverReexecuted: false },
     candidateImpact: { deploymentRequired: true, newServiceId: false, newD1Database: false, wipe: false },
-    history: { initialCandidate: INITIAL_CANDIDATE, initialEvidenceCommit: INITIAL_EVIDENCE_COMMIT, initialCutover: "completed-once" },
+    history: {
+      initialCandidate: INITIAL_CANDIDATE,
+      initialEvidenceCommit: INITIAL_EVIDENCE_COMMIT,
+      initialCutover: "completed-once",
+      rejectedPreparedCandidate: REJECTED_FORWARD_PREFLIGHT_CANDIDATE,
+      rejectedPreparedCandidateRemoteEffects: "none-before-wrangler",
+    },
     treeDigests: { algorithm: DIGEST_ALGORITHM, runtime: "b".repeat(64), runtimeRoots: manifest.runtimeRoots, configuration: "c".repeat(64), configurationRoots: manifest.configurationRoots },
     deploymentConfig: { digest: "d".repeat(64) },
   };

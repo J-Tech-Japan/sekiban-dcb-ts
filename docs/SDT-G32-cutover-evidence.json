@@ -923,7 +923,10 @@
     "history": {
       "initialCandidate": "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e",
       "initialEvidenceCommit": "fc89572e2e0a8b84447591f87be5d05d57396435",
-      "initialCutover": "completed-once"
+      "initialCutover": "completed-once",
+      "rejectedPreparedCandidate": "a8f98355bb6de0454725d34f0238cd12efd4519c",
+      "rejectedPreparedCandidateReason": "read-only local forward preflight exposed malformed shell interpolation before any Wrangler invocation",
+      "rejectedPreparedCandidateRemoteEffects": "none-before-wrangler"
     },
     "treeDigests": {
       "algorithm": "sha256(path NUL content NUL, paths sorted)",

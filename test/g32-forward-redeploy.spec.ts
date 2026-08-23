@@ -48,6 +48,8 @@ describe("SDT-G32 C2 forward-only witness", () => {
     expect(executable).toContain("G32_FORWARD_DEPLOY_LIVE");
     expect(executable).toContain("g32-forward-witness.mjs --mode pre-deploy-public");
     expect(executable).toContain("g32-forward-record-evidence.mjs");
+    expect(executable).toContain('dirname "${BASH_SOURCE[0]}"');
+    expect(executable).not.toContain("$${");
     expect(executable).not.toContain("d1 migrations apply");
     expect(executable).not.toContain("d1 create");
     expect(executable).not.toContain("queues create");

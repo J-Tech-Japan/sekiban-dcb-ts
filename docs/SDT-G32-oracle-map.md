@@ -35,6 +35,13 @@ bridge/freeze/wipe/new-resource provisioning, and its pre/post witness must
 preserve the captured post-cutover data set. Its runtime/config digest is
 compared to C1 and must remain unchanged for this CI/test-only correction.
 
+The first prepared forward candidate
+(`a8f98355bb6de0454725d34f0238cd12efd4519c`) was stopped by its local
+read-only preflight before any Wrangler invocation because a shell interpolation
+defect was detected. Its replacement records that no token rotation, remote
+deploy, witness, or data operation occurred; the forward script test makes the
+exact malformed interpolation red.
+
 R2 is created only after the C2 forward witness. It changes
 `docs/SDT-G32-cutover-evidence.json` and appends C2 once to the retained
 candidate fetch list in `ci.yml`. The candidate gate rejects any other

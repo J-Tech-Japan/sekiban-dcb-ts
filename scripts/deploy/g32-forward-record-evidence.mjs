@@ -9,6 +9,7 @@ import { assertForwardWitness } from "./g32-forward-witness.mjs";
 const root = process.cwd();
 const INITIAL_CANDIDATE = "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e";
 const INITIAL_EVIDENCE_COMMIT = "fc89572e2e0a8b84447591f87be5d05d57396435";
+const REJECTED_FORWARD_PREFLIGHT_CANDIDATE = "a8f98355bb6de0454725d34f0238cd12efd4519c";
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
 
 function argument(name, fallback) {
@@ -125,6 +126,9 @@ export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post,
         initialEvidenceCommit: INITIAL_EVIDENCE_COMMIT,
         initialCutover: "completed-once",
         initialCutoverDeployHistory: "C1 deployed new serviceId/new D1 bindings after bridge/freeze/wipe. C2 neither repeats nor reauthorizes that one-time operation.",
+        rejectedPreparedCandidate: REJECTED_FORWARD_PREFLIGHT_CANDIDATE,
+        rejectedPreparedCandidateReason: "read-only local forward preflight exposed malformed shell interpolation before any Wrangler invocation",
+        rejectedPreparedCandidateRemoteEffects: "none-before-wrangler",
       },
       treeDigests: {
         algorithm: DIGEST_ALGORITHM,

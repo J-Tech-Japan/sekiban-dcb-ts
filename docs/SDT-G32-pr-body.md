@@ -68,6 +68,13 @@ preservation, rechecks all deployed 30-digit gates, and records fresh N=10
 raw timestamps. The original wipe exception applies only to C1; C2 requires
 preservation of existing G32 data.
 
+The first prepared C2 commit (a8f98355bb6de0454725d34f0238cd12efd4519c)
+was rejected during its local read-only preflight because its shell variable
+interpolation was malformed. No Wrangler command, token rotation, deployment,
+or data witness began. The corrected replacement candidate retains that
+rejected-preflight record and is sealed before the one permitted forward
+redeploy.
+
 After C2, R2 is restricted to the updated evidence document and one C2 SHA
 append in the CI retained-candidate list. The candidate gate also records that
 the runtime/config digest is unchanged because this fix is fixture/test/CI
