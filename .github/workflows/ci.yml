@@ -235,6 +235,22 @@ jobs:
             echo "SDT-G32 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G30 trace schema, B0 cohort, and manifest closure lane
+        run: npm run test:g30
+      - name: Prove SDT-G30 forced-red CI reachability
+        run: |
+          if SDT_G30_FORCE_FAILURE=1 npm run test:g30:forced-red; then
+            echo "SDT-G30 forced-red probe unexpectedly passed"
+            exit 1
+          fi
+      - name: Verify SDT-G30 candidate/evidence protocol
+        run: npm run test:g30:candidate
+      - name: Prove SDT-G30 candidate retention gate forced failure
+        run: |
+          if SDT_G30_CANDIDATE_FORCE_FAILURE=1 npm run test:g30:candidate:forced-red; then
+            echo "SDT-G30 candidate forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1

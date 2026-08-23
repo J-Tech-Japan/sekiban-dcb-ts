@@ -2,6 +2,8 @@ import { parseBootstrapDump } from "./manifest";
 import type { BootstrapManifestError } from "./manifest";
 import type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord } from "./types";
 import { allocatorNameForService } from "../allocator/types";
+import { DurableObjectActivation, enterNativeActorHandleSpan, type DurableObjectActivationObservation } from "../trace/CommitTrace";
+import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const CONTROL = "bootstrap-control";
 const DUMP = "bootstrap-dump";
@@ -30,12 +32,20 @@ function encodedBytes(value: unknown): number { return new TextEncoder().encode(
 
 /** Per-service authority and linearization point for bootstrap and normal writes. */
 export class BootstrapCoordinatorDurableObject implements DurableObject {
+  /** Constructor-scoped observation only; never persisted or used for control. */
+  private readonly activation = new DurableObjectActivation();
+
   constructor(private readonly ctx: DurableObjectState, private readonly env: BootstrapCoordinatorEnv) {}
 
   async fetch(request: Request): Promise<Response> {
+    // Flip before this handler performs its first await.
+    const activation = this.activation.beginHandler();
     const url = new URL(request.url); const serviceId = url.searchParams.get("__serviceId");
     if (!string(serviceId)) return reject("bootstrap_service_required", "target service identity is required", 400);
     if (request.method === "GET" && url.pathname === "/state") return response(await this.control(serviceId));
+    if (request.method === "POST" && url.pathname === "/command/admit") return this.traceCommand(request, serviceId, activation, "admit");
+    if (request.method === "POST" && url.pathname === "/command/finalize") return this.traceCommand(request, serviceId, activation, "finalize");
+    if (request.method === "POST" && url.pathname === "/command/release") return this.traceCommand(request, serviceId, activation, "release");
     let body: unknown; try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
     if (request.method !== "POST") return reject("bootstrap_route_not_found", "bootstrap route was not found", 404);
     if (url.pathname === "/plan") return this.plan(serviceId, body);
@@ -44,10 +54,30 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (url.pathname === "/ready") return this.ready(serviceId, body);
     if (url.pathname === "/abort") return this.abort(serviceId, body);
     if (url.pathname === "/route/check") return this.route(serviceId, body);
-    if (url.pathname === "/command/admit") return this.command(serviceId, body, "admit");
-    if (url.pathname === "/command/finalize") return this.command(serviceId, body, "finalize");
-    if (url.pathname === "/command/release") return this.command(serviceId, body, "release");
     return reject("bootstrap_route_not_found", "bootstrap route was not found", 404);
+  }
+
+  private async traceCommand(
+    request: Request,
+    serviceId: string,
+    activation: DurableObjectActivationObservation,
+    action: "admit" | "finalize" | "release",
+  ): Promise<Response> {
+    return enterNativeActorHandleSpan(
+      cloudflareTracing(),
+      { actorClass: "BOOTSTRAP", actorKey: `bootstrap:${serviceId}`, activation },
+      async () => {
+        let body: unknown;
+        try { body = await request.clone().json(); } catch { return undefined; }
+        const commandId = object(body) && string(body.commandId) ? body.commandId : undefined;
+        return commandId === undefined ? undefined : { attemptId: commandId, serviceId };
+      },
+      async () => {
+        let body: unknown;
+        try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
+        return this.command(serviceId, body, action);
+      },
+    );
   }
 
   private async control(serviceId: string): Promise<BootstrapControlRecord> { return (await this.ctx.storage.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); }

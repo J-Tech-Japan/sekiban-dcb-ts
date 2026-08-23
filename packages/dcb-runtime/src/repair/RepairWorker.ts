@@ -1,6 +1,17 @@
 import type { RepairBranch, RepairFacts, RepairScopeItem, TagFence } from "../tag/types";
 import type { ExclusionLookupPort } from "../downstream/ExclusionLookup";
 import { requireConfiguredServiceId } from "../http/testServiceId";
+import {
+  CommitTrace,
+  type CommitTraceClock,
+  type CommitTraceProviderAdapter,
+  type CommitTraceScope,
+  type CommitTraceSink,
+  createTraceCorrelationId,
+  stableTraceHash,
+  type NativeTracing,
+} from "../trace/CommitTrace";
+import { verifyCommitTrace } from "../trace/CommitTraceVerifier";
 
 type JsonObject = Record<string, unknown>;
 
@@ -18,6 +29,14 @@ export interface RepairWorkerEnv {
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
   SDT_SERVICE_ID?: string;
+}
+
+/** Observation seams only; repair RPC and durable facts are unchanged. */
+export interface RepairWorkerHooks {
+  commitTraceSink?: CommitTraceSink;
+  commitTraceClock?: CommitTraceClock;
+  commitTraceProvider?: CommitTraceProviderAdapter;
+  nativeTracing?: NativeTracing;
 }
 
 export interface RepairExecutionInput {
@@ -86,6 +105,12 @@ interface LeaseContext {
   epoch: number;
 }
 
+interface RepairTraceState {
+  readonly scope: CommitTraceScope;
+  readonly executionId: string;
+  readonly leaseIds: Map<string, string>;
+}
+
 class RepairWorkerFailure extends Error {}
 
 function isObject(value: unknown): value is JsonObject {
@@ -140,9 +165,39 @@ export class RepairWorker {
     private readonly env: RepairWorkerEnv,
     private readonly exclusions: ExclusionLookupPort,
     private readonly serviceId = requireConfiguredServiceId(env.SDT_SERVICE_ID),
+    private readonly hooks: RepairWorkerHooks = {},
   ) {}
 
   async execute(input: RepairExecutionInput): Promise<RepairExecutionResult> {
+    const executionId = crypto.randomUUID();
+    const trace = new CommitTrace({
+      schema: "sdt.commit.repair/v1",
+      correlationId: createTraceCorrelationId(),
+      serviceId: this.serviceId,
+      nativeTracing: this.hooks.nativeTracing,
+      sink: this.hooks.commitTraceSink,
+      clock: this.hooks.commitTraceClock,
+      provider: this.hooks.commitTraceProvider,
+      // Structural verification is an observation sink only. A malformed
+      // telemetry adapter can never change a repair's durable outcome.
+      runtimeVerifier: { verify: (snapshot) => { verifyCommitTrace(snapshot); } },
+    });
+    return trace.root("X00", {
+      face: "repair-root",
+      actorClass: "REPAIR",
+      actorKey: `repair:${this.serviceId}`,
+      attributes: { "repair.execution.id": executionId },
+    }, async (scope) => this.executeTraced(input, {
+      scope,
+      executionId,
+      leaseIds: new Map(),
+    }));
+  }
+
+  private async executeTraced(
+    input: RepairExecutionInput,
+    trace?: RepairTraceState,
+  ): Promise<RepairExecutionResult> {
     const workset = await this.enumerate(input.attemptIds, input.tags);
     const filtered = workset.filter((entry) => input.checkpoint === undefined || entry.item.suid > input.checkpoint);
     const bounded = filtered.slice(0, input.maxItems);
@@ -151,7 +206,15 @@ export class RepairWorker {
     if (input.mode === "dry-run") {
       // Facts are intentionally read during planning so an operator can see
       // which exact fences remain, while no mutation call is made.
-      await Promise.all([...new Set(workset.map((entry) => entry.tag))].map((tag) => this.tagFacts(tag)));
+      await Promise.all([...new Set(workset.map((entry) => entry.tag))].map(async (tag, memberIndex) => {
+        if (trace === undefined) return this.tagFacts(tag);
+        return trace.scope.fork().span("X03p", {
+          actorClass: "TAG",
+          actorKey: `tag:${this.serviceId}:${tag}`,
+          memberIndex,
+          tag,
+        }, async () => this.tagFacts(tag));
+      }));
       return {
         mode: input.mode,
         dryRun: true,
@@ -178,73 +241,118 @@ export class RepairWorker {
     };
     const leases = new Map<string, LeaseContext>();
 
-    for (const entry of bounded) {
+    for (const [memberIndex, entry] of bounded.entries()) {
       const before = await this.tagFacts(entry.tag);
       // Resume after clear-before-final-observation: no mutation is needed,
       // and the current Tag fact is sufficient to reconstruct completion.
       if (!hasPartialFence(before, entry.item.attemptId) && resolutionFor(before, entry.item) !== undefined && auditFor(before, entry.item)) {
-        continue;
-      }
-      const lease = await this.ensureLease(entry.tag, input, workset, leases);
-      if (input.fault === "after-lease-before-prepare") {
-        return { ...result, interrupted: input.fault, pending: filtered.length };
-      }
-      await this.observe(entry.tag, entry.item, lease, "PREPARED");
-      if (input.fault === "after-prepare-before-apply") {
-        return { ...result, interrupted: input.fault, pending: filtered.length };
-      }
-      let applied = await this.apply(entry.tag, entry.item, lease);
-      if (applied.status === 409 && applied.reason === "repair_scope_required") {
-        // F3 discovered after the first scan: the failed call has no side
-        // effect, then a fresh union makes the new work item eligible.
-        const refreshed = await this.enumerate(input.attemptIds, input.tags);
-        await this.unionScope(entry.tag, lease, refreshed.filter((candidate) => candidate.tag === entry.tag));
-        applied = await this.apply(entry.tag, entry.item, lease);
-      }
-      if (applied.status !== 200 || applied.branch === undefined) {
-        throw new RepairWorkerFailure(`Tag repair apply rejected: ${applied.reason ?? applied.status}`);
-      }
-      if (input.fault === "after-apply-before-observation") {
-        return { ...result, interrupted: input.fault, pending: filtered.length };
-      }
-
-      const facts = await this.tagFacts(entry.tag);
-      const durable = resolutionFor(facts, entry.item);
-      if (durable === undefined) {
-        throw new RepairWorkerFailure("Tag repair apply did not leave a durable resolution fact");
-      }
-      await this.observe(entry.tag, entry.item, lease, "VERIFIED", durable.branch);
-      if (input.fault === "after-verify-before-audit") {
-        return { ...result, interrupted: input.fault, pending: filtered.length };
-      }
-      if (durable.branch === "FAILED_CLOSED") {
-        result.failedClosed += 1;
-        result.processed += 1;
-        continue;
-      }
-      const alreadyAudited = auditFor(facts, entry.item);
-      if (durable.branch === "EXCLUDED_AUDITED") {
-        if (!alreadyAudited) {
-          await this.exclusions.recordExclusion({
+        if (trace !== undefined) {
+          // The row intentionally describes the durable-state decision only:
+          // no repair mutation is reached on this branch.
+          await trace.scope.fork().span("X03r", {
+            actorClass: "TAG",
+            actorKey: `tag:${this.serviceId}:${entry.tag}`,
             attemptId: entry.item.attemptId,
+            memberIndex,
             tag: entry.tag,
-            eventId: entry.item.eventId,
-            suid: entry.item.suid,
-            actor: input.actor,
-            repairEpoch: lease.epoch,
-          });
+          }, async () => undefined);
         }
-        result.excludedAudited += 1;
-      } else {
-        result.rolledForward += 1;
+        continue;
       }
-      if (!alreadyAudited) {
-        await this.audit(entry.tag, entry.item, lease, input.actor);
-      }
-      if (input.fault === "after-audit-before-clear") {
-        return { ...result, interrupted: input.fault, pending: filtered.length };
-      }
-      result.processed += 1;
+      const leaseId = trace === undefined
+        ? undefined
+        : trace.leaseIds.get(entry.tag) ?? `repair-lease-${stableTraceHash(`${trace.executionId}:${entry.tag}`)}`;
+      if (trace !== undefined && leaseId !== undefined) trace.leaseIds.set(entry.tag, leaseId);
+      const acquireLease = async () => this.ensureLease(entry.tag, input, workset, leases);
+      const needsLease = !leases.has(entry.tag);
+      const lease = trace === undefined || !needsLease
+        ? await acquireLease()
+        : await trace.scope.fork().span("X02", {
+          actorClass: "TAG",
+          actorKey: `tag:${this.serviceId}:${entry.tag}`,
+          attemptId: entry.item.attemptId,
+          memberIndex,
+          tag: entry.tag,
+          attributes: {
+            "repair.lease.id": leaseId!,
+          },
+        }, acquireLease);
+      const executeItem = async (): Promise<RepairExecutionResult | undefined> => {
+        if (input.fault === "after-lease-before-prepare") {
+          return { ...result, interrupted: input.fault, pending: filtered.length };
+        }
+        await this.observe(entry.tag, entry.item, lease, "PREPARED");
+        if (input.fault === "after-prepare-before-apply") {
+          return { ...result, interrupted: input.fault, pending: filtered.length };
+        }
+        let applied = await this.apply(entry.tag, entry.item, lease);
+        if (applied.status === 409 && applied.reason === "repair_scope_required") {
+          // F3 discovered after the first scan: the failed call has no side
+          // effect, then a fresh union makes the new work item eligible.
+          const refreshed = await this.enumerate(input.attemptIds, input.tags);
+          await this.unionScope(entry.tag, lease, refreshed.filter((candidate) => candidate.tag === entry.tag));
+          applied = await this.apply(entry.tag, entry.item, lease);
+        }
+        if (applied.status !== 200 || applied.branch === undefined) {
+          throw new RepairWorkerFailure(`Tag repair apply rejected: ${applied.reason ?? applied.status}`);
+        }
+        if (input.fault === "after-apply-before-observation") {
+          return { ...result, interrupted: input.fault, pending: filtered.length };
+        }
+
+        const facts = await this.tagFacts(entry.tag);
+        const durable = resolutionFor(facts, entry.item);
+        if (durable === undefined) {
+          throw new RepairWorkerFailure("Tag repair apply did not leave a durable resolution fact");
+        }
+        await this.observe(entry.tag, entry.item, lease, "VERIFIED", durable.branch);
+        if (input.fault === "after-verify-before-audit") {
+          return { ...result, interrupted: input.fault, pending: filtered.length };
+        }
+        if (durable.branch === "FAILED_CLOSED") {
+          result.failedClosed += 1;
+          result.processed += 1;
+          return undefined;
+        }
+        const alreadyAudited = auditFor(facts, entry.item);
+        if (durable.branch === "EXCLUDED_AUDITED") {
+          if (!alreadyAudited) {
+            await this.exclusions.recordExclusion({
+              attemptId: entry.item.attemptId,
+              tag: entry.tag,
+              eventId: entry.item.eventId,
+              suid: entry.item.suid,
+              actor: input.actor,
+              repairEpoch: lease.epoch,
+            });
+          }
+          result.excludedAudited += 1;
+        } else {
+          result.rolledForward += 1;
+        }
+        if (!alreadyAudited) {
+          await this.audit(entry.tag, entry.item, lease, input.actor);
+        }
+        if (input.fault === "after-audit-before-clear") {
+          return { ...result, interrupted: input.fault, pending: filtered.length };
+        }
+        result.processed += 1;
+        return undefined;
+      };
+      const interrupted = trace === undefined
+        ? await executeItem()
+        : await trace.scope.fork().span("X03e", {
+          actorClass: "TAG",
+          actorKey: `tag:${this.serviceId}:${entry.tag}`,
+          attemptId: entry.item.attemptId,
+          memberIndex,
+          tag: entry.tag,
+          attributes: {
+            "repair.lease.id": leaseId!,
+            repairEpoch: lease.epoch,
+          },
+        }, executeItem);
+      if (interrupted !== undefined) return interrupted;
     }
 
     // A clear can happen only against a fresh, stable scope snapshot.  The

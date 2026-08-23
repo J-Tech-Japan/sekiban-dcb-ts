@@ -17,11 +17,30 @@ import type { DeliveryClass } from "../downstream/Doorbell";
 import { canonicalEventType } from "../eventIdentity";
 import { createUuidV7, serializedEventMetadata, writeTimestampUtc } from "../eventRecord";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import {
+  beginWorkerInvocationObservation,
+  CommitTrace,
+  type CommitTraceClock,
+  type CommitTraceProviderAdapter,
+  type CommitTraceScope,
+  type CommitTraceSink,
+  createTraceCorrelationId,
+  type NativeTracing,
+} from "../trace/CommitTrace";
+import { verifyCommitTrace } from "../trace/CommitTraceVerifier";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
 const OUTCOME_UNDETERMINED_ERROR =
   "Commit outcome is undetermined; reread tag heads and event/query state before retrying because blind retry may create duplicate events.";
+const JOURNAL_TRANSITION_TRACE: Readonly<Partial<Record<JournalRecord["state"], { readonly rowId: "S05a" | "S05b" | "S05c" | "S05d" | "S05e"; readonly phaseOrdinal: number }>>> = {
+  RESERVED: { rowId: "S05a", phaseOrdinal: 0 },
+  ALLOCATED: { rowId: "S05b", phaseOrdinal: 1 },
+  WRITING: { rowId: "S05c", phaseOrdinal: 2 },
+  COMPLETE: { rowId: "S05d", phaseOrdinal: 3 },
+  REFUSED: { rowId: "S05e", phaseOrdinal: 4 },
+  FAILED: { rowId: "S05e", phaseOrdinal: 4 },
+};
 
 type JsonObject = Record<string, unknown>;
 
@@ -48,6 +67,14 @@ export interface CommitWorkerHooks {
   domainDeliveryClass?: DeliveryClass;
   /** Registered schema/parser authority for exact-case payload admission. */
   registeredEventParsers?: Readonly<Record<string, (payload: unknown) => unknown>>;
+  /** Test/evidence observer. It is not a public response or protocol field. */
+  commitTraceSink?: CommitTraceSink;
+  /** Deterministic test clock for trace containment and ratio fixtures. */
+  commitTraceClock?: CommitTraceClock;
+  /** Provider automatic attributes are optional adapter input only. */
+  commitTraceProvider?: CommitTraceProviderAdapter;
+  /** Cloudflare active-context span API supplied by the Worker entrypoint. */
+  nativeTracing?: NativeTracing;
 }
 
 interface ReservationSuccess {
@@ -70,6 +97,29 @@ interface TagStateResponse {
   version: number;
   updatedAt: string;
 }
+
+interface HandledCommitResponse {
+  readonly response: Response;
+  readonly scope: CommitTraceScope;
+}
+
+interface CommitTraceRequestState {
+  readonly trace: CommitTrace;
+  scope: CommitTraceScope;
+}
+
+/**
+ * The static authority checker proves the manifest bytes; this is the
+ * separate runtime structural/attribution verifier. Its outcome is retained
+ * only in the in-process trace snapshot and is fail-open by design: G30 must
+ * not change the protocol when an observation adapter is unavailable.
+ */
+const runtimeCommitTraceVerifier = {
+  verify(snapshot: Parameters<typeof verifyCommitTrace>[0]): void {
+    const accepted = snapshot.spans.some((span) => span.face === "accepted" && typeof span.attributes["attempt.id"] === "string");
+    verifyCommitTrace(snapshot, { accepted });
+  },
+} as const;
 
 function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   const responseHeaders = new Headers(headers);
@@ -337,17 +387,50 @@ export class CommitWorker {
   ) {}
 
   async handle(request: Request): Promise<Response> {
+    const workerObservation = beginWorkerInvocationObservation();
+    const trace = new CommitTrace({
+      schema: "sdt.commit/v1",
+      correlationId: createTraceCorrelationId(),
+      serviceId: this.serviceId,
+      nativeTracing: this.hooks.nativeTracing,
+      sink: this.hooks.commitTraceSink,
+      clock: this.hooks.commitTraceClock,
+      provider: this.hooks.commitTraceProvider,
+      runtimeVerifier: runtimeCommitTraceVerifier,
+      diagnostics: {
+        "worker.isolate.id": workerObservation.isolateInstanceId,
+        "worker.isolate.first": workerObservation.firstInvocation,
+      },
+    });
+    return trace.root("S00", {
+      actorKey: `root:${this.serviceId}`,
+    }, async (root) => {
+      const state: CommitTraceRequestState = { trace, scope: root };
+      const response = await this.handleUntraced(request, state);
+      return state.scope.span("S15", { httpStatus: response.status }, async () => response);
+    });
+  }
+
+  private async handleUntraced(
+    request: Request,
+    traceState?: CommitTraceRequestState,
+  ): Promise<Response> {
     if (request.method !== "POST") {
       return error(404, "commit_route_not_found", "Commit route requires POST");
     }
 
-    let body: unknown;
-    try {
-      body = await request.json<unknown>();
-    } catch {
-      return error(400, "malformed_commit_envelope", "Commit envelope must be JSON");
-    }
-    const validated = validateCommitEnvelope(body, this.hooks.registeredEventParsers);
+    const decodeAndValidate = async (): Promise<ReturnType<typeof validateCommitEnvelope>> => {
+      let body: unknown;
+      try {
+        body = await request.json<unknown>();
+      } catch {
+        return { error: error(400, "malformed_commit_envelope", "Commit envelope must be JSON") };
+      }
+      return validateCommitEnvelope(body, this.hooks.registeredEventParsers);
+    };
+    const validated = traceState === undefined
+      ? await decodeAndValidate()
+      : await traceState.scope.span("S01", {}, async () => decodeAndValidate());
     if ("error" in validated) {
       return validated.error;
     }
@@ -362,20 +445,24 @@ export class CommitWorker {
     const attemptId = fault === undefined
       ? crypto.randomUUID()
       : testAttemptIdFromRequest(request) ?? crypto.randomUUID();
+    if (traceState !== undefined) {
+      traceState.trace.markAccepted(attemptId);
+      traceState.scope = traceState.scope.accepted(attemptId);
+    }
     const writeTimestamp = writeTimestampUtc(startedAt);
     const candidates = input.eventCandidates.map((candidate) => ({
       ...candidate,
       eventId: createUuidV7(startedAt),
       timestamp: writeTimestamp,
     }));
-    const bootstrapEpoch = await this.bootstrapCommand("admit", attemptId);
+    const bootstrapEpoch = await this.bootstrapCommand("admit", attemptId, undefined, traceState?.scope, "S02");
     if (bootstrapEpoch === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap is importing; commit is unavailable"), attemptId, fault !== undefined);
     }
     // Admission only linearizes the entry check.  Do not retain it through
     // remote work: PLANNED may start after in-flight work reaches zero, and
     // the epoch check at the authoritative write is what fences that race.
-    if ((await this.bootstrapCommand("release", attemptId, bootstrapEpoch)) === undefined) {
+    if ((await this.bootstrapCommand("release", attemptId, bootstrapEpoch, traceState?.scope, "S03")) === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap admission could not be released"), attemptId, fault !== undefined);
     }
     try {
@@ -389,19 +476,19 @@ export class CommitWorker {
         ...(fault === "fence-not-durable" ? { testFenceNotDurable: true } : {}),
         ...(fault === "fence-install-partial" ? { testFenceInstallFaultOnce: true } : {}),
       },
-    });
+    }, traceState?.scope, "S04");
     if (admitted.response.status !== 201 || admitted.body === undefined) {
       return responseWithAttempt(error(500, "internal_error", "Commit Journal admission failed"), attemptId, fault !== undefined);
     }
 
     // RESERVED means that the reservation phase is now durable. It permits a
     // pre-allocation REFUSED/FAILED only after the cancel barrier completes.
-    const reserved = await this.transition(journal, admitted.body, "RESERVED");
+    const reserved = await this.transition(journal, admitted.body, "RESERVED", undefined, undefined, traceState?.scope);
     if (reserved === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
 
-    const reservations = await this.acquireReservations(input, attemptId, fault);
+    const reservations = await this.acquireReservations(input, attemptId, fault, traceState?.scope);
     if (reservations.failure !== undefined) {
       return this.finishReservationFailure(
         journal,
@@ -410,11 +497,12 @@ export class CommitWorker {
         attemptId,
         reservations.failure,
         fault,
+        traceState?.scope,
       );
     }
 
     await this.hooks.beforeBootstrapAllocation?.();
-    const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch);
+    const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch, traceState?.scope);
     if (allocation === undefined) {
       return this.finishReservationFailure(
         journal,
@@ -427,6 +515,7 @@ export class CommitWorker {
           reason: "allocator could not durably allocate the complete vector",
         },
         fault,
+        traceState?.scope,
       );
     }
     const allocatedCandidates = this.withAllocatedSuids(candidates, allocation);
@@ -437,11 +526,11 @@ export class CommitWorker {
       return this.noApplicationOutcome(attemptId, true);
     }
 
-    const allocated = await this.transition(journal, reserved, "ALLOCATED", undefined, allocation.allocatorLineageId);
+    const allocated = await this.transition(journal, reserved, "ALLOCATED", undefined, allocation.allocatorLineageId, traceState?.scope);
     if (allocated === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
-    const writing = await this.transition(journal, allocated, "WRITING");
+    const writing = await this.transition(journal, allocated, "WRITING", undefined, undefined, traceState?.scope);
     if (writing === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
@@ -450,7 +539,7 @@ export class CommitWorker {
 
     // This is immediately before the first final authoritative tag mutation.
     // The same service epoch obtained at admission must still be current.
-    if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch)) === undefined) {
+    if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch, traceState?.scope, "S10")) === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap fencing epoch changed before commit write"), attemptId, fault !== undefined);
     }
 
@@ -461,17 +550,18 @@ export class CommitWorker {
       allocation.allocatorLineageId,
       reservations.successes,
       fault,
+      traceState?.scope,
     );
     if (!writesSucceeded) {
-      return this.handoffToAlarm(journal, writing, allocation, attemptId, fault);
+      return this.handoffToAlarm(journal, writing, allocation, attemptId, fault, traceState?.scope);
     }
 
-    const complete = await this.transition(journal, writing, "COMPLETE");
+    const complete = await this.transition(journal, writing, "COMPLETE", undefined, undefined, traceState?.scope);
     if (complete === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     try {
-      const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault);
+      const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault, traceState?.scope);
       return responseWithAttempt(json(success, 200), attemptId, fault !== undefined);
     } catch {
       return responseWithAttempt(
@@ -491,49 +581,82 @@ export class CommitWorker {
     return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
   }
 
-  private async bootstrapCommand(action: "admit" | "finalize" | "release", commandId: string, leaseEpoch?: number): Promise<number | undefined> {
+  private async bootstrapCommand(
+    action: "admit" | "finalize" | "release",
+    commandId: string,
+    leaseEpoch?: number,
+    traceScope?: CommitTraceScope,
+    rowId?: "S02" | "S03" | "S10",
+  ): Promise<number | undefined> {
     if (this.env.BOOTSTRAP === undefined) return 0;
-    const url = new URL(`https://commit-worker.internal/command/${action}`);
-    url.searchParams.set("__serviceId", this.serviceId);
-    const result = await this.env.BOOTSTRAP.get(this.env.BOOTSTRAP.idFromName(this.serviceId)).fetch(new Request(url, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId, ...(leaseEpoch === undefined ? {} : { leaseEpoch }) }),
-    }));
-    if (!result.ok) return undefined;
-    const body = await result.json().catch(() => undefined) as { leaseEpoch?: unknown } | undefined;
-    return typeof body?.leaseEpoch === "number" ? body.leaseEpoch : undefined;
+    const invoke = async (): Promise<{ readonly response: Response; readonly leaseEpoch: number | undefined }> => {
+      const url = new URL(`https://commit-worker.internal/command/${action}`);
+      url.searchParams.set("__serviceId", this.serviceId);
+      const response = await this.env.BOOTSTRAP!.get(this.env.BOOTSTRAP!.idFromName(this.serviceId)).fetch(new Request(url, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId, ...(leaseEpoch === undefined ? {} : { leaseEpoch }) }),
+      }));
+      if (!response.ok) return { response, leaseEpoch: undefined };
+      const body = await response.clone().json().catch(() => undefined) as { leaseEpoch?: unknown } | undefined;
+      return { response, leaseEpoch: typeof body?.leaseEpoch === "number" ? body.leaseEpoch : undefined };
+    };
+    const result = traceScope === undefined || rowId === undefined
+      ? await invoke()
+      : await traceScope.span(rowId, {}, invoke);
+    return result.leaseEpoch;
   }
 
-  private async postJson<T>(stub: DurableObjectStub, path: string, body: unknown): Promise<{ response: Response; body?: T }> {
-    const response = await stub.fetch(
-      new Request(`https://commit-worker.internal${path}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    );
-    let parsed: T | undefined;
-    try {
-      parsed = (await response.clone().json()) as T;
-    } catch {
-      // Callers use the status first; malformed internal bodies are failures.
-    }
-    return { response, body: parsed };
+  private async postJson<T>(
+    stub: DurableObjectStub,
+    path: string,
+    body: unknown,
+    traceScope?: CommitTraceScope,
+    rowId?: string,
+    traceOptions: Parameters<CommitTraceScope["span"]>[1] = {},
+  ): Promise<{ response: Response; body?: T }> {
+    const invoke = async (): Promise<{ response: Response; body?: T }> => {
+      const response = await stub.fetch(
+        new Request(`https://commit-worker.internal${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        }),
+      );
+      let parsed: T | undefined;
+      try {
+        parsed = (await response.clone().json()) as T;
+      } catch {
+        // Callers use the status first; malformed internal bodies are failures.
+      }
+      return { response, body: parsed };
+    };
+    return traceScope === undefined || rowId === undefined
+      ? invoke()
+      : traceScope.span(rowId, traceOptions, invoke);
   }
 
-  private async tagRequest(tag: string, path: string, body?: unknown): Promise<Response> {
-    const url = new URL(`https://commit-worker.internal${path}`);
-    url.searchParams.set("__tag", tag);
-    url.searchParams.set("__serviceId", this.serviceId);
-    if (path === "/append" && this.hooks.domainDeliveryClass !== undefined) {
-      url.searchParams.set("__domainDeliveryClass", this.hooks.domainDeliveryClass);
-    }
-    return this.tagFor(tag).fetch(
-      new Request(url.toString(), body === undefined ? undefined : {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      }),
-    );
+  private async tagRequest(
+    tag: string,
+    path: string,
+    body?: unknown,
+    traceScope?: CommitTraceScope,
+    rowId?: string,
+    traceOptions: { readonly memberIndex?: number; readonly retryIndex?: number; readonly attemptId?: string } = {},
+  ): Promise<Response> {
+    const invoke = async (): Promise<Response> => {
+      const url = new URL(`https://commit-worker.internal${path}`);
+      url.searchParams.set("__tag", tag);
+      url.searchParams.set("__serviceId", this.serviceId);
+      if (path === "/append" && this.hooks.domainDeliveryClass !== undefined) {
+        url.searchParams.set("__domainDeliveryClass", this.hooks.domainDeliveryClass);
+      }
+      return this.tagFor(tag).fetch(new Request(url.toString(), {
+        ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
+        ...(body === undefined ? {} : { headers: { "content-type": "application/json" } }),
+      }));
+    };
+    return traceScope === undefined || rowId === undefined
+      ? invoke()
+      : traceScope.span(rowId, { tag, ...traceOptions }, invoke);
   }
 
   private async transition(
@@ -542,7 +665,9 @@ export class CommitWorker {
     nextState: JournalRecord["state"],
     terminalReason?: string,
     allocatorLineageId?: string,
+    traceScope?: CommitTraceScope,
   ): Promise<JournalRecord | undefined> {
+    const trace = JOURNAL_TRANSITION_TRACE[nextState];
     const result = await this.postJson<JournalRecord>(journal, "/transition", {
       expectedState: record.state,
       expectedVersion: record.version,
@@ -550,7 +675,7 @@ export class CommitWorker {
       nextState,
       terminalReason,
       ...(allocatorLineageId === undefined ? {} : { allocatorLineageId }),
-    });
+    }, traceScope, trace?.rowId, trace === undefined ? {} : { phaseOrdinal: trace.phaseOrdinal });
     return result.response.status === 200 ? result.body : undefined;
   }
 
@@ -558,8 +683,9 @@ export class CommitWorker {
     input: ValidatedCommitEnvelope,
     attemptId: string,
     fault: CommitTestFault | undefined,
+    traceScope?: CommitTraceScope,
   ): Promise<ReservationAttempt> {
-    const responses = await Promise.allSettled(
+    const acquire = (stageScope?: CommitTraceScope) => Promise.allSettled(
       input.consistencyTags.map(async (entry) => ({
         tag: entry.tag,
         response: await this.tagRequest(entry.tag, "/acquire", {
@@ -567,9 +693,15 @@ export class CommitWorker {
           epoch: INITIAL_OWNER_EPOCH,
           eventTags: input.allTags,
           consistencyTags: input.consistencyTags,
+        }, stageScope?.fork(), stageScope === undefined ? undefined : "S07", {
+          memberIndex: input.consistencyTags.findIndex((candidate) => candidate.tag === entry.tag),
+          attemptId,
         }),
       })),
     );
+    const responses = traceScope === undefined
+      ? await acquire()
+      : await traceScope.span("S06", {}, async (stage) => acquire(stage));
     const successes = new Map<string, ReservationSuccess>();
     let failure: ReservationFailure | undefined;
     for (const result of responses) {
@@ -623,6 +755,7 @@ export class CommitWorker {
     attemptId: string,
     fault: CommitTestFault | undefined,
     bootstrapEpoch: number,
+    traceScope?: CommitTraceScope,
   ): Promise<AllocationVector | undefined> {
     const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(this.hooks.allocatorName ?? allocatorNameForService(this.serviceId)));
     try {
@@ -633,7 +766,7 @@ export class CommitWorker {
         bootstrapEpoch,
         candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId })),
         faultInjection: fault === "allocator-commit" ? "between-vector-and-watermark" : undefined,
-      });
+      }, traceScope, "S08");
       if (result.response.status >= 200 && result.response.status < 300 && result.body !== undefined) {
         return result.body;
       }
@@ -685,10 +818,11 @@ export class CommitWorker {
     allocatorLineageId: string,
     reservations: Map<string, ReservationSuccess>,
     fault: CommitTestFault | undefined,
+    traceScope?: CommitTraceScope,
   ): Promise<boolean> {
     let pending = [...input.allTags];
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS && pending.length > 0; attempt += 1) {
-      const results = await Promise.allSettled(
+      const append = (stageScope?: CommitTraceScope) => Promise.allSettled(
         pending.map(async (tag) => {
           const injectFault =
             fault === "tag-append-always" ||
@@ -712,12 +846,19 @@ export class CommitWorker {
                 eventTags: tags,
                 allocatorLineageId,
                 timestamp,
-              })),
+            })),
             faultInjection: injectFault ? "after-append-before-confirm" : undefined,
+          }, stageScope?.fork(), stageScope === undefined ? undefined : "S12", {
+            memberIndex: input.allTags.findIndex((candidate) => candidate === tag),
+            retryIndex: attempt,
+            attemptId,
           });
           return { tag, success: response.status >= 200 && response.status < 300 };
         }),
       );
+      const results = traceScope === undefined
+        ? await append()
+        : await traceScope.span("S11", { retryIndex: attempt }, async (stage) => append(stage));
       pending = results.flatMap((result, index) =>
         result.status === "fulfilled" && result.value.success ? [] : [pending[index]!],
       );
@@ -731,6 +872,7 @@ export class CommitWorker {
     allocation: AllocationVector,
     attemptId: string,
     fault: CommitTestFault | undefined,
+    traceScope?: CommitTraceScope,
   ): Promise<Response> {
     const sealing = await this.postJson<JournalRecord>(journal, "/reconcile", {
       expectedState: writing.state,
@@ -741,7 +883,7 @@ export class CommitWorker {
         records: [],
         failureCause: "write-failure",
       },
-    });
+    }, traceScope, "S20");
     if (sealing.response.status !== 200 || sealing.body?.state !== "SEALING") {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
@@ -771,6 +913,7 @@ export class CommitWorker {
     attemptId: string,
     failure: ReservationFailure,
     fault: CommitTestFault | undefined,
+    traceScope?: CommitTraceScope,
   ): Promise<Response> {
     const classified = await this.postJson<JournalRecord>(journal, "/reservation-failure", {
       expectedState: reserved.state,
@@ -779,27 +922,30 @@ export class CommitWorker {
       outcome: failure.outcome,
       failureCause: failure.failureCause,
       reason: failure.reason,
-    });
+    }, traceScope, "S17");
     if (classified.response.status !== 200 || classified.body === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
-    const cancelled = await Promise.allSettled(
-      consistencyTags.map(async ({ tag }) => {
+    const cancel = (stageScope?: CommitTraceScope) => Promise.allSettled(
+      consistencyTags.map(async ({ tag }, memberIndex) => {
         const response = await this.tagRequest(tag, "/cancel", {
           attemptId,
           epoch: INITIAL_OWNER_EPOCH,
           forceTombstone: true,
-        });
+        }, stageScope?.fork(), stageScope === undefined ? undefined : "S19", { memberIndex, attemptId });
         return response.status >= 200 && response.status < 300;
       }),
     );
+    const cancelled = traceScope === undefined
+      ? await cancel()
+      : await traceScope.span("S18", {}, async (stage) => cancel(stage));
     if (!cancelled.every((result) => result.status === "fulfilled" && result.value)) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     if (fault === "tombstone-after-durable") {
       return this.noApplicationOutcome(attemptId, true);
     }
-    const terminal = await this.transition(journal, classified.body, failure.outcome, failure.reason);
+    const terminal = await this.transition(journal, classified.body, failure.outcome, failure.reason, undefined, traceScope);
     if (terminal === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
@@ -815,12 +961,13 @@ export class CommitWorker {
     attemptId: string,
     startedAt: number,
     fault: CommitTestFault | undefined,
+    traceScope?: CommitTraceScope,
   ): Promise<CompleteCommitResponse> {
-    const tagWriteResults = await Promise.all(input.allTags.map(async (tag): Promise<TagWriteResultResponse> => {
+    const readStates = (stageScope?: CommitTraceScope) => Promise.all(input.allTags.map(async (tag, memberIndex): Promise<TagWriteResultResponse> => {
       if (fault === "tag-state-unavailable") {
         throw new Error("Test fault made the committed tag state unavailable");
       }
-      const response = await this.tagRequest(tag, "/state");
+      const response = await this.tagRequest(tag, "/state", undefined, stageScope?.fork(), stageScope === undefined ? undefined : "S14", { memberIndex, attemptId });
       if (response.status !== 200) {
         throw new Error("Committed tag state was unavailable while preparing the response");
       }
@@ -830,6 +977,9 @@ export class CommitWorker {
       }
       return { tag, version: body.version, writtenAt: body.updatedAt };
     }));
+    const tagWriteResults = traceScope === undefined
+      ? await readStates()
+      : await traceScope.span("S13", {}, async (stage) => readStates(stage));
     return {
       writtenEvents: candidates.map((candidate) => ({
         payload: encodeBase64Utf8(candidate.payload),

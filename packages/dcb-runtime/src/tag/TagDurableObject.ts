@@ -30,6 +30,12 @@ import { deliveryCorrelationId } from "../downstream/DeliveryCore";
 import { assertCanonicalEventType } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
+import {
+  DurableObjectActivation,
+  enterNativeActorHandleSpan,
+  type DurableObjectActivationObservation,
+} from "../trace/CommitTrace";
+import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -878,25 +884,33 @@ function overlappingFenceReason(record: TagRecord, reason: string): string | und
 }
 
 export class TagDurableObject implements DurableObject {
+  /** Constructor-scoped observation only; never persisted or used for control. */
+  private readonly activation = new DurableObjectActivation();
+
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly env: TagDurableObjectEnv,
   ) {}
 
   async fetch(request: Request): Promise<Response> {
+    // Flip before this handler performs its first await.
+    const activation = this.activation.beginHandler();
     const url = new URL(request.url);
     const tag = url.searchParams.get("__tag");
     if (!isNonEmptyString(tag)) {
       return error(400, "tag_identity_required", "Tag identity is required");
     }
+    const serviceId = url.searchParams.get("__serviceId");
     if (request.method === "GET" && url.pathname === "/state") {
-      const record = await this.ctx.storage.get<TagRecord>(TAG_KEY);
-      if (record === undefined) {
-        return error(404, "tag_not_found", "Tag has no durable state yet");
-      }
-      return record.tag === tag
-        ? json(requireG32TagRecord(record))
-        : error(409, "tag_identity_conflict", "Tag Durable Object identity changed");
+      return this.traceCommitReadActor(request, tag, serviceId, activation, async () => {
+        const record = await this.ctx.storage.get<TagRecord>(TAG_KEY);
+        if (record === undefined) {
+          return error(404, "tag_not_found", "Tag has no durable state yet");
+        }
+        return record.tag === tag
+          ? json(requireG32TagRecord(record))
+          : error(409, "tag_identity_conflict", "Tag Durable Object identity changed");
+      });
     }
     if (request.method === "GET" && url.pathname === "/repair/facts") {
       return this.repairFacts(tag);
@@ -906,21 +920,22 @@ export class TagDurableObject implements DurableObject {
       return record === undefined ? error(404, "tag_not_found", "Tag has no durable state yet") : json(record);
     }
 
+    if (request.method === "POST" && url.pathname === "/acquire") {
+      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.acquire(tag, body));
+    }
+    if (request.method === "POST" && url.pathname === "/cancel") {
+      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.cancel(tag, body));
+    }
+    if (request.method === "POST" && url.pathname === "/seal") {
+      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.seal(tag, body));
+    }
+    if (request.method === "POST" && url.pathname === "/append") {
+      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.append(tag, body, serviceId, url.searchParams.get("__domainDeliveryClass") ?? undefined));
+    }
+
     const body = await this.jsonBody(request);
     if (body === undefined) {
       return error(400, "malformed_tag_request", "Request body must be JSON");
-    }
-    if (request.method === "POST" && url.pathname === "/acquire") {
-      return this.acquire(tag, body);
-    }
-    if (request.method === "POST" && url.pathname === "/cancel") {
-      return this.cancel(tag, body);
-    }
-    if (request.method === "POST" && url.pathname === "/seal") {
-      return this.seal(tag, body);
-    }
-    if (request.method === "POST" && url.pathname === "/append") {
-      return this.append(tag, body, url.searchParams.get("__serviceId"), url.searchParams.get("__domainDeliveryClass") ?? undefined);
     }
     if (request.method === "POST" && url.pathname === "/bootstrap/admit") {
       return this.bootstrapAppend(tag, body, url.searchParams.get("__serviceId"));
@@ -968,10 +983,57 @@ export class TagDurableObject implements DurableObject {
   }
 
   async alarm(): Promise<void> {
+    this.activation.beginHandler();
     await this.runAlarm();
   }
 
-  private async jsonBody(request: Request): Promise<unknown | undefined> {
+  private async traceCommitActor(
+    request: Request,
+    tag: string,
+    serviceId: string | null,
+    activation: DurableObjectActivationObservation,
+    callback: (body: unknown) => Promise<Response>,
+  ): Promise<Response> {
+    return enterNativeActorHandleSpan(
+      cloudflareTracing(),
+      { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation },
+      async () => {
+        const body = await this.jsonBody(request.clone());
+        const attemptId = isObject(body) && isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
+        return attemptId === undefined || !isNonEmptyString(serviceId)
+          ? undefined
+          : { attemptId, serviceId };
+      },
+      async () => {
+        const body = await this.jsonBody(request);
+        return body === undefined
+          ? error(400, "malformed_tag_request", "Request body must be JSON")
+          : callback(body);
+      },
+    );
+  }
+
+  /**
+   * /state remains a body-less existing internal read. Its Cloudflare parent
+   * comes solely from active async context; G30 does not add a correlation
+   * header or alter this request's protocol shape just to label telemetry.
+   */
+  private async traceCommitReadActor(
+    request: Request,
+    tag: string,
+    serviceId: string | null,
+    activation: DurableObjectActivationObservation,
+    callback: () => Promise<Response>,
+  ): Promise<Response> {
+    return enterNativeActorHandleSpan(
+      cloudflareTracing(),
+      { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation },
+      async () => undefined,
+      callback,
+    );
+  }
+
+  private async jsonBody(request: Pick<Request, "json">): Promise<unknown | undefined> {
     try {
       return await request.json<unknown>();
     } catch {

@@ -1,0 +1,31 @@
+{
+  "task": "SDT-G30",
+  "baseline": "B0",
+  "purpose": "attribution-only-not-g37-denominator",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "deployedRuntimeCommit": "CANDIDATE",
+  "recording": {
+    "candidateInput": "--source-commit",
+    "candidateIndependent": true,
+    "finalCandidateMustBeSealedOnce": true,
+    "postCandidateAllowlist": [
+      "docs/SDT-G30-*evidence*.json",
+      "docs/SDT-G30-*evidence*.md",
+      ".github/workflows/ci.yml"
+    ]
+  },
+  "protocol": {
+    "selfReference": false,
+    "protocolAndWireChanged": false,
+    "placement": "off",
+    "performancePassFailAsserted": false
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtimeRoots": ["packages/dcb-runtime/src"],
+    "configurationRoots": [],
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

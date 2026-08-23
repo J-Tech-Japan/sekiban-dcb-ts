@@ -1,5 +1,6 @@
 import { BindingExclusionLookupClient } from "../downstream/ExclusionLookup";
 import { RepairWorker, RepairWorkerFailure, type RepairExecutionInput, type RepairFault, type RepairMode } from "../repair/RepairWorker";
+import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 type JsonObject = Record<string, unknown>;
 
@@ -114,6 +115,7 @@ export async function handleOperatorRepair(request: Request, env: OperatorRepair
       env,
       new BindingExclusionLookupClient(env.REPAIR_EXCLUSION_LOOKUP),
       env.SDT_SERVICE_ID,
+      { nativeTracing: cloudflareTracing() },
     );
     const result = await worker.execute(parsed.value);
     return json(result, result.interrupted === undefined ? 200 : 202);

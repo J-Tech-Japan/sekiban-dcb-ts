@@ -12,6 +12,14 @@ import {
   OrderClockReadError,
 } from "./OrderClock";
 import { assertSortableUniqueId, SortableUniqueIdError } from "./SortableUniqueId";
+import {
+  correlationIdForAttempt,
+  DurableObjectActivation,
+  enterNativeActorHandleSpan,
+  enterNativeCommitSpan,
+  type DurableObjectActivationObservation,
+} from "../trace/CommitTrace";
+import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
@@ -149,6 +157,9 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
  * allocated watermark is serialized and atomic.
  */
 export class AllocatorDurableObject implements DurableObject {
+  /** Observation-only; it is never serialized into Durable Object storage. */
+  private readonly activation = new DurableObjectActivation();
+
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly env?: { BOOTSTRAP?: DurableObjectNamespace },
@@ -156,7 +167,22 @@ export class AllocatorDurableObject implements DurableObject {
   ) {}
 
   async fetch(request: Request): Promise<Response> {
+    // Must run before the first await in every handler admission.
+    const activation = this.activation.beginHandler();
     const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/allocate") {
+      return enterNativeActorHandleSpan(
+        cloudflareTracing(),
+        { actorClass: "ALLOCATOR", actorKey: "allocator", activation },
+        async () => {
+          const parsed = allocateFrom(await request.clone().json<unknown>());
+          return parsed.value?.serviceId === undefined
+            ? undefined
+            : { attemptId: parsed.value.attemptId, serviceId: parsed.value.serviceId };
+        },
+        () => this.allocate(request, activation),
+      );
+    }
     if (request.method === "GET" && url.pathname === "/state") {
       const state = await this.ctx.storage.transaction(async (txn) => {
         const stored = await txn.get<AllocatorState>(STATE_KEY);
@@ -171,33 +197,40 @@ export class AllocatorDurableObject implements DurableObject {
       return json(state);
     }
     if (request.method === "GET" && url.pathname.startsWith("/attempts/")) {
-      let attemptId: string;
-      try {
-        attemptId = decodeURIComponent(url.pathname.slice("/attempts/".length));
-      } catch {
-        return error(400, "invalid_attempt_id", "Attempt ID must be URI encoded");
-      }
-      if (attemptId.length === 0) {
-        return error(400, "invalid_attempt_id", "Attempt ID is required");
-      }
-      const vector = await this.ctx.storage.get<AllocationVector>(attemptKey(attemptId));
-      if (vector === undefined) {
-        return error(404, "allocation_not_found", "No durable allocation exists for this attempt");
-      }
-      if (vector.allocatorLineageId !== undefined && vector.allocatorLineageId.length > 0) {
-        return json(vector);
-      }
-      const state = await this.ctx.storage.get<AllocatorState>(STATE_KEY);
-      return json({ ...vector, allocatorLineageId: state?.allocatorLineageId || newAllocatorLineageId() });
-    }
-    if (request.method === "POST" && url.pathname === "/allocate") {
-      return this.allocate(request);
+      return enterNativeActorHandleSpan(
+        cloudflareTracing(),
+        { actorClass: "ALLOCATOR", actorKey: "allocator", activation },
+        async () => undefined,
+        async () => {
+          let attemptId: string;
+          try {
+            attemptId = decodeURIComponent(url.pathname.slice("/attempts/".length));
+          } catch {
+            return error(400, "invalid_attempt_id", "Attempt ID must be URI encoded");
+          }
+          if (attemptId.length === 0) {
+            return error(400, "invalid_attempt_id", "Attempt ID is required");
+          }
+          const vector = await this.ctx.storage.get<AllocationVector>(attemptKey(attemptId));
+          if (vector === undefined) {
+            return error(404, "allocation_not_found", "No durable allocation exists for this attempt");
+          }
+          if (vector.allocatorLineageId !== undefined && vector.allocatorLineageId.length > 0) {
+            return json(vector);
+          }
+          const state = await this.ctx.storage.get<AllocatorState>(STATE_KEY);
+          return json({ ...vector, allocatorLineageId: state?.allocatorLineageId || newAllocatorLineageId() });
+        },
+      );
     }
     if (request.method === "POST" && url.pathname === "/seed-after") return this.seedAfter(request);
     return error(404, "allocator_route_not_found", "Allocator route was not found");
   }
 
-  private async allocate(request: Request): Promise<Response> {
+  private async allocate(
+    request: Request,
+    activation: DurableObjectActivationObservation,
+  ): Promise<Response> {
     let body: unknown;
     try {
       body = await request.json<unknown>();
@@ -210,8 +243,32 @@ export class AllocatorDurableObject implements DurableObject {
     }
     const input = parsed.value;
     if (input.serviceId !== undefined && this.env?.BOOTSTRAP !== undefined) {
-      const url = new URL("https://allocator.internal/command/finalize"); url.searchParams.set("__serviceId", input.serviceId);
-      const admitted = await this.env.BOOTSTRAP.get(this.env.BOOTSTRAP.idFromName(input.serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId: input.bootstrapCommandId, leaseEpoch: input.bootstrapEpoch }) }));
+      const admitted = await enterNativeCommitSpan(
+        cloudflareTracing(),
+        "allocator.bootstrap.finalize",
+        {
+          schema: "sdt.commit/v1",
+          face: "accepted",
+          rowId: "S09",
+          correlationId: correlationIdForAttempt(input.attemptId),
+          attemptId: input.attemptId,
+          serviceId: input.serviceId,
+          actorClass: "ALLOCATOR",
+          actorKey: `allocator:${input.serviceId}`,
+          activation,
+          operation: "allocator.bootstrap.finalize",
+          kind: "nested",
+        },
+        async () => {
+          const url = new URL("https://allocator.internal/command/finalize");
+          url.searchParams.set("__serviceId", input.serviceId!);
+          return this.env!.BOOTSTRAP!.get(this.env!.BOOTSTRAP!.idFromName(input.serviceId!)).fetch(new Request(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ commandId: input.bootstrapCommandId, leaseEpoch: input.bootstrapEpoch }),
+          }));
+        },
+      );
       if (!admitted.ok) return error(409, "bootstrap_command_rejected", "bootstrap fencing epoch rejects allocation");
     }
 

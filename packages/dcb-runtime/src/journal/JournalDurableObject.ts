@@ -23,6 +23,19 @@ import { allocatorNameForService } from "../allocator/types";
 import { assertCanonicalEventType } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import { CANONICAL_UTC_TIMESTAMP_PATTERN } from "../eventRecord";
+import {
+  correlationIdForAttempt,
+  DurableObjectActivation,
+  enterNativeActorHandleSpan,
+  enterNativeCommitSpan,
+  enterNativeReconcileRootSpan,
+  stableTraceHash,
+  traceManifest,
+  type DurableObjectActivationObservation,
+  type NativeCommitSpanInput,
+  type NativeTracing,
+} from "../trace/CommitTrace";
+import { cloudflareTracing } from "../trace/CloudflareTracing";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -84,6 +97,136 @@ interface MutationConflict {
 
 type MutationResult = MutationSuccess | MutationConflict;
 
+type ReconcileRowId =
+  | "R00"
+  | "R01"
+  | "R02"
+  | "R03"
+  | "R04"
+  | "R05"
+  | "R06"
+  | "R08"
+  | "R09"
+  | "R10"
+  | "R11";
+
+type ReconcileRecoveryKind =
+  | "terminal-at-entry"
+  | "pre-allocation-vector-absent"
+  | "journal-pre-allocation-vector-present"
+  | "post-allocation-full-write"
+  | "post-allocation-no-write"
+  | "post-allocation-partial-write"
+  | "permit-release-won"
+  | "permit-transfer-won"
+  | "permit-corrupt-missing";
+
+interface ReconcileTraceContext {
+  readonly attemptId: string;
+  readonly serviceId: string;
+  readonly activation: DurableObjectActivationObservation;
+  /** Observation adapter only; never stored on the durable Journal record. */
+  readonly nativeTracing: NativeTracing;
+  readonly alarmEventId: string;
+  readonly invocationId: string;
+  readonly retryCount: number;
+  readonly isRetry: boolean;
+  recoveryKind?: ReconcileRecoveryKind;
+  readonly prefixAtEntry: "pre-takeover" | "takeover-done" | "transfer-done" | "sealed" | "terminal";
+}
+
+type ReconcileApplyTrace = Readonly<{
+  rowId: "R06" | "R11";
+  before: ReconcileTraceContext["prefixAtEntry"];
+  after: ReconcileTraceContext["prefixAtEntry"];
+}>;
+
+function durablePrefix(record: JournalRecord): ReconcileTraceContext["prefixAtEntry"] {
+  if (isTerminalState(record.state)) return "terminal";
+  if (record.takeover === null) return "pre-takeover";
+  return record.state === "SEALING" ? "takeover-done" : "sealed";
+}
+
+function reconcileTraceFor(
+  record: JournalRecord | undefined,
+  activation: DurableObjectActivationObservation,
+  nativeTracing: NativeTracing,
+  alarmInfo?: AlarmInvocationInfo,
+): ReconcileTraceContext | undefined {
+  const context = record?.commitContext;
+  if (record === undefined || context === undefined) return undefined;
+  return {
+    attemptId: context.attemptId,
+    serviceId: context.serviceId,
+    activation,
+    nativeTracing,
+    // A platform retry belongs to the generation already captured by the
+    // preceding R01. A fresh self-rearmed fire consumes the scheduled
+    // generation that was durable at entry. Never attribute either to the
+    // generation this invocation subsequently schedules.
+    alarmEventId: alarmInfo?.isRetry
+      ? record.firedGenerationId ?? record.alarm?.scheduledGenerationId ?? crypto.randomUUID()
+      : record.alarm?.scheduledGenerationId ?? record.firedGenerationId ?? crypto.randomUUID(),
+    invocationId: crypto.randomUUID(),
+    retryCount: alarmInfo?.retryCount ?? 0,
+    isRetry: alarmInfo?.isRetry ?? false,
+    prefixAtEntry: durablePrefix(record!),
+  };
+}
+
+function reconcileRow(rowId: ReconcileRowId) {
+  const rows = traceManifest().schemas["sdt.commit.reconcile/v1"].rows;
+  const found = rows.find((row) => row.rowId === rowId);
+  if (found === undefined) throw new Error(`commit trace manifest lacks reconciliation row ${rowId}`);
+  return found;
+}
+
+async function tracedReconcile<T>(
+  trace: ReconcileTraceContext | undefined,
+  rowId: ReconcileRowId,
+  callback: () => T | Promise<T>,
+  options: Readonly<{
+    before?: ReconcileTraceContext["prefixAtEntry"];
+    after?: ReconcileTraceContext["prefixAtEntry"];
+    memberIndex?: number;
+    tag?: string;
+  }> = {},
+): Promise<T> {
+  if (trace === undefined) return callback();
+  // The manifest is a verifier authority, not a new alarm/commit control
+  // dependency. If a malformed deployment artifact cannot describe this
+  // observation, retain the original recovery callback unchanged and leave
+  // the export incomplete rather than changing reconciliation semantics.
+  let input: NativeCommitSpanInput;
+  let spanName: string;
+  try {
+    const row = reconcileRow(rowId);
+    spanName = row.span;
+    input = {
+      schema: "sdt.commit.reconcile/v1",
+      face: "reconcile-root",
+      rowId,
+      correlationId: correlationIdForAttempt(trace.attemptId),
+      attemptId: trace.attemptId,
+      serviceId: trace.serviceId,
+      actorClass: "JOURNAL",
+      actorKey: `journal:${trace.attemptId}`,
+      activation: trace.activation,
+      operation: row.span,
+      kind: row.kind as NativeCommitSpanInput["kind"],
+      attributes: {
+        ...(options.before === undefined ? {} : { "prefix.before": options.before }),
+        ...(options.after === undefined ? {} : { "prefix.after": options.after }),
+        ...(options.memberIndex === undefined ? {} : { "member.index": options.memberIndex }),
+        ...(options.tag === undefined ? {} : { "tag.key_hash": stableTraceHash(options.tag) }),
+      },
+    };
+  } catch {
+    return callback();
+  }
+  return enterNativeCommitSpan(trace.nativeTracing, spanName, input, callback);
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -137,13 +280,14 @@ function nextAlarm(previous: AlarmSchedule | null, initial = false): AlarmSchedu
       attempt: 0,
       delayMs: INITIAL_ALARM_DELAY_MS,
       dueAt: Date.now() + INITIAL_ALARM_DELAY_MS,
+      scheduledGenerationId: crypto.randomUUID(),
     };
   }
 
   const attempt = (previous?.attempt ?? 0) + 1;
   const exponent = Math.min(attempt - 1, 7);
   const delayMs = Math.min(ALARM_BACKOFF_BASE_MS * 2 ** exponent, MAX_ALARM_BACKOFF_MS);
-  return { attempt, delayMs, dueAt: Date.now() + delayMs };
+  return { attempt, delayMs, dueAt: Date.now() + delayMs, scheduledGenerationId: crypto.randomUUID() };
 }
 
 function immediateAlarm(previous: AlarmSchedule | null): AlarmSchedule {
@@ -151,6 +295,7 @@ function immediateAlarm(previous: AlarmSchedule | null): AlarmSchedule {
     attempt: previous?.attempt ?? 0,
     delayMs: 0,
     dueAt: Date.now(),
+    scheduledGenerationId: crypto.randomUUID(),
   };
 }
 
@@ -160,6 +305,7 @@ function testFaultAlarm(previous: AlarmSchedule | null): AlarmSchedule {
     attempt: previous?.attempt ?? 0,
     delayMs: TEST_FAULT_ALARM_DELAY_MS,
     dueAt: Date.now() + TEST_FAULT_ALARM_DELAY_MS,
+    scheduledGenerationId: crypto.randomUUID(),
   };
 }
 
@@ -217,6 +363,16 @@ function requeryCount(record: JournalRecord, input: ReconciliationInput): number
     const candidate = candidates.get(entry.eventId);
     return candidate !== undefined && candidate.payload === entry.payload && entry.present;
   }).length;
+}
+
+function postAllocationRecoveryKind(
+  record: JournalRecord,
+  input: ReconciliationInput,
+): Extract<ReconcileRecoveryKind, `post-allocation-${string}`> {
+  if (hasEveryCandidatePresent(record, input)) return "post-allocation-full-write";
+  return requeryCount(record, input) > 0
+    ? "post-allocation-partial-write"
+    : "post-allocation-no-write";
 }
 
 function takeoverBarrierSatisfied(
@@ -664,12 +820,19 @@ function repairObservationFrom(value: unknown): { value?: RepairObservationInput
  * later slice.
  */
 export class JournalDurableObject implements DurableObject {
+  /** Constructor-scoped observation only; never persisted or used for control. */
+  private readonly activation = new DurableObjectActivation();
+
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly env: CommitRecoveryEnv,
+    /** Optional test adapter; production always uses Cloudflare active context. */
+    private readonly nativeTracing: NativeTracing = cloudflareTracing(),
   ) {}
 
   async fetch(request: Request): Promise<Response> {
+    // Flip before this handler performs its first await.
+    const activation = this.activation.beginHandler();
     const path = new URL(request.url).pathname;
     if (request.method === "GET" && path === "/state") {
       const record = await this.readRecord();
@@ -692,22 +855,22 @@ export class JournalDurableObject implements DurableObject {
       return this.repairObservations();
     }
 
+    if (request.method === "POST" && path === "/admit") {
+      return this.traceCommitActor(request, activation, (body) => this.admit(body));
+    }
+    if (request.method === "POST" && path === "/transition") {
+      return this.traceCommitActor(request, activation, (body) => this.transition(body));
+    }
+    if (request.method === "POST" && path === "/reconcile") {
+      return this.traceCommitActor(request, activation, (body) => this.reconcile(body));
+    }
+    if (request.method === "POST" && path === "/reservation-failure") {
+      return this.traceCommitActor(request, activation, (body) => this.recordReservationFailure(body));
+    }
+
     const body = await this.jsonBody(request);
     if (body === undefined) {
       return error(400, "malformed_journal_request", "Request body must be JSON");
-    }
-
-    if (request.method === "POST" && path === "/admit") {
-      return this.admit(body);
-    }
-    if (request.method === "POST" && path === "/transition") {
-      return this.transition(body);
-    }
-    if (request.method === "POST" && path === "/reconcile") {
-      return this.reconcile(body);
-    }
-    if (request.method === "POST" && path === "/reservation-failure") {
-      return this.recordReservationFailure(body);
     }
     if (request.method === "POST" && path === "/takeover") {
       return this.takeover(body);
@@ -722,15 +885,50 @@ export class JournalDurableObject implements DurableObject {
       if (isObject(body) && body.clearTestFenceNotDurable === true) {
         await this.clearTestFenceNotDurableFault();
       }
-      const record = await this.runAlarm();
+      const record = await this.runAlarm(activation);
       return record === undefined ? error(404, "journal_not_found", "Journal has not been admitted") : json(record);
     }
 
     return error(404, "journal_route_not_found", "Journal route was not found");
   }
 
-  async alarm(): Promise<void> {
-    await this.runAlarm();
+  async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {
+    const activation = this.activation.beginHandler();
+    await this.runAlarm(activation, alarmInfo);
+  }
+
+  private async traceCommitActor(
+    request: Request,
+    activation: DurableObjectActivationObservation,
+    callback: (body: unknown) => Promise<Response>,
+  ): Promise<Response> {
+    return enterNativeActorHandleSpan(
+      this.nativeTracing,
+      { actorClass: "JOURNAL", actorKey: "journal", activation },
+      async () => {
+        const body = await this.jsonBody(request.clone());
+        if (isObject(body) && isObject(body.commitContext) && isNonEmptyString(body.commitContext.attemptId) && isNonEmptyString(body.commitContext.serviceId)) {
+          return {
+            attemptId: body.commitContext.attemptId,
+            serviceId: body.commitContext.serviceId,
+            actorKey: `journal:${body.commitContext.attemptId}`,
+          };
+        }
+        const record = await this.readRecord();
+        const context = record?.commitContext;
+        return context === undefined ? undefined : {
+          attemptId: context.attemptId,
+          serviceId: context.serviceId,
+          actorKey: `journal:${context.attemptId}`,
+        };
+      },
+      async () => {
+        const body = await this.jsonBody(request);
+        return body === undefined
+          ? error(400, "malformed_journal_request", "Request body must be JSON")
+          : callback(body);
+      },
+    );
   }
 
   private async readRecord(): Promise<JournalRecord | undefined> {
@@ -793,7 +991,7 @@ export class JournalDurableObject implements DurableObject {
     });
   }
 
-  private async jsonBody(request: Request): Promise<unknown | undefined> {
+  private async jsonBody(request: Pick<Request, "json">): Promise<unknown | undefined> {
     try {
       return await request.json<unknown>();
     } catch {
@@ -1137,8 +1335,10 @@ export class JournalDurableObject implements DurableObject {
     expectation: CasExpectation,
     reconciliation: ReconciliationInput,
     authority: "worker" | "alarm",
+    trace?: ReconcileTraceContext,
+    traceRow?: ReconcileApplyTrace,
   ): Promise<MutationResult> {
-    return this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+    const apply = () => this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const record = await txn.get<JournalRecord>(JOURNAL_KEY);
       if (record === undefined) {
         return { ok: false, status: 404, error: "Journal has not been admitted" };
@@ -1179,10 +1379,19 @@ export class JournalDurableObject implements DurableObject {
       }
       return { ok: true, record: updated };
     });
+    return authority === "alarm" && traceRow !== undefined
+      ? tracedReconcile(trace, traceRow.rowId, apply, {
+        before: traceRow.before,
+        after: traceRow.after,
+      })
+      : apply();
   }
 
-  private async beginAlarmTakeover(expected: JournalRecord): Promise<MutationResult> {
-    return this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+  private async beginAlarmTakeover(
+    expected: JournalRecord,
+    trace?: ReconcileTraceContext,
+  ): Promise<MutationResult> {
+    const begin = () => this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const record = await txn.get<JournalRecord>(JOURNAL_KEY);
       if (record === undefined) {
         return { ok: false, status: 404, error: "Journal has not been admitted" };
@@ -1212,17 +1421,95 @@ export class JournalDurableObject implements DurableObject {
       await txn.put(JOURNAL_KEY, updated);
       return { ok: true, record: updated };
     });
+    return tracedReconcile(trace, "R02", begin, {
+      before: "pre-takeover",
+      after: "takeover-done",
+    });
   }
 
-  private async runAlarm(): Promise<JournalRecord | undefined> {
+  private async runAlarm(
+    activation: DurableObjectActivationObservation,
+    alarmInfo?: AlarmInvocationInfo,
+  ): Promise<JournalRecord | undefined> {
+    let atEntry: JournalRecord | undefined;
+    let trace: ReconcileTraceContext | undefined;
+    // R00 must begin at handler entry. Identity is only known after the
+    // durable Journal record is read, so the helper resolves it inside the
+    // active Cloudflare callback context without a synthetic parent ID.
+    return enterNativeReconcileRootSpan(
+      this.nativeTracing,
+      async () => {
+        atEntry = await this.readRecord();
+        trace = reconcileTraceFor(atEntry, activation, this.nativeTracing, alarmInfo);
+        if (trace === undefined) return undefined;
+        return {
+          attemptId: trace.attemptId,
+          serviceId: trace.serviceId,
+          actorKey: `journal:${trace.attemptId}`,
+          activation: trace.activation,
+          alarmEventId: trace.alarmEventId,
+          invocationId: trace.invocationId,
+          retryCount: trace.retryCount,
+          isRetry: trace.isRetry,
+          prefixAtEntry: trace.prefixAtEntry,
+        };
+      },
+      async (_identity, facts) => {
+        try {
+          if (atEntry === undefined) return undefined;
+          if (isTerminalState(atEntry.state)) {
+            if (trace !== undefined) trace.recoveryKind = "terminal-at-entry";
+            return tracedReconcile(trace, "R08", () => this.clearTerminalAlarm(trace), {
+              before: "terminal",
+              after: "terminal",
+            });
+          }
+          return this.runAlarmCore(trace);
+        } finally {
+          if (trace?.recoveryKind !== undefined) facts.setRecoveryKind(trace.recoveryKind);
+        }
+      },
+    );
+  }
+
+  /** Terminal-at-entry is an isolated R00/R08 boundary: no recovery work. */
+  private async clearTerminalAlarm(trace?: ReconcileTraceContext): Promise<JournalRecord | undefined> {
+    const cleared = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
+      if (record === undefined) {
+        return { ok: false, status: 404, error: "Journal has not been admitted" };
+      }
+      if (!isTerminalState(record.state)) {
+        return { ok: false, status: 409, error: "Journal changed before terminal alarm clear" };
+      }
+      const firedGenerationId = trace?.alarmEventId ?? record.alarm?.scheduledGenerationId ?? record.firedGenerationId ?? crypto.randomUUID();
+      const updated: JournalRecord = {
+        ...record,
+        firedGenerationId,
+        alarm: null,
+        updatedAt: nowIso(),
+      };
+      await txn.put(JOURNAL_KEY, updated);
+      await txn.deleteAlarm();
+      return { ok: true, record: updated };
+    });
+    return cleared.ok ? cleared.record : cleared.status === 404 ? undefined : this.readRecord();
+  }
+
+  private async runAlarmCore(trace?: ReconcileTraceContext): Promise<JournalRecord | undefined> {
     try {
-      const rearmed = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+      const rearmed = await tracedReconcile(trace, "R01", () => this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
         const record = await txn.get<JournalRecord>(JOURNAL_KEY);
         if (record === undefined) {
           return { ok: false, status: 404, error: "Journal has not been admitted" };
         }
         if (isTerminalState(record.state)) {
-          const updated: JournalRecord = { ...record, alarm: null, updatedAt: nowIso() };
+          const updated: JournalRecord = {
+            ...record,
+            firedGenerationId: trace?.alarmEventId ?? record.alarm?.scheduledGenerationId ?? record.firedGenerationId ?? crypto.randomUUID(),
+            alarm: null,
+            updatedAt: nowIso(),
+          };
           await txn.put(JOURNAL_KEY, updated);
           await txn.deleteAlarm();
           return { ok: true, record: updated };
@@ -1230,6 +1517,10 @@ export class JournalDurableObject implements DurableObject {
 
         const updated: JournalRecord = {
           ...record,
+          // A retry keeps this handler's fired generation even though R01
+          // schedules a new one. The scheduled generation is solely the
+          // next fire's identity.
+          firedGenerationId: trace?.alarmEventId ?? record.alarm?.scheduledGenerationId ?? record.firedGenerationId ?? crypto.randomUUID(),
           alarm: nextAlarm(record.alarm),
           version: record.version + 1,
           updatedAt: nowIso(),
@@ -1238,7 +1529,7 @@ export class JournalDurableObject implements DurableObject {
         await txn.put(JOURNAL_KEY, updated);
         await txn.setAlarm(alarm.dueAt);
         return { ok: true, record: updated };
-      });
+      }));
 
       if (!rearmed.ok) {
         return rearmed.status === 404 ? undefined : this.readRecord();
@@ -1252,10 +1543,10 @@ export class JournalDurableObject implements DurableObject {
       }
       if (alarmRecord.commitContext !== undefined) {
         const handlerEntryFault = await this.consumeNamedAlarmFault(alarmRecord, "handler-entry");
-        return handlerEntryFault ?? this.recoverCommitAttempt(alarmRecord);
+        return handlerEntryFault ?? this.recoverCommitAttempt(alarmRecord, trace);
       }
       if (alarmRecord.takeover === null && ["ALLOCATED", "WRITING", "SEALING"].includes(alarmRecord.state)) {
-        const handoff = await this.beginAlarmTakeover(alarmRecord);
+        const handoff = await this.beginAlarmTakeover(alarmRecord, trace);
         if (!handoff.ok) {
           return this.readRecord();
         }
@@ -1271,6 +1562,7 @@ export class JournalDurableObject implements DurableObject {
         },
         reconciliation,
         "alarm",
+        trace,
       );
       return reconciled.ok ? reconciled.record : this.readRecord();
     } catch {
@@ -1282,15 +1574,18 @@ export class JournalDurableObject implements DurableObject {
    * Recovery for a real serialized commit. The Journal is the only actor that
    * turns a post-allocation absence observation into a terminal outcome.
    */
-  private async recoverCommitAttempt(record: JournalRecord): Promise<JournalRecord | undefined> {
+  private async recoverCommitAttempt(
+    record: JournalRecord,
+    trace?: ReconcileTraceContext,
+  ): Promise<JournalRecord | undefined> {
     if (record.commitContext === undefined) {
       return record;
     }
     if (record.state === "ADMITTED" || record.state === "RESERVED") {
-      return this.recoverPreAllocationCommit(record);
+      return this.recoverPreAllocationCommit(record, trace);
     }
     if (["ALLOCATED", "WRITING", "SEALING"].includes(record.state)) {
-      return this.recoverPostAllocationCommit(record);
+      return this.recoverPostAllocationCommit(record, trace);
     }
     return record;
   }
@@ -1300,9 +1595,13 @@ export class JournalDurableObject implements DurableObject {
    * allocator vector is the durable authority. Otherwise cancel every
    * consistency reservation before safely abandoning the attempt.
    */
-  private async recoverPreAllocationCommit(record: JournalRecord): Promise<JournalRecord | undefined> {
+  private async recoverPreAllocationCommit(
+    record: JournalRecord,
+    trace?: ReconcileTraceContext,
+  ): Promise<JournalRecord | undefined> {
     const vector = await this.readAllocatorVector(record);
     if (vector !== undefined) {
+      if (trace !== undefined) trace.recoveryKind = "journal-pre-allocation-vector-present";
       const recovered = await this.applyReconciliation(
         expectationFor(record),
         {
@@ -1311,18 +1610,25 @@ export class JournalDurableObject implements DurableObject {
           failureCause: "allocator-failure",
         },
         "alarm",
+        trace,
+        { rowId: "R11", before: "pre-takeover", after: "pre-takeover" },
       );
       return recovered.ok ? recovered.record : this.readRecord();
     }
 
-    if (!(await this.cancelConsistencyBarrier(record, record.ownerEpoch))) {
+    if (trace !== undefined) trace.recoveryKind = "pre-allocation-vector-absent";
+    if (!(await this.cancelConsistencyBarrier(record, record.ownerEpoch, trace))) {
       return this.readRecord();
     }
-    if (record.state === "RESERVED" && record.reservationFailure !== null) {
-      const finalized = await this.transition({
+    const reservationFailure = record.reservationFailure;
+    if (record.state === "RESERVED" && reservationFailure !== null) {
+      const finalized = await tracedReconcile(trace, "R06", () => this.transition({
         ...expectationFor(record),
-        nextState: record.reservationFailure.outcome,
-        terminalReason: record.reservationFailure.reason,
+        nextState: reservationFailure.outcome,
+        terminalReason: reservationFailure.reason,
+      }), {
+        before: "pre-takeover",
+        after: "terminal",
       });
       return finalized.status === 200
         ? (await finalized.json()) as JournalRecord
@@ -1332,6 +1638,8 @@ export class JournalDurableObject implements DurableObject {
       expectationFor(record),
       { records: [], failureCause: "allocator-failure" },
       "alarm",
+      trace,
+      { rowId: "R11", before: "pre-takeover", after: "terminal" },
     );
     return abandoned.ok ? abandoned.record : this.readRecord();
   }
@@ -1341,7 +1649,10 @@ export class JournalDurableObject implements DurableObject {
    * requery, fencing, or cancel-barrier work leaves the re-armed Journal in
    * SEALING rather than publishing an absence-bearing result.
    */
-  private async recoverPostAllocationCommit(record: JournalRecord): Promise<JournalRecord | undefined> {
+  private async recoverPostAllocationCommit(
+    record: JournalRecord,
+    trace?: ReconcileTraceContext,
+  ): Promise<JournalRecord | undefined> {
     let current = record;
     const beforeSealFault = await this.consumeNamedAlarmFault(current, "after-rearm-before-seal");
     if (beforeSealFault !== undefined) {
@@ -1349,14 +1660,14 @@ export class JournalDurableObject implements DurableObject {
     }
 
     if (current.takeover === null) {
-      const handoff = await this.beginAlarmTakeover(current);
+      const handoff = await this.beginAlarmTakeover(current, trace);
       if (!handoff.ok) {
         return this.readRecord();
       }
       current = handoff.record;
     }
 
-    const partialSealFault = await this.sealCommitTags(current);
+    const partialSealFault = await this.sealCommitTags(current, trace);
     if (partialSealFault !== undefined) {
       return partialSealFault;
     }
@@ -1366,6 +1677,7 @@ export class JournalDurableObject implements DurableObject {
     }
 
     const reconciliation = await this.requeryCommitRecords(current);
+    if (trace !== undefined) trace.recoveryKind = postAllocationRecoveryKind(current, reconciliation);
     let fences: Array<{ tag: string; fenced: boolean }> = [];
     if (reconciliation.records.some((entry) => entry.present)) {
       const installedFences = await this.installMissingTagFences(current, reconciliation.missingTags ?? []);
@@ -1412,7 +1724,13 @@ export class JournalDurableObject implements DurableObject {
     if (evidence.journal === undefined) {
       return this.readRecord();
     }
-    const terminal = await this.applyReconciliation(expectationFor(evidence.journal), reconciliation, "alarm");
+    const terminal = await this.applyReconciliation(
+      expectationFor(evidence.journal),
+      reconciliation,
+      "alarm",
+      trace,
+      { rowId: "R06", before: "sealed", after: "terminal" },
+    );
     return terminal.ok ? terminal.record : this.readRecord();
   }
 
@@ -1439,21 +1757,39 @@ export class JournalDurableObject implements DurableObject {
   }
 
   /** Tombstone every observed tag, retaining any unrelated active owner. */
-  private async cancelConsistencyBarrier(record: JournalRecord, epoch: number): Promise<boolean> {
+  private async cancelConsistencyBarrier(
+    record: JournalRecord,
+    epoch: number,
+    trace?: ReconcileTraceContext,
+  ): Promise<boolean> {
     const context = record.commitContext;
     if (context === undefined) {
       return false;
     }
-    const requests = record.consistencyTags.map(async ({ tag }) => {
-      const response = await this.tagRequest(context, tag, "/cancel", {
-        attemptId: context.attemptId,
-        epoch,
-        forceTombstone: true,
+    const cancel = async (): Promise<boolean> => {
+      const requests = record.consistencyTags.map(async ({ tag }, index) => {
+        const response = await tracedReconcile(trace, "R10", () => this.tagRequest(context, tag, "/cancel", {
+          attemptId: context.attemptId,
+          epoch,
+          forceTombstone: true,
+        }), {
+          memberIndex: index,
+          tag,
+        });
+        return response.status >= 200 && response.status < 300;
       });
-      return response.status >= 200 && response.status < 300;
-    });
-    const settled = await Promise.allSettled(requests);
-    return settled.every((result) => result.status === "fulfilled" && result.value);
+      const settled = await Promise.allSettled(requests);
+      return settled.every((result) => result.status === "fulfilled" && result.value);
+    };
+    // R09/R10 belong only to the vector-absent pre-allocation branch. The
+    // post-allocation cancel barrier deliberately remains uninstrumented by
+    // these rows because that recovery kind forbids them.
+    return trace === undefined
+      ? cancel()
+      : tracedReconcile(trace, "R09", cancel, {
+        before: "pre-takeover",
+        after: "pre-takeover",
+      });
   }
 
   /** Returns a consumed fault record only when the named point was armed. */
@@ -1495,28 +1831,39 @@ export class JournalDurableObject implements DurableObject {
    * Seal each tag serially so the partial-seal crash point can be observed.
    * Repeating a completed seal is explicitly idempotent in the Tag DO.
    */
-  private async sealCommitTags(record: JournalRecord): Promise<JournalRecord | undefined> {
+  private async sealCommitTags(
+    record: JournalRecord,
+    trace?: ReconcileTraceContext,
+  ): Promise<JournalRecord | undefined> {
     const context = record.commitContext;
     if (context === undefined) {
       return record;
     }
-    for (let index = 0; index < record.allTags.length; index += 1) {
-      const tag = record.allTags[index]!;
-      const response = await this.tagRequest(context, tag, "/seal", {
-        attemptId: context.attemptId,
-        epoch: record.ownerEpoch,
-      });
-      if (response.status < 200 || response.status >= 300) {
-        return this.readRecord();
-      }
-      if (index + 1 < record.allTags.length) {
-        const fault = await this.consumeNamedAlarmFault(record, "after-partial-seal");
-        if (fault !== undefined) {
-          return fault;
+    return tracedReconcile(trace, "R03", async () => {
+      for (let index = 0; index < record.allTags.length; index += 1) {
+        const tag = record.allTags[index]!;
+        const response = await tracedReconcile(trace, "R04", () => this.tagRequest(context, tag, "/seal", {
+          attemptId: context.attemptId,
+          epoch: record.ownerEpoch,
+        }), {
+          memberIndex: index,
+          tag,
+        });
+        if (response.status < 200 || response.status >= 300) {
+          return this.readRecord();
+        }
+        if (index + 1 < record.allTags.length) {
+          const fault = await this.consumeNamedAlarmFault(record, "after-partial-seal");
+          if (fault !== undefined) {
+            return fault;
+          }
         }
       }
-    }
-    return undefined;
+      return undefined;
+    }, {
+      before: "takeover-done",
+      after: "sealed",
+    });
   }
 
   /** Requery every EventId from every requested tag and preserve exact bytes. */
@@ -1639,12 +1986,12 @@ export class JournalDurableObject implements DurableObject {
   ): Promise<Response> {
     const url = new URL(`https://commit-recovery.internal${path}`);
     url.searchParams.set("__tag", tag);
+    url.searchParams.set("__serviceId", context.serviceId);
     const tagObject = this.env.TAG.get(this.env.TAG.idFromName(`${context.serviceId}|${tag}`));
     return tagObject.fetch(
-      new Request(url.toString(), body === undefined ? undefined : {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+      new Request(url.toString(), {
+        ...(body === undefined ? {} : { method: "POST", body: JSON.stringify(body) }),
+        ...(body === undefined ? {} : { headers: { "content-type": "application/json" } }),
       }),
     );
   }

@@ -31,6 +31,7 @@ import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServ
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import type { StoredEvent } from "./store/types";
+import { cloudflareTracing } from "./trace/CloudflareTracing";
 
 export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
@@ -85,13 +86,14 @@ export function createCloudflareOnlyRuntimeWorker(
   const composition = composeRuntime(options.domain, options.config);
   const storeProvider = createD1StoreProvider();
   return {
-    async fetch(request, env): Promise<Response> {
+    async fetch(request, env, ctx): Promise<Response> {
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
+          nativeTracing: cloudflareTracing(ctx),
         });
       }
       if (

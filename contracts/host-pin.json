@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 2,
+  "state": "sealed",
+  "note": "Stage S seal input. hostCommit is authority commit A whose blobs the bundle lists; bundleDigest equals the computed bundleDigest. Stage S changes ONLY this file.",
+  "hostCommit": "7811e10a7bf54c4d1db90eba5f13ca90442f8ec2",
+  "bundleDigest": "sha256:35c10f63e8d527fbd001ddc22b292d14961031fa40487219dc71770700d5ceb4"
+}
