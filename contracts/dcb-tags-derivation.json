@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "authority": "Sekiban.Dcb rebuild-row derivation",
+  "input": "dcb_events logical records sorted by (sortableUniqueId, tag)",
+  "duplicates": "collapse one equal tag per event before assigning rebuild sequence",
+  "tagGroup": "text before first ':'; otherwise whole tag",
+  "postgresSqlite": {
+    "table": "dcb_tags",
+    "fields": ["Id", "ServiceId", "Tag", "TagGroup", "EventType", "SortableUniqueId", "EventId", "CreatedAt"],
+    "id": "deterministic one-based rebuild sequence",
+    "createdAt": "event.Timestamp"
+  },
+  "cosmos": {
+    "pk": "{serviceId}|{tag}",
+    "id": "event.id",
+    "fields": ["pk", "serviceId", "id", "tag", "tagGroup", "eventType", "sortableUniqueId", "eventId", "createdAt"],
+    "createdAt": "GetDateTime(sortableUniqueId) UTC"
+  }
+}

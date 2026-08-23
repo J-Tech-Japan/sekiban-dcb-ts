@@ -154,11 +154,10 @@ function initialStateOf<State>(value: State | (() => State) | undefined): State 
 }
 
 function eventNameFromType(eventType: string): string {
-  const separator = eventType.lastIndexOf(":");
-  if (separator <= 0 || separator === eventType.length - 1) {
-    throw new DomainAuthoringError("CANONICAL_EVENT_IDENTITY_INVALID", `Event type ${eventType} is not name:version`);
+  if (eventType.length === 0 || eventType.includes(":")) {
+    throw new DomainAuthoringError("CANONICAL_EVENT_IDENTITY_INVALID", `Event type ${eventType} is not an event payload name`);
   }
-  return eventType.slice(0, separator);
+  return eventType;
 }
 
 export function projector<

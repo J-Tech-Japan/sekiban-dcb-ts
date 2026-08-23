@@ -44,13 +44,13 @@ describe("SDT-G12 workerd Cosmos REST path", () => {
       .filter((call) => call.method === "POST" && call.url.endsWith("/colls"))
       .map((call) => call.body as { id: string; partitionKey: { paths: string[]; kind: string } });
     expect(containerBodies).toEqual([
-      { id: "dcb-events", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
+      { id: "dcb-events", partitionKey: { paths: ["/pk"], kind: "Hash" } },
       { id: "dcb-lag-estimates", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
       { id: "dcb-pending-arrivals", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
       { id: "dcb-findings", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
       { id: "dcb-projection-checkpoints", partitionKey: { paths: ["/serviceId"], kind: "Hash" } },
     ]);
-    expect(containerBodies.every((container) => container.partitionKey.paths[0] === "/serviceId")).toBe(true);
+    expect(containerBodies.slice(1).every((container) => container.partitionKey.paths[0] === "/serviceId")).toBe(true);
     expect((await client.query("dcb-events", "SELECT * FROM c WHERE c.serviceId = @serviceId", [{ name: "@serviceId", value: "service" }], "service")).map((row) => row.document.id)).toEqual(["one", "two"]);
     expect(await client.read("dcb-events", "missing", "service")).toBeUndefined();
     expect(calls.length).toBe(9);

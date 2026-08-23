@@ -11,8 +11,9 @@ import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/Do
 import { ProjectionRuntime } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { ProjectionCheckpoint, ProjectionLag, ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
 
-const PAYLOAD = "e30=";
+const PAYLOAD = JSON.stringify({});
 
 function unique(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -24,8 +25,7 @@ function message(
   suid: string,
   allocatorLineageId: string,
 ): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId,
     allocatorLineageId,
     tag: "g17:lineage",
@@ -34,9 +34,9 @@ function message(
     suid,
     payload: PAYLOAD,
     eventTags: ["g17:lineage"],
-    provenance: "pre-g27-queue",
+    eventType: "G17LineageFixtureEvent",
     enqueuedAt: 1_000,
-  };
+  });
 }
 
 function postgresStore(): PostgresEventStore {
@@ -67,7 +67,8 @@ class MemoryCosmosClient implements CosmosDocumentClient {
   }
 
   async create<T extends Record<string, unknown>>(container: string, document: T, partitionKey: string): Promise<CosmosDocumentRecord<T>> {
-    if (document.serviceId !== partitionKey) throw new Error("Cosmos partition mismatch");
+    const expectedPartition = typeof document.pk === "string" ? document.pk : document.serviceId;
+    if (expectedPartition !== partitionKey) throw new Error("Cosmos partition mismatch");
     const key = this.key(container, partitionKey, String(document.id));
     if (this.rows.has(key)) throw new CosmosClientError(409, "duplicate document");
     const row = { document: structuredClone(document), etag: `W/"${++this.sequence}"` };
@@ -77,7 +78,8 @@ class MemoryCosmosClient implements CosmosDocumentClient {
   }
 
   async replace<T extends Record<string, unknown>>(container: string, document: T, partitionKey: string, etag?: string): Promise<boolean> {
-    if (document.serviceId !== partitionKey) throw new Error("Cosmos partition mismatch");
+    const expectedPartition = typeof document.pk === "string" ? document.pk : document.serviceId;
+    if (expectedPartition !== partitionKey) throw new Error("Cosmos partition mismatch");
     const key = this.key(container, partitionKey, String(document.id));
     const current = this.rows.get(key);
     if (current === undefined || (etag !== undefined && current.etag !== etag)) return false;
@@ -92,7 +94,7 @@ class MemoryCosmosClient implements CosmosDocumentClient {
 
   async query<T extends Record<string, unknown>>(
     container: string,
-    _query: string,
+    query: string,
     parameters: readonly { name: string; value: unknown }[],
     partitionKey?: string,
   ): Promise<CosmosDocumentRecord<T>[]> {
@@ -101,9 +103,11 @@ class MemoryCosmosClient implements CosmosDocumentClient {
     const result: CosmosDocumentRecord<T>[] = [];
     for (const [key, row] of this.rows) {
       if (!key.startsWith(`${container}\u0000`)) continue;
-      if (partitionKey !== undefined && row.document.serviceId !== partitionKey) continue;
+      const rowPartition = typeof row.document.pk === "string" ? row.document.pk : row.document.serviceId;
+      if (partitionKey !== undefined && rowPartition !== partitionKey) continue;
       if (serviceId !== undefined && row.document.serviceId !== serviceId) continue;
       if (eventId !== undefined && row.document.eventId !== eventId) continue;
+      if (query.includes("IS_DEFINED(c.sortableUniqueId)") && typeof row.document.sortableUniqueId !== "string") continue;
       result.push(this.copy<T>(row));
     }
     return result;
@@ -213,7 +217,11 @@ describe("SDT-G17 allocator lineage and incident contract", () => {
     // present yet.  This forces the event-document collision guard itself to
     // carry the oracle rather than letting the newer reservation guard make
     // the test pass vacuously.
-    expect(await client.delete("dcb-events", `${encodeURIComponent("suid-binding")}~${encodeURIComponent(first.suid)}`, serviceId)).toBe(true);
+    expect(await client.delete(
+      "dcb-events",
+      `${encodeURIComponent("suid-binding")}~${encodeURIComponent(first.suid)}`,
+      `${serviceId}|__dcb_event_ops__`,
+    )).toBe(true);
 
     const collision = message(serviceId, unique("cosmos-collision"), first.suid, "lineage-a");
     const rejected = await store.recordDelivery(collision, 3_601);
@@ -318,10 +326,19 @@ describe("SDT-G17 allocator lineage and incident contract", () => {
     const serviceId = unique("g17-order");
     const event = (suid: string, eventId: string): StoredEvent => ({
       serviceId,
-      eventId,
-      suid,
+      id: g32EventId(eventId),
+      eventId: g32EventId(eventId),
+      sortableUniqueId: g32Suid(suid),
+      suid: g32Suid(suid),
       payload: PAYLOAD,
+      tags: ["orders:g17"],
       eventTags: ["orders:g17"],
+      eventType: "G17ProjectionFixtureEvent",
+      timestamp: G32_FIXTURE_TIMESTAMP,
+      causationId: null,
+      correlationId: null,
+      executedUser: null,
+      provenance: "g32",
       firstArrivedAt: 1,
       lastArrivedAt: 1,
       maxDeliveryLagMs: 0,

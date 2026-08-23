@@ -2,11 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { MaterializedViewMutationPlan } from "@sekiban/dcb-core";
 // @ts-expect-error Vite raw migration fixture.
-import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
-// @ts-expect-error Vite raw migration fixture.
-import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
-// @ts-expect-error Vite raw migration fixture.
-import waitIncidentMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
+import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
@@ -41,9 +37,18 @@ import type {
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
+import { g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
 
 const VIEW_ID = "g31-wait-view";
 const QUERY_TYPE = "G31WaitListQuery";
+
+function canonicalSuid(value: string): string {
+  return g32Suid(value);
+}
+
+function canonicalEventId(value: string): string {
+  return g32EventId(value);
+}
 
 function d1(): D1Database {
   const database = (env as unknown as { D1?: D1Database }).D1;
@@ -79,30 +84,29 @@ function request(serviceId: string, suid: string): Request {
     body: JSON.stringify({
       queryType: QUERY_TYPE,
       queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
-      waitForSortableUniqueId: suid,
+      waitForSortableUniqueId: canonicalSuid(suid),
     }),
   });
 }
 
 function message(serviceId: string, eventId: string, suid: string, lineage = "g31-lineage"): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId,
     allocatorLineageId: lineage,
     tag: `test:${serviceId}`,
     attemptId: `${eventId}-attempt`,
     eventId,
     suid,
-    payload: btoa(JSON.stringify({ eventId, suid })),
+    payload: JSON.stringify({ eventId, suid: canonicalSuid(suid) }),
     eventTags: [`test:${serviceId}`],
-    provenance: "pre-g27-queue",
+    eventType: "G31WaitFixtureEvent",
     enqueuedAt: 0,
-  };
+  });
 }
 
 function mutation(eventId: string, suid: string) {
   return {
-    rowUpserts: [{ rowKey: eventId, value: { eventId, suid }, rowVersion: 1, sourceSuid: suid }],
+    rowUpserts: [{ rowKey: eventId, value: { eventId, suid: canonicalSuid(suid) }, rowVersion: 1, sourceSuid: canonicalSuid(suid) }],
     rowPatches: [],
     rowDeletes: [],
     indexEntries: [],
@@ -117,7 +121,7 @@ function noChangeMutation(): MaterializedViewMutationPlan {
 function patchNotFoundMutation(suid: string): MaterializedViewMutationPlan {
   return {
     rowUpserts: [],
-    rowPatches: [{ kind: "json_patch", rowKey: "missing", patch: { value: "x" }, rowVersion: 1, sourceSuid: suid, indexEntries: [] }],
+    rowPatches: [{ kind: "json_patch", rowKey: "missing", patch: { value: "x" }, rowVersion: 1, sourceSuid: canonicalSuid(suid), indexEntries: [] }],
     rowDeletes: [],
     indexEntries: [],
     indexDeletes: [],
@@ -144,7 +148,7 @@ async function sourceWithTarget(serviceId: string, eventId: string, suid: string
 async function activeView(serviceId: string, lastSuid = ""): Promise<D1MaterializedViewStore> {
   const views = new D1MaterializedViewStore(mvDatabase());
   await views.initialize();
-  await views.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: 1, updatedAt: 1, lastSuid });
+  await views.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: 1, updatedAt: 1, lastSuid: lastSuid === "" ? "" : canonicalSuid(lastSuid) });
   return views;
 }
 
@@ -292,15 +296,18 @@ async function queryD1(
 }
 
 function state(overrides: Partial<MaterializedViewWaitForState> = {}): MaterializedViewWaitForState {
+  const { safeContiguousHead, ...rest } = overrides;
   return {
     activeGeneration: 0,
     activeDefinitionVersion: 1,
-    safeContiguousHead: "",
     targetReceipt: false,
     checkpointAhead: false,
     rebuildRequired: false,
     poison: false,
-    ...overrides,
+    ...rest,
+    safeContiguousHead: safeContiguousHead === undefined || safeContiguousHead === ""
+      ? ""
+      : canonicalSuid(safeContiguousHead),
   };
 }
 
@@ -314,7 +321,9 @@ class FakeSource implements QueryProjectionStore, WaitForTargetSourcePort {
 
   async readWaitForTarget(): Promise<WaitForTargetLookup> {
     this.targetReads += 1;
-    return this.target;
+    return this.target.kind === "stored"
+      ? { ...this.target, suid: canonicalSuid(this.target.suid) }
+      : this.target;
   }
 
   async readAllEvents(): Promise<never[]> {
@@ -399,8 +408,8 @@ async function assertStoredOutcomeReceipt(
   mutations: MaterializedViewMutationPlan,
 ): Promise<void> {
   const serviceId = `g31-${outcome}-${crypto.randomUUID()}`;
-  const eventId = `${outcome}-event`;
-  const suid = `suid-0000000000000000000000000000${outcome.length.toString().padStart(2, "0")}`;
+  const eventId = canonicalEventId(`${outcome}-event`);
+  const suid = canonicalSuid(`g31-${outcome}-${outcome.length}`);
   const source = await sourceWithTarget(serviceId, eventId, suid);
   const views = await activeView(serviceId);
   await expect(views.unsafeWindow().apply({
@@ -423,7 +432,7 @@ async function assertStoredOutcomeReceipt(
 
 describe("SDT-G31 d1-mv waitFor", () => {
   beforeAll(async () => {
-    await d1().batch(statements(d1(), `${pipelineMigration as string}\n${identityMigration as string}\n${waitIncidentMigration as string}`));
+    await d1().batch(statements(d1(), g32Migration as string));
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration]) {
       await mvDatabase().batch(statements(mvDatabase(), migration as string));
     }
@@ -431,8 +440,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("fast-path-satisfied: succeeds through the active-generation target receipt", async () => {
     const serviceId = `g31-receipt-${crypto.randomUUID()}`;
-    const eventId = "g31-receipt-event";
-    const suid = "suid-00000000000000000000000000000031";
+    const eventId = canonicalEventId("g31-receipt-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000031");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId);
     const unsafe = views.unsafeWindow();
@@ -452,8 +461,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("queue-fallback-satisfied: succeeds through unique source plus active safe head after receipt GC", async () => {
     const serviceId = `g31-receipt-gc-${crypto.randomUUID()}`;
-    const eventId = "g31-receipt-gc-event";
-    const suid = "suid-00000000000000000000000000000032";
+    const eventId = canonicalEventId("g31-receipt-gc-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000032");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId);
     const unsafe = views.unsafeWindow();
@@ -495,7 +504,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
   });
 
   it("records an active-generation wait receipt for stored patch-not-found", async () => {
-    const suid = "suid-00000000000000000000000000000015";
+    const suid = canonicalSuid("suid-00000000000000000000000000000015");
     await assertStoredOutcomeReceipt("patch-not-found", patchNotFoundMutation(suid));
   });
 
@@ -505,8 +514,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("binds a receipt to the active generation and definition rather than an old view instance", async () => {
     const serviceId = `g31-generation-${crypto.randomUUID()}`;
-    const eventId = "g31-generation-event";
-    const suid = "suid-00000000000000000000000000000041";
+    const eventId = canonicalEventId("g31-generation-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000041");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId);
     await views.unsafeWindow().apply({
@@ -553,36 +562,37 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("fails a non-stored SUID collision before its aliased receipt can satisfy waitFor", async () => {
     const collisionService = `g31-collision-${crypto.randomUUID()}`;
-    const collisionSuid = "suid-00000000000000000000000000000061";
-    const collisionSource = await sourceWithTarget(collisionService, "first", collisionSuid);
+    const collisionSuid = canonicalSuid("suid-00000000000000000000000000000061");
+    const firstEventId = canonicalEventId("first");
+    const collisionSource = await sourceWithTarget(collisionService, firstEventId, collisionSuid);
     const collisionViews = await activeView(collisionService);
     await collisionViews.unsafeWindow().apply({
       serviceId: collisionService,
       viewId: VIEW_ID,
       generation: 0,
-      eventId: "first",
+      eventId: firstEventId,
       suid: collisionSuid,
       safeHead: "",
       updatedAt: 2,
-      mutations: mutation("first", collisionSuid),
+      mutations: mutation(firstEventId, collisionSuid),
     });
-    expect((await collisionSource.recordDelivery(message(collisionService, "aliased", collisionSuid), 1)).outcome).toBe("suid-collision");
+    expect((await collisionSource.recordDelivery(message(collisionService, canonicalEventId("aliased"), collisionSuid), 1)).outcome).toBe("suid-collision");
     await expectProjectionUnavailable(await queryD1(collisionSource, collisionViews, collisionService, collisionSuid));
   });
 
   it("fails a non-stored lineage mismatch instead of degrading it to a timeout", async () => {
     const lineageService = `g31-lineage-${crypto.randomUUID()}`;
-    const lineageSource = await sourceWithTarget(lineageService, "first", "suid-00000000000000000000000000000062");
-    const lineageSuid = "suid-00000000000000000000000000000063";
-    expect((await lineageSource.recordDelivery(message(lineageService, "wrong-lineage", lineageSuid, "wrong-lineage"), 1)).outcome).toBe("lineage-mismatch");
+    const lineageSource = await sourceWithTarget(lineageService, canonicalEventId("first"), canonicalSuid("suid-00000000000000000000000000000062"));
+    const lineageSuid = canonicalSuid("suid-00000000000000000000000000000063");
+    expect((await lineageSource.recordDelivery(message(lineageService, canonicalEventId("wrong-lineage"), lineageSuid, "wrong-lineage"), 1)).outcome).toBe("lineage-mismatch");
     const lineageViews = await activeView(lineageService, lineageSuid);
     await expectProjectionUnavailable(await queryD1(lineageSource, lineageViews, lineageService, lineageSuid));
   });
 
   it("fails closed on an already-open CHECKPOINT_AHEAD finding", async () => {
     const serviceId = `g31-checkpoint-${crypto.randomUUID()}`;
-    const eventId = "checkpoint-event";
-    const suid = "suid-00000000000000000000000000000070";
+    const eventId = canonicalEventId("checkpoint-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000070");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId, suid);
     await views.recordCheckpointAhead({ serviceId, viewId: VIEW_ID, generation: 0, checkpointSuid: suid, storeMaxSuid: "", observedAt: 2 });
@@ -591,8 +601,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("rechecks a real D1 CHECKPOINT_AHEAD finding immediately before success", async () => {
     const serviceId = `g31-checkpoint-flip-${crypto.randomUUID()}`;
-    const eventId = "checkpoint-flip-event";
-    const suid = "suid-00000000000000000000000000000080";
+    const eventId = canonicalEventId("checkpoint-flip-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000080");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId);
     await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
@@ -611,8 +621,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("rechecks a real D1 rebuild-required finding immediately before success", async () => {
     const serviceId = `g31-rebuild-flip-${crypto.randomUUID()}`;
-    const eventId = "rebuild-flip-event";
-    const suid = "suid-00000000000000000000000000000081";
+    const eventId = canonicalEventId("rebuild-flip-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000081");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId);
     await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
@@ -629,8 +639,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
 
   it("rechecks a real D1 target poison finding immediately before success", async () => {
     const serviceId = `g31-poison-flip-${crypto.randomUUID()}`;
-    const eventId = "poison-flip-event";
-    const suid = "suid-00000000000000000000000000000082";
+    const eventId = canonicalEventId("poison-flip-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000082");
     const source = await sourceWithTarget(serviceId, eventId, suid);
     const views = await activeView(serviceId);
     await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
@@ -803,25 +813,27 @@ describe("SDT-G31 d1-mv waitFor", () => {
   it("serves the post-commit list page newest-first through the actual D1-MV query path", async () => {
     const serviceId = `g31-newest-${crypto.randomUUID()}`;
     const views = await activeView(serviceId);
+    const olderSuid = canonicalSuid("suid-00000000000000000000000000000001");
+    const newerSuid = canonicalSuid("suid-00000000000000000000000000000002");
     await views.applyMutationsAndAdvanceCheckpoint({
       serviceId,
       viewId: VIEW_ID,
       generation: 0,
       expectedLastSuid: null,
-      lastSuid: "suid-00000000000000000000000000000001",
+      lastSuid: olderSuid,
       definitionVersion: 1,
       updatedAt: 1,
-      mutations: mutation("older", "suid-00000000000000000000000000000001"),
+      mutations: mutation("older", olderSuid),
     });
     await views.applyMutationsAndAdvanceCheckpoint({
       serviceId,
       viewId: VIEW_ID,
       generation: 0,
-      expectedLastSuid: "suid-00000000000000000000000000000001",
-      lastSuid: "suid-00000000000000000000000000000002",
+      expectedLastSuid: olderSuid,
+      lastSuid: newerSuid,
       definitionVersion: 1,
       updatedAt: 2,
-      mutations: mutation("newer", "suid-00000000000000000000000000000002"),
+      mutations: mutation("newer", newerSuid),
     });
     const response = await handleSerializedQuery(new Request("https://g31.test/api/sekiban/serialized/list-query", {
       method: "POST",

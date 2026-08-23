@@ -1,11 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw migration fixture.
-import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
-// @ts-expect-error Vite raw migration fixture.
-import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
-// @ts-expect-error Vite raw migration fixture.
-import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
+import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
@@ -27,6 +23,7 @@ import {
   type DeliveryViewHandler,
 } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { g32Message, g32Suid } from "./helpers/g32-fixtures";
 
 function database(): D1Database {
   const value = (env as unknown as { D1_MV?: D1Database }).D1_MV;
@@ -51,7 +48,7 @@ function statements(sql: string): D1PreparedStatement[] {
 
 describe("SDT-G26 fan-out and receipt-race oracles", () => {
   beforeAll(async () => {
-    const pipelineStatements = `${pipelineMigration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`
+    const pipelineStatements = (g32Migration as string)
       .replace(/^\s*--.*$/gm, "")
       .split(";")
       .map((value) => value.trim())
@@ -78,12 +75,12 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
       serviceId,
       viewId,
       generation: 0,
-      eventId: "g26-race-event",
-      suid: "g26-race-suid",
+      eventId: g32Message({ serviceId, tag: "g26:race", eventId: "g26-race-event", suid: "g26-race-suid" }).eventId,
+      suid: g32Suid("g26-race-suid"),
       safeHead: "",
       updatedAt: 1,
       mutations: { rowUpserts: [], rowPatches: [], rowDeletes: [], indexEntries: [], indexDeletes: [] },
-      targetSuid: "g26-race-suid",
+      targetSuid: g32Suid("g26-race-suid"),
     } as const;
     const fast = new UnsafeWindowMaterializedViewStore(database(), { beforeApplyBatch: barrier });
     const queued = new UnsafeWindowMaterializedViewStore(database(), { beforeApplyBatch: barrier });
@@ -103,20 +100,18 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
 
   it("makes Queue the deterministic race loser, retries once, then converges as a receipt no-op", async () => {
     const serviceId = `g26-shared-core-${crypto.randomUUID()}`;
-    const event = {
-      version: 1,
+    const event = g32Message({
       serviceId,
       allocatorLineageId: "g26-shared-lineage",
       tag: "g26:shared",
       attemptId: "g26-shared-attempt",
       eventId: "g26-shared-event",
       suid: "g26-shared-suid",
-      payload: btoa(JSON.stringify({ eventType: "G26Shared" })),
+      payload: JSON.stringify({ eventType: "G26Shared" }),
       eventTags: ["g26:shared"],
-      eventType: "G26Shared:1",
-      provenance: "g27",
+      eventType: "G26Shared",
       enqueuedAt: 1_000,
-    } satisfies DownstreamOutboxMessage;
+    }) satisfies DownstreamOutboxMessage;
     const pipeline = new D1EventStore(pipelineDatabase());
     await pipeline.initialize();
     let recordArrivals = 0;
@@ -143,7 +138,7 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     });
     await database().prepare(
       "INSERT INTO mv_unsafe_kicks (service_id, view_id, target_suid, dirty) VALUES (?, ?, ?, 1)",
-    ).bind(serviceId, "G26SharedCoreView", "g26-shared-aaa-target").run();
+    ).bind(serviceId, "G26SharedCoreView", g32Suid(0)).run();
     let fastReached = false;
     let queueReached = false;
     let releaseBoth!: () => void;
@@ -256,18 +251,16 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
 
   it("preserves concurrent recordDelivery arrivals without a false incident", async () => {
     const serviceId = `g26-arrivals-${crypto.randomUUID()}`;
-    const base = (suffix: string): DownstreamOutboxMessage => ({
-      version: 1,
+    const base = (suffix: string): DownstreamOutboxMessage => g32Message({
       serviceId,
       allocatorLineageId: "g26-arrival-lineage",
       tag: `g26:arrival:${suffix}`,
       attemptId: `g26-arrival-attempt-${suffix}`,
       eventId: `g26-arrival-event-${suffix}`,
       suid: `g26-arrival-suid-${suffix}`,
-      payload: btoa(JSON.stringify({ suffix })),
+      payload: JSON.stringify({ suffix }),
       eventTags: [`g26:arrival:${suffix}`],
-      eventType: "G26Arrival:1",
-      provenance: "g27",
+      eventType: "G26Arrival",
       enqueuedAt: 1_000,
     });
     let reached = 0;
@@ -286,7 +279,7 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     await store.initialize();
     await Promise.all([store.recordDelivery(base("one"), 1_010, "fast"), store.recordDelivery(base("two"), 1_020, "queue")]);
     expect(await store.listDeliveryIncidents(serviceId)).toEqual([]);
-    const events = await pipelineDatabase().prepare("SELECT COUNT(*) AS count FROM serialized_dcb_events WHERE service_id = ?").bind(serviceId).first<{ count: number }>();
+    const events = await pipelineDatabase().prepare('SELECT COUNT(*) AS count FROM dcb_events WHERE "ServiceId" = ?').bind(serviceId).first<{ count: number }>();
     const arrivals = await pipelineDatabase().prepare("SELECT COUNT(*) AS count FROM serialized_dcb_event_arrivals WHERE service_id = ?").bind(serviceId).first<{ count: number }>();
     expect(Number(events?.count)).toBe(2);
     expect(Number(arrivals?.count)).toBe(2);
@@ -317,19 +310,19 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
           serviceId,
           viewId,
           generation: 0,
-          eventId: `g26-local-event-${index}`,
-          suid: `g26-local-suid-${String(index).padStart(3, "0")}`,
+          eventId: g32Message({ serviceId, tag: "g26:slope", eventId: `g26-local-event-${index}`, suid: `g26-local-suid-${String(index).padStart(3, "0")}` }).eventId,
+          suid: g32Suid(`g26-local-suid-${String(index).padStart(3, "0")}`),
           safeHead: "",
           updatedAt: 1_000 + index,
           recordArrival: true,
           mutations: {
-            rowUpserts: [{ rowKey: `row-${index}`, value: { index }, rowVersion: 1, sourceSuid: `g26-local-suid-${String(index).padStart(3, "0")}` }],
+            rowUpserts: [{ rowKey: `row-${index}`, value: { index }, rowVersion: 1, sourceSuid: g32Suid(`g26-local-suid-${String(index).padStart(3, "0")}`) }],
             rowPatches: [],
             rowDeletes: [],
             indexEntries: [{ indexId: "local-index", valueType: "integer", value: index, rowKey: `row-${index}` }],
             indexDeletes: [],
           },
-          targetSuid: `g26-local-suid-${String(index).padStart(3, "0")}`,
+          targetSuid: g32Suid(`g26-local-suid-${String(index).padStart(3, "0")}`),
         });
       }
       measurements.push({ viewCount, d1Statements, cpuMs: performance.now() - started });
@@ -345,18 +338,16 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
     const store = new D1EventStore(pipelineDatabase());
     await store.initialize();
     const serviceId = `g26-lag-${crypto.randomUUID()}`;
-    const base = (suffix: string, suid: string): DownstreamOutboxMessage => ({
-      version: 1,
+    const base = (suffix: string, suid: string): DownstreamOutboxMessage => g32Message({
       serviceId,
       allocatorLineageId: "g26-lag-lineage",
       tag: "g26:lag",
       attemptId: `g26-lag-attempt-${suffix}`,
       eventId: `g26-lag-event-${suffix}`,
       suid,
-      payload: btoa(JSON.stringify({ suffix })),
+      payload: JSON.stringify({ suffix }),
       eventTags: ["g26:lag"],
-      eventType: "G26Lag:1",
-      provenance: "g27",
+      eventType: "G26Lag",
       enqueuedAt: 0,
     });
     await store.recordDelivery(base("fast", "suid-0001"), 10_000, "fast");

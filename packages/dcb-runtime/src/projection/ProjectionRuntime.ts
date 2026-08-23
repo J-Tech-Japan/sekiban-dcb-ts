@@ -13,11 +13,20 @@ import {
   MAX_PUBLISHED_SAFE_WINDOW_MS,
   PUBLISHED_SAFE_WINDOW_MS,
   safeWindowCeilingExceeded,
+  safeWindowCutoffSuid,
+  isSortableUniqueIdSafeAt,
   safeWindowMs,
 } from "../safeWindow";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 
 /** Published V1 read-side SafeWindow. It never authorizes a commit. */
-export { MAX_PUBLISHED_SAFE_WINDOW_MS, PUBLISHED_SAFE_WINDOW_MS, safeWindowCeilingExceeded, safeWindowMs };
+export {
+  MAX_PUBLISHED_SAFE_WINDOW_MS,
+  PUBLISHED_SAFE_WINDOW_MS,
+  safeWindowCeilingExceeded,
+  safeWindowCutoffSuid,
+  safeWindowMs,
+};
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
 
@@ -73,13 +82,14 @@ function stateFromCheckpoint(projector: TagStateProjector, checkpoint: Projectio
 }
 
 function projectionEventFromStored(event: StoredEvent): ProjectionEvent {
+  assertSortableUniqueId(event.suid);
   return {
     eventId: event.eventId,
     suid: event.suid,
     payload: event.payload,
     eventTags: event.eventTags,
-    ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
-    provenance: event.provenance ?? (event.eventType === undefined ? "pre-g27" : "g27"),
+    eventType: event.eventType,
+    provenance: "g32",
   };
 }
 
@@ -164,7 +174,6 @@ export class ProjectionRuntime {
         appliedEvents: 0,
       };
     }
-    const safeThrough = nowMs - windowMs;
     const projectionId = projectionIdFor(identity);
 
     for (let retry = 0; retry < MAX_CHECKPOINT_CAS_RETRIES; retry += 1) {
@@ -183,7 +192,8 @@ export class ProjectionRuntime {
         }
         // Stop at the first unsafe source event. Because the source is SUID
         // ordered, advancing past it could skip a delayed lower SUID.
-        if (event.lastArrivedAt > safeThrough) {
+        assertSortableUniqueId(event.suid);
+        if (!isSortableUniqueIdSafeAt(event.suid, nowMs, dynamicLagBoundMs)) {
           return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
         }
 

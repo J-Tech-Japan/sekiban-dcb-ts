@@ -22,14 +22,27 @@ export interface DeliveryLagRecord {
 
 export interface StoredEvent {
   serviceId: string;
+  /** C# logical-record Id; eventId remains the runtime alias. */
+  id: string;
   eventId: string;
+  /** C# logical-record SortableUniqueId; suid remains the runtime alias. */
+  sortableUniqueId: string;
   suid: string;
+  /** Byte-identical decoded UTF-8 JSON text. */
   payload: string;
+  /** C# logical-record Tags in source emission order. */
+  tags: string[];
   /** Complete durable tag membership, retained from the outbox envelope. */
   eventTags: string[];
-  /** Canonical eventPayloadName:version, absent only on pre-G27 rows. */
-  eventType?: string;
-  provenance?: EventProvenance;
+  /** C# durable EventType = eventPayloadName. */
+  eventType: string;
+  timestamp: string;
+  /** C# DbEvent keeps serialized metadata nullable for imported historical rows. */
+  causationId: string | null;
+  correlationId: string | null;
+  executedUser: string | null;
+  /** G32 internal provenance; it is never persisted in dcb_events. */
+  provenance: EventProvenance;
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;

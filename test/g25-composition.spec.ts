@@ -1,11 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw migration fixture.
-import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
-// @ts-expect-error Vite raw migration fixture.
-import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
-// @ts-expect-error Vite raw migration fixture.
-import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
+import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
@@ -20,6 +16,7 @@ import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { g32Message, g32Suid } from "./helpers/g32-fixtures";
 // @ts-expect-error Vite raw deployed Queue configuration fixture.
 import workerConfig from "../samples/meeting-room/wrangler.cloudflare-only.jsonc?raw";
 import worker from "../samples/meeting-room/src/worker.cloudflare-only";
@@ -39,13 +36,13 @@ function mvDatabase(): D1Database {
 }
 function message(serviceId: string, suffix: string): DownstreamOutboxMessage {
   const tag = `reservation:g25-${suffix}`;
-  return {
-    version: 1, serviceId, allocatorLineageId: `g25-lineage-${suffix}`, tag,
+  return g32Message({
+    serviceId, allocatorLineageId: `g25-lineage-${suffix}`, tag,
     attemptId: `g25-attempt-${suffix}`, eventId: `g25-event-${suffix}`,
-    suid: `suid-999999999999999999999999${suffix.padStart(8, "0")}`,
-    payload: btoa(JSON.stringify({ eventType: "RoomReserved", reservationId: `g25-${suffix}`, roomId: "g25-room", userId: "g25-user" })),
-    eventTags: [tag], provenance: "pre-g27-queue", enqueuedAt: Date.now(),
-  };
+    suid: `g25-suid-${suffix}`,
+    payload: JSON.stringify({ eventType: "RoomReserved", reservationId: `g25-${suffix}`, roomId: "g25-room", userId: "g25-user" }),
+    eventTags: [tag], eventType: "RoomReserved", enqueuedAt: Date.now(),
+  });
 }
 
 interface QueueResult {
@@ -94,7 +91,7 @@ async function invokeDeployedScheduled(serviceId: string): Promise<void> {
 
 describe("SDT-G25 unsafe-window consumer composition", () => {
   beforeAll(async () => {
-    await database().batch(statements(`${pipelineMigration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`, database()));
+    await database().batch(statements(g32Migration as string, database()));
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
       await mvDatabase().batch(statements(migration as string, mvDatabase()));
     }
@@ -134,7 +131,7 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     await views.createActive({ serviceId, viewId: "RoomProjector", generation: 0, definitionVersion: 1, updatedAt: 1 });
     await mvDatabase().prepare(
       "INSERT INTO mv_rows (service_id, view_id, generation, row_key, value_json, row_version, source_suid) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    ).bind(serviceId, "RoomProjector", 0, "room", '{"roomId":"room","status":"created"}', 1, "suid-00000000000000000000000000000001").run();
+    ).bind(serviceId, "RoomProjector", 0, "room", '{"roomId":"room","status":"created"}', 1, g32Suid("g25-scalar-row")).run();
     const page = await views.queryRowsWithTotal(serviceId, "RoomProjector", { limit: null });
     expect(page.totalCount).toBe(1);
     expect(page.rows).toHaveLength(1);
@@ -149,7 +146,7 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     await mvDatabase().prepare(
       `INSERT INTO mv_unsafe_receipts (service_id, view_id, event_id, suid, outcome, observed_at)
        VALUES (?, 'ReservationProjector', ?, ?, 'applied', 0)`,
-    ).bind(serviceId, queued.eventId, `${queued.suid}-contradiction`).run();
+    ).bind(serviceId, queued.eventId, g32Suid("g25-contradiction")).run();
 
     const attempts = await Promise.all([1, 2, 3].map((attempt) => invokeDeployedQueue(queued, serviceId, attempt)));
     expect(attempts.map((result) => result.acked)).toEqual([0, 0, 0]);
@@ -177,7 +174,7 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     // Make the persisted source old enough for the published safe window, then
     // use the deployed scheduled entrypoint as the recovery net. It must fold
     // the durable event even though every immediate Queue delivery retried.
-    await database().prepare("UPDATE serialized_dcb_events SET last_arrived_at = 0 WHERE service_id = ? AND event_id = ?")
+    await database().prepare('UPDATE dcb_event_ops SET "LastArrivedAt" = 0 WHERE "ServiceId" = ? AND "Id" = ?')
       .bind(serviceId, queued.eventId).run();
     await invokeDeployedScheduled(serviceId);
     const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();

@@ -1,11 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
-// @ts-expect-error Vite raw source import.
-import pipelineMigration from "../migrations/d1/0001_pipeline_store.sql?raw";
 // @ts-expect-error Vite raw source migration import.
-import identityMigration from "../migrations/d1/0002_g27_event_identity.sql?raw";
-// @ts-expect-error Vite raw source migration import.
-import g31WaitMigration from "../migrations/d1/0003_g31_wait_target_incidents.sql?raw";
+import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw source import.
 import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
 // @ts-expect-error Vite raw source import.
@@ -24,6 +20,7 @@ import { processDeliveryCore, type DeliveryCoreResult, type DeliveryViewHandler 
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { TagDurableObject } from "../packages/dcb-runtime/src/tag/TagDurableObject";
+import { g32Message } from "./helpers/g32-fixtures";
 
 type Boundary = "none" | "before-record" | "after-pipeline" | "after-k-views" | "after-all-views";
 
@@ -62,20 +59,18 @@ function tagStorage(): { readonly storage: DurableObjectStorage; readonly values
 
 function message(suffix: string): DownstreamOutboxMessage {
   const tag = `g26-integration:${suffix}`;
-  return {
-    version: 1,
+  return g32Message({
     serviceId: `g26-integration-${suffix}`,
     allocatorLineageId: `g26-integration-lineage-${suffix}`,
     tag,
     attemptId: `g26-integration-attempt-${suffix}`,
     eventId: `g26-integration-event-${suffix}`,
     suid: `g26-integration-suid-${suffix}`,
-    payload: btoa(JSON.stringify({ eventType: "G26Integration", suffix })),
+    payload: JSON.stringify({ eventType: "G26Integration", suffix }),
     eventTags: [tag],
-    eventType: "G26Integration:1",
-    provenance: "g27",
+    eventType: "G26Integration",
     enqueuedAt: 1_000,
-  };
+  });
 }
 
 function mutation(viewId: string, event: DownstreamOutboxMessage) {
@@ -257,7 +252,7 @@ async function runBoundary(boundary: Boundary, options: {
       body: JSON.stringify({
         attemptId: event.attemptId,
         epoch: 0,
-        candidates: [{ eventId: event.eventId, suid: event.suid, payload: event.payload, eventType: event.eventType, provenance: "g27", eventTags: event.eventTags, allocatorLineageId: event.allocatorLineageId }],
+        candidates: [{ eventId: event.eventId, suid: event.suid, payload: event.payload, eventType: event.eventType, provenance: "g32", timestamp: event.timestamp, eventTags: event.eventTags, allocatorLineageId: event.allocatorLineageId }],
       }),
     },
   ));
@@ -278,7 +273,7 @@ async function runBoundary(boundary: Boundary, options: {
   const counts = await Promise.all(viewIds.map((viewId) => applyCount(mv, event.serviceId, viewId, event)));
   const incidents = await pipeline.prepare("SELECT COUNT(*) AS count FROM serialized_dcb_delivery_incidents WHERE service_id = ?").bind(event.serviceId).first<{ count: number }>();
   const arrivals = await pipeline.prepare("SELECT COUNT(*) AS count FROM serialized_dcb_event_arrivals WHERE service_id = ?").bind(event.serviceId).first<{ count: number }>();
-  const storedEvents = await pipeline.prepare("SELECT COUNT(*) AS count FROM serialized_dcb_events WHERE service_id = ?").bind(event.serviceId).first<{ count: number }>();
+  const storedEvents = await pipeline.prepare('SELECT COUNT(*) AS count FROM dcb_events WHERE "ServiceId" = ?').bind(event.serviceId).first<{ count: number }>();
   const findings = await database("D1_MV").prepare("SELECT view_id, event_id, suid FROM mv_unsafe_failure_findings WHERE service_id = ? ORDER BY view_id").bind(event.serviceId).all<{ view_id: string; event_id: string; suid: string }>();
   return {
     event,
@@ -300,7 +295,7 @@ async function runBoundary(boundary: Boundary, options: {
 describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
   beforeAll(async () => {
     const pipeline = database("D1");
-    await pipeline.batch(statements(pipeline, `${pipelineMigration as string}\n${identityMigration as string}\n${g31WaitMigration as string}`));
+    await pipeline.batch(statements(pipeline, g32Migration as string));
     const mv = database("D1_MV");
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
       await mv.batch(statements(mv, migration as string));

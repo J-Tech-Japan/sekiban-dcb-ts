@@ -7,6 +7,13 @@ const postgresUrl = process.env.POSTGRES_URL ?? "postgresql://postgres:postgres@
 process.env.CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE ??= postgresUrl;
 
 export default defineConfig({
+  // The pinned C# runner supplies a non-secret, ephemeral provider-row
+  // artifact to its dedicated Worker fixture. Defining it here lets the
+  // workerd isolate receive the value without exposing a host process object
+  // to production runtime code.
+  define: {
+    __G32_PARITY_ARTIFACT_B64__: JSON.stringify(process.env.G32_PARITY_ARTIFACT_B64 ?? ""),
+  },
   test: {
     // g15-deploy.sh is a host-shell entrypoint and is exercised by the
     // dedicated Node-configured G24 lane, never inside Miniflare.

@@ -92,7 +92,26 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     for (const [tag, events] of [...byTag.entries()].sort(([left], [right]) => left.localeCompare(right))) {
       for (const chunk of this.chunks(events)) {
         const stub = this.env.TAG.get(this.env.TAG.idFromName(`${serviceId}|${tag}`)); const tagUrl = new URL("https://bootstrap.internal/bootstrap/admit"); tagUrl.searchParams.set("__tag", tag); tagUrl.searchParams.set("__serviceId", serviceId);
-        const admitted = await stub.fetch(new Request(tagUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch, manifestDigest: control.digest, targetServiceId: serviceId, candidates: chunk.map((event) => ({ ...event, allocatorLineageId: control.allocatorLineageId })) }) }));
+        // Bootstrap dumps model C# provenance as an object, while Tag's
+        // durable internal envelope uses the fixed G32 discriminator.  This
+        // is a representation boundary, not a legacy fallback.
+        const candidates = chunk.map((event) => {
+          if (event.provenance.origin !== "g32") throw new Error("bootstrap dump provenance is not G32");
+          return {
+            eventId: event.eventId,
+            suid: event.suid,
+            payload: event.payload,
+            eventTags: event.eventTags,
+            eventType: event.eventType,
+            timestamp: event.timestamp,
+            causationId: event.causationId,
+            correlationId: event.correlationId,
+            executedUser: event.executedUser,
+            provenance: "g32",
+            allocatorLineageId: control.allocatorLineageId,
+          };
+        });
+        const admitted = await stub.fetch(new Request(tagUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch, manifestDigest: control.digest, targetServiceId: serviceId, candidates }) }));
         if (!admitted.ok) return reject("bootstrap_tag_admission_failed", `tag ${tag} rejected bootstrap admission`, admitted.status);
         if (fault(body, "tag-chunk")) return reject("bootstrap_simulated_crash", "simulated crash after tag chunk", 503);
         await this.ctx.storage.transaction(async (txn) => { const current = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); if (current.importId !== control.importId || current.leaseEpoch !== control.leaseEpoch) throw new Error("bootstrap epoch advanced"); await txn.put(CONTROL, { ...current, progress: { ...current.progress, [tag]: chunk.at(-1)!.suid } }); });
@@ -101,9 +120,14 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     }
     // Seed the exact allocator used by normal commits for this service. Its
     // durable lineage is the target store binding.
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
-    const seeded = await allocator.fetch(new Request("https://bootstrap.internal/seed-after", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch, highWatermark: control.manifest.highWatermark ?? "suid-00000000000000000000000000000000" }) }));
-    if (!seeded.ok) return reject("bootstrap_allocator_seed_failed", "allocator seedAfter rejected bootstrap", seeded.status);
+    // An empty, fresh G32 dump has no predecessor watermark.  Do not invent
+    // an old `suid-` sentinel: the first normal allocation must establish the
+    // new 30-digit domain itself.  A non-empty dump is seeded exactly once.
+    if (control.manifest.highWatermark !== null) {
+      const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
+      const seeded = await allocator.fetch(new Request("https://bootstrap.internal/seed-after", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch, highWatermark: control.manifest.highWatermark }) }));
+      if (!seeded.ok) return reject("bootstrap_allocator_seed_failed", "allocator seedAfter rejected bootstrap", seeded.status);
+    }
     if (fault(body, "allocator-seed")) return reject("bootstrap_simulated_crash", "simulated crash after allocator seed", 503);
     const next = await this.ctx.storage.transaction(async (txn) => { const current = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); if (current.importId !== control.importId || current.leaseEpoch !== control.leaseEpoch) throw new Error("bootstrap epoch advanced"); const updated: BootstrapControlRecord = { ...current, status: "VERIFYING" }; await txn.put(CONTROL, updated); return updated; });
     return response(next);
@@ -122,13 +146,12 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
       if (state.head !== expectedHead || actualEvents.length !== expected.length || actualEvents.some((value, index) => {
         const event = value as Partial<BootstrapEventRecord>;
         const source = expected[index]!;
-        const eventOrigin = event.provenance?.origin ?? (event.eventType === undefined ? "pre-g27" : "g27");
-        const sourceOrigin = source.provenance?.origin ?? (source.eventType === undefined ? "pre-g27" : "g27");
         return event.eventId !== source.eventId ||
           event.suid !== source.suid ||
           event.payload !== source.payload ||
           event.eventType !== source.eventType ||
-          eventOrigin !== sourceOrigin ||
+          (event as unknown as { provenance?: unknown }).provenance !== "g32" ||
+          source.provenance.origin !== "g32" ||
           JSON.stringify(event.eventTags) !== JSON.stringify(source.eventTags);
       })) return reject("bootstrap_verify_tag_mismatch", `tag ${tag} does not match manifest`);
     }

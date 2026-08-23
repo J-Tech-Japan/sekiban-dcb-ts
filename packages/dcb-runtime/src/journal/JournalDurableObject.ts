@@ -21,6 +21,8 @@ import {
 } from "./types";
 import { allocatorNameForService } from "../allocator/types";
 import { assertCanonicalEventType } from "../eventIdentity";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN } from "../eventRecord";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -306,20 +308,22 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     ) {
       return { error: "each candidate needs eventId, payload, and one or more non-empty tags" };
     }
-    if (rawCandidate.eventType !== undefined && !isNonEmptyString(rawCandidate.eventType)) {
-      return { error: "candidate eventType must be a non-empty canonical key" };
+    if (!isNonEmptyString(rawCandidate.eventType) || !isNonEmptyString(rawCandidate.timestamp)) {
+      return { error: "candidate eventType and timestamp are required" };
     }
-    if (rawCandidate.eventType !== undefined) {
-      try {
-        assertCanonicalEventType(rawCandidate.eventType);
-      } catch {
-        return { error: "candidate eventType must be a canonical eventPayloadName:version key" };
-      }
+    try {
+      assertCanonicalEventType(rawCandidate.eventType);
+    } catch {
+      return { error: "candidate eventType must be a canonical eventPayloadName" };
+    }
+    if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(rawCandidate.timestamp)) {
+      return { error: "candidate timestamp must be canonical UTC" };
     }
     candidates.push({
       eventId: rawCandidate.eventId,
       payload: rawCandidate.payload,
-      ...(rawCandidate.eventType === undefined ? {} : { eventType: rawCandidate.eventType }),
+      eventType: rawCandidate.eventType,
+      timestamp: rawCandidate.timestamp,
       tags: [...rawCandidate.tags],
     });
   }
@@ -340,6 +344,11 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     }
     if (!allTags.has(rawTag.tag)) {
       return { error: "every consistency tag must occur in a candidate" };
+    }
+    try {
+      assertSortableUniqueId(rawTag.lastSortableUniqueId);
+    } catch {
+      return { error: "lastSortableUniqueId must be a 30-digit SortableUniqueId" };
     }
     consistencyTags.push({
       tag: rawTag.tag,

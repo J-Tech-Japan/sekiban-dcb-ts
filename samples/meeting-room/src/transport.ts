@@ -173,7 +173,11 @@ function v1CandidateEnvelope(envelope: CandidateEnvelope): CommitEnvelope {
       payload: assertJsonValue(event.payload),
       tags: event.tags.map((tag) => tag.id),
     })),
-    consistency: [...consistency].map(([tag, lastSortableUniqueId]) => ({ tag, lastSortableUniqueId })),
+    // Initial state has no SUID. It remains a local absent-head fact rather
+    // than becoming an invalid empty SUID on the serialized commit wire.
+    consistency: [...consistency]
+      .filter(([, lastSortableUniqueId]) => lastSortableUniqueId.length > 0)
+      .map(([tag, lastSortableUniqueId]) => ({ tag, lastSortableUniqueId })),
   };
 }
 

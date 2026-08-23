@@ -1,8 +1,17 @@
+import {
+  DOTNET_MAX_TICKS,
+  SORTABLE_UNIQUE_ID_DIGITS,
+  SortableUniqueIdError,
+  assertSortableUniqueId,
+  cryptoRandomSortableUniqueIdSuffix,
+  dotNetTicksToUnixMs,
+  formatSortableUniqueId,
+  unixMsToDotNetTicks,
+} from "./SortableUniqueId";
+
 /**
- * The sole allocator time seam.  A tick is the Unix millisecond ordinal; the
- * allocator's durable SUID encoding supplies the fixed 32-digit representation
- * at the persistence boundary.  No request, payload, or provider may replace
- * this authority in production.
+ * The only allocator time seam. A tick is a Unix millisecond; conversion to
+ * the .NET tick representation happens exactly once at allocation admission.
  */
 export interface OrderClock {
   tick(): bigint;
@@ -27,58 +36,100 @@ export const systemOrderClock: OrderClock = Object.freeze({
   },
 });
 
-export const ORDER_SUID_DIGITS = 32;
-export const ORDER_SUID_PREFIX = "suid-";
-export const ORDER_SUID_LIMIT = 10n ** BigInt(ORDER_SUID_DIGITS);
+/** Compatibility export names now denote the C# fixed-width 30-digit format. */
+export const ORDER_SUID_DIGITS = SORTABLE_UNIQUE_ID_DIGITS;
+export const ORDER_SUID_PREFIX = "";
+export const ORDER_SUID_LIMIT = DOTNET_MAX_TICKS + 1n;
 
+/** @deprecated Use formatSortableUniqueId. The ordinal is a .NET tick value. */
 export function encodeOrderOrdinal(value: bigint): string {
-  if (value < 0n || value >= ORDER_SUID_LIMIT) {
-    throw new OrderClockReadError("Order ordinal is outside the 32-digit SUID domain");
-  }
-  return `${ORDER_SUID_PREFIX}${value.toString().padStart(ORDER_SUID_DIGITS, "0")}`;
+  return formatSortableUniqueId(value, 0n);
 }
 
+/** @deprecated Use assertSortableUniqueId(value).ticks. */
 export function decodeOrderOrdinal(value: string): bigint {
-  const digits = value.startsWith(ORDER_SUID_PREFIX) ? value.slice(ORDER_SUID_PREFIX.length) : "";
-  if (!new RegExp(`^\\d{${ORDER_SUID_DIGITS}}$`).test(digits)) {
-    throw new OrderClockReadError("Allocator watermark is not a valid 32-digit SUID");
+  try {
+    return assertSortableUniqueId(value).ticks;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "invalid SortableUniqueId";
+    throw new OrderClockReadError(detail, { cause: error });
   }
-  return BigInt(digits);
 }
 
 export interface OrderAllocationRange {
+  /** Logical .NET tick allocation base. */
   readonly base: bigint;
+  readonly baseTicks: bigint;
+  readonly physicalTicks: bigint;
+  readonly observedTicks: bigint | null;
   readonly watermark: string;
   readonly suids: readonly string[];
 }
 
-/** Pure range oracle used by the DO and by deterministic clock fixtures. */
+export interface OrderAllocationOptions {
+  /** Deterministic test injection; production omits this and uses crypto. */
+  readonly suffixes?: readonly bigint[];
+}
+
+function asOrderClockError(error: unknown): OrderClockReadError {
+  if (error instanceof OrderClockReadError) return error;
+  const detail = error instanceof Error ? error.message : "SortableUniqueId allocation failed";
+  return new OrderClockReadError(detail, { cause: error });
+}
+
+/**
+ * Pure range oracle used by the DO and deterministic fixtures. Watermark
+ * authority is only its leading nineteen tick digits; its random suffix is
+ * retained durably for replay but never participates in the monotone base.
+ */
 export function allocateOrderRange(
   watermark: string | null,
   count: number,
   clockTick: bigint,
+  options: OrderAllocationOptions = {},
 ): OrderAllocationRange {
   if (!Number.isSafeInteger(count) || count <= 0) {
     throw new OrderClockReadError("An order allocation requires a positive candidate count");
   }
-  if (clockTick < 0n || clockTick >= ORDER_SUID_LIMIT) {
-    throw new OrderClockReadError("Order clock tick is outside the 32-digit SUID domain");
+  try {
+    const physicalTicks = unixMsToDotNetTicks(clockTick);
+    const observedTicks = watermark === null ? null : assertSortableUniqueId(watermark).ticks;
+    const baseTicks = observedTicks === null || physicalTicks > observedTicks + 1n
+      ? physicalTicks
+      : observedTicks + 1n;
+    const lastTicks = baseTicks + BigInt(count) - 1n;
+    if (lastTicks > DOTNET_MAX_TICKS) {
+      throw new SortableUniqueIdError("SUID_RANGE_EXHAUSTED", "Allocator SortableUniqueId range is exhausted before write");
+    }
+    if (options.suffixes !== undefined && options.suffixes.length !== count) {
+      throw new OrderClockReadError("A deterministic SortableUniqueId suffix is required for every candidate");
+    }
+    const suids = Array.from({ length: count }, (_, index) =>
+      formatSortableUniqueId(baseTicks + BigInt(index), options.suffixes?.[index] ?? cryptoRandomSortableUniqueIdSuffix()),
+    );
+    return Object.freeze({
+      base: baseTicks,
+      baseTicks,
+      physicalTicks,
+      observedTicks,
+      watermark: suids.at(-1)!,
+      suids: Object.freeze(suids),
+    });
+  } catch (error) {
+    if (error instanceof SortableUniqueIdError) throw error;
+    throw asOrderClockError(error);
   }
-  const watermarkOrdinal = watermark === null ? -1n : decodeOrderOrdinal(watermark);
-  const base = clockTick > watermarkOrdinal + 1n ? clockTick : watermarkOrdinal + 1n;
-  const endExclusive = base + BigInt(count);
-  if (endExclusive > ORDER_SUID_LIMIT) {
-    throw new OrderClockReadError("Allocator SUID range is exhausted");
-  }
-  const suids = Array.from({ length: count }, (_, index) => encodeOrderOrdinal(base + BigInt(index)));
-  return Object.freeze({ base, watermark: suids[suids.length - 1]!, suids: Object.freeze(suids) });
 }
 
-/** Diagnostic only: derived from the allocated ordinal, never a second clock. */
-export function diagnosticAllocatedAt(orderOrdinal: bigint): string {
-  const milliseconds = Number(orderOrdinal);
-  if (Number.isSafeInteger(milliseconds) && milliseconds >= 0 && milliseconds <= 8_640_000_000_000_000) {
-    return new Date(milliseconds).toISOString();
+/** Diagnostic only; it derives from allocated ticks, never a second clock. */
+export function diagnosticAllocatedAt(ticks: bigint): string {
+  try {
+    const milliseconds = dotNetTicksToUnixMs(ticks);
+    if (milliseconds <= BigInt(Number.MAX_SAFE_INTEGER)) {
+      return new Date(Number(milliseconds)).toISOString();
+    }
+  } catch {
+    // Preserve a non-authoritative diagnostic for values beyond Date's range.
   }
-  return `order:${encodeOrderOrdinal(orderOrdinal)}`;
+  return `ticks:${ticks.toString()}`;
 }

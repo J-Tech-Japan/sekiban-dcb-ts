@@ -1,5 +1,7 @@
 import type { BootstrapDump, BootstrapEventRecord, BootstrapManifest } from "./types";
 import { assertCanonicalEventType } from "../eventIdentity";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, serializedEventMetadata } from "../eventRecord";
 
 export class BootstrapManifestError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -31,18 +33,51 @@ function parseManifest(value: unknown): BootstrapManifest {
   if (value.format !== "sekiban-dcb-bootstrap" || value.version !== 1 || value.canonicalization !== "utf8-json-sorted-keys-v1" || !nonEmpty(value.contentDigest) || !isObject(value.source) || !isObject(value.target) || !isObject(value.tagCounts)) throw new BootstrapManifestError("manifest_invalid", "manifest has an invalid format or version");
   exactKeys(value.source, ["lineageId", "serviceId"], "manifest.source"); exactKeys(value.target, ["allocatorLineageId", "serviceId"], "manifest.target");
   const eventCount = value.eventCount; const tagCounts = value.tagCounts;
-  if (!nonEmpty(value.source.serviceId) || !(nonEmpty(value.source.lineageId) || value.source.lineageId === "unknown-legacy") || !nonEmpty(value.target.serviceId) || !nonEmpty(value.target.allocatorLineageId) || (typeof value.highWatermark !== "string" && value.highWatermark !== null) || typeof eventCount !== "number" || !Number.isSafeInteger(eventCount) || eventCount < 0 || !Object.entries(tagCounts).every(([tag, count]) => nonEmpty(tag) && typeof count === "number" && Number.isSafeInteger(count) && count >= 0)) throw new BootstrapManifestError("manifest_invalid", "manifest field is invalid");
+  if (!nonEmpty(value.source.serviceId) || !nonEmpty(value.source.lineageId) || !nonEmpty(value.target.serviceId) || !nonEmpty(value.target.allocatorLineageId) || (typeof value.highWatermark !== "string" && value.highWatermark !== null) || typeof eventCount !== "number" || !Number.isSafeInteger(eventCount) || eventCount < 0 || !Object.entries(tagCounts).every(([tag, count]) => nonEmpty(tag) && typeof count === "number" && Number.isSafeInteger(count) && count >= 0)) throw new BootstrapManifestError("manifest_invalid", "manifest field is invalid");
   return value as unknown as BootstrapManifest;
 }
 function parseEvent(value: unknown): BootstrapEventRecord {
   if (!isObject(value)) throw new BootstrapManifestError("record_invalid", "event record must be an object");
-  const allowed = ["eventId", "eventTags", "eventType", "payload", "provenance", "suid"]; if (Object.keys(value).some((key) => !allowed.includes(key)) || !nonEmpty(value.eventId) || !nonEmpty(value.suid) || typeof value.payload !== "string" || !Array.isArray(value.eventTags) || !value.eventTags.every(nonEmpty) || new Set(value.eventTags).size !== value.eventTags.length || (value.provenance !== undefined && !isObject(value.provenance)) || (value.eventType !== undefined && !nonEmpty(value.eventType))) throw new BootstrapManifestError("record_invalid", "event record is invalid");
-  if (value.eventType !== undefined) {
-    try { assertCanonicalEventType(value.eventType); } catch { throw new BootstrapManifestError("record_invalid", "eventType is not canonical"); }
-    if (isObject(value.provenance) && value.provenance.origin !== undefined && value.provenance.origin !== "g27") throw new BootstrapManifestError("record_invalid", "canonical eventType requires g27 provenance");
+  const allowed = ["causationId", "correlationId", "eventId", "eventTags", "eventType", "executedUser", "payload", "provenance", "suid", "timestamp"];
+  if (Object.keys(value).some((key) => !allowed.includes(key)) || !nonEmpty(value.eventId) || !nonEmpty(value.suid) ||
+    typeof value.payload !== "string" || !Array.isArray(value.eventTags) || !value.eventTags.every(nonEmpty) ||
+    new Set(value.eventTags).size !== value.eventTags.length || !nonEmpty(value.eventType) ||
+    !isObject(value.provenance) || value.provenance.origin !== "g32" || !nonEmpty(value.timestamp) ||
+    ![value.causationId, value.correlationId, value.executedUser].every((metadata) => metadata === null || nonEmpty(metadata))) {
+    throw new BootstrapManifestError("record_invalid", "event record is invalid");
   }
-  if (isObject(value.provenance) && value.provenance.origin !== undefined && value.provenance.origin !== "pre-g27" && value.provenance.origin !== "g27") throw new BootstrapManifestError("record_invalid", "event provenance origin is invalid");
-  return { eventId: value.eventId, suid: value.suid, payload: value.payload, eventTags: [...value.eventTags].sort(), ...(value.eventType === undefined ? {} : { eventType: value.eventType }), ...(value.provenance === undefined ? {} : { provenance: value.provenance as Record<string, string> }) };
+  try {
+    assertSortableUniqueId(value.suid);
+    // A C# import is permitted to contain any RFC 4122 Id. New commit
+    // admission remains UUID v7; this parser is the migration boundary.
+    if (!isRfc4122Uuid(value.eventId)) throw new Error("event id");
+    assertCanonicalEventType(value.eventType);
+    JSON.parse(value.payload);
+  } catch {
+    throw new BootstrapManifestError("record_invalid", "G32 record identity or payload is invalid");
+  }
+  if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(value.timestamp)) {
+    throw new BootstrapManifestError("record_invalid", "record timestamp is not UTC");
+  }
+  const metadata = serializedEventMetadata(value.eventId);
+  const nullableMetadata = value.causationId === null && value.correlationId === null && value.executedUser === null;
+  const serializedMetadata = value.causationId === metadata.causationId && value.correlationId === metadata.correlationId && value.executedUser === metadata.executedUser;
+  if (!nullableMetadata && !serializedMetadata) {
+    throw new BootstrapManifestError("record_invalid", "record metadata must be all null or use the serialized C# constants");
+  }
+  return {
+    eventId: value.eventId,
+    suid: value.suid,
+    payload: value.payload,
+    // C# Tags preserve emission order; do not sort the durable record.
+    eventTags: [...value.eventTags],
+    eventType: value.eventType,
+    provenance: { origin: "g32" },
+    timestamp: value.timestamp,
+    causationId: value.causationId as string | null,
+    correlationId: value.correlationId as string | null,
+    executedUser: value.executedUser as string | null,
+  };
 }
 
 /** Parses and validates the complete dump before a coordinator can mutate a target. */

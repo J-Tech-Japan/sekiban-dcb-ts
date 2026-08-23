@@ -13,11 +13,14 @@ import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-run
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import { createPostgresStoreProvider } from "../packages/dcb-runtime/src/store/provider";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
 
-const PAYLOAD = "cGF5bG9hZA==";
+const PAYLOAD = btoa(JSON.stringify({ fixture: "payload" }));
 
 function unique(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+  // C# DbEvent.ServiceId is varchar(64); keep every generated service
+  // fixture inside that public record boundary.
+  return `${prefix.slice(0, 27)}-${crypto.randomUUID()}`;
 }
 
 function mutableClock(nowMs: number): { clock: PipelineClock; set(now: number): void } {
@@ -33,19 +36,16 @@ function message(
   eventTags: string[],
   enqueuedAt: number,
 ): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId,
-    allocatorLineageId: "legacy-pre-g17",
+    allocatorLineageId: "downstream-spec-lineage",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,
     suid,
-    payload: PAYLOAD,
     eventTags,
-    provenance: "pre-g27-queue",
     enqueuedAt,
-  };
+  });
 }
 
 async function appendOutboxCopy(
@@ -53,6 +53,7 @@ async function appendOutboxCopy(
   tag: string,
   body: { attemptId: string; eventId: string; suid: string; eventTags: string[] },
 ): Promise<void> {
+  const eventId = g32EventId(body.eventId);
   const response = await SELF.fetch(
     `https://downstream.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
     {
@@ -62,12 +63,14 @@ async function appendOutboxCopy(
         attemptId: body.attemptId,
         epoch: 0,
         candidates: [{
-          eventId: body.eventId,
-          suid: body.suid,
-          payload: PAYLOAD,
+          eventId,
+          suid: g32Suid(body.suid),
+          payload: JSON.stringify({ fixture: "outbox-copy" }),
           eventTags: body.eventTags,
-          provenance: "pre-g27",
-          legacyMigrationMarker: "pre-g27-append-v1",
+          eventType: "DownstreamFixtureEvent",
+          provenance: "g32",
+          allocatorLineageId: "downstream-spec-lineage",
+          timestamp: G32_FIXTURE_TIMESTAMP,
         }],
       }),
     },
@@ -207,8 +210,8 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
 
       const all = await store.readAllEvents(serviceId, "");
       expect(all.map((event) => event.suid)).toEqual([
-        "suid-00000000000000000000000000000001",
-        "suid-00000000000000000000000000000002",
+        queued[0]!.suid,
+        second.suid,
       ]);
       expect(all[0]!.arrivals.map((arrival) => arrival.tag)).toEqual([...tags].sort());
       expect(await store.readAllEvents(serviceId, all[0]!.suid)).toMatchObject([{ eventId: second.eventId }]);
@@ -231,7 +234,7 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
         body: JSON.stringify({
           version: 1,
           eventCandidates: [{ payload: PAYLOAD, eventPayloadName: "DownstreamReadProbe", tags: [commitTag] }],
-          consistencyTags: [{ tag: commitTag, lastSortableUniqueId: "" }],
+          consistencyTags: [],
         }),
       }), instrumented);
       expect(commitResponse.status, await commitResponse.clone().text()).toBe(200);
@@ -311,7 +314,7 @@ describe("SDT-G7 downstream pipeline and PostgreSQL event store", () => {
     const tags = [unique("clock-a"), unique("clock-b")];
     const clock = mutableClock(1_000);
     const exclusions: ExclusionLedgerPort = {
-      isExcludedAudited: async (input) => input.eventId === "known-exclusion" && input.tag === tags[1],
+      isExcludedAudited: async (input) => input.eventId === g32EventId("known-exclusion") && input.tag === tags[1],
     };
     await withPostgresStore(async (store) => {
       const detector = new InconsistencyDetector(store, exclusions);

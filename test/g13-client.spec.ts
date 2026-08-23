@@ -10,6 +10,7 @@ import {
   preflightCommit,
 } from "../packages/dcb-client/src/index";
 import { describe, expect, it } from "vitest";
+import { g32Suid } from "./helpers/g32-fixtures";
 
 const snapshot = (tagGroup: string, tagContent: string, tagProjector: string, head: string, payload: Record<string, unknown> = {}): ReadonlyTagStateResponse => ({
   payload: payload as JsonValue,
@@ -61,11 +62,12 @@ describe("SDT-G13 claim-ledger client", () => {
   });
 
   it("emits the §3.1 consistency spelling accepted by the real commit runtime", async () => {
+    const head = g32Suid("g13-runtime-head");
     let captured: CommitEnvelope | undefined;
     const event = defineEvent("Added");
     const executor = new ClaimLedgerExecutor({
       transport: transportFor(
-        () => snapshot("group", "content", "projector", "s-1"),
+        () => snapshot("group", "content", "projector", head),
         (envelope) => {
           captured = envelope;
           return { status: 200, body: { writtenEvents: [] } };
@@ -78,13 +80,13 @@ describe("SDT-G13 claim-ledger client", () => {
       return { kind: "committed" };
     });
     expect(result.kind).toBe("committed");
-    expect(captured?.consistency).toEqual([{ tag: "group:content", lastSortableUniqueId: "s-1" }]);
+    expect(captured?.consistency).toEqual([{ tag: "group:content", lastSortableUniqueId: head }]);
 
     const clientEnvelope = captured!;
     const runtimeEnvelope = {
       version: 1,
       eventCandidates: clientEnvelope.candidates.map((candidate) => ({
-        payload: "eA==",
+        payload: "e30=",
         eventPayloadName: candidate.eventPayloadName,
         tags: [...candidate.tags],
       })),

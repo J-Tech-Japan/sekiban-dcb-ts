@@ -15,6 +15,8 @@ import {
 import { serviceIdForRequest } from "../http/testServiceId";
 import type { DeliveryClass } from "../downstream/Doorbell";
 import { canonicalEventType } from "../eventIdentity";
+import { createUuidV7, serializedEventMetadata, writeTimestampUtc } from "../eventRecord";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -44,8 +46,8 @@ export interface CommitWorkerHooks {
   allocatorName?: string;
   /** Runtime composition value; never sourced from a caller-controlled V1 body. */
   domainDeliveryClass?: DeliveryClass;
-  /** Active event registry used by commit admission to assign the canonical version. */
-  registeredEventVersions?: Readonly<Record<string, number>>;
+  /** Registered schema/parser authority for exact-case payload admission. */
+  registeredEventParsers?: Readonly<Record<string, (payload: unknown) => unknown>>;
 }
 
 interface ReservationSuccess {
@@ -101,6 +103,85 @@ function isStandardBase64(value: string): boolean {
   );
 }
 
+class CommitPayloadAdmissionError extends Error {
+  constructor(readonly code: "invalid_payload_utf8" | "invalid_payload_json" | "payload_case_mismatch" | "payload_type_discriminator", message: string) {
+    super(message);
+    this.name = "CommitPayloadAdmissionError";
+  }
+}
+
+function decodeBase64Utf8Json(value: string): { readonly text: string; readonly parsed: unknown } {
+  let bytes: Uint8Array;
+  try {
+    const binary = atob(value);
+    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch {
+    throw new CommitPayloadAdmissionError("invalid_payload_utf8", "Payload base64 could not be decoded");
+  }
+  let text: string;
+  try {
+    // The fatal decoder is deliberate: replacement characters would destroy
+    // the payload-byte equality contract before storage is even attempted.
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new CommitPayloadAdmissionError("invalid_payload_utf8", "Payload must be valid UTF-8 JSON text");
+  }
+  try {
+    return Object.freeze({ text, parsed: JSON.parse(text) });
+  } catch {
+    throw new CommitPayloadAdmissionError("invalid_payload_json", "Payload must be syntactically valid JSON");
+  }
+}
+
+function assertNoPayloadDiscriminator(value: unknown, path = "$"): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => assertNoPayloadDiscriminator(entry, `${path}[${index}]`));
+    return;
+  }
+  if (typeof value !== "object" || value === null) return;
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "eventType" || key === "eventName" || key === "eventPayloadName") {
+      throw new CommitPayloadAdmissionError("payload_type_discriminator", `Payload discriminator ${path}.${key} is forbidden`);
+    }
+    assertNoPayloadDiscriminator(child, `${path}.${key}`);
+  }
+}
+
+/**
+ * A parser may coerce values, but it may not silently accept a member missing
+ * from its returned schema value. This catches additional members and
+ * case-only spelling drift without reserializing the admitted bytes.
+ */
+function assertExactMemberPaths(actual: unknown, registered: unknown, path = "$"): void {
+  if (Array.isArray(actual)) {
+    if (!Array.isArray(registered)) {
+      throw new CommitPayloadAdmissionError("payload_case_mismatch", `Registered schema shape differs at ${path}`);
+    }
+    actual.forEach((entry, index) => assertExactMemberPaths(entry, registered[index], `${path}[${index}]`));
+    return;
+  }
+  if (typeof actual !== "object" || actual === null || Array.isArray(actual)) return;
+  if (typeof registered !== "object" || registered === null || Array.isArray(registered)) {
+    throw new CommitPayloadAdmissionError("payload_case_mismatch", `Registered schema shape differs at ${path}`);
+  }
+  const registeredRecord = registered as Record<string, unknown>;
+  for (const [key, value] of Object.entries(actual as Record<string, unknown>)) {
+    if (!Object.prototype.hasOwnProperty.call(registeredRecord, key)) {
+      const caseOnly = Object.keys(registeredRecord).find((registeredKey) => registeredKey.toLocaleLowerCase("en-US") === key.toLocaleLowerCase("en-US"));
+      const suffix = caseOnly === undefined ? "is not registered" : `must use exact case ${caseOnly}`;
+      throw new CommitPayloadAdmissionError("payload_case_mismatch", `Payload member ${path}.${key} ${suffix}`);
+    }
+    assertExactMemberPaths(value, registeredRecord[key], `${path}.${key}`);
+  }
+}
+
+function encodeBase64Utf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 function faultFromRequest(request: Request): CommitTestFault | undefined {
   // The test pool calls the Worker through this synthetic host. Production
   // V1 traffic cannot enable fault injection through a wire/header extension.
@@ -133,7 +214,7 @@ function responseWithAttempt(response: Response, attemptId: string, expose: bool
 /** Parse the complete V1 envelope before any Durable Object is contacted. */
 export function validateCommitEnvelope(
   value: unknown,
-  registeredEventVersions: Readonly<Record<string, number>> = {},
+  registeredEventParsers: Readonly<Record<string, (payload: unknown) => unknown>> = {},
 ):
   | { value: ValidatedCommitEnvelope }
   | { error: Response } {
@@ -179,20 +260,33 @@ export function validateCommitEnvelope(
       return { error: error(400, "validation_error", "Candidate tags must be unique non-empty strings") };
     }
     let eventType: string;
+    let payload: string;
     try {
       if (Object.prototype.hasOwnProperty.call(rawCandidate, "eventPayloadVersion")) {
         throw new Error("V1 commit candidates must not contain eventPayloadVersion; the registered event definition is authoritative");
       }
-      const registeredVersion = registeredEventVersions[rawCandidate.eventPayloadName];
-      if (registeredVersion !== undefined && (!Number.isSafeInteger(registeredVersion) || registeredVersion < 1)) {
-        throw new Error("Registered event definition has an invalid payload version");
+      eventType = canonicalEventType(rawCandidate.eventPayloadName);
+      const decoded = decodeBase64Utf8Json(rawCandidate.payload);
+      assertNoPayloadDiscriminator(decoded.parsed);
+      const parser = registeredEventParsers[rawCandidate.eventPayloadName];
+      if (parser !== undefined) {
+        let registered: unknown;
+        try {
+          registered = parser(decoded.parsed);
+        } catch {
+          throw new CommitPayloadAdmissionError("payload_case_mismatch", `Payload was rejected by registered ${rawCandidate.eventPayloadName} schema`);
+        }
+        assertExactMemberPaths(decoded.parsed, registered);
       }
-      eventType = canonicalEventType(rawCandidate.eventPayloadName, registeredVersion ?? 1);
+      payload = decoded.text;
     } catch (identityError) {
+      if (identityError instanceof CommitPayloadAdmissionError) {
+        return { error: error(400, identityError.code, identityError.message) };
+      }
       return { error: error(400, "invalid_event_identity", identityError instanceof Error ? identityError.message : "Event identity is invalid") };
     }
     eventCandidates.push({
-      payload: rawCandidate.payload,
+      payload,
       eventPayloadName: rawCandidate.eventPayloadName,
       eventType,
       tags: [...rawCandidate.tags],
@@ -213,6 +307,11 @@ export function validateCommitEnvelope(
           "lastSortableUniqueId must be a non-null string; omit the entry for an unobserved tag",
         ),
       };
+    }
+    try {
+      assertSortableUniqueId(rawTag.lastSortableUniqueId);
+    } catch {
+      return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
     }
     if (!allTags.includes(rawTag.tag)) {
       return { error: error(400, "validation_error", "Each consistency tag must occur in an event candidate") };
@@ -248,7 +347,7 @@ export class CommitWorker {
     } catch {
       return error(400, "malformed_commit_envelope", "Commit envelope must be JSON");
     }
-    const validated = validateCommitEnvelope(body, this.hooks.registeredEventVersions);
+    const validated = validateCommitEnvelope(body, this.hooks.registeredEventParsers);
     if ("error" in validated) {
       return validated.error;
     }
@@ -263,7 +362,12 @@ export class CommitWorker {
     const attemptId = fault === undefined
       ? crypto.randomUUID()
       : testAttemptIdFromRequest(request) ?? crypto.randomUUID();
-    const candidates = input.eventCandidates.map((candidate) => ({ ...candidate, eventId: crypto.randomUUID() }));
+    const writeTimestamp = writeTimestampUtc(startedAt);
+    const candidates = input.eventCandidates.map((candidate) => ({
+      ...candidate,
+      eventId: createUuidV7(startedAt),
+      timestamp: writeTimestamp,
+    }));
     const bootstrapEpoch = await this.bootstrapCommand("admit", attemptId);
     if (bootstrapEpoch === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap is importing; commit is unavailable"), attemptId, fault !== undefined);
@@ -277,7 +381,7 @@ export class CommitWorker {
     try {
     const journal = this.journalFor(attemptId);
     const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
-      candidates: candidates.map(({ eventId, payload, eventType, tags }) => ({ eventId, payload, eventType, tags })),
+      candidates: candidates.map(({ eventId, payload, eventType, tags, timestamp }) => ({ eventId, payload, eventType, tags, timestamp })),
       consistencyTags: input.consistencyTags,
       commitContext: {
         attemptId,
@@ -558,7 +662,7 @@ export class CommitWorker {
   }
 
   private withAllocatedSuids(
-    candidates: Array<{ eventId: string; payload: string; eventPayloadName: string; eventType: string; tags: string[] }>,
+    candidates: Array<{ eventId: string; payload: string; eventPayloadName: string; eventType: string; tags: string[]; timestamp: string }>,
     vector: AllocationVector,
   ): AllocatedCommitCandidate[] | undefined {
     if (vector.candidates.length !== candidates.length) {
@@ -599,14 +703,15 @@ export class CommitWorker {
             reservationToken: reservations.get(tag)?.reservationToken,
             candidates: candidates
               .filter((candidate) => candidate.tags.includes(tag))
-              .map(({ eventId, suid, payload, eventType, tags }) => ({
+              .map(({ eventId, suid, payload, eventType, tags, timestamp }) => ({
                 eventId,
                 suid,
                 payload,
                 eventType,
-                provenance: "g27" as const,
+                provenance: "g32" as const,
                 eventTags: tags,
                 allocatorLineageId,
+                timestamp,
               })),
             faultInjection: injectFault ? "after-append-before-confirm" : undefined,
           });
@@ -727,14 +832,10 @@ export class CommitWorker {
     }));
     return {
       writtenEvents: candidates.map((candidate) => ({
-        payload: candidate.payload,
+        payload: encodeBase64Utf8(candidate.payload),
         sortableUniqueIdValue: candidate.suid,
         id: candidate.eventId,
-        eventMetadata: {
-          causationId: attemptId,
-          correlationId: attemptId,
-          executedUser: "serialized-dcb-v1",
-        },
+        eventMetadata: serializedEventMetadata(candidate.eventId),
         tags: candidate.tags,
         eventPayloadName: candidate.eventPayloadName,
       })),

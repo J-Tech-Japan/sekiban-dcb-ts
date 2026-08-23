@@ -50,6 +50,8 @@ interface JournalCandidate {
   tags: string[];
   suid: string;
   allocatorLineageId?: string;
+  eventType: string;
+  timestamp: string;
 }
 
 interface JournalWorkset {
@@ -317,6 +319,9 @@ export class RepairWorker {
           if (!candidate.tags.includes(tag)) {
             continue;
           }
+          if (candidate.allocatorLineageId === undefined) {
+            throw new RepairWorkerFailure(`Repair workset for ${attemptId} lacks its allocator lineage`);
+          }
           result.push({
             tag,
             item: {
@@ -326,6 +331,9 @@ export class RepairWorker {
               payload: candidate.payload,
               eventTags: candidate.tags,
               allocatorLineageId: candidate.allocatorLineageId,
+              eventType: candidate.eventType,
+              provenance: "g32",
+              timestamp: candidate.timestamp,
             },
           });
         }

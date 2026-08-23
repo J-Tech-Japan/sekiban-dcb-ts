@@ -1,8 +1,8 @@
-/** Provider-neutral, immutable bootstrap dump wire.  SUID and payload remain opaque strings. */
+/** Provider-neutral, immutable G32 dump wire. */
 export interface BootstrapManifest {
   readonly format: "sekiban-dcb-bootstrap";
   readonly version: 1;
-  readonly source: { readonly serviceId: string; readonly lineageId: string | "unknown-legacy" };
+  readonly source: { readonly serviceId: string; readonly lineageId: string };
   readonly target: { readonly serviceId: string; readonly allocatorLineageId: string };
   readonly highWatermark: string | null;
   readonly eventCount: number;
@@ -16,9 +16,12 @@ export interface BootstrapEventRecord {
   readonly suid: string;
   readonly payload: string;
   readonly eventTags: readonly string[];
-  /** Optional additive G27 canonical event identity. */
-  readonly eventType?: string;
-  readonly provenance?: Readonly<Record<string, string>>;
+  readonly eventType: string;
+  readonly provenance: Readonly<{ readonly origin: "g32" }>;
+  readonly timestamp: string;
+  readonly causationId: string | null;
+  readonly correlationId: string | null;
+  readonly executedUser: string | null;
 }
 
 export interface BootstrapDump {

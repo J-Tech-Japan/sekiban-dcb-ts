@@ -7,6 +7,7 @@ import {
   type TagRecord,
   type TagReservation,
 } from "../packages/dcb-runtime/src/tag/types";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 interface Scope {
   serviceId: string;
@@ -36,8 +37,19 @@ function newScope(): Scope {
   return { serviceId: `service-${crypto.randomUUID()}`, tag: "orders" };
 }
 
+const suid = (value: string) => g32Suid(value);
+
 function candidate(scope: Scope, eventId: string, suid: string, payload = "payload") {
-  return { eventId, suid, payload, eventTags: [scope.tag], provenance: "pre-g27", legacyMigrationMarker: "pre-g27-append-v1" };
+  return {
+    eventId: g32EventId(eventId),
+    suid: g32Suid(suid),
+    payload: JSON.stringify({ value: payload }),
+    eventTags: [scope.tag],
+    eventType: "FixtureEvent",
+    provenance: "g32",
+    allocatorLineageId: "tag-spec-lineage",
+    timestamp: G32_FIXTURE_TIMESTAMP,
+  };
 }
 
 async function state(scope: Scope): Promise<TagRecord> {
@@ -48,19 +60,48 @@ async function state(scope: Scope): Promise<TagRecord> {
   return responseJson<TagRecord>(response);
 }
 
+async function observedHead(scope: Scope): Promise<string> {
+  const response = await SELF.fetch(
+    `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
+  );
+  if (response.status === 404) {
+    const seeded = await post(scope, "/append", {
+      attemptId: `initial:${crypto.randomUUID()}`,
+      epoch: 0,
+      candidates: [candidate(scope, `initial:${crypto.randomUUID()}`, "0")],
+    });
+    expect(seeded.status).toBe(201);
+    return (await state(scope)).head;
+  }
+  expect(response.status).toBe(200);
+  const record = await responseJson<TagRecord>(response);
+  if (record.head.length > 0) return record.head;
+  const seeded = await post(scope, "/append", {
+    attemptId: `initial:${crypto.randomUUID()}`,
+    epoch: 0,
+    candidates: [candidate(scope, `initial:${crypto.randomUUID()}`, "0")],
+  });
+  expect(seeded.status).toBe(201);
+  return (await state(scope)).head;
+}
+
 async function acquire(
   scope: Scope,
   attemptId: string,
   epoch: number,
-  expectedHead = "",
+  expectedHead?: string,
   options: { eventTags?: string[]; consistencyTags?: unknown[] } = {},
 ): Promise<Response> {
+  const observed = options.consistencyTags === undefined && expectedHead === undefined
+    ? await observedHead(scope)
+    : expectedHead;
   return post(scope, "/acquire", {
     attemptId,
     epoch,
     eventTags: options.eventTags ?? [scope.tag],
-    consistencyTags:
-      options.consistencyTags ?? [{ tag: scope.tag, lastSortableUniqueId: expectedHead }],
+    consistencyTags: options.consistencyTags ?? (observed === undefined
+      ? []
+      : [{ tag: scope.tag, lastSortableUniqueId: observed }]),
   });
 }
 
@@ -110,7 +151,7 @@ describe("TagDurableObject", () => {
     expect(absent.status).toBe(404);
 
     const omitted = await acquire(scope, "omitted", 1, "", {
-      consistencyTags: [{ tag: "other", lastSortableUniqueId: "unrelated" }],
+      consistencyTags: [{ tag: "other", lastSortableUniqueId: suid("omitted-head") }],
     });
     expect(omitted.status).toBe(200);
     expect((await responseJson<{ status: string }>(omitted)).status).toBe("omitted");
@@ -118,18 +159,18 @@ describe("TagDurableObject", () => {
     const written = await post(scope, "/append", {
       attemptId: "omitted",
       epoch: 1,
-      candidates: [candidate(scope, "event-1", "suid-00000000000000000000000000000001")],
+      candidates: [candidate(scope, "event-1", suid("suid-00000000000000000000000000000001"))],
     });
     expect(written.status).toBe(201);
     expect((await state(scope)).events[0]!.eventTags).toEqual([scope.tag]);
 
-    expect(await rejectionReason(await acquire(scope, "stale-head", 2, ""))).toBe(
+    expect(await rejectionReason(await acquire(scope, "stale-head", 2, suid("stale-head")))).toBe(
       "consistency_head_mismatch",
     );
     const first = await reservation(
-      await acquire(scope, "first-observed", 2, "suid-00000000000000000000000000000001"),
+      await acquire(scope, "first-observed", 2, suid("suid-00000000000000000000000000000001")),
     );
-    expect(first.expectedHead).toBe("suid-00000000000000000000000000000001");
+    expect(first.expectedHead).toBe(suid("suid-00000000000000000000000000000001"));
     expect(await rejectionReason(await acquire(scope, "second-observed", 1, first.expectedHead))).toBe(
       "active_reservation_conflict",
     );
@@ -187,7 +228,7 @@ describe("TagDurableObject", () => {
     expect(await rejectionReason(await post(scope, "/append", {
       attemptId: "epoch-owner",
       epoch: MAX_EPOCH - 1,
-      candidates: [candidate(scope, "late", "suid-00000000000000000000000000000001")],
+      candidates: [candidate(scope, "late", suid("suid-00000000000000000000000000000001"))],
     }))).toBe("stale_epoch");
   });
 
@@ -250,7 +291,7 @@ describe("TagDurableObject", () => {
   it("AC5: checks exact duplicates before epoch, then reservation ownership, then monotonicity", async () => {
     const duplicateScope = newScope();
     const owned = await reservation(await acquire(duplicateScope, "ordered", 1));
-    const original = candidate(duplicateScope, "event-1", "suid-00000000000000000000000000000001");
+    const original = candidate(duplicateScope, "event-1", suid("suid-00000000000000000000000000000001"));
     expect((await post(duplicateScope, "/append", {
       attemptId: "ordered",
       epoch: 1,
@@ -270,20 +311,20 @@ describe("TagDurableObject", () => {
     expect(await rejectionReason(await post(duplicateScope, "/append", {
       attemptId: "ordered",
       epoch: 0,
-      candidates: [{ ...original, payload: "changed" }],
+      candidates: [{ ...original, payload: JSON.stringify({ value: "changed" }) }],
     }))).toBe("stale_epoch");
 
     const tokenScope = newScope();
     expect((await post(tokenScope, "/append", {
       attemptId: "seed",
       epoch: 1,
-      candidates: [candidate(tokenScope, "seed", "suid-00000000000000000000000000000002")],
+      candidates: [candidate(tokenScope, "seed", suid("suid-00000000000000000000000000000002"))],
     })).status).toBe(201);
-    await reservation(await acquire(tokenScope, "owner", 1, "suid-00000000000000000000000000000002"));
+    await reservation(await acquire(tokenScope, "owner", 1, suid("suid-00000000000000000000000000000002")));
     expect(await rejectionReason(await post(tokenScope, "/append", {
       attemptId: "foreign",
       epoch: 1,
-      candidates: [candidate(tokenScope, "foreign", "suid-00000000000000000000000000000001")],
+      candidates: [candidate(tokenScope, "foreign", suid("suid-00000000000000000000000000000001"))],
     }))).toBe("reservation_token_required");
   });
 
@@ -291,8 +332,8 @@ describe("TagDurableObject", () => {
     const scope = newScope();
     const owned = await reservation(await acquire(scope, "batch", 1));
     const reverseBatch = [
-      candidate(scope, "event-2", "suid-00000000000000000000000000000002"),
-      candidate(scope, "event-1", "suid-00000000000000000000000000000001"),
+      candidate(scope, "event-2", suid("suid-00000000000000000000000000000002")),
+      candidate(scope, "event-1", suid("suid-00000000000000000000000000000001")),
     ];
     const beforeFault = await state(scope);
     const fault = await post(scope, "/append", {
@@ -314,11 +355,12 @@ describe("TagDurableObject", () => {
     expect(appended.status).toBe(201);
     const complete = await state(scope);
     expect(complete.events.map((event) => event.suid)).toEqual([
-      "suid-00000000000000000000000000000001",
-      "suid-00000000000000000000000000000002",
+      suid("0"),
+      suid("suid-00000000000000000000000000000001"),
+      suid("suid-00000000000000000000000000000002"),
     ]);
     expect(complete.outbox.map((row) => row.suid)).toEqual(complete.events.map((event) => event.suid));
-    expect(complete.head).toBe("suid-00000000000000000000000000000002");
+    expect(complete.head).toBe(suid("suid-00000000000000000000000000000002"));
     expect(complete.activeReservation).toBeNull();
     expect(complete.confirmations).toContainEqual({ attemptId: "batch", epoch: 1 });
   });
@@ -336,7 +378,7 @@ describe("TagDurableObject", () => {
       attemptId: "seal-race",
       epoch: 1,
       reservationToken: owned.token,
-      candidates: [candidate(scope, "late", "suid-00000000000000000000000000000001")],
+      candidates: [candidate(scope, "late", suid("suid-00000000000000000000000000000001"))],
     }))).toBe("stale_epoch");
     expect(await rejectionReason(await post(scope, "/confirm", {
       attemptId: "seal-race",
@@ -358,7 +400,7 @@ describe("TagDurableObject", () => {
 
   it("G5: treats fences as an exact-key durable set and gates acquire and append in the specified order", async () => {
     const scope = newScope();
-    const original = candidate(scope, "event-1", "suid-00000000000000000000000000000001");
+    const original = candidate(scope, "event-1", suid("suid-00000000000000000000000000000001"));
     expect((await post(scope, "/append", {
       attemptId: "writer",
       epoch: 0,
@@ -402,9 +444,9 @@ describe("TagDurableObject", () => {
     await internalError(await post(scope, "/append", {
       attemptId: "foreign",
       epoch: 0,
-      candidates: [candidate(scope, "blocked", "suid-00000000000000000000000000000002")],
+      candidates: [candidate(scope, "blocked", suid("suid-00000000000000000000000000000002"))],
     }));
-    await internalError(await acquire(scope, "blocked-acquire", 0, "suid-00000000000000000000000000000001"));
+    await internalError(await acquire(scope, "blocked-acquire", 0, suid("suid-00000000000000000000000000000001")));
 
     // Clearing a key never clears another key, so the gate remains closed.
     expect((await post(scope, "/fence/clear", {
@@ -423,7 +465,7 @@ describe("TagDurableObject", () => {
     await internalError(await post(scope, "/append", {
       attemptId: "still-blocked",
       epoch: 0,
-      candidates: [candidate(scope, "still-blocked", "suid-00000000000000000000000000000002")],
+      candidates: [candidate(scope, "still-blocked", suid("suid-00000000000000000000000000000002"))],
     }));
     expect((await post(scope, "/fence/clear", {
       reason: "repair-b",
@@ -433,7 +475,7 @@ describe("TagDurableObject", () => {
     expect((await post(scope, "/append", {
       attemptId: "open-again",
       epoch: 0,
-      candidates: [candidate(scope, "open-again", "suid-00000000000000000000000000000002")],
+      candidates: [candidate(scope, "open-again", suid("suid-00000000000000000000000000000002"))],
     })).status).toBe(201);
 
     const expiryScope = newScope();
@@ -483,7 +525,7 @@ describe("TagDurableObject", () => {
       post(scope, "/append", {
         attemptId: "writer",
         epoch: 0,
-        candidates: [candidate(scope, "race-event", "suid-00000000000000000000000000000001")],
+        candidates: [candidate(scope, "race-event", suid("suid-00000000000000000000000000000001"))],
       }),
     ]);
     expect(installed.status).toBe(201);
@@ -502,7 +544,7 @@ describe("TagDurableObject", () => {
       post(scope, "/append", {
         attemptId: "second-writer",
         epoch: 0,
-        candidates: [candidate(scope, "blocked-event", "suid-0000000000000000000000000000000002")],
+        candidates: [candidate(scope, "blocked-event", suid("suid-0000000000000000000000000000000002"))],
       }),
     ]);
     expect(cleared.status).toBe(200);

@@ -13,8 +13,9 @@ import { PUBLISHED_SAFE_WINDOW_MS } from "../packages/dcb-runtime/src/projection
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import type { ProjectionStore } from "../packages/dcb-runtime/src/store/types";
+import { g32Message, g32SuidAt } from "./helpers/g32-fixtures";
 
-const PAYLOAD = "cGF5bG9hZA==";
+const PAYLOAD = JSON.stringify({ fixture: "mv" });
 
 interface EventListState {
   eventIds: string[];
@@ -60,6 +61,11 @@ function mutableClock(nowMs: number): { clock: PipelineClock; set(now: number): 
   return { clock: { now: () => now }, set: (next) => { now = next; } };
 }
 
+function sourceSuid(seed: string): string {
+  const ordinal = Number(/(\d+)$/.exec(seed)?.[1] ?? "0");
+  return g32SuidAt(1_000 + ordinal, seed);
+}
+
 function message(
   serviceId: string,
   eventId: string,
@@ -67,19 +73,18 @@ function message(
   tag: string,
   enqueuedAt: number,
 ): DownstreamOutboxMessage {
-  return {
-    version: 1,
+  return g32Message({
     serviceId,
     allocatorLineageId: "test-mv-lineage",
     tag,
     attemptId: `${eventId}-attempt`,
     eventId,
-    suid,
+    suid: sourceSuid(suid),
     payload: PAYLOAD,
     eventTags: [tag],
-    provenance: "pre-g27-queue",
+    eventType: "MvFixtureEvent",
     enqueuedAt,
-  };
+  });
 }
 
 function postgresStore(): PostgresEventStore {
@@ -166,7 +171,7 @@ describe("SDT-G10 materialized views", () => {
         await injectDelivery(store, event, clock.clock);
       }
       const runtime = new MaterializedViewRuntime(store);
-      await expect(runtime.build(serviceId, EVENT_LIST_VIEW, 21_000, {
+      await expect(runtime.build(serviceId, EVENT_LIST_VIEW, 21_100, {
         afterCheckpoint: (event) => {
           if (event.suid === events[0]!.suid) {
             throw new Error("injected crash after materialized-view checkpoint");
@@ -183,18 +188,20 @@ describe("SDT-G10 materialized views", () => {
       const restartedStore = postgresStore();
       await restartedStore.initialize();
       const restarted = new MaterializedViewRuntime(restartedStore);
-      const resumed = await restarted.follow(serviceId, EVENT_LIST_VIEW, 21_000);
+      const resumed = await restarted.follow(serviceId, EVENT_LIST_VIEW, 21_100);
       expect(resumed).toMatchObject({ advancedSourceEvents: 2, appliedEvents: 2 });
       expect(resumed.state).toEqual({
         eventIds: events.map((event) => event.eventId),
         suids: events.map((event) => event.suid),
       });
-      expect((await restarted.follow(serviceId, EVENT_LIST_VIEW, 21_000))).toMatchObject({
+      expect((await restarted.follow(serviceId, EVENT_LIST_VIEW, 21_100))).toMatchObject({
         advancedSourceEvents: 0,
         appliedEvents: 0,
       });
 
-      const beforeFaultServiceId = unique("mv-before-checkpoint-service");
+      // C# Event.ServiceId is varchar(64); keep the generated test service
+      // inside that durable record boundary too.
+      const beforeFaultServiceId = unique("mv-before");
       const beforeFaultEvent = message(
         beforeFaultServiceId,
         unique("before-checkpoint"),
@@ -203,12 +210,12 @@ describe("SDT-G10 materialized views", () => {
         900,
       );
       await injectDelivery(restartedStore, beforeFaultEvent, clock.clock);
-      await expect(restarted.build(beforeFaultServiceId, EVENT_LIST_VIEW, 21_000, {
+      await expect(restarted.build(beforeFaultServiceId, EVENT_LIST_VIEW, 21_100, {
         beforeCheckpoint: () => { throw new Error("injected crash before materialized-view checkpoint"); },
       })).rejects.toThrow("injected crash before materialized-view checkpoint");
       expect(await restartedStore.readProjectionCheckpoint(beforeFaultServiceId, materializedViewId(EVENT_LIST_VIEW.id)))
         .toMatchObject({ lastSuid: "", version: 0 });
-      const recoveredBeforeCheckpoint = await restarted.follow(beforeFaultServiceId, EVENT_LIST_VIEW, 21_000);
+      const recoveredBeforeCheckpoint = await restarted.follow(beforeFaultServiceId, EVENT_LIST_VIEW, 21_100);
       expect(recoveredBeforeCheckpoint).toMatchObject({ advancedSourceEvents: 1, appliedEvents: 1 });
       expect(recoveredBeforeCheckpoint.state).toEqual({
         eventIds: [beforeFaultEvent.eventId],
@@ -232,8 +239,8 @@ describe("SDT-G10 materialized views", () => {
         await injectDelivery(store, event, clock.clock);
       }
       const runtime = new MaterializedViewRuntime(store);
-      const followed = await runtime.build(serviceId, EVENT_LIST_VIEW, 21_000);
-      const rebuilt = await runtime.rebuild(serviceId, EVENT_LIST_VIEW, "deterministic", 21_000);
+      const followed = await runtime.build(serviceId, EVENT_LIST_VIEW, 21_100);
+      const rebuilt = await runtime.rebuild(serviceId, EVENT_LIST_VIEW, "deterministic", 21_100);
       expect(rebuilt.result.state).toEqual(followed.state);
       expect(rebuilt.result.checkpoint).toMatchObject({
         lastSuid: followed.checkpoint.lastSuid,
@@ -241,12 +248,12 @@ describe("SDT-G10 materialized views", () => {
         version: followed.checkpoint.version,
       });
 
-      const reset = await runtime.reset(serviceId, EVENT_LIST_VIEW, 21_001);
+      const reset = await runtime.reset(serviceId, EVENT_LIST_VIEW, 21_101);
       expect(reset).toMatchObject({
         checkpoint: { lastSuid: "", version: 0 },
         state: { eventIds: [], suids: [] },
       });
-      const promoted = await runtime.promote(serviceId, EVENT_LIST_VIEW, "deterministic", 21_002);
+      const promoted = await runtime.promote(serviceId, EVENT_LIST_VIEW, "deterministic", 21_102);
       expect(promoted.state).toEqual(followed.state);
       expect(promoted.checkpoint).toMatchObject({ lastSuid: followed.checkpoint.lastSuid, version: 3 });
     });
@@ -266,8 +273,8 @@ describe("SDT-G10 materialized views", () => {
     await withPostgresStore(async (store) => {
       await injectDelivery(store, event, clock.clock);
       const runtime = new MaterializedViewRuntime(store);
-      await runtime.build(serviceId, EVENT_LIST_VIEW, 21_000);
-      await runtime.reset(serviceId, EVENT_LIST_VIEW, 21_001);
+      await runtime.build(serviceId, EVENT_LIST_VIEW, 21_100);
+      await runtime.reset(serviceId, EVENT_LIST_VIEW, 21_101);
 
       const viewId = materializedViewId(EVENT_LIST_VIEW.id);
       const beforeRejectedReset = await store.readProjectionCheckpoint(serviceId, viewId);
@@ -275,7 +282,7 @@ describe("SDT-G10 materialized views", () => {
       expect(beforeRejectedReset).toMatchObject({ lastSuid: "", version: 0 });
       expect(stateBeforeRejectedReset?.state).toEqual({ eventIds: [], suids: [] });
 
-      await expect(runtime.reset(serviceId, EVENT_LIST_VIEW, 21_002)).rejects.toMatchObject({
+      await expect(runtime.reset(serviceId, EVENT_LIST_VIEW, 21_102)).rejects.toMatchObject({
         name: MaterializedViewOperationError.name,
         operation: "reset",
         code: "MV_RESET_NOTHING_TO_RESET",
@@ -295,12 +302,12 @@ describe("SDT-G10 materialized views", () => {
     await withPostgresStore(async (store) => {
       await injectDelivery(store, first, clock.clock);
       const runtime = new MaterializedViewRuntime(store);
-      await runtime.build(serviceId, EVENT_LIST_VIEW, 21_000);
+      await runtime.build(serviceId, EVENT_LIST_VIEW, 21_100);
 
       clock.set(1_001);
       await injectDelivery(store, second, clock.clock);
-      await runtime.rebuild(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_001);
-      await runtime.promote(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_002);
+      await runtime.rebuild(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_101);
+      await runtime.promote(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_102);
 
       const viewId = materializedViewId(EVENT_LIST_VIEW.id);
       const beforeRejectedPromote = await store.readProjectionCheckpoint(serviceId, viewId);
@@ -311,7 +318,7 @@ describe("SDT-G10 materialized views", () => {
         suids: [first.suid, second.suid],
       });
 
-      await expect(runtime.promote(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_003)).rejects.toMatchObject({
+      await expect(runtime.promote(serviceId, EVENT_LIST_VIEW, "promote-noop", 21_103)).rejects.toMatchObject({
         name: MaterializedViewOperationError.name,
         operation: "promote",
         code: "MV_PROMOTE_NOTHING_TO_PROMOTE",
@@ -325,7 +332,7 @@ describe("SDT-G10 materialized views", () => {
     const serviceId = unique("mv-fail-closed-service");
     await withPostgresStore(async (store) => {
       const refusingRuntime = new MaterializedViewRuntime(failingAdvanceStore(store));
-      await expect(refusingRuntime.build(serviceId, EVENT_LIST_VIEW, 21_000)).rejects.toMatchObject({
+      await expect(refusingRuntime.build(serviceId, EVENT_LIST_VIEW, 21_100)).rejects.toMatchObject({
         name: MaterializedViewOperationError.name,
         operation: "build",
         code: "MV_BUILD_CONFLICT",
@@ -333,19 +340,19 @@ describe("SDT-G10 materialized views", () => {
       expect(await store.readProjectionCheckpoint(serviceId, materializedViewId(EVENT_LIST_VIEW.id))).toBeUndefined();
 
       const durableRuntime = new MaterializedViewRuntime(store);
-      await expect(durableRuntime.reset(serviceId, EVENT_LIST_VIEW, 21_000)).rejects.toMatchObject({
+      await expect(durableRuntime.reset(serviceId, EVENT_LIST_VIEW, 21_100)).rejects.toMatchObject({
         name: MaterializedViewOperationError.name,
         operation: "reset",
         code: "MV_RESET_MISSING",
       });
-      await expect(durableRuntime.promote(serviceId, EVENT_LIST_VIEW, "missing", 21_000)).rejects.toMatchObject({
+      await expect(durableRuntime.promote(serviceId, EVENT_LIST_VIEW, "missing", 21_100)).rejects.toMatchObject({
         name: MaterializedViewOperationError.name,
         operation: "promote",
         code: "MV_PROMOTE_CANDIDATE_MISSING",
       });
 
-      await durableRuntime.rebuild(serviceId, EVENT_LIST_VIEW, "once", 21_000);
-      await expect(durableRuntime.rebuild(serviceId, EVENT_LIST_VIEW, "once", 21_000)).rejects.toMatchObject({
+      await durableRuntime.rebuild(serviceId, EVENT_LIST_VIEW, "once", 21_100);
+      await expect(durableRuntime.rebuild(serviceId, EVENT_LIST_VIEW, "once", 21_100)).rejects.toMatchObject({
         name: MaterializedViewOperationError.name,
         operation: "rebuild",
         code: "MV_REBUILD_CANDIDATE_EXISTS",

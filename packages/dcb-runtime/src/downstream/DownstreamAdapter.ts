@@ -8,6 +8,7 @@ import {
 import {
   isDownstreamOutboxMessage,
   systemPipelineClock,
+  type DownstreamOutboxMessage,
   type PipelineClock,
 } from "./types";
 import type { StoreProvider } from "../store/provider";
@@ -100,12 +101,22 @@ export async function handleDownstreamQueue(
   env: DownstreamAdapterEnv,
   options: AdapterOptions = {},
 ): Promise<void> {
+  // Validate each Queue ingress before acquiring a provider. In particular a
+  // non-G32 SUID must not even initialize the downstream store; this keeps
+  // the cutover's abort-before-write guarantee observable for Queue traffic.
+  const valid: Array<Message<DownstreamOutboxMessage>> = [];
+  for (const queued of batch.messages) {
+    if (!isDownstreamOutboxMessage(queued.body)) {
+      console.warn("downstream_queue_delivery", { disposition: "retry-to-dlq" });
+      queued.retry();
+      continue;
+    }
+    valid.push(queued as Message<DownstreamOutboxMessage>);
+  }
+  if (valid.length === 0) return;
   await withStore(env, options, async (store, clock) => {
-    for (const queued of batch.messages) {
+    for (const queued of valid) {
       try {
-        if (!isDownstreamOutboxMessage(queued.body)) {
-          throw new Error("Downstream Queue contained an invalid outbox message");
-        }
         await admitBootstrapRoute(env, queued.body.serviceId, "queue");
         const outcome = await processDeliveryCore(queued.body, "queue", env, {
           ...options,
@@ -117,6 +128,7 @@ export async function handleDownstreamQueue(
           coreDurationMs: outcome.coreDurationMs,
           viewDurationsMs: outcome.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
           disposition: outcome.queueDisposition,
+          failures: outcome.failures.map((failure) => ({ phase: failure.phase, class: failure.class, viewId: failure.viewId, error: failure.error })),
         });
         if (outcome.queueDisposition === "ack") queued.ack();
         else if (outcome.queueDisposition === "retry-once") queued.retry();

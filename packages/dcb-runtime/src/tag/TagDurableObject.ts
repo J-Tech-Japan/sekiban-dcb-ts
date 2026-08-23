@@ -17,7 +17,7 @@ import {
   type RepairResolution,
   type RepairScopeItem,
 } from "./types";
-import { LEGACY_ALLOCATOR_LINEAGE_ID, type DownstreamOutboxMessage } from "../downstream/types";
+import type { DownstreamOutboxMessage } from "../downstream/types";
 import {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,
@@ -27,7 +27,9 @@ import {
   type DownstreamDoorbellBinding,
 } from "../downstream/Doorbell";
 import { deliveryCorrelationId } from "../downstream/DeliveryCore";
-import { assertCanonicalEventType, type EventProvenance } from "../eventIdentity";
+import { assertCanonicalEventType } from "../eventIdentity";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -35,8 +37,6 @@ const OUTBOX_DELIVERIES_KEY = "outbox-deliveries";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
 const DEFAULT_REPAIR_LEASE_MS = 30_000;
 const MAX_REPAIR_LEASE_MS = 5 * 60_000;
-/** Explicit proof that an identity-less /append is an immutable legacy import. */
-const LEGACY_APPEND_MIGRATION_MARKER = "pre-g27-append-v1" as const;
 
 type JsonObject = Record<string, unknown>;
 
@@ -63,8 +63,9 @@ interface AppendCandidate {
   payload: string;
   eventTags: string[];
   allocatorLineageId: string;
-  eventType?: string;
-  provenance?: EventProvenance;
+  eventType: string;
+  provenance: "g32";
+  timestamp: string;
 }
 
 interface AppendInput extends ReservationInput {
@@ -117,7 +118,7 @@ interface OutboxPendingInput {
 }
 
 interface OutboxMarkInput {
-  deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt" | "eventType" | "provenance">>;
+  deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt" | "eventType" | "provenance" | "timestamp" | "allocatorLineageId">>;
   nowMs: number;
 }
 
@@ -236,6 +237,11 @@ function consistencyTagsFrom(value: unknown): { value?: TagConsistencyEntry[]; e
     if (typeof rawEntry.lastSortableUniqueId !== "string") {
       return { error: "lastSortableUniqueId must be a string" };
     }
+    try {
+      assertSortableUniqueId(rawEntry.lastSortableUniqueId);
+    } catch {
+      return { error: "lastSortableUniqueId must be a 30-digit SortableUniqueId" };
+    }
     entries.push({ tag: rawEntry.tag, lastSortableUniqueId: rawEntry.lastSortableUniqueId });
   }
   if (new Set(entries.map((entry) => entry.tag)).size !== entries.length) {
@@ -312,34 +318,30 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
     if (eventTags.value === undefined || !eventTags.value.includes(tag)) {
       return { error: eventTags.error ?? "each candidate must include this event tag" };
     }
-    let eventType: string | undefined;
+    let eventType: string;
     try {
-      if (rawCandidate.eventType !== undefined && typeof rawCandidate.eventType !== "string") return { error: "candidate eventType must be a string" };
-      eventType = rawCandidate.eventType === undefined ? undefined : assertCanonicalEventType(rawCandidate.eventType).key;
+      if (!isNonEmptyString(rawCandidate.eventType)) return { error: "candidate eventType is required" };
+      eventType = assertCanonicalEventType(rawCandidate.eventType).key;
+      assertSortableUniqueId(rawCandidate.suid);
+      if (!isUuidV7(rawCandidate.eventId)) return { error: "candidate eventId must be a UUID v7" };
+      JSON.parse(rawCandidate.payload);
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "candidate eventType is invalid" };
+      return { error: error instanceof Error ? error.message : "candidate identity or payload is invalid" };
     }
-    const rawProvenance = rawCandidate.provenance;
-    if (rawProvenance !== undefined && rawProvenance !== "pre-g27" && rawProvenance !== "g27") return { error: "candidate provenance is invalid" };
-    const legacyMarker = rawCandidate.legacyMigrationMarker;
-    if (eventType === undefined) {
-      if (rawProvenance !== "pre-g27" || legacyMarker !== LEGACY_APPEND_MIGRATION_MARKER) {
-        return { error: "identity-less /append requires an explicit immutable pre-g27 migration marker" };
-      }
-    } else if (rawProvenance !== "g27" || legacyMarker !== undefined) {
-      return { error: "canonical /append candidates require g27 provenance and no legacy migration marker" };
+    if (rawCandidate.provenance !== "g32") return { error: "candidate provenance must be g32" };
+    if (!isNonEmptyString(rawCandidate.allocatorLineageId)) return { error: "candidate allocatorLineageId is required" };
+    if (!isNonEmptyString(rawCandidate.timestamp) || !CANONICAL_UTC_TIMESTAMP_PATTERN.test(rawCandidate.timestamp)) {
+      return { error: "candidate timestamp must be canonical UTC" };
     }
-    const provenance = eventType === undefined ? "pre-g27" : "g27";
     candidates.push({
       eventId: rawCandidate.eventId,
       suid: rawCandidate.suid,
       payload: rawCandidate.payload,
       eventTags: eventTags.value,
-      allocatorLineageId: isNonEmptyString(rawCandidate.allocatorLineageId)
-        ? rawCandidate.allocatorLineageId
-        : LEGACY_ALLOCATOR_LINEAGE_ID,
-      ...(eventType === undefined ? {} : { eventType }),
-      provenance,
+      allocatorLineageId: rawCandidate.allocatorLineageId,
+      eventType,
+      provenance: "g32",
+      timestamp: rawCandidate.timestamp,
     });
   }
   if (new Set(candidates.map((candidate) => candidate.eventId)).size !== candidates.length) {
@@ -367,24 +369,23 @@ function bootstrapAppendFrom(value: unknown, tag: string): { value?: BootstrapAp
     if (!isObject(candidate) || !isNonEmptyString(candidate.eventId) || !isNonEmptyString(candidate.suid) || typeof candidate.payload !== "string") return { error: "bootstrap candidate is invalid" };
     const tags = stringArrayFrom(candidate.eventTags, "bootstrap candidate eventTags");
     if (tags.value === undefined || !tags.value.includes(tag) || !isNonEmptyString(candidate.allocatorLineageId)) return { error: "bootstrap candidate must include this tag and lineage" };
-    let eventType: string | undefined;
+    let eventType: string;
     try {
-      if (candidate.eventType !== undefined && typeof candidate.eventType !== "string") return { error: "bootstrap candidate eventType must be a string" };
-      eventType = candidate.eventType === undefined ? undefined : assertCanonicalEventType(candidate.eventType).key;
+      if (!isNonEmptyString(candidate.eventType)) return { error: "bootstrap candidate eventType is required" };
+      eventType = assertCanonicalEventType(candidate.eventType).key;
+      assertSortableUniqueId(candidate.suid);
+      // C# import records can predate UUID v7. This is confined to the
+      // coordinator-only bootstrap route; normal /append remains UUID v7.
+      if (!isRfc4122Uuid(candidate.eventId)) return { error: "bootstrap candidate eventId must be an RFC 4122 UUID" };
+      JSON.parse(candidate.payload);
     } catch (error) {
-      return { error: error instanceof Error ? error.message : "bootstrap candidate eventType is invalid" };
+      return { error: error instanceof Error ? error.message : "bootstrap candidate identity or payload is invalid" };
     }
-    const rawProvenance = candidate.provenance;
-    if (rawProvenance !== undefined && rawProvenance !== "pre-g27" && rawProvenance !== "g27") return { error: "bootstrap candidate provenance is invalid" };
-    const provenance = rawProvenance === undefined
-      ? eventType === undefined ? "pre-g27" : "g27"
-      : rawProvenance;
-    if ((eventType === undefined) !== (provenance === "pre-g27")) {
-      return { error: "bootstrap candidate event identity and provenance must agree" };
-    }
-    candidates.push({ eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: tags.value, allocatorLineageId: candidate.allocatorLineageId, ...(eventType === undefined ? {} : { eventType }), provenance });
+    if (candidate.provenance !== "g32") return { error: "bootstrap candidate provenance must be g32" };
+    if (!isNonEmptyString(candidate.timestamp) || !CANONICAL_UTC_TIMESTAMP_PATTERN.test(candidate.timestamp)) return { error: "bootstrap candidate timestamp must be canonical UTC" };
+    candidates.push({ eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: tags.value, allocatorLineageId: candidate.allocatorLineageId, eventType, provenance: "g32", timestamp: candidate.timestamp });
   }
-  const ordered = [...candidates].sort((a, b) => a.suid.localeCompare(b.suid));
+  const ordered = [...candidates].sort((a, b) => a.suid < b.suid ? -1 : a.suid > b.suid ? 1 : 0);
   if (ordered.some((candidate, index) => index > 0 && ordered[index - 1]!.suid === candidate.suid)) return { error: "bootstrap SUID values must be unique" };
   return { value: { importId: value.importId, leaseEpoch: value.leaseEpoch, manifestDigest: value.manifestDigest, targetServiceId: value.targetServiceId, candidates: ordered } };
 }
@@ -403,13 +404,25 @@ function repairScopeItemFrom(value: unknown, tag: string): { value?: RepairScope
     !isNonEmptyString(value.attemptId) ||
     !isNonEmptyString(value.eventId) ||
     !isNonEmptyString(value.suid) ||
-    typeof value.payload !== "string"
+    typeof value.payload !== "string" ||
+    !isNonEmptyString(value.allocatorLineageId) ||
+    !isNonEmptyString(value.eventType) ||
+    value.provenance !== "g32" ||
+    !isNonEmptyString(value.timestamp)
   ) {
     return { error: "each repair scope item needs attemptId, eventId, suid, and payload" };
   }
   const eventTags = stringArrayFrom(value.eventTags, "repair eventTags");
   if (eventTags.value === undefined || !eventTags.value.includes(tag)) {
     return { error: eventTags.error ?? "each repair scope item must include this tag" };
+  }
+  try {
+    assertSortableUniqueId(value.suid);
+    if (!isUuidV7(value.eventId)) throw new Error("event id");
+    assertCanonicalEventType(value.eventType);
+    JSON.parse(value.payload);
+  } catch {
+    return { error: "repair scope item has invalid G32 event identity" };
   }
   return {
     value: {
@@ -418,9 +431,10 @@ function repairScopeItemFrom(value: unknown, tag: string): { value?: RepairScope
       suid: value.suid,
       payload: value.payload,
       eventTags: eventTags.value,
-      allocatorLineageId: isNonEmptyString(value.allocatorLineageId)
-        ? value.allocatorLineageId
-        : undefined,
+      allocatorLineageId: value.allocatorLineageId,
+      eventType: value.eventType,
+      provenance: "g32",
+      timestamp: value.timestamp,
     },
   };
 }
@@ -531,17 +545,17 @@ function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: stri
     ) {
       return { error: "each delivery needs attemptId, eventId, suid, payload, and enqueuedAt" };
     }
-    if (raw.eventType !== undefined && typeof raw.eventType !== "string") return { error: "delivery eventType must be a string" };
-    if (raw.provenance !== undefined && raw.provenance !== "g27" && raw.provenance !== "pre-g27" && raw.provenance !== "pre-g27-queue") return { error: "delivery provenance is invalid" };
-    if ((raw.eventType === undefined) !== (raw.provenance === undefined || raw.provenance === "pre-g27" || raw.provenance === "pre-g27-queue")) return { error: "delivery event identity and provenance must agree" };
+    if (!isNonEmptyString(raw.eventType) || raw.provenance !== "g32" || !isNonEmptyString(raw.timestamp) || !isNonEmptyString(raw.allocatorLineageId)) return { error: "delivery must carry the complete G32 identity" };
     deliveries.push({
       attemptId: raw.attemptId,
       eventId: raw.eventId,
       suid: raw.suid,
       payload: raw.payload,
       enqueuedAt: raw.enqueuedAt,
-      ...(typeof raw.eventType === "string" ? { eventType: raw.eventType } : {}),
-      ...(raw.provenance === "g27" ? { provenance: raw.provenance } : raw.provenance === "pre-g27" || raw.provenance === "pre-g27-queue" ? { provenance: "pre-g27" as const } : {}),
+      eventType: raw.eventType,
+      provenance: "g32",
+      timestamp: raw.timestamp,
+      allocatorLineageId: raw.allocatorLineageId,
     });
   }
   if (new Set(deliveries.map(outboxRowKey)).size !== deliveries.length) {
@@ -587,8 +601,8 @@ function withoutFence(entries: TagFence[], reason: string, attemptId: string): T
   return entries.filter((entry) => entry.reason !== reason || entry.attemptId !== attemptId);
 }
 
-function outboxRowKey(row: TagOutboxRow): string {
-  return `${row.attemptId}\u0000${row.eventId}\u0000${row.suid}\u0000${row.payload}\u0000${row.eventType ?? ""}\u0000${row.provenance ?? ""}`;
+function outboxRowKey(row: Pick<TagOutboxRow, "attemptId" | "eventId" | "suid" | "payload" | "eventType" | "provenance" | "timestamp" | "allocatorLineageId">): string {
+  return `${row.attemptId}\u0000${row.eventId}\u0000${row.suid}\u0000${row.payload}\u0000${row.eventType}\u0000${row.provenance}\u0000${row.timestamp}\u0000${row.allocatorLineageId}`;
 }
 
 function repairScopeKey(item: RepairScopeItem): string {
@@ -688,7 +702,7 @@ function fenceEpochRejection(record: TagRecord, reason: string, attemptId: strin
 function newRecord(tag: string): TagRecord {
   const timestamp = nowIso();
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     tag,
     head: "",
     activeReservation: null,
@@ -715,18 +729,18 @@ function newRecord(tag: string): TagRecord {
   };
 }
 
-/** Older G5 records are normalized lazily without widening their public wire. */
-function normalizeRepairRecord(record: TagRecord): TagRecord {
-  return {
-    ...record,
-    schemaVersion: record.schemaVersion ?? 1,
-    repairOwner: record.repairOwner ?? null,
-    repairLeaseUntil: record.repairLeaseUntil ?? null,
-    highestRepairEpoch: record.highestRepairEpoch ?? 0,
-    repairScope: record.repairScope ?? [],
-    repairScopeVersion: record.repairScopeVersion ?? 0,
-    bootstrapAdmission: record.bootstrapAdmission ?? null,
-  };
+/** No pre-G32 Tag state is migrated or interpreted after the cutover. */
+function requireG32TagRecord(record: TagRecord): TagRecord {
+  if (record.schemaVersion !== 3) {
+    throw new Error("G32 Tag Durable Object requires a fresh cutover namespace");
+  }
+  for (const event of record.events) {
+    assertSortableUniqueId(event.suid);
+    if (!isRfc4122Uuid(event.eventId) || event.provenance !== "g32") {
+      throw new Error("G32 Tag Durable Object refuses a legacy durable event");
+    }
+  }
+  return record;
 }
 
 function changed(record: TagRecord, updates: Partial<TagRecord>): TagRecord {
@@ -789,7 +803,8 @@ function candidateIsExactDuplicate(record: TagRecord, attemptId: string, candida
       event.suid === candidate.suid &&
       event.payload === candidate.payload &&
       event.eventType === candidate.eventType &&
-      (event.provenance ?? "pre-g27") === (candidate.provenance ?? "pre-g27"),
+      event.provenance === candidate.provenance &&
+      event.timestamp === candidate.timestamp,
   );
 }
 
@@ -803,7 +818,8 @@ function hasEventConflict(record: TagRecord, candidates: AppendCandidate[]): boo
       event.suid === candidate.suid &&
       event.payload === candidate.payload &&
       event.eventType === candidate.eventType &&
-      (event.provenance ?? "pre-g27") === (candidate.provenance ?? "pre-g27")
+      event.provenance === candidate.provenance &&
+      event.timestamp === candidate.timestamp
     ),
   ));
 }
@@ -879,7 +895,7 @@ export class TagDurableObject implements DurableObject {
         return error(404, "tag_not_found", "Tag has no durable state yet");
       }
       return record.tag === tag
-        ? json(normalizeRepairRecord(record))
+        ? json(requireG32TagRecord(record))
         : error(409, "tag_identity_conflict", "Tag Durable Object identity changed");
     }
     if (request.method === "GET" && url.pathname === "/repair/facts") {
@@ -971,7 +987,7 @@ export class TagDurableObject implements DurableObject {
     if (existing !== undefined && existing.tag !== tag) {
       throw new Error("Tag Durable Object identity changed");
     }
-    return { record: normalizeRepairRecord(existing ?? newRecord(tag)), exists: existing !== undefined };
+    return { record: existing === undefined ? newRecord(tag) : requireG32TagRecord(existing), exists: existing !== undefined };
   }
 
   private async write(txn: DurableObjectTransaction, record: TagRecord): Promise<void> {
@@ -1207,13 +1223,13 @@ export class TagDurableObject implements DurableObject {
       if (record.activeReservation !== null || record.fences.length > 0 || record.outbox.length > 0) return rejected("bootstrap_requires_empty_tag");
       const admission: TagBootstrapAdmission = record.bootstrapAdmission ?? { importId: input.importId, leaseEpoch: input.leaseEpoch, manifestDigest: input.manifestDigest, targetServiceId: input.targetServiceId, closed: false };
       if (admission.importId !== input.importId || admission.leaseEpoch !== input.leaseEpoch || admission.manifestDigest !== input.manifestDigest || admission.targetServiceId !== input.targetServiceId) return rejected("bootstrap_fencing_or_manifest_mismatch");
-      const exact = input.candidates.every((candidate) => record.events.some((event) => event.eventId === candidate.eventId && event.suid === candidate.suid && event.payload === candidate.payload && event.eventTags.join("\u0000") === candidate.eventTags.join("\u0000") && event.eventType === candidate.eventType && (event.provenance ?? "pre-g27") === (candidate.provenance ?? "pre-g27")));
+      const exact = input.candidates.every((candidate) => record.events.some((event) => event.eventId === candidate.eventId && event.suid === candidate.suid && event.payload === candidate.payload && event.eventTags.join("\u0000") === candidate.eventTags.join("\u0000") && event.eventType === candidate.eventType && event.provenance === candidate.provenance && event.timestamp === candidate.timestamp));
       if (exact) return { status: 200, body: { status: "duplicate", version: record.version } };
       // A coordinator may send several bounded chunks for one tag.  The
       // admission identity is fixed above; only duplicate replay, conflicting
       // identity, or non-monotonic continuation can be rejected here.
       if (hasEventConflict(record, input.candidates) || monotonicityViolation(record.head, input.candidates)) return rejected("bootstrap_identity_or_order_conflict");
-      const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId, ...(candidate.eventType === undefined ? {} : { eventType: candidate.eventType }), provenance: candidate.provenance }));
+      const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId, eventType: candidate.eventType, provenance: candidate.provenance, timestamp: candidate.timestamp }));
       const updated = await this.commit(txn, record, { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events: [...record.events, ...events] });
       return { status: 201, body: { status: "bootstrap_admitted", version: updated.version } };
     });
@@ -1328,8 +1344,9 @@ export class TagDurableObject implements DurableObject {
           payload: candidate.payload,
           eventTags: candidate.eventTags,
           allocatorLineageId: candidate.allocatorLineageId,
-          ...(candidate.eventType === undefined ? {} : { eventType: candidate.eventType }),
+          eventType: candidate.eventType,
           provenance: candidate.provenance,
+          timestamp: candidate.timestamp,
         }));
         const outboxRows: TagOutboxRow[] = input.candidates.map((candidate) => ({
           attemptId: input.attemptId,
@@ -1337,8 +1354,9 @@ export class TagDurableObject implements DurableObject {
           suid: candidate.suid,
           payload: candidate.payload,
           allocatorLineageId: candidate.allocatorLineageId,
-          ...(candidate.eventType === undefined ? {} : { eventType: candidate.eventType }),
+          eventType: candidate.eventType,
           provenance: candidate.provenance,
+          timestamp: candidate.timestamp,
         }));
         const head = input.candidates[input.candidates.length - 1]!.suid;
         const appendedOnly = changed(record, {
@@ -1492,13 +1510,15 @@ export class TagDurableObject implements DurableObject {
       return;
     }
     const mark = await this.markOutboxDelivered(tag, {
-      deliveries: rows.map(({ attemptId, eventId, suid, payload, eventType, provenance, enqueuedAt }) => ({
+      deliveries: rows.map(({ attemptId, eventId, suid, payload, eventType, provenance, timestamp, allocatorLineageId, enqueuedAt }) => ({
         attemptId,
         eventId,
         suid,
         payload,
-        ...(eventType === undefined ? {} : { eventType }),
-        ...(provenance === "g27" ? { provenance } : {}),
+        eventType,
+        provenance,
+        timestamp,
+        allocatorLineageId,
         enqueuedAt,
       })),
       nowMs: Date.now(),
@@ -1636,7 +1656,7 @@ export class TagDurableObject implements DurableObject {
       if (record === undefined) {
         return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
       }
-      const normalized = normalizeRepairRecord(record);
+      const normalized = requireG32TagRecord(record);
       if (normalized.tag !== tag) {
         return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
       }
@@ -1698,8 +1718,12 @@ export class TagDurableObject implements DurableObject {
         payload: string;
         allocatorLineageId: string;
         eventTags: string[];
-        eventType?: string;
-        provenance?: "g27" | "pre-g27-queue";
+        eventType: string;
+        provenance: "g32";
+        timestamp: string;
+        causationId: string;
+        correlationId: string;
+        executedUser: string;
         enqueuedAt: number;
       }> = [];
       for (const row of record.outbox) {
@@ -1719,7 +1743,8 @@ export class TagDurableObject implements DurableObject {
           candidate.suid === row.suid &&
           candidate.payload === row.payload &&
           candidate.eventType === row.eventType &&
-          (candidate.provenance ?? "pre-g27") === (row.provenance ?? "pre-g27"),
+          candidate.provenance === row.provenance &&
+          candidate.timestamp === row.timestamp,
         );
         if (event === undefined) {
           return {
@@ -1727,6 +1752,7 @@ export class TagDurableObject implements DurableObject {
             body: { error: "Outbox row has no matching durable event", code: "outbox_event_missing" },
           };
         }
+        const metadata = serializedEventMetadata(row.eventId);
         rows.push({
           version: 1,
           serviceId,
@@ -1735,10 +1761,14 @@ export class TagDurableObject implements DurableObject {
           eventId: row.eventId,
           suid: row.suid,
           payload: row.payload,
-          allocatorLineageId: row.allocatorLineageId ?? event.allocatorLineageId ?? LEGACY_ALLOCATOR_LINEAGE_ID,
+          allocatorLineageId: row.allocatorLineageId,
           eventTags: event.eventTags,
-          ...(event.eventType === undefined ? {} : { eventType: event.eventType }),
-          provenance: event.eventType === undefined ? "pre-g27-queue" : "g27",
+          eventType: event.eventType,
+          provenance: "g32",
+          timestamp: event.timestamp,
+          causationId: metadata.causationId,
+          correlationId: metadata.correlationId,
+          executedUser: metadata.executedUser,
           enqueuedAt: delivery.enqueuedAt,
         });
       }
@@ -1967,6 +1997,9 @@ export class TagDurableObject implements DurableObject {
             payload: input.item.payload,
             eventTags: input.item.eventTags,
             allocatorLineageId: input.item.allocatorLineageId,
+            eventType: input.item.eventType,
+            provenance: input.item.provenance,
+            timestamp: input.item.timestamp,
           }],
           outbox: [...record.outbox, {
             attemptId: input.item.attemptId,
@@ -1974,6 +2007,9 @@ export class TagDurableObject implements DurableObject {
             suid: input.item.suid,
             payload: input.item.payload,
             allocatorLineageId: input.item.allocatorLineageId,
+            eventType: input.item.eventType,
+            provenance: input.item.provenance,
+            timestamp: input.item.timestamp,
           }],
         });
       } else if (record.head > input.item.suid) {

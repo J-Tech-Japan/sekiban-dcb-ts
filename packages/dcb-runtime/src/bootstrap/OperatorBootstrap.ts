@@ -57,8 +57,13 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
     if (!allocatorState.ok) return json({ code: "bootstrap_allocator_unavailable", error: "target allocator state is unavailable" }, 503);
     const allocatorBody = await allocatorState.json<Partial<AllocatorState>>();
     if (typeof allocatorBody.allocatorLineageId !== "string" || allocatorBody.allocatorLineageId.length === 0) return json({ code: "bootstrap_allocator_invalid", error: "target allocator lineage is invalid" }, 500);
+    const sourceAllocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
+    const sourceAllocatorState = await sourceAllocator.fetch(new Request("https://bootstrap.internal/state"));
+    if (!sourceAllocatorState.ok) return json({ code: "bootstrap_allocator_unavailable", error: "source allocator state is unavailable" }, 503);
+    const sourceAllocatorBody = await sourceAllocatorState.json<Partial<AllocatorState>>();
+    if (typeof sourceAllocatorBody.allocatorLineageId !== "string" || sourceAllocatorBody.allocatorLineageId.length === 0) return json({ code: "bootstrap_allocator_invalid", error: "source allocator lineage is invalid" }, 500);
     const adapter = storeProvider.createBootstrapAdapter?.(env) ?? createBootstrapStoreAdapter(storeProvider.name, storeProvider.create(env));
-    return json(await adapter.exportPage({ sourceServiceId: serviceId, targetServiceId: body.targetServiceId, allocatorLineageId: allocatorBody.allocatorLineageId, pageSize: typeof body.pageSize === "number" ? body.pageSize : 128 }));
+    return json(await adapter.exportPage({ sourceServiceId: serviceId, sourceAllocatorLineageId: sourceAllocatorBody.allocatorLineageId, targetServiceId: body.targetServiceId, allocatorLineageId: allocatorBody.allocatorLineageId, pageSize: typeof body.pageSize === "number" ? body.pageSize : 128 }));
   }
   if (operation === "plan") return invoke("/plan", body);
   if (!object(body) || !object(body.dump)) return json({ code: "bootstrap_dump_invalid", error: "import requires dump" }, 400);

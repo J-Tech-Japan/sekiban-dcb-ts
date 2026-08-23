@@ -43,12 +43,11 @@ type MappingRun = Readonly<{
 export type MappingAdmissionEvidence = Readonly<{
   readonly eventPayloadName: string;
   readonly eventType: string;
-  readonly registeredVersion: number;
   readonly payloadBase64: string;
   readonly storedEventId: string;
   readonly storedSuid: string;
   readonly tags: readonly string[];
-  readonly callerSelectedVersionRejected: boolean;
+  readonly versionOptionRejected: boolean;
 }>;
 
 export type MappingExecutionObservation = Readonly<{
@@ -138,8 +137,8 @@ function observedContract(input: MappingContractInput): MappingContract {
   if (created.eventType !== input.admission.eventType || createdValue.eventType !== input.admission.eventType || createdPayload.roomId !== MAPPING_INPUT.roomId) {
     throw new Error("G29 mapping CommitWorker admission is not using the registered event definition");
   }
-  if (input.admission.registeredVersion !== created.version || !input.admission.callerSelectedVersionRejected) {
-    throw new Error("G29 mapping admission authority probe did not execute");
+  if (!input.admission.versionOptionRejected) {
+    throw new Error("G32 mapping version-removal admission probe did not execute");
   }
   if (reservationTags.map((tag) => tag.id).join(",") !== "room:mapping-room,reservation:mapping-reservation" || reserveReads.claims.length !== 2) {
     throw new Error("G29 mapping tag/read observation changed");
@@ -162,11 +161,11 @@ function observedContract(input: MappingContractInput): MappingContract {
     "event-payload": () => row(
       ["field", checked("event payload", candidatePayload !== undefined && portablePayload !== undefined, "event-payload/field")],
       ["wire", checked("V1 eventCandidates[].payload (base64 JSON); stored payload is lossless JSON", input.admission.payloadBase64.length > 0 && JSON.stringify(admissionPayload) === JSON.stringify({ roomId: "g29-mapping-shared", name: "Observed" }) && hasAllocatorMetadata, "event-payload/wire")],
-      ["owner", checked("registered event definition schema", input.admission.registeredVersion === created.version && input.admission.eventPayloadName === created.eventPayloadName, "event-payload/owner")],
+      ["owner", checked("registered event definition schema", input.admission.eventPayloadName === created.eventPayloadName, "event-payload/owner")],
       ["doTs", checked("event.make(payload) and event.create(payload)", JSON.stringify(candidatePayload) === JSON.stringify(createdPayload) && createdValue.eventType === candidateEvent?.eventType, "event-payload/doTs")],
       ["portable", checked("JsonValue payload without runtime brands", JSON.stringify(portablePayload) === JSON.stringify(candidatePayload), "event-payload/portable")],
-      ["version", `event definition version, default ${input.admission.registeredVersion}`],
-      ["unsupported", checked("caller-selected eventPayloadVersion", input.admission.callerSelectedVersionRejected, "event-payload/unsupported")],
+      ["version", "event payload revisions use a distinct name"],
+      ["unsupported", checked("caller-selected eventPayloadVersion", input.admission.versionOptionRejected, "event-payload/unsupported")],
     ),
     "business-time": () => row(
       ["field", checked("business time", input.doTs.decisionLog.now === input.portable.decisionLog.now, "business-time/field")],
@@ -179,11 +178,11 @@ function observedContract(input: MappingContractInput): MappingContract {
     ),
     "canonical-identity": () => row(
       ["field", checked("canonical identity", sameIdentity, "canonical-identity/field")],
-      ["wire", checked("eventPayloadName:decimalVersion", /^\w+:\d+$/.test(input.admission.eventType), "canonical-identity/wire")],
-      ["owner", checked("registered domain definition at commit admission", input.admission.registeredVersion === created.version, "canonical-identity/owner")],
+      ["wire", checked("eventPayloadName", input.admission.eventType === input.admission.eventPayloadName && !input.admission.eventType.includes(":"), "canonical-identity/wire")],
+      ["owner", checked("registered domain definition at commit admission", input.admission.eventType === created.eventType, "canonical-identity/owner")],
       ["doTs", checked("event.eventType", created.eventType === candidateEvent?.eventType, "canonical-identity/doTs")],
       ["portable", checked("eventType string", typeof portableEvent?.eventType === "string", "canonical-identity/portable")],
-      ["version", "name-local decimal version"],
+      ["version", "version removed from durable identity"],
       ["unsupported", "identity derived from eventId or payload sniffing"],
     ),
     "event-id": () => row(
@@ -192,7 +191,7 @@ function observedContract(input: MappingContractInput): MappingContract {
       ["owner", checked("allocator and commit admission", hasAllocatorMetadata, "event-id/owner")],
       ["doTs", "absent from authoring decision"],
       ["portable", "optional transport metadata only"],
-      ["version", "G27 runtime identity"],
+      ["version", "UUID v7 identity"],
       ["unsupported", "authoring command manufactures eventId"],
     ),
     suid: () => row(

@@ -8,6 +8,11 @@ import type {
   JournalState,
   ReconciliationInput,
 } from "../packages/dcb-runtime/src/journal/types";
+import {
+  G32_FIXTURE_TIMESTAMP,
+  g32EventId,
+  g32Suid,
+} from "./helpers/g32-fixtures";
 
 async function request(attemptId: string, path: string, body?: unknown): Promise<Response> {
   const init =
@@ -31,9 +36,30 @@ function newAttempt(): string {
 
 function candidates(count = 1): JournalCandidate[] {
   return Array.from({ length: count }, (_, index) => ({
-    eventId: `event-${index + 1}`,
-    payload: `payload-${index + 1}`,
+    eventId: g32EventId(`journal-event-${index + 1}`),
+    payload: JSON.stringify({ value: `payload-${index + 1}` }),
+    eventType: "JournalFixtureEvent",
+    timestamp: G32_FIXTURE_TIMESTAMP,
     tags: [`tag-${index + 1}`],
+  }));
+}
+
+function consistencyHead(tag: string): string {
+  return g32Suid(`journal-head-${tag}`);
+}
+
+function allocatorVector(): string[] {
+  return [g32Suid("journal-allocator")];
+}
+
+function reconciliationRecords(
+  batch: readonly JournalCandidate[],
+  present: readonly boolean[],
+): ReconciliationInput["records"] {
+  return batch.map((candidate, index) => ({
+    eventId: candidate.eventId,
+    payload: candidate.payload,
+    present: present[index] ?? false,
   }));
 }
 
@@ -48,7 +74,7 @@ async function admit(attemptId: string, batch = candidates()): Promise<JournalRe
     candidates: batch,
     consistencyTags: batch.map((candidate) => ({
       tag: candidate.tags[0],
-      lastSortableUniqueId: "",
+      lastSortableUniqueId: consistencyHead(candidate.tags[0]),
     })),
   });
   expect(response.status).toBe(201);
@@ -93,13 +119,20 @@ async function provideTakeoverEvidence(
   reconciliation: ReconciliationInput,
   sealedTags = record.allTags,
 ): Promise<JournalRecord> {
-  const response = await request(attemptId, "/takeover", {
-    expectedState: record.state,
-    expectedVersion: record.version,
-    expectedOwnerEpoch: record.ownerEpoch,
+  const requestEvidence = (current: JournalRecord) => request(attemptId, "/takeover", {
+    expectedState: current.state,
+    expectedVersion: current.version,
+    expectedOwnerEpoch: current.ownerEpoch,
     seals: sealedTags.map((tag) => ({ tag, sealed: true })),
     reconciliation,
   });
+  // The alarm deliberately re-arms before it reconciles.  Under a full
+  // Miniflare run, that re-arm can advance the Journal version between the
+  // explicit alarm probe and the evidence request.  This decision-table test
+  // is about the takeover outcome, not an intentionally stale CAS request,
+  // so replay once from the durable record just as the worker does.
+  let response = await requestEvidence(record);
+  if (response.status === 409) response = await requestEvidence(await state(attemptId));
   expect(response.status).toBe(202);
   return (await responseJson<{ journal: JournalRecord }>(response)).journal;
 }
@@ -127,7 +160,9 @@ describe("JournalDurableObject", () => {
     const invalidAttempt = newAttempt();
     const invalid = await request(invalidAttempt, "/admit", {
       candidates: candidates(),
-      consistencyTags: [{ tag: "not-an-event-tag", lastSortableUniqueId: "" }],
+      consistencyTags: [
+        { tag: "not-an-event-tag", lastSortableUniqueId: consistencyHead("invalid") },
+      ],
     });
     expect(invalid.status).toBe(400);
     expect((await request(invalidAttempt, "/state")).status).toBe(404);
@@ -144,7 +179,7 @@ describe("JournalDurableObject", () => {
     const afterAttempt = newAttempt();
     const afterCrash = await request(afterAttempt, "/admit", {
       candidates: candidates(2),
-      consistencyTags: [{ tag: "tag-1", lastSortableUniqueId: "" }],
+      consistencyTags: [{ tag: "tag-1", lastSortableUniqueId: consistencyHead("tag-1") }],
       faultInjection: "after-admission-commit",
     });
     expect(afterCrash.status).toBe(503);
@@ -154,7 +189,7 @@ describe("JournalDurableObject", () => {
       state: "ADMITTED",
       version: 0,
       ownerEpoch: 0,
-      consistencyTags: [{ tag: "tag-1", lastSortableUniqueId: "" }],
+      consistencyTags: [{ tag: "tag-1", lastSortableUniqueId: consistencyHead("tag-1") }],
       allTags: ["tag-1", "tag-2"],
     });
     expect(admitted.alarm).not.toBeNull();
@@ -174,7 +209,7 @@ describe("JournalDurableObject", () => {
     expect(interruptedAdmission.status).toBe(503);
 
     const allocatedResponse = await reconcile(attemptId, await state(attemptId), {
-      allocatorVector: ["allocator-1"],
+      allocatorVector: allocatorVector(),
       records: [],
       failureCause: "write-failure",
     });
@@ -182,8 +217,8 @@ describe("JournalDurableObject", () => {
     expect(allocated.state).toBe("ALLOCATED");
 
     const absentSnapshot: ReconciliationInput = {
-      allocatorVector: ["allocator-1"],
-      records: [{ eventId: "event-1", payload: "payload-1", present: false }],
+      allocatorVector: allocatorVector(),
+      records: reconciliationRecords(candidates(), [false]),
       failureCause: "write-failure",
     };
     const sealingResponse = await reconcile(attemptId, allocated, absentSnapshot);
@@ -228,7 +263,7 @@ describe("JournalDurableObject", () => {
 
     const admittedWithVector = newAttempt();
     const allocatedFromAdmission = await reconcile(admittedWithVector, await admit(admittedWithVector), {
-      allocatorVector: ["allocator-1"],
+      allocatorVector: allocatorVector(),
       records: [],
       failureCause: "write-failure",
     });
@@ -256,43 +291,23 @@ describe("JournalDurableObject", () => {
     const allocated = await reconcile(
       reservedWithVectorAttempt,
       await responseJson<JournalRecord>(reservedWithVectorStep),
-      { allocatorVector: ["allocator-1"], records: [], failureCause: "write-failure" },
+      { allocatorVector: allocatorVector(), records: [], failureCause: "write-failure" },
     );
     expect((await responseJson<JournalRecord>(allocated)).state).toBe("ALLOCATED");
 
     for (const phase of ["ALLOCATED", "WRITING", "SEALING"] as const) {
-      for (const [label, records, expected] of [
-        [
-          "zero",
-          [
-            { eventId: "event-1", payload: "payload-1", present: false },
-            { eventId: "event-2", payload: "payload-2", present: false },
-          ],
-          "FAILED",
-        ],
-        [
-          "partial",
-          [
-            { eventId: "event-1", payload: "payload-1", present: true },
-            { eventId: "event-2", payload: "payload-2", present: false },
-          ],
-          "PARTIAL",
-        ],
-        [
-          "full",
-          [
-            { eventId: "event-1", payload: "payload-1", present: true },
-            { eventId: "event-2", payload: "payload-2", present: true },
-          ],
-          "COMPLETE",
-        ],
+      for (const [label, present, expected] of [
+        ["zero", [false, false], "FAILED"],
+        ["partial", [true, false], "PARTIAL"],
+        ["full", [true, true], "COMPLETE"],
       ] as const) {
         const attemptId = newAttempt();
-        let phaseRecord = await advanceTo(attemptId, await admit(attemptId, candidates(2)), phase);
+        const batch = candidates(2);
+        let phaseRecord = await advanceTo(attemptId, await admit(attemptId, batch), phase);
         phaseRecord = await state(attemptId);
         const reconciliation: ReconciliationInput = {
-          allocatorVector: ["allocator-1"],
-          records: records.map((record) => ({ ...record })),
+          allocatorVector: allocatorVector(),
+          records: reconciliationRecords(batch, present),
           failureCause: "write-failure",
         };
         let outcome = await reconcile(attemptId, phaseRecord, reconciliation);
@@ -332,18 +347,15 @@ describe("JournalDurableObject", () => {
     const batch = candidates(2);
     const admitted = await admit(attemptId, batch);
     const allocatedResponse = await reconcile(attemptId, admitted, {
-      allocatorVector: ["allocator-1"],
+      allocatorVector: allocatorVector(),
       records: [],
       failureCause: "write-failure",
     });
     const allocated = await responseJson<JournalRecord>(allocatedResponse);
 
     const partialSnapshot: ReconciliationInput = {
-      allocatorVector: ["allocator-1"],
-      records: [
-        { eventId: "event-1", payload: "payload-1", present: true },
-        { eventId: "event-2", payload: "payload-2", present: false },
-      ],
+      allocatorVector: allocatorVector(),
+      records: reconciliationRecords(batch, [true, false]),
       failureCause: "write-failure",
     };
     const sealingResponse = await reconcile(attemptId, allocated, partialSnapshot);
@@ -356,7 +368,7 @@ describe("JournalDurableObject", () => {
       expectedOwnerEpoch: sealing.ownerEpoch,
       seals: [{ tag: "tag-1", sealed: true }],
       reconciliation: {
-        records: [{ eventId: "event-1", payload: "payload-1", present: true }],
+        records: reconciliationRecords(batch, [true]),
         failureCause: "write-failure",
       },
     });
@@ -370,7 +382,7 @@ describe("JournalDurableObject", () => {
       attemptId,
       alarmOwner,
       {
-        records: [{ eventId: "event-1", payload: "payload-1", present: true }],
+        records: reconciliationRecords(batch, [true]),
         failureCause: "write-failure",
       },
       ["tag-1"],

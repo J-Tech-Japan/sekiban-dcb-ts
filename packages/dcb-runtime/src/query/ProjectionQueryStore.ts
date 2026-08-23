@@ -130,11 +130,9 @@ function tagIdentity(tag: string, definition: QueryDefinition): {
   };
 }
 
-function base64Json(value: unknown): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
+/** Internal query entries retain JSON text rather than reconstructing base64. */
+function jsonText(value: unknown): string {
+  return JSON.stringify(value);
 }
 
 function stateEntries(checkpoint: ProjectionCheckpoint): SerializedEventHistoryEntry[] {
@@ -161,7 +159,7 @@ function stateEntries(checkpoint: ProjectionCheckpoint): SerializedEventHistoryE
     return [{
       eventId: `projection:${checkpoint.projectionId}`,
       suid: checkpoint.lastSuid,
-      payload: base64Json(decoded),
+      payload: jsonText(decoded),
     }];
   }
   throw new Error("Projected state was malformed");
@@ -251,7 +249,7 @@ export async function readRowsFromBacking(
       const eventId = isObject(value) && typeof value.eventId === "string" && value.eventId.length > 0
         ? value.eventId
         : row.rowKey;
-      return { eventId, suid: row.sourceSuid, payload: base64Json(value) };
+      return { eventId, suid: row.sourceSuid, payload: jsonText(value) };
     }).sort((left, right) => {
       const bySuid = compareSuid(left.suid, right.suid);
       return bySuid === 0 ? compareSuid(left.eventId, right.eventId) : bySuid;
@@ -275,7 +273,7 @@ export async function readRowsPageFromBacking(
       entries: page.rows.map((row) => ({
         eventId: isObject(row.value) && typeof row.value.eventId === "string" && row.value.eventId.length > 0 ? row.value.eventId : row.rowKey,
         suid: row.sourceSuid,
-        payload: base64Json(row.value),
+        payload: jsonText(row.value),
       })),
       totalCount: page.totalCount,
       serverPaged: true,

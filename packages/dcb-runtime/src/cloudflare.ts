@@ -23,7 +23,7 @@ import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject } from "./journal/JournalDurableObject";
-import { composeRuntime, registeredEventVersions, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
+import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
@@ -73,7 +73,7 @@ export interface CloudflareOnlyWorkerOptions {
     readonly arrivedAt: number;
     readonly env: CloudflareOnlyEnv;
     readonly ctx: ExecutionContext;
-    readonly source?: "queue" | "fast";
+    readonly source?: "queue" | "fast" | "import";
     readonly result?: DeliveryCoreResult;
   }) => Promise<void>;
 }
@@ -91,7 +91,7 @@ export function createCloudflareOnlyRuntimeWorker(
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
-          registeredEventVersions: registeredEventVersions(options.domain),
+          registeredEventParsers: registeredEventParsers(options.domain),
         });
       }
       if (

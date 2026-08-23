@@ -11,10 +11,33 @@ import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downst
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import { createPostgresBootstrapAdapter } from "../packages/dcb-runtime/src/store/provider";
 import { runG22BootstrapProviderContract } from "./helpers/g22-bootstrap-provider-contract";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
+import { serializedEventMetadata } from "../packages/dcb-runtime/src/eventRecord";
 
-const suid = (value: number) => `suid-${String(value).padStart(32, "0")}`;
-function event(serviceId: string, eventId: string, n: number, payload = "AQ==", tags = ["orders"]): StoredEvent {
-  return { serviceId, eventId, suid: suid(n), payload, eventTags: tags, firstArrivedAt: 0, lastArrivedAt: 0, maxDeliveryLagMs: 0, arrivals: [] };
+const suid = (value: number) => g32Suid(`g22-provider-${value}`);
+function event(serviceId: string, eventId: string, n: number, payload = JSON.stringify({ fixture: n }), tags = ["orders"]): StoredEvent {
+  const id = g32EventId(eventId);
+  const metadata = serializedEventMetadata(id);
+  return {
+    serviceId,
+    id,
+    eventId: id,
+    sortableUniqueId: suid(n),
+    suid: suid(n),
+    payload,
+    tags: [...tags],
+    eventTags: [...tags],
+    eventType: "BootstrapFixture",
+    timestamp: G32_FIXTURE_TIMESTAMP,
+    causationId: metadata.causationId,
+    correlationId: metadata.correlationId,
+    executedUser: metadata.executedUser,
+    provenance: "g32",
+    firstArrivedAt: 0,
+    lastArrivedAt: 0,
+    maxDeliveryLagMs: 0,
+    arrivals: [],
+  };
 }
 function memory(events: StoredEvent[]): PipelineStore {
   const rows = [...events];
@@ -23,7 +46,21 @@ function memory(events: StoredEvent[]): PipelineStore {
     readAllEvents: async (serviceId: string) => rows.filter((row) => row.serviceId === serviceId).sort((left, right) => left.suid.localeCompare(right.suid)),
     recordDelivery: async (message: DownstreamOutboxMessage) => {
       const existing = rows.find((row) => row.serviceId === message.serviceId && row.eventId === message.eventId);
-      if (existing === undefined) rows.push(event(message.serviceId, message.eventId, Number(message.suid.slice(-32)), message.payload, [...message.eventTags]));
+      if (existing === undefined) {
+        const stored = event(message.serviceId, message.eventId, rows.length + 1, message.payload, [...message.eventTags]);
+        rows.push({
+          ...stored,
+          id: message.eventId,
+          eventId: message.eventId,
+          sortableUniqueId: message.suid,
+          suid: message.suid,
+          eventType: message.eventType,
+          timestamp: message.timestamp,
+          causationId: message.causationId,
+          correlationId: message.correlationId,
+          executedUser: message.executedUser,
+        });
+      }
       return { outcome: "stored", kind: "stored", event: rows.find((row) => row.serviceId === message.serviceId && row.eventId === message.eventId)! };
     },
   } as unknown as PipelineStore;
@@ -69,7 +106,7 @@ describe("SDT-G22 provider bootstrap adapters", () => {
     expect(exported.status).toBe(200);
     const body = await exported.json<{ dump: { manifest: { target: { allocatorLineageId: string } } } }>();
     expect(body.dump.manifest.target.allocatorLineageId).toBe("serving-allocator-lineage");
-    expect(allocatorNames).toEqual(["service-allocator:target"]);
+    expect(allocatorNames).toEqual(["service-allocator:target", "service-allocator:source"]);
     const synthetic = await handleOperatorBootstrap(new Request(endpoint, { method: "POST", headers: { authorization: "Bearer operator-secret", "content-type": "application/json" }, body: JSON.stringify({ targetServiceId: "target", allocatorLineageId: "synthetic" }) }), env as never, provider);
     expect(synthetic.status).toBe(400);
   });
@@ -85,10 +122,23 @@ describe("SDT-G22 provider bootstrap adapters", () => {
   });
   it("does not publish READY when deployment read-model rebuild fails after verification", async () => {
     const calls: string[] = [];
-    const record = { eventId: "rebuild-event", suid: suid(1), payload: "AQ==", eventTags: ["orders"] };
+    const eventId = g32EventId("rebuild-event");
+    const metadata = serializedEventMetadata(eventId);
+    const record = {
+      eventId,
+      suid: suid(1),
+      payload: JSON.stringify({ fixture: "rebuild" }),
+      eventTags: ["orders"],
+      eventType: "RebuildEvent",
+      provenance: { origin: "g32" as const },
+      timestamp: G32_FIXTURE_TIMESTAMP,
+      causationId: metadata.causationId,
+      correlationId: metadata.correlationId,
+      executedUser: metadata.executedUser,
+    };
     const draft = {
       format: "sekiban-dcb-bootstrap" as const, version: 1 as const,
-      source: { serviceId: "source", lineageId: "unknown-legacy" },
+      source: { serviceId: "source", lineageId: "source-lineage" },
       target: { serviceId: "target", allocatorLineageId: "lineage" },
       highWatermark: suid(1), eventCount: 1, tagCounts: { orders: 1 }, canonicalization: "utf8-json-sorted-keys-v1" as const,
     };

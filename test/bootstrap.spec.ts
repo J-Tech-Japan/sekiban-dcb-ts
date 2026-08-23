@@ -9,14 +9,23 @@ import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/Live
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
+import { serializedEventMetadata } from "../packages/dcb-runtime/src/eventRecord";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
 
-const suid = (n: number) => `suid-${String(n).padStart(32, "0")}`;
+const suid = (n: number) => g32Suid(`bootstrap-${n}`);
+const encodedPayload = (value: unknown) => btoa(JSON.stringify(value));
 function dumpFor(serviceId: string, allocatorLineageId = "bootstrap-lineage"): BootstrapDump {
   const events = [
-    { eventId: "event-a", suid: suid(1), payload: "AQ==", eventTags: ["orders", "users"] },
-    { eventId: "event-b", suid: suid(2), payload: "Ag==", eventTags: ["orders"] },
+    (() => {
+      const eventId = g32EventId("bootstrap-event-a"); const metadata = serializedEventMetadata(eventId);
+      return { eventId, suid: suid(1), payload: JSON.stringify({ fixture: "a" }), eventTags: ["orders", "users"], eventType: "BootstrapFixture", provenance: { origin: "g32" as const }, timestamp: G32_FIXTURE_TIMESTAMP, ...metadata };
+    })(),
+    (() => {
+      const eventId = g32EventId("bootstrap-event-b"); const metadata = serializedEventMetadata(eventId);
+      return { eventId, suid: suid(2), payload: JSON.stringify({ fixture: "b" }), eventTags: ["orders"], eventType: "BootstrapFixture", provenance: { origin: "g32" as const }, timestamp: G32_FIXTURE_TIMESTAMP, ...metadata };
+    })(),
   ];
-  const draft: Omit<BootstrapManifest, "contentDigest"> = { format: "sekiban-dcb-bootstrap", version: 1, source: { serviceId: "source", lineageId: "unknown-legacy" }, target: { serviceId, allocatorLineageId }, highWatermark: suid(2), eventCount: 2, tagCounts: { orders: 2, users: 1 }, canonicalization: "utf8-json-sorted-keys-v1" };
+  const draft: Omit<BootstrapManifest, "contentDigest"> = { format: "sekiban-dcb-bootstrap", version: 1, source: { serviceId: "source", lineageId: "source-lineage" }, target: { serviceId, allocatorLineageId }, highWatermark: suid(2), eventCount: 2, tagCounts: { orders: 2, users: 1 }, canonicalization: "utf8-json-sorted-keys-v1" };
   return { manifest: { ...draft, contentDigest: bootstrapDigest({ manifest: { ...draft, contentDigest: "" }, events }) }, events };
 }
 async function post(serviceId: string, path: string, body: unknown): Promise<Response> {
@@ -32,7 +41,7 @@ async function allocatorPost(name: string, path: string, body: unknown): Promise
   return workerEnv().ALLOCATOR.get(workerEnv().ALLOCATOR.idFromName(name)).fetch(new Request(`https://bootstrap.test${path}`, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 }
 function queueMessage(serviceId: string): DownstreamOutboxMessage {
-  return { version: 1, serviceId, allocatorLineageId: "bootstrap-test-lineage", tag: "orders", attemptId: `queue-${crypto.randomUUID()}`, eventId: `queue-event-${crypto.randomUUID()}`, suid: suid(7), payload: "AQ==", eventTags: ["orders"], provenance: "pre-g27-queue", enqueuedAt: Date.now() };
+  return g32Message({ serviceId, allocatorLineageId: "bootstrap-test-lineage", tag: "orders", attemptId: `queue-${crypto.randomUUID()}`, eventId: `queue-event-${crypto.randomUUID()}`, suid: suid(7), payload: JSON.stringify({ fixture: "queue" }), eventTags: ["orders"], eventType: "BootstrapQueue", enqueuedAt: Date.now() });
 }
 
 describe("SDT-G21 bootstrap core", () => {
@@ -56,7 +65,7 @@ describe("SDT-G21 bootstrap core", () => {
     expect((await post(serviceId, "/import", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/verify", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/ready", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
-    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/bootstrap/admit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: "import-1", leaseEpoch: control.leaseEpoch, manifestDigest: dump.manifest.contentDigest, targetServiceId: serviceId, candidates: [{ ...dump.events[0], allocatorLineageId: "bootstrap-lineage" }] }) });
+    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/bootstrap/admit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: "import-1", leaseEpoch: control.leaseEpoch, manifestDigest: dump.manifest.contentDigest, targetServiceId: serviceId, candidates: [{ ...dump.events[0], provenance: "g32", allocatorLineageId: "bootstrap-lineage" }] }) });
     expect(tag.status).toBe(409);
   });
 
@@ -74,18 +83,18 @@ describe("SDT-G21 bootstrap core", () => {
 
     const commit = await new CommitWorker(workerEnv(), serviceId).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "ReadyDelivery", tags: ["orders"] }], consistencyTags: [] }),
+      body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "ready-delivery" }), eventPayloadName: "ReadyDelivery", tags: ["orders"] }], consistencyTags: [] }),
     }));
     expect(commit.status).toBe(200);
     const committed = await commit.json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>();
     const written = committed.writtenEvents[0]!;
     const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`);
-    const tagState = await tag.json<{ events: Array<{ eventId: string; suid: string; payload: string; eventTags: string[]; allocatorLineageId: string }> }>();
+    const tagState = await tag.json<{ events: Array<{ eventId: string; suid: string; payload: string; eventTags: string[]; allocatorLineageId: string; eventType: string; timestamp: string }> }>();
     const delivered = tagState.events.find((event) => event.eventId === written.id)!;
     expect(delivered.allocatorLineageId).toBe(servingState.allocatorLineageId);
 
     const database = store(); await database.initialize();
-    const batch = createMessageBatch("serialized-dcb-v1-outbox", [{ id: "ready-delivery", timestamp: new Date(), attempts: 1, body: { version: 1, serviceId, allocatorLineageId: delivered.allocatorLineageId, tag: "orders", attemptId: "ready-delivery", eventId: delivered.eventId, suid: delivered.suid, payload: delivered.payload, eventTags: delivered.eventTags, provenance: "pre-g27-queue", enqueuedAt: Date.now() } }]);
+    const batch = createMessageBatch("serialized-dcb-v1-outbox", [{ id: "ready-delivery", timestamp: new Date(), attempts: 1, body: g32Message({ serviceId, allocatorLineageId: delivered.allocatorLineageId, tag: "orders", attemptId: "ready-delivery", eventId: delivered.eventId, suid: delivered.suid, payload: delivered.payload, eventTags: delivered.eventTags, eventType: delivered.eventType, timestamp: delivered.timestamp, enqueuedAt: Date.now() }) }]);
     await handleDownstreamQueue(batch, { POSTGRES_URL: workerEnv().POSTGRES_URL, BOOTSTRAP: workerEnv().BOOTSTRAP }, { store: database });
     expect((await getQueueResult(batch, createExecutionContext())).explicitAcks).toHaveLength(1);
     const queried = await database.readAllEvents(serviceId, "");
@@ -102,7 +111,7 @@ describe("SDT-G21 bootstrap core", () => {
     const second = await allocatorPost(seededName, "/seed-after", { importId: "other", leaseEpoch: 2, highWatermark: suid(10) });
     expect(second.status).toBe(409); expect(await second.json()).toMatchObject({ code: "allocator_seed_rejected", error: "allocator already seeded" });
     const allocatingName = `allocating-${crypto.randomUUID()}`;
-    expect((await allocatorPost(allocatingName, "/allocate", { attemptId: "allocated", candidates: [{ candidateIndex: 0, eventId: "allocated-event" }] })).status).toBe(201);
+    expect((await allocatorPost(allocatingName, "/allocate", { attemptId: "allocated", candidates: [{ candidateIndex: 0, eventId: g32EventId("allocated-event") }] })).status).toBe(201);
     const allocating = await allocatorPost(allocatingName, "/seed-after", { importId: "seed", leaseEpoch: 1, highWatermark: suid(9) });
     expect(allocating.status).toBe(409); expect(await allocating.json()).toMatchObject({ code: "allocator_seed_rejected", error: "allocator already allocating" });
   });
@@ -126,7 +135,7 @@ describe("SDT-G21 bootstrap core", () => {
     const admitted = await post(serviceId, "/command/admit", { commandId: "allocator-command" }); const { leaseEpoch } = await admitted.json<{ leaseEpoch: number }>();
     expect((await post(serviceId, "/command/release", { commandId: "allocator-command", leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/plan", { importId: "allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
-    const rejected = await allocatorPost(allocatorName, "/allocate", { attemptId: "planned-allocation", serviceId, bootstrapCommandId: "allocator-command", bootstrapEpoch: leaseEpoch, candidates: [{ candidateIndex: 0, eventId: "planned-event" }] });
+    const rejected = await allocatorPost(allocatorName, "/allocate", { attemptId: "planned-allocation", serviceId, bootstrapCommandId: "allocator-command", bootstrapEpoch: leaseEpoch, candidates: [{ candidateIndex: 0, eventId: g32EventId("planned-event") }] });
     expect(rejected.status).toBe(409); expect(await rejected.json()).toMatchObject({ code: "bootstrap_command_rejected" });
     expect(await (await allocatorPost(allocatorName, "/state", undefined)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
     expect((await allocatorPost(allocatorName, "/seed-after", { importId: "allocator", leaseEpoch: 1, highWatermark: suid(2) })).status).toBe(201);
@@ -134,12 +143,12 @@ describe("SDT-G21 bootstrap core", () => {
 
   it("keeps normal allocation legal and blocks the real stalled CommitWorker allocation before watermark mutation", async () => {
     const normalAllocator = `normal-allocation-${crypto.randomUUID()}`;
-    expect((await allocatorPost(normalAllocator, "/allocate", { attemptId: "normal", candidates: [{ candidateIndex: 0, eventId: "normal-event" }] })).status).toBe(201);
+    expect((await allocatorPost(normalAllocator, "/allocate", { attemptId: "normal", candidates: [{ candidateIndex: 0, eventId: g32EventId("normal-event") }] })).status).toBe(201);
     const serviceId = `commit-allocator-gate-${crypto.randomUUID()}`; const allocatorName = `commit-allocator-gate-${crypto.randomUUID()}`;
     let entered!: () => void; const enteredAllocation = new Promise<void>((resolve) => { entered = resolve; });
     let resume!: () => void; const resumeAllocation = new Promise<void>((resolve) => { resume = resolve; });
     const worker = new CommitWorker(workerEnv(), serviceId, { allocatorName, beforeBootstrapAllocation: async () => { entered(); await resumeAllocation; } });
-    const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "AllocatorRace", tags: ["orders"] }], consistencyTags: [] }) }));
+    const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "allocator-race" }), eventPayloadName: "AllocatorRace", tags: ["orders"] }], consistencyTags: [] }) }));
     await enteredAllocation;
     expect((await post(serviceId, "/plan", { importId: "commit-allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
     resume(); const result = await pending;
@@ -179,7 +188,7 @@ describe("SDT-G21 bootstrap core", () => {
     // Bootstrap first: the actual HTTP commit worker loses its admission gate.
     expect((await post(serviceId, "/plan", { importId: "race", dump, targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
     const worker = new CommitWorker(env as unknown as CommitWorkerEnv, serviceId);
-    const commit = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "Race", tags: ["orders"] }], consistencyTags: [] }) }));
+    const commit = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "race" }), eventPayloadName: "Race", tags: ["orders"] }], consistencyTags: [] }) }));
     expect(commit.status).toBe(409); expect((await commit.json<{ code: string }>()).code).toBe("bootstrap_command_rejected");
     // Commit first: its held real command admission prevents EMPTY -> PLANNED.
     const other = `race-other-${crypto.randomUUID()}`; const held = await post(other, "/command/admit", { commandId: "commit-stalled" }); const epoch = await held.json<{ leaseEpoch: number }>();
@@ -193,7 +202,7 @@ describe("SDT-G21 bootstrap core", () => {
     let entered!: () => void; const enteredFinalization = new Promise<void>((resolve) => { entered = resolve; });
     let resume!: () => void; const resumeFinalization = new Promise<void>((resolve) => { resume = resolve; });
     const worker = new CommitWorker(workerEnv(), serviceId, { beforeBootstrapFinalization: async () => { entered(); await resumeFinalization; } });
-    const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: "AQ==", eventPayloadName: "Race", tags: ["orders"] }], consistencyTags: [] }) }));
+    const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "final-write-race" }), eventPayloadName: "Race", tags: ["orders"] }], consistencyTags: [] }) }));
     await enteredFinalization;
     expect((await post(serviceId, "/plan", { importId: "advanced", dump, targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
     resume(); const result = await pending;

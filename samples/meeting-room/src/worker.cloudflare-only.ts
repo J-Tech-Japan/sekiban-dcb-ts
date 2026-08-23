@@ -14,6 +14,7 @@ import {
 } from "@sekiban/dcb-runtime/cloudflare";
 import { createD1StoreProvider, D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
+import { assertG32FinalFence } from "./compatibility";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
 
@@ -25,6 +26,17 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly G29_SOURCE_COMMIT?: string;
   /** Sealed SDT-G31 source identity exposed only to the authenticated witness. */
   readonly G31_SOURCE_COMMIT?: string;
+  /** Final-C identity and new-binding witness; absent only in local pre-G32 fixtures. */
+  readonly G32_SOURCE_COMMIT?: string;
+  readonly G32_PIPELINE_DATABASE_ID?: string;
+  readonly G32_MATERIALIZED_VIEW_DATABASE_ID?: string;
+  readonly G32_QUEUE_NAME?: string;
+  readonly G32_COMPONENT?: string;
+  readonly G32_CONFIG_DIGEST?: string;
+  readonly G32_CUTOVER_PHASE?: string;
+  readonly G32_FREEZE_RELEASE?: string;
+  readonly G32_CUTOVER_FENCE_TOKEN?: string;
+  readonly G32_CUTOVER_FENCE_FINGERPRINT?: string;
   /** In-process integration seam; never configured by a deployed Worker. */
   readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
     readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
@@ -37,6 +49,7 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
  */
 export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
   async deliver(message: unknown) {
+    await assertFinalCutoverFenceIfConfigured(this.env);
     const testOverrides = this.env.__G29_DOORBELL_TEST__;
     const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy);
     const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(this.env);
@@ -55,6 +68,18 @@ export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomC
     });
     return result;
   }
+}
+
+/** Local/legacy fixtures do not set G32 phase. A deployed final C always does. */
+async function assertFinalCutoverFenceIfConfigured(env: MeetingRoomCloudflareEnv): Promise<void> {
+  const configured = env.G32_CUTOVER_PHASE !== undefined || env.G32_CUTOVER_FENCE_TOKEN !== undefined || env.G32_CUTOVER_FENCE_FINGERPRINT !== undefined;
+  if (!configured) return;
+  await assertG32FinalFence({
+    phase: env.G32_CUTOVER_PHASE,
+    release: env.G32_FREEZE_RELEASE,
+    token: env.G32_CUTOVER_FENCE_TOKEN,
+    tokenFingerprint: env.G32_CUTOVER_FENCE_FINGERPRINT,
+  });
 }
 
 const runtime = createCloudflareOnlyRuntimeWorker({
@@ -213,6 +238,11 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
 async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
   const supplied = request.headers.get("authorization");
   if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
+  try {
+    await assertFinalCutoverFenceIfConfigured(env);
+  } catch {
+    return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+  }
   const url = new URL(request.url);
   if (url.pathname === "/conformance/v1/g26-config") {
     const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
@@ -272,6 +302,50 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       allowedViews: config.allowedViews,
     });
   }
+  if (url.pathname === "/conformance/v1/g32-config") {
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    return json({
+      task: "SDT-G32",
+      phase: env.G32_CUTOVER_PHASE ?? null,
+      sourceCommit: env.G32_SOURCE_COMMIT ?? null,
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      component: env.G32_COMPONENT ?? null,
+      configDigest: env.G32_CONFIG_DIGEST ?? null,
+      serviceId: env.SDT_SERVICE_ID ?? null,
+      pipelineDatabaseId: env.G32_PIPELINE_DATABASE_ID ?? null,
+      materializedViewDatabaseId: env.G32_MATERIALIZED_VIEW_DATABASE_ID ?? null,
+      queue: env.G32_QUEUE_NAME ?? null,
+      freezeRelease: env.G32_FREEZE_RELEASE ?? null,
+      cutoverFenceFingerprint: env.G32_CUTOVER_FENCE_FINGERPRINT ?? null,
+      sortableUniqueId: { digits: 30, format: "dotnet-ticks-19-plus-crypto-id-11", legacyUnsupported: true },
+      eventRecord: { eventType: "eventPayloadName", payload: "utf8-json-byte-identical", id: "uuid-v7", tags: "family:value-emission-order" },
+      directDoorbell: config.enabled,
+      allowedViews: config.allowedViews,
+      rawV1PublicStatus: 404,
+    });
+  }
+  if (url.pathname === "/conformance/v1/g32-store-state") {
+    if (env.D1 === undefined || env.D1_MV === undefined || env.SDT_SERVICE_ID === undefined) {
+      return json({ error: "G32 new-store bindings are unavailable", code: "g32_store_unavailable" }, 503);
+    }
+    const serviceId = env.SDT_SERVICE_ID;
+    const [events, ops, legacy, mvRows, mvReceipts] = await Promise.all([
+      env.D1.prepare("SELECT COUNT(*) AS count FROM dcb_events WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
+      env.D1.prepare("SELECT COUNT(*) AS count FROM dcb_event_ops WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
+      env.D1.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_events'").first<{ name: string }>(),
+      env.D1_MV.prepare("SELECT COUNT(*) AS count FROM mv_rows WHERE service_id = ?").bind(serviceId).first<{ count: number }>(),
+      env.D1_MV.prepare("SELECT COUNT(*) AS count FROM mv_wait_receipts WHERE service_id = ?").bind(serviceId).first<{ count: number }>(),
+    ]);
+    return json({
+      task: "SDT-G32",
+      serviceId,
+      eventCount: Number(events?.count ?? 0),
+      eventOpsCount: Number(ops?.count ?? 0),
+      materializedViewRowCount: Number(mvRows?.count ?? 0),
+      materializedViewReceiptCount: Number(mvReceipts?.count ?? 0),
+      legacySerializedEventTablePresent: legacy !== null,
+    });
+  }
   if (url.pathname === "/conformance/v1/g31-wait-state") {
     const suid = url.searchParams.get("suid");
     if (suid === null || suid.length === 0) {
@@ -312,6 +386,11 @@ async function bootstrapOperator(request: Request, env: MeetingRoomCloudflareEnv
 
 const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   async fetch(request, env, ctx) {
+    try {
+      await assertFinalCutoverFenceIfConfigured(env);
+    } catch {
+      return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+    }
     const path = new URL(request.url).pathname;
     if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
     if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
@@ -323,8 +402,12 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     if (path === "/" || path === "/index.html") return new Response("Meeting-room sample", { headers: { "content-type": "text/html; charset=utf-8" } });
     return new Response("Not found", { status: 404 });
   },
-  async queue(batch, env, ctx) { await runtime.queue?.(batch, env, ctx); },
+  async queue(batch, env, ctx) {
+    await assertFinalCutoverFenceIfConfigured(env);
+    await runtime.queue?.(batch, env, ctx);
+  },
   async scheduled(controller, env, ctx) {
+    await assertFinalCutoverFenceIfConfigured(env);
     await runMeetingRoomScheduledMaintenance({
       catchUp: () => catchUpMeetingRoomMaterializedViews(env),
       drainUnsafeKicks: () => drainMeetingRoomUnsafeKicks(env),

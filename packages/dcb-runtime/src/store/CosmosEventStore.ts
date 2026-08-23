@@ -1,5 +1,7 @@
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
+import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import { decayedLagEstimateMs } from "../safeWindow";
 import {
   CanonicalEventIdentityConflictError,
@@ -51,8 +53,12 @@ export interface CosmosContainerNames {
   readonly checkpoints: string;
 }
 
-/** Every TypeScript Cosmos container is scoped by the serialized service id. */
-export const COSMOS_PARTITION_KEY_PATH = "/serviceId" as const;
+/** Sekiban.Dcb CosmosEvent's immutable logical-record partition. */
+export const COSMOS_EVENT_PARTITION_KEY_PATH = "/pk" as const;
+/** TS-only auxiliary documents retain a service-local partition. */
+export const COSMOS_AUXILIARY_PARTITION_KEY_PATH = "/serviceId" as const;
+/** @deprecated Kept as an alias for auxiliary-container callers. */
+export const COSMOS_PARTITION_KEY_PATH = COSMOS_AUXILIARY_PARTITION_KEY_PATH;
 
 export const DEFAULT_COSMOS_CONTAINERS: CosmosContainerNames = Object.freeze({
   events: "dcb-events",
@@ -64,8 +70,8 @@ export const DEFAULT_COSMOS_CONTAINERS: CosmosContainerNames = Object.freeze({
 
 export interface CosmosContainerDefinition {
   readonly name: string;
-  readonly partitionKeyPath: typeof COSMOS_PARTITION_KEY_PATH;
-  readonly partitionKeyValue: (serviceId: string) => string;
+  readonly partitionKeyPath: typeof COSMOS_EVENT_PARTITION_KEY_PATH | typeof COSMOS_AUXILIARY_PARTITION_KEY_PATH;
+  readonly partitionKeyValue: (serviceId: string, id?: string) => string;
 }
 
 /**
@@ -76,16 +82,23 @@ export function cosmosContainerDefinitions(
   containers: CosmosContainerNames = DEFAULT_COSMOS_CONTAINERS,
 ): readonly CosmosContainerDefinition[] {
   return [
-    containers.events,
-    containers.lagEstimates,
-    containers.pendingArrivals,
-    containers.findings,
-    containers.checkpoints,
-  ].map((name) => ({
-    name,
-    partitionKeyPath: COSMOS_PARTITION_KEY_PATH,
-    partitionKeyValue: (serviceId: string) => serviceId,
-  }));
+    {
+      name: containers.events,
+      partitionKeyPath: COSMOS_EVENT_PARTITION_KEY_PATH,
+      // The C# CosmosEvent is partitioned by the exact serviceId|id pair.
+      // Refuse a missing id here so an introspection fixture cannot mistake
+      // an auxiliary service partition for the logical event partition.
+      partitionKeyValue: (serviceId: string, id?: string) => {
+        if (typeof id !== "string" || id.length === 0) throw new Error("Cosmos event partition key requires an event id");
+        return eventPk(serviceId, id);
+      },
+    },
+    ...[containers.lagEstimates, containers.pendingArrivals, containers.findings, containers.checkpoints].map((name) => ({
+      name,
+      partitionKeyPath: COSMOS_AUXILIARY_PARTITION_KEY_PATH,
+      partitionKeyValue: (serviceId: string) => serviceId,
+    })),
+  ];
 }
 
 export interface CosmosStoreOptions {
@@ -116,6 +129,10 @@ function asString(value: unknown, name: string): string {
   return value;
 }
 
+function nullableString(value: unknown, name: string): string | null {
+  return value === null ? null : asString(value, name);
+}
+
 function asNumber(value: unknown, name: string): number {
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number)) throw new Error(`Cosmos ${name} was not a safe integer`);
@@ -126,11 +143,28 @@ function asStringArray(value: unknown, name: string): string[] {
   if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
     throw new Error(`Cosmos ${name} was not a string array`);
   }
-  return sortedUnique(value);
+  return [...value];
 }
 
 function sortedUnique(values: readonly string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+  return [...new Set(values)].sort(binaryCompare);
+}
+
+function binaryCompare(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const shared = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < shared; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+function assertUtcTimestamp(value: string, eventId: string): void {
+  if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
+    throw new CanonicalEventIdentityConflictError("cosmos", eventId, "Cosmos Timestamp must be canonical UTC ISO-8601");
+  }
 }
 
 /** V1 SUIDs are opaque byte strings; never use locale or numeric ordering. */
@@ -149,23 +183,41 @@ function safeId(...parts: string[]): string {
   return parts.map((part) => encodeURIComponent(part)).join("~");
 }
 
+/** The exact CosmosEvent partition-key derivation from Sekiban.Dcb. */
+function eventPk(serviceId: string, id: string): string {
+  return `${serviceId}|${id}`;
+}
+
+function auxiliaryPk(serviceId: string): string {
+  return eventPk(serviceId, "__dcb_event_ops__");
+}
+
 function isStatus(error: unknown, status: number): boolean {
   return error instanceof CosmosClientError && error.status === status;
 }
 
-function eventFrom(document: JsonObject): StoredEvent {
-  const arrivals = Array.isArray(document.arrivals) ? document.arrivals : [];
+function eventFrom(document: JsonObject, ops?: JsonObject): StoredEvent {
+  const arrivals = Array.isArray(ops?.arrivals) ? ops.arrivals : [];
+  const id = asString(document.id, "id");
+  const tags = asStringArray(document.tags, "tags");
   return {
     serviceId: asString(document.serviceId, "serviceId"),
-    eventId: asString(document.eventId, "eventId"),
-    suid: asString(document.suid, "suid"),
+    id,
+    eventId: id,
+    sortableUniqueId: asString(document.sortableUniqueId, "sortableUniqueId"),
+    suid: asString(document.sortableUniqueId, "sortableUniqueId"),
     payload: asString(document.payload, "payload"),
-    eventTags: asStringArray(document.eventTags, "eventTags"),
-    ...(document.eventType === undefined ? {} : { eventType: asString(document.eventType, "eventType") }),
-    provenance: document.provenance === "g27" ? "g27" : "pre-g27",
-    firstArrivedAt: asNumber(document.firstArrivedAt, "firstArrivedAt"),
-    lastArrivedAt: asNumber(document.lastArrivedAt, "lastArrivedAt"),
-    maxDeliveryLagMs: asNumber(document.maxDeliveryLagMs, "maxDeliveryLagMs"),
+    tags,
+    eventTags: tags,
+    eventType: asString(document.eventType, "eventType"),
+    timestamp: asString(document.timestamp, "timestamp"),
+    causationId: nullableString(document.causationId, "causationId"),
+    correlationId: nullableString(document.correlationId, "correlationId"),
+    executedUser: nullableString(document.executedUser, "executedUser"),
+    provenance: "g32",
+    firstArrivedAt: ops === undefined ? 0 : asNumber(ops.firstArrivedAt, "firstArrivedAt"),
+    lastArrivedAt: ops === undefined ? 0 : asNumber(ops.lastArrivedAt, "lastArrivedAt"),
+    maxDeliveryLagMs: ops === undefined ? 0 : asNumber(ops.maxDeliveryLagMs, "maxDeliveryLagMs"),
     arrivals: arrivals.map((arrival): DeliveryLagRecord => {
       if (typeof arrival !== "object" || arrival === null || Array.isArray(arrival)) {
         throw new Error("Cosmos arrival was not an object");
@@ -189,8 +241,8 @@ function pendingFrom(document: JsonObject): PendingArrivalRecord {
     attemptId: asString(document.attemptId, "attemptId"),
     eventId: asString(document.eventId, "eventId"),
     suid: asString(document.suid, "suid"),
-    expectedPaths: asStringArray(document.expectedPaths, "expectedPaths"),
-    observedPaths: asStringArray(document.observedPaths, "observedPaths"),
+    expectedPaths: sortedUnique(asStringArray(document.expectedPaths, "expectedPaths")),
+    observedPaths: sortedUnique(asStringArray(document.observedPaths, "observedPaths")),
     firstObservedAt: asNumber(document.firstObservedAt, "firstObservedAt"),
     lagBoundMs: asNumber(document.lagBoundMs, "lagBoundMs"),
   };
@@ -241,12 +293,47 @@ function incidentFrom(document: JsonObject): DeliveryIncident {
 }
 
 function collisionIdentity(serviceId: string, suid: string, existingEventId: string, incomingEventId: string): string {
-  const [first, second] = [existingEventId, incomingEventId].sort((left, right) => left.localeCompare(right));
+  const [first, second] = [existingEventId, incomingEventId].sort(binaryCompare);
   return `SUID_COLLISION|${serviceId}|${suid}|${first}|${second}`;
 }
 
 function lineageIdentity(serviceId: string, boundLineageId: string, incomingLineageId: string): string {
   return `LINEAGE_MISMATCH|${serviceId}|${boundLineageId}|${incomingLineageId}`;
+}
+
+interface DurableEventMetadata {
+  readonly causationId: string | null;
+  readonly correlationId: string | null;
+  readonly executedUser: string | null;
+}
+
+function metadataForDelivery(message: DownstreamOutboxMessage, deliverySource: DeliverySource): DurableEventMetadata {
+  const serialized = serializedEventMetadata(message.eventId);
+  if (deliverySource !== "import") {
+    if (
+      message.causationId !== serialized.causationId ||
+      message.correlationId !== serialized.correlationId ||
+      message.executedUser !== serialized.executedUser
+    ) {
+      throw new CanonicalEventIdentityConflictError("cosmos", message.eventId, "Cosmos metadata must use the serialized C# constants");
+    }
+    return serialized;
+  }
+  const values = [message.causationId, message.correlationId, message.executedUser];
+  if (!values.every((value) => value === null || typeof value === "string")) {
+    throw new CanonicalEventIdentityConflictError("cosmos", message.eventId, "Cosmos import metadata must be string or null");
+  }
+  const allNull = values.every((value) => value === null);
+  const allSerialized = message.causationId === serialized.causationId &&
+    message.correlationId === serialized.correlationId && message.executedUser === serialized.executedUser;
+  if (!allNull && !allSerialized) {
+    throw new CanonicalEventIdentityConflictError("cosmos", message.eventId, "Cosmos import metadata must be all null or serialized constants");
+  }
+  return {
+    causationId: message.causationId,
+    correlationId: message.correlationId,
+    executedUser: message.executedUser,
+  };
 }
 
 function checkpointFrom(document: JsonObject): ProjectionCheckpoint {
@@ -432,14 +519,27 @@ export class CosmosRestClient implements CosmosDocumentClient {
 
 interface EventDocument extends JsonObject {
   id: string;
+  pk: string;
   serviceId: string;
-  kind?: "event";
-  eventId: string;
-  suid: string;
+  sortableUniqueId: string;
+  eventType: string;
   payload: string;
-  eventTags: string[];
-  eventType?: string;
-  provenance?: "pre-g27" | "g27";
+  tags: string[];
+  timestamp: string;
+  causationId: string | null;
+  correlationId: string | null;
+  executedUser: string | null;
+}
+
+/** TS operational sidecar; deliberately not part of CosmosEvent's record. */
+interface EventOpsDocument extends JsonObject {
+  id: string;
+  pk: string;
+  serviceId: string;
+  kind: "event-ops";
+  eventId: string;
+  attemptId: string;
+  allocatorLineageId: string;
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;
@@ -448,6 +548,7 @@ interface EventDocument extends JsonObject {
 
 interface LineageBindingDocument extends JsonObject {
   id: string;
+  pk: string;
   serviceId: string;
   kind: "allocator-lineage-binding";
   allocatorLineageId: string;
@@ -456,6 +557,7 @@ interface LineageBindingDocument extends JsonObject {
 
 interface SuidBindingDocument extends JsonObject {
   id: string;
+  pk: string;
   serviceId: string;
   kind: "suid-binding";
   suid: string;
@@ -464,6 +566,7 @@ interface SuidBindingDocument extends JsonObject {
 
 interface IncidentDocument extends JsonObject {
   id: string;
+  pk: string;
   serviceId: string;
   kind: "delivery-incident";
   identityKey: string;
@@ -551,8 +654,24 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
     const identity = resolveDeliveryIdentity(message, deliverySource);
+    assertSortableUniqueId(message.suid);
+    const acceptsImportedId = deliverySource === "import";
+    if (!(acceptsImportedId ? isRfc4122Uuid(message.eventId) : isUuidV7(message.eventId))) {
+      throw new CanonicalEventIdentityConflictError(
+        "cosmos",
+        message.eventId,
+        `Cosmos EventId must be an ${acceptsImportedId ? "RFC 4122 UUID" : "UUID v7"}`,
+      );
+    }
+    try {
+      JSON.parse(message.payload);
+    } catch {
+      throw new CanonicalEventIdentityConflictError("cosmos", message.eventId, "Cosmos Payload must be UTF-8 JSON text");
+    }
+    assertUtcTimestamp(message.timestamp ?? new Date(arrivedAt).toISOString(), message.eventId);
+    const metadata = metadataForDelivery(message, deliverySource);
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
-    const eventTags = sortedUnique(message.eventTags);
+    const eventTags = [...message.eventTags];
     const binding = await this.readLineageBinding(message.serviceId);
     if (binding !== undefined && binding.document.allocatorLineageId !== message.allocatorLineageId) {
       const incident: DeliveryIncident = {
@@ -586,19 +705,19 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       }
     }
     const currentEvents = await this.eventDocuments(message.serviceId);
-    const existingBySuid = currentEvents.find((entry) => entry.document.suid === message.suid);
-    if (existingBySuid !== undefined && existingBySuid.document.eventId !== message.eventId) {
+    const existingBySuid = currentEvents.find((entry) => entry.document.sortableUniqueId === message.suid);
+    if (existingBySuid !== undefined && existingBySuid.document.id !== message.eventId) {
       const incident: DeliveryIncident = {
         serviceId: message.serviceId,
         identityKey: collisionIdentity(
           message.serviceId,
           message.suid,
-          existingBySuid.document.eventId,
+          existingBySuid.document.id,
           message.eventId,
         ),
         classification: "SUID_COLLISION",
         suid: message.suid,
-        existingEventId: existingBySuid.document.eventId,
+        existingEventId: existingBySuid.document.id,
         incomingEventId: message.eventId,
         observedAt: arrivedAt,
       };
@@ -620,20 +739,23 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       return { outcome: "suid-collision", kind: "suid-collision", incident };
     }
     const currentHead = currentEvents.reduce<string | undefined>((head, entry) =>
-      head === undefined || compareCosmosSuid(entry.document.suid, head) > 0 ? entry.document.suid : head, undefined);
+      head === undefined || compareCosmosSuid(entry.document.sortableUniqueId, head) > 0 ? entry.document.sortableUniqueId : head, undefined);
     const recoveryBacklogSample = currentHead !== undefined && compareCosmosSuid(message.suid, currentHead) < 0;
-    const event = await this.mutateEvent(message, arrivedAt, lagMs, eventTags, identity.legacy ? undefined : identity.key, identity.legacy ? "pre-g27" : "g27");
+    const event = await this.mutateEvent(message, eventTags, identity.key, message.timestamp ?? new Date(arrivedAt).toISOString(), metadata);
+    const ops = await this.mutateEventOps(message, arrivedAt, lagMs);
     if (!recoveryBacklogSample && deliverySource !== "fast") await this.updateLag(message.serviceId, lagMs, arrivedAt);
-    return { outcome: "stored", kind: "stored", event: eventFrom(event) };
+    return { outcome: "stored", kind: "stored", event: eventFrom(event, ops) };
   }
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
     this.ready();
+    if (since.length !== 0) assertSortableUniqueId(since);
     const documents = await this.eventDocuments(serviceId);
-    return documents
-      .map((entry) => eventFrom(entry.document))
+    const events = await Promise.all(documents.map(async (entry) =>
+      eventFrom(entry.document, await this.eventOps(serviceId, entry.document.id))));
+    return events
       .filter((event) => compareCosmosSuid(event.suid, since) > 0)
-      .sort((left, right) => compareCosmosSuid(left.suid, right.suid) || left.eventId.localeCompare(right.eventId));
+      .sort((left, right) => compareCosmosSuid(left.suid, right.suid) || binaryCompare(left.eventId, right.eventId));
   }
 
   async currentLagBound(serviceId: string, nowMs?: number): Promise<number> {
@@ -652,9 +774,9 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     this.ready();
     const tags = new Set<string>();
     for (const entry of await this.eventDocuments(serviceId)) {
-      for (const tag of asStringArray(entry.document.eventTags, "eventTags")) tags.add(tag);
+      for (const tag of asStringArray(entry.document.tags, "tags")) tags.add(tag);
     }
-    return [...tags].sort((left, right) => left.localeCompare(right));
+    return [...tags].sort(binaryCompare);
   }
 
   async readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined> {
@@ -696,9 +818,10 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     this.ready();
     const checkpoint = await this.readProjectionCheckpoint(serviceId, projectionId);
     const checkpointSuid = checkpoint?.lastSuid ?? "";
-    const matching = (await this.eventDocuments(serviceId))
-      .map((entry) => eventFrom(entry.document))
-      .filter((event) => event.eventTags.includes(tag));
+    const candidates = await this.eventDocuments(serviceId);
+    const matching = (await Promise.all(
+      candidates.map(async (entry) => eventFrom(entry.document, await this.eventOps(serviceId, entry.document.id))),
+    )).filter((event) => event.eventTags.includes(tag));
     const headSuid = matching.reduce((head, event) =>
       head === "" || compareCosmosSuid(event.suid, head) > 0 ? event.suid : head, "");
     return {
@@ -764,7 +887,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       serviceId,
     );
     return rows.map((row) => pendingFrom(row.document)).sort((left, right) =>
-      left.serviceId.localeCompare(right.serviceId) || left.eventId.localeCompare(right.eventId));
+      binaryCompare(left.serviceId, right.serviceId) || binaryCompare(left.eventId, right.eventId));
   }
 
   async appendFinding(finding: InconsistencyFinding): Promise<void> {
@@ -792,7 +915,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     return (await this.client.read<IncidentDocument>(
       this.containers.events,
       safeId("incident", identityKey),
-      serviceId,
+      auxiliaryPk(serviceId),
     )) !== undefined;
   }
 
@@ -802,12 +925,11 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
       this.containers.events,
       serviceId === undefined ? "SELECT * FROM c" : "SELECT * FROM c WHERE c.serviceId = @serviceId",
       serviceId === undefined ? [] : [{ name: "@serviceId", value: serviceId }],
-      serviceId,
     );
     return rows
       .filter((row) => row.document.kind === "delivery-incident")
       .map((row) => incidentFrom(row.document))
-      .sort((left, right) => left.observedAt - right.observedAt || left.identityKey.localeCompare(right.identityKey));
+      .sort((left, right) => left.observedAt - right.observedAt || binaryCompare(left.identityKey, right.identityKey));
   }
 
   /** Retryable async projection from the same-partition incident landing. */
@@ -825,20 +947,21 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     return this.client.read<LineageBindingDocument>(
       this.containers.events,
       safeId("allocator-lineage-binding"),
-      serviceId,
+      auxiliaryPk(serviceId),
     );
   }
 
   private async bindLineage(serviceId: string, allocatorLineageId: string, boundAt: number): Promise<void> {
     const document: LineageBindingDocument = {
       id: safeId("allocator-lineage-binding"),
+      pk: auxiliaryPk(serviceId),
       serviceId,
       kind: "allocator-lineage-binding",
       allocatorLineageId,
       boundAt,
     };
     try {
-      await this.client.create(this.containers.events, document, serviceId);
+      await this.client.create(this.containers.events, document, auxiliaryPk(serviceId));
     } catch (error) {
       if (!isStatus(error, 409)) throw error;
     }
@@ -852,10 +975,11 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
    */
   private async reserveSuid(serviceId: string, suid: string, eventId: string): Promise<string | undefined> {
     const id = safeId("suid-binding", suid);
-    const existing = await this.client.read<SuidBindingDocument>(this.containers.events, id, serviceId);
+    const existing = await this.client.read<SuidBindingDocument>(this.containers.events, id, auxiliaryPk(serviceId));
     if (existing !== undefined) return existing.document.eventId;
     const document: SuidBindingDocument = {
       id,
+      pk: auxiliaryPk(serviceId),
       serviceId,
       kind: "suid-binding",
       suid,
@@ -863,11 +987,11 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     };
     await this.beforeWrite?.("event");
     try {
-      await this.client.create(this.containers.events, document, serviceId);
+      await this.client.create(this.containers.events, document, auxiliaryPk(serviceId));
       return eventId;
     } catch (error) {
       if (!isStatus(error, 409)) throw error;
-      const raced = await this.client.read<SuidBindingDocument>(this.containers.events, id, serviceId);
+      const raced = await this.client.read<SuidBindingDocument>(this.containers.events, id, auxiliaryPk(serviceId));
       return raced?.document.eventId;
     }
   }
@@ -875,6 +999,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
   private async persistIncident(incident: DeliveryIncident): Promise<void> {
     const document: IncidentDocument = {
       id: safeId("incident", incident.identityKey),
+      pk: auxiliaryPk(incident.serviceId),
       serviceId: incident.serviceId,
       kind: "delivery-incident",
       identityKey: incident.identityKey,
@@ -889,7 +1014,7 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     };
     await this.beforeWrite?.("incident");
     try {
-      await this.client.create(this.containers.events, document, incident.serviceId);
+      await this.client.create(this.containers.events, document, auxiliaryPk(incident.serviceId));
     } catch (error) {
       if (!isStatus(error, 409)) throw error;
     }
@@ -946,56 +1071,55 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
     return rows
       .filter((row) => row.document.kind === undefined)
       .map((row) => findingFrom(row.document)).sort((left, right) =>
-      left.observedAt - right.observedAt || left.eventId.localeCompare(right.eventId) || left.path.localeCompare(right.path));
+      left.observedAt - right.observedAt || binaryCompare(left.eventId, right.eventId) || binaryCompare(left.path, right.path));
   }
 
   private async eventDocuments(serviceId: string): Promise<CosmosDocumentRecord<EventDocument>[]> {
     const rows = await this.client.query<EventDocument>(
       this.containers.events,
-      "SELECT * FROM c WHERE c.serviceId = @serviceId",
+      "SELECT * FROM c WHERE c.serviceId = @serviceId AND IS_DEFINED(c.sortableUniqueId)",
       [{ name: "@serviceId", value: serviceId }],
-      serviceId,
     );
-    return rows.filter((entry) => entry.document.kind === undefined || entry.document.kind === "event");
+    return rows;
+  }
+
+  private async eventOps(serviceId: string, eventId: string): Promise<EventOpsDocument | undefined> {
+    const row = await this.client.read<EventOpsDocument>(
+      this.containers.events,
+      safeId("event-ops", eventId),
+      eventPk(serviceId, eventId),
+    );
+    return row?.document;
   }
 
   private async mutateEvent(
     message: DownstreamOutboxMessage,
-    arrivedAt: number,
-    lagMs: number,
     eventTags: string[],
-    eventType?: string,
-    provenance: "pre-g27" | "g27" = "pre-g27",
+    eventType: string,
+    timestamp: string,
+    metadata: DurableEventMetadata,
   ): Promise<EventDocument> {
-    const id = safeId(message.eventId);
+    const id = message.eventId;
+    const pk = eventPk(message.serviceId, id);
     for (let attempt = 0; attempt < 8; attempt += 1) {
-      const existing = await this.client.read<EventDocument>(this.containers.events, id, message.serviceId);
+      const existing = await this.client.read<EventDocument>(this.containers.events, id, pk);
       if (existing === undefined) {
         const document: EventDocument = {
           id,
+          pk,
           serviceId: message.serviceId,
-          kind: "event",
-          eventId: message.eventId,
-          suid: message.suid,
+          sortableUniqueId: message.suid,
+          eventType,
           payload: message.payload,
-          eventTags,
-          ...(eventType === undefined ? {} : { eventType }),
-          provenance,
-          firstArrivedAt: arrivedAt,
-          lastArrivedAt: arrivedAt,
-          maxDeliveryLagMs: lagMs,
-          arrivals: [{
-            serviceId: message.serviceId,
-            eventId: message.eventId,
-            tag: message.tag,
-            enqueuedAt: message.enqueuedAt,
-            arrivedAt,
-            lagMs,
-          }],
+          tags: eventTags,
+          timestamp,
+          causationId: metadata.causationId,
+          correlationId: metadata.correlationId,
+          executedUser: metadata.executedUser,
         };
         await this.beforeWrite?.("event");
         try {
-          await this.client.create(this.containers.events, document, message.serviceId);
+          await this.client.create(this.containers.events, document, pk);
           return document;
         } catch (error) {
           if (isStatus(error, 409)) continue;
@@ -1003,41 +1127,86 @@ export class CosmosEventStore implements EventStore, DetectorStore, ProjectionSt
         }
       }
       const prior = eventFrom(existing.document);
-      if (prior.eventType !== eventType || prior.provenance !== provenance) {
+      if (prior.eventType !== eventType) {
         throw new CanonicalEventIdentityConflictError("cosmos", message.eventId);
       }
-      if (prior.suid !== message.suid || prior.payload !== message.payload || JSON.stringify(prior.eventTags) !== JSON.stringify(eventTags)) {
+      if (prior.suid !== message.suid || prior.payload !== message.payload ||
+        JSON.stringify(prior.eventTags) !== JSON.stringify(eventTags) ||
+        prior.timestamp !== timestamp || prior.causationId !== metadata.causationId ||
+        prior.correlationId !== metadata.correlationId || prior.executedUser !== metadata.executedUser) {
         throw new Error(`EventId ${message.eventId} conflicts with its durable Cosmos row`);
       }
-      const arrivals = [...prior.arrivals];
-      const arrivalIndex = arrivals.findIndex((arrival) => arrival.tag === message.tag);
-      const nextArrival: DeliveryLagRecord = {
-        serviceId: message.serviceId,
-        eventId: message.eventId,
-        tag: message.tag,
-        enqueuedAt: message.enqueuedAt,
-        arrivedAt,
-        lagMs,
-      };
-      if (arrivalIndex < 0) arrivals.push(nextArrival);
-      else arrivals[arrivalIndex] = {
-        ...arrivals[arrivalIndex]!,
-        enqueuedAt: Math.min(arrivals[arrivalIndex]!.enqueuedAt, message.enqueuedAt),
-        arrivedAt: Math.max(arrivals[arrivalIndex]!.arrivedAt, arrivedAt),
-        lagMs: Math.max(arrivals[arrivalIndex]!.lagMs, lagMs),
-      };
-      const document: EventDocument = {
+      return existing.document;
+    }
+    throw new Error("Cosmos event CAS did not converge");
+  }
+
+  private async mutateEventOps(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    lagMs: number,
+  ): Promise<EventOpsDocument> {
+    const id = safeId("event-ops", message.eventId);
+    const pk = eventPk(message.serviceId, message.eventId);
+    const nextArrival: DeliveryLagRecord = {
+      serviceId: message.serviceId,
+      eventId: message.eventId,
+      tag: message.tag,
+      enqueuedAt: message.enqueuedAt,
+      arrivedAt,
+      lagMs,
+    };
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const existing = await this.client.read<EventOpsDocument>(this.containers.events, id, pk);
+      if (existing === undefined) {
+        const document: EventOpsDocument = {
+          id,
+          pk,
+          serviceId: message.serviceId,
+          kind: "event-ops",
+          eventId: message.eventId,
+          attemptId: message.attemptId,
+          allocatorLineageId: message.allocatorLineageId,
+          firstArrivedAt: arrivedAt,
+          lastArrivedAt: arrivedAt,
+          maxDeliveryLagMs: lagMs,
+          arrivals: [nextArrival],
+        };
+        await this.beforeWrite?.("event");
+        try {
+          await this.client.create(this.containers.events, document, pk);
+          return document;
+        } catch (error) {
+          if (isStatus(error, 409)) continue;
+          throw error;
+        }
+      }
+      if (existing.document.allocatorLineageId !== message.allocatorLineageId) {
+        throw new CanonicalEventIdentityConflictError("cosmos", message.eventId, "Cosmos event sidecar lineage conflicts");
+      }
+      const arrivals = [...existing.document.arrivals];
+      const index = arrivals.findIndex((arrival) => arrival.tag === message.tag);
+      if (index < 0) arrivals.push(nextArrival);
+      else {
+        const prior = arrivals[index]!;
+        arrivals[index] = {
+          ...prior,
+          enqueuedAt: Math.min(prior.enqueuedAt, nextArrival.enqueuedAt),
+          arrivedAt: Math.max(prior.arrivedAt, nextArrival.arrivedAt),
+          lagMs: Math.max(prior.lagMs, nextArrival.lagMs),
+        };
+      }
+      const document: EventOpsDocument = {
         ...existing.document,
-        eventTags,
-        firstArrivedAt: Math.min(prior.firstArrivedAt, arrivedAt),
-        lastArrivedAt: Math.max(prior.lastArrivedAt, arrivedAt),
-        maxDeliveryLagMs: Math.max(prior.maxDeliveryLagMs, lagMs),
+        firstArrivedAt: Math.min(existing.document.firstArrivedAt, arrivedAt),
+        lastArrivedAt: Math.max(existing.document.lastArrivedAt, arrivedAt),
+        maxDeliveryLagMs: Math.max(existing.document.maxDeliveryLagMs, lagMs),
         arrivals,
       };
       await this.beforeWrite?.("event");
-      if (await this.client.replace(this.containers.events, document, message.serviceId, existing.etag)) return document;
+      if (await this.client.replace(this.containers.events, document, pk, existing.etag)) return document;
     }
-    throw new Error("Cosmos event CAS did not converge");
+    throw new Error("Cosmos event sidecar CAS did not converge");
   }
 
   private async updateLag(serviceId: string, lagMs: number, observedAt: number): Promise<void> {

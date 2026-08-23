@@ -28,13 +28,14 @@ function compareOpaque(left: string, right: string): number {
   return a.length - b.length;
 }
 export function bootstrapEventIdentityMatches(event: StoredEvent, record: BootstrapEventRecord): boolean {
-  const eventOrigin = event.provenance ?? (event.eventType === undefined ? "pre-g27" : "g27");
-  const recordOrigin = record.provenance?.origin ?? (record.eventType === undefined ? "pre-g27" : "g27");
   return event.suid === record.suid &&
     event.payload === record.payload &&
-    (event.eventType ?? undefined) === record.eventType &&
-    eventOrigin === recordOrigin &&
-    JSON.stringify([...event.eventTags].sort(compareOpaque)) === JSON.stringify([...record.eventTags].sort(compareOpaque));
+    event.eventType === record.eventType &&
+    event.timestamp === record.timestamp &&
+    event.causationId === record.causationId &&
+    event.correlationId === record.correlationId &&
+    event.executedUser === record.executedUser &&
+    JSON.stringify(event.eventTags) === JSON.stringify(record.eventTags);
 }
 export type BootstrapIdentityGuard = (event: StoredEvent, record: BootstrapEventRecord) => boolean;
 function toRecord(event: StoredEvent): BootstrapEventRecord {
@@ -42,8 +43,13 @@ function toRecord(event: StoredEvent): BootstrapEventRecord {
     eventId: event.eventId,
     suid: event.suid,
     payload: event.payload,
-    eventTags: [...event.eventTags].sort(compareOpaque),
-    ...(event.eventType === undefined ? {} : { eventType: event.eventType, provenance: { origin: event.provenance ?? "g27" } }),
+    eventTags: [...event.eventTags],
+    eventType: event.eventType,
+    provenance: { origin: "g32" },
+    timestamp: event.timestamp,
+    causationId: event.causationId,
+    correlationId: event.correlationId,
+    executedUser: event.executedUser,
   };
 }
 
@@ -61,6 +67,8 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
 
   async exportPage(input: {
     readonly sourceServiceId: string;
+    /** Source lineage is explicit; G32 never labels a source as legacy. */
+    readonly sourceAllocatorLineageId: string;
     readonly targetServiceId: string;
     readonly allocatorLineageId: string;
     readonly pageSize: number;
@@ -78,7 +86,7 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
     for (const event of snapshot) for (const tag of event.eventTags) tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
     const draft: Omit<BootstrapManifest, "contentDigest"> = {
       format: "sekiban-dcb-bootstrap", version: 1,
-      source: { serviceId: input.sourceServiceId, lineageId: "unknown-legacy" },
+      source: { serviceId: input.sourceServiceId, lineageId: input.sourceAllocatorLineageId },
       target: { serviceId: input.targetServiceId, allocatorLineageId: input.allocatorLineageId },
       highWatermark, eventCount: snapshot.length, tagCounts,
       canonicalization: "utf8-json-sorted-keys-v1",
@@ -101,7 +109,27 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
       // The provider-level identity guard deliberately fires before any write.
       if (prior !== undefined && !this.identityGuard(prior, record)) throw new BootstrapIdentityConflictError(this.provider, record.eventId);
       for (const tag of record.eventTags) {
-        const delivered = await this.store.recordDelivery({ version: 1, serviceId: input.manifest.target.serviceId, allocatorLineageId: input.manifest.target.allocatorLineageId, tag, attemptId: `bootstrap:${input.importId}:${input.leaseEpoch}`, eventId: record.eventId, suid: record.suid, payload: record.payload, eventTags: [...record.eventTags], ...(record.eventType === undefined ? {} : { eventType: record.eventType }), provenance: record.eventType === undefined ? "pre-g27-queue" : "g27", enqueuedAt: 0 }, 0);
+        const delivered = await this.store.recordDelivery({
+          version: 1,
+          serviceId: input.manifest.target.serviceId,
+          allocatorLineageId: input.manifest.target.allocatorLineageId,
+          tag,
+          attemptId: `bootstrap:${input.importId}:${input.leaseEpoch}`,
+          eventId: record.eventId,
+          suid: record.suid,
+          payload: record.payload,
+          eventTags: [...record.eventTags],
+          eventType: record.eventType,
+          provenance: "g32",
+          timestamp: record.timestamp,
+          causationId: record.causationId,
+          correlationId: record.correlationId,
+          executedUser: record.executedUser,
+          enqueuedAt: 0,
+        // A C# import may contain a historical RFC 4122 Id. It bypasses
+        // Queue/doorbell and is admitted only through this fenced path;
+        // normal deliveries still require UUID v7.
+        }, 0, "import");
         if (delivered.outcome !== "stored") throw new Error(`${this.provider} bootstrap admission rejected ${record.eventId}`);
       }
     }
