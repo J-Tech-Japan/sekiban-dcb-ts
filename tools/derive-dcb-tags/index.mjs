@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const DOTNET_UNIX_EPOCH_TICKS = 621355968000000000n;
 const TICKS_PER_MILLISECOND = 10000n;
 const DOTNET_MAX_TICKS = 3155378975999999999n;
+// DateTime serialization can elide trailing tick zeroes, so the interoperable
+// C# UTC spelling has one through seven fractional digits.
+const CANONICAL_UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{1,7}Z$/;
 
 function fail(message) {
   throw new Error(`derive-dcb-tags: ${message}`);
@@ -50,7 +54,7 @@ function eventsFrom(value) {
   return events.map((event, index) => {
     if (typeof event !== "object" || event === null || Array.isArray(event)) fail(`event ${index} must be an object`);
     const { serviceId, id, sortableUniqueId, eventType, tags, timestamp } = event;
-    if (typeof serviceId !== "string" || !serviceId || typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) || typeof eventType !== "string" || !eventType || eventType.includes(":") || typeof timestamp !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(timestamp) || !Array.isArray(tags) || !tags.every((tag) => typeof tag === "string" && tag.length > 0)) {
+    if (typeof serviceId !== "string" || !serviceId || typeof id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) || typeof eventType !== "string" || !eventType || eventType.includes(":") || typeof timestamp !== "string" || !CANONICAL_UTC_TIMESTAMP_PATTERN.test(timestamp) || !Array.isArray(tags) || !tags.every((tag) => typeof tag === "string" && tag.length > 0)) {
       fail(`event ${index} is not a G32 logical record`);
     }
     parseSortableUniqueId(sortableUniqueId);
@@ -58,21 +62,82 @@ function eventsFrom(value) {
   });
 }
 
-/** Derive rebuildable C# tag rows without reading a wall clock. */
-export function deriveDcbTags(value, provider) {
-  if (provider !== "postgres" && provider !== "sqlite" && provider !== "cosmos") fail("provider must be postgres, sqlite, or cosmos");
+function memberName(field) {
+  return `${field.slice(0, 1).toLowerCase()}${field.slice(1)}`;
+}
+
+function derivationManifest(path = resolve(process.cwd(), "contracts/dcb-tags-derivation.json")) {
+  const manifest = JSON.parse(readFileSync(path, "utf8"));
+  if (!Array.isArray(manifest?.postgresSqlite?.fields) || !Array.isArray(manifest?.cosmos?.fields)) {
+    fail("dcb-tags derivation manifest is invalid");
+  }
+  return manifest;
+}
+
+function orderedTagPairs(value) {
   const rows = [];
   for (const event of eventsFrom(value)) {
-    for (const tag of [...new Set(event.tags)]) {
-      rows.push({ event, tag });
-    }
+    for (const tag of [...new Set(event.tags)]) rows.push({ event, tag });
   }
   rows.sort((left, right) =>
     binaryCompare(left.event.sortableUniqueId, right.event.sortableUniqueId) ||
     binaryCompare(left.tag, right.tag) ||
     binaryCompare(left.event.id, right.event.id),
   );
-  return Object.freeze(rows.map(({ event, tag }, index) => {
+  return rows;
+}
+
+/**
+ * Independent manifest-derived expected rebuild rows. It deliberately does
+ * not call deriveDcbTags: a mutation in the shipped generator must be
+ * observable as an actual-vs-contract mismatch rather than changing both
+ * sides of the comparison.
+ */
+export function expectedDcbTagRows(value, provider, manifest = derivationManifest()) {
+  if (provider !== "postgres" && provider !== "sqlite" && provider !== "cosmos") fail("provider must be postgres, sqlite, or cosmos");
+  const fields = provider === "cosmos" ? manifest.cosmos.fields : manifest.postgresSqlite.fields.map(memberName);
+  return Object.freeze(orderedTagPairs(value).map(({ event, tag }, index) => {
+    const values = {
+      pk: `${event.serviceId}|${tag}`,
+      id: provider === "cosmos" ? event.id : index + 1,
+      serviceId: event.serviceId,
+      tag,
+      tagGroup: tagGroup(tag),
+      eventType: event.eventType,
+      sortableUniqueId: event.sortableUniqueId,
+      eventId: event.id,
+      createdAt: provider === "cosmos" ? csharpSortableUniqueIdDateTime(event.sortableUniqueId) : event.timestamp,
+    };
+    const row = {};
+    for (const field of fields) {
+      if (!Object.hasOwn(values, field)) fail(`manifest field ${field} has no derivation value`);
+      row[field] = values[field];
+    }
+    return Object.freeze(row);
+  }));
+}
+
+/** Full provider-field comparison, including Cosmos pk/id rather than a subset. */
+export function assertDcbTagRowsAgainstManifest(value, provider, actual, manifest = derivationManifest()) {
+  const expected = expectedDcbTagRows(value, provider, manifest);
+  if (!Array.isArray(actual) || actual.length !== expected.length) fail(`${provider} rebuild row count differs from manifest expectation`);
+  for (const [index, row] of actual.entries()) {
+    const expectedRow = expected[index];
+    const actualKeys = Object.keys(row ?? {}).sort();
+    const expectedKeys = Object.keys(expectedRow).sort();
+    const sameKeys = JSON.stringify(actualKeys) === JSON.stringify(expectedKeys);
+    const sameValues = sameKeys && expectedKeys.every((key) => row?.[key] === expectedRow[key]);
+    if (!sameValues) {
+      fail(`${provider} rebuild row ${index} differs from manifest expectation`);
+    }
+  }
+  return expected;
+}
+
+/** Derive rebuildable C# tag rows without reading a wall clock. */
+export function deriveDcbTags(value, provider) {
+  if (provider !== "postgres" && provider !== "sqlite" && provider !== "cosmos") fail("provider must be postgres, sqlite, or cosmos");
+  return Object.freeze(orderedTagPairs(value).map(({ event, tag }, index) => {
     const common = Object.freeze({
       serviceId: event.serviceId,
       tag,
@@ -103,7 +168,10 @@ function main() {
     fail("usage: derive-dcb-tags <postgres|sqlite|cosmos> <events.json>");
   }
   const source = JSON.parse(readFileSync(path, "utf8"));
-  process.stdout.write(`${JSON.stringify(deriveDcbTags(source, provider), null, 2)}\n`);
+  const manifest = derivationManifest();
+  const rows = deriveDcbTags(source, provider);
+  assertDcbTagRowsAgainstManifest(source, provider, rows, manifest);
+  process.stdout.write(`${JSON.stringify(rows, null, 2)}\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

@@ -79,3 +79,21 @@ After C2, R2 is restricted to the updated evidence document and one C2 SHA
 append in the CI retained-candidate list. The candidate gate also records that
 the runtime/config digest is unchanged because this fix is fixture/test/CI
 material only.
+
+## C3 review repair: F1–F5 attribution and actual provider paths
+
+C3 is sealed only after the complete F1–F5 repair set is present: independent
+M1–M12 fixtures plus production mutation/unrelated-row execution; live
+Postgres/Cosmos DDL introspection; public CommitWorker payload-admission
+zero-call/mutation fixtures; full provider tag-field comparisons; and a pinned
+C# runner using actual Sekiban serialization and provider models against real
+TS D1 import/replay/list-query and Cosmos provider rows. During that work the
+real C# path exposed a runtime defect: C# UTC `DateTime` values may trim to
+1–7 fractional digits, so G32 now accepts those exact UTC values without
+payload reserialization.
+
+C3 is forward-only on C2's existing serviceId/D1/Queue/DO identities; it does
+not rerun bridge/freeze/wipe/new-resource provisioning. It must have changed
+runtime and deployment/config digests relative to C2, then execute one
+preservation witness, all 30-digit ingress checks, and fresh N=10. R3 is
+limited to the evidence document plus one retained-C3 CI append.

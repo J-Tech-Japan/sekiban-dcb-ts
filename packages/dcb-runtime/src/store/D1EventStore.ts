@@ -3,7 +3,7 @@ import type { WaitForTargetLookup, WaitForTargetSourcePort } from "../query/Proj
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import { isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import {
   CanonicalEventIdentityConflictError,
   type DeliveryIncident,
@@ -283,7 +283,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     // C# DateTimeOffset's round-trip representation carries seven fractional
     // digits.  Values authored by the TS commit worker use milliseconds, but
     // imported C# records must retain their exact UTC representation too.
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(timestamp)) {
+    if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(timestamp)) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} timestamp is not canonical UTC ISO-8601`);
     }
     const metadata = metadataForDelivery(message, deliverySource);

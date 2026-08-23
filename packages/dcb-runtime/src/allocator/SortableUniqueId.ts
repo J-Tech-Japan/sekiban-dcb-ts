@@ -19,6 +19,7 @@ export const MAX_UNIX_MILLISECONDS = (DOTNET_MAX_TICKS - DOTNET_UNIX_EPOCH_TICKS
 
 export type SortableUniqueIdErrorCode =
   | "SUID_INVALID"
+  | "SUID_LEGACY_FORMAT_RETIRED"
   | "SUID_TICKS_INVALID"
   | "SUID_RANDOM_INVALID"
   | "SUID_UNIX_MILLISECONDS_INVALID"
@@ -40,6 +41,42 @@ export interface ParsedSortableUniqueId {
   readonly value: string;
   readonly ticks: bigint;
   readonly random: bigint;
+}
+
+/**
+ * A G32 ingress must not silently treat an old prefixed SUID as merely an
+ * arbitrary malformed string.  Keeping this classification at the one
+ * shared validator makes the retired-format boundary observable to every
+ * ingress without creating a compatibility lane.
+ */
+const LEGACY_PREFIXED_SUID = /^suid-[0-9]+$/;
+
+const LEGACY_DECISION_OBSERVER = Symbol.for("@sekiban/dcb-runtime/legacy-sortable-unique-id-observer");
+type GlobalWithLegacyDecisionObserver = typeof globalThis & {
+  [LEGACY_DECISION_OBSERVER]?: (value: string) => void;
+};
+
+function legacyDecisionObserver(): ((value: string) => void) | undefined {
+  return (globalThis as GlobalWithLegacyDecisionObserver)[LEGACY_DECISION_OBSERVER];
+}
+
+/**
+ * Test-only observation seam for the single retired-SUID decision point.
+ * Production never installs an observer; the validator still fail-closes
+ * before any durable actor is acquired.
+ */
+export async function observeLegacySortableUniqueIdDecision<T>(
+  observer: (value: string) => void,
+  run: () => Promise<T> | T,
+): Promise<T> {
+  const globals = globalThis as GlobalWithLegacyDecisionObserver;
+  const previous = globals[LEGACY_DECISION_OBSERVER];
+  globals[LEGACY_DECISION_OBSERVER] = observer;
+  try {
+    return await run();
+  } finally {
+    globals[LEGACY_DECISION_OBSERVER] = previous;
+  }
 }
 
 function canonicalDecimal(value: string, name: string): bigint {
@@ -97,6 +134,13 @@ export function assertDotNetTicks(ticks: bigint): bigint {
 }
 
 export function assertSortableUniqueId(value: string): ParsedSortableUniqueId {
+  if (typeof value === "string" && LEGACY_PREFIXED_SUID.test(value)) {
+    legacyDecisionObserver()?.(value);
+    throw new SortableUniqueIdError(
+      "SUID_LEGACY_FORMAT_RETIRED",
+      "Legacy prefixed SortableUniqueId is retired; G32 requires exactly 30 ASCII decimal digits",
+    );
+  }
   if (typeof value !== "string" || !new RegExp(`^[0-9]{${SORTABLE_UNIQUE_ID_DIGITS}}$`).test(value)) {
     throw new SortableUniqueIdError("SUID_INVALID", "SortableUniqueId must be exactly 30 ASCII decimal digits");
   }

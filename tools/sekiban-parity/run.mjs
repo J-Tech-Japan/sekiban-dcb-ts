@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { deriveDcbTags } from "../derive-dcb-tags/index.mjs";
 
 const PIN = "855feaa93564fef54defec76e9ccff969d4ee01a";
 const root = process.cwd();
@@ -11,7 +10,12 @@ const project = resolve(root, "tools/sekiban-parity/SekibanParity.csproj");
 const manifest = JSON.parse(readFileSync(resolve(root, "contracts/event-store-ddl.json"), "utf8"));
 
 function run(command, args, options = {}) {
-  return execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options });
+  return execFileSync(command, args, {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    ...options,
+  });
 }
 
 function fail(message) {
@@ -39,67 +43,85 @@ function assertPin(source) {
   if (resolved !== PIN) fail(`pinned Sekiban SHA mismatch: expected ${PIN}, received ${resolved}`);
 }
 
-function assertLogicalRecord(event) {
-  const fields = manifest.logicalRecord.fields;
-  for (const field of fields) {
-    if (!Object.hasOwn(event, field.id)) fail(`C# generator omitted ${field.id}`);
-    if (event[field.id] === null && !field.nullable) fail(`C# generator emitted null for required ${field.id}`);
-  }
-  if (!/^[0-9]{30}$/.test(event.sortableUniqueId)) fail("C# generator emitted non-G32 sortableUniqueId");
-  if (event.eventType.includes(":")) fail("C# generator emitted versioned EventType");
-  const metadataNull = event.causationId === null && event.correlationId === null && event.executedUser === null;
-  const metadataSerialized = event.causationId === event.id && event.correlationId === "SerializedCommit" && event.executedUser === "SerializedSekibanExecutor";
-  if (!metadataNull && !metadataSerialized) fail("C# generator metadata drifted");
-  if (!Array.isArray(event.tags) || !event.tags.every((tag) => typeof tag === "string")) fail("C# generator tags drifted");
-  JSON.parse(event.payload);
-  return event;
+function csharpArguments(source, command, ...args) {
+  return [
+    "run",
+    "--project",
+    project,
+    `-p:SekibanSourceRoot=${source}`,
+    "--",
+    command,
+    ...args,
+  ];
 }
 
-function assertFieldsEqual(left, right, label) {
-  for (const field of manifest.logicalRecord.fields) {
-    if (JSON.stringify(left[field.id]) !== JSON.stringify(right[field.id])) {
-      fail(`${label} differs at ${field.id}`);
-    }
+function csharpArtifact(source) {
+  const parsed = JSON.parse(run("dotnet", csharpArguments(source, "produce")));
+  if (
+    typeof parsed !== "object" || parsed === null || Array.isArray(parsed) ||
+    typeof parsed.postgres !== "object" || parsed.postgres === null || Array.isArray(parsed.postgres) ||
+    typeof parsed.cosmos !== "object" || parsed.cosmos === null || Array.isArray(parsed.cosmos) ||
+    typeof parsed.serializable !== "object" || parsed.serializable === null || Array.isArray(parsed.serializable)
+  ) {
+    fail("actual C# serializer/provider artifact had an invalid shape");
   }
+  return parsed;
+}
+
+function actualTsProviderRows(artifact) {
+  const encodedArtifact = Buffer.from(JSON.stringify(artifact)).toString("base64");
+  const output = run("npx", [
+    "vitest",
+    "run",
+    "--config",
+    "vitest.config.ts",
+    "test/g32-csharp-runtime.spec.ts",
+    "--reporter=verbose",
+  ], {
+    env: { ...process.env, G32_PARITY_ARTIFACT_B64: encodedArtifact },
+  });
+  const markers = [...output.matchAll(/G32_PARITY_TS_PROVIDER_ROWS=([A-Za-z0-9+/=]+)/g)];
+  if (markers.length !== 1) fail(`real TS provider fixture emitted ${markers.length} parity row markers`);
+  const decoded = JSON.parse(Buffer.from(markers[0][1], "base64").toString("utf8"));
+  if (
+    typeof decoded !== "object" || decoded === null || Array.isArray(decoded) ||
+    typeof decoded.postgres !== "object" || decoded.postgres === null || Array.isArray(decoded.postgres) ||
+    typeof decoded.cosmos !== "object" || decoded.cosmos === null || Array.isArray(decoded.cosmos)
+  ) {
+    fail("real TS import/replay/list-query fixture emitted invalid provider rows");
+  }
+  return decoded;
 }
 
 function main() {
-  if (manifest.authority.commit !== PIN) fail("DDL manifest pin does not match runner pin");
+  if (manifest.authority?.commit !== PIN) fail("DDL manifest pin does not match runner pin");
   const source = sourceDirectory();
-  assertPin(source.path);
-  run("dotnet", ["run", "--project", project, "--", "verify-source", source.path]);
-  const csharpEvent = assertLogicalRecord(JSON.parse(run("dotnet", ["run", "--project", project, "--", "generate", source.path])));
-  const csharpNullEvent = assertLogicalRecord(JSON.parse(run("dotnet", ["run", "--project", project, "--", "generate-null", source.path])));
-  if (csharpNullEvent.causationId !== null || csharpNullEvent.correlationId !== null || csharpNullEvent.executedUser !== null) {
-    fail("C# nullable metadata generator drifted");
-  }
-  const temp = mkdtempSync(`${tmpdir()}/sekiban-parity-`);
+  const temporary = mkdtempSync(`${tmpdir()}/sekiban-parity-`);
   try {
-    const tsExport = assertLogicalRecord(structuredClone(csharpEvent));
-    const tsNullExport = assertLogicalRecord(structuredClone(csharpNullEvent));
-    // C#→TS retains the exact logical record, including nullable fields;
-    // TS→C# consumes that same record without a shape/default rewrite.
-    assertFieldsEqual(csharpEvent, tsExport, "C# to TS logical record");
-    assertFieldsEqual(csharpNullEvent, tsNullExport, "C# to TS nullable logical record");
-    for (const [name, event] of [["ts-export", tsExport], ["ts-null-export", tsNullExport]]) {
-      const path = resolve(temp, `${name}.json`);
-      writeFileSync(path, JSON.stringify(event));
-      run("dotnet", ["run", "--project", project, "--", "consume", source.path, path]);
-    }
-    // Byte identity is independently exercised with semantically equivalent
-    // JSON text whose whitespace/member order must remain untouched by TS.
-    const payloadByteProbe = { ...tsExport, payload: "{\"roomId\":\"room-1\", \"reservationId\":\"reservation-1\",\"userId\":\"user-1\"}" };
-    assertLogicalRecord(payloadByteProbe);
-    if (payloadByteProbe.payload === tsExport.payload) fail("payload byte probe was not distinct");
-    const payloadPath = resolve(temp, "payload-byte-probe.json");
-    writeFileSync(payloadPath, JSON.stringify(payloadByteProbe));
-    run("dotnet", ["run", "--project", project, "--", "consume", source.path, payloadPath]);
-    const postgresRows = deriveDcbTags([tsExport], "postgres");
-    const cosmosRows = deriveDcbTags([tsExport], "cosmos");
-    if (postgresRows.length !== tsExport.tags.length || cosmosRows.length !== tsExport.tags.length) fail("tag derivation did not preserve C# tag membership");
-    process.stdout.write(`${JSON.stringify({ pin: PIN, directions: ["csharp-to-ts", "ts-to-csharp"], records: 2, nullableMetadata: true, derivedTagRows: postgresRows.length })}\n`);
+    assertPin(source.path);
+    // C# -> TS begins with the actual pinned serializer, DbEvent.FromEvent,
+    // and CosmosEvent.FromEvent. The dedicated Worker fixture then performs
+    // real TS D1 import/replay/list-query and writes actual D1/Cosmos rows.
+    const artifact = csharpArtifact(source.path);
+    const rows = actualTsProviderRows(artifact);
+
+    // TS -> C# consumes those actual provider rows through the pinned model
+    // methods, never through JsonDocument or a parallel logical record.
+    const postgresPath = resolve(temporary, "actual-ts-postgres-row.json");
+    const cosmosPath = resolve(temporary, "actual-ts-cosmos-row.json");
+    writeFileSync(postgresPath, JSON.stringify(rows.postgres));
+    writeFileSync(cosmosPath, JSON.stringify(rows.cosmos));
+    run("dotnet", csharpArguments(source.path, "consume-postgres", postgresPath));
+    run("dotnet", csharpArguments(source.path, "consume-cosmos", cosmosPath));
+
+    process.stdout.write(`${JSON.stringify({
+      pin: PIN,
+      directions: ["csharp-serialization-provider-to-ts-import-replay-list-query", "ts-provider-row-to-csharp-provider-model"],
+      manifestAuthority: manifest.authority.commit,
+      providers: ["DbEvent", "CosmosEvent"],
+    })}\n`);
   } finally {
-    rmSync(temp, { recursive: true, force: true });
+    rmSync(temporary, { recursive: true, force: true });
     if (source.temporary && source.parent !== undefined && existsSync(source.parent)) {
       rmSync(source.parent, { recursive: true, force: true });
     }

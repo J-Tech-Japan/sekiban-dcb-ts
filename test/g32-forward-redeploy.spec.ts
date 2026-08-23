@@ -17,8 +17,8 @@ function data() {
   };
 }
 
-describe("SDT-G32 C2 forward-only witness", () => {
-  it("requires the pre-captured data set and heads to survive post-C2 deployment", () => {
+describe("SDT-G32 C3 forward-only witness", () => {
+  it("requires the pre-captured data set and heads to survive post-C3 deployment", () => {
     const before = data();
     const after = structuredClone(before);
     after.reservationList.body.totalCount = 2; // observed only; a concurrent count is not the equality oracle.
@@ -42,7 +42,7 @@ describe("SDT-G32 C2 forward-only witness", () => {
     expect(() => assertPreWitnessSetPreserved(before, head)).toThrow("event heads changed");
   });
 
-  it("keeps C2 forward-only: no cutover, resource creation, migration apply, or reseed command", () => {
+  it("keeps C3 forward-only: no cutover, resource creation, migration apply, or reseed command", () => {
     const source = forwardRedeploySource;
     const executable = source.split(/\r?\n/).filter((line: string) => !line.trimStart().startsWith("#")).join("\n");
     expect(executable).toContain("G32_FORWARD_DEPLOY_LIVE");

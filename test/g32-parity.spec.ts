@@ -127,7 +127,11 @@ describe("SDT-G32 C# parity", () => {
     expect(golden.rows.map((row) => row.rowId).sort()).toEqual([...golden.requiredRowIds].sort());
   });
 
-  it("M1/M2/M2a/M2b/M3 use C# fixed-width tick arithmetic", () => {
+  // Row-level M1–M3/M2a/M2b attribution lives in g32-suid-rows.spec.ts and
+  // is exercised by the production-source mutation runner. This aggregate
+  // check keeps the broader parity vectors readable without becoming the
+  // coverage authority for any one golden row.
+  it("keeps the aggregate fixed-width tick vectors coherent", () => {
     for (const vector of golden.vectors.unixMsToTicks) {
       expect(unixMsToDotNetTicks(vector.unixMs).toString().padStart(19, "0")).toBe(vector.ticks);
     }
@@ -161,7 +165,7 @@ describe("SDT-G32 C# parity", () => {
     expect(unixMsToDotNetTicks(m3.input.unixMs as string).toString()).not.toBe(m3.expect.mutantTicks);
   });
 
-  it("M4/M5/M6/M7/M10 keep the durable allocator atomic and retry-stable", async () => {
+  it("keeps aggregate allocator durability and retry behavior coherent", async () => {
     const storage = fakeAllocatorStorage();
     const allocator = new AllocatorDurableObject(
       { storage: storage.storage } as unknown as DurableObjectState,
@@ -231,7 +235,7 @@ describe("SDT-G32 C# parity", () => {
     expect(clockFailureStorage.snapshot()).toEqual(beforeClockFailure);
   });
 
-  it("M8/M11/M12 enforce SafeWindow ticks, rollback warning semantics, and clock-only order", async () => {
+  it("keeps aggregate SafeWindow, rollback-warning, and clock-only behavior coherent", async () => {
     expect(suid).toMatch(/^\d{30}$/);
     expect(suid.slice(0, 19)).toBe(tick.toString().padStart(19, "0"));
     expect(isUuidV7(createUuidV7(1_787_414_836_102))).toBe(true);
@@ -271,7 +275,7 @@ describe("SDT-G32 C# parity", () => {
     expect(businessIndependentA.suids[0]!.slice(0, 19)).toBe(tick.toString().padStart(19, "0"));
   });
 
-  it("M9 rejects an old SUID at commit admission before any durable actor", () => {
+  it("supplementally rejects an old SUID at commit admission before any durable actor", () => {
     const rejected = validateCommitEnvelope({
       version: 1,
       eventCandidates: [{ payload: "e30=", eventPayloadName: "RoomCreated", eventPayloadVersion: 1, tags: ["room:parity"] }],
@@ -286,7 +290,7 @@ describe("SDT-G32 C# parity", () => {
     expect("error" in noLegacySuid && noLegacySuid.error.status).toBe(400);
   });
 
-  it("M9 rejects old SUIDs at list-query and waitFor before the source store", async () => {
+  it("supplementally rejects old SUIDs at list-query and waitFor before the source store", async () => {
     let calls = 0;
     const store = { initialize: async () => { calls += 1; } };
     for (const path of ["list-query", "query"]) {
@@ -304,7 +308,7 @@ describe("SDT-G32 C# parity", () => {
     expect(calls).toBe(0);
   });
 
-  it("M9 rejects old SUIDs at bootstrap and dump restore parsing", () => {
+  it("supplementally rejects old SUIDs at bootstrap and dump restore parsing", () => {
     const invalid = {
       manifest: {
         format: "sekiban-dcb-bootstrap",
@@ -334,7 +338,7 @@ describe("SDT-G32 C# parity", () => {
     expect(() => parseBootstrapDump(structuredClone(invalid))).toThrow(/record/i);
   });
 
-  it("M9 rejects old SUIDs at Queue and doorbell before store initialization", async () => {
+  it("supplementally rejects old SUIDs at Queue and doorbell before store initialization", async () => {
     let initializes = 0;
     const invalid = { ...message(), suid: "suid-00000000000000000001787414836102" } as unknown;
     const queued = { body: invalid, ack: () => { throw new Error("must not ack"); }, retry: () => {} };
@@ -347,7 +351,7 @@ describe("SDT-G32 C# parity", () => {
     expect(initializes).toBe(0);
   });
 
-  it("M9 rejects old SUIDs at MV apply before the first D1 statement", async () => {
+  it("supplementally rejects old SUIDs at MV apply before the first D1 statement", async () => {
     let prepares = 0;
     const database = {
       prepare: () => { prepares += 1; throw new Error("must not prepare"); },
@@ -406,5 +410,23 @@ describe("SDT-G32 C# parity", () => {
       'SELECT "CausationId" AS causationId, "CorrelationId" AS correlationId, "ExecutedUser" AS executedUser FROM dcb_events WHERE "ServiceId" = ? AND "Id" = ?',
     ).bind("g32-import", imported.eventId).first<Record<string, unknown>>();
     expect(importedRow).toEqual({ causationId: null, correlationId: null, executedUser: null });
+
+    // System.Text.Json may trim trailing DateTime tick zeroes, producing a
+    // legitimate six-digit C# UTC fraction. The real D1 import boundary must
+    // retain that source spelling rather than accepting only TS milliseconds
+    // or an artificial seven-digit representation.
+    const csharpPrecision = message({
+      serviceId: "g32-csharp-six-digit-import",
+      suid: formatSortableUniqueId(tick + 2n, 3n),
+      timestamp: "2026-08-22T17:00:00.123456Z",
+      causationId: null,
+      correlationId: null,
+      executedUser: null,
+    });
+    await expect(store.recordDelivery(csharpPrecision, 1_500, "import")).resolves.toMatchObject({ kind: "stored" });
+    expect((await database.prepare(
+      'SELECT "Timestamp" AS timestamp FROM dcb_events WHERE "ServiceId" = ? AND "Id" = ?',
+    ).bind(csharpPrecision.serviceId, csharpPrecision.eventId).first<{ timestamp: string }>())?.timestamp)
+      .toBe(csharpPrecision.timestamp);
   });
 });

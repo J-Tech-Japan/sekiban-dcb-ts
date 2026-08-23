@@ -29,7 +29,7 @@ import {
 import { deliveryCorrelationId } from "../downstream/DeliveryCore";
 import { assertCanonicalEventType } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import { isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -330,7 +330,7 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
     }
     if (rawCandidate.provenance !== "g32") return { error: "candidate provenance must be g32" };
     if (!isNonEmptyString(rawCandidate.allocatorLineageId)) return { error: "candidate allocatorLineageId is required" };
-    if (!isNonEmptyString(rawCandidate.timestamp) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(rawCandidate.timestamp)) {
+    if (!isNonEmptyString(rawCandidate.timestamp) || !CANONICAL_UTC_TIMESTAMP_PATTERN.test(rawCandidate.timestamp)) {
       return { error: "candidate timestamp must be canonical UTC" };
     }
     candidates.push({
@@ -382,7 +382,7 @@ function bootstrapAppendFrom(value: unknown, tag: string): { value?: BootstrapAp
       return { error: error instanceof Error ? error.message : "bootstrap candidate identity or payload is invalid" };
     }
     if (candidate.provenance !== "g32") return { error: "bootstrap candidate provenance must be g32" };
-    if (!isNonEmptyString(candidate.timestamp) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(candidate.timestamp)) return { error: "bootstrap candidate timestamp must be canonical UTC" };
+    if (!isNonEmptyString(candidate.timestamp) || !CANONICAL_UTC_TIMESTAMP_PATTERN.test(candidate.timestamp)) return { error: "bootstrap candidate timestamp must be canonical UTC" };
     candidates.push({ eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: tags.value, allocatorLineageId: candidate.allocatorLineageId, eventType, provenance: "g32", timestamp: candidate.timestamp });
   }
   const ordered = [...candidates].sort((a, b) => a.suid < b.suid ? -1 : a.suid > b.suid ? 1 : 0);

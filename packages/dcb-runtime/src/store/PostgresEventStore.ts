@@ -6,7 +6,7 @@ import {
 } from "../safeWindow";
 import { resolveDeliveryIdentity } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import { isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import {
   CanonicalEventIdentityConflictError,
   type DeliveryLagRecord,
@@ -174,7 +174,7 @@ function canonicalUtcTimestamp(value: unknown, name: string): string {
 }
 
 function assertUtcTimestamp(value: string, eventId: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
     throw new CanonicalEventIdentityConflictError("postgres", eventId, "PostgreSQL Timestamp must be canonical UTC ISO-8601");
   }
 }
@@ -362,6 +362,13 @@ export class PostgresEventStore implements EventStore, DetectorStore, Projection
       await sql.end({ timeout: 1 });
       throw error;
     }
+  }
+
+  /** Close an owned request/test client without touching durable records. */
+  async close(): Promise<void> {
+    const sql = this.sql;
+    this.sql = undefined;
+    if (sql !== undefined) await sql.end({ timeout: 5 });
   }
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {

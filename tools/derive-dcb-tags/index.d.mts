@@ -50,3 +50,26 @@ export function deriveDcbTags(
   value: readonly DcbLogicalEventForTagDerivation[] | { readonly events: readonly DcbLogicalEventForTagDerivation[] },
   provider: "cosmos",
 ): readonly CosmosDcbTagRow[];
+
+export function expectedDcbTagRows(
+  value: readonly DcbLogicalEventForTagDerivation[] | { readonly events: readonly DcbLogicalEventForTagDerivation[] },
+  provider: "postgres" | "sqlite",
+  manifest?: unknown,
+): readonly PostgresOrSqliteDcbTagRow[];
+export function expectedDcbTagRows(
+  value: readonly DcbLogicalEventForTagDerivation[] | { readonly events: readonly DcbLogicalEventForTagDerivation[] },
+  provider: "cosmos",
+  manifest?: unknown,
+): readonly CosmosDcbTagRow[];
+export function assertDcbTagRowsAgainstManifest(
+  value: readonly DcbLogicalEventForTagDerivation[] | { readonly events: readonly DcbLogicalEventForTagDerivation[] },
+  provider: "postgres" | "sqlite",
+  actual: readonly PostgresOrSqliteDcbTagRow[],
+  manifest?: unknown,
+): readonly PostgresOrSqliteDcbTagRow[];
+export function assertDcbTagRowsAgainstManifest(
+  value: readonly DcbLogicalEventForTagDerivation[] | { readonly events: readonly DcbLogicalEventForTagDerivation[] },
+  provider: "cosmos",
+  actual: readonly CosmosDcbTagRow[],
+  manifest?: unknown,
+): readonly CosmosDcbTagRow[];

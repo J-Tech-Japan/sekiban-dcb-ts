@@ -142,6 +142,10 @@ export function auditG32LegacyIngress() {
     "test/g31-waitfor.spec.ts",
     "test/g32-cutover.spec.ts",
     "test/g32-parity.spec.ts",
+    // M6/M9 use the retired raw form only as an observable typed, zero-write
+    // negative. Keeping it in this explicit inventory prevents a future
+    // fixture from silently turning the production retirement branch green.
+    "test/g32-suid-rows.spec.ts",
     "test/meeting-room.spec.ts",
     "test/mv.spec.ts",
     "test/projection.spec.ts",

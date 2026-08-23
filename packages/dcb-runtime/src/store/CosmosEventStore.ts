@@ -1,7 +1,7 @@
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import { isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import { decayedLagEstimateMs } from "../safeWindow";
 import {
   CanonicalEventIdentityConflictError,
@@ -162,7 +162,7 @@ function binaryCompare(left: string, right: string): number {
 }
 
 function assertUtcTimestamp(value: string, eventId: string): void {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) {
+  if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(value) || !Number.isFinite(Date.parse(value))) {
     throw new CanonicalEventIdentityConflictError("cosmos", eventId, "Cosmos Timestamp must be canonical UTC ISO-8601");
   }
 }

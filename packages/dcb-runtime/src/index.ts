@@ -93,6 +93,7 @@ export {
   dotNetTicksToUnixMs,
   formatSortableUniqueId,
   isSortableUniqueId,
+  observeLegacySortableUniqueIdDecision,
   unixMsToDotNetTicks,
 } from "./allocator/SortableUniqueId";
 export type { ParsedSortableUniqueId, SortableUniqueIdErrorCode } from "./allocator/SortableUniqueId";

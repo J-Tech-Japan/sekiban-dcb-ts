@@ -35,7 +35,12 @@ jobs:
       - name: Install .NET for the pinned SDT-G32 C# parity runner
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 8.0.x
+          # The pinned Sekiban@855feaa core is multi-targeted through net10.0;
+          # retain net8 for existing lanes while compiling its actual runtime
+          # serializer/provider models in the G32 parity runner.
+          dotnet-version: |
+            8.0.x
+            10.0.x
       - uses: actions/setup-node@v4
         with:
           node-version: 24

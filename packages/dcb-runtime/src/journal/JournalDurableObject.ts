@@ -22,6 +22,7 @@ import {
 import { allocatorNameForService } from "../allocator/types";
 import { assertCanonicalEventType } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN } from "../eventRecord";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -315,7 +316,7 @@ function admissionFrom(value: unknown): { value?: AdmissionInput; error?: string
     } catch {
       return { error: "candidate eventType must be a canonical eventPayloadName" };
     }
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(rawCandidate.timestamp)) {
+    if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(rawCandidate.timestamp)) {
       return { error: "candidate timestamp must be canonical UTC" };
     }
     candidates.push({

@@ -85,16 +85,15 @@ async function assertLegacyIngressRejectsBeforeCosmosClient() {
   assert.equal(Object.hasOwn(valid, "eventPayloadVersion"), false, "G32 positive envelope must not carry caller-selected version");
   const oldSuid = "suid-00000000000000000001787414836102";
   const cases = [
-    ["old-37-character-suid", { ...valid, suid: oldSuid }],
-    ["legacy-provenance", { ...valid, provenance: "pre-g27-queue" }],
-    ["identity-less", { ...valid, eventType: undefined }],
+    ["old-37-character-suid", { ...valid, suid: oldSuid }, "SUID_LEGACY_FORMAT_RETIRED"],
+    ["legacy-provenance", { ...valid, provenance: "pre-g27-queue" }, "DELIVERY_IDENTITY_INVALID"],
+    ["identity-less", { ...valid, eventType: undefined }, "MISSING_CANONICAL_EVENT_IDENTITY"],
   ];
-  for (const [name, candidate] of cases) {
+  for (const [name, candidate, expectedCode] of cases) {
     calls.length = 0;
     await assert.rejects(
       store.recordDelivery(candidate, 0),
-      (error) => error !== null && typeof error === "object" &&
-        ["SUID_INVALID", "DELIVERY_IDENTITY_INVALID", "MISSING_CANONICAL_EVENT_IDENTITY"].includes(error.code),
+      (error) => error !== null && typeof error === "object" && error.code === expectedCode,
       `${name} must be a typed admission rejection`,
     );
     assert.deepEqual(calls, [], `${name} must be rejected before a Cosmos client call`);

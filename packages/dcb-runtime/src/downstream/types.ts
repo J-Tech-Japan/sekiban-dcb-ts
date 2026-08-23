@@ -1,6 +1,6 @@
 import { parseCanonicalEventKey } from "@sekiban/dcb-core";
 import { isSortableUniqueId } from "../allocator/SortableUniqueId";
-import { isUuidV7, serializedEventMetadata } from "../eventRecord";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isUuidV7, serializedEventMetadata } from "../eventRecord";
 
 /** A queue payload is intentionally an internal envelope, never part of V1. */
 /**
@@ -88,7 +88,7 @@ export function isDownstreamOutboxMessage(value: unknown): value is DownstreamOu
     typeof candidate.payload === "string" &&
     Array.isArray(candidate.eventTags) && candidate.eventTags.every((tag) => typeof tag === "string" && tag.length > 0) &&
     new Set(candidate.eventTags).size === candidate.eventTags.length && candidate.eventTags.includes(candidate.tag) &&
-    typeof candidate.timestamp === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(candidate.timestamp) &&
+    typeof candidate.timestamp === "string" && CANONICAL_UTC_TIMESTAMP_PATTERN.test(candidate.timestamp) &&
     candidate.causationId === metadata?.causationId &&
     candidate.correlationId === metadata?.correlationId &&
     candidate.executedUser === metadata?.executedUser &&

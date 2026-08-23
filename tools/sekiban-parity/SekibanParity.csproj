@@ -1,9 +1,33 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <SekibanSourceRoot Condition="'$(SekibanSourceRoot)' == ''"></SekibanSourceRoot>
   </PropertyGroup>
+
+  <Target Name="RequirePinnedSekibanSource" BeforeTargets="ResolveProjectReferences">
+    <Error Condition="'$(SekibanSourceRoot)' == ''" Text="SekibanSourceRoot must point to the pinned Sekiban checkout" />
+    <Error Condition="!Exists('$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.Core/Sekiban.Dcb.Core.csproj')" Text="SekibanSourceRoot does not contain Sekiban.Dcb.Core" />
+  </Target>
+
+  <!-- These are the pinned source projects, not a hand-copied model or a
+       published package. The runner exercises exactly their serializer and
+       provider model implementations. -->
+  <ItemGroup>
+    <ProjectReference Include="$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.Core.Model/Sekiban.Dcb.Core.Model.csproj" />
+    <ProjectReference Include="$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.Core/Sekiban.Dcb.Core.csproj" />
+    <!-- Compile the exact pinned provider model source files. Referencing the
+         full adapter projects would also compile their server factories and
+         host-only dependencies; the model classes below are the real source
+         used by those adapters and retain their FromEvent/ToEvent bodies. -->
+    <Compile Include="$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.Postgres/DbModels/DbEvent.cs" Link="PinnedSekiban/DbEvent.cs" />
+    <Compile Include="$(SekibanSourceRoot)/dcb/src/Sekiban.Dcb.CosmosDb/Models/CosmosEvent.cs" Link="PinnedSekiban/CosmosEvent.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
 </Project>

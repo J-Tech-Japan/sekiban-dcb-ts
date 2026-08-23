@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
+import postgres from "postgres";
 
 import { POSTGRES_STORE_PROVIDER } from "@sekiban/dcb-runtime";
 import {
@@ -10,9 +11,15 @@ import {
   DEFAULT_COSMOS_CONTAINERS,
   createCosmosStoreProvider,
 } from "@sekiban/dcb-runtime/cosmos";
+import {
+  assertCosmosManifestDocument,
+  introspectPostgresEventStore,
+  loadEventStoreManifest,
+} from "./g32-ddl-introspection.mjs";
 
 const POSTGRES_URL = process.env.POSTGRES_URL ?? "postgresql://postgres:postgres@127.0.0.1:54329/serialized_dcb";
 const requireRealCosmos = process.argv.includes("--require-real-cosmos");
+const eventStoreManifest = loadEventStoreManifest();
 
 async function configuredCosmosKey() {
   const keyFile = process.env.COSMOS_KEY_FILE;
@@ -192,6 +199,49 @@ class MemoryCosmosClient {
 
   get documentCount() {
     return this.documents.size;
+  }
+}
+
+function logicalCosmosDocuments(client) {
+  return [...client.documents.values()]
+    .map((entry) => Object.fromEntries(Object.entries(entry.document).filter(([key]) => key !== "__container")))
+    .filter((document) => document.sortableUniqueId !== undefined);
+}
+
+function assertCosmosLogicalRecordContract(client, label) {
+  const documents = logicalCosmosDocuments(client);
+  assert.ok(documents.length > 0, `${label}: expected a persisted logical CosmosEvent document`);
+  for (const document of documents) {
+    assertCosmosManifestDocument(eventStoreManifest, document);
+  }
+}
+
+async function assertPostgresLogicalRecordContract(connectionString = POSTGRES_URL) {
+  const sql = postgres(connectionString);
+  try {
+    await introspectPostgresEventStore(sql, eventStoreManifest);
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+function freshSchemaName() {
+  return `g32_contract_${randomUUID().replaceAll("-", "")}`;
+}
+
+async function withFreshPostgresSchema(run) {
+  const admin = postgres(POSTGRES_URL);
+  const schema = freshSchemaName();
+  try {
+    // Every name is generated locally and contains only [a-z0-9_], so this
+    // isolated schema can never target a deployed service's data.
+    await admin.unsafe(`CREATE SCHEMA "${schema}"`);
+    const scoped = new URL(POSTGRES_URL);
+    scoped.searchParams.set("options", `-c search_path=${schema}`);
+    return await run(scoped.toString());
+  } finally {
+    await admin.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
+    await admin.end({ timeout: 5 });
   }
 }
 
@@ -390,18 +440,26 @@ function expectCheckpoint(actual, expected) {
 
 async function main() {
   if (!requireRealCosmos) {
-    await runPipelineContract("postgres", async () => {
-      const store = POSTGRES_STORE_PROVIDER.create({ POSTGRES_URL });
-      await store.initialize();
-      return store;
+    await withFreshPostgresSchema(async (connectionString) => {
+      const store = POSTGRES_STORE_PROVIDER.create({ POSTGRES_URL: connectionString });
+      try {
+        await store.initialize();
+        await assertPostgresLogicalRecordContract(connectionString);
+        await runPipelineContract("postgres", async () => store);
+      } finally {
+        await store.close();
+      }
     });
   }
 
-  await runPipelineContract("cosmos-memory", async () => {
-    const store = new CosmosEventStore({ client: new MemoryCosmosClient() });
-    await store.initialize();
-    return store;
-  });
+  const memoryCosmosClient = new MemoryCosmosClient();
+  const memoryCosmosStore = new CosmosEventStore({ client: memoryCosmosClient });
+  await memoryCosmosStore.initialize();
+  await runPipelineContract("cosmos-memory", async () => memoryCosmosStore);
+  // The same provider document construction used by the real REST client is
+  // compared field-for-field with the independent C# manifest after actual
+  // PipelineStore writes, not a hand-written document shape.
+  assertCosmosLogicalRecordContract(memoryCosmosClient, "cosmos-memory");
 
   const endpoint = process.env.COSMOS_ENDPOINT;
   const key = await configuredCosmosKey();

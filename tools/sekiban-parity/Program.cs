@@ -1,49 +1,43 @@
+using System.Text;
 using System.Text.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Sekiban.Dcb.Common;
+using Sekiban.Dcb.CosmosDb.Models;
+using Sekiban.Dcb.Domains;
+using Sekiban.Dcb.Events;
+using Sekiban.Dcb.Postgres.DbModels;
 
 static class Program
 {
-    private const string Pin = "855feaa93564fef54defec76e9ccff969d4ee01a";
+    // This is an authoring payload for SimpleEventTypes, not a parallel
+    // logical-record model. Every durable representation below comes from
+    // Sekiban's real EventSerializationExtensions / DbEvent / CosmosEvent.
+    private sealed record RoomReserved(string ReservationId, string RoomId, string UserId) : IEventPayload;
 
-    private sealed record LogicalEvent(
-        string serviceId,
-        string id,
-        string sortableUniqueId,
-        string eventType,
-        string payload,
-        string[] tags,
-        string timestamp,
-        string? causationId,
-        string? correlationId,
-        string? executedUser);
+    private const string ServiceId = "parity-service";
+    private static readonly Guid EventId = Guid.Parse("018f9c51-6b74-7f5e-8ca1-0123456789ab");
 
     private static int Main(string[] args)
     {
         try
         {
-            if (args.Length == 2 && args[0] == "verify-source")
+            if (args.Length == 1 && args[0] == "produce")
             {
-                VerifyPinnedSource(args[1]);
+                Console.WriteLine(Produce());
                 return 0;
             }
-            if (args.Length == 2 && args[0] == "generate")
+            if (args.Length == 2 && args[0] == "consume-postgres")
             {
-                VerifyPinnedSource(args[1]);
-                Console.WriteLine(JsonSerializer.Serialize(Generate(false), JsonOptions));
+                ConsumePostgres(args[1]);
                 return 0;
             }
-            if (args.Length == 2 && args[0] == "generate-null")
+            if (args.Length == 2 && args[0] == "consume-cosmos")
             {
-                VerifyPinnedSource(args[1]);
-                Console.WriteLine(JsonSerializer.Serialize(Generate(true), JsonOptions));
+                ConsumeCosmos(args[1]);
                 return 0;
             }
-            if (args.Length == 3 && args[0] == "consume")
-            {
-                VerifyPinnedSource(args[1]);
-                Consume(args[2]);
-                return 0;
-            }
-            throw new ArgumentException("usage: verify-source <Sekiban-root> | generate <Sekiban-root> | consume <Sekiban-root> <logical-event.json>");
+            throw new ArgumentException("usage: produce | consume-postgres <actual-ts-provider-row.json> | consume-cosmos <actual-ts-provider-row.json>");
         }
         catch (Exception error)
         {
@@ -52,94 +46,97 @@ static class Program
         }
     }
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static SimpleEventTypes EventTypes()
     {
-        WriteIndented = false,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
+        var types = new SimpleEventTypes();
+        types.RegisterEventType<RoomReserved>("RoomReserved");
+        return types;
+    }
 
-    private static LogicalEvent Generate(bool nullMetadata)
+    private static Event SourceEvent()
     {
-        var ticks = DateTimeOffset.FromUnixTimeMilliseconds(1787414836102).UtcDateTime.Ticks;
-        var suid = ticks.ToString("0000000000000000000") + "00000000001";
-        const string id = "018f9c51-6b74-7f5e-8ca1-0123456789ab";
-        return new LogicalEvent(
-            "parity-service",
-            id,
-            suid,
+        var sortableUniqueId = SortableUniqueId.Generate(
+            new DateTime(2026, 8, 22, 17, 0, 0, 123, DateTimeKind.Utc),
+            EventId);
+        return new Event(
+            new RoomReserved("reservation-1", "room-1", "user-1"),
+            sortableUniqueId,
             "RoomReserved",
-            "{\"reservationId\":\"reservation-1\", \"roomId\":\"room-1\",\"userId\":\"user-1\"}",
-            ["room:room-1", "reservation:reservation-1"],
-            "2026-08-22T17:00:00.1230000Z",
-            nullMetadata ? null : id,
-            nullMetadata ? null : "SerializedCommit",
-            nullMetadata ? null : "SerializedSekibanExecutor");
+            EventId,
+            new EventMetadata(EventId.ToString(), "SerializedCommit", "SerializedSekibanExecutor"),
+            ["test:sekiban-parity"]);
     }
 
-    private static void Consume(string path)
+    private static string Produce()
     {
-        var source = File.ReadAllText(path);
-        using var document = JsonDocument.Parse(source);
-        var root = document.RootElement;
-        foreach (var property in new[] { "serviceId", "id", "sortableUniqueId", "eventType", "payload", "tags", "timestamp", "causationId", "correlationId", "executedUser" })
+        var eventTypes = EventTypes();
+        var source = SourceEvent();
+        var serializable = source.ToSerializableEvent(eventTypes);
+        var restored = serializable.ToEvent(eventTypes).GetValue();
+        var payload = Encoding.UTF8.GetString(serializable.Payload);
+
+        // The two provider models are constructed and consumed through their
+        // shipped APIs. Their timestamp implementation is intentionally not
+        // reimplemented in this runner.
+        var postgres = DbEvent.FromEvent(restored, payload, ServiceId);
+        var postgresRestored = postgres.ToEvent(restored.Payload);
+        var cosmos = CosmosEvent.FromEvent(restored, payload, ServiceId);
+        var cosmosRestored = cosmos.ToEvent(restored.Payload);
+        AssertEquivalent(source, restored, "EventSerializationExtensions");
+        AssertEquivalent(restored, postgresRestored, "DbEvent");
+        AssertEquivalent(restored, cosmosRestored, "CosmosEvent");
+
+        var output = new JObject
         {
-            if (!root.TryGetProperty(property, out _)) throw new InvalidDataException($"missing logical record field {property}");
-        }
-        var suid = RequireString(root, "sortableUniqueId");
-        if (suid.Length != 30 || !suid.All(char.IsAsciiDigit)) throw new InvalidDataException("sortableUniqueId is not 30 ASCII digits");
-        var eventType = RequireString(root, "eventType");
-        if (string.IsNullOrWhiteSpace(eventType) || eventType.Contains(':')) throw new InvalidDataException("eventType must be eventPayloadName only");
-        var id = RequireString(root, "id");
-        if (!Guid.TryParse(id, out _)) throw new InvalidDataException("id is not an RFC4122 UUID");
-        var causationId = OptionalString(root, "causationId");
-        var correlationId = OptionalString(root, "correlationId");
-        var executedUser = OptionalString(root, "executedUser");
-        var metadataIsNull = causationId is null && correlationId is null && executedUser is null;
-        var metadataIsSerialized = string.Equals(causationId, id, StringComparison.Ordinal)
-            && string.Equals(correlationId, "SerializedCommit", StringComparison.Ordinal)
-            && string.Equals(executedUser, "SerializedSekibanExecutor", StringComparison.Ordinal);
-        if (!metadataIsNull && !metadataIsSerialized) throw new InvalidDataException("metadata must be either all null or SerializedCommit constants");
-        if (root.GetProperty("tags").ValueKind != JsonValueKind.Array || root.GetProperty("tags").EnumerateArray().Any(tag => tag.ValueKind != JsonValueKind.String)) throw new InvalidDataException("tags must be a string array");
-        var timestamp = RequireString(root, "timestamp");
-        if (!DateTimeOffset.TryParse(timestamp, out var parsedTimestamp) || parsedTimestamp.Offset != TimeSpan.Zero) throw new InvalidDataException("timestamp is not UTC");
-        JsonDocument.Parse(RequireString(root, "payload"));
+            ["serializable"] = JObject.FromObject(serializable),
+            ["postgres"] = JObject.FromObject(postgres),
+            // Newtonsoft is the provider's actual Cosmos wire serializer and
+            // therefore applies CosmosEvent's JsonProperty attributes.
+            ["cosmos"] = JObject.Parse(JsonConvert.SerializeObject(cosmos)),
+        };
+        return output.ToString(Formatting.None);
     }
 
-    private static string RequireString(JsonElement root, string property)
+    private static void ConsumePostgres(string path)
     {
-        var value = root.GetProperty(property);
-        return value.ValueKind == JsonValueKind.String ? value.GetString()! : throw new InvalidDataException($"{property} must be a string");
+        var row = System.Text.Json.JsonSerializer.Deserialize<DbEvent>(File.ReadAllText(path), new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+        }) ?? throw new InvalidDataException("actual TS PostgreSQL provider row did not deserialize as DbEvent");
+        var eventTypes = EventTypes();
+        var payload = eventTypes.DeserializeEventPayload(row.EventType, row.Payload)
+            ?? throw new InvalidDataException("DbEvent payload did not deserialize through SimpleEventTypes");
+        var restored = row.ToEvent(payload);
+        var serializable = restored.ToSerializableEvent(eventTypes);
+        Require(Encoding.UTF8.GetString(serializable.Payload) == row.Payload, "DbEvent round-trip changed payload bytes");
+        Require(serializable.EventPayloadName == row.EventType, "DbEvent round-trip changed EventType");
     }
 
-    private static string? OptionalString(JsonElement root, string property)
+    private static void ConsumeCosmos(string path)
     {
-        var value = root.GetProperty(property);
-        if (value.ValueKind == JsonValueKind.Null) return null;
-        return value.ValueKind == JsonValueKind.String ? value.GetString() : throw new InvalidDataException($"{property} must be a string or null");
+        var row = JsonConvert.DeserializeObject<CosmosEvent>(File.ReadAllText(path))
+            ?? throw new InvalidDataException("actual TS Cosmos provider row did not deserialize as CosmosEvent");
+        var eventTypes = EventTypes();
+        var payload = eventTypes.DeserializeEventPayload(row.EventType, row.Payload)
+            ?? throw new InvalidDataException("CosmosEvent payload did not deserialize through SimpleEventTypes");
+        var restored = row.ToEvent(payload);
+        var serializable = restored.ToSerializableEvent(eventTypes);
+        Require(Encoding.UTF8.GetString(serializable.Payload) == row.Payload, "CosmosEvent round-trip changed payload bytes");
+        Require(serializable.EventPayloadName == row.EventType, "CosmosEvent round-trip changed EventType");
+        Require(row.Pk == $"{row.ServiceId}|{row.Id}", "CosmosEvent partition key is not ServiceId|Id");
     }
 
-    private static void VerifyPinnedSource(string sourceRoot)
+    private static void AssertEquivalent(Event expected, Event actual, string path)
     {
-        var sortable = Read(sourceRoot, "dcb/src/Sekiban.Dcb.Core.Model/Common/SortableUniqueId.cs");
-        var dbEvent = Read(sourceRoot, "dcb/src/Sekiban.Dcb.Postgres/DbModels/DbEvent.cs");
-        var dbContext = Read(sourceRoot, "dcb/src/Sekiban.Dcb.Postgres/SekibanDcbDbContext.cs");
-        var cosmos = Read(sourceRoot, "dcb/src/Sekiban.Dcb.CosmosDb/Models/CosmosEvent.cs");
-        Require(sortable, "TickNumberOfLength = 19", "IdNumberOfLength = 11", "TickFormatter = \"0000000000000000000\"", "IdFormatter = \"00000000000\"", "GetIdString(Guid id)");
-        Require(dbEvent, "[Table(\"dcb_events\")]", "public string ServiceId", "public Guid Id", "public string SortableUniqueId", "public string EventType", "[Column(TypeName = \"json\")]", "[Column(TypeName = \"jsonb\")]", "public DateTime Timestamp", "public string? CausationId", "public string? CorrelationId", "public string? ExecutedUser");
-        Require(dbContext, "entity.HasKey(e => new { e.ServiceId, e.Id })", "IX_Events_ServiceId", "IX_Events_Service_SortableUniqueId", "entity.HasIndex(e => e.EventType)", "entity.HasIndex(e => e.Timestamp)", "HasMaxLength(100)", "HasMaxLength(64)");
-        Require(cosmos, "[JsonProperty(\"pk\")]", "[JsonProperty(\"serviceId\")]", "[JsonProperty(\"id\")]", "[JsonProperty(\"sortableUniqueId\")]", "[JsonProperty(\"eventType\")]", "[JsonProperty(\"payload\")]", "[JsonProperty(\"tags\")]", "[JsonProperty(\"timestamp\")]", "[JsonProperty(\"causationId\")]", "[JsonProperty(\"correlationId\")]", "[JsonProperty(\"executedUser\")]", "[JsonProperty(\"_etag\")]", "Pk = $\"{serviceId}|{id}\"");
+        Require(expected.Id == actual.Id, $"{path} changed Id");
+        Require(expected.SortableUniqueIdValue == actual.SortableUniqueIdValue, $"{path} changed SortableUniqueId");
+        Require(expected.EventType == actual.EventType, $"{path} changed EventType");
+        Require(expected.Tags.SequenceEqual(actual.Tags), $"{path} changed Tags");
+        Require(expected.EventMetadata == actual.EventMetadata, $"{path} changed metadata");
     }
 
-    private static void Require(string source, params string[] fragments)
+    private static void Require(bool condition, string message)
     {
-        foreach (var fragment in fragments)
-            if (!source.Contains(fragment, StringComparison.Ordinal))
-                throw new InvalidDataException($"pinned C# contract drifted: missing {fragment}");
-    }
-
-    private static string Read(string root, string relative)
-    {
-        var path = Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar));
-        return File.Exists(path) ? File.ReadAllText(path) : throw new FileNotFoundException($"missing pinned source {relative}", path);
+        if (!condition) throw new InvalidDataException(message);
     }
 }

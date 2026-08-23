@@ -8,8 +8,7 @@ import { assertForwardWitness } from "./g32-forward-witness.mjs";
 
 const root = process.cwd();
 const INITIAL_CANDIDATE = "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e";
-const INITIAL_EVIDENCE_COMMIT = "fc89572e2e0a8b84447591f87be5d05d57396435";
-const REJECTED_FORWARD_PREFLIGHT_CANDIDATE = "a8f98355bb6de0454725d34f0238cd12efd4519c";
+const C2_CANDIDATE = "0b38755443cce9d4a1a4383e18ba42499c390f63";
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
 
 function argument(name, fallback) {
@@ -29,7 +28,7 @@ function readJson(path) {
 function digestAtCommit(commit, roots) {
   const entries = execFileSync("git", ["ls-tree", "-r", "-z", "--name-only", commit, "--", ...roots], { cwd: root })
     .toString("utf8").split("\0").filter(Boolean).sort();
-  if (entries.length === 0) throw new Error("G32 forward evidence digest resolved no files");
+  if (entries.length === 0) throw new Error("G32 C3 forward evidence digest resolved no files");
   const hash = createHash("sha256");
   for (const path of entries) {
     hash.update(path); hash.update("\0");
@@ -41,44 +40,60 @@ function digestAtCommit(commit, roots) {
 function requireFixedMeasurement(measurement, samples) {
   const latency = measurement?.latency;
   if (latency?.sampleCount !== samples || latency?.samples?.length !== samples || latency?.errorCount !== 0) {
-    throw new Error("G32 C2 evidence requires exactly fixed N=10 clean raw measurements");
+    throw new Error("G32 C3 evidence requires exactly fixed N=10 clean raw measurements");
   }
   const stale = latency.staleNegatives?.find((entry) => entry?.id === "old-37-character-suid-list");
   if (stale?.status !== 400 || stale?.outcome !== "typed-rejected-before-list-dispatch") {
-    throw new Error("G32 C2 evidence lacks the old 37-character SUID ingress rejection");
+    throw new Error("G32 C3 evidence lacks the old 37-character SUID ingress rejection");
   }
   if (latency?.rawV1?.status !== 404 || latency?.fiveEndpointConformance?.length !== 5 || latency.fiveEndpointConformance.some((entry) => entry?.status !== 200)) {
-    throw new Error("G32 C2 evidence has incomplete V1/five-endpoint conformance");
+    throw new Error("G32 C3 evidence has incomplete V1/five-endpoint conformance");
   }
   return latency;
 }
 
-function requireTopology(topology, initial) {
+function requireTopology(topology, retained) {
   if (topology?.primaryExclusive !== true || topology?.receiverServiceBindingOnly !== true) {
-    throw new Error("G32 C2 evidence does not prove primary-exclusive Queue topology");
+    throw new Error("G32 C3 evidence does not prove primary-exclusive Queue topology");
   }
   for (const field of ["queue", "primary", "receiver"]) {
-    const expected = field === "primary" ? initial.worker : field === "receiver" ? initial.receiver : initial.queue;
-    if (topology?.[field] !== expected) throw new Error(`G32 C2 Queue topology changed ${field}`);
+    const expected = field === "primary" ? retained.worker : field === "receiver" ? retained.receiver : retained.queue;
+    if (topology?.[field] !== expected) throw new Error(`G32 C3 Queue topology changed ${field}`);
   }
   return topology;
 }
 
-export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post, measurement, topology }) {
+function c2Of(prior) {
+  const c2 = prior?.forwardRedeploy;
+  if (c2?.candidateCommit !== C2_CANDIDATE || c2?.sourceCommit !== C2_CANDIDATE) {
+    throw new Error("G32 C3 must retain actual C2 forward evidence");
+  }
+  return c2;
+}
+
+function c3PlaceholderOf(prior) {
+  const c3 = prior?.forwardRedeployC3;
+  if (c3?.candidateCommit !== "CANDIDATE" || c3?.sourceCommit !== "CANDIDATE") {
+    throw new Error("G32 C3 evidence replacement requires the sealed C3 placeholder");
+  }
+  return c3;
+}
+
+/** Replace C3's placeholder only after the one forward-only live witness. */
+export function buildC3ForwardEvidence({ sourceCommit, prior, manifest, pre, post, measurement, topology }) {
   if (prior?.candidateCommit !== INITIAL_CANDIDATE || prior?.sourceCommit !== INITIAL_CANDIDATE) {
-    throw new Error("G32 C2 must retain the C1 initial cutover evidence");
+    throw new Error("G32 C3 must retain the C1 initial cutover evidence");
   }
-  if (prior?.forwardRedeploy?.candidateCommit !== "CANDIDATE" || prior?.forwardRedeploy?.sourceCommit !== "CANDIDATE") {
-    throw new Error("G32 C2 evidence replacement requires the sealed C2 placeholder");
-  }
+  const c2 = c2Of(prior);
+  c3PlaceholderOf(prior);
   const preservation = assertForwardWitness(pre, post, sourceCommit);
   const latency = requireFixedMeasurement(measurement, 10);
-  const queueTopology = requireTopology(topology, prior.remoteDeployment);
+  const queueTopology = requireTopology(topology, c2.remoteDeployment);
   const runtime = digestAtCommit(sourceCommit, manifest.runtimeRoots);
   const configuration = digestAtCommit(sourceCommit, manifest.configurationRoots);
   const deploymentDigest = deploymentConfigDigest(sourceCommit);
-  if (deploymentDigest !== prior.deploymentConfig.digest || runtime !== prior.treeDigests.runtime) {
-    throw new Error("G32 C2 ruling requires a CI/test fixture forward fix with unchanged runtime/deployment digest");
+  if (runtime === c2.treeDigests.runtime || deploymentDigest === c2.deploymentConfig.digest) {
+    throw new Error("G32 C3 must record the reviewed runtime/deployment change from C2");
   }
   const beforeEvents = Number(post?.newStoreState?.eventCount);
   const beforeOps = Number(post?.newStoreState?.eventOpsCount);
@@ -86,49 +101,52 @@ export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post,
     !Number.isSafeInteger(beforeEvents) || beforeEvents < 1 || !Number.isSafeInteger(beforeOps) || beforeOps < 1 ||
     Number(latency?.finalStoreState?.eventCount) !== beforeEvents + 20 ||
     Number(latency?.finalStoreState?.eventOpsCount) !== beforeOps + 20
-  ) throw new Error("G32 C2 fixed-N did not extend the preserved store by its 20 logical event operations");
+  ) throw new Error("G32 C3 fixed-N did not extend the preserved store by its 20 logical event operations");
   const audit = auditG32LegacyIngress();
   const remote = {
-    status: "completed C2 forward-only redeploy on retained G32 bindings",
+    status: "completed C3 forward-only redeploy on retained G32 bindings",
     sourceCommit,
     deployedRuntimeCommit: post.primary.sourceCommit,
-    worker: prior.remoteDeployment.worker,
-    receiver: prior.remoteDeployment.receiver,
-    serviceId: prior.remoteDeployment.serviceId,
-    pipelineDatabaseId: prior.remoteDeployment.pipelineDatabaseId,
-    materializedViewDatabaseId: prior.remoteDeployment.materializedViewDatabaseId,
-    queue: prior.remoteDeployment.queue,
-    deadLetterQueue: prior.remoteDeployment.deadLetterQueue,
-    durableObjectNamespaces: prior.remoteDeployment.durableObjectNamespaces,
+    worker: c2.remoteDeployment.worker,
+    receiver: c2.remoteDeployment.receiver,
+    serviceId: c2.remoteDeployment.serviceId,
+    pipelineDatabaseId: c2.remoteDeployment.pipelineDatabaseId,
+    materializedViewDatabaseId: c2.remoteDeployment.materializedViewDatabaseId,
+    queue: c2.remoteDeployment.queue,
+    deadLetterQueue: c2.remoteDeployment.deadLetterQueue,
+    durableObjectNamespaces: c2.remoteDeployment.durableObjectNamespaces,
     configDigest: deploymentDigest,
     cutoverFenceFingerprint: post.primary.cutoverFenceFingerprint,
   };
   return {
     ...prior,
-    forwardRedeploy: {
+    forwardRedeployC3: {
       task: "SDT-G32",
-      status: "R2 complete: C2 forward-only redeploy/witness after G22 real-Cosmos fixture refresh",
+      status: "R3 complete: C3 forward-only redeploy/witness after F1-F5 attribution and real C# provider-path corrections",
       candidateCommit: sourceCommit,
       sourceCommit,
-      reason: "C1 deployed runtime remains correct. C2 updates stale G22 real-Cosmos positive bootstrap inputs to G32 and retains old SUID/provenance/identity forms as typed zero-downstream-call negatives.",
+      reason: "C3 closes F1-F5 with production mutation runners, live provider introspection, public CommitWorker zero-call admission oracles, full rebuild-tag field comparison, and pinned C# serialization/provider-to-real-TS import/replay/list-query paths. It also accepts C#'s 1–7 digit UTC fraction without reserializing payload bytes.",
       protocol: {
-        candidate: "C2 is one sealed material candidate containing the G22 fixture correction, exhaustive legacy-ingress audit, forward redeploy/witness tooling, candidate gate, manifest, documentation, and this placeholder.",
-        bookkeeping: "R2 changes only this evidence document and appends C2 once to the retained-candidate fetch list.",
+        candidate: "C3 is one sealed material candidate containing all F1-F5 runtime, oracle, C# provider runner, audit, deployment tooling, documentation, manifest, and non-self-referential placeholder changes.",
+        bookkeeping: "R3 changes only this evidence document and appends C3 once to the retained-candidate fetch list.",
         selfReference: false,
         deploymentRequired: true,
         forwardOnly: true,
         cutoverReexecuted: false,
-        postCandidateAllowlist: ["docs/SDT-G32-cutover-evidence.json", ".github/workflows/ci.yml (one retained-C2 append)"],
-        witnessOrder: ["C2-preflight", "public-pre-witness-set", "receiver-forward-deploy", "primary-forward-deploy-with-token-rotation", "post-witness-set-preservation", "N=10", "all-ingress-30-digit-recheck"],
+        postCandidateAllowlist: ["docs/SDT-G32-cutover-evidence.json", ".github/workflows/ci.yml (one retained-C3 append)"],
+        witnessOrder: ["C3-preflight", "public-pre-witness-set", "receiver-forward-deploy", "primary-forward-deploy-with-token-rotation", "post-witness-set-preservation", "N=10", "all-ingress-30-digit-recheck"],
       },
       history: {
         initialCandidate: INITIAL_CANDIDATE,
-        initialEvidenceCommit: INITIAL_EVIDENCE_COMMIT,
+        initialEvidenceCommit: "fc89572e2e0a8b84447591f87be5d05d57396435",
         initialCutover: "completed-once",
-        initialCutoverDeployHistory: "C1 deployed new serviceId/new D1 bindings after bridge/freeze/wipe. C2 neither repeats nor reauthorizes that one-time operation.",
-        rejectedPreparedCandidate: REJECTED_FORWARD_PREFLIGHT_CANDIDATE,
+        initialCutoverDeployHistory: "C1 deployed new serviceId/new D1 bindings after bridge/freeze/wipe. C2 and C3 neither repeat nor reauthorize that one-time operation.",
+        rejectedPreparedCandidate: "a8f98355bb6de0454725d34f0238cd12efd4519c",
         rejectedPreparedCandidateReason: "read-only local forward preflight exposed malformed shell interpolation before any Wrangler invocation",
         rejectedPreparedCandidateRemoteEffects: "none-before-wrangler",
+        c2Candidate: C2_CANDIDATE,
+        c2EvidenceCommit: "acc1dc1746a7310410ced0ae556ec7f87e4970a2",
+        c2Reason: "C2 was a G22 real-Cosmos fixture refresh with unchanged runtime/deployment digest; C3 adds reviewed runtime/provider-path corrections and therefore has changed digests.",
       },
       treeDigests: {
         algorithm: DIGEST_ALGORITHM,
@@ -139,12 +157,12 @@ export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post,
       },
       deploymentConfig: { algorithm: DIGEST_ALGORITHM, digest: deploymentDigest, paths: G32_DEPLOYMENT_CONFIG_PATHS },
       runtimeDigestComparison: {
-        initialRuntimeDigest: prior.treeDigests.runtime,
-        c2RuntimeDigest: runtime,
-        initialDeploymentConfigDigest: prior.deploymentConfig.digest,
-        c2DeploymentConfigDigest: deploymentDigest,
-        unchanged: true,
-        explanation: "C2 changes fixture/test/CI/documentation/witness material only; its deployed runtime/configuration digest is byte-identical to C1.",
+        c2RuntimeDigest: c2.treeDigests.runtime,
+        c3RuntimeDigest: runtime,
+        c2DeploymentConfigDigest: c2.deploymentConfig.digest,
+        c3DeploymentConfigDigest: deploymentDigest,
+        changed: true,
+        explanation: "C3 includes runtime fixes (notably C# variable-fraction UTC record ingress) and deployed source changes; both runtime and deployment/config digests intentionally differ from C2.",
       },
       candidateImpact: {
         candidateCommit: sourceCommit,
@@ -152,7 +170,7 @@ export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post,
         newServiceId: false,
         newD1Database: false,
         wipe: false,
-        deploymentReason: "The worker must publish C2 source identity and a newly rotated conformance token while retaining existing G32 data and bindings.",
+        deploymentReason: "The worker must publish C3 source identity and a newly rotated conformance token while retaining C2 data and bindings.",
       },
       deployment: {
         forwardOnly: true,
@@ -170,7 +188,7 @@ export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post,
         status: "preserved-existing-g32-data",
         ...preservation,
         countDeltaCause: {
-          preToPost: "The forward deploy script performs no application command before post-witness. Count deltas are recorded but not used as the preservation equality condition.",
+          preToPost: "The forward deploy script performs no application command before post-witness. Count deltas are recorded but are not the preservation equality condition.",
           preToPostScriptWrites: [],
           fixedNProbeWrites: latency.samples.map((sample) => ({ index: sample.index, roomId: sample.roomId, reservationId: sample.reservationId, suid: sample.commitSuid })),
           fixedNPhase: "runs only after post-witness; it is the deliberate 10-cycle conformance write phase",
@@ -180,7 +198,7 @@ export function buildForwardEvidence({ sourceCommit, prior, manifest, pre, post,
       fixedNMeasurement: measurement,
       legacyIngressAudit: audit,
       tokenRotation: {
-        conformance: "rotated inside the C2 primary forward deployment using a file-fed secrets file; value redacted",
+        conformance: "rotated inside the C3 primary forward deployment using a file-fed secrets file; value redacted",
         oldToken: "intentionally invalidated; value redacted",
         localFilesAfterMeasurement: "deleted by deploy-script trap",
         dataD1DurableObjectPolicy: "token rotation and forward worker deploy do not mutate application data, D1 rows, or Durable Object storage before the explicit N=10 probes",
@@ -208,7 +226,7 @@ function main() {
   const output = argument("--output", "docs/SDT-G32-cutover-evidence.json");
   const prior = readJson(output);
   const manifest = readJson("docs/SDT-G32-required-roots.json");
-  const evidence = buildForwardEvidence({
+  const evidence = buildC3ForwardEvidence({
     sourceCommit,
     prior,
     manifest,
@@ -218,7 +236,7 @@ function main() {
     topology: readJson(argument("--queue-topology", ".artifacts/g32-forward-queue-topology.json")),
   });
   writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ candidateCommit: sourceCommit, deployedRuntimeCommit: evidence.forwardRedeploy.remoteDeployment.deployedRuntimeCommit, samples: evidence.forwardRedeploy.fixedNMeasurement.latency.sampleCount }, null, 2));
+  console.log(JSON.stringify({ candidateCommit: sourceCommit, deployedRuntimeCommit: evidence.forwardRedeployC3.remoteDeployment.deployedRuntimeCommit, samples: evidence.forwardRedeployC3.fixedNMeasurement.latency.sampleCount }, null, 2));
 }
 
 if (process.argv[1] !== undefined && import.meta.url === new URL(process.argv[1], "file:").href) main();

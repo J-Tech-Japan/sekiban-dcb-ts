@@ -101,7 +101,7 @@ function assertSubset(before, after, label) {
   }
 }
 
-/** The C2 witness preserves the pre-captured set; it never relies on global counts being static. */
+/** The C3 witness preserves the pre-captured set; it never relies on global counts being static. */
 export function assertPreWitnessSetPreserved(before, after) {
   if (before?.reservationList?.status !== 200 || after?.reservationList?.status !== 200) throw new Error("G32 reservation list witness status changed");
   if (!equal(roomQuerySemantic(before), roomQuerySemantic(after))) throw new Error("G32 pre-witness room query changed outside aggregate counts");
@@ -201,7 +201,7 @@ export async function capturePublicPreWitness(baseUrl) {
   const [data, rawV1] = await Promise.all([captureDataWitness(baseUrl), captureRawV1(baseUrl)]);
   return {
     task: "SDT-G32",
-    phase: "c2-pre-forward-deploy-public",
+    phase: "c3-pre-forward-deploy-public",
     capturedAt: new Date().toISOString(),
     identityVerified: false,
     identitySource: "public-pre-deploy-data",
@@ -240,16 +240,16 @@ export async function capturePostWitness({ contract, baseUrl, receiverBaseUrl, t
   }
   const primaryAck = assertG32Config(primary.body, contract, "primary", sourceCommit, configDigest);
   const receiverAck = assertG32Config(receiver.body, contract, "receiver", sourceCommit, configDigest);
-  if (primary.body.cutoverFenceFingerprint !== receiver.body.cutoverFenceFingerprint) throw new Error("G32 C2 primary/receiver fence fingerprints differ");
+  if (primary.body.cutoverFenceFingerprint !== receiver.body.cutoverFenceFingerprint) throw new Error("G32 C3 primary/receiver fence fingerprints differ");
   if (
     store.body?.task !== "SDT-G32" || store.body?.serviceId !== contract.final.serviceId ||
     !Number.isSafeInteger(Number(store.body?.eventCount)) || Number(store.body.eventCount) < 1 ||
     !Number.isSafeInteger(Number(store.body?.eventOpsCount)) || Number(store.body.eventOpsCount) < 1 ||
     store.body?.legacySerializedEventTablePresent !== false
-  ) throw new Error("G32 C2 store-state does not describe an existing legacy-free G32 store");
+  ) throw new Error("G32 C3 store-state does not describe an existing legacy-free G32 store");
   return {
     task: "SDT-G32",
-    phase: "c2-post-forward-deploy",
+    phase: "c3-post-forward-deploy",
     capturedAt: new Date().toISOString(),
     identityVerified: true,
     identitySource: "remote-g32-conformance",
@@ -265,12 +265,12 @@ export async function capturePostWitness({ contract, baseUrl, receiverBaseUrl, t
 }
 
 export function assertForwardWitness(pre, post, sourceCommit) {
-  if (pre?.identityVerified !== false || pre?.identitySource !== "public-pre-deploy-data") throw new Error("G32 C2 pre-witness must be public and captured before token rotation");
+  if (pre?.identityVerified !== false || pre?.identitySource !== "public-pre-deploy-data") throw new Error("G32 C3 pre-witness must be public and captured before token rotation");
   if (post?.identityVerified !== true || post?.identitySource !== "remote-g32-conformance" || post?.sourceCommit !== sourceCommit) {
-    throw new Error("G32 C2 post-witness source identity mismatch");
+    throw new Error("G32 C3 post-witness source identity mismatch");
   }
   if (pre?.rawV1?.status !== 404 || post?.rawV1?.status !== 404 || post?.staleBridgeRoute?.status !== 404) {
-    throw new Error("G32 C2 old surface closure changed");
+    throw new Error("G32 C3 old surface closure changed");
   }
   return assertPreWitnessSetPreserved(pre.data, post.data);
 }

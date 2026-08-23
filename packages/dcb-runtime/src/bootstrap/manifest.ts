@@ -1,7 +1,7 @@
 import type { BootstrapDump, BootstrapEventRecord, BootstrapManifest } from "./types";
 import { assertCanonicalEventType } from "../eventIdentity";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import { isRfc4122Uuid, serializedEventMetadata } from "../eventRecord";
+import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, serializedEventMetadata } from "../eventRecord";
 
 export class BootstrapManifestError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -56,7 +56,7 @@ function parseEvent(value: unknown): BootstrapEventRecord {
   } catch {
     throw new BootstrapManifestError("record_invalid", "G32 record identity or payload is invalid");
   }
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(?:\d{4})?Z$/.test(value.timestamp)) {
+  if (!CANONICAL_UTC_TIMESTAMP_PATTERN.test(value.timestamp)) {
     throw new BootstrapManifestError("record_invalid", "record timestamp is not UTC");
   }
   const metadata = serializedEventMetadata(value.eventId);

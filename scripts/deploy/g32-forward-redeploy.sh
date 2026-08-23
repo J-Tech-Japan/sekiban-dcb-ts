@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# SDT-G32 C2 forward-only witness. C1 already performed the one-time bridge,
-# freeze, wipe, and new binding creation. This script refuses to run any of
-# those operations again; it only redeploys the sealed C2 source identity to
+# SDT-G32 C3 forward-only witness. C1 already performed the one-time bridge,
+# freeze, wipe, and new binding creation; C2 retained those bindings. This
+# script refuses to run any of those operations again; it only redeploys C3 to
 # the existing G32 workers, rotates file-fed conformance/fence credentials,
 # preserves a pre-captured data set, then performs fresh N=10 probes.
 
@@ -28,23 +28,23 @@ readonly MEASUREMENT_FILE="${REPO_ROOT}/.artifacts/g32-forward-measurement.json"
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
 if [[ "$(git rev-parse HEAD)" != "${SOURCE_COMMIT}" || ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
-  printf 'G32_SOURCE_COMMIT must equal the sealed checked-out C2 SHA\n' >&2
+  printf 'G32_SOURCE_COMMIT must equal the sealed checked-out C3 SHA\n' >&2
   exit 2
 fi
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  printf 'G32 C2 must have no tracked working-tree changes before forward witness deployment\n' >&2
+  printf 'G32 C3 must have no tracked working-tree changes before forward witness deployment\n' >&2
   exit 2
 fi
 
-# All C2 material must be inside the candidate manifest before any remote
-# operation. The C2 placeholder remains non-self-referential until R2.
+# All C3 material must be inside the candidate manifest before any remote
+# operation. The C3 placeholder remains non-self-referential until R3.
 node scripts/g32-candidate-check.mjs --self-test
 node scripts/g32-candidate-check.mjs --candidate "${SOURCE_COMMIT}"
 node scripts/g32-legacy-ingress-audit.mjs --self-test
 CONFIG_DIGEST="$(node scripts/deploy/g32-config-digest.mjs "${SOURCE_COMMIT}")"
-INITIAL_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.deploymentConfig.digest);')"
-if [[ "${CONFIG_DIGEST}" != "${INITIAL_CONFIG_DIGEST}" ]]; then
-  printf 'G32 C2 forward fix unexpectedly changed deployment runtime/config digest\n' >&2
+C2_CONFIG_DIGEST="$(node -e 'const e=require("./docs/SDT-G32-cutover-evidence.json"); process.stdout.write(e.forwardRedeploy.deploymentConfig.digest);')"
+if [[ "${CONFIG_DIGEST}" == "${C2_CONFIG_DIGEST}" ]]; then
+  printf 'G32 C3 must retain the reviewed runtime/config correction rather than redeploy C2-equivalent source\n' >&2
   exit 2
 fi
 
@@ -63,7 +63,7 @@ COMMON_VARS=(
 "${WRANGLER_BIN}" d1 migrations list "${MATERIALIZED_VIEW_DATABASE}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote
 
 if [[ "${G32_FORWARD_DEPLOY_LIVE:-0}" != "1" ]]; then
-  printf 'G32 C2 forward preflight PASS; set G32_FORWARD_DEPLOY_LIVE=1 for the witnessed forward-only redeploy\n'
+  printf 'G32 C3 forward preflight PASS; set G32_FORWARD_DEPLOY_LIVE=1 for the witnessed forward-only redeploy\n'
   exit 0
 fi
 
@@ -76,22 +76,22 @@ node scripts/deploy/g32-forward-witness.mjs --mode pre-deploy-public --base-url 
 # Rotate both deployed secrets through a file only. Values never enter command
 # arguments, output, or committed evidence. The trap makes local credential
 # removal fail-safe even if deployment/post-witness fails.
-TOKEN_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g32-c2-conformance.XXXXXX")"
-FENCE_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g32-c2-fence.XXXXXX")"
-SECRETS_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g32-c2-secrets.XXXXXX")"
+TOKEN_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g32-c3-conformance.XXXXXX")"
+FENCE_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g32-c3-fence.XXXXXX")"
+SECRETS_FILE="$(mktemp "${TMPDIR:-/tmp}/sdt-g32-c3-secrets.XXXXXX")"
 chmod 600 "${TOKEN_FILE}" "${FENCE_FILE}" "${SECRETS_FILE}"
 trap 'rm -f "${TOKEN_FILE}" "${FENCE_FILE}" "${SECRETS_FILE}"' EXIT
 openssl rand -base64 48 | tr -d '\n' > "${TOKEN_FILE}"
 openssl rand -base64 48 | tr -d '\n' > "${FENCE_FILE}"
-FENCE_FINGERPRINT="$(node -e 'const fs=require("fs");const {createHash}=require("crypto");const value=fs.readFileSync(process.argv[1],"utf8").trim();if(!value)throw new Error("empty C2 fence token");process.stdout.write(createHash("sha256").update(value,"utf8").digest("hex"));' "${FENCE_FILE}")"
-node -e 'const fs=require("fs");const conformance=fs.readFileSync(process.argv[1],"utf8").trim();const fence=fs.readFileSync(process.argv[2],"utf8").trim();if(!conformance||!fence)throw new Error("empty C2 deployment secret");fs.writeFileSync(process.argv[3],JSON.stringify({CONFORMANCE_TOKEN:conformance,G32_CUTOVER_FENCE_TOKEN:fence})+"\n",{mode:0o600});' "${TOKEN_FILE}" "${FENCE_FILE}" "${SECRETS_FILE}"
+FENCE_FINGERPRINT="$(node -e 'const fs=require("fs");const {createHash}=require("crypto");const value=fs.readFileSync(process.argv[1],"utf8").trim();if(!value)throw new Error("empty C3 fence token");process.stdout.write(createHash("sha256").update(value,"utf8").digest("hex"));' "${FENCE_FILE}")"
+node -e 'const fs=require("fs");const conformance=fs.readFileSync(process.argv[1],"utf8").trim();const fence=fs.readFileSync(process.argv[2],"utf8").trim();if(!conformance||!fence)throw new Error("empty C3 deployment secret");fs.writeFileSync(process.argv[3],JSON.stringify({CONFORMANCE_TOKEN:conformance,G32_CUTOVER_FENCE_TOKEN:fence})+"\n",{mode:0o600});' "${TOKEN_FILE}" "${FENCE_FILE}" "${SECRETS_FILE}"
 
 # The receiver has no Queue-consumer config and is deployed first. --keep-vars
 # retains unrelated production configuration while the secret file replaces
 # only the freshly rotated conformance/fence credentials.
 FINAL_VARS=("${COMMON_VARS[@]}" --var "G32_CUTOVER_FENCE_FINGERPRINT:${FENCE_FINGERPRINT}")
-"${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" "${FINAL_VARS[@]}" --message "SDT-G32 C2 forward receiver ${SOURCE_COMMIT}"
-"${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" "${FINAL_VARS[@]}" --message "SDT-G32 C2 forward primary ${SOURCE_COMMIT}"
+"${WRANGLER_BIN}" deploy --config "${RECEIVER_CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" "${FINAL_VARS[@]}" --message "SDT-G32 C3 forward receiver ${SOURCE_COMMIT}"
+"${WRANGLER_BIN}" deploy --config "${PRIMARY_CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" "${FINAL_VARS[@]}" --message "SDT-G32 C3 forward primary ${SOURCE_COMMIT}"
 
 for attempt in {1..15}; do
   "${WRANGLER_BIN}" queues consumer worker list "${QUEUE_NAME}" --json > "${QUEUE_CONSUMERS_FILE}"
@@ -99,7 +99,7 @@ for attempt in {1..15}; do
     break
   fi
   if [[ "${attempt}" == "15" ]]; then
-    printf 'G32 C2 Queue consumer topology did not converge\n' >&2
+    printf 'G32 C3 Queue consumer topology did not converge\n' >&2
     exit 1
   fi
   sleep 2
@@ -120,4 +120,4 @@ node scripts/deploy/g32-forward-record-evidence.mjs \
   --measurement "${MEASUREMENT_FILE}" --queue-topology "${QUEUE_TOPOLOGY_FILE}" \
   --output docs/SDT-G32-cutover-evidence.json
 
-printf 'G32 C2 forward-only witnessed redeploy complete; R2 may change only evidence and one retained-C2 append\n'
+printf 'G32 C3 forward-only witnessed redeploy complete; R3 may change only evidence and one retained-C3 append\n'

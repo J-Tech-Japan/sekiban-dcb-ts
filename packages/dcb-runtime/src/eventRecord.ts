@@ -2,6 +2,15 @@
 export const SERIALIZED_COMMIT_CORRELATION_ID = "SerializedCommit" as const;
 export const SERIALIZED_SEKIBAN_EXECUTOR = "SerializedSekibanExecutor" as const;
 
+/**
+ * UTC text accepted by the C# provider models. DateTime has seven tick
+ * digits, but its JSON serializer legitimately elides trailing zeroes; the
+ * durable interchange therefore permits one through seven fractional digits.
+ * TS-authored writes continue to use the millisecond spelling from
+ * writeTimestampUtc.
+ */
+export const CANONICAL_UTC_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{1,7}Z$/;
+
 export interface SerializedEventMetadata {
   readonly causationId: string;
   readonly correlationId: typeof SERIALIZED_COMMIT_CORRELATION_ID;

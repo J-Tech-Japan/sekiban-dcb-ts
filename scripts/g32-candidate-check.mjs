@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { digestAtCommit as deploymentConfigDigest } from "./deploy/g32-config-digest.mjs";
+import { digestAtCommit as deploymentConfigDigest, G32_DEPLOYMENT_CONFIG_PATHS } from "./deploy/g32-config-digest.mjs";
 
 const root = process.cwd();
 const manifestPath = resolve(root, "docs/SDT-G32-required-roots.json");
@@ -12,6 +12,8 @@ const cutoverPath = resolve(root, "contracts/g32-cutover.json");
 const INITIAL_CANDIDATE = "9bf654eb555e56a2b0d5ed9f04d0aad670866e9e";
 const INITIAL_EVIDENCE_COMMIT = "fc89572e2e0a8b84447591f87be5d05d57396435";
 const REJECTED_FORWARD_PREFLIGHT_CANDIDATE = "a8f98355bb6de0454725d34f0238cd12efd4519c";
+const C2_CANDIDATE = "0b38755443cce9d4a1a4383e18ba42499c390f63";
+const C2_EVIDENCE_COMMIT = "acc1dc1746a7310410ced0ae556ec7f87e4970a2";
 const SHA = /^[0-9a-f]{40}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DIGEST_ALGORITHM = "sha256(path NUL content NUL, paths sorted)";
@@ -57,6 +59,13 @@ function forwardOf(evidence) {
     throw new Error("G32 C2 forward-redeploy evidence is missing");
   }
   return evidence.forwardRedeploy;
+}
+
+function c3Of(evidence) {
+  if (evidence?.forwardRedeployC3 === null || typeof evidence?.forwardRedeployC3 !== "object" || Array.isArray(evidence.forwardRedeployC3)) {
+    throw new Error("G32 C3 forward-redeploy evidence is missing");
+  }
+  return evidence.forwardRedeployC3;
 }
 
 export function loadManifest(read = (path) => readFileSync(path, "utf8")) {
@@ -154,6 +163,18 @@ function assertInitialEvidenceCommit() {
   return { candidate: INITIAL_CANDIDATE, evidenceCommit: INITIAL_EVIDENCE_COMMIT };
 }
 
+function assertC2EvidenceCommit() {
+  const paths = gitText(["diff", "--name-only", `${C2_CANDIDATE}..${C2_EVIDENCE_COMMIT}`]).split(/\r?\n/).filter(Boolean).sort();
+  if (!same(paths, [...R_PATHS].sort())) throw new Error("G32 C2/R2 history is not exactly evidence + retained-C");
+  const ciDiff = gitText(["diff", "--unified=0", `${C2_CANDIDATE}..${C2_EVIDENCE_COMMIT}`, "--", ".github/workflows/ci.yml"]);
+  const additions = ciDiff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
+  const removals = ciDiff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
+  if (removals.length !== 0 || additions.length !== 1 || additions[0].slice(1).trim() !== C2_CANDIDATE) {
+    throw new Error("G32 C2 retained candidate history is invalid");
+  }
+  return { candidate: C2_CANDIDATE, evidenceCommit: C2_EVIDENCE_COMMIT };
+}
+
 /** The original wipe exception is C1-only historical evidence. */
 export function assertInitialCutoverHistory(evidence, cutover) {
   const bridge = assertBridgeEvidence(readJson(resolve(root, cutover.bridge.evidencePath)), cutover);
@@ -188,7 +209,7 @@ export function assertInitialCutoverHistory(evidence, cutover) {
     Number(latency?.finalStoreState?.eventCount) !== final.fixedSamples * 2 ||
     Number(latency?.finalStoreState?.eventOpsCount) !== final.fixedSamples * 2
   ) throw new Error("G32 C1 historical cutover witness is incomplete");
-  return { ...assertInitialEvidenceCommit(), bridge, sourceCommit: INITIAL_CANDIDATE };
+  return { ...assertInitialEvidenceCommit(), c2: assertC2EvidenceCommit(), bridge, sourceCommit: INITIAL_CANDIDATE };
 }
 
 function assertForwardProtocol(forward) {
@@ -207,16 +228,25 @@ function assertForwardProtocol(forward) {
   ) throw new Error("G32 C2 must retain C1/R1 history");
 }
 
-export function assertForwardEvidenceShape(forward, manifest) {
+/**
+ * C2 is historical evidence. Its root list is checked from the C2 object,
+ * rather than against C3's intentionally expanded manifest.
+ */
+export function assertForwardEvidenceShape(forward) {
   const candidate = forward?.candidateCommit;
   if (candidate !== "CANDIDATE" && !SHA.test(candidate)) throw new Error("G32 C2 candidateCommit is invalid");
+  if (candidate !== "CANDIDATE" && candidate !== C2_CANDIDATE) throw new Error("G32 historical C2 candidate changed");
   if (forward?.sourceCommit !== candidate) throw new Error("G32 C2 sourceCommit must equal candidateCommit");
   assertForwardProtocol(forward);
-  assertDigestShape(forward?.treeDigests, manifest, "G32 C2", candidate === "CANDIDATE");
+  const roots = {
+    runtimeRoots: forward?.treeDigests?.runtimeRoots,
+    configurationRoots: forward?.treeDigests?.configurationRoots,
+  };
+  assertDigestShape(forward?.treeDigests, roots, "G32 C2", candidate === "CANDIDATE");
   if (candidate !== "CANDIDATE") {
     if (
-      digestAtCommit(candidate, manifest.runtimeRoots) !== forward.treeDigests.runtime ||
-      digestAtCommit(candidate, manifest.configurationRoots) !== forward.treeDigests.configuration ||
+      digestAtCommit(candidate, roots.runtimeRoots) !== forward.treeDigests.runtime ||
+      digestAtCommit(candidate, roots.configurationRoots) !== forward.treeDigests.configuration ||
       deploymentConfigDigest(candidate) !== forward?.deploymentConfig?.digest
     ) throw new Error("G32 C2 candidate digest mismatch");
   }
@@ -286,33 +316,136 @@ export function assertForwardDeploymentIdentity(evidence, cutover) {
   return { checked: true, sourceCommit: candidate, preservedEvents: beforeEvents, finalEvents: Number(latency.finalStoreState.eventCount) };
 }
 
+function assertC3Protocol(c3) {
+  if (
+    c3?.protocol?.selfReference !== false || c3?.protocol?.deploymentRequired !== true ||
+    c3?.protocol?.forwardOnly !== true || c3?.protocol?.cutoverReexecuted !== false ||
+    c3?.candidateImpact?.deploymentRequired !== true || c3?.candidateImpact?.newServiceId !== false ||
+    c3?.candidateImpact?.newD1Database !== false || c3?.candidateImpact?.wipe !== false
+  ) throw new Error("G32 C3 protocol must be deployment-required forward-only without another cutover/wipe");
+  if (
+    c3?.history?.initialCandidate !== INITIAL_CANDIDATE ||
+    c3?.history?.initialEvidenceCommit !== INITIAL_EVIDENCE_COMMIT ||
+    c3?.history?.c2Candidate !== C2_CANDIDATE || c3?.history?.c2EvidenceCommit !== C2_EVIDENCE_COMMIT ||
+    c3?.history?.initialCutover !== "completed-once" ||
+    c3?.history?.rejectedPreparedCandidate !== REJECTED_FORWARD_PREFLIGHT_CANDIDATE ||
+    c3?.history?.rejectedPreparedCandidateRemoteEffects !== "none-before-wrangler"
+  ) throw new Error("G32 C3 must retain C1/R1 and C2/R2 history");
+}
+
+export function assertC3EvidenceShape(c3, manifest) {
+  const candidate = c3?.candidateCommit;
+  if (candidate !== "CANDIDATE" && !SHA.test(candidate)) throw new Error("G32 C3 candidateCommit is invalid");
+  if (c3?.sourceCommit !== candidate) throw new Error("G32 C3 sourceCommit must equal candidateCommit");
+  assertC3Protocol(c3);
+  assertDigestShape(c3?.treeDigests, manifest, "G32 C3", candidate === "CANDIDATE");
+  if (c3?.deploymentConfig?.algorithm !== DIGEST_ALGORITHM || !same(c3?.deploymentConfig?.paths, G32_DEPLOYMENT_CONFIG_PATHS)) {
+    throw new Error("G32 C3 deployment config declaration is invalid");
+  }
+  if (candidate !== "CANDIDATE") {
+    if (
+      digestAtCommit(candidate, manifest.runtimeRoots) !== c3.treeDigests.runtime ||
+      digestAtCommit(candidate, manifest.configurationRoots) !== c3.treeDigests.configuration ||
+      deploymentConfigDigest(candidate) !== c3.deploymentConfig.digest
+    ) throw new Error("G32 C3 candidate digest mismatch");
+  }
+  return { candidateCommit: candidate, digestChecked: candidate !== "CANDIDATE" };
+}
+
+/** C3 has real runtime fixes, so both deployment and runtime digests must change from C2. */
+export function assertC3DeploymentIdentity(evidence, cutover) {
+  const c2 = forwardOf(evidence);
+  const c3 = c3Of(evidence);
+  if (c3.candidateCommit === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
+  const candidate = c3.candidateCommit;
+  const remote = c3?.remoteDeployment;
+  if (remote?.sourceCommit !== candidate || remote?.deployedRuntimeCommit !== candidate) throw new Error("G32 C3 deployedRuntimeCommit/sourceCommit mismatch");
+  assertSameBindings(remote, c2.remoteDeployment);
+  if (c3?.deployment?.cutoverReexecuted !== false || c3?.deployment?.migrationsApplied !== false || c3?.deployment?.resourcesCreated !== false) {
+    throw new Error("G32 C3 attempted to repeat the one-time cutover");
+  }
+  if (
+    c3?.runtimeDigestComparison?.c2RuntimeDigest !== c2.treeDigests.runtime ||
+    c3?.runtimeDigestComparison?.c3RuntimeDigest !== c3.treeDigests.runtime ||
+    c3?.runtimeDigestComparison?.c2DeploymentConfigDigest !== c2.deploymentConfig.digest ||
+    c3?.runtimeDigestComparison?.c3DeploymentConfigDigest !== c3.deploymentConfig.digest ||
+    c3?.runtimeDigestComparison?.changed !== true ||
+    c3.treeDigests.runtime === c2.treeDigests.runtime ||
+    c3.deploymentConfig.digest === c2.deploymentConfig.digest
+  ) throw new Error("G32 C3 must record the real runtime/deployment digest change from C2");
+  const post = c3?.postWitness;
+  if (
+    post?.primary?.sourceCommit !== candidate || post?.receiver?.sourceCommit !== candidate ||
+    post?.rawV1?.status !== 404 || post?.staleBridgeRoute?.status !== 404 ||
+    post?.primary?.sortableUniqueId?.digits !== 30 || post?.receiver?.sortableUniqueId?.digits !== 30 ||
+    post?.primary?.sortableUniqueId?.legacyUnsupported !== true || post?.receiver?.sortableUniqueId?.legacyUnsupported !== true ||
+    post?.primary?.eventRecord?.eventType !== "eventPayloadName" || post?.receiver?.eventRecord?.eventType !== "eventPayloadName"
+  ) throw new Error("G32 C3 post-witness lacks C3 identity / 30-digit ingress proof");
+  if (c3?.queueTopology?.primaryExclusive !== true || c3?.queueTopology?.receiverServiceBindingOnly !== true) {
+    throw new Error("G32 C3 Queue topology was not preserved");
+  }
+  const preservation = c3?.dataPreservation;
+  if (
+    preservation?.status !== "preserved-existing-g32-data" || preservation?.stable !== true ||
+    !SHA256.test(preservation?.preSetDigest) || !Number.isSafeInteger(preservation?.preserved?.reservationListEntries) ||
+    preservation.preserved.reservationListEntries < 1
+  ) throw new Error("G32 C3 needs a preserved post-C2 data witness");
+  const latency = c3?.fixedNMeasurement?.latency;
+  const stale = latency?.staleNegatives?.find((entry) => entry?.id === "old-37-character-suid-list");
+  if (
+    latency?.sampleCount !== cutover.final.fixedSamples || latency?.samples?.length !== cutover.final.fixedSamples ||
+    latency?.rawV1?.status !== 404 || stale?.status !== 400 || stale?.outcome !== "typed-rejected-before-list-dispatch" ||
+    latency?.fiveEndpointConformance?.length !== 5 || latency.fiveEndpointConformance.some((entry) => entry?.status !== 200)
+  ) throw new Error("G32 C3 N=10 / ingress evidence is incomplete");
+  const beforeEvents = Number(post?.newStoreState?.eventCount);
+  const beforeOps = Number(post?.newStoreState?.eventOpsCount);
+  if (
+    !Number.isSafeInteger(beforeEvents) || beforeEvents < 1 || !Number.isSafeInteger(beforeOps) || beforeOps < 1 ||
+    Number(latency?.finalStoreState?.eventCount) !== beforeEvents + cutover.final.fixedSamples * 2 ||
+    Number(latency?.finalStoreState?.eventOpsCount) !== beforeOps + cutover.final.fixedSamples * 2 ||
+    latency?.finalStoreState?.legacySerializedEventTablePresent !== false
+  ) throw new Error("G32 C3 measurement does not preserve then extend the post-C2 store");
+  const audit = c3?.legacyIngressAudit;
+  if (audit?.conclusion !== "all executable positive G32 ingress fixtures are 30-digit/UUIDv7/fixed-g32; legacy forms are retained only as typed zero-call negatives" ||
+    !Array.isArray(audit?.legacyNegative) || !audit.legacyNegative.includes("eventPayloadVersion")) {
+    throw new Error("G32 C3 legacy ingress audit evidence is incomplete");
+  }
+  return { checked: true, sourceCommit: candidate, preservedEvents: beforeEvents, finalEvents: Number(latency.finalStoreState.eventCount) };
+}
+
 export function assertPostCandidatePaths(paths, candidate, run = (args) => git(args)) {
   if (candidate === "CANDIDATE") return { checked: false, reason: "placeholder-candidate" };
   const unsupported = paths.filter((path) => !R_PATHS.includes(path));
   if (unsupported.length > 0) throw new Error(`G32 post-candidate paths not allowlisted: ${unsupported.join(",")}`);
-  if (!same([...paths].sort(), [...R_PATHS].sort())) throw new Error("G32 C2 R must contain exactly evidence and one retained-C append");
+  if (!same([...paths].sort(), [...R_PATHS].sort())) throw new Error("G32 C3 R must contain exactly evidence and one retained-C append");
   const diff = String(run(["diff", "--unified=0", `${candidate}..HEAD`, "--", ".github/workflows/ci.yml"]));
   const additions = diff.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++"));
   const removals = diff.split(/\r?\n/).filter((line) => line.startsWith("-") && !line.startsWith("---"));
   if (removals.length !== 0 || additions.length !== 1 || additions[0].slice(1).trim() !== candidate) {
-    throw new Error("G32 C2 retained-candidate list must append exactly C2 once");
+    throw new Error("G32 C3 retained-candidate list must append exactly C3 once");
   }
   return { checked: true };
 }
 
 export function assertPreparedCandidate(candidate, evidence, manifest) {
-  assertSha(candidate, "G32 C2 prepared candidate");
-  const forward = forwardOf(evidence);
-  if (forward.candidateCommit !== "CANDIDATE" || forward.sourceCommit !== "CANDIDATE") {
-    throw new Error("G32 prepared C2 must retain its non-self-referential evidence placeholder");
+  assertSha(candidate, "G32 C3 prepared candidate");
+  const c2 = forwardOf(evidence);
+  const c3 = c3Of(evidence);
+  if (c2.candidateCommit !== C2_CANDIDATE || c2.sourceCommit !== C2_CANDIDATE) {
+    throw new Error("G32 prepared C3 must retain actual C2 evidence");
   }
-  assertForwardEvidenceShape(forward, manifest);
+  if (c3.candidateCommit !== "CANDIDATE" || c3.sourceCommit !== "CANDIDATE") {
+    throw new Error("G32 prepared C3 must retain its non-self-referential evidence placeholder");
+  }
+  assertC3EvidenceShape(c3, manifest);
   const material = assertCandidateMaterialCoverage(candidate, manifest);
   const runtime = digestAtCommit(candidate, manifest.runtimeRoots);
   const configuration = digestAtCommit(candidate, manifest.configurationRoots);
   const deployment = deploymentConfigDigest(candidate);
-  if (deployment !== evidence.deploymentConfig.digest) throw new Error("G32 C2 deployment digest changed; this is not the ruled CI/test-only forward fix");
-  return { candidate, material, runtime, configuration, deploymentConfig: deployment, runtimeUnchangedFromC1: runtime === evidence.treeDigests.runtime };
+  if (runtime === c2.treeDigests.runtime || deployment === c2.deploymentConfig.digest) {
+    throw new Error("G32 C3 must contain the reviewed runtime correction, not a vacuous C2-equivalent redeploy");
+  }
+  return { candidate, material, runtime, configuration, deploymentConfig: deployment, runtimeChangedFromC2: true };
 }
 
 export function runSelfTest() {
@@ -367,11 +500,34 @@ export function runSelfTest() {
   let ingressRed = false;
   try { assertForwardDeploymentIdentity({ ...historical, forwardRedeploy: { ...final, postWitness: { ...final.postWitness, primary: { ...final.postWitness.primary, sortableUniqueId: { digits: 37, legacyUnsupported: true } } } } }, { final: { fixedSamples: 10 } }); } catch (error) { ingressRed = String(error).includes("30-digit ingress"); }
   if (!ingressRed) throw new Error("G32 ingress mutation unexpectedly passed");
+  const c3 = {
+    ...final,
+    history: { ...final.history, c2Candidate: C2_CANDIDATE, c2EvidenceCommit: C2_EVIDENCE_COMMIT },
+    treeDigests: { algorithm: DIGEST_ALGORITHM, runtime: "f".repeat(64), runtimeRoots: manifest.runtimeRoots, configuration: "g".repeat(64), configurationRoots: manifest.configurationRoots },
+    deploymentConfig: { algorithm: DIGEST_ALGORITHM, digest: "h".repeat(64), paths: G32_DEPLOYMENT_CONFIG_PATHS },
+    runtimeDigestComparison: { c2RuntimeDigest: "b".repeat(64), c3RuntimeDigest: "f".repeat(64), c2DeploymentConfigDigest: "d".repeat(64), c3DeploymentConfigDigest: "h".repeat(64), changed: true },
+  };
+  const c3Historical = { ...historical, forwardRedeployC3: c3 };
+  assertC3DeploymentIdentity(c3Historical, { final: { fixedSamples: 10 } });
+  let c3RuntimeRed = false;
+  try { assertC3DeploymentIdentity({ ...c3Historical, forwardRedeployC3: { ...c3, treeDigests: { ...c3.treeDigests, runtime: "b".repeat(64) } } }, { final: { fixedSamples: 10 } }); } catch (error) { c3RuntimeRed = String(error).includes("runtime/deployment digest change"); }
+  if (!c3RuntimeRed) throw new Error("G32 C3 runtime-digest attribution mutation unexpectedly passed");
+  const c3Placeholder = {
+    ...c3,
+    candidateCommit: "CANDIDATE",
+    sourceCommit: "CANDIDATE",
+    treeDigests: { ...c3.treeDigests, runtime: "0".repeat(64), configuration: "1".repeat(64) },
+    deploymentConfig: { ...c3.deploymentConfig, digest: "2".repeat(64) },
+  };
+  assertC3EvidenceShape(c3Placeholder, manifest);
+  let c3RootsRed = false;
+  try { assertC3EvidenceShape({ ...c3Placeholder, treeDigests: { ...c3Placeholder.treeDigests, configurationRoots: [] } }, manifest); } catch (error) { c3RootsRed = String(error).includes("digest roots"); }
+  if (!c3RootsRed) throw new Error("G32 C3 root-manifest attribution mutation unexpectedly passed");
   assertPostCandidatePaths([...R_PATHS], candidate, () => `+${candidate}\n`);
   let postPathRed = false;
   try { assertPostCandidatePaths([...R_PATHS, "scripts/deploy/g32-forward-redeploy.sh"], candidate, () => `+${candidate}\n`); } catch (error) { postPathRed = String(error).includes("not allowlisted"); }
   if (!postPathRed) throw new Error("G32 post-C operational edit mutation unexpectedly passed");
-  return { declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "self-authorized-post-c", "undeclared-material", "repeat-cutover", "data-preservation", "30-digit-ingress", "post-c-operational-edit"] };
+  return { declaredRoots: manifest.runtimeRoots.length + manifest.configurationRoots.length, requiredRoots: manifest.requiredRoots.length, mutations: ["missing-root", "self-authorized-post-c", "undeclared-material", "repeat-cutover", "data-preservation", "30-digit-ingress", "c3-runtime-digest", "c3-root-manifest", "post-c-operational-edit"] };
 }
 
 function argument(name) {
@@ -389,24 +545,26 @@ function main() {
   const evidence = readJson(evidencePath);
   const cutover = readJson(cutoverPath);
   const history = assertInitialCutoverHistory(evidence, cutover);
-  const forward = assertForwardEvidenceShape(forwardOf(evidence), manifest);
-  const deployment = assertForwardDeploymentIdentity(evidence, cutover);
+  const forward = assertForwardEvidenceShape(forwardOf(evidence));
+  const c2Deployment = assertForwardDeploymentIdentity(evidence, cutover);
+  const c3 = assertC3EvidenceShape(c3Of(evidence), manifest);
+  const c3Deployment = assertC3DeploymentIdentity(evidence, cutover);
   const declared = assertDeclaredRoots(manifest);
   const required = assertRequiredRoots(manifest);
   const candidateArgument = argument("--candidate");
   if (candidateArgument !== undefined) {
     if (gitText(["rev-parse", "HEAD"]).trim() !== candidateArgument) throw new Error("G32 prepared candidate must equal checked-out HEAD");
-    console.log(JSON.stringify({ history, forward, deployment, manifest: { ...declared, ...required }, prepared: assertPreparedCandidate(candidateArgument, evidence, manifest) }, null, 2));
+    console.log(JSON.stringify({ history, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, manifest: { ...declared, ...required }, prepared: assertPreparedCandidate(candidateArgument, evidence, manifest) }, null, 2));
     return;
   }
-  const candidate = forward.candidateCommit;
+  const candidate = c3.candidateCommit;
   const active = candidate !== "CANDIDATE" && SHA.test(candidate) && (() => {
     try { git(["merge-base", "--is-ancestor", candidate, "HEAD"]); return true; } catch { return false; }
   })();
   const post = active
     ? assertPostCandidatePaths(gitText(["diff", "--name-only", `${candidate}..HEAD`]).split(/\r?\n/).filter(Boolean), candidate)
     : { checked: false, reason: candidate === "CANDIDATE" ? "placeholder-candidate" : "candidate-not-ancestor" };
-  console.log(JSON.stringify({ history, forward, deployment, manifest: { ...declared, ...required }, postCandidate: post }, null, 2));
+  console.log(JSON.stringify({ history, c2: { forward, deployment: c2Deployment }, c3: { evidence: c3, deployment: c3Deployment }, manifest: { ...declared, ...required }, postCandidate: post }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();
