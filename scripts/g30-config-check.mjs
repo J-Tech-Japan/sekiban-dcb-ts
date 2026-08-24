@@ -47,7 +47,20 @@ export function assertG30Config(primaryOff, primaryOn, receiverOff) {
   }
   if (!same(comparable(primaryOff), comparable(primaryOn))) throw new Error("G30 primary A/B config differs outside trace sampling");
   if (receiverOff?.queues?.consumers !== undefined) throw new Error("G30 receiver must remain service-binding-only without a Queue consumer");
-  return { primarySampling: [primaryOff.observability.traces.head_sampling_rate, primaryOn.observability.traces.head_sampling_rate], receiverSampling: receiverOff.observability.traces.head_sampling_rate, placement: "off" };
+  const receiverPublicSurface = assertReceiverPublicSurface(receiverOff);
+  return { primarySampling: [primaryOff.observability.traces.head_sampling_rate, primaryOn.observability.traces.head_sampling_rate], receiverSampling: receiverOff.observability.traces.head_sampling_rate, placement: "off", receiverPublicSurface };
+}
+
+/**
+ * G30 retains and redeploys the existing receiver, so it must carry forward
+ * the G38 Phase M public-surface mitigation rather than relying on Wrangler's
+ * defaults.  An omitted setting defaults to enabled during a fresh deploy.
+ */
+export function assertReceiverPublicSurface(receiverOff) {
+  if (receiverOff?.workers_dev !== false || receiverOff?.preview_urls !== false) {
+    throw new Error("G30 receiver must explicitly preserve G38 Phase M workers_dev=false and preview_urls=false");
+  }
+  return { workersDev: false, previewUrls: false };
 }
 
 /**
@@ -94,12 +107,31 @@ export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
   return { migrationDatabases: databases };
 }
 
+/**
+ * With `set -u`, Bash does not make a value assigned in the same `local`
+ * declaration visible to a later assignment in that declaration.  Keep the
+ * witness output path scoped in ordered declarations so B0 cannot stop after
+ * deploying A but before producing its deployment witness.
+ */
+export function assertWitnessCaptureShellSafety(runbookSource) {
+  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for witness-capture verification");
+  const functionBody = /capture_primary_witness\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
+  if (!/^\s*local phase="\$1"\n\s*local output="\$2"\n\s*local versions="\$\{output\}\.versions\.json"/m.test(functionBody)) {
+    throw new Error("G30 witness capture must declare phase, output, and derived versions in separate ordered locals");
+  }
+  if (/local phase="\$1"\s+output="\$2"\s+versions=/m.test(functionBody)) {
+    throw new Error("G30 witness capture must not derive versions from an unbound same-declaration local");
+  }
+  return { witnessCaptureLocals: "ordered" };
+}
+
 export function selfTest() {
   const off = readConfig(PRIMARY_OFF); const on = readConfig(PRIMARY_ON); const receiver = readConfig(RECEIVER_OFF);
   const result = assertG30Config(off, on, receiver);
   const runbook = readFileSync(RUNBOOK, "utf8");
   const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
   const migration = assertRemoteMigrationPreflight(off, runbook);
+  const witnessCapture = assertWitnessCaptureShellSafety(runbook);
   let samplingRed = false;
   try { const altered = structuredClone(on); altered.observability.traces.head_sampling_rate = 0; assertG30Config(off, altered, receiver); } catch (error) { samplingRed = String(error).includes("sampling 1"); }
   if (!samplingRed) throw new Error("G30 sampling mutation unexpectedly passed");
@@ -121,7 +153,18 @@ export function selfTest() {
   let bindingRed = false;
   try { assertRemoteMigrationPreflight(off, runbook.replace('migrations list "${database}"', 'migrations list "${binding}"')); } catch { bindingRed = true; }
   if (!bindingRed) throw new Error("G30 migration binding mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding"] };
+  let receiverSurfaceRed = false;
+  try { const altered = structuredClone(receiver); altered.workers_dev = true; assertG30Config(off, on, altered); } catch (error) { receiverSurfaceRed = String(error).includes("G38 Phase M"); }
+  if (!receiverSurfaceRed) throw new Error("G30 receiver public-surface mutation unexpectedly passed");
+  let witnessCaptureRed = false;
+  try {
+    assertWitnessCaptureShellSafety(runbook.replace(
+      '  local phase="$1"\n  local output="$2"\n  local versions="${output}.versions.json"',
+      '  local phase="$1" output="$2" versions="${output}.versions.json"',
+    ));
+  } catch (error) { witnessCaptureRed = String(error).includes("separate ordered locals"); }
+  if (!witnessCaptureRed) throw new Error("G30 witness-capture local-scope mutation unexpectedly passed");
+  return { ...result, ...isolation, ...migration, ...witnessCapture, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "receiver-public-surface", "witness-capture-local-scope"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -130,5 +173,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const runbook = readFileSync(RUNBOOK, "utf8");
   const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
   const migration = assertRemoteMigrationPreflight(readConfig(PRIMARY_OFF), runbook);
-  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration }, null, 2));
+  const witnessCapture = assertWitnessCaptureShellSafety(runbook);
+  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration, ...witnessCapture }, null, 2));
 }

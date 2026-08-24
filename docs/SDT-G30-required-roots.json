@@ -40,6 +40,7 @@
     "docs/commit-tracing.md",
     "docs/SDT-G30-b0-evidence.json",
     "docs/SDT-G30-b0-evidence.md",
+    "docs/SDT-G30-m-invariant-regression.json",
     "test/g30-trace.spec.ts",
     "test/g30-b0.spec.ts",
     "test/g29-delivery.spec.ts",
@@ -84,6 +85,7 @@
     { "rootId": "g26-correlation-log-fixture", "path": "test/g26-doorbell.spec.ts", "kind": "file" },
     { "rootId": "oracle-map", "path": "docs/SDT-G30-oracle-map.md", "kind": "file" },
     { "rootId": "pr-body", "path": "docs/SDT-G30-pr-body.md", "kind": "file" },
-    { "rootId": "repeatable-runbook-doc", "path": "docs/commit-tracing.md", "kind": "file" }
+    { "rootId": "repeatable-runbook-doc", "path": "docs/commit-tracing.md", "kind": "file" },
+    { "rootId": "m-invariant-regression", "path": "docs/SDT-G30-m-invariant-regression.json", "kind": "file" }
   ]
 }

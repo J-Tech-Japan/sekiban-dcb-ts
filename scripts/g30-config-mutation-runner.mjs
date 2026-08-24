@@ -33,6 +33,18 @@ const MUTATIONS = Object.freeze([
     to: 'd1 migrations list "${binding}"',
   },
   {
+    id: "receiver-public-surface",
+    file: "samples/meeting-room/wrangler.g30-receiver-off.jsonc",
+    from: '  "workers_dev": false,',
+    to: '  "workers_dev": true,',
+  },
+  {
+    id: "witness-capture-local-scope",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: '  local phase="$1"\n  local output="$2"\n  local versions="${output}.versions.json"',
+    to: '  local phase="$1" output="$2" versions="${output}.versions.json"',
+  },
+  {
     id: "diagnostic-route-in-worker",
     file: "samples/meeting-room/src/worker.cloudflare-only.ts",
     from: '  if (url.pathname === "/conformance/v1/g32-store-state") {',

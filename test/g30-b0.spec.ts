@@ -7,7 +7,7 @@ import {
   assertTraceCohort,
   observationLedgerForPhase,
 } from "../scripts/g30-b0-contract.mjs";
-import { assertG30Config, assertPhaseRuntimeIsolation } from "../scripts/g30-config-check.mjs";
+import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety } from "../scripts/g30-config-check.mjs";
 import { normalizeTelemetryBundle, normalizeTelemetryExport } from "../scripts/deploy/g30-trace-export.mjs";
 import { assertDeploymentWitness } from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
@@ -31,6 +31,8 @@ function deploymentConfig(sample: 0 | 1): Record<string, unknown> {
       traces: { enabled: true, persist: true, head_sampling_rate: sample },
     },
     version_metadata: { binding: "WORKER_VERSION" },
+    workers_dev: false,
+    preview_urls: false,
     vars: { SDT_SERVICE_ID: SERVICE },
   };
 }
@@ -262,7 +264,30 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       primarySampling: [0, 1],
       receiverSampling: 0,
       placement: "off",
+      receiverPublicSurface: { workersDev: false, previewUrls: false },
     });
+  });
+
+  it("carries G38 Phase M public-surface settings through the G30 receiver deployment", () => {
+    const receiver = deploymentConfig(0);
+    expect(() => assertG30Config(deploymentConfig(0), deploymentConfig(1), { ...receiver, workers_dev: true })).toThrow(/G38 Phase M/);
+    expect(() => assertG30Config(deploymentConfig(0), deploymentConfig(1), { ...receiver, preview_urls: true })).toThrow(/G38 Phase M/);
+  });
+
+  it("captures deployment witness paths with ordered shell locals under set -u", () => {
+    const runbook = [
+      "capture_primary_witness() {",
+      '  local phase="$1"',
+      '  local output="$2"',
+      '  local versions="${output}.versions.json"',
+      '  printf "%s" "${versions}"',
+      "}",
+    ].join("\n");
+    expect(assertWitnessCaptureShellSafety(runbook)).toEqual({ witnessCaptureLocals: "ordered" });
+    expect(() => assertWitnessCaptureShellSafety(runbook.replace(
+      '  local phase="$1"\n  local output="$2"\n  local versions="${output}.versions.json"',
+      '  local phase="$1" output="$2" versions="${output}.versions.json"',
+    ))).toThrow(/separate ordered locals/);
   });
 
   it("keeps A/B/A-prime phase labels out of deployed runtime configuration", () => {

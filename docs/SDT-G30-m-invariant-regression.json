@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1",
+  "task": "SDT-G30",
+  "incident": "G38-Phase-M-receiver-public-surface-regression",
+  "scope": "receiver public surface only; the G30 primary remained on A(off)",
+  "window": {
+    "openedAt": "2026-08-24T13:08:21.340233Z",
+    "closedWitnessedAt": "2026-08-24T13:16:11Z",
+    "semantics": "The read-only 404 witness bounds the recovery time; the actual configuration upload completed no later than that witness."
+  },
+  "openedBy": {
+    "workerName": "sekiban-dcb-meeting-room-doorbell",
+    "versionId": "ce4fe6ef-039e-4623-a321-06805c0ae1ca",
+    "sourceCommit": "30badcc375c61d37089e5ce95fc3c0b6bce68f1f",
+    "message": "SDT-G30 B0 A g32-9043d626fe1149cb 30badcc375c61d37089e5ce95fc3c0b6bce68f1f 958c8bd65eeaa517aa2ec44bc781c2ee3ae53886147923d29133e09e3a3dde97",
+    "cause": "The retained G30 receiver configuration omitted workers_dev and preview_urls, so Wrangler re-enabled both by default during the A deployment."
+  },
+  "detection": {
+    "method": "read-only HTTPS GET of the receiver workers.dev URL",
+    "observedStatus": 200
+  },
+  "mitigation": {
+    "method": "config-only receiver redeploy with --keep-vars and explicit workers_dev:false / preview_urls:false",
+    "versionId": "cd53e069-fd75-4387-97ad-f958aa34fc02",
+    "message": "SDT-G30 immediate G38 Phase M public-surface recovery",
+    "postRecoveryReadOnlyStatus": 404
+  },
+  "followUp": {
+    "candidateRequirement": "The successor final C includes the explicit receiver settings, the config gate, the isolated mutation, and the witness-local shell fix.",
+    "measurementDisposition": "The old-C A(off) measurement was not taken and no B/A-prime measurements were performed; the successor C restarts acquisition at A."
+  }
+}

@@ -115,7 +115,9 @@ deploy_phase() {
 # solely for B0; the version message binds phase, C and config digest outside
 # the public protocol.
 capture_primary_witness() {
-  local phase="$1" output="$2" versions="${output}.versions.json"
+  local phase="$1"
+  local output="$2"
+  local versions="${output}.versions.json"
   "${WRANGLER_BIN}" versions list --name "${PRIMARY_WORKER_NAME}" --json > "${versions}"
   node "${SCRIPT_DIR}/g30-deployment-witness.mjs" --phase "${phase}" --source-commit "${SOURCE_COMMIT}" \
     --config-digest "${CONFIG_DIGEST}" --service-id "g32-9043d626fe1149cb" --worker "${PRIMARY_WORKER_NAME}" \
