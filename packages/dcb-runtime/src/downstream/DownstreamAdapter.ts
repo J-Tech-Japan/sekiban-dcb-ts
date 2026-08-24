@@ -22,6 +22,8 @@ export interface DownstreamAdapterEnv {
   D1?: D1Database;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   BOOTSTRAP?: DurableObjectNamespace;
+  /** A receiver service-binding entrypoint must never silently skip admission. */
+  G38_DOORBELL_DELIVERY_ROLE?: string;
   SDT_SERVICE_ID?: string;
 }
 
@@ -35,7 +37,14 @@ function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): Pipeli
 }
 
 async function admitBootstrapRoute(env: DownstreamAdapterEnv, serviceId: string, route: string): Promise<void> {
-  if (env.BOOTSTRAP === undefined) return;
+  if (env.BOOTSTRAP === undefined) {
+    if (env.G38_DOORBELL_DELIVERY_ROLE === "receiver") {
+      const error = new Error(`bootstrap_route_binding_missing:${route}`);
+      error.name = "BootstrapRouteBindingMissingError";
+      throw error;
+    }
+    return;
+  }
   const url = new URL("https://downstream.internal/route/check");
   url.searchParams.set("__serviceId", serviceId);
   const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, {
