@@ -41,8 +41,14 @@ const MUTATIONS = Object.freeze([
   {
     id: "witness-capture-local-scope",
     file: "scripts/deploy/g30-b0-deploy.sh",
-    from: '  local phase="$1"\n  local output="$2"\n  local versions="${output}.versions.json"',
-    to: '  local phase="$1" output="$2" versions="${output}.versions.json"',
+    from: '  local phase="$1"\n  local output="$2"\n  local prior="${output}.prior.versions.json"\n  local versions="${output}.versions.json"',
+    to: '  local phase="$1" output="$2" prior="${output}.prior.versions.json" versions="${output}.versions.json"',
+  },
+  {
+    id: "witness-replay-snapshot",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: '    --versions "${versions}" --prior-versions "${prior}" --output "${output}"',
+    to: '    --versions "${versions}" --output "${output}"',
   },
   {
     id: "diagnostic-route-in-worker",

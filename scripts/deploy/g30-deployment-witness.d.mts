@@ -19,7 +19,7 @@ export interface G30DeploymentWitness {
 }
 
 export function deploymentMessage(phase: "A" | "B" | "A-prime", commit: string, digest: string, serviceId: string): string;
-export function selectDeployedVersion(versions: unknown, expectedMessage: string): G30DeployedVersion;
+export function selectDeployedVersion(versions: unknown, expectedMessage: string, priorVersions: unknown): G30DeployedVersion;
 export function buildDeploymentWitness(input: {
   phase: "A" | "B" | "A-prime";
   sourceCommit: string;
@@ -27,5 +27,6 @@ export function buildDeploymentWitness(input: {
   serviceId: string;
   worker: string;
   versions: unknown;
+  priorVersions: unknown;
 }): G30DeploymentWitness;
 export function selfTest(): Readonly<Record<string, unknown>>;

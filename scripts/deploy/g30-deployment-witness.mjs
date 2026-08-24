@@ -45,11 +45,30 @@ function versionsArray(value) {
   return value;
 }
 
-/** Fail closed if a run cannot point at one exact immutable Worker version. */
-export function selectDeployedVersion(versions, expectedMessage) {
-  const matches = versionsArray(versions).filter((version) => version?.annotations?.["workers/message"] === expectedMessage);
+function versionIds(versions, label) {
+  const ids = versionsArray(versions).map((version, index) => {
+    if (typeof version?.id !== "string" || version.id.length === 0) {
+      throw new Error(`G30 ${label} Worker version at index ${index} lacks id`);
+    }
+    return version.id;
+  });
+  if (new Set(ids).size !== ids.length) throw new Error(`G30 ${label} Worker versions contain duplicate ids`);
+  return new Set(ids);
+}
+
+/**
+ * Fail closed unless the post-deploy list has exactly one new immutable
+ * version for this phase. Repeating an interrupted B0 at the same C/config
+ * intentionally creates another identical message, so message equality alone
+ * is not enough to identify the deployment made by the current invocation.
+ */
+export function selectDeployedVersion(versions, expectedMessage, priorVersions) {
+  const priorIds = versionIds(priorVersions, "pre-deploy");
+  const matches = versionsArray(versions).filter((version) =>
+    version?.annotations?.["workers/message"] === expectedMessage && !priorIds.has(version?.id),
+  );
   if (matches.length !== 1) {
-    throw new Error(`G30 expected exactly one deployed Worker version with message ${expectedMessage}; found ${matches.length}`);
+    throw new Error(`G30 expected exactly one newly deployed Worker version with message ${expectedMessage}; found ${matches.length}`);
   }
   const version = matches[0];
   if (typeof version?.id !== "string" || version.id.length === 0) throw new Error("G30 deployed Worker version lacks id");
@@ -65,7 +84,7 @@ export function selectDeployedVersion(versions, expectedMessage) {
   });
 }
 
-export function buildDeploymentWitness({ phase, sourceCommit: commit, configDigest: digest, serviceId, worker, versions }) {
+export function buildDeploymentWitness({ phase, sourceCommit: commit, configDigest: digest, serviceId, worker, versions, priorVersions }) {
   const normalizedServiceId = nonEmpty("service id", serviceId);
   const message = deploymentMessage(phase, commit, digest, normalizedServiceId);
   return Object.freeze({
@@ -76,7 +95,7 @@ export function buildDeploymentWitness({ phase, sourceCommit: commit, configDige
     placement: "off",
     serviceId: normalizedServiceId,
     worker: nonEmpty("worker name", worker),
-    deployedVersion: selectDeployedVersion(versions, message),
+    deployedVersion: selectDeployedVersion(versions, message, priorVersions),
     source: "wrangler-versions-list-json",
   });
 }
@@ -85,20 +104,29 @@ export function selfTest() {
   const commit = "a".repeat(40);
   const digest = "b".repeat(64);
   const message = deploymentMessage("B", commit, digest, "g32-fixture");
-  const versions = [{
+  const priorVersions = [{
     id: "00000000-0000-4000-8000-000000000001",
     number: 7,
     metadata: { created_on: "2026-08-23T00:00:00.000Z", source: "wrangler" },
     annotations: { "workers/message": message },
   }];
-  const witness = buildDeploymentWitness({ phase: "B", sourceCommit: commit, configDigest: digest, serviceId: "g32-fixture", worker: "fixture-worker", versions });
+  const versions = [...priorVersions, {
+    id: "00000000-0000-4000-8000-000000000002",
+    number: 8,
+    metadata: { created_on: "2026-08-24T00:00:00.000Z", source: "wrangler" },
+    annotations: { "workers/message": message },
+  }];
+  const witness = buildDeploymentWitness({ phase: "B", sourceCommit: commit, configDigest: digest, serviceId: "g32-fixture", worker: "fixture-worker", versions, priorVersions });
   let duplicateRed = false;
-  try { selectDeployedVersion([...versions, structuredClone(versions[0])], message); } catch (error) { duplicateRed = String(error).includes("exactly one"); }
-  if (!duplicateRed) throw new Error("G30 deployment witness duplicate-version mutation unexpectedly passed");
+  try { selectDeployedVersion(versions, message, []); } catch (error) { duplicateRed = String(error).includes("newly deployed"); }
+  if (!duplicateRed) throw new Error("G30 deployment witness pre-deploy snapshot mutation unexpectedly passed");
+  let snapshotRed = false;
+  try { selectDeployedVersion(versions, message, versions); } catch (error) { snapshotRed = String(error).includes("newly deployed"); }
+  if (!snapshotRed) throw new Error("G30 deployment witness current-version snapshot mutation unexpectedly passed");
   let messageRed = false;
-  try { selectDeployedVersion(versions, `${message}-wrong`); } catch (error) { messageRed = String(error).includes("exactly one"); }
+  try { selectDeployedVersion(versions, `${message}-wrong`, priorVersions); } catch (error) { messageRed = String(error).includes("newly deployed"); }
   if (!messageRed) throw new Error("G30 deployment witness message mutation unexpectedly passed");
-  return { phase: witness.phase, candidateIndependent: true, duplicateRed, messageRed };
+  return { phase: witness.phase, candidateIndependent: true, duplicateRed, snapshotRed, messageRed };
 }
 
 function main() {
@@ -113,6 +141,7 @@ function main() {
     serviceId: argument("--service-id", process.env.G30_SERVICE_ID),
     worker: argument("--worker", process.env.G30_WORKER_NAME),
     versions: JSON.parse(readFileSync(nonEmpty("versions", argument("--versions")), "utf8")),
+    priorVersions: JSON.parse(readFileSync(nonEmpty("prior versions", argument("--prior-versions")), "utf8")),
   });
   const output = nonEmpty("output", argument("--output"));
   writeFileSync(output, `${JSON.stringify(witness, null, 2)}\n`, "utf8");

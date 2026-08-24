@@ -117,20 +117,36 @@ deploy_phase() {
 capture_primary_witness() {
   local phase="$1"
   local output="$2"
+  local prior="${output}.prior.versions.json"
   local versions="${output}.versions.json"
+  if [[ ! -s "${prior}" ]]; then
+    printf 'G30 primary version snapshot is required before %s deploy\n' "${phase}" >&2
+    return 1
+  fi
   "${WRANGLER_BIN}" versions list --name "${PRIMARY_WORKER_NAME}" --json > "${versions}"
   node "${SCRIPT_DIR}/g30-deployment-witness.mjs" --phase "${phase}" --source-commit "${SOURCE_COMMIT}" \
     --config-digest "${CONFIG_DIGEST}" --service-id "g32-9043d626fe1149cb" --worker "${PRIMARY_WORKER_NAME}" \
-    --versions "${versions}" --output "${output}"
+    --versions "${versions}" --prior-versions "${prior}" --output "${output}"
+}
+
+# The phase message deliberately stays stable for reruns at the same C. Keep
+# a pre-deploy version snapshot so the witness can identify this invocation's
+# new immutable version rather than an interrupted prior run with that message.
+capture_primary_predeploy_versions() {
+  local output="$1"
+  local prior="${output}.prior.versions.json"
+  "${WRANGLER_BIN}" versions list --name "${PRIMARY_WORKER_NAME}" --json > "${prior}"
 }
 
 # Deploy receiver once with tracing sampled off, then retain its exact code and
 # bindings while only the primary's trace sampling toggles A -> B -> A-prime.
 deploy_phase A "${RECEIVER_CONFIG}"
+capture_primary_predeploy_versions "${A_WITNESS_FILE}"
 deploy_phase A "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A "${A_WITNESS_FILE}"
 node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${A_WITNESS_FILE}" --output "${A_FILE}"
 
+capture_primary_predeploy_versions "${B_WITNESS_FILE}"
 deploy_phase B "${PRIMARY_ON_CONFIG}"
 capture_primary_witness B "${B_WITNESS_FILE}"
 node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase B --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${B_WITNESS_FILE}" --output "${B_FILE}"
@@ -141,6 +157,7 @@ node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "$
 node "${SCRIPT_DIR}/g30-observability-query.mjs" --ledger "${B_FILE}" --output "${TRACE_QUERY_FILE}"
 node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${ACCOUNT_ID}" --api-token-file "${TRACE_TOKEN_FILE}" --query "${TRACE_QUERY_FILE}" --output "${TRACES_FILE}"
 
+capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"
 deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A-prime "${APRIME_WITNESS_FILE}"
 node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A-prime --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${APRIME_WITNESS_FILE}" --output "${APRIME_FILE}"

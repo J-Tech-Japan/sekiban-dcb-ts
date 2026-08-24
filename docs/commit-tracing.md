@@ -70,10 +70,12 @@ does not assert a performance pass/fail.
    deployed Worker variables. The only phase configuration difference is the
    selected `observability.traces.head_sampling_rate` (0, 1, 0) and the
    resulting deployment identity. `wrangler versions list --json` is captured
-   after each primary deployment and `g30-deployment-witness.mjs` requires one
-   exact immutable Worker Version message containing the source candidate and
-   configuration digest, while the witness records the service and placement
-   observation. No G30 route,
+   immediately before and after each primary deployment;
+   `g30-deployment-witness.mjs` requires exactly one matching immutable Worker
+   Version absent from the pre-deploy snapshot. This makes a same-C rerun bind
+   its newly deployed version rather than a stale identical message, while the
+   witness records the source candidate, configuration digest, service, and
+   placement observation. No G30 route,
    header, body field, or runtime variable is added for this purpose.
 6. The exporter materializes a bounded raw-events query from B's client
    ledger, paginates it, and joins complete traces plus `sdt.observe/v1` logs

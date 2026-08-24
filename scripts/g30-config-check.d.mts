@@ -9,4 +9,5 @@ export function assertPhaseRuntimeIsolation(
   runbookSource: unknown,
 ): Readonly<{ phaseAuthority: "external-evidence-ledger"; runtimePhaseConfig: false }>;
 export function assertWitnessCaptureShellSafety(runbookSource: unknown): Readonly<{ witnessCaptureLocals: "ordered" }>;
+export function assertWitnessReplaySnapshotSafety(runbookSource: unknown): Readonly<{ witnessReplaySnapshot: "pre-deploy" }>;
 export function selfTest(): Readonly<Record<string, unknown>>;

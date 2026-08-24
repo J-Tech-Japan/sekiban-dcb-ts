@@ -116,13 +116,35 @@ export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
 export function assertWitnessCaptureShellSafety(runbookSource) {
   if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for witness-capture verification");
   const functionBody = /capture_primary_witness\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
-  if (!/^\s*local phase="\$1"\n\s*local output="\$2"\n\s*local versions="\$\{output\}\.versions\.json"/m.test(functionBody)) {
-    throw new Error("G30 witness capture must declare phase, output, and derived versions in separate ordered locals");
+  if (!/^\s*local phase="\$1"\n\s*local output="\$2"\n\s*local prior="\$\{output\}\.prior\.versions\.json"\n\s*local versions="\$\{output\}\.versions\.json"/m.test(functionBody)) {
+    throw new Error("G30 witness capture must declare phase, output, and derived prior/current versions in separate ordered locals");
   }
   if (/local phase="\$1"\s+output="\$2"\s+versions=/m.test(functionBody)) {
     throw new Error("G30 witness capture must not derive versions from an unbound same-declaration local");
   }
   return { witnessCaptureLocals: "ordered" };
+}
+
+/** A rerun must bind its witness to the one version created after its snapshot. */
+export function assertWitnessReplaySnapshotSafety(runbookSource) {
+  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for replay-safe witness verification");
+  const capture = /capture_primary_witness\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
+  const snapshot = /capture_primary_predeploy_versions\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
+  if (!/^\s*local output="\$1"\n\s*local prior="\$\{output\}\.prior\.versions\.json"/m.test(snapshot) || !snapshot.includes('versions list --name "${PRIMARY_WORKER_NAME}" --json > "${prior}"')) {
+    throw new Error("G30 witness replay must capture a pre-deploy primary version snapshot");
+  }
+  if (!capture.includes('--prior-versions "${prior}"')) {
+    throw new Error("G30 witness replay must pass its pre-deploy snapshot to the version selector");
+  }
+  for (const [phase, config, output] of [
+    ["A", "${PRIMARY_OFF_CONFIG}", "${A_WITNESS_FILE}"],
+    ["B", "${PRIMARY_ON_CONFIG}", "${B_WITNESS_FILE}"],
+    ["A-prime", "${PRIMARY_OFF_CONFIG}", "${APRIME_WITNESS_FILE}"],
+  ]) {
+    const required = `capture_primary_predeploy_versions "${output}"\ndeploy_phase ${phase} "${config}"\ncapture_primary_witness ${phase} "${output}"`;
+    if (!runbookSource.includes(required)) throw new Error(`G30 witness replay must snapshot immediately before ${phase} primary deployment`);
+  }
+  return { witnessReplaySnapshot: "pre-deploy" };
 }
 
 export function selfTest() {
@@ -132,6 +154,7 @@ export function selfTest() {
   const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
   const migration = assertRemoteMigrationPreflight(off, runbook);
   const witnessCapture = assertWitnessCaptureShellSafety(runbook);
+  const witnessReplay = assertWitnessReplaySnapshotSafety(runbook);
   let samplingRed = false;
   try { const altered = structuredClone(on); altered.observability.traces.head_sampling_rate = 0; assertG30Config(off, altered, receiver); } catch (error) { samplingRed = String(error).includes("sampling 1"); }
   if (!samplingRed) throw new Error("G30 sampling mutation unexpectedly passed");
@@ -159,12 +182,15 @@ export function selfTest() {
   let witnessCaptureRed = false;
   try {
     assertWitnessCaptureShellSafety(runbook.replace(
-      '  local phase="$1"\n  local output="$2"\n  local versions="${output}.versions.json"',
-      '  local phase="$1" output="$2" versions="${output}.versions.json"',
+      '  local phase="$1"\n  local output="$2"\n  local prior="${output}.prior.versions.json"\n  local versions="${output}.versions.json"',
+      '  local phase="$1" output="$2" prior="${output}.prior.versions.json" versions="${output}.versions.json"',
     ));
   } catch (error) { witnessCaptureRed = String(error).includes("separate ordered locals"); }
   if (!witnessCaptureRed) throw new Error("G30 witness-capture local-scope mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, ...witnessCapture, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "receiver-public-surface", "witness-capture-local-scope"] };
+  let witnessReplayRed = false;
+  try { assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', '--without-prior-versions "${prior}"')); } catch (error) { witnessReplayRed = String(error).includes("pre-deploy snapshot"); }
+  if (!witnessReplayRed) throw new Error("G30 witness-replay snapshot mutation unexpectedly passed");
+  return { ...result, ...isolation, ...migration, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -174,5 +200,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
   const migration = assertRemoteMigrationPreflight(readConfig(PRIMARY_OFF), runbook);
   const witnessCapture = assertWitnessCaptureShellSafety(runbook);
-  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration, ...witnessCapture }, null, 2));
+  const witnessReplay = assertWitnessReplaySnapshotSafety(runbook);
+  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration, ...witnessCapture, ...witnessReplay }, null, 2));
 }

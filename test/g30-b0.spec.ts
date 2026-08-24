@@ -7,7 +7,7 @@ import {
   assertTraceCohort,
   observationLedgerForPhase,
 } from "../scripts/g30-b0-contract.mjs";
-import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety } from "../scripts/g30-config-check.mjs";
+import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
 import { normalizeTelemetryBundle, normalizeTelemetryExport } from "../scripts/deploy/g30-trace-export.mjs";
 import { assertDeploymentWitness } from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
@@ -279,15 +279,44 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       "capture_primary_witness() {",
       '  local phase="$1"',
       '  local output="$2"',
+      '  local prior="${output}.prior.versions.json"',
       '  local versions="${output}.versions.json"',
       '  printf "%s" "${versions}"',
       "}",
     ].join("\n");
     expect(assertWitnessCaptureShellSafety(runbook)).toEqual({ witnessCaptureLocals: "ordered" });
     expect(() => assertWitnessCaptureShellSafety(runbook.replace(
-      '  local phase="$1"\n  local output="$2"\n  local versions="${output}.versions.json"',
-      '  local phase="$1" output="$2" versions="${output}.versions.json"',
+      '  local phase="$1"\n  local output="$2"\n  local prior="${output}.prior.versions.json"\n  local versions="${output}.versions.json"',
+      '  local phase="$1" output="$2" prior="${output}.prior.versions.json" versions="${output}.versions.json"',
     ))).toThrow(/separate ordered locals/);
+  });
+
+  it("snapshots primary versions so a repeated phase selects only its new deployment", () => {
+    const runbook = [
+      "capture_primary_witness() {",
+      '  local phase="$1"',
+      '  local output="$2"',
+      '  local prior="${output}.prior.versions.json"',
+      '  local versions="${output}.versions.json"',
+      '  node witness --versions "${versions}" --prior-versions "${prior}"',
+      "}",
+      "capture_primary_predeploy_versions() {",
+      '  local output="$1"',
+      '  local prior="${output}.prior.versions.json"',
+      '  versions list --name "${PRIMARY_WORKER_NAME}" --json > "${prior}"',
+      "}",
+      'capture_primary_predeploy_versions "${A_WITNESS_FILE}"',
+      'deploy_phase A "${PRIMARY_OFF_CONFIG}"',
+      'capture_primary_witness A "${A_WITNESS_FILE}"',
+      'capture_primary_predeploy_versions "${B_WITNESS_FILE}"',
+      'deploy_phase B "${PRIMARY_ON_CONFIG}"',
+      'capture_primary_witness B "${B_WITNESS_FILE}"',
+      'capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"',
+      'deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"',
+      'capture_primary_witness A-prime "${APRIME_WITNESS_FILE}"',
+    ].join("\n");
+    expect(assertWitnessReplaySnapshotSafety(runbook)).toEqual({ witnessReplaySnapshot: "pre-deploy" });
+    expect(() => assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', ""))).toThrow(/pre-deploy snapshot/);
   });
 
   it("keeps A/B/A-prime phase labels out of deployed runtime configuration", () => {
