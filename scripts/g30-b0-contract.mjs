@@ -21,7 +21,6 @@ const OUTLIER_HYPOTHESES = Object.freeze([
   "token-rotation",
   "queue-doorbell-backpressure",
 ]);
-const OUTLIER_HYPOTHESIS_SET = new Set(OUTLIER_HYPOTHESES);
 const REACTIVATION_CAUSES = new Set(["deployment-correlated", "platform-evidenced", "unknown"]);
 
 function canonical(value) {

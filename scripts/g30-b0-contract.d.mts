@@ -40,11 +40,11 @@ export interface G30Observation {
     cpuTimeMs: number;
     wallTimeMs: number;
   };
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface G30ObservationIndex {
-  ledgerByRequestId: Map<string, Record<string, any>>;
+  ledgerByRequestId: Map<string, Record<string, unknown>>;
   traceByRequestId: Map<string, G30Trace>;
   requestIdByTraceId: Map<string, string>;
   observationsByRequestId: Map<string, G30Observation[]>;
@@ -60,9 +60,9 @@ export function assertTraceCohort(
   traces: readonly G30Trace[],
   exportCompletedAtMs: number,
 ): Readonly<{ requestCount: number; exportDeadlineMs: number }>;
-export function observationLedgerForPhase(phaseB: unknown): readonly Record<string, any>[];
+export function observationLedgerForPhase(phaseB: unknown): readonly Record<string, unknown>[];
 export function assertObservationStream(
-  ledger: readonly Record<string, any>[],
+  ledger: readonly Record<string, unknown>[],
   traces: readonly G30Trace[],
   observations: readonly G30Observation[],
 ): G30ObservationIndex;

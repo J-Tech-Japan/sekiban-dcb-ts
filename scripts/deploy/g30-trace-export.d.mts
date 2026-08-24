@@ -33,7 +33,7 @@ export interface G30NormalizedObservation {
     cpuTimeMs: number;
     wallTimeMs: number;
   };
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export function verifyExportedSuccessTrace(trace: unknown): Readonly<{ rows: number; complete: true }>;
