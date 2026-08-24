@@ -289,7 +289,7 @@ function observationCorrelation(payload) {
     : undefined;
 }
 
-function normalizeObservation(payload, event, requestId, traceId, correlationId) {
+function normalizeObservation(payload, event, requestId, traceId, correlationId, workerPlatformRayId) {
   if (payload.schema !== "sdt.observe/v1") fail("observation-schema", "structured observation has an unsupported schema");
   if (![
     "worker.invocation",
@@ -304,7 +304,7 @@ function normalizeObservation(payload, event, requestId, traceId, correlationId)
   if (payload.storageWrites !== 0 || payload.usedForControl !== false || payload.exposedInPublicResponse !== false) {
     fail("observation-isolation", "structured observation is not observation-only");
   }
-  if (payload.event === "worker.invocation" && payload.requestId !== requestId) {
+  if (payload.event === "worker.invocation" && workerPlatformRayId !== undefined && payload.requestId !== workerPlatformRayId) {
     fail("observation-request-id", "structured observation conflicts with its platform request id");
   }
   if (observationCorrelation(payload) !== correlationId) {
@@ -330,7 +330,7 @@ function normalizeObservation(payload, event, requestId, traceId, correlationId)
  * observation -> S00 -> client CF-Ray by that correlation.  No time-nearest
  * fallback or manual trace-parent field is accepted.
  */
-export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now()) {
+export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientRequestIdsByRayId) {
   const groups = new Map();
   const rawObservations = [];
   for (const event of rawEvents(raw)) {
@@ -387,9 +387,18 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now()) {
     const { group } = rooted;
     const worker = joined.filter((entry) => entry.payload.event === "worker.invocation");
     if (worker.length !== 1) fail("observation-worker", `S00 trace ${group.traceId} requires exactly one worker observation`);
-    const requestId = worker[0].payload.requestId;
-    if (typeof requestId !== "string" || requestId.length === 0) {
+    const observedWorkerRequestId = worker[0].payload.requestId;
+    if (typeof observedWorkerRequestId !== "string" || observedWorkerRequestId.length === 0) {
       fail("observation-request-id", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);
+    }
+    const platformRayId = clientRequestIdsByRayId === undefined
+      ? undefined
+      : cloudflareRayId(observedWorkerRequestId, `S00 trace ${group.traceId} worker observation`);
+    const requestId = platformRayId === undefined
+      ? observedWorkerRequestId
+      : clientRequestIdsByRayId.get(platformRayId);
+    if (typeof requestId !== "string" || requestId.length === 0) {
+      fail("observation-ray-join", `S00 trace ${group.traceId} worker observation has no client CF-Ray ledger join`);
     }
     const spans = group.events.map((entry) => entry.span);
     const rowCounts = new Map(spans.map((span) => [span.rowId, 0]));
@@ -412,7 +421,7 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now()) {
       runtimeVerified: complete,
     });
     for (const observed of joined) {
-      observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId, correlationId));
+      observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId, correlationId, platformRayId));
     }
   }
   return Object.freeze({
@@ -451,7 +460,52 @@ export async function queryTelemetry({ accountId, token, payload }) {
   return raw;
 }
 
-const QUERY_VALUE_BATCH = 12;
+// Workers Observability rejects a request with more than sixteen filter
+// nodes. The broadest G30 cohort query contains the two-worker scope group,
+// two fixed observation filters, and an OR group of values: 6 + values.
+// Keep the normal batch at the exact ten-value boundary and enforce the
+// provider limit structurally before issuing any request.
+export const CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES = 16;
+export const TELEMETRY_QUERY_VALUE_BATCH = 10;
+
+/**
+ * The client records the literal cf-ray header (ray plus colo suffix), while
+ * Workers Logs indexes the same identity as the sixteen-hex-digit ray ID.
+ * Preserve the client header in evidence and use this only for the exact
+ * provider-side join; time proximity and a different provider request id are
+ * never substitutes.
+ */
+export function cloudflareRayId(value, label = "cf-ray") {
+  if (typeof value !== "string") fail("ray-id", `${label} must be a string`);
+  const match = /^([0-9a-f]{16})(?:-[a-z0-9]+)?$/i.exec(value);
+  if (match === null) fail("ray-id", `${label} is not a Cloudflare ray id`);
+  return match[1].toLowerCase();
+}
+
+export function clientRequestIdByPlatformRayId(ledger) {
+  if (!Array.isArray(ledger) || ledger.length === 0) fail("cohort-ray", "telemetry cohort needs one or more client ledger rows");
+  const result = new Map();
+  for (const [index, record] of ledger.entries()) {
+    const requestId = typeof record?.requestId === "string" ? record.requestId : undefined;
+    if (requestId === undefined || requestId.length === 0) fail("cohort-ray", `ledger[${index}] lacks a client cf-ray`);
+    const platformRayId = cloudflareRayId(requestId, `ledger[${index}].requestId`);
+    if (result.has(platformRayId)) fail("cohort-ray", `client ledger repeats platform ray ${platformRayId}`);
+    result.set(platformRayId, requestId);
+  }
+  return result;
+}
+
+function filterNodeCount(filters) {
+  if (!Array.isArray(filters)) return 0;
+  return filters.reduce((count, filter) => {
+    const nested = filter?.kind === "group" ? filterNodeCount(filter.filters) : 0;
+    return count + 1 + nested;
+  }, 0);
+}
+
+export function telemetryFilterNodeCount(filters) {
+  return filterNodeCount(filters);
+}
 
 function nonEmptyTelemetryStrings(values, label) {
   if (!Array.isArray(values) || values.length === 0) fail("query-values", `${label} must contain one or more values`);
@@ -462,7 +516,7 @@ function nonEmptyTelemetryStrings(values, label) {
   return result;
 }
 
-function chunks(values, size = QUERY_VALUE_BATCH) {
+function chunks(values, size = TELEMETRY_QUERY_VALUE_BATCH) {
   return Array.from({ length: Math.ceil(values.length / size) }, (_unused, index) => values.slice(index * size, (index + 1) * size));
 }
 
@@ -482,7 +536,7 @@ export function buildBoundedTelemetryQuery(template, filters) {
     fail("query-template", "telemetry template must retain the primary/receiver OR scope");
   }
   if (!Array.isArray(filters) || filters.length === 0) fail("query-template", "bounded telemetry query needs cohort filters");
-  return {
+  const payload = {
     ...source,
     parameters: {
       filterCombination: "and",
@@ -492,6 +546,11 @@ export function buildBoundedTelemetryQuery(template, filters) {
       ],
     },
   };
+  const nodeCount = telemetryFilterNodeCount(payload.parameters.filters);
+  if (nodeCount > CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES) {
+    fail("query-node-budget", `telemetry query has ${nodeCount} filter nodes; provider maximum is ${CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES}`);
+  }
+  return payload;
 }
 
 function valuesFilter(key, values) {
@@ -522,7 +581,7 @@ function payloadsFrom(raws, eventName) {
     .filter((entry) => entry.payload?.event === eventName));
 }
 
-async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = QUERY_VALUE_BATCH }) {
+async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = TELEMETRY_QUERY_VALUE_BATCH }) {
   const result = [];
   for (const batch of chunks(nonEmptyTelemetryStrings(values, key), batchSize)) {
     const payload = buildBoundedTelemetryQuery(template, [...fixedFilters, valuesFilter(key, batch)]);
@@ -538,20 +597,26 @@ async function queryByValues({ accountId, token, template, key, values, fixedFil
  * trace -> all provider spans and correlated observations.
  */
 export async function exportCohortTelemetry({ accountId, token, template, ledger }) {
-  const requestIds = nonEmptyTelemetryStrings(ledger.map((record) => record?.requestId), "ledger request ids");
+  const clientRequestIdsByRayId = clientRequestIdByPlatformRayId(ledger);
+  const requestIds = [...clientRequestIdsByRayId.values()];
+  const platformRayIds = [...clientRequestIdsByRayId.keys()];
   const workerRaws = await queryByValues({
     accountId,
     token,
     template,
-    key: "requestId",
-    values: requestIds,
-    fixedFilters: [queryFilter("schema", "sdt.observe/v1"), queryFilter("event", "worker.invocation")],
+    key: "$metadata.rayId",
+    values: platformRayIds,
   });
   const workerByRequestId = new Map();
-  for (const { payload } of payloadsFrom(workerRaws, "worker.invocation")) {
-    const requestId = payload?.requestId;
+  for (const { payload, event } of payloadsFrom(workerRaws, "worker.invocation")) {
+    const providerRayValue = metadataField(metadataFor(event), event, ["rayId", "ray_id"]);
+    const providerRayId = cloudflareRayId(providerRayValue, "worker observation provider ray");
+    const requestId = clientRequestIdsByRayId.get(providerRayId);
     const correlationId = observationCorrelation(payload);
-    if (typeof requestId !== "string" || !requestIds.includes(requestId) || correlationId === undefined) continue;
+    if (typeof requestId !== "string" || correlationId === undefined) continue;
+    if (cloudflareRayId(payload?.requestId, "worker observation payload ray") !== providerRayId) {
+      fail("cohort-worker", "worker observation payload ray conflicts with its provider ray");
+    }
     const existing = workerByRequestId.get(requestId) ?? new Set();
     existing.add(correlationId);
     workerByRequestId.set(requestId, existing);
@@ -653,7 +718,7 @@ async function main() {
   let proof;
   for (;;) {
     try {
-      bundle = normalizeTelemetryBundle(raw);
+      bundle = normalizeTelemetryBundle(raw, Date.now(), clientRequestIdByPlatformRayId(observationLedger));
       const retainedRequestIds = new Set(ledgerDocument.ledger?.map((record) => record?.requestId));
       traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
       proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());

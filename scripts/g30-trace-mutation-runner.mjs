@@ -279,7 +279,7 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
   {
     id: "observation-worker-request-id-gate",
     file: source.traceExport,
-    from: "    if (typeof requestId !== \"string\" || requestId.length === 0) {\n      fail(\"observation-request-id\", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);\n    }",
+    from: "    if (typeof observedWorkerRequestId !== \"string\" || observedWorkerRequestId.length === 0) {\n      fail(\"observation-request-id\", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);\n    }",
     to: "    if (false) {\n      fail(\"observation-request-id\", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);\n    }",
     target: "rejects a worker observation without the client CF-Ray used by the ledger",
     unrelated: "rejects a structured observation that lacks its existing trace correlation",
@@ -301,6 +301,24 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     to: "  if (false) {\n    fail(\"query-saturated\", \"telemetry query reached its bounded result limit\");\n  }",
     target: "rejects a saturated telemetry subquery instead of silently accepting a partial cohort",
     unrelated: "keeps cohort telemetry filters inside the primary/receiver worker scope",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "telemetry-query-node-budget-gate",
+    file: source.traceExport,
+    from: "  if (nodeCount > CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES) {\n    fail(\"query-node-budget\", `telemetry query has ${nodeCount} filter nodes; provider maximum is ${CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES}`);\n  }",
+    to: "  if (false) {\n    fail(\"query-node-budget\", `telemetry query has ${nodeCount} filter nodes; provider maximum is ${CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES}`);\n  }",
+    target: "rejects a telemetry query that exceeds Cloudflare's 16-node filter budget",
+    unrelated: "keeps cohort telemetry filters inside the primary/receiver worker scope",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "platform-ray-client-join-gate",
+    file: source.traceExport,
+    from: "      : clientRequestIdsByRayId.get(platformRayId);",
+    to: "      : platformRayId;",
+    target: "preserves the POP-suffixed client CF-Ray across the platform ray-id join",
+    unrelated: "normalizes a structured observation without a platform trace id",
     testFile: "test/g30-b0.spec.ts",
   },
   {

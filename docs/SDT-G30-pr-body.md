@@ -19,9 +19,12 @@ Closes #70
   the sealed commit-span schema (Worker isolate, DO handler/storage/subrequest
   measurements, and bounded doorbell test seams). Worker logs retain the
   provider CF-Ray and existing correlation; DO logs retain provider request
-  identity and existing attempt correlation. The exporter follows the exact
-  CF-Ray → observation → S00 correlation chain in bounded subqueries and
-  rejects a saturated page rather than accepting partial telemetry. The A/B/A′
+  identity and existing attempt correlation. The exporter joins the client's
+  POP-suffixed CF-Ray through Cloudflare's 16-hex provider Ray index and
+  restores the original client value in evidence; it uses bounded ten-value
+  subqueries that are structurally limited to the provider's 16 filter-node
+  maximum, and rejects a saturated page rather than accepting partial
+  telemetry. The A/B/A′
   runner, cohort contract, evidence recorder, and candidate retention gate join
   every retained observation to the B ledger and S00 root. Human
   activation/outlier records are rejected; refresh, idle, and queue/doorbell

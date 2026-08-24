@@ -10,9 +10,13 @@ import {
 import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
 import {
   buildBoundedTelemetryQuery,
+  clientRequestIdByPlatformRayId,
+  CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES,
   normalizeTelemetryBundle,
   normalizeTelemetryExport,
   queryTelemetry,
+  TELEMETRY_QUERY_VALUE_BATCH,
+  telemetryFilterNodeCount,
 } from "../scripts/deploy/g30-trace-export.mjs";
 import { assertDeploymentWitness } from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
@@ -171,7 +175,7 @@ function nestedSource(attributes: Record<string, string | number | boolean>): Re
   return root;
 }
 
-function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
+function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>, includeFault = true) {
   const events: RawEvent[] = [];
   for (const record of ledger) {
     const requestId = String(record.requestId);
@@ -232,23 +236,25 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
       });
     }
   }
-  const faultRequestId = "B-13";
-  for (const [offset, stage] of ["started", "ended", "drained"].entries()) {
-    events.push({
-      source: {
-        schema: "sdt.observe/v1",
-        event: "fault.barrier",
-        emittedAtMs: Number(ledger.find((record) => record.requestId === faultRequestId)?.completedAtMs) - 20 + offset * 5,
-        correlationId: `corr-${faultRequestId}`,
-        barrierId: "fixture-queue-doorbell",
-        stage,
-        boundedWindowMs: 20,
-        storageWrites: 0,
-        usedForControl: false,
-        exposedInPublicResponse: false,
-      },
-      $metadata: { traceId: `trace-${faultRequestId}`, requestId: `provider-${faultRequestId}`, rayId: faultRequestId, scriptVersion: { id: "g30-test-version" }, colo: "test-colo", cpuTimeMs: 1, wallTimeMs: 108 },
-    });
+  if (includeFault) {
+    const faultRequestId = "B-13";
+    for (const [offset, stage] of ["started", "ended", "drained"].entries()) {
+      events.push({
+        source: {
+          schema: "sdt.observe/v1",
+          event: "fault.barrier",
+          emittedAtMs: Number(ledger.find((record) => record.requestId === faultRequestId)?.completedAtMs) - 20 + offset * 5,
+          correlationId: `corr-${faultRequestId}`,
+          barrierId: "fixture-queue-doorbell",
+          stage,
+          boundedWindowMs: 20,
+          storageWrites: 0,
+          usedForControl: false,
+          exposedInPublicResponse: false,
+        },
+        $metadata: { traceId: `trace-${faultRequestId}`, requestId: `provider-${faultRequestId}`, rayId: faultRequestId, scriptVersion: { id: "g30-test-version" }, colo: "test-colo", cpuTimeMs: 1, wallTimeMs: 108 },
+      });
+    }
   }
   return { events };
 }
@@ -438,6 +444,36 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     });
   });
 
+  it("rejects a telemetry query that exceeds Cloudflare's 16-node filter budget", () => {
+    const template = {
+      view: "events",
+      limit: 2000,
+      dry: true,
+      parameters: {
+        filterCombination: "or",
+        filters: [
+          { key: "$workers.scriptName", operation: "eq", type: "string", value: "primary" },
+          { key: "$workers.scriptName", operation: "eq", type: "string", value: "receiver" },
+        ],
+      },
+    };
+    const workerFilters = [
+      { key: "schema", operation: "eq", type: "string", value: "sdt.observe/v1" },
+      { key: "event", operation: "eq", type: "string", value: "worker.invocation" },
+    ];
+    const values = (count: number) => ({
+      kind: "group",
+      filterCombination: "or",
+      filters: Array.from({ length: count }, (_, index) => ({
+        key: "requestId", operation: "eq", type: "string", value: `request-${index}`,
+      })),
+    });
+    const atBudget = buildBoundedTelemetryQuery(template, [...workerFilters, values(TELEMETRY_QUERY_VALUE_BATCH)]);
+    expect(TELEMETRY_QUERY_VALUE_BATCH).toBe(10);
+    expect(telemetryFilterNodeCount((atBudget.parameters as { filters: Record<string, unknown>[] }).filters)).toBe(CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES);
+    expect(() => buildBoundedTelemetryQuery(template, [...workerFilters, values(TELEMETRY_QUERY_VALUE_BATCH + 1)])).toThrow(/query-node-budget/);
+  });
+
   it("rejects a saturated telemetry subquery instead of silently accepting a partial cohort", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
       success: true,
@@ -611,6 +647,20 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       requestId: "B-0",
       correlationId: "corr-B-0",
     });
+  });
+
+  it("preserves the POP-suffixed client CF-Ray across the platform ray-id join", () => {
+    const clientRequestId = "a304f4ff2b982517-SJC";
+    const platformRayId = "a304f4ff2b982517";
+    const ledger = [{ requestId: clientRequestId, startedAtMs: 1_000, completedAtMs: 1_100 }];
+    const raw = rawTelemetry(ledger, false);
+    const worker = raw.events.find((entry) => entry.source?.event === "worker.invocation");
+    if (worker?.source === undefined || worker.$metadata === undefined) throw new Error("fixture lacks worker observation");
+    worker.source.requestId = platformRayId;
+    worker.$metadata.rayId = platformRayId;
+    const mapping = clientRequestIdByPlatformRayId(ledger);
+    expect(mapping.get(platformRayId)).toBe(clientRequestId);
+    expect(normalizeTelemetryBundle(raw, 1_101, mapping).traces).toMatchObject([{ requestId: clientRequestId }]);
   });
 
   it("rejects a structured observation that lacks its existing trace correlation", () => {
