@@ -106,6 +106,7 @@
   "test:g32:candidate": "node scripts/g32-candidate-check.mjs --self-test && node scripts/g32-candidate-check.mjs",
   "test:g32:candidate:forced-red": "npm run test:g32:candidate",
   "deploy:g32:forward": "bash scripts/deploy/g32-forward-redeploy.sh",
+  "g38:m:witness": "node scripts/deploy/g38-m-witness.mjs",
     "test:g26:topology": "vitest run --config vitest.g24-deploy.config.ts test/g26-topology.spec.mjs",
     "test:g26:forced-red": "npm run test:g26 && node -e \"if (process.env.SDT_G26_FORCE_FAILURE === '1') throw new Error('SDT-G26 forced-red CI wiring proof')\"",
     "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",

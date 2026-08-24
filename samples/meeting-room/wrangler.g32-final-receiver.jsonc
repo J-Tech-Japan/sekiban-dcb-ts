@@ -44,5 +44,7 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
     { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }
-  ]
+  ],
+  "workers_dev": false,
+  "preview_urls": false
 }
