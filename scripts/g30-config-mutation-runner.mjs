@@ -27,6 +27,12 @@ const MUTATIONS = Object.freeze([
     to: 'common_vars=(--var "G30_TRACE_SAMPLE_RATE:1" --var "SDT_SERVICE_ID:g32-9043d626fe1149cb")',
   },
   {
+    id: "remote-migration-binding",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: 'd1 migrations list "${database}"',
+    to: 'd1 migrations list "${binding}"',
+  },
+  {
     id: "diagnostic-route-in-worker",
     file: "samples/meeting-room/src/worker.cloudflare-only.ts",
     from: '  if (url.pathname === "/conformance/v1/g32-store-state") {',

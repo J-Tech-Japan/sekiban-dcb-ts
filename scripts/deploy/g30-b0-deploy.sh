@@ -13,6 +13,10 @@ readonly PRIMARY_ON_CONFIG="samples/meeting-room/wrangler.g30-primary-on.jsonc"
 readonly RECEIVER_CONFIG="samples/meeting-room/wrangler.g30-receiver-off.jsonc"
 readonly PRIMARY_CONFIG_NAME="wrangler.g30-primary-off.jsonc"
 readonly PRIMARY_WORKER_NAME="sekiban-dcb-meeting-room-cloudflare-only"
+readonly PRIMARY_D1_DATABASES=(
+  "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline"
+  "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv"
+)
 readonly BASE_URL="${G30_PRIMARY_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
 readonly SOURCE_COMMIT="${G30_SOURCE_COMMIT:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
 readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
@@ -31,6 +35,19 @@ readonly TRACE_QUERY_FILE="${ARTIFACTS_DIR}/g30-observability-query.json"
 readonly A_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-deployment.json"
 readonly B_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-B-deployment.json"
 readonly APRIME_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-prime-deployment.json"
+
+# `wrangler d1 migrations list` accepts the durable database name, not the
+# Worker binding label. Keep this check remote and read-only so the normal
+# deployment preflight proves both G32 D1 databases have no pending schema
+# work before the A/B/A-prime run changes any Worker version.
+assert_no_remote_migrations() {
+  local database output
+  for database in "${PRIMARY_D1_DATABASES[@]}"; do
+    output="$("${WRANGLER_BIN}" d1 migrations list "${database}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
+    printf '%s\n' "${output}"
+    [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${database}" >&2; exit 1; }
+  done
+}
 
 test -x "${WRANGLER_BIN}"
 if [[ ! "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
@@ -57,11 +74,7 @@ if [[ "${G30_B0_LIVE:-0}" != "1" ]]; then
     --var "SDT_SERVICE_ID:g32-9043d626fe1149cb"
   "${WRANGLER_BIN}" deploy --config "${PRIMARY_OFF_CONFIG}" --dry-run --strict \
     --var "SDT_SERVICE_ID:g32-9043d626fe1149cb"
-  for binding in D1 D1_MV; do
-    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
-    printf '%s\n' "${output}"
-    [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${binding}" >&2; exit 1; }
-  done
+  assert_no_remote_migrations
   printf 'G30 B0 preflight PASS; set G30_B0_LIVE=1 with a telemetry query and file-fed observability token to acquire B0\n'
   exit 0
 fi
@@ -75,10 +88,7 @@ fi
   --var "SDT_SERVICE_ID:g32-9043d626fe1149cb"
 "${WRANGLER_BIN}" deploy --config "${PRIMARY_OFF_CONFIG}" --dry-run --strict \
   --var "SDT_SERVICE_ID:g32-9043d626fe1149cb"
-for binding in D1 D1_MV; do
-  output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
-  [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${binding}" >&2; exit 1; }
-done
+assert_no_remote_migrations
 
 mkdir -p "${ARTIFACTS_DIR}"
 node -e 'const fs=require("fs");const out=process.argv[1];fs.writeFileSync(out,JSON.stringify({task:"SDT-G30",sourceCommit:process.argv[2],configDigest:process.argv[3],placement:"off",preflight:"both-worker-dry-runs and remote D1 migration checks passed before live deployment",capturedAt:new Date().toISOString()},null,2)+"\n");' "${PRELIGHT_FILE}" "${SOURCE_COMMIT}" "${CONFIG_DIGEST}"

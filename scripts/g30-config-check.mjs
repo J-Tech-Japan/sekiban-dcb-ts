@@ -69,10 +69,37 @@ export function assertPhaseRuntimeIsolation(workerSource, runbookSource) {
   return { phaseAuthority: "external-evidence-ledger", runtimePhaseConfig: false };
 }
 
+/**
+ * The remote migration preflight must address D1 by durable database name.
+ * Passing a Worker binding label happens to reach a different Wrangler API
+ * path and cannot prove the production databases have no pending migration.
+ */
+export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
+  if (!Array.isArray(primaryOff?.d1_databases)) throw new Error("G30 primary config must declare D1 databases");
+  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for migration-preflight verification");
+  const databases = ["D1", "D1_MV"].map((binding) => {
+    const entry = primaryOff.d1_databases.find((candidate) => candidate?.binding === binding);
+    if (typeof entry?.database_name !== "string" || entry.database_name.length === 0) throw new Error(`G30 primary config lacks durable database name for ${binding}`);
+    return entry.database_name;
+  });
+  if (!/d1 migrations list "\$\{database\}"/.test(runbookSource)) {
+    throw new Error("G30 remote migration preflight must pass the durable database name to Wrangler");
+  }
+  if (/d1 migrations list "\$\{binding\}"/.test(runbookSource)) {
+    throw new Error("G30 remote migration preflight must not pass a Worker binding label to Wrangler");
+  }
+  for (const database of databases) {
+    if (!runbookSource.includes(`"${database}"`)) throw new Error(`G30 remote migration preflight omits configured database ${database}`);
+  }
+  return { migrationDatabases: databases };
+}
+
 export function selfTest() {
   const off = readConfig(PRIMARY_OFF); const on = readConfig(PRIMARY_ON); const receiver = readConfig(RECEIVER_OFF);
   const result = assertG30Config(off, on, receiver);
-  const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), readFileSync(RUNBOOK, "utf8"));
+  const runbook = readFileSync(RUNBOOK, "utf8");
+  const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
+  const migration = assertRemoteMigrationPreflight(off, runbook);
   let samplingRed = false;
   try { const altered = structuredClone(on); altered.observability.traces.head_sampling_rate = 0; assertG30Config(off, altered, receiver); } catch (error) { samplingRed = String(error).includes("sampling 1"); }
   if (!samplingRed) throw new Error("G30 sampling mutation unexpectedly passed");
@@ -91,12 +118,17 @@ export function selfTest() {
   let phaseRuntimeRed = false;
   try { assertPhaseRuntimeIsolation("const phase = G30_TRACE_PHASE;", "clean runbook"); } catch (error) { phaseRuntimeRed = String(error).includes("runtime diagnostic protocol surface"); }
   if (!phaseRuntimeRed) throw new Error("G30 phase runtime mutation unexpectedly passed");
-  return { ...result, ...isolation, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config"] };
+  let bindingRed = false;
+  try { assertRemoteMigrationPreflight(off, runbook.replace('migrations list "${database}"', 'migrations list "${binding}"')); } catch { bindingRed = true; }
+  if (!bindingRed) throw new Error("G30 migration binding mutation unexpectedly passed");
+  return { ...result, ...isolation, ...migration, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (process.env.SDT_G30_CONFIG_FORCE_FAILURE === "1") throw new Error("SDT-G30 config forced failure");
   const config = assertG30Config(readConfig(PRIMARY_OFF), readConfig(PRIMARY_ON), readConfig(RECEIVER_OFF));
-  const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), readFileSync(RUNBOOK, "utf8"));
-  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation }, null, 2));
+  const runbook = readFileSync(RUNBOOK, "utf8");
+  const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
+  const migration = assertRemoteMigrationPreflight(readConfig(PRIMARY_OFF), runbook);
+  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration }, null, 2));
 }
