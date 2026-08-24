@@ -30,6 +30,8 @@ export interface G30Observation {
   event: "worker.invocation" | "do.handler" | "fault.barrier";
   requestId: string;
   traceId: string;
+  /** Provider-owned request id retained from the raw structured log event. */
+  platformRequestId: string;
   emittedAtMs: number;
   /** Values emitted by the structured observation and cross-checked to S00. */
   scriptVersion?: string;

@@ -24,6 +24,8 @@ export interface G30NormalizedObservation {
   event: "worker.invocation" | "do.handler" | "fault.barrier";
   requestId: string;
   traceId: string;
+  /** Provider-owned request id retained from the raw structured log event. */
+  platformRequestId: string;
   emittedAtMs: number;
   scriptVersion?: string;
   colo?: string;
@@ -42,3 +44,15 @@ export function normalizeTelemetryBundle(raw: unknown, exportedAtMs?: number): R
   traces: readonly G30NormalizedTrace[];
   observations: readonly G30NormalizedObservation[];
 }>;
+export function buildBoundedTelemetryQuery(template: Record<string, unknown>, filters: readonly Record<string, unknown>[]): Record<string, unknown>;
+export function queryTelemetry(input: Readonly<{
+  accountId: string;
+  token: string;
+  payload: Record<string, unknown>;
+}>): Promise<unknown>;
+export function exportCohortTelemetry(input: Readonly<{
+  accountId: string;
+  token: string;
+  template: Record<string, unknown>;
+  ledger: readonly Record<string, unknown>[];
+}>): Promise<{ events: unknown[] }>;

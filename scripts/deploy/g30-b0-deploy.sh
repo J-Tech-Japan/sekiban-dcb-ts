@@ -31,6 +31,7 @@ readonly A_FILE="${ARTIFACTS_DIR}/g30-b0-A.json"
 readonly B_FILE="${ARTIFACTS_DIR}/g30-b0-B.json"
 readonly APRIME_FILE="${ARTIFACTS_DIR}/g30-b0-A-prime.json"
 readonly TRACES_FILE="${ARTIFACTS_DIR}/g30-b0-traces.json"
+readonly TRACE_RAW_FILE="${ARTIFACTS_DIR}/g30-b0-telemetry-raw.json"
 readonly TRACE_QUERY_FILE="${ARTIFACTS_DIR}/g30-observability-query.json"
 readonly A_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-deployment.json"
 readonly B_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-B-deployment.json"
@@ -155,7 +156,7 @@ node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "$
 # ledger; it has no human-supplied request IDs or observation declarations.
 # The token is file-fed and this export may not replace a missing/slow trace.
 node "${SCRIPT_DIR}/g30-observability-query.mjs" --ledger "${B_FILE}" --output "${TRACE_QUERY_FILE}"
-node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${ACCOUNT_ID}" --api-token-file "${TRACE_TOKEN_FILE}" --query "${TRACE_QUERY_FILE}" --output "${TRACES_FILE}"
+node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${ACCOUNT_ID}" --api-token-file "${TRACE_TOKEN_FILE}" --query "${TRACE_QUERY_FILE}" --output "${TRACES_FILE}" --raw-output "${TRACE_RAW_FILE}"
 
 capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"
 deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"

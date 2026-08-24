@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   assertB0Evidence,
@@ -8,7 +8,12 @@ import {
   observationLedgerForPhase,
 } from "../scripts/g30-b0-contract.mjs";
 import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
-import { normalizeTelemetryBundle, normalizeTelemetryExport } from "../scripts/deploy/g30-trace-export.mjs";
+import {
+  buildBoundedTelemetryQuery,
+  normalizeTelemetryBundle,
+  normalizeTelemetryExport,
+  queryTelemetry,
+} from "../scripts/deploy/g30-trace-export.mjs";
 import { assertDeploymentWitness } from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
 import manifest from "../contracts/commit-trace-manifest.json";
@@ -148,14 +153,34 @@ type RawEvent = {
   $metadata?: Record<string, unknown>;
 };
 
+function nestedSource(attributes: Record<string, string | number | boolean>): Record<string, unknown> {
+  const root: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(attributes)) {
+    const parts = key.split(".");
+    let current = root;
+    for (const part of parts.slice(0, -1)) {
+      const existing = current[part];
+      if (existing === undefined) current[part] = {};
+      if (current[part] === null || typeof current[part] !== "object" || Array.isArray(current[part])) {
+        throw new Error(`fixture cannot nest ${key}`);
+      }
+      current = current[part] as Record<string, unknown>;
+    }
+    current[parts.at(-1)!] = value;
+  }
+  return root;
+}
+
 function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
   const events: RawEvent[] = [];
   for (const record of ledger) {
     const requestId = String(record.requestId);
+    const correlationId = `corr-${requestId}`;
     const startedAtMs = Number(record.startedAtMs);
     const completedAtMs = Number(record.completedAtMs);
     const metadata = {
       traceId: `trace-${requestId}`,
+      requestId: `provider-${requestId}`,
       rayId: requestId,
       scriptVersion: { id: "g30-test-version" },
       colo: "test-colo",
@@ -173,6 +198,8 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
         schema: "sdt.observe/v1",
         event: "worker.invocation",
         emittedAtMs: completedAtMs - 3,
+        requestId,
+        correlationId,
         actorClass: "WORKER",
         isolateInstanceId: "fixture-isolate",
         activationFirst: activationFirst(requestId),
@@ -190,6 +217,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
           schema: "sdt.observe/v1",
           event: "do.handler",
           emittedAtMs: completedAtMs - 2,
+          correlationId,
           actorClass: actorClassValue,
           activationId: `${actorClassValue.toLowerCase()}-${requestId}`,
           activationFirst: false,
@@ -211,6 +239,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
         schema: "sdt.observe/v1",
         event: "fault.barrier",
         emittedAtMs: Number(ledger.find((record) => record.requestId === faultRequestId)?.completedAtMs) - 20 + offset * 5,
+        correlationId: `corr-${faultRequestId}`,
         barrierId: "fixture-queue-doorbell",
         stage,
         boundedWindowMs: 20,
@@ -218,7 +247,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>) {
         usedForControl: false,
         exposedInPublicResponse: false,
       },
-      $metadata: { traceId: `trace-${faultRequestId}`, rayId: faultRequestId, scriptVersion: { id: "g30-test-version" }, colo: "test-colo", cpuTimeMs: 1, wallTimeMs: 108 },
+      $metadata: { traceId: `trace-${faultRequestId}`, requestId: `provider-${faultRequestId}`, rayId: faultRequestId, scriptVersion: { id: "g30-test-version" }, colo: "test-colo", cpuTimeMs: 1, wallTimeMs: 108 },
     });
   }
   return { events };
@@ -377,7 +406,51 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => normalizeTelemetryExport(raw)).toThrow(/span-kind/);
   });
 
-  it("rejects a telemetry group without an S00 ray/request anchor instead of matching by time", () => {
+  it("normalizes nested Cloudflare custom-span attributes from source", () => {
+    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    for (const event of raw.events) {
+      if (event.attributes === undefined) continue;
+      event.source = nestedSource(event.attributes);
+      delete event.attributes;
+    }
+    expect(normalizeTelemetryBundle(raw).traces).toHaveLength(observationLedgerForPhase(evidence().phases.B).length);
+  });
+
+  it("keeps cohort telemetry filters inside the primary/receiver worker scope", () => {
+    const query = buildBoundedTelemetryQuery({
+      view: "events",
+      limit: 2000,
+      dry: true,
+      parameters: {
+        filterCombination: "or",
+        filters: [
+          { key: "$workers.scriptName", operation: "eq", type: "string", value: "primary" },
+          { key: "$workers.scriptName", operation: "eq", type: "string", value: "receiver" },
+        ],
+      },
+    }, [{ key: "schema", operation: "eq", type: "string", value: "sdt.observe/v1" }]);
+    expect(query.parameters).toMatchObject({
+      filterCombination: "and",
+      filters: [
+        { kind: "group", filterCombination: "or" },
+        { key: "schema", value: "sdt.observe/v1" },
+      ],
+    });
+  });
+
+  it("rejects a saturated telemetry subquery instead of silently accepting a partial cohort", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      result: { events: { count: 2, events: [{ $metadata: { id: "one" } }, { $metadata: { id: "two" } }] },
+    }}), { status: 200, headers: { "content-type": "application/json" } }));
+    try {
+      await expect(queryTelemetry({ accountId: "account", token: "redacted", payload: { limit: 2 } })).rejects.toThrow(/query-saturated/);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("rejects a telemetry group without an S00 correlation anchor instead of matching by time", () => {
     const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
     raw.events = raw.events.filter((entry) => !(
       entry.$metadata?.traceId === "trace-B-0" && entry.attributes?.operation === "sdt.commit"
@@ -398,7 +471,7 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     )).toThrow(/trace-complete/);
   });
 
-  it("joins the independent client ledger only to S00's exact ray id and rejects a dropped trace", () => {
+  it("joins the independent client ledger only to its exact worker-observed CF-Ray and rejects a dropped trace", () => {
     const document = evidence();
     document.traces.pop();
     expect(() => assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs)).toThrow(/trace-count/);
@@ -528,12 +601,40 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => assertB0Evidence(document)).toThrow(/observation-declaration/);
   });
 
-  it("rejects a structured observation that lacks platform trace identity", () => {
+  it("normalizes a structured observation without a platform trace id", () => {
     const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
     const observation = raw.events.find((entry) => entry.source?.event === "worker.invocation");
     if (observation === undefined) throw new Error("fixture lacks worker event");
     delete observation.$metadata!.traceId;
-    expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-trace-id/);
+    expect(normalizeTelemetryBundle(raw).observations.find((entry) => entry.event === "worker.invocation")).toMatchObject({
+      schema: "sdt.observe/v1",
+      requestId: "B-0",
+      correlationId: "corr-B-0",
+    });
+  });
+
+  it("rejects a structured observation that lacks its existing trace correlation", () => {
+    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    const observation = raw.events.find((entry) => entry.source?.event === "worker.invocation");
+    if (observation?.source === undefined) throw new Error("fixture lacks worker event");
+    delete observation.source.correlationId;
+    expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-correlation/);
+  });
+
+  it("rejects a worker observation without the client CF-Ray used by the ledger", () => {
+    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    const observation = raw.events.find((entry) => entry.source?.event === "worker.invocation");
+    if (observation?.source === undefined) throw new Error("fixture lacks worker event");
+    delete observation.source.requestId;
+    expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-request-id/);
+  });
+
+  it("rejects a structured observation without its provider request id", () => {
+    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    const observation = raw.events.find((entry) => entry.source?.event === "do.handler");
+    if (observation?.$metadata === undefined) throw new Error("fixture lacks DO event metadata");
+    delete observation.$metadata.requestId;
+    expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-platform-request-id/);
   });
 
   it("normalizes a Workers Logs structured message from provider metadata", () => {

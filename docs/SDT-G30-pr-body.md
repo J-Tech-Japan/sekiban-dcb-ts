@@ -17,11 +17,15 @@ Closes #70
 - Computes per-accepted-request caller-interval union attribution and emits
   an isolated `sdt.observe/v1` Workers Logs stream for facts that cannot fit
   the sealed commit-span schema (Worker isolate, DO handler/storage/subrequest
-  measurements, and bounded doorbell test seams). The A/B/A′ runner, exporter,
-  cohort contract, evidence recorder, and candidate retention gate join every
-  observation to the B ledger and S00 root. Human activation/outlier records
-  are rejected; refresh, idle, and queue/doorbell disposition are calculated
-  from raw telemetry and client timelines only.
+  measurements, and bounded doorbell test seams). Worker logs retain the
+  provider CF-Ray and existing correlation; DO logs retain provider request
+  identity and existing attempt correlation. The exporter follows the exact
+  CF-Ray → observation → S00 correlation chain in bounded subqueries and
+  rejects a saturated page rather than accepting partial telemetry. The A/B/A′
+  runner, cohort contract, evidence recorder, and candidate retention gate join
+  every retained observation to the B ledger and S00 root. Human
+  activation/outlier records are rejected; refresh, idle, and queue/doorbell
+  disposition are calculated from raw telemetry and client timelines only.
 - Defers Worker isolate randomness to the first request-handler boundary,
   which preserves per-isolate tracing while keeping the local workerd module
   loader free of forbidden global-scope random generation. CI retains the G15

@@ -1252,11 +1252,14 @@ describe("SDT-G30 runtime trace verifier", () => {
     observeWorkerInvocation({
       isolateInstanceId: "worker-isolate-fixture",
       firstInvocation: true,
+      requestId: "fixture-ray",
+      correlationId: "corr-fixture-attempt",
       scriptVersion: "worker-version-fixture",
       colo: "SJC",
     }, sink);
     const activation = new DurableObjectActivation().beginHandler();
     const handler = beginDurableObjectHandlerObservation("TAG", activation, sink);
+    handler.bindCorrelation("corr-fixture-attempt");
     handler.markFirstStorageRead();
     await handler.subrequest(async () => undefined);
     handler.finish();
@@ -1267,6 +1270,8 @@ describe("SDT-G30 runtime trace verifier", () => {
     expect(events[0]).toMatchObject({
       schema: "sdt.observe/v1",
       event: "worker.invocation",
+      requestId: "fixture-ray",
+      correlationId: "corr-fixture-attempt",
       isolateInstanceId: "worker-isolate-fixture",
       scriptVersion: "worker-version-fixture",
       colo: "SJC",
@@ -1277,6 +1282,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     expect(events[1]).toMatchObject({
       schema: "sdt.observe/v1",
       event: "do.handler",
+      correlationId: "corr-fixture-attempt",
       actorClass: "TAG",
       activationId: activation.activationId,
       activationFirst: true,

@@ -58,8 +58,11 @@ export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomC
   async deliver(message: unknown) {
     await assertFinalCutoverFenceIfConfigured(this.env);
     const testOverrides = this.env.__G29_DOORBELL_TEST__;
+    const attemptId = message !== null && typeof message === "object" && typeof (message as { attemptId?: unknown }).attemptId === "string"
+      ? (message as { attemptId: string }).attemptId
+      : undefined;
     if (testOverrides?.faultBarrier !== undefined) {
-      await waitForTestFaultBarrier(testOverrides.faultBarrier);
+      await waitForTestFaultBarrier(testOverrides.faultBarrier, attemptId);
     }
     const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy);
     const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(this.env);
@@ -81,6 +84,7 @@ export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomC
         barrierId: testOverrides.faultBarrier.barrierId,
         stage: "drained",
         boundedWindowMs: testOverrides.faultBarrier.boundedWindowMs,
+        attemptId,
       });
     }
     return result;
@@ -97,8 +101,8 @@ async function waitForTestFaultBarrier(barrier: Readonly<{
   barrierId: string;
   boundedWindowMs: number;
   waitForRelease: () => Promise<void>;
-}>): Promise<void> {
-  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "started", boundedWindowMs: barrier.boundedWindowMs });
+}>, attemptId?: string): Promise<void> {
+  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "started", boundedWindowMs: barrier.boundedWindowMs, attemptId });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
@@ -110,7 +114,7 @@ async function waitForTestFaultBarrier(barrier: Readonly<{
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
-  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "ended", boundedWindowMs: barrier.boundedWindowMs });
+  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "ended", boundedWindowMs: barrier.boundedWindowMs, attemptId });
 }
 
 /** Local/legacy fixtures do not set G32 phase. A deployed final C always does. */

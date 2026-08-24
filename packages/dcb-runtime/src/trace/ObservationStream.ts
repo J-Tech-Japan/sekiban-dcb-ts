@@ -2,15 +2,20 @@
  * Separate Workers Logs observation stream for SDT-G30.
  *
  * This deliberately is not a CommitTrace span and never adds an attribute to
- * the sealed sdt.commit/v1 matrix.  A structured console event is attached by
- * the platform to the active trace context; the exporter resolves its
- * platform traceId to the S00 ray/request id and fails closed when it cannot.
+ * the sealed sdt.commit/v1 matrix. Structured console events carry provider
+ * request metadata but Workers Logs does not expose a trace id for them. The
+ * exporter joins existing post-admission/attempt correlation to S00 and fails
+ * closed when that chain or the client-ledger identity is absent.
  *
  * The stream is observation-only: it does not write Durable Object storage,
  * decide a control branch, or contribute to a public response.
  */
 
-import type { CommitTraceActorClass, DurableObjectActivationObservation } from "./CommitTrace";
+import {
+  correlationIdForAttempt,
+  type CommitTraceActorClass,
+  type DurableObjectActivationObservation,
+} from "./CommitTrace";
 
 export const OBSERVATION_SCHEMA = "sdt.observe/v1" as const;
 
@@ -21,6 +26,10 @@ export type ObservationEvent =
     schema: typeof OBSERVATION_SCHEMA;
     event: "worker.invocation";
     emittedAtMs: number;
+    /** Provider-owned ingress ray retained only in the observation stream. */
+    requestId: string;
+    /** Existing post-admission trace correlation; not a new wire field. */
+    correlationId: string;
     actorClass: "WORKER";
     isolateInstanceId: string;
     activationFirst: boolean;
@@ -36,6 +45,8 @@ export type ObservationEvent =
     schema: typeof OBSERVATION_SCHEMA;
     event: "do.handler";
     emittedAtMs: number;
+    /** Existing attempt-derived trace correlation when actor identity exists. */
+    correlationId?: string;
     actorClass: Exclude<ObservationActorClass, "WORKER">;
     activationId: string;
     activationFirst: boolean;
@@ -50,6 +61,8 @@ export type ObservationEvent =
     schema: typeof OBSERVATION_SCHEMA;
     event: "fault.barrier";
     emittedAtMs: number;
+    /** Existing downstream-attempt correlation when the test seam has one. */
+    correlationId?: string;
     barrierId: string;
     stage: "started" | "ended" | "drained";
     boundedWindowMs: number;
@@ -91,13 +104,20 @@ export function emitObservation(event: ObservationEvent, sink: ObservationLogSin
 export function observeWorkerInvocation(input: Readonly<{
   isolateInstanceId: string;
   firstInvocation: boolean;
+  requestId: string;
+  correlationId: string;
   scriptVersion?: string;
   colo?: string;
 }>, sink?: ObservationLogSink): void {
+  // A missing ingress identity cannot affect a commit. The B0 exporter fails
+  // closed later if an accepted request does not have this observation.
+  if (input.requestId.length === 0 || input.correlationId.length === 0) return;
   emitObservation(Object.freeze({
     schema: OBSERVATION_SCHEMA,
     event: "worker.invocation",
     emittedAtMs: now(),
+    requestId: input.requestId,
+    correlationId: input.correlationId,
     actorClass: "WORKER",
     isolateInstanceId: input.isolateInstanceId,
     activationFirst: input.firstInvocation,
@@ -119,6 +139,7 @@ export class DurableObjectHandlerObservation {
   private subrequestWallMs = 0;
   private observedSubrequest = false;
   private finished = false;
+  private correlationId: string | undefined;
 
   constructor(
     private readonly actorClass: Exclude<ObservationActorClass, "WORKER">,
@@ -143,6 +164,15 @@ export class DurableObjectHandlerObservation {
     }
   }
 
+  /**
+   * Actor identity is decoded from the existing body before the callback.
+   * Retaining its established trace correlation in the log avoids a new
+   * propagation header, durable write, or public response field.
+   */
+  bindCorrelation(correlationId: string | undefined): void {
+    if (typeof correlationId === "string" && correlationId.length > 0) this.correlationId = correlationId;
+  }
+
   /** Emits at most once and only after the native actor callback settles. */
   finish(): void {
     if (this.finished) return;
@@ -151,6 +181,7 @@ export class DurableObjectHandlerObservation {
       schema: OBSERVATION_SCHEMA,
       event: "do.handler",
       emittedAtMs: now(),
+      ...(this.correlationId === undefined ? {} : { correlationId: this.correlationId }),
       actorClass: this.actorClass,
       activationId: this.activation.activationId,
       activationFirst: this.activation.first,
@@ -178,6 +209,8 @@ export function observeFaultBarrier(
     barrierId: string;
     stage: "started" | "ended" | "drained";
     boundedWindowMs: number;
+    /** Existing downstream attempt identity available only to the test seam. */
+    attemptId?: string;
   }>,
   sink?: ObservationLogSink,
 ): void {
@@ -186,6 +219,9 @@ export function observeFaultBarrier(
     schema: OBSERVATION_SCHEMA,
     event: "fault.barrier",
     emittedAtMs: now(),
+    ...(typeof input.attemptId === "string" && input.attemptId.length > 0
+      ? { correlationId: correlationIdForAttempt(input.attemptId) }
+      : {}),
     barrierId: input.barrierId,
     stage: input.stage,
     boundedWindowMs: input.boundedWindowMs,

@@ -102,6 +102,7 @@ interface TagStateResponse {
 interface CommitTraceRequestState {
   readonly trace: CommitTrace;
   scope: CommitTraceScope;
+  emitWorkerObservation?: () => void;
 }
 
 /**
@@ -384,6 +385,10 @@ export class CommitWorker {
 
   async handle(request: Request): Promise<Response> {
     const workerObservation = beginWorkerInvocationObservation();
+    // CF-Ray is provider-owned ingress identity. It is retained exclusively
+    // in sdt.observe/v1 after admission; neither V1 JSON nor durable/internal
+    // request shapes gain a diagnostic field.
+    const requestId = request.headers.get("cf-ray")?.trim();
     const trace = new CommitTrace({
       schema: "sdt.commit/v1",
       correlationId: createTraceCorrelationId(),
@@ -405,15 +410,25 @@ export class CommitWorker {
       // the V1 response.
       attributes: { "activation.first": workerObservation.firstInvocation },
     }, async (root) => {
-      // This is deliberately a separate structured Workers Logs event.  It
-      // executes inside S00's active context, but does not add a span row,
-      // trace attribute, storage write, control input, or V1 response field.
-      observeWorkerInvocation({
-        ...workerObservation,
-        scriptVersion: this.hooks.commitTraceProvider?.scriptVersion,
-        colo: this.hooks.commitTraceProvider?.colo,
-      });
-      const state: CommitTraceRequestState = { trace, scope: root };
+      let workerObservationEmitted = false;
+      const state: CommitTraceRequestState = {
+        trace,
+        scope: root,
+        emitWorkerObservation: () => {
+          if (workerObservationEmitted || requestId === undefined || requestId.length === 0) return;
+          workerObservationEmitted = true;
+          // This is deliberately a separate structured Workers Logs event.
+          // It uses existing accepted identity without adding a span row,
+          // storage write, control input, or V1 response field.
+          observeWorkerInvocation({
+            ...workerObservation,
+            requestId,
+            correlationId: trace.observationCorrelationId(),
+            scriptVersion: this.hooks.commitTraceProvider?.scriptVersion,
+            colo: this.hooks.commitTraceProvider?.colo,
+          });
+        },
+      };
       const response = await this.handleUntraced(request, state);
       return state.scope.span("S15", { httpStatus: response.status }, async () => response);
     });
@@ -456,6 +471,7 @@ export class CommitWorker {
     if (traceState !== undefined) {
       traceState.trace.markAccepted(attemptId);
       traceState.scope = traceState.scope.accepted(attemptId);
+      traceState.emitWorkerObservation?.();
     }
     const writeTimestamp = writeTimestampUtc(startedAt);
     const candidates = input.eventCandidates.map((candidate) => ({

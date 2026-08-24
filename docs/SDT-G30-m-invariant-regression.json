@@ -26,7 +26,7 @@
     "postRecoveryReadOnlyStatus": 404
   },
   "followUp": {
-    "candidateRequirement": "The successor final C includes the explicit receiver settings, the config gate, the isolated mutation, and the witness-local shell fix.",
-    "measurementDisposition": "The old-C A(off) measurement was not taken and no B/A-prime measurements were performed; the successor C restarts acquisition at A."
+    "candidateRequirement": "The successor final C includes the explicit receiver settings, the config gate, the isolated mutation, the witness-local shell fix, and the telemetry-export repair before it restarts B0 at A.",
+    "measurementDisposition": "The initial old-C A(off) phase was discarded. A later non-final candidate 0ce22ea712983a6b0ccf002f1cf869b3dbb67df5 completed A(off) and B(on), but its exporter incorrectly required a platform trace id on structured Workers Logs events. It produced no A-prime or R evidence; both captured cohorts are invalid and excluded. The next final C restarts acquisition at A with a correlation-bound, saturation-fail-closed exporter."
   }
 }

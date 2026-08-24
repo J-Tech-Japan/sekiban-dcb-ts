@@ -427,6 +427,7 @@ export function assertObservationStream(ledger, traces, observations) {
     if (observation.storageWrites !== 0 || observation.usedForControl !== false || observation.exposedInPublicResponse !== false) {
       fail("observation-isolation", `observation ${index} is not observation-only`);
     }
+    nonEmptyString(observation.platformRequestId, `observation[${index}].platformRequestId`);
     const reference = evidenceReference(observation.requestId, traceIndex, `observation[${index}]`);
     if (nonEmptyString(observation.traceId, `observation[${index}].traceId`) !== reference.trace.traceId) {
       fail("observation-trace-id", `observation ${index} traceId does not match its joined request root`);
@@ -740,9 +741,9 @@ function makeObservation(record) {
   const provider = { scriptVersion: "g30-synthetic", colo: "test-colo", cpuTimeMs: 1, wallTimeMs: record.responseLatencyMs };
   const isolated = { storageWrites: 0, usedForControl: false, exposedInPublicResponse: false };
   return [
-    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, actorClass: "WORKER", isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, provider, ...isolated },
+    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}`, actorClass: "WORKER", isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, provider, ...isolated },
     ...["BOOTSTRAP", "ALLOCATOR", "TAG"].map((actorClass) => ({
-      schema: "sdt.observe/v1", event: "do.handler", emittedAtMs: record.completedAtMs - 2, requestId: record.requestId, traceId: `trace-${record.requestId}`,
+      schema: "sdt.observe/v1", event: "do.handler", emittedAtMs: record.completedAtMs - 2, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}-${actorClass}`,
       actorClass, activationId: `${actorClass.toLowerCase()}-${record.requestId}`, activationFirst: false,
       constructorToHandlerMs: 1, firstStorageReadMs: 1, subrequestWallMs: actorClass === "ALLOCATOR" ? 1 : null, provider, ...isolated,
     })),
@@ -780,9 +781,9 @@ function syntheticB0Evidence() {
   const observationTraces = allRecords.map(makeTrace);
   const observations = allRecords.flatMap(makeObservation);
   observations.push(
-    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 20, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, barrierId: "synthetic-fault", stage: "started", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
-    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 15, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, barrierId: "synthetic-fault", stage: "ended", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
-    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 10, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, barrierId: "synthetic-fault", stage: "drained", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 20, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "started", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 15, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "ended", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 10, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "drained", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
   );
   return {
     task: "SDT-G30", baseline: "B0", purpose: "attribution-only-not-g37-denominator",
@@ -805,6 +806,7 @@ export function selfTest() {
     ["sampling-delta", (value) => { value.phases.B.configuration.placement = "smart"; }, "placement"],
     ["unjoined-observation", (value) => { value.observations[0].requestId = "missing-request"; }, "observation[0]-trace-join"],
     ["overlap-mismatch", (value) => { value.observations.find((entry) => entry.event === "worker.invocation").scriptVersion = "wrong"; }, "observation-overlap-script-version"],
+    ["provider-request-id-missing", (value) => { delete value.observations[0].platformRequestId; }, "observation[0].platformRequestId"],
     ["barrier-missing", (value) => { value.observations = value.observations.filter((entry) => entry.event !== "fault.barrier"); }, "fault-barrier"],
     ["idle-reference-missing", (value) => { delete value.phases.B.idleExperiment.windows[0].previousRequestId; }, "idle[0].previous.requestId"],
   ]) {

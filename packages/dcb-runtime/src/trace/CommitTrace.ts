@@ -590,6 +590,15 @@ export class CommitTrace {
     });
   }
 
+  /**
+   * Observation-only consumers can read the post-admission correlation after
+   * it has been written to S00. This exposes no wire field and never controls
+   * a commit decision or native-parent relationship.
+   */
+  observationCorrelationId(): string {
+    return this.correlationId;
+  }
+
   async span<T>(
     state: ScopeState,
     rowId: string,
@@ -1223,6 +1232,7 @@ export async function enterNativeActorHandleSpan<T>(
       identity = undefined;
     }
     if (identity !== undefined) {
+      input.observation?.bindCorrelation(correlationIdForAttempt(identity.attemptId));
       const attributes: Record<string, TraceAttributeValue> = {
         "schema.version": "sdt.commit/v1",
         "correlation.id": correlationIdForAttempt(identity.attemptId),
@@ -1256,8 +1266,9 @@ export async function enterNativeActorHandleSpan<T>(
       if (identity !== undefined) setNativeAttribute(span, "outcome", "exception");
       throw error;
     } finally {
-      // The structured log is emitted while the actor span is still active,
-      // so Cloudflare supplies trace/request identity without a new header.
+      // The structured log is emitted while the actor span is still active.
+      // Its existing attempt correlation is bound above; no header or request
+      // shape is added merely to label observation telemetry.
       input.observation?.finish();
     }
   });

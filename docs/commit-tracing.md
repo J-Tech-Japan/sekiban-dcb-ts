@@ -23,10 +23,13 @@ durable outcome.
 
 `sdt.observe/v1` is a distinct structured Workers Logs event stream. It does
 not add a span row or attribute to `sdt.commit/v1`. Worker events record the
-isolate ID and overlapping activation/version/colo facts; Durable Object
-events record constructor-to-handler, first-storage, and actual subrequest
-timings. The exporter reads the DO event's provider-owned version/colo metadata
-and checks it against S00, rather than adding an internal propagation header.
+isolate ID, the provider ingress CF-Ray, and the already-existing
+post-admission correlation alongside activation/version/colo facts; Durable
+Object events record constructor-to-handler, first-storage, actual subrequest
+timings, their provider request ID, and the existing attempt correlation when
+identity is available. The exporter checks provider version/colo against S00
+and resolves the correlation to the same ledger request, rather than adding an
+internal propagation header.
 All events declare `storageWrites: 0`, `usedForControl: false`, and
 `exposedInPublicResponse: false`; they are never persisted or used to choose a
 commit branch.
@@ -77,9 +80,11 @@ does not assert a performance pass/fail.
    witness records the source candidate, configuration digest, service, and
    placement observation. No G30 route,
    header, body field, or runtime variable is added for this purpose.
-6. The exporter materializes a bounded raw-events query from B's client
-   ledger, paginates it, and joins complete traces plus `sdt.observe/v1` logs
-   by the platform S00 ray/request identity. It rejects missing traces,
+6. The exporter materializes bounded cohort queries from B's client ledger:
+   CF-Ray to Worker observation, correlation to S00, then bounded trace and
+   correlated-observation exports. It rejects a saturated subquery rather than
+   accepting a partial page, and never joins by time proximity or assumes a
+   structured console log has a platform trace ID. It rejects missing traces,
    replacements, incomplete schema rows, unknown/mismatched observations, an
    export after the 10-minute deadline, or any accepted request whose
    caller-union unattributed ratio is above 5%. It retains safe provider span

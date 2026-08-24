@@ -38,11 +38,28 @@ function scalar(value) {
   return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? value : undefined;
 }
 
+function flattenAttributes(value, prefix = "", output = {}) {
+  const record = object(value);
+  if (record === undefined) return output;
+  for (const [key, child] of Object.entries(record)) {
+    const path = prefix.length === 0 ? key : `${prefix}.${key}`;
+    if (scalar(child) !== undefined) output[path] = child;
+    else if (object(child) !== undefined) flattenAttributes(child, path, output);
+  }
+  return output;
+}
+
 function attributesFor(event) {
+  const flattened = {
+    ...flattenAttributes(event?.source),
+    ...flattenAttributes(event?.event?.source),
+  };
   const direct = object(event?.attributes) ?? object(event?.source?.attributes) ?? object(event?.source?.spanAttributes) ?? object(event?.event?.attributes) ?? {};
-  const extra = object(event?.source) ?? {};
-  // Telemetry exports use both nested attributes and flattened field names.
-  return { ...extra, ...direct };
+  // Cloudflare exports custom-span fields under nested source objects while
+  // fixtures and some provider versions use a flat attributes object.  The
+  // source form is flattened structurally, never reconstructed by an
+  // evidence-side parallel table.
+  return { ...flattened, ...flattenAttributes(direct) };
 }
 
 function metadataFor(event) {
@@ -140,6 +157,16 @@ function metadataField(metadata, event, names) {
   return undefined;
 }
 
+function telemetryField(metadata, event, attributes, names) {
+  const fromMetadata = metadataField(metadata, event, names);
+  if (fromMetadata !== undefined) return fromMetadata;
+  for (const name of names) {
+    const value = attributes[name];
+    if (value !== undefined && value !== null) return value;
+  }
+  return undefined;
+}
+
 const ROWS = manifest.schemas["sdt.commit/v1"].rows;
 const ROW_BY_ID = new Map(ROWS.map((row) => [row.rowId, row]));
 const ATTRIBUTE_MATRIX = manifest.attributeMatrix.attributes;
@@ -181,9 +208,9 @@ function normalizedSpan(event, traceId) {
   if (rowId === undefined) fail("row", `cannot map operation ${String(attributes.operation)} to an authority row`);
   const row = ROW_BY_ID.get(rowId);
   const metadata = metadataFor(event);
-  const startRaw = metadataField(metadata, event, ["startTime", "startMs", "timestamp"]);
-  const endRaw = metadataField(metadata, event, ["endTime", "endMs"]);
-  const durationRaw = metadataField(metadata, event, ["duration", "durationMs"]);
+  const startRaw = telemetryField(metadata, event, attributes, ["startTime", "startMs", "timestamp"]);
+  const endRaw = telemetryField(metadata, event, attributes, ["endTime", "endMs"]);
+  const durationRaw = telemetryField(metadata, event, attributes, ["duration", "durationMs", "durationMS"]);
   const startMs = numberFrom(startRaw, `${rowId}.start`);
   const endMs = endRaw === undefined ? startMs + numberFrom(durationRaw, `${rowId}.duration`) : numberFrom(endRaw, `${rowId}.end`);
   if (endMs < startMs) fail("time", `${rowId} ends before it begins`);
@@ -241,21 +268,28 @@ function providerSpanName(event) {
 
 function hasSpanTiming(event) {
   const metadata = metadataFor(event);
-  const start = metadataField(metadata, event, ["startTime", "startMs", "timestamp"]);
-  const end = metadataField(metadata, event, ["endTime", "endMs"]);
-  const duration = metadataField(metadata, event, ["duration", "durationMs"]);
+  const attributes = attributesFor(event);
+  const start = telemetryField(metadata, event, attributes, ["startTime", "startMs", "timestamp"]);
+  const end = telemetryField(metadata, event, attributes, ["endTime", "endMs"]);
+  const duration = telemetryField(metadata, event, attributes, ["duration", "durationMs", "durationMS"]);
   return start !== undefined && (end !== undefined || duration !== undefined);
 }
 
 function traceGroup(groups, traceId) {
   const existing = groups.get(traceId);
   if (existing !== undefined) return existing;
-  const next = { traceId, events: [], observations: [], providerSpanNames: new Set() };
+  const next = { traceId, events: [], providerSpanNames: new Set() };
   groups.set(traceId, next);
   return next;
 }
 
-function normalizeObservation(payload, event, requestId, traceId) {
+function observationCorrelation(payload) {
+  return typeof payload?.correlationId === "string" && payload.correlationId.length > 0
+    ? payload.correlationId
+    : undefined;
+}
+
+function normalizeObservation(payload, event, requestId, traceId, correlationId) {
   if (payload.schema !== "sdt.observe/v1") fail("observation-schema", "structured observation has an unsupported schema");
   if (![
     "worker.invocation",
@@ -270,54 +304,93 @@ function normalizeObservation(payload, event, requestId, traceId) {
   if (payload.storageWrites !== 0 || payload.usedForControl !== false || payload.exposedInPublicResponse !== false) {
     fail("observation-isolation", "structured observation is not observation-only");
   }
-  if (payload.requestId !== undefined && payload.requestId !== requestId) {
+  if (payload.event === "worker.invocation" && payload.requestId !== requestId) {
     fail("observation-request-id", "structured observation conflicts with its platform request id");
+  }
+  if (observationCorrelation(payload) !== correlationId) {
+    fail("observation-correlation", "structured observation conflicts with its joined trace correlation");
+  }
+  const platformRequestId = metadataField(metadataFor(event), event, ["requestId", "request_id"]);
+  if (typeof platformRequestId !== "string" || platformRequestId.length === 0) {
+    fail("observation-platform-request-id", "structured observation has no provider request id");
   }
   return Object.freeze({
     ...payload,
     requestId,
     traceId,
+    platformRequestId,
     provider: providerFacts(event),
   });
 }
 
 /**
- * Groups custom spans by Cloudflare trace ID and anchors the group to the
- * S00 request's ray/request identifier. No chronological "nearest span"
- * fallback is allowed, so a propagation break remains visible as trace loss.
+ * Cloudflare structured console logs expose platform request identity but do
+ * not expose a trace id.  The runtime therefore retains the existing
+ * post-admission correlation in sdt.observe/v1, and this exporter joins
+ * observation -> S00 -> client CF-Ray by that correlation.  No time-nearest
+ * fallback or manual trace-parent field is accepted.
  */
 export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now()) {
   const groups = new Map();
+  const rawObservations = [];
   for (const event of rawEvents(raw)) {
     const metadata = metadataFor(event);
     const traceId = metadataField(metadata, event, ["traceId", "trace_id"]);
     const attributes = attributesFor(event);
     const isCommitSchemaSpan = attributes["schema.version"] === "sdt.commit/v1";
     const observation = observationPayload(event);
-    if (typeof traceId !== "string" || traceId.length === 0) {
-      if (isCommitSchemaSpan) fail("trace-id", "custom sdt.commit/v1 span has no trace id");
-      if (observation !== undefined) fail("observation-trace-id", "structured observation has no platform trace id");
-      continue;
+    if (isCommitSchemaSpan && (typeof traceId !== "string" || traceId.length === 0)) {
+      fail("trace-id", "custom sdt.commit/v1 span has no trace id");
     }
-    const group = traceGroup(groups, traceId);
-    // A telemetry log may share a trace ID but is not evidence of a refresh
-    // span. Retain names only from timestamped span records.
-    const name = hasSpanTiming(event) ? providerSpanName(event) : undefined;
-    if (name !== undefined) group.providerSpanNames.add(name);
-    const span = normalizedSpan(event, traceId);
-    if (span !== undefined) group.events.push({ span, metadata });
-    if (observation !== undefined) group.observations.push({ payload: observation, event });
+    if (typeof traceId === "string" && traceId.length > 0) {
+      const group = traceGroup(groups, traceId);
+      // A telemetry log may share a trace ID but is not evidence of a refresh
+      // span. Retain names only from timestamped span records.
+      const name = hasSpanTiming(event) ? providerSpanName(event) : undefined;
+      if (name !== undefined) group.providerSpanNames.add(name);
+      const span = normalizedSpan(event, traceId);
+      if (span !== undefined) group.events.push({ span });
+    }
+    if (observation !== undefined) rawObservations.push({ payload: observation, event });
   }
-  const output = [];
-  const observations = [];
+
+  const rootsByCorrelation = new Map();
   for (const group of groups.values()) {
     const root = group.events.find((entry) => entry.span.rowId === "S00");
-    if (root === undefined) {
-      if (group.observations.length > 0) fail("observation-root", `structured observation trace ${group.traceId} has no S00 root`);
-      continue;
+    if (root === undefined) continue;
+    const correlationId = root.span.attributes["correlation.id"];
+    if (typeof correlationId !== "string" || correlationId.length === 0) {
+      fail("root-correlation", `S00 trace ${group.traceId} has no post-admission correlation`);
     }
-    const requestId = metadataField(root.metadata, root, ["rayId", "requestId"]);
-    if (typeof requestId !== "string" || requestId.length === 0) fail("request-id", `S00 trace ${group.traceId} has no ray/request id`);
+    if (rootsByCorrelation.has(correlationId)) {
+      fail("root-correlation", `post-admission correlation ${correlationId} maps to more than one S00 trace`);
+    }
+    rootsByCorrelation.set(correlationId, { group, root });
+  }
+
+  const observationsByCorrelation = new Map();
+  for (const observed of rawObservations) {
+    const correlationId = observationCorrelation(observed.payload);
+    if (correlationId === undefined) {
+      fail("observation-correlation", "structured observation has no existing trace correlation");
+    }
+    const existing = observationsByCorrelation.get(correlationId) ?? [];
+    existing.push(observed);
+    observationsByCorrelation.set(correlationId, existing);
+  }
+
+  const output = [];
+  const observations = [];
+  for (const [correlationId, joined] of observationsByCorrelation) {
+    const rooted = rootsByCorrelation.get(correlationId);
+    if (rooted === undefined) fail("observation-root", `structured observation correlation ${correlationId} has no S00 root`);
+    const { group } = rooted;
+    const worker = joined.filter((entry) => entry.payload.event === "worker.invocation");
+    if (worker.length !== 1) fail("observation-worker", `S00 trace ${group.traceId} requires exactly one worker observation`);
+    const requestId = worker[0].payload.requestId;
+    if (typeof requestId !== "string" || requestId.length === 0) {
+      fail("observation-request-id", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);
+    }
     const spans = group.events.map((entry) => entry.span);
     const rowCounts = new Map(spans.map((span) => [span.rowId, 0]));
     for (const span of spans) rowCounts.set(span.rowId, (rowCounts.get(span.rowId) ?? 0) + 1);
@@ -338,8 +411,8 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now()) {
       ...trace,
       runtimeVerified: complete,
     });
-    for (const observed of group.observations) {
-      observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId));
+    for (const observed of joined) {
+      observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId, correlationId));
     }
   }
   return Object.freeze({
@@ -357,42 +430,190 @@ export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
 export async function queryTelemetry({ accountId, token, payload }) {
   const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/observability/telemetry/query`;
   const limit = typeof payload?.limit === "number" && Number.isSafeInteger(payload.limit) ? payload.limit : 2_000;
-  const allEvents = [];
-  const cursorIds = new Set();
-  let query = structuredClone(payload);
-  let first;
-  for (let page = 0; page < 50; page += 1) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-      body: JSON.stringify(query),
-    });
-    const raw = await response.json();
-    if (!response.ok || raw?.success === false || (Array.isArray(raw?.errors) && raw.errors.length > 0)) {
-      fail("api", `Cloudflare telemetry query failed: HTTP ${response.status}`);
-    }
-    if (first === undefined) first = raw;
-    const events = rawEvents(raw);
-    allEvents.push(...events);
-    const reportedCount = raw?.result?.events?.count;
-    if (typeof reportedCount === "number" && allEvents.length >= reportedCount) break;
-    if (events.length < limit) break;
-    const cursor = metadataFor(events.at(-1))?.id;
-    if (typeof cursor !== "string" || cursor.length === 0 || cursorIds.has(cursor)) {
-      fail("pagination", "telemetry query needs a unique $metadata.id cursor for the next event page");
-    }
-    cursorIds.add(cursor);
-    query = { ...query, offset: cursor, offsetDirection: "next" };
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const raw = await response.json();
+  if (!response.ok || raw?.success === false || (Array.isArray(raw?.errors) && raw.errors.length > 0)) {
+    fail("api", `Cloudflare telemetry query failed: HTTP ${response.status}`);
   }
-  if (first === undefined) fail("api", "Cloudflare telemetry query returned no page");
-  const merged = structuredClone(first);
-  if (Array.isArray(merged?.result?.events?.events)) merged.result.events.events = allEvents;
-  else if (Array.isArray(merged?.events?.events)) merged.events.events = allEvents;
-  else if (Array.isArray(merged?.events)) merged.events = allEvents;
-  else if (Array.isArray(merged?.result?.data)) merged.result.data = allEvents;
-  else if (Array.isArray(merged?.data)) merged.data = allEvents;
-  else fail("pagination", "telemetry query page did not preserve an events container");
-  return merged;
+  const events = rawEvents(raw);
+  const reportedCount = raw?.result?.events?.count;
+  // Cloudflare's events count can equal the limit even where the offset
+  // cursor is not a complete pagination contract.  G30 therefore uses only
+  // cohort-keyed, bounded queries and rejects saturation instead of silently
+  // treating the first 2,000 records as a complete trace universe.
+  if (events.length >= limit || (typeof reportedCount === "number" && reportedCount >= limit)) {
+    fail("query-saturated", "telemetry query reached its bounded result limit");
+  }
+  return raw;
+}
+
+const QUERY_VALUE_BATCH = 12;
+
+function nonEmptyTelemetryStrings(values, label) {
+  if (!Array.isArray(values) || values.length === 0) fail("query-values", `${label} must contain one or more values`);
+  const result = [...new Set(values)];
+  if (result.some((value) => typeof value !== "string" || value.length === 0)) {
+    fail("query-values", `${label} contains an empty value`);
+  }
+  return result;
+}
+
+function chunks(values, size = QUERY_VALUE_BATCH) {
+  return Array.from({ length: Math.ceil(values.length / size) }, (_unused, index) => values.slice(index * size, (index + 1) * size));
+}
+
+function queryFilter(key, value) {
+  return { key, operation: "eq", type: "string", value };
+}
+
+/**
+ * Adds an exact, cohort-owned filter without loosening the template's two
+ * worker-name filters.  The outer worker scope stays OR; every G30-specific
+ * constraint is ANDed with it.
+ */
+export function buildBoundedTelemetryQuery(template, filters) {
+  const source = structuredClone(template);
+  const base = source?.parameters;
+  if (base?.filterCombination !== "or" || !Array.isArray(base.filters) || base.filters.length !== 2) {
+    fail("query-template", "telemetry template must retain the primary/receiver OR scope");
+  }
+  if (!Array.isArray(filters) || filters.length === 0) fail("query-template", "bounded telemetry query needs cohort filters");
+  return {
+    ...source,
+    parameters: {
+      filterCombination: "and",
+      filters: [
+        { kind: "group", filterCombination: "or", filters: base.filters },
+        ...filters,
+      ],
+    },
+  };
+}
+
+function valuesFilter(key, values) {
+  const filters = nonEmptyTelemetryStrings(values, key).map((value) => queryFilter(key, value));
+  return filters.length === 1 ? filters[0] : { kind: "group", filterCombination: "or", filters };
+}
+
+function mergeTelemetryEvents(raws) {
+  const seen = new Set();
+  const events = [];
+  for (const raw of raws) {
+    for (const event of rawEvents(raw)) {
+      const metadata = metadataFor(event);
+      const key = typeof metadata.id === "string" && metadata.id.length > 0
+        ? metadata.id
+        : JSON.stringify(event);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      events.push(event);
+    }
+  }
+  return { events };
+}
+
+function payloadsFrom(raws, eventName) {
+  return raws.flatMap((raw) => rawEvents(raw)
+    .map((event) => ({ payload: observationPayload(event), event }))
+    .filter((entry) => entry.payload?.event === eventName));
+}
+
+async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = QUERY_VALUE_BATCH }) {
+  const result = [];
+  for (const batch of chunks(nonEmptyTelemetryStrings(values, key), batchSize)) {
+    const payload = buildBoundedTelemetryQuery(template, [...fixedFilters, valuesFilter(key, batch)]);
+    result.push(await queryTelemetry({ accountId, token, payload }));
+  }
+  return result;
+}
+
+/**
+ * Query only the G30 B cohort.  A broad worker-time-range query can contain
+ * more than 2,000 D1/provider rows and would make loss look like success.
+ * The chain is exact: client CF-Ray -> worker observation correlation -> S00
+ * trace -> all provider spans and correlated observations.
+ */
+export async function exportCohortTelemetry({ accountId, token, template, ledger }) {
+  const requestIds = nonEmptyTelemetryStrings(ledger.map((record) => record?.requestId), "ledger request ids");
+  const workerRaws = await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "requestId",
+    values: requestIds,
+    fixedFilters: [queryFilter("schema", "sdt.observe/v1"), queryFilter("event", "worker.invocation")],
+  });
+  const workerByRequestId = new Map();
+  for (const { payload } of payloadsFrom(workerRaws, "worker.invocation")) {
+    const requestId = payload?.requestId;
+    const correlationId = observationCorrelation(payload);
+    if (typeof requestId !== "string" || !requestIds.includes(requestId) || correlationId === undefined) continue;
+    const existing = workerByRequestId.get(requestId) ?? new Set();
+    existing.add(correlationId);
+    workerByRequestId.set(requestId, existing);
+  }
+  for (const requestId of requestIds) {
+    const correlations = workerByRequestId.get(requestId);
+    if (correlations?.size !== 1) fail("cohort-worker", `client request ${requestId} lacks exactly one correlated worker observation`);
+  }
+  const correlations = [...new Set([...workerByRequestId.values()].flatMap((entries) => [...entries]))];
+  const rootRaws = await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "correlation.id",
+    values: correlations,
+    fixedFilters: [queryFilter("schema.version", "sdt.commit/v1"), queryFilter("$metadata.spanName", "sdt.commit")],
+  });
+  const traceIdsByCorrelation = new Map();
+  for (const raw of rootRaws) {
+    for (const event of rawEvents(raw)) {
+      const attributes = attributesFor(event);
+      const correlationId = attributes["correlation.id"];
+      const traceId = metadataField(metadataFor(event), event, ["traceId", "trace_id"]);
+      if (typeof correlationId === "string" && correlations.includes(correlationId) && typeof traceId === "string" && traceId.length > 0) {
+        const existing = traceIdsByCorrelation.get(correlationId) ?? new Set();
+        existing.add(traceId);
+        traceIdsByCorrelation.set(correlationId, existing);
+      }
+    }
+  }
+  for (const correlationId of correlations) {
+    if (traceIdsByCorrelation.get(correlationId)?.size !== 1) {
+      fail("cohort-root", "every correlated worker observation must resolve exactly one S00 trace");
+    }
+  }
+  const traceIds = new Set([...traceIdsByCorrelation.values()].flatMap((entries) => [...entries]));
+  const traceRaws = await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "$metadata.traceId",
+    values: [...traceIds],
+    batchSize: 4,
+  });
+  const observationRaws = await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "correlationId",
+    values: correlations,
+    fixedFilters: [queryFilter("schema", "sdt.observe/v1")],
+  });
+  const merged = mergeTelemetryEvents([...workerRaws, ...rootRaws, ...traceRaws, ...observationRaws]);
+  // Body-less internal reads intentionally have no attempt identity and are
+  // outside the B0 correlation universe. Retain every event that can be
+  // joined; fail closed for missing identities in the worker query above.
+  return {
+    events: merged.events.filter((event) => {
+      const payload = observationPayload(event);
+      return payload === undefined || correlations.includes(observationCorrelation(payload));
+    }),
+  };
 }
 
 function sleep(milliseconds) {
@@ -406,12 +627,15 @@ function exportDeadline(ledger) {
 
 function pendingTelemetryError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /g30-b0:(?:trace-count|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:observation-root|request-id)/.test(message);
+  return /g30-b0:(?:trace-count|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:cohort-worker|cohort-root|observation-root|observation-worker|observation-request-id)/.test(message);
 }
 
 async function main() {
   const ledgerPath = required("--ledger", argument("--ledger"));
   const output = argument("--output", ".artifacts/g30-b0-traces.json");
+  const rawOutput = argument("--raw-output");
+  const ledgerDocument = JSON.parse(readFileSync(ledgerPath, "utf8"));
+  const observationLedger = observationLedgerForPhase(ledgerDocument);
   let raw;
   const input = argument("--input");
   if (input !== undefined) {
@@ -421,10 +645,8 @@ async function main() {
     const token = readFileSync(required("--api-token-file", argument("--api-token-file", process.env.G30_OBSERVABILITY_TOKEN_FILE)), "utf8").trim();
     const queryPath = required("--query", argument("--query"));
     if (token.length === 0) fail("token", "observability token is empty");
-    raw = await queryTelemetry({ accountId, token, payload: JSON.parse(readFileSync(queryPath, "utf8")) });
+    raw = await exportCohortTelemetry({ accountId, token, template: JSON.parse(readFileSync(queryPath, "utf8")), ledger: observationLedger });
   }
-  const ledgerDocument = JSON.parse(readFileSync(ledgerPath, "utf8"));
-  const observationLedger = observationLedgerForPhase(ledgerDocument);
   const deadline = exportDeadline(ledgerDocument.ledger);
   let bundle;
   let traces;
@@ -443,7 +665,7 @@ async function main() {
       const accountId = required("--account-id", argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID));
       const token = readFileSync(required("--api-token-file", argument("--api-token-file", process.env.G30_OBSERVABILITY_TOKEN_FILE)), "utf8").trim();
       const queryPath = required("--query", argument("--query"));
-      raw = await queryTelemetry({ accountId, token, payload: JSON.parse(readFileSync(queryPath, "utf8")) });
+      raw = await exportCohortTelemetry({ accountId, token, template: JSON.parse(readFileSync(queryPath, "utf8")), ledger: observationLedger });
     }
   }
   const result = {
@@ -457,6 +679,10 @@ async function main() {
     observations: bundle.observations,
   };
   mkdirSync(dirname(output), { recursive: true });
+  if (rawOutput !== undefined) {
+    mkdirSync(dirname(rawOutput), { recursive: true });
+    writeFileSync(rawOutput, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
+  }
   writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
   console.log(JSON.stringify({ traceCount: traces.length, observationTraceCount: bundle.traces.length, observationCount: bundle.observations.length, requestCount: proof.requestCount, observationLedgerCount: observationLedger.length }, null, 2));
 }
