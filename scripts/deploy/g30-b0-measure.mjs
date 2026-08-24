@@ -8,6 +8,7 @@ const CADENCE_MS = 2_000;
 const IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
 const FIXTURE_VERSION = "sdt-g30-b0-v1";
 const FIXTURE_TAG = "room:g30-baseline";
+const SORTABLE_UNIQUE_ID = /^\d{30}$/;
 // Use a registered Meeting Room event rather than a synthetic payload so the
 // exact same B0 command crosses the production admission parser as well as
 // the normal commit path. The payload deliberately carries no discriminator.
@@ -35,12 +36,29 @@ function encodedPayload() {
   return Buffer.from(FIXTURE_PAYLOAD, "utf8").toString("base64");
 }
 
-function commitEnvelope() {
+function eventCandidates() {
+  return [{ payload: encodedPayload(), eventPayloadName: "RoomCreated", tags: [FIXTURE_TAG] }];
+}
+
+/**
+ * The trace-completeness window deliberately exercises the normal
+ * consistency-reservation fan-out. The expected head is external client
+ * state, updated from each accepted response; it is not a phase config or a
+ * G30 protocol extension.
+ */
+export function commitEnvelope(consistencyHead) {
+  if (typeof consistencyHead !== "string" || !SORTABLE_UNIQUE_ID.test(consistencyHead)) {
+    throw new Error("G30 B0 consistency head must be a 30-digit SortableUniqueId");
+  }
   return {
     version: 1,
-    eventCandidates: [{ payload: encodedPayload(), eventPayloadName: "RoomCreated", tags: [FIXTURE_TAG] }],
-    consistencyTags: [],
+    eventCandidates: eventCandidates(),
+    consistencyTags: [{ tag: FIXTURE_TAG, lastSortableUniqueId: consistencyHead }],
   };
+}
+
+function seedEnvelope() {
+  return { version: 1, eventCandidates: eventCandidates(), consistencyTags: [] };
 }
 
 async function request(baseUrl, path, init = {}) {
@@ -66,6 +84,58 @@ function assertCommit(result) {
   return result.body.writtenEvents[0];
 }
 
+function nextConsistencyHead(result) {
+  const event = assertCommit(result);
+  const head = event?.sortableUniqueIdValue;
+  if (typeof head !== "string" || !SORTABLE_UNIQUE_ID.test(head)) {
+    throw new Error("G30 B0 commit response lacks a 30-digit written-event SortableUniqueId");
+  }
+  return Object.freeze({ event, head });
+}
+
+async function readConsistencyHead(baseUrl, token) {
+  const result = await request(baseUrl, "/conformance/v1/api/sekiban/serialized/tag-latest-sortable", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({ tag: FIXTURE_TAG }),
+  });
+  if (result.response.status !== 200 || typeof result.body?.exists !== "boolean" || typeof result.body?.lastSortableUniqueId !== "string") {
+    throw new Error(`G30 B0 could not read the fixed tag head: HTTP ${result.response.status}`);
+  }
+  if (result.body.exists === false) {
+    if (result.body.lastSortableUniqueId !== "") throw new Error("G30 B0 empty fixed tag read must carry the V1 empty head");
+    return undefined;
+  }
+  if (!SORTABLE_UNIQUE_ID.test(result.body.lastSortableUniqueId)) {
+    throw new Error("G30 B0 fixed tag head is not a 30-digit SortableUniqueId");
+  }
+  return result.body.lastSortableUniqueId;
+}
+
+/**
+ * Reuse the fixed tag when it already has a durable head. On a genuinely new
+ * service only, establish that head once before phase A's warmup; the seed is
+ * outside all A/B/A-prime ledgers and is never a replacement.
+ */
+export async function establishB0Consistency({ baseUrl, token }) {
+  const existingHead = await readConsistencyHead(baseUrl, token);
+  if (existingHead !== undefined) {
+    return Object.freeze({ head: existingHead, source: "existing-fixed-tag-head", seeded: false });
+  }
+  const result = await request(baseUrl, "/conformance/v1/api/sekiban/serialized/commit", {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify(seedEnvelope()),
+  });
+  const committed = nextConsistencyHead(result);
+  return Object.freeze({
+    head: committed.head,
+    source: "one-time-fixed-tag-seed",
+    seeded: true,
+    seedEventId: typeof committed.event?.id === "string" ? committed.event.id : null,
+  });
+}
+
 export function assertDeploymentWitness(witness, phase, sourceCommit, configDigest) {
   if (
     witness?.task !== "SDT-G30" || witness?.phase !== phase || witness?.sourceCommit !== sourceCommit ||
@@ -85,39 +155,54 @@ export function assertDeploymentWitness(witness, phase, sourceCommit, configDige
  * The body carries no G30 diagnostic extension.  cf-ray is a platform header
  * used solely to join the independent client ledger to Cloudflare telemetry.
  */
-export async function measureB0Phase({ baseUrl, token, phase, sourceCommit, configDigest, deploymentWitness, samples = SAMPLE_COUNT, warmup = 5 }) {
+export async function measureB0Phase({
+  baseUrl,
+  token,
+  phase,
+  sourceCommit,
+  configDigest,
+  deploymentWitness,
+  consistencyHead,
+  samples = SAMPLE_COUNT,
+  warmup = 5,
+  sleepFor = sleep,
+}) {
   if (!["A", "B", "A-prime"].includes(phase)) throw new Error("G30 phase must be A, B, or A-prime");
   if (samples !== SAMPLE_COUNT) throw new Error(`G30 B0 requires exactly ${SAMPLE_COUNT} retained samples`);
   if (!Number.isSafeInteger(warmup) || warmup < 5 || warmup > 30) throw new Error("G30 warmup must be 5..30 requests");
+  if (typeof consistencyHead !== "string" || !SORTABLE_UNIQUE_ID.test(consistencyHead)) throw new Error("G30 B0 phase requires the observed fixed-tag consistency head");
   const authorization = { authorization: `Bearer ${token}` };
   const configWitness = assertDeploymentWitness(deploymentWitness, phase, sourceCommit, configDigest);
   const endpoint = "/conformance/v1/api/sekiban/serialized/commit";
+  const initialConsistencyHead = consistencyHead;
+  let expectedConsistencyHead = consistencyHead;
   const warmupLedger = [];
   for (let index = 0; index < warmup; index += 1) {
     const startedAtMs = Date.now();
     const result = await request(baseUrl, endpoint, {
       method: "POST",
       headers: { ...authorization, "content-type": "application/json" },
-      body: JSON.stringify(commitEnvelope()),
+      body: JSON.stringify(commitEnvelope(expectedConsistencyHead)),
     });
     const completedAtMs = Date.now();
-    const event = assertCommit(result);
-    warmupLedger.push({ index, requestId: requestId(result.response), startedAtMs, completedAtMs, eventId: event.id ?? null, status: result.response.status });
-    await sleep(CADENCE_MS);
+    const committed = nextConsistencyHead(result);
+    warmupLedger.push({ index, requestId: requestId(result.response), startedAtMs, completedAtMs, eventId: committed.event.id ?? null, status: result.response.status, consistencyHead: expectedConsistencyHead });
+    expectedConsistencyHead = committed.head;
+    await sleepFor(CADENCE_MS);
   }
   const fixedStartMs = Date.now() + CADENCE_MS;
   const ledger = [];
   for (let index = 0; index < samples; index += 1) {
     const scheduledStartMs = fixedStartMs + index * CADENCE_MS;
-    await sleep(scheduledStartMs - Date.now());
+    await sleepFor(scheduledStartMs - Date.now());
     const startedAtMs = Date.now();
     const result = await request(baseUrl, endpoint, {
       method: "POST",
       headers: { ...authorization, "content-type": "application/json" },
-      body: JSON.stringify(commitEnvelope()),
+      body: JSON.stringify(commitEnvelope(expectedConsistencyHead)),
     });
     const completedAtMs = Date.now();
-    const event = assertCommit(result);
+    const committed = nextConsistencyHead(result);
     ledger.push({
       index,
       requestId: requestId(result.response),
@@ -134,10 +219,12 @@ export async function measureB0Phase({ baseUrl, token, phase, sourceCommit, conf
       startedAtMs,
       completedAtMs,
       responseLatencyMs: completedAtMs - startedAtMs,
-      eventId: typeof event?.id === "string" ? event.id : null,
-      committedSuid: typeof event?.sortableUniqueIdValue === "string" ? event.sortableUniqueIdValue : null,
+      eventId: typeof committed.event?.id === "string" ? committed.event.id : null,
+      committedSuid: committed.head,
+      consistencyHead: expectedConsistencyHead,
       statusRaw: { httpStatus: result.response.status, cfRay: requestId(result.response) },
     });
+    expectedConsistencyHead = committed.head;
   }
   // B is the sole trace-sampled phase.  Its idle experiment is a sequence of
   // real V1 commits whose previous/next request ids and timestamps are
@@ -150,25 +237,27 @@ export async function measureB0Phase({ baseUrl, token, phase, sourceCommit, conf
     let previous = ledger.at(-1);
     if (previous === undefined) throw new Error("G30 B idle experiment requires a retained canonical request");
     for (const scheduledGapMs of IDLE_SCHEDULE_MS) {
-      await sleep(scheduledGapMs);
+      await sleepFor(scheduledGapMs);
       const startedAtMs = Date.now();
       const result = await request(baseUrl, endpoint, {
         method: "POST",
         headers: { ...authorization, "content-type": "application/json" },
-        body: JSON.stringify(commitEnvelope()),
+        body: JSON.stringify(commitEnvelope(expectedConsistencyHead)),
       });
       const completedAtMs = Date.now();
-      const event = assertCommit(result);
+      const committed = nextConsistencyHead(result);
       const next = {
         requestId: requestId(result.response),
         status: result.response.status,
         startedAtMs,
         completedAtMs,
         responseLatencyMs: completedAtMs - startedAtMs,
-        eventId: typeof event?.id === "string" ? event.id : null,
-        committedSuid: typeof event?.sortableUniqueIdValue === "string" ? event.sortableUniqueIdValue : null,
+        eventId: typeof committed.event?.id === "string" ? committed.event.id : null,
+        committedSuid: committed.head,
+        consistencyHead: expectedConsistencyHead,
         statusRaw: { httpStatus: result.response.status, cfRay: requestId(result.response) },
       };
+      expectedConsistencyHead = committed.head;
       requests.push(next);
       windows.push({
         scheduledGapMs,
@@ -186,6 +275,7 @@ export async function measureB0Phase({ baseUrl, token, phase, sourceCommit, conf
     endpoint,
     deploymentWitness: configWitness,
     fixture: { version: FIXTURE_VERSION, payloadDigest: sha(FIXTURE_PAYLOAD), tagSetDigest: sha(FIXTURE_TAG), rawValues: "redacted-from-trace; fixed values are defined in the runbook source" },
+    consistency: { tagSetDigest: sha(FIXTURE_TAG), initialHead: initialConsistencyHead, finalHead: expectedConsistencyHead, authority: "previous accepted fixed-tag response" },
     configuration: {
       serviceId: configWitness.serviceId,
       placement: configWitness.placement,
@@ -214,10 +304,22 @@ async function main() {
   const deploymentWitness = JSON.parse(readFileSync(required("--deployment-witness", argument("--deployment-witness")), "utf8"));
   if (token.length === 0) throw new Error("G30 conformance token is empty");
   const output = argument("--output", `.artifacts/g30-b0-${phase}.json`);
-  const measured = await measureB0Phase({ baseUrl, token, phase, sourceCommit, configDigest, deploymentWitness });
+  // Each phase starts by reading the durable tag state again.  A local file
+  // could be stale after an interrupted phase, whereas this indexed point
+  // read is the actual admission authority for the next sequential command.
+  const established = await establishB0Consistency({ baseUrl, token });
+  const measured = await measureB0Phase({
+    baseUrl,
+    token,
+    phase,
+    sourceCommit,
+    configDigest,
+    deploymentWitness,
+    consistencyHead: established.head,
+  });
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(measured, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ phase, samples: measured.ledger.length, firstRequestId: measured.ledger[0]?.requestId ?? null }, null, 2));
+  console.log(JSON.stringify({ phase, samples: measured.ledger.length, firstRequestId: measured.ledger[0]?.requestId ?? null, consistency: established.source }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

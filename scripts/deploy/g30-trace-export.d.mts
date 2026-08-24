@@ -47,9 +47,25 @@ export function normalizeTelemetryBundle(raw: unknown, exportedAtMs?: number, cl
 export function buildBoundedTelemetryQuery(template: Record<string, unknown>, filters: readonly Record<string, unknown>[]): Record<string, unknown>;
 export const CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES: 16;
 export const TELEMETRY_QUERY_VALUE_BATCH: 10;
+export const TELEMETRY_RETRY_DELAY_MS: 15000;
 export function telemetryFilterNodeCount(filters: readonly Record<string, unknown>[]): number;
 export function cloudflareRayId(value: string, label?: string): string;
 export function clientRequestIdByPlatformRayId(ledger: readonly Record<string, unknown>[]): ReadonlyMap<string, string>;
+export function cohortValuesFilter(key: string, values: readonly string[]): Readonly<{
+  key: string;
+  operation: "in";
+  type: "string";
+  value: string;
+}>;
+export function exportDeadline(ledger: readonly Record<string, unknown>[]): number;
+export function acquireCohortTelemetry<T>(input: Readonly<{
+  fetchCohort: () => Promise<unknown>;
+  validate: (raw: unknown) => Promise<T> | T;
+  deadlineMs: number;
+  retry?: boolean;
+  now?: () => number;
+  sleepFor?: (milliseconds: number) => Promise<void>;
+}>): Promise<Readonly<{ raw: unknown; value: T }>>;
 export function queryTelemetry(input: Readonly<{
   accountId: string;
   token: string;

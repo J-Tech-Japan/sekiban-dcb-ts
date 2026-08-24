@@ -9,16 +9,20 @@ import {
 } from "../scripts/g30-b0-contract.mjs";
 import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
 import {
+  acquireCohortTelemetry,
   buildBoundedTelemetryQuery,
   clientRequestIdByPlatformRayId,
   CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES,
+  cohortValuesFilter,
+  exportDeadline,
   normalizeTelemetryBundle,
   normalizeTelemetryExport,
   queryTelemetry,
   TELEMETRY_QUERY_VALUE_BATCH,
+  TELEMETRY_RETRY_DELAY_MS,
   telemetryFilterNodeCount,
 } from "../scripts/deploy/g30-trace-export.mjs";
-import { assertDeploymentWitness } from "../scripts/deploy/g30-b0-measure.mjs";
+import { assertDeploymentWitness, establishB0Consistency, measureB0Phase } from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
 import manifest from "../contracts/commit-trace-manifest.json";
 import meetingRoomWorker, { type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
@@ -56,6 +60,10 @@ function actorClass(emitter: string): string {
 
 function activationFirst(requestId: string): boolean {
   return requestId.endsWith("idle-2") || requestId.endsWith("-2") && !requestId.includes("warm");
+}
+
+function sortableHead(index: number): string {
+  return `063923208896355${String(index).padStart(15, "0")}`;
 }
 
 function traceAttributes(rowId: string, requestId: string): Record<string, string | number | boolean> {
@@ -309,6 +317,124 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => assertG30Config(deploymentConfig(0), deploymentConfig(1), { ...receiver, preview_urls: true })).toThrow(/G38 Phase M/);
   });
 
+  it("takes phase continuity from the durable fixed-tag head", async () => {
+    const observedHead = sortableHead(37);
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toContain("/conformance/v1/api/sekiban/serialized/tag-latest-sortable");
+      return new Response(JSON.stringify({ exists: true, lastSortableUniqueId: observedHead }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      await expect(establishB0Consistency({ baseUrl: "https://g30.test", token: "fixture-token" })).resolves.toEqual({
+        head: observedHead,
+        source: "existing-fixed-tag-head",
+        seeded: false,
+      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("seeds the fixed tag only after a durable empty read", async () => {
+    const seededHead = sortableHead(1);
+    const requestPaths: string[] = [];
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      requestPaths.push(String(input));
+      if (requestPaths.length === 1) {
+        return new Response(JSON.stringify({ exists: false, lastSortableUniqueId: "" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      bodies.push(JSON.parse(String((init as RequestInit | undefined)?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        writtenEvents: [{ id: "seed-event", sortableUniqueIdValue: seededHead }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      await expect(establishB0Consistency({ baseUrl: "https://g30.test", token: "fixture-token" })).resolves.toEqual({
+        head: seededHead,
+        source: "one-time-fixed-tag-seed",
+        seeded: true,
+        seedEventId: "seed-event",
+      });
+      expect(requestPaths).toHaveLength(2);
+      expect(requestPaths[0]).toContain("/conformance/v1/api/sekiban/serialized/tag-latest-sortable");
+      expect(requestPaths[1]).toContain("/conformance/v1/api/sekiban/serialized/commit");
+      expect(bodies).toEqual([{
+        version: 1,
+        eventCandidates: expect.any(Array),
+        consistencyTags: [],
+      }]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("chains one fixed tag's observed head through every B0 commit", async () => {
+    const sourceCommit = "a".repeat(40);
+    const configDigest = "b".repeat(64);
+    const witness = {
+      task: "SDT-G30",
+      phase: "B",
+      sourceCommit,
+      configDigest,
+      placement: "off",
+      serviceId: SERVICE,
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      deployedVersion: {
+        id: "fixture-version",
+        number: 1,
+        createdOn: "2026-08-24T00:00:00.000Z",
+        message: deploymentMessage("B", sourceCommit, configDigest, SERVICE),
+      },
+    };
+    const bodies: Array<{ consistencyTags?: Array<{ tag?: string; lastSortableUniqueId?: string }> }> = [];
+    let writes = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      bodies.push(JSON.parse(String((init as RequestInit | undefined)?.body)) as { consistencyTags?: Array<{ tag?: string; lastSortableUniqueId?: string }> });
+      writes += 1;
+      return new Response(JSON.stringify({
+        writtenEvents: [{ id: `event-${writes}`, sortableUniqueIdValue: sortableHead(writes) }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json", "cf-ray": `a${writes.toString(16).padStart(15, "0")}-LAX` },
+      });
+    });
+    try {
+      const phase = await measureB0Phase({
+        baseUrl: "https://g30.test",
+        token: "fixture-token",
+        phase: "B",
+        sourceCommit,
+        configDigest,
+        deploymentWitness: witness,
+        consistencyHead: sortableHead(0),
+        sleepFor: async () => undefined,
+      });
+      expect(bodies).toHaveLength(108);
+      expect(bodies.map((body) => body.consistencyTags)).toEqual(Array.from({ length: 108 }, (_, index) => ([{
+        tag: "room:g30-baseline",
+        lastSortableUniqueId: sortableHead(index),
+      }])));
+      const measured = phase as {
+        consistency: { initialHead: string; finalHead: string };
+        ledger: Array<{ consistencyHead: string }>;
+      };
+      expect(measured.consistency).toMatchObject({ initialHead: sortableHead(0), finalHead: sortableHead(108) });
+      expect(measured.ledger.every((entry, index) => entry.consistencyHead === sortableHead(index + 5))).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("captures deployment witness paths with ordered shell locals under set -u", () => {
     const runbook = [
       "capture_primary_witness() {",
@@ -468,10 +594,20 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
         key: "requestId", operation: "eq", type: "string", value: `request-${index}`,
       })),
     });
-    const atBudget = buildBoundedTelemetryQuery(template, [...workerFilters, values(TELEMETRY_QUERY_VALUE_BATCH)]);
+    const atBudget = buildBoundedTelemetryQuery(template, [...workerFilters, values(10)]);
     expect(TELEMETRY_QUERY_VALUE_BATCH).toBe(10);
     expect(telemetryFilterNodeCount((atBudget.parameters as { filters: Record<string, unknown>[] }).filters)).toBe(CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES);
-    expect(() => buildBoundedTelemetryQuery(template, [...workerFilters, values(TELEMETRY_QUERY_VALUE_BATCH + 1)])).toThrow(/query-node-budget/);
+    expect(() => buildBoundedTelemetryQuery(template, [...workerFilters, values(11)])).toThrow(/query-node-budget/);
+  });
+
+  it("serializes multi-value cohort filters as provider IN membership", () => {
+    const filter = cohortValuesFilter("$metadata.rayId", ["a305f10b2c5478da", "a305fb3efb57939b"]);
+    expect(filter).toEqual({
+      key: "$metadata.rayId",
+      operation: "in",
+      type: "string",
+      value: "a305f10b2c5478da,a305fb3efb57939b",
+    });
   });
 
   it("rejects a saturated telemetry subquery instead of silently accepting a partial cohort", async () => {
@@ -484,6 +620,40 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  it("retries an initially incomplete cohort before the B export deadline", async () => {
+    const document = evidence();
+    const observationLedger = observationLedgerForPhase(document.phases.B);
+    const retainedRequestIds = new Set(document.phases.B.ledger.map((record) => record.requestId));
+    const sleeps: number[] = [];
+    let attempts = 0;
+    let now = Number(document.phases.B.ledger.at(-1)!.completedAtMs) + 1;
+    const acquisition = await acquireCohortTelemetry({
+      deadlineMs: exportDeadline(document.phases.B.ledger),
+      fetchCohort: async () => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new Error("g30-trace-export:cohort-worker:initial Workers Logs batch has not arrived");
+        }
+        return rawTelemetry(observationLedger);
+      },
+      validate: (raw) => {
+        const bundle = normalizeTelemetryBundle(raw, now);
+        const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
+        const proof = assertTraceCohort(document.phases.B.ledger, traces, now);
+        assertObservationStream(observationLedger, bundle.traces, bundle.observations);
+        return proof;
+      },
+      now: () => now,
+      sleepFor: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        now += milliseconds;
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(sleeps).toEqual([TELEMETRY_RETRY_DELAY_MS]);
+    expect(acquisition.value).toMatchObject({ requestCount: 100 });
   });
 
   it("rejects a telemetry group without an S00 correlation anchor instead of matching by time", () => {

@@ -462,11 +462,12 @@ export async function queryTelemetry({ accountId, token, payload }) {
 
 // Workers Observability rejects a request with more than sixteen filter
 // nodes. The broadest G30 cohort query contains the two-worker scope group,
-// two fixed observation filters, and an OR group of values: 6 + values.
-// Keep the normal batch at the exact ten-value boundary and enforce the
-// provider limit structurally before issuing any request.
+// two fixed observation filters, and one `in` membership leaf. Keep the
+// request batch deliberately bounded at ten identities and enforce the
+// provider node limit structurally before issuing any request.
 export const CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES = 16;
 export const TELEMETRY_QUERY_VALUE_BATCH = 10;
+export const TELEMETRY_RETRY_DELAY_MS = 15_000;
 
 /**
  * The client records the literal cf-ray header (ray plus colo suffix), while
@@ -553,9 +554,19 @@ export function buildBoundedTelemetryQuery(template, filters) {
   return payload;
 }
 
-function valuesFilter(key, values) {
-  const filters = nonEmptyTelemetryStrings(values, key).map((value) => queryFilter(key, value));
-  return filters.length === 1 ? filters[0] : { kind: "group", filterCombination: "or", filters };
+/**
+ * The Workers Observability query API's set-membership form is one `in` leaf
+ * whose `value` is a comma-separated string.  Do not serialize a cohort as a
+ * nested OR group: that shape is structurally valid but does not select the
+ * intended multi-value telemetry cohort on the live endpoint.
+ */
+export function cohortValuesFilter(key, values) {
+  return {
+    key,
+    operation: "in",
+    type: "string",
+    value: nonEmptyTelemetryStrings(values, key).join(","),
+  };
 }
 
 function mergeTelemetryEvents(raws) {
@@ -584,7 +595,7 @@ function payloadsFrom(raws, eventName) {
 async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = TELEMETRY_QUERY_VALUE_BATCH }) {
   const result = [];
   for (const batch of chunks(nonEmptyTelemetryStrings(values, key), batchSize)) {
-    const payload = buildBoundedTelemetryQuery(template, [...fixedFilters, valuesFilter(key, batch)]);
+    const payload = buildBoundedTelemetryQuery(template, [...fixedFilters, cohortValuesFilter(key, batch)]);
     result.push(await queryTelemetry({ accountId, token, payload }));
   }
   return result;
@@ -685,7 +696,7 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function exportDeadline(ledger) {
+export function exportDeadline(ledger) {
   if (!Array.isArray(ledger) || ledger.length === 0) fail("ledger", "B trace export needs the canonical ledger");
   return Math.max(...ledger.map((record, index) => numberFrom(record?.completedAtMs, `ledger[${index}].completedAtMs`))) + 10 * 60 * 1_000;
 }
@@ -695,44 +706,72 @@ function pendingTelemetryError(error) {
   return /g30-b0:(?:trace-count|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:cohort-worker|cohort-root|observation-root|observation-worker|observation-request-id)/.test(message);
 }
 
+/**
+ * Fetch and validate the complete live cohort as one retryable operation.
+ * In particular, the *first* Workers Logs query belongs inside this loop:
+ * telemetry may arrive after the client request returns, and an incomplete
+ * first query is evidence of neither success nor permanent trace loss.
+ */
+export async function acquireCohortTelemetry({
+  fetchCohort,
+  validate,
+  deadlineMs,
+  retry = true,
+  now = Date.now,
+  sleepFor = sleep,
+}) {
+  if (typeof fetchCohort !== "function" || typeof validate !== "function") {
+    fail("cohort-acquire", "fetchCohort and validate must be functions");
+  }
+  if (!Number.isFinite(deadlineMs)) fail("cohort-acquire", "deadlineMs must be finite");
+  let lastPendingError;
+  for (;;) {
+    if (lastPendingError !== undefined && now() >= deadlineMs) throw lastPendingError;
+    try {
+      const raw = await fetchCohort();
+      return Object.freeze({ raw, value: await validate(raw) });
+    } catch (error) {
+      if (!retry || !pendingTelemetryError(error) || now() >= deadlineMs) throw error;
+      lastPendingError = error;
+      await sleepFor(TELEMETRY_RETRY_DELAY_MS);
+    }
+  }
+}
+
 async function main() {
   const ledgerPath = required("--ledger", argument("--ledger"));
   const output = argument("--output", ".artifacts/g30-b0-traces.json");
   const rawOutput = argument("--raw-output");
   const ledgerDocument = JSON.parse(readFileSync(ledgerPath, "utf8"));
   const observationLedger = observationLedgerForPhase(ledgerDocument);
-  let raw;
   const input = argument("--input");
+  let fetchCohort;
   if (input !== undefined) {
-    raw = JSON.parse(readFileSync(input, "utf8"));
+    fetchCohort = async () => JSON.parse(readFileSync(input, "utf8"));
   } else {
     const accountId = required("--account-id", argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID));
     const token = readFileSync(required("--api-token-file", argument("--api-token-file", process.env.G30_OBSERVABILITY_TOKEN_FILE)), "utf8").trim();
     const queryPath = required("--query", argument("--query"));
     if (token.length === 0) fail("token", "observability token is empty");
-    raw = await exportCohortTelemetry({ accountId, token, template: JSON.parse(readFileSync(queryPath, "utf8")), ledger: observationLedger });
+    const template = JSON.parse(readFileSync(queryPath, "utf8"));
+    fetchCohort = async () => exportCohortTelemetry({ accountId, token, template, ledger: observationLedger });
   }
   const deadline = exportDeadline(ledgerDocument.ledger);
-  let bundle;
-  let traces;
-  let proof;
-  for (;;) {
-    try {
-      bundle = normalizeTelemetryBundle(raw, Date.now(), clientRequestIdByPlatformRayId(observationLedger));
+  const acquisition = await acquireCohortTelemetry({
+    fetchCohort,
+    deadlineMs: deadline,
+    retry: input === undefined,
+    validate: async (raw) => {
+      const bundle = normalizeTelemetryBundle(raw, Date.now(), clientRequestIdByPlatformRayId(observationLedger));
       const retainedRequestIds = new Set(ledgerDocument.ledger?.map((record) => record?.requestId));
-      traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
-      proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());
+      const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
+      const proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());
       assertObservationStream(observationLedger, bundle.traces, bundle.observations);
-      break;
-    } catch (error) {
-      if (input !== undefined || Date.now() >= deadline || !pendingTelemetryError(error)) throw error;
-      await sleep(15_000);
-      const accountId = required("--account-id", argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID));
-      const token = readFileSync(required("--api-token-file", argument("--api-token-file", process.env.G30_OBSERVABILITY_TOKEN_FILE)), "utf8").trim();
-      const queryPath = required("--query", argument("--query"));
-      raw = await exportCohortTelemetry({ accountId, token, template: JSON.parse(readFileSync(queryPath, "utf8")), ledger: observationLedger });
-    }
-  }
+      return Object.freeze({ bundle, traces, proof });
+    },
+  });
+  const raw = acquisition.raw;
+  const { bundle, traces, proof } = acquisition.value;
   const result = {
     task: "SDT-G30",
     phase: "B",

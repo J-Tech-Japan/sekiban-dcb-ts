@@ -22,9 +22,11 @@ Closes #70
   identity and existing attempt correlation. The exporter joins the client's
   POP-suffixed CF-Ray through Cloudflare's 16-hex provider Ray index and
   restores the original client value in evidence; it uses bounded ten-value
-  subqueries that are structurally limited to the provider's 16 filter-node
-  maximum, and rejects a saturated page rather than accepting partial
-  telemetry. The A/B/A′
+  subqueries whose values are serialized as the provider's comma-separated
+  `in` membership form and are structurally limited to the provider's 16
+  filter-node maximum. The initial query and every subsequent incomplete
+  cohort query retry only until the canonical ten-minute deadline; a
+  saturated page is rejected rather than accepted as partial telemetry. The A/B/A′
   runner, cohort contract, evidence recorder, and candidate retention gate join
   every retained observation to the B ledger and S00 root. Human
   activation/outlier records are rejected; refresh, idle, and queue/doorbell
@@ -52,8 +54,13 @@ manifest, tools, and placeholder-evidence changes are complete. C is both
 deployment and digest authority. The B0 run uses that same C with placement
 off, the existing G32 service ID, a single client region, fixed payload/tag,
 concurrency one, and only `head_sampling_rate` 0→1→0 as the phase delta.
-Phase remains an external evidence label; it is never passed to the deployed
-Worker as a phase-specific variable.
+Before each phase, the client performs an indexed durable read of the fixed
+tag head and carries it through ordinary sequential consistency reservations,
+advancing from each accepted response. That client-side head is not a phase
+configuration delta or an evidence declaration; a one-time seed is permitted
+only for an otherwise empty service and is outside all phase ledgers. Phase
+remains an external evidence label; it is never passed to the deployed Worker
+as a phase-specific variable.
 
 R is evidence-only: `docs/SDT-G30-*evidence*.{json,md}` plus exactly one C
 append in `.github/workflows/ci.yml`. The evidence states
