@@ -36,6 +36,10 @@ import {
   type NativeCommitSpanInput,
   type NativeTracing,
 } from "../trace/CommitTrace";
+import {
+  beginDurableObjectHandlerObservation,
+  type DurableObjectHandlerObservation,
+} from "../trace/ObservationStream";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
@@ -833,6 +837,7 @@ export class JournalDurableObject implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     // Flip before this handler performs its first await.
     const activation = this.activation.beginHandler();
+    const observation = beginDurableObjectHandlerObservation("JOURNAL", activation);
     const path = new URL(request.url).pathname;
     if (request.method === "GET" && path === "/state") {
       const record = await this.readRecord();
@@ -856,16 +861,16 @@ export class JournalDurableObject implements DurableObject {
     }
 
     if (request.method === "POST" && path === "/admit") {
-      return this.traceCommitActor(request, activation, (body) => this.admit(body));
+      return this.traceCommitActor(request, activation, observation, (body) => this.admit(body, observation));
     }
     if (request.method === "POST" && path === "/transition") {
-      return this.traceCommitActor(request, activation, (body) => this.transition(body));
+      return this.traceCommitActor(request, activation, observation, (body) => this.transition(body, observation));
     }
     if (request.method === "POST" && path === "/reconcile") {
-      return this.traceCommitActor(request, activation, (body) => this.reconcile(body));
+      return this.traceCommitActor(request, activation, observation, (body) => this.reconcile(body, observation));
     }
     if (request.method === "POST" && path === "/reservation-failure") {
-      return this.traceCommitActor(request, activation, (body) => this.recordReservationFailure(body));
+      return this.traceCommitActor(request, activation, observation, (body) => this.recordReservationFailure(body, observation));
     }
 
     const body = await this.jsonBody(request);
@@ -900,11 +905,12 @@ export class JournalDurableObject implements DurableObject {
   private async traceCommitActor(
     request: Request,
     activation: DurableObjectActivationObservation,
+    observation: DurableObjectHandlerObservation,
     callback: (body: unknown) => Promise<Response>,
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
       this.nativeTracing,
-      { actorClass: "JOURNAL", actorKey: "journal", activation },
+      { actorClass: "JOURNAL", actorKey: "journal", activation, observation },
       async () => {
         const body = await this.jsonBody(request.clone());
         if (isObject(body) && isObject(body.commitContext) && isNonEmptyString(body.commitContext.attemptId) && isNonEmptyString(body.commitContext.serviceId)) {
@@ -914,6 +920,7 @@ export class JournalDurableObject implements DurableObject {
             actorKey: `journal:${body.commitContext.attemptId}`,
           };
         }
+        observation.markFirstStorageRead();
         const record = await this.readRecord();
         const context = record?.commitContext;
         return context === undefined ? undefined : {
@@ -999,7 +1006,7 @@ export class JournalDurableObject implements DurableObject {
     }
   }
 
-  private async admit(body: unknown): Promise<Response> {
+  private async admit(body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     const parsed = admissionFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_journal_admission", parsed.error ?? "Invalid Journal admission");
@@ -1009,6 +1016,7 @@ export class JournalDurableObject implements DurableObject {
     }
 
     const input = parsed.value;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const existing = await txn.get<JournalRecord>(JOURNAL_KEY);
       if (existing !== undefined) {
@@ -1108,12 +1116,13 @@ export class JournalDurableObject implements DurableObject {
       : error(result.status, "repair_observation_rejected", result.error);
   }
 
-  private async transition(body: unknown): Promise<Response> {
+  private async transition(body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     const parsed = transitionFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_journal_transition", parsed.error ?? "Invalid Journal transition");
     }
     const input = parsed.value;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const record = await txn.get<JournalRecord>(JOURNAL_KEY);
       if (record === undefined) {
@@ -1181,7 +1190,7 @@ export class JournalDurableObject implements DurableObject {
       : error(result.status, "journal_transition_rejected", result.error);
   }
 
-  private async reconcile(body: unknown): Promise<Response> {
+  private async reconcile(body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     if (!isObject(body)) {
       return error(400, "invalid_journal_reconciliation", "Reconciliation body must be an object");
     }
@@ -1195,6 +1204,7 @@ export class JournalDurableObject implements DurableObject {
       );
     }
 
+    observation?.markFirstStorageRead();
     const result = await this.applyReconciliation(expectation.value, reconciliation.value, "worker");
     return result.ok
       ? json(result.record)
@@ -1205,12 +1215,13 @@ export class JournalDurableObject implements DurableObject {
    * Persist the reservation-stage classification before the cancel barrier.
    * That makes a crash after tombstone durability recover to the same outcome.
    */
-  private async recordReservationFailure(body: unknown): Promise<Response> {
+  private async recordReservationFailure(body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     const parsed = reservationFailureFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_journal_reservation_failure", parsed.error ?? "Invalid reservation failure");
     }
     const input = parsed.value;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
       const record = await txn.get<JournalRecord>(JOURNAL_KEY);
       if (record === undefined) {

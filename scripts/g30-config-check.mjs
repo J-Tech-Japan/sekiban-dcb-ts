@@ -30,8 +30,18 @@ function comparable(config) {
 
 export function assertG30Config(primaryOff, primaryOn, receiverOff) {
   for (const [name, config, sample] of [["primary-off", primaryOff, 0], ["primary-on", primaryOn, 1], ["receiver-off", receiverOff, 0]]) {
-    if (config?.observability?.enabled !== true || config?.observability?.traces?.enabled !== true || config?.observability?.traces?.persist !== true || config?.observability?.traces?.head_sampling_rate !== sample) {
-      throw new Error(`G30 ${name} observability must be enabled with sampling ${sample}`);
+    if (
+      config?.observability?.enabled !== true ||
+      config?.observability?.traces?.enabled !== true ||
+      config?.observability?.traces?.persist !== true ||
+      config?.observability?.traces?.head_sampling_rate !== sample ||
+      config?.observability?.logs?.enabled !== true ||
+      config?.observability?.logs?.persist !== true ||
+      config?.observability?.logs?.invocation_logs !== true ||
+      config?.observability?.logs?.head_sampling_rate !== 1 ||
+      config?.version_metadata?.binding !== "WORKER_VERSION"
+    ) {
+      throw new Error(`G30 ${name} must persist sdt.observe logs, bind WORKER_VERSION, and enable trace sampling ${sample}`);
     }
     if (Object.hasOwn(config, "placement") || JSON.stringify(config).includes("locationHint")) throw new Error(`G30 ${name} must not enable placement or locationHint`);
   }
@@ -72,10 +82,16 @@ export function selfTest() {
   let extraDeltaRed = false;
   try { const altered = structuredClone(on); altered.vars.AUTO_DRAIN_OUTBOX = "false"; assertG30Config(off, altered, receiver); } catch (error) { extraDeltaRed = String(error).includes("outside trace sampling"); }
   if (!extraDeltaRed) throw new Error("G30 configuration delta mutation unexpectedly passed");
+  let logsRed = false;
+  try { const altered = structuredClone(on); altered.observability.logs.persist = false; assertG30Config(off, altered, receiver); } catch (error) { logsRed = String(error).includes("persist sdt.observe logs"); }
+  if (!logsRed) throw new Error("G30 observation-log persistence mutation unexpectedly passed");
+  let versionBindingRed = false;
+  try { const altered = structuredClone(on); altered.version_metadata.binding = "WRONG_VERSION"; assertG30Config(off, altered, receiver); } catch (error) { versionBindingRed = String(error).includes("WORKER_VERSION"); }
+  if (!versionBindingRed) throw new Error("G30 version metadata binding mutation unexpectedly passed");
   let phaseRuntimeRed = false;
   try { assertPhaseRuntimeIsolation("const phase = G30_TRACE_PHASE;", "clean runbook"); } catch (error) { phaseRuntimeRed = String(error).includes("runtime diagnostic protocol surface"); }
   if (!phaseRuntimeRed) throw new Error("G30 phase runtime mutation unexpectedly passed");
-  return { ...result, ...isolation, mutations: ["sampling", "placement", "extra-config-delta", "phase-runtime-config"] };
+  return { ...result, ...isolation, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

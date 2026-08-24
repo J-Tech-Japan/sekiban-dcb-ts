@@ -6,6 +6,7 @@ import {
   BootstrapCoordinatorDurableObject,
   JournalDurableObject,
   processDownstreamDoorbell,
+  observeFaultBarrier,
   readDirectDoorbellConfig,
   selectDirectDoorbellViews,
   TagDurableObject,
@@ -40,6 +41,12 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   /** In-process integration seam; never configured by a deployed Worker. */
   readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
     readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
+    /** Existing in-process test seam only; no deployed binding can enable it. */
+    readonly faultBarrier?: Readonly<{
+      barrierId: string;
+      boundedWindowMs: number;
+      waitForRelease: () => Promise<void>;
+    }>;
   };
 }
 
@@ -51,6 +58,9 @@ export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomC
   async deliver(message: unknown) {
     await assertFinalCutoverFenceIfConfigured(this.env);
     const testOverrides = this.env.__G29_DOORBELL_TEST__;
+    if (testOverrides?.faultBarrier !== undefined) {
+      await waitForTestFaultBarrier(testOverrides.faultBarrier);
+    }
     const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy);
     const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(this.env);
     const result = await processDownstreamDoorbell(message, this.env, {
@@ -66,8 +76,41 @@ export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomC
       viewDurationsMs: result.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
       disposition: result.fastDisposition,
     });
+    if (testOverrides?.faultBarrier !== undefined) {
+      observeFaultBarrier({
+        barrierId: testOverrides.faultBarrier.barrierId,
+        stage: "drained",
+        boundedWindowMs: testOverrides.faultBarrier.boundedWindowMs,
+      });
+    }
     return result;
   }
+}
+
+/**
+ * G30's queue/doorbell discrimination uses the pre-existing in-process
+ * receiver seam only. It is absent from deployed bindings and cannot change
+ * public protocol/control behavior. The structured events let the evidence
+ * contract verify start -> release -> drain from measured timestamps.
+ */
+async function waitForTestFaultBarrier(barrier: Readonly<{
+  barrierId: string;
+  boundedWindowMs: number;
+  waitForRelease: () => Promise<void>;
+}>): Promise<void> {
+  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "started", boundedWindowMs: barrier.boundedWindowMs });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      barrier.waitForRelease(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`G30 test fault barrier ${barrier.barrierId} exceeded its bound`)), barrier.boundedWindowMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "ended", boundedWindowMs: barrier.boundedWindowMs });
 }
 
 /** Local/legacy fixtures do not set G32 phase. A deployed final C always does. */

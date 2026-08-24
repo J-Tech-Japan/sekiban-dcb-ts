@@ -14,12 +14,14 @@ Closes #70
 - Binds each B0 deployment to Cloudflare Worker Version metadata outside the
   Worker protocol; it adds no G30 conformance endpoint or runtime witness
   variable.
-- Computes per-accepted-request caller-interval union attribution, observes
-  activation/idle out of Durable Object storage, and adds the A/B/A′ B0
-  runner, trace exporter, cohort contract, evidence recorder, and candidate
-  retention gate. Operator-provided activation/outlier records are accepted
-  only after request-level joins to both the B ledger and exported S00 trace
-  roots; refresh and queue bounds are calculated from exported/ledger facts.
+- Computes per-accepted-request caller-interval union attribution and emits
+  an isolated `sdt.observe/v1` Workers Logs stream for facts that cannot fit
+  the sealed commit-span schema (Worker isolate, DO handler/storage/subrequest
+  measurements, and bounded doorbell test seams). The A/B/A′ runner, exporter,
+  cohort contract, evidence recorder, and candidate retention gate join every
+  observation to the B ledger and S00 root. Human activation/outlier records
+  are rejected; refresh, idle, and queue/doorbell disposition are calculated
+  from raw telemetry and client timelines only.
 - Defers Worker isolate randomness to the first request-handler boundary,
   which preserves per-isolate tracing while keeping the local workerd module
   loader free of forbidden global-scope random generation. CI retains the G15
@@ -47,7 +49,7 @@ Worker as a phase-specific variable.
 R is evidence-only: `docs/SDT-G30-*evidence*.{json,md}` plus exactly one C
 append in `.github/workflows/ci.yml`. The evidence states
 `sourceCommit === deployedRuntimeCommit === C`, carries tree/config digests,
-keeps raw A/B/A′ ledgers and B traces, requires every B trace’s individual
+keeps raw A/B/A′ ledgers, B traces, and structured observations, requires every B trace’s individual
 unattributed ratio to be at most 5%, records the A/A′ drift and B overhead
 without asserting a performance pass/fail, and explicitly marks B0 as not a
 G37 denominator. No token value is included in a command argument, log,

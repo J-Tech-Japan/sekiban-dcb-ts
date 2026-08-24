@@ -1,5 +1,6 @@
 import commitTraceManifestJson from "../../../../contracts/commit-trace-manifest.json";
 import { calculateUnattributedRatio, type UnattributedRatio } from "./AttributionRatio";
+import type { DurableObjectHandlerObservation } from "./ObservationStream";
 
 /**
  * Trace-only commit attribution support.
@@ -893,6 +894,9 @@ export class CommitTrace {
 export interface DurableObjectActivationObservation {
   readonly activationId: string;
   readonly first: boolean;
+  /** Monotonic-in-practice wall-clock observation; never persisted. */
+  readonly handlerStartedAtMs: number;
+  readonly constructorToHandlerMs: number;
 }
 
 /**
@@ -901,12 +905,19 @@ export interface DurableObjectActivationObservation {
  */
 export class DurableObjectActivation {
   readonly activationId = crypto.randomUUID();
+  private readonly constructedAtMs = Date.now();
   private first = true;
 
   beginHandler(): DurableObjectActivationObservation {
     const first = this.first;
     this.first = false;
-    return Object.freeze({ activationId: this.activationId, first });
+    const handlerStartedAtMs = Date.now();
+    return Object.freeze({
+      activationId: this.activationId,
+      first,
+      handlerStartedAtMs,
+      constructorToHandlerMs: Math.max(0, handlerStartedAtMs - this.constructedAtMs),
+    });
   }
 }
 
@@ -1008,6 +1019,8 @@ export interface NativeActorHandleInput {
   readonly actorClass: CommitTraceActorClass;
   readonly actorKey: string;
   readonly activation: DurableObjectActivationObservation;
+  /** Separate sdt.observe/v1 log stream; never a commit-span attribute. */
+  readonly observation?: DurableObjectHandlerObservation;
 }
 
 /**
@@ -1242,6 +1255,10 @@ export async function enterNativeActorHandleSpan<T>(
     } catch (error) {
       if (identity !== undefined) setNativeAttribute(span, "outcome", "exception");
       throw error;
+    } finally {
+      // The structured log is emitted while the actor span is still active,
+      // so Cloudflare supplies trace/request identity without a new header.
+      input.observation?.finish();
     }
   });
 }

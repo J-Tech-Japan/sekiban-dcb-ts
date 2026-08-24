@@ -19,10 +19,10 @@ const REQUIRED_R_FILES = new Set([
 ]);
 
 /**
- * Evidence is deliberately allowed to retain the raw phase ledgers, trace
- * export, activation proof, and outlier discrimination alongside the human
- * summary.  The glob is the contract from #70; operational code is never an
- * admissible post-candidate change.
+ * Evidence is deliberately allowed to retain raw phase ledgers plus the
+ * trace/structured-observation export alongside the derived summary. The
+ * glob is the contract from #70; operational code is never an admissible
+ * post-candidate change.
  */
 function isAllowedPostCandidatePath(path) {
   return path === ".github/workflows/ci.yml" || /^docs\/SDT-G30-.*evidence.*\.(?:json|md)$/.test(path);

@@ -55,6 +55,23 @@ export interface CloudflareOnlyEnv {
   DIRECT_DOORBELL_RECEIVER_MODE?: string;
   DIRECT_DOORBELL_SELF_BINDING_PROOF?: string;
   G26_VIEW_COUNT?: string;
+  /** Bound from Cloudflare Worker Version metadata; observation-only. */
+  WORKER_VERSION?: Readonly<{ id?: unknown }>;
+}
+
+function cloudflareCommitTraceProvider(request: Request, env: CloudflareOnlyEnv): Readonly<{
+  scriptVersion?: string;
+  colo?: string;
+}> {
+  // These provider facts are optional schema attributes, never protocol
+  // inputs. They let sdt.observe/v1 cross-check the platform log metadata
+  // against S00 without adding a request header or response field.
+  const versionId = env.WORKER_VERSION?.id;
+  const cf = request.cf as unknown as { colo?: unknown } | undefined;
+  return Object.freeze({
+    ...(typeof versionId === "string" && versionId.length > 0 ? { scriptVersion: versionId } : {}),
+    ...(typeof cf?.colo === "string" && cf.colo.length > 0 ? { colo: cf.colo } : {}),
+  });
 }
 
 export interface CloudflareOnlyWorkerOptions {
@@ -123,6 +140,7 @@ export function createCloudflareOnlyRuntimeWorker(
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
           nativeTracing: cloudflareTracing(ctx),
+          commitTraceProvider: cloudflareCommitTraceProvider(request, env),
         });
       }
       if (
@@ -240,6 +258,7 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export { observeFaultBarrier } from "./trace/ObservationStream";
 export type {
   DeliveryClass,
   DownstreamDoorbellBinding,

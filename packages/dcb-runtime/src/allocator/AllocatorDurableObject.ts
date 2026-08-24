@@ -21,6 +21,7 @@ import {
   noOpNativeTracing,
   type NativeTracing,
 } from "../trace/CommitTrace";
+import { beginDurableObjectHandlerObservation, type DurableObjectHandlerObservation } from "../trace/ObservationStream";
 
 const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
@@ -171,18 +172,19 @@ export class AllocatorDurableObject implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     // Must run before the first await in every handler admission.
     const activation = this.activation.beginHandler();
+    const observation = beginDurableObjectHandlerObservation("ALLOCATOR", activation);
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/allocate") {
       return enterNativeActorHandleSpan(
         this.nativeTracing,
-        { actorClass: "ALLOCATOR", actorKey: "allocator", activation },
+        { actorClass: "ALLOCATOR", actorKey: "allocator", activation, observation },
         async () => {
           const parsed = allocateFrom(await request.clone().json<unknown>());
           return parsed.value?.serviceId === undefined
             ? undefined
             : { attemptId: parsed.value.attemptId, serviceId: parsed.value.serviceId };
         },
-        () => this.allocate(request, activation),
+        () => this.allocate(request, activation, observation),
       );
     }
     if (request.method === "GET" && url.pathname === "/state") {
@@ -201,7 +203,7 @@ export class AllocatorDurableObject implements DurableObject {
     if (request.method === "GET" && url.pathname.startsWith("/attempts/")) {
       return enterNativeActorHandleSpan(
         this.nativeTracing,
-        { actorClass: "ALLOCATOR", actorKey: "allocator", activation },
+        { actorClass: "ALLOCATOR", actorKey: "allocator", activation, observation },
         async () => undefined,
         async () => {
           let attemptId: string;
@@ -213,6 +215,7 @@ export class AllocatorDurableObject implements DurableObject {
           if (attemptId.length === 0) {
             return error(400, "invalid_attempt_id", "Attempt ID is required");
           }
+          observation.markFirstStorageRead();
           const vector = await this.ctx.storage.get<AllocationVector>(attemptKey(attemptId));
           if (vector === undefined) {
             return error(404, "allocation_not_found", "No durable allocation exists for this attempt");
@@ -232,6 +235,7 @@ export class AllocatorDurableObject implements DurableObject {
   private async allocate(
     request: Request,
     activation: DurableObjectActivationObservation,
+    observation?: DurableObjectHandlerObservation,
   ): Promise<Response> {
     let body: unknown;
     try {
@@ -264,17 +268,19 @@ export class AllocatorDurableObject implements DurableObject {
         async () => {
           const url = new URL("https://allocator.internal/command/finalize");
           url.searchParams.set("__serviceId", input.serviceId!);
-          return this.env!.BOOTSTRAP!.get(this.env!.BOOTSTRAP!.idFromName(input.serviceId!)).fetch(new Request(url, {
+          const fetch = () => this.env!.BOOTSTRAP!.get(this.env!.BOOTSTRAP!.idFromName(input.serviceId!)).fetch(new Request(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ commandId: input.bootstrapCommandId, leaseEpoch: input.bootstrapEpoch }),
           }));
+          return observation === undefined ? fetch() : observation.subrequest(fetch);
         },
       );
       if (!admitted.ok) return error(409, "bootstrap_command_rejected", "bootstrap fencing epoch rejects allocation");
     }
 
     try {
+      observation?.markFirstStorageRead();
       const result = await this.ctx.storage.transaction(async (txn): Promise<AllocationSuccess> => {
         const existing = await txn.get<AllocationVector>(attemptKey(input.attemptId));
         const persistedState = await txn.get<AllocatorState>(STATE_KEY);

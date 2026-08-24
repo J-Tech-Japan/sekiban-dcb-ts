@@ -22,6 +22,7 @@ const source = Object.freeze({
   repair: "packages/dcb-runtime/src/repair/RepairWorker.ts",
   traceExport: "scripts/deploy/g30-trace-export.mjs",
   b0: "scripts/g30-b0-contract.mjs",
+  observation: "packages/dcb-runtime/src/trace/ObservationStream.ts",
 });
 
 /** Each mutation owns one exact G30 runtime oracle, plus one unrelated pass. */
@@ -269,8 +270,8 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
   {
     id: "evidence-reverification-gate",
     file: source.b0,
-    from: "      verifyExportedSuccessTrace(trace);",
-    to: "      void trace;",
+    from: "    // Re-run the runtime-shaped verifier here so post-export row/attribute\n    // edits cannot survive merely by retaining runtimeVerified: true.\n    try {\n      verifyExportedSuccessTrace(trace);",
+    to: "    // Re-run the runtime-shaped verifier here so post-export row/attribute\n    // edits cannot survive merely by retaining runtimeVerified: true.\n    try {\n      void trace;",
     target: "re-verifies every retained trace instead of trusting a stale success flag",
     unrelated: "requires real warm activation observations for every reusable actor",
     testFile: "test/g30-b0.spec.ts",
@@ -278,10 +279,10 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
   {
     id: "idle-evidence-schedule-gate",
     file: source.b0,
-    from: "  if (!same(evidence.scheduleMs, G30_IDLE_SCHEDULE_MS)) {",
-    to: "  if (false) {",
-    target: "requires all four independently evidenced outlier hypotheses and the exact idle schedule",
-    unrelated: "requires real warm activation observations for every reusable actor",
+    from: "  if (idle === undefined || !same(idle.scheduleMs, G30_IDLE_SCHEDULE_MS) || !Array.isArray(idle.windows)) {",
+    to: "  if (idle === undefined || false || !Array.isArray(idle.windows)) {",
+    target: "requires the literal B-only 2/15/180 schedule from raw ledgers",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
     testFile: "test/g30-b0.spec.ts",
   },
   {
@@ -289,26 +290,64 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     file: source.b0,
     from: "    if (observation.storageWrites !== 0 || observation.usedForControl !== false || observation.exposedInPublicResponse !== false) {",
     to: "    if (false) {",
-    target: "requires all four independently evidenced outlier hypotheses and the exact idle schedule",
-    unrelated: "requires real warm activation observations for every reusable actor",
+    target: "rejects a non-isolated sdt.observe event",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
     testFile: "test/g30-b0.spec.ts",
   },
   {
-    id: "outlier-evidence-field-gate",
+    // The observation must join by its explicit platform request id, not by
+    // a trace-id lookup that can hide a forged/missing request identity.
+    id: "observation-request-join-gate",
     file: source.b0,
-    from: "  nonEmptyString(evidence.warmComparison, \"worker-isolate-first.warmComparison\");",
-    to: "  void evidence.warmComparison;",
-    target: "requires all four independently evidenced outlier hypotheses and the exact idle schedule",
-    unrelated: "requires real warm activation observations for every reusable actor",
+    from: "    const reference = evidenceReference(observation.requestId, traceIndex, `observation[${index}]`);",
+    to: "    const reference = evidenceReference(traceIndex.requestIdByTraceId.get(observation.traceId), traceIndex, `observation[${index}]`);",
+    target: "rejects an unjoined sdt.observe event",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "observation-overlap-script-version-gate",
+    file: source.b0,
+    from: "      if (provider.scriptVersion !== scriptVersion || rootString(reference, \"script.version\", `observation[${index}]`) !== scriptVersion) {",
+    to: "      if (false) {",
+    target: "rejects an sdt.observe field that disagrees with its joined S00 trace",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "fault-barrier-presence-gate",
+    file: source.b0,
+    from: "    if (requiredForObservedOutlier) fail(\"fault-barrier\", \"queue/doorbell probe has no observed sdt.observe/v1 fault barrier for an observed outlier\");",
+    to: "    if (false) fail(\"fault-barrier\", \"queue/doorbell probe has no observed sdt.observe/v1 fault barrier for an observed outlier\");",
+    target: "rejects a queue/doorbell fault probe without observed barrier lifecycle",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "fault-barrier-lifecycle-gate",
+    file: source.b0,
+    from: "    if (!same(ordered.map((entry) => entry.event.stage), [\"started\", \"ended\", \"drained\"])) {",
+    to: "    if (false) {",
+    target: "rejects a fault probe with an incomplete observed lifecycle",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "idle-prior-request-gate",
+    file: source.b0,
+    from: "  const previousRequestId = nonEmptyString(window?.previousRequestId, `${label}.previous.requestId`);",
+    to: "  const previousRequestId = String(window?.previousRequestId ?? \"\");",
+    target: "rejects an idle observation without prior and next request references",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
     testFile: "test/g30-b0.spec.ts",
   },
   {
     id: "outlier-hypothesis-collapse",
     file: source.b0,
-    from: "  \"durable-object-wake\",",
-    to: "  \"worker-isolate-first\",",
-    target: "requires all four independently evidenced outlier hypotheses and the exact idle schedule",
-    unrelated: "requires real warm activation observations for every reusable actor",
+    from: "    hypothesis: \"durable-object-wake\",",
+    to: "    hypothesis: \"worker-isolate-first\",",
+    target: "rejects a collapsed outlier hypothesis set",
+    unrelated: "joins trace, ledger, and sdt.observe/v1 events by platform root identity",
     testFile: "test/g30-b0.spec.ts",
   },
   {
@@ -383,6 +422,11 @@ function verifyMatrix() {
   if (new Set(ids).size !== ids.length) throw new Error("G30 trace mutation IDs must be unique");
   for (const mutation of G30_TRACE_MUTATIONS) {
     if (mutation.target === mutation.unrelated) throw new Error(`G30 ${mutation.id} lacks an independent oracle`);
+    const testFile = mutation.testFile ?? "test/g30-trace.spec.ts";
+    const testSource = readFileSync(resolve(root, testFile), "utf8");
+    if (!testSource.includes(mutation.target) || !testSource.includes(mutation.unrelated)) {
+      throw new Error(`G30 ${mutation.id} names an oracle absent from ${testFile}`);
+    }
   }
 }
 

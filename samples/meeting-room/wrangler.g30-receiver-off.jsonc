@@ -21,8 +21,10 @@
   },
   "observability": {
     "enabled": true,
+    "logs": { "enabled": true, "persist": true, "invocation_logs": true, "head_sampling_rate": 1 },
     "traces": { "enabled": true, "head_sampling_rate": 0, "persist": true }
   },
+  "version_metadata": { "binding": "WORKER_VERSION" },
   "d1_databases": [
     {
       "binding": "D1",

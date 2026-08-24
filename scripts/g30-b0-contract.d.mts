@@ -6,6 +6,7 @@ export const G30_IDLE_SCHEDULE_MS: readonly [2_000, 15_000, 180_000];
 
 export interface G30Trace {
   requestId: string;
+  traceId: string;
   schema: "sdt.commit/v1";
   complete: boolean;
   runtimeVerified: boolean;
@@ -24,6 +25,31 @@ export interface G30TraceSpan {
   [key: string]: unknown;
 }
 
+export interface G30Observation {
+  schema: "sdt.observe/v1";
+  event: "worker.invocation" | "do.handler" | "fault.barrier";
+  requestId: string;
+  traceId: string;
+  emittedAtMs: number;
+  /** Values emitted by the structured observation and cross-checked to S00. */
+  scriptVersion?: string;
+  colo?: string;
+  provider: {
+    scriptVersion: string;
+    colo: string;
+    cpuTimeMs: number;
+    wallTimeMs: number;
+  };
+  [key: string]: any;
+}
+
+export interface G30ObservationIndex {
+  ledgerByRequestId: Map<string, Record<string, any>>;
+  traceByRequestId: Map<string, G30Trace>;
+  requestIdByTraceId: Map<string, string>;
+  observationsByRequestId: Map<string, G30Observation[]>;
+}
+
 export function assertEligiblePhaseWindow(
   phase: "A" | "B" | "A-prime",
   records: readonly object[],
@@ -34,16 +60,24 @@ export function assertTraceCohort(
   traces: readonly G30Trace[],
   exportCompletedAtMs: number,
 ): Readonly<{ requestCount: number; exportDeadlineMs: number }>;
-export function assertWarmupProof(phase: string, warmup: unknown): Readonly<Record<string, unknown>>;
-export function assertActivationIdleEvidence(
-  activationIdle: unknown,
-  ledger: readonly object[],
+export function observationLedgerForPhase(phaseB: unknown): readonly Record<string, any>[];
+export function assertObservationStream(
+  ledger: readonly Record<string, any>[],
   traces: readonly G30Trace[],
+  observations: readonly G30Observation[],
+): G30ObservationIndex;
+export function assertIdleRequestReferences(
+  window: unknown,
+  label: string,
+): Readonly<{ previousRequestId: string; nextRequestId: string }>;
+export function assertWarmupProof(phase: "B", warmup: unknown, observationIndex: G30ObservationIndex): Readonly<Record<string, unknown>>;
+export function assertActivationIdleEvidence(
+  idleExperiment: unknown,
+  observationIndex: G30ObservationIndex,
 ): Readonly<Record<string, unknown>>;
 export function assertOutlierClassification(
-  outliers: unknown,
-  ledger: readonly object[],
-  traces: readonly G30Trace[],
+  phaseB: unknown,
+  observationIndex: G30ObservationIndex,
 ): Readonly<{ classifiedOutliers: number; unclassifiedOutliers: number }>;
 export function assertB0Evidence(evidence: unknown): Readonly<Record<string, unknown>>;
 export function assertEligiblePhaseWindow(phase: string, records: readonly object[], rawAttempts?: readonly unknown[]): Readonly<Record<string, unknown>>;

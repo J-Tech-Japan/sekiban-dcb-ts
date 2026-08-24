@@ -21,14 +21,22 @@ parent containment, clock domains, boundary sets, and the per-request caller
 coverage union. A tracing/export failure cannot change a commit result or a
 durable outcome.
 
-Activation IDs are constructor-local observations. They are never stored in a
-Durable Object, used as a control input, or returned through a public route.
-Idle evidence is collected from an external complete-trace ledger at exactly
-2 s, 15 s, and 180 s; elapsed time alone never assigns a reactivation cause.
-Each idle observation names a B request that exists in both the client ledger
-and exported trace cohort. Its `activationFirst`, `scriptVersion`, and `colo`
-must exactly equal the matching S00 root attributes; a declaration alone is
-not evidence.
+`sdt.observe/v1` is a distinct structured Workers Logs event stream. It does
+not add a span row or attribute to `sdt.commit/v1`. Worker events record the
+isolate ID and overlapping activation/version/colo facts; Durable Object
+events record constructor-to-handler, first-storage, and actual subrequest
+timings. The exporter reads the DO event's provider-owned version/colo metadata
+and checks it against S00, rather than adding an internal propagation header.
+All events declare `storageWrites: 0`, `usedForControl: false`, and
+`exposedInPublicResponse: false`; they are never persisted or used to choose a
+commit branch.
+
+Activation IDs are constructor-local observations. Idle evidence is collected
+from the client ledger, complete B trace cohort, and this raw observation
+stream at exactly 2 s, 15 s, and 180 s. Each interval explicitly names both
+the preceding and following request IDs. Overlapping `activationFirst`,
+`scriptVersion`, and `colo` must exactly equal the joined S00 root. A human
+declaration, elapsed time alone, or an unjoined log is not evidence.
 
 ## Repeating B0
 
@@ -48,9 +56,9 @@ does not assert a performance pass/fail.
    It verifies the target bundle, candidate material coverage, trace and B0
    mutation lanes, both Worker dry deployments, and remote D1 migration
    emptiness before any live change.
-3. Prepare file-fed inputs for the live run: an observability query payload,
-   an observability API-token file, an activation/idle proof, and four
-   independently evidenced outlier records. Keep all credentials out of
+3. Prepare the file-fed conformance and observability API-token files. The
+   checked-in query template is materialized from the actual B ledger; do not
+   supply activation/idle/outlier assertion files. Keep all credentials out of
    command arguments, logs, and evidence.
 4. Run with `G30_B0_LIVE=1` and the required file paths. The runbook rotates
    only the conformance token through a temporary file, deploys receiver once,
@@ -67,13 +75,15 @@ does not assert a performance pass/fail.
    configuration digest, while the witness records the service and placement
    observation. No G30 route,
    header, body field, or runtime variable is added for this purpose.
-6. The trace exporter joins B's complete traces to the independent client
-   ledger by the S00 ray/request identifier. It rejects missing traces,
-   replacements, incomplete schema rows, an export after the 10-minute
-   deadline, or any accepted request whose caller-union unattributed ratio is
-   above 5%. It also retains only safe provider span names per B trace, so
-   refresh exclusion is calculated from the exported trace cohort rather than
-   an operator-supplied boolean.
+6. The exporter materializes a bounded raw-events query from B's client
+   ledger, paginates it, and joins complete traces plus `sdt.observe/v1` logs
+   by the platform S00 ray/request identity. It rejects missing traces,
+   replacements, incomplete schema rows, unknown/mismatched observations, an
+   export after the 10-minute deadline, or any accepted request whose
+   caller-union unattributed ratio is above 5%. It retains safe provider span
+   names for refresh exclusion, while queue/doorbell lifecycle, idle, and
+   activation facts come from the joined observation stream—not an
+   operator-supplied boolean or declaration.
 
 The live run writes only raw evidence artifacts and the summary evidence.
 After it succeeds, make bookkeeping commit R with exactly the evidence files
@@ -83,14 +93,13 @@ candidate and a new B0 acquisition.
 
 ## Evidence required for the former 21.5-second class
 
-The B0 validator requires one independently attributable or excluded record
-for each hypothesis: Worker-isolate first invocation, Durable Object wake,
-token rotation, and queue/doorbell backpressure. Every raw record cites a B
-request present in both the ledger and trace cohort. Worker-isolate values are
-cross-checked against the cited root's version and colo. Token rotation is
-excluded only when the exporter finds no refresh span on any B trace; an
-operator cannot supply `refreshSpanPresent`. Queue/doorbell remains a
-fault-barrier exclusion probe and its bound is calculated from the cited
-ledger/root timings, never from an operator-supplied `withinBound` flag. The
-runbook validates these joins before it copies any supplied raw evidence under
-`docs/`.
+The B0 validator derives one attributable or excluded result for each
+hypothesis: Worker-isolate first invocation, Durable Object wake, token
+rotation, and queue/doorbell backpressure. Every raw observation cites a B
+request present in both the client ledger and complete trace cohort. Worker
+facts are cross-checked against the cited root's version and colo. Token
+rotation is excluded only when the exporter finds no refresh span on the
+joined trace. When a 21.5-second target is observed, the queue/doorbell path
+requires bounded `started` → `ended` → `drained` observation events; a
+no-target run does not invent a fault claim. No external proof file is copied
+or accepted.

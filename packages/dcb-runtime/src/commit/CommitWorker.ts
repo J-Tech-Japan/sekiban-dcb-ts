@@ -27,6 +27,7 @@ import {
   createTraceCorrelationId,
   type NativeTracing,
 } from "../trace/CommitTrace";
+import { observeWorkerInvocation } from "../trace/ObservationStream";
 import { verifyCommitTrace } from "../trace/CommitTraceVerifier";
 
 const INITIAL_OWNER_EPOCH = 0;
@@ -404,6 +405,14 @@ export class CommitWorker {
       // the V1 response.
       attributes: { "activation.first": workerObservation.firstInvocation },
     }, async (root) => {
+      // This is deliberately a separate structured Workers Logs event.  It
+      // executes inside S00's active context, but does not add a span row,
+      // trace attribute, storage write, control input, or V1 response field.
+      observeWorkerInvocation({
+        ...workerObservation,
+        scriptVersion: this.hooks.commitTraceProvider?.scriptVersion,
+        colo: this.hooks.commitTraceProvider?.colo,
+      });
       const state: CommitTraceRequestState = { trace, scope: root };
       const response = await this.handleUntraced(request, state);
       return state.scope.span("S15", { httpStatus: response.status }, async () => response);

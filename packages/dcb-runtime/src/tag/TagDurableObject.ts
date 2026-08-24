@@ -37,6 +37,10 @@ import {
   type DurableObjectActivationObservation,
   type NativeTracing,
 } from "../trace/CommitTrace";
+import {
+  beginDurableObjectHandlerObservation,
+  type DurableObjectHandlerObservation,
+} from "../trace/ObservationStream";
 
 const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -897,6 +901,7 @@ export class TagDurableObject implements DurableObject {
   async fetch(request: Request): Promise<Response> {
     // Flip before this handler performs its first await.
     const activation = this.activation.beginHandler();
+    const observation = beginDurableObjectHandlerObservation("TAG", activation);
     const url = new URL(request.url);
     const tag = url.searchParams.get("__tag");
     if (!isNonEmptyString(tag)) {
@@ -904,7 +909,8 @@ export class TagDurableObject implements DurableObject {
     }
     const serviceId = url.searchParams.get("__serviceId");
     if (request.method === "GET" && url.pathname === "/state") {
-      return this.traceCommitReadActor(request, tag, serviceId, activation, async () => {
+      return this.traceCommitReadActor(request, tag, serviceId, activation, observation, async () => {
+        observation.markFirstStorageRead();
         const record = await this.ctx.storage.get<TagRecord>(TAG_KEY);
         if (record === undefined) {
           return error(404, "tag_not_found", "Tag has no durable state yet");
@@ -923,16 +929,23 @@ export class TagDurableObject implements DurableObject {
     }
 
     if (request.method === "POST" && url.pathname === "/acquire") {
-      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.acquire(tag, body));
+      return this.traceCommitActor(request, tag, serviceId, activation, observation, (body) => this.acquire(tag, body, observation));
     }
     if (request.method === "POST" && url.pathname === "/cancel") {
-      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.cancel(tag, body));
+      return this.traceCommitActor(request, tag, serviceId, activation, observation, (body) => this.cancel(tag, body, observation));
     }
     if (request.method === "POST" && url.pathname === "/seal") {
-      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.seal(tag, body));
+      return this.traceCommitActor(request, tag, serviceId, activation, observation, (body) => this.seal(tag, body, observation));
     }
     if (request.method === "POST" && url.pathname === "/append") {
-      return this.traceCommitActor(request, tag, serviceId, activation, (body) => this.append(tag, body, serviceId, url.searchParams.get("__domainDeliveryClass") ?? undefined));
+      return this.traceCommitActor(
+        request,
+        tag,
+        serviceId,
+        activation,
+        observation,
+        (body) => this.append(tag, body, serviceId, url.searchParams.get("__domainDeliveryClass") ?? undefined, observation),
+      );
     }
 
     const body = await this.jsonBody(request);
@@ -994,11 +1007,12 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     serviceId: string | null,
     activation: DurableObjectActivationObservation,
+    observation: DurableObjectHandlerObservation,
     callback: (body: unknown) => Promise<Response>,
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
       this.nativeTracing,
-      { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation },
+      { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation, observation },
       async () => {
         const body = await this.jsonBody(request.clone());
         const attemptId = isObject(body) && isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
@@ -1025,11 +1039,12 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     serviceId: string | null,
     activation: DurableObjectActivationObservation,
+    observation: DurableObjectHandlerObservation,
     callback: () => Promise<Response>,
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
       this.nativeTracing,
-      { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation },
+      { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation, observation },
       async () => undefined,
       callback,
     );
@@ -1080,12 +1095,13 @@ export class TagDurableObject implements DurableObject {
     return expiry.expired ? this.commit(txn, expiry.record, {}) : expiry.record;
   }
 
-  private async acquire(tag: string, body: unknown): Promise<Response> {
+  private async acquire(tag: string, body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     const parsed = acquireFrom(body, tag);
     if (parsed.value === undefined) {
       return error(400, "invalid_tag_acquire", parsed.error ?? "Invalid acquire request");
     }
     const input = parsed.value;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
       let record = loaded.record;
@@ -1160,12 +1176,13 @@ export class TagDurableObject implements DurableObject {
     return json(result.body, result.status);
   }
 
-  private async cancel(tag: string, body: unknown): Promise<Response> {
+  private async cancel(tag: string, body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     const parsed = reservationFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_tag_cancel", parsed.error ?? "Invalid cancel request");
     }
     const input = parsed.value;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
       const expiry = expireReservation(loaded.record);
@@ -1225,12 +1242,13 @@ export class TagDurableObject implements DurableObject {
     return json(result.body, result.status);
   }
 
-  private async seal(tag: string, body: unknown): Promise<Response> {
+  private async seal(tag: string, body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
     const parsed = epochFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_tag_seal", parsed.error ?? "Invalid seal request");
     }
     const input = parsed.value;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
       const expiry = expireReservation(loaded.record);
@@ -1333,7 +1351,13 @@ export class TagDurableObject implements DurableObject {
     return preflight;
   }
 
-  private async append(tag: string, body: unknown, serviceId: string | null, domainDeliveryClass?: string): Promise<Response> {
+  private async append(
+    tag: string,
+    body: unknown,
+    serviceId: string | null,
+    domainDeliveryClass?: string,
+    observation?: DurableObjectHandlerObservation,
+  ): Promise<Response> {
     const parsed = appendFrom(body, tag);
     if (parsed.value === undefined) {
       return error(400, "invalid_tag_append", parsed.error ?? "Invalid append request");
@@ -1341,6 +1365,7 @@ export class TagDurableObject implements DurableObject {
     const input = parsed.value;
     try {
       const doorbellPreflight = this.directDoorbellPreflight(domainDeliveryClass);
+      observation?.markFirstStorageRead();
       const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
         const loaded = await this.recordFor(txn, tag);
         let record = loaded.record;

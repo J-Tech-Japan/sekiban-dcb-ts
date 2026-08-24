@@ -1,5 +1,5 @@
 import { createExecutionContext, createMessageBatch, getQueueResult } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   type DeliveryViewHandler,
   preflightDirectDoorbell,
@@ -144,6 +144,44 @@ describe("SDT-G29 per-view delivery policy", () => {
     expect(directCalls).toEqual(["RoomProjector"]);
     expect(directCalls).not.toContain("ReservationProjector");
     expect(queueCalls).toEqual(["ReservationProjector"]);
+  });
+
+  it("emits a bounded sdt.observe/v1 barrier lifecycle from the existing in-process doorbell seam", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    try {
+      const delivery = invokeDirect({
+        ...enabled,
+        SDT_SERVICE_ID: "g30-doorbell-observation",
+        __G29_DOORBELL_TEST__: {
+          store: fakeStore(),
+          views: spyViews([]),
+          deliveryPolicy: meetingRoomDeliveryPolicy,
+          afterDelivery: async () => undefined,
+          faultBarrier: {
+            barrierId: "g30-fixture-doorbell",
+            boundedWindowMs: 100,
+            waitForRelease: () => held,
+          },
+        },
+      } as unknown as MeetingRoomCloudflareEnv, "g30-doorbell-observation");
+      await Promise.resolve();
+      release();
+      await delivery;
+      const stages = consoleLog.mock.calls
+        .map(([entry]) => entry)
+        .filter((entry): entry is { schema: string; event: string; barrierId: string; stage: string } =>
+          typeof entry === "object" && entry !== null
+          && (entry as { schema?: unknown }).schema === "sdt.observe/v1"
+          && (entry as { event?: unknown }).event === "fault.barrier",
+        )
+        .filter((entry) => entry.barrierId === "g30-fixture-doorbell")
+        .map((entry) => entry.stage);
+      expect(stages).toEqual(["started", "ended", "drained"]);
+    } finally {
+      consoleLog.mockRestore();
+    }
   });
 
   it("keeps the deployment global class subordinate to the per-view descriptor", () => {

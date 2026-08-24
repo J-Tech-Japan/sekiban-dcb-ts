@@ -5,6 +5,7 @@ import { dirname } from "node:path";
 
 const SAMPLE_COUNT = 100;
 const CADENCE_MS = 2_000;
+const IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
 const FIXTURE_VERSION = "sdt-g30-b0-v1";
 const FIXTURE_TAG = "room:g30-baseline";
 // Use a registered Meeting Room event rather than a synthetic payload so the
@@ -138,6 +139,46 @@ export async function measureB0Phase({ baseUrl, token, phase, sourceCommit, conf
       statusRaw: { httpStatus: result.response.status, cfRay: requestId(result.response) },
     });
   }
+  // B is the sole trace-sampled phase.  Its idle experiment is a sequence of
+  // real V1 commits whose previous/next request ids and timestamps are
+  // retained. The B0 contract derives gaps from these records; no caller may
+  // supply a claimed activation or idle result.
+  let idleExperiment;
+  if (phase === "B") {
+    const requests = [];
+    const windows = [];
+    let previous = ledger.at(-1);
+    if (previous === undefined) throw new Error("G30 B idle experiment requires a retained canonical request");
+    for (const scheduledGapMs of IDLE_SCHEDULE_MS) {
+      await sleep(scheduledGapMs);
+      const startedAtMs = Date.now();
+      const result = await request(baseUrl, endpoint, {
+        method: "POST",
+        headers: { ...authorization, "content-type": "application/json" },
+        body: JSON.stringify(commitEnvelope()),
+      });
+      const completedAtMs = Date.now();
+      const event = assertCommit(result);
+      const next = {
+        requestId: requestId(result.response),
+        status: result.response.status,
+        startedAtMs,
+        completedAtMs,
+        responseLatencyMs: completedAtMs - startedAtMs,
+        eventId: typeof event?.id === "string" ? event.id : null,
+        committedSuid: typeof event?.sortableUniqueIdValue === "string" ? event.sortableUniqueIdValue : null,
+        statusRaw: { httpStatus: result.response.status, cfRay: requestId(result.response) },
+      };
+      requests.push(next);
+      windows.push({
+        scheduledGapMs,
+        previousRequestId: previous.requestId,
+        nextRequestId: next.requestId,
+      });
+      previous = next;
+    }
+    idleExperiment = Object.freeze({ scheduleMs: IDLE_SCHEDULE_MS, requests, windows });
+  }
   return {
     task: "SDT-G30",
     phase,
@@ -157,9 +198,10 @@ export async function measureB0Phase({ baseUrl, token, phase, sourceCommit, conf
       // config is permitted to vary with the phase.
       observability: { traces: { enabled: true, head_sampling_rate: phase === "B" ? 1 : 0 } },
     },
-    warmup: { requested: warmup, retainedActivationProof: "must be supplied by the trace/export stage; this client script records raw warmup requests without synthesizing activation facts", requests: warmupLedger },
+    warmup: { requested: warmup, requests: warmupLedger },
     rawAttempts: [],
     ledger,
+    ...(idleExperiment === undefined ? {} : { idleExperiment }),
   };
 }
 

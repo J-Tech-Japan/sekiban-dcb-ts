@@ -86,13 +86,11 @@ export function bindCandidate(sourceCommit, resolve = (value) => value) {
   return supplied;
 }
 
-export function buildEvidence({ sourceCommit, treeish = sourceCommit, manifest, authority, phaseA, phaseB, phaseAprime, traces, activation, outliers, preflight, resolveCandidate }) {
+export function buildEvidence({ sourceCommit, treeish = sourceCommit, manifest, authority, phaseA, phaseB, phaseAprime, traces, preflight, resolveCandidate }) {
   const candidate = bindCandidate(sourceCommit, resolveCandidate);
   const A = boundSource(phaseA, candidate);
   const B = boundSource(phaseB, candidate);
   const Aprime = boundSource(phaseAprime, candidate);
-  const warmups = activation?.phases;
-  if (warmups === null || typeof warmups !== "object") throw new Error("G30 activation proof is missing phases");
   const evidence = {
     task: "SDT-G30",
     baseline: "B0",
@@ -120,14 +118,14 @@ export function buildEvidence({ sourceCommit, treeish = sourceCommit, manifest, 
     deploymentConfig: { digest: deploymentConfigDigest(treeish) },
     preflight,
     phases: {
-      A: { ...A, warmup: warmups.A },
-      B: { ...B, warmup: warmups.B },
-      "A-prime": { ...Aprime, warmup: warmups["A-prime"] },
+      A,
+      B,
+      "A-prime": Aprime,
     },
     traces: traces.traces,
+    observationTraces: traces.observationTraces,
+    observations: traces.observations,
     traceExportCompletedAtMs: traces.exportCompletedAtMs,
-    activationIdle: activation,
-    outlierDiscrimination: outliers.outlierDiscrimination,
     rawArtifacts: {
       phaseA: "docs/SDT-G30-B0-evidence-A.json",
       phaseB: "docs/SDT-G30-B0-evidence-B.json",
@@ -136,8 +134,7 @@ export function buildEvidence({ sourceCommit, treeish = sourceCommit, manifest, 
       phaseADeployment: "docs/SDT-G30-B0-evidence-A-deployment.json",
       phaseBDeployment: "docs/SDT-G30-B0-evidence-B-deployment.json",
       phaseAprimeDeployment: "docs/SDT-G30-B0-evidence-A-prime-deployment.json",
-      activation: "docs/SDT-G30-B0-evidence-activation.json",
-      outliers: "docs/SDT-G30-B0-evidence-outliers.json",
+      observations: "docs/SDT-G30-B0-evidence-traces.json",
     },
   };
   const attribution = assertB0Evidence(evidence);
@@ -174,8 +171,6 @@ function main() {
     phaseB: readJson(required("--phase-b", argument("--phase-b"))),
     phaseAprime: readJson(required("--phase-a-prime", argument("--phase-a-prime"))),
     traces: readJson(required("--traces", argument("--traces"))),
-    activation: readJson(required("--activation", argument("--activation"))),
-    outliers: readJson(required("--outliers", argument("--outliers"))),
     preflight: readJson(required("--preflight", argument("--preflight"))),
   });
   const output = argument("--output", "docs/SDT-G30-b0-evidence.json");

@@ -19,5 +19,26 @@ export interface G30NormalizedTraceSpan {
   [key: string]: unknown;
 }
 
+export interface G30NormalizedObservation {
+  schema: "sdt.observe/v1";
+  event: "worker.invocation" | "do.handler" | "fault.barrier";
+  requestId: string;
+  traceId: string;
+  emittedAtMs: number;
+  scriptVersion?: string;
+  colo?: string;
+  provider: {
+    scriptVersion: string;
+    colo: string;
+    cpuTimeMs: number;
+    wallTimeMs: number;
+  };
+  [key: string]: any;
+}
+
 export function verifyExportedSuccessTrace(trace: unknown): Readonly<{ rows: number; complete: true }>;
 export function normalizeTelemetryExport(raw: unknown, exportedAtMs?: number): readonly G30NormalizedTrace[];
+export function normalizeTelemetryBundle(raw: unknown, exportedAtMs?: number): Readonly<{
+  traces: readonly G30NormalizedTrace[];
+  observations: readonly G30NormalizedObservation[];
+}>;

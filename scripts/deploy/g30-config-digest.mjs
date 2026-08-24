@@ -12,8 +12,11 @@ export const G30_DEPLOYMENT_CONFIG_PATHS = Object.freeze([
   "samples/meeting-room/src/worker.cloudflare-only.ts",
   "scripts/deploy/g30-b0-deploy.sh",
   "scripts/deploy/g30-b0-measure.mjs",
+  "scripts/deploy/g30-observability-query.mjs",
+  "scripts/deploy/g30-observability-query.json",
   "scripts/deploy/g30-b0-record-evidence.mjs",
   "scripts/deploy/g30-trace-export.mjs",
+  "scripts/g30-b0-contract.mjs",
   "scripts/g30-trace-runtime-verifier.mjs",
 ]);
 

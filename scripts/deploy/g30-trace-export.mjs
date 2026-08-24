@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import manifest from "../../contracts/commit-trace-manifest.json" with { type: "json" };
-import { assertTraceCohort } from "../g30-b0-contract.mjs";
+import { assertObservationStream, assertTraceCohort, observationLedgerForPhase } from "../g30-b0-contract.mjs";
 import {
   SUCCESS_REQUIRED,
   verifyExportedSuccessTrace as verifyRuntimeSuccessTrace,
@@ -46,7 +46,84 @@ function attributesFor(event) {
 }
 
 function metadataFor(event) {
-  return object(event?.$metadata) ?? object(event?.metadata) ?? {};
+  // Cloudflare returns root identity primarily under $metadata, while some
+  // invocation/log shapes carry it under $workers. Merge both without
+  // allowing a later human sidecar to manufacture a join.
+  return {
+    ...(object(event?.$workers) ?? {}),
+    ...(object(event?.workers) ?? {}),
+    ...(object(event?.metadata) ?? {}),
+    ...(object(event?.$metadata) ?? {}),
+  };
+}
+
+function parseObject(value) {
+  if (object(value) !== undefined) return object(value);
+  if (typeof value !== "string") return undefined;
+  try { return object(JSON.parse(value)); } catch { return undefined; }
+}
+
+/**
+ * Workers Logs stores structured console objects in provider-owned event
+ * fields.  Accept the documented source/message variants, but never a human
+ * sidecar declaration: no matching raw telemetry object means no observation.
+ */
+function observationPayload(event) {
+  const candidates = [
+    event?.source,
+    event?.$metadata?.message,
+    event?.metadata?.message,
+    event?.message,
+    event?.event?.source,
+    event?.event?.message,
+    event?.attributes?.message,
+  ];
+  for (const candidate of candidates) {
+    const parsed = parseObject(candidate);
+    if (parsed?.schema === "sdt.observe/v1") return parsed;
+  }
+  return undefined;
+}
+
+function nested(objectValue, path) {
+  let current = objectValue;
+  for (const part of path) {
+    if (current === undefined) return undefined;
+    current = object(current)?.[part];
+  }
+  return current;
+}
+
+function providerFact(event, paths) {
+  const metadata = metadataFor(event);
+  const scopes = [
+    metadata,
+    object(event?.$workers),
+    object(event?.workers),
+    object(metadata?.$workers),
+    object(metadata?.workers),
+    event,
+  ];
+  for (const scope of scopes) {
+    for (const path of paths) {
+      const value = nested(scope, path);
+      if (scalar(value) !== undefined) return value;
+    }
+  }
+  return undefined;
+}
+
+function providerFacts(event) {
+  const scriptVersion = providerFact(event, [["scriptVersion", "id"], ["script_version", "id"], ["scriptVersion"], ["script_version"]]);
+  const colo = providerFact(event, [["colo"], ["coloCode"]]);
+  const cpuTimeMs = providerFact(event, [["cpuTimeMs"], ["cpu_time_ms"]]);
+  const wallTimeMs = providerFact(event, [["wallTimeMs"], ["wall_time_ms"]]);
+  return Object.freeze({
+    ...(typeof scriptVersion === "string" && scriptVersion.length > 0 ? { scriptVersion } : {}),
+    ...(typeof colo === "string" && colo.length > 0 ? { colo } : {}),
+    ...(typeof cpuTimeMs === "number" ? { cpuTimeMs } : {}),
+    ...(typeof wallTimeMs === "number" ? { wallTimeMs } : {}),
+  });
 }
 
 function numberFrom(value, label) {
@@ -173,9 +250,35 @@ function hasSpanTiming(event) {
 function traceGroup(groups, traceId) {
   const existing = groups.get(traceId);
   if (existing !== undefined) return existing;
-  const next = { traceId, events: [], providerSpanNames: new Set() };
+  const next = { traceId, events: [], observations: [], providerSpanNames: new Set() };
   groups.set(traceId, next);
   return next;
+}
+
+function normalizeObservation(payload, event, requestId, traceId) {
+  if (payload.schema !== "sdt.observe/v1") fail("observation-schema", "structured observation has an unsupported schema");
+  if (![
+    "worker.invocation",
+    "do.handler",
+    "fault.barrier",
+  ].includes(payload.event)) {
+    fail("observation-event", `structured observation has an unsupported event ${String(payload.event)}`);
+  }
+  if (typeof payload.emittedAtMs !== "number" || !Number.isFinite(payload.emittedAtMs)) {
+    fail("observation-time", "structured observation lacks a finite emittedAtMs");
+  }
+  if (payload.storageWrites !== 0 || payload.usedForControl !== false || payload.exposedInPublicResponse !== false) {
+    fail("observation-isolation", "structured observation is not observation-only");
+  }
+  if (payload.requestId !== undefined && payload.requestId !== requestId) {
+    fail("observation-request-id", "structured observation conflicts with its platform request id");
+  }
+  return Object.freeze({
+    ...payload,
+    requestId,
+    traceId,
+    provider: providerFacts(event),
+  });
 }
 
 /**
@@ -183,15 +286,17 @@ function traceGroup(groups, traceId) {
  * S00 request's ray/request identifier. No chronological "nearest span"
  * fallback is allowed, so a propagation break remains visible as trace loss.
  */
-export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
+export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now()) {
   const groups = new Map();
   for (const event of rawEvents(raw)) {
     const metadata = metadataFor(event);
     const traceId = metadataField(metadata, event, ["traceId", "trace_id"]);
     const attributes = attributesFor(event);
     const isCommitSchemaSpan = attributes["schema.version"] === "sdt.commit/v1";
+    const observation = observationPayload(event);
     if (typeof traceId !== "string" || traceId.length === 0) {
       if (isCommitSchemaSpan) fail("trace-id", "custom sdt.commit/v1 span has no trace id");
+      if (observation !== undefined) fail("observation-trace-id", "structured observation has no platform trace id");
       continue;
     }
     const group = traceGroup(groups, traceId);
@@ -201,11 +306,16 @@ export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
     if (name !== undefined) group.providerSpanNames.add(name);
     const span = normalizedSpan(event, traceId);
     if (span !== undefined) group.events.push({ span, metadata });
+    if (observation !== undefined) group.observations.push({ payload: observation, event });
   }
   const output = [];
+  const observations = [];
   for (const group of groups.values()) {
     const root = group.events.find((entry) => entry.span.rowId === "S00");
-    if (root === undefined) continue;
+    if (root === undefined) {
+      if (group.observations.length > 0) fail("observation-root", `structured observation trace ${group.traceId} has no S00 root`);
+      continue;
+    }
     const requestId = metadataField(root.metadata, root, ["rayId", "requestId"]);
     if (typeof requestId !== "string" || requestId.length === 0) fail("request-id", `S00 trace ${group.traceId} has no ray/request id`);
     const spans = group.events.map((entry) => entry.span);
@@ -228,21 +338,75 @@ export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
       ...trace,
       runtimeVerified: complete,
     });
+    for (const observed of group.observations) {
+      observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId));
+    }
   }
-  return output.sort((left, right) => left.requestId.localeCompare(right.requestId));
+  return Object.freeze({
+    traces: output.sort((left, right) => left.requestId.localeCompare(right.requestId)),
+    observations: observations.sort((left, right) =>
+      left.requestId.localeCompare(right.requestId) || left.emittedAtMs - right.emittedAtMs,
+    ),
+  });
+}
+
+export function normalizeTelemetryExport(raw, exportedAtMs = Date.now()) {
+  return normalizeTelemetryBundle(raw, exportedAtMs).traces;
 }
 
 export async function queryTelemetry({ accountId, token, payload }) {
-  const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/observability/telemetry/query`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const raw = await response.json();
-  if (!response.ok || raw?.success === false || (Array.isArray(raw?.errors) && raw.errors.length > 0)) {
-    fail("api", `Cloudflare telemetry query failed: HTTP ${response.status}`);
+  const endpoint = `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/observability/telemetry/query`;
+  const limit = typeof payload?.limit === "number" && Number.isSafeInteger(payload.limit) ? payload.limit : 2_000;
+  const allEvents = [];
+  const cursorIds = new Set();
+  let query = structuredClone(payload);
+  let first;
+  for (let page = 0; page < 50; page += 1) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(query),
+    });
+    const raw = await response.json();
+    if (!response.ok || raw?.success === false || (Array.isArray(raw?.errors) && raw.errors.length > 0)) {
+      fail("api", `Cloudflare telemetry query failed: HTTP ${response.status}`);
+    }
+    if (first === undefined) first = raw;
+    const events = rawEvents(raw);
+    allEvents.push(...events);
+    const reportedCount = raw?.result?.events?.count;
+    if (typeof reportedCount === "number" && allEvents.length >= reportedCount) break;
+    if (events.length < limit) break;
+    const cursor = metadataFor(events.at(-1))?.id;
+    if (typeof cursor !== "string" || cursor.length === 0 || cursorIds.has(cursor)) {
+      fail("pagination", "telemetry query needs a unique $metadata.id cursor for the next event page");
+    }
+    cursorIds.add(cursor);
+    query = { ...query, offset: cursor, offsetDirection: "next" };
   }
-  return raw;
+  if (first === undefined) fail("api", "Cloudflare telemetry query returned no page");
+  const merged = structuredClone(first);
+  if (Array.isArray(merged?.result?.events?.events)) merged.result.events.events = allEvents;
+  else if (Array.isArray(merged?.events?.events)) merged.events.events = allEvents;
+  else if (Array.isArray(merged?.events)) merged.events = allEvents;
+  else if (Array.isArray(merged?.result?.data)) merged.result.data = allEvents;
+  else if (Array.isArray(merged?.data)) merged.data = allEvents;
+  else fail("pagination", "telemetry query page did not preserve an events container");
+  return merged;
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function exportDeadline(ledger) {
+  if (!Array.isArray(ledger) || ledger.length === 0) fail("ledger", "B trace export needs the canonical ledger");
+  return Math.max(...ledger.map((record, index) => numberFrom(record?.completedAtMs, `ledger[${index}].completedAtMs`))) + 10 * 60 * 1_000;
+}
+
+function pendingTelemetryError(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /g30-b0:(?:trace-count|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:observation-root|request-id)/.test(message);
 }
 
 async function main() {
@@ -260,12 +424,41 @@ async function main() {
     raw = await queryTelemetry({ accountId, token, payload: JSON.parse(readFileSync(queryPath, "utf8")) });
   }
   const ledgerDocument = JSON.parse(readFileSync(ledgerPath, "utf8"));
-  const traces = normalizeTelemetryExport(raw);
-  const proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());
-  const result = { task: "SDT-G30", phase: "B", exportedAt: new Date().toISOString(), exportCompletedAtMs: Date.now(), proof, traces };
+  const observationLedger = observationLedgerForPhase(ledgerDocument);
+  const deadline = exportDeadline(ledgerDocument.ledger);
+  let bundle;
+  let traces;
+  let proof;
+  for (;;) {
+    try {
+      bundle = normalizeTelemetryBundle(raw);
+      const retainedRequestIds = new Set(ledgerDocument.ledger?.map((record) => record?.requestId));
+      traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
+      proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());
+      assertObservationStream(observationLedger, bundle.traces, bundle.observations);
+      break;
+    } catch (error) {
+      if (input !== undefined || Date.now() >= deadline || !pendingTelemetryError(error)) throw error;
+      await sleep(15_000);
+      const accountId = required("--account-id", argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID));
+      const token = readFileSync(required("--api-token-file", argument("--api-token-file", process.env.G30_OBSERVABILITY_TOKEN_FILE)), "utf8").trim();
+      const queryPath = required("--query", argument("--query"));
+      raw = await queryTelemetry({ accountId, token, payload: JSON.parse(readFileSync(queryPath, "utf8")) });
+    }
+  }
+  const result = {
+    task: "SDT-G30",
+    phase: "B",
+    exportedAt: new Date().toISOString(),
+    exportCompletedAtMs: Date.now(),
+    proof,
+    traces,
+    observationTraces: bundle.traces,
+    observations: bundle.observations,
+  };
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ traceCount: traces.length, requestCount: proof.requestCount }, null, 2));
+  console.log(JSON.stringify({ traceCount: traces.length, observationTraceCount: bundle.traces.length, observationCount: bundle.observations.length, requestCount: proof.requestCount, observationLedgerCount: observationLedger.length }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

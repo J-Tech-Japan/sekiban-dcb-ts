@@ -218,24 +218,6 @@ export function assertTraceCohort(ledger, traces, exportCompletedAtMs) {
   return Object.freeze({ requestCount: observed.size, exportDeadlineMs: finalRequestAt + G30_EXPORT_DEADLINE_MS });
 }
 
-/**
- * The warm-up proof is collected from the platform trace/log export rather
- * than guessed by this client. Every reusable participant must report five
- * consecutive non-first handler entries, with no shortcut past 30 attempts.
- */
-export function assertWarmupProof(phase, warmup) {
-  if (warmup === null || typeof warmup !== "object" || Array.isArray(warmup)) fail("warmup", `${phase} warmup proof is missing`);
-  if (!Number.isSafeInteger(warmup.attempts) || warmup.attempts < 5 || warmup.attempts > 30) fail("warmup-attempts", `${phase} warmup attempts must be 5..30`);
-  if (typeof warmup.source !== "string" || warmup.source.length === 0) fail("warmup-source", `${phase} warmup source is missing`);
-  for (const actor of ["WORKER", "BOOTSTRAP", "ALLOCATOR", "TAG"]) {
-    const values = warmup.actors?.[actor];
-    if (!Array.isArray(values) || values.length < 5 || values.slice(-5).some((value) => value !== false)) {
-      fail("warmup-activation", `${phase} ${actor} does not have five consecutive activation.first=false observations`);
-    }
-  }
-  return Object.freeze({ phase, attempts: warmup.attempts, actors: ["WORKER", "BOOTSTRAP", "ALLOCATOR", "TAG"] });
-}
-
 export function assertAaaDrift(a, b, aprime) {
   const aSummary = phaseLatencySummary(a);
   const bSummary = phaseLatencySummary(b);
@@ -273,10 +255,9 @@ const TOKEN_REFRESH_SPAN_NAMES = new Set([
 ]);
 
 /**
- * Operator-supplied evidence is not authoritative merely because it is
- * structurally well-formed. Every observation must name one independently
- * retained B ledger request and its exported trace; no arrival-order or time
- * proximity fallback is allowed.
+ * The only accepted activation/outlier source is the raw Workers telemetry
+ * export.  It joins by the provider's trace/request identifiers, never by
+ * time proximity and never through an operator-authored declaration file.
  */
 function evidenceTraceIndex(ledger, traces, label) {
   if (!Array.isArray(ledger) || !Array.isArray(traces)) fail(`${label}-trace-input`, `${label} requires a ledger and exported trace array`);
@@ -287,14 +268,29 @@ function evidenceTraceIndex(ledger, traces, label) {
     ledgerByRequestId.set(requestId, record);
   }
   const traceByRequestId = new Map();
+  const requestIdByTraceId = new Map();
   for (const [index, trace] of traces.entries()) {
     const requestId = nonEmptyString(trace?.requestId, `${label}.traces[${index}].requestId`);
     if (!ledgerByRequestId.has(requestId) || traceByRequestId.has(requestId)) {
-      fail(`${label}-trace-join`, `${label} trace requestId ${requestId} is missing from or duplicated in the B ledger`);
+      fail(`${label}-trace-join`, `${label} trace requestId ${requestId} is missing from or duplicated in the observation ledger`);
+    }
+    const traceId = nonEmptyString(trace?.traceId, `${label}.traces[${index}].traceId`);
+    if (requestIdByTraceId.has(traceId)) fail(`${label}-trace-duplicate`, `${label} traceId ${traceId} is duplicated`);
+    if (trace?.schema !== "sdt.commit/v1" || trace?.complete !== true || trace?.runtimeVerified !== true || trace?.boundary !== "success") {
+      fail(`${label}-trace-complete`, `${label} trace ${requestId} is not a complete runtime-verified success trace`);
+    }
+    try {
+      verifyExportedSuccessTrace(trace);
+    } catch (error) {
+      fail(`${label}-trace-runtime`, `${label} trace ${requestId} failed runtime verification: ${error instanceof Error ? error.message : String(error)}`);
     }
     traceByRequestId.set(requestId, trace);
+    requestIdByTraceId.set(traceId, requestId);
   }
-  return Object.freeze({ ledgerByRequestId, traceByRequestId });
+  if (traceByRequestId.size !== ledgerByRequestId.size) {
+    fail(`${label}-trace-loss`, `${label} is missing a trace for one or more observation-ledger requests`);
+  }
+  return Object.freeze({ ledgerByRequestId, traceByRequestId, requestIdByTraceId });
 }
 
 function evidenceReference(requestIdValue, index, label) {
@@ -302,13 +298,26 @@ function evidenceReference(requestIdValue, index, label) {
   const ledger = index.ledgerByRequestId.get(requestId);
   const trace = index.traceByRequestId.get(requestId);
   if (ledger === undefined || trace === undefined) {
-    fail(`${label}-trace-join`, `${label} requestId ${requestId} is not jointly present in the B ledger and exported traces`);
+    fail(`${label}-trace-join`, `${label} requestId ${requestId} is not jointly present in the observation ledger and exported traces`);
   }
   const roots = Array.isArray(trace.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
   if (roots.length !== 1) fail(`${label}-trace-root`, `${label} requestId ${requestId} must have exactly one S00 trace root`);
   const attributes = object(roots[0]?.attributes);
   if (attributes === undefined) fail(`${label}-trace-root`, `${label} requestId ${requestId} root attributes are missing`);
   return Object.freeze({ requestId, ledger, trace, root: roots[0], rootAttributes: attributes });
+}
+
+/**
+ * An idle interval is evidence only when it explicitly names both requests
+ * around the idle period.  Keeping this guard separate lets its mutation
+ * oracle attribute a missing predecessor/successor to this boundary rather
+ * than to a later timing calculation.
+ */
+export function assertIdleRequestReferences(window, label) {
+  const previousRequestId = nonEmptyString(window?.previousRequestId, `${label}.previous.requestId`);
+  const nextRequestId = nonEmptyString(window?.nextRequestId, `${label}.next.requestId`);
+  if (previousRequestId === nextRequestId) fail("idle-reference", `${label} must name distinct prior and next requests`);
+  return Object.freeze({ previousRequestId, nextRequestId });
 }
 
 function rootBoolean(reference, attribute, label) {
@@ -323,6 +332,25 @@ function rootString(reference, attribute, label) {
   return value;
 }
 
+/**
+ * Workers Logs contributes version/colo as provider-owned metadata for every
+ * structured observation. The DO payload deliberately does not invent a
+ * second propagation channel for those facts; its raw provider metadata is
+ * instead checked against the root's already-sealed optional attributes.
+ */
+function assertObservationProviderOverlap(observation, reference, label) {
+  const provider = object(observation.provider);
+  const scriptVersion = nonEmptyString(provider?.scriptVersion, `${label}.provider.scriptVersion`);
+  const colo = nonEmptyString(provider?.colo, `${label}.provider.colo`);
+  if (rootString(reference, "script.version", label) !== scriptVersion) {
+    fail("observation-provider-script-version", `${label} provider script.version differs from S00`);
+  }
+  if (rootString(reference, "colo", label) !== colo) {
+    fail("observation-provider-colo", `${label} provider colo differs from S00`);
+  }
+  return Object.freeze({ scriptVersion, colo });
+}
+
 function rootDuration(reference, label) {
   const start = finiteNumber(reference.root?.startMs, `${label}.S00.startMs`);
   const end = finiteNumber(reference.root?.endMs, `${label}.S00.endMs`);
@@ -333,9 +361,6 @@ function rootDuration(reference, label) {
 function providerSpanNames(reference, label) {
   if (!Array.isArray(reference.trace?.providerSpanNames)) {
     fail(`${label}-provider-spans`, `${label} trace must retain provider span names for refresh exclusion`);
-  }
-  if (reference.trace.providerSpanNames.length === 0) {
-    fail(`${label}-provider-spans`, `${label} trace has no provider span names from which to exclude refresh`);
   }
   return reference.trace.providerSpanNames.map((value, index) => nonEmptyString(value, `${label}.providerSpanNames[${index}]`));
 }
@@ -349,172 +374,272 @@ function refreshRequestIds(index, label) {
   return observed;
 }
 
-/**
- * The activation proof is an external trace/export ledger. It records the
- * exact experiment schedule and values observed in the matching root row,
- * while proving that none became Durable Object storage, a control input, or
- * a public response field.
- */
-export function assertActivationIdleEvidence(activationIdle, ledger, traces) {
-  const evidence = object(activationIdle);
-  if (evidence === undefined) fail("activation-idle", "activation/idle evidence is missing");
-  const traceIndex = evidenceTraceIndex(ledger, traces, "activation");
-  if (!same(evidence.scheduleMs, G30_IDLE_SCHEDULE_MS)) {
-    fail("idle-schedule", "idle experiment must use exactly 2000/15000/180000ms");
-  }
-  if (!Array.isArray(evidence.observations) || evidence.observations.length < G30_IDLE_SCHEDULE_MS.length) {
-    fail("idle-observations", "activation/idle evidence needs one or more observations for every scheduled gap");
-  }
-  const observedSchedule = new Set();
-  for (const [index, entry] of evidence.observations.entries()) {
-    const observation = object(entry);
-    if (observation === undefined) fail("idle-observation", `idle observation ${index} must be an object`);
-    const scheduledGapMs = finiteNumber(observation.scheduledGapMs, `idle[${index}].scheduledGapMs`);
-    if (!G30_IDLE_SCHEDULE_MS.includes(scheduledGapMs)) fail("idle-schedule", `idle observation ${index} uses an undeclared schedule`);
-    observedSchedule.add(scheduledGapMs);
-    finiteNumber(observation.actualGapMs, `idle[${index}].actualGapMs`);
-    if (typeof observation.activationFirst !== "boolean") fail("activation-first", `idle observation ${index} needs activation.first`);
-    const scriptVersion = nonEmptyString(observation.scriptVersion, `idle[${index}].scriptVersion`);
-    const colo = nonEmptyString(observation.colo, `idle[${index}].colo`);
-    const reference = evidenceReference(observation.requestId, traceIndex, `activation[${index}]`);
-    if (rootBoolean(reference, "activation.first", `activation[${index}]`) !== observation.activationFirst) {
-      fail("activation-trace-activation-first", `idle observation ${index} activation.first differs from trace ${reference.requestId}`);
-    }
-    if (rootString(reference, "script.version", `activation[${index}]`) !== scriptVersion) {
-      fail("activation-trace-script-version", `idle observation ${index} scriptVersion differs from trace ${reference.requestId}`);
-    }
-    if (rootString(reference, "colo", `activation[${index}]`) !== colo) {
-      fail("activation-trace-colo", `idle observation ${index} colo differs from trace ${reference.requestId}`);
-    }
-    if (typeof observation.previousComplete !== "boolean") fail("idle-ledger", `idle observation ${index} needs previousComplete`);
-    const lowerBound = observation.observedIdleGapLowerBoundMs;
-    if (observation.previousComplete === false && lowerBound !== null) {
-      fail("idle-ledger", `idle observation ${index} must leave an incomplete prior gap null`);
-    }
-    if (observation.previousComplete === true && (typeof lowerBound !== "number" || !Number.isFinite(lowerBound) || lowerBound < 0)) {
-      fail("idle-ledger", `idle observation ${index} needs a non-negative complete-ledger lower bound`);
-    }
-    if (!REACTIVATION_CAUSES.has(observation.reactivationCause)) {
-      fail("reactivation-cause", `idle observation ${index} has an unsupported reactivation cause`);
-    }
-    if (observation.storageWrites !== 0 || observation.usedForControl !== false || observation.exposedInPublicResponse !== false) {
-      fail("activation-isolation", `idle observation ${index} records activation data outside observation-only scope`);
-    }
-  }
-  if (!same([...observedSchedule].sort((left, right) => left - right), G30_IDLE_SCHEDULE_MS)) {
-    fail("idle-schedule", "activation/idle evidence does not cover every required gap");
-  }
-  return Object.freeze({ scheduleMs: G30_IDLE_SCHEDULE_MS, observations: evidence.observations.length });
-}
+const WARM_ACTORS = Object.freeze(["WORKER", "BOOTSTRAP", "ALLOCATOR", "TAG"]);
+const DO_ACTORS = new Set(["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG"]);
+const OBSERVATION_EVENTS = new Set(["worker.invocation", "do.handler", "fault.barrier"]);
+const OUTLIER_TARGET_MS = 21_500;
 
-function evidenceObjects(outlier, hypothesis) {
-  if (!Array.isArray(outlier.rawEvidence) || outlier.rawEvidence.length === 0) {
-    fail("outlier-evidence", `${hypothesis} lacks raw evidence`);
-  }
-  return outlier.rawEvidence.map((entry, index) => {
-    const evidence = object(entry);
-    if (evidence === undefined) fail("outlier-evidence", `${hypothesis} raw evidence ${index} must be an object`);
-    return evidence;
-  });
-}
-
-function assertWorkerIsolateEvidence(evidence, reference) {
-  nonEmptyString(evidence.isolateInstanceId, "worker-isolate-first.isolateInstanceId");
-  if (typeof evidence.firstInvocation !== "boolean") fail("outlier-evidence", "worker-isolate-first.firstInvocation must be boolean");
-  if (nonEmptyString(evidence.rootVersion, "worker-isolate-first.rootVersion") !== rootString(reference, "script.version", "worker-isolate-first")) {
-    fail("worker-isolate-trace-version", "worker-isolate-first rootVersion differs from its trace root");
-  }
-  if (nonEmptyString(evidence.colo, "worker-isolate-first.colo") !== rootString(reference, "colo", "worker-isolate-first")) {
-    fail("worker-isolate-trace-colo", "worker-isolate-first colo differs from its trace root");
-  }
-  finiteNumber(evidence.cpuTimeMs, "worker-isolate-first.cpuTimeMs");
-  finiteNumber(evidence.wallTimeMs, "worker-isolate-first.wallTimeMs");
-  nonEmptyString(evidence.warmComparison, "worker-isolate-first.warmComparison");
-}
-
-function assertDurableObjectWakeEvidence(evidence) {
-  nonEmptyString(evidence.actorClass, "durable-object-wake.actorClass");
-  finiteNumber(evidence.idleGapMs, "durable-object-wake.idleGapMs");
-  finiteNumber(evidence.constructorToHandlerMs, "durable-object-wake.constructorToHandlerMs");
-  finiteNumber(evidence.firstStorageReadMs, "durable-object-wake.firstStorageReadMs");
-  finiteNumber(evidence.subrequestWallMs, "durable-object-wake.subrequestWallMs");
-  if (evidence.variedOneClass !== true) fail("outlier-evidence", "durable-object-wake must vary exactly one actor class");
-}
-
-function assertTokenRotationEvidence(evidence, disposition, references, traceIndex) {
-  if (evidence.authBranch !== "synchronous-string-comparison") {
-    fail("outlier-evidence", "token-rotation must record the synchronous auth branch");
-  }
-  nonEmptyString(evidence.deployedVersion, "token-rotation.deployedVersion");
-  nonEmptyString(evidence.configDigest, "token-rotation.configDigest");
-  finiteNumber(evidence.httpOutcome, "token-rotation.httpOutcome");
-  if (Object.hasOwn(evidence, "refreshSpanPresent")) {
-    fail("token-rotation-declaration", "token-rotation refreshSpanPresent is computed from exported traces, never operator-declared");
-  }
-  const refreshes = refreshRequestIds(traceIndex, "token-rotation");
-  if (refreshes.size === 0 && disposition !== "excluded") {
-    fail("token-rotation", "token rotation without an exported refresh span must be excluded from the commit path");
-  }
-  if (refreshes.size > 0 && disposition !== "attributed") {
-    fail("token-rotation", "an exported refresh span must be attributed to token rotation");
-  }
-  if (refreshes.size > 0 && !references.some((reference) => refreshes.has(reference.requestId))) {
-    fail("token-rotation", "token rotation must cite an exported trace that contains the refresh span");
-  }
-}
-
-function assertQueueDoorbellEvidence(evidence, disposition, reference) {
-  if (evidence.faultBarrier !== true) fail("outlier-evidence", "queue/doorbell evidence must use the fault barrier");
-  const appendResponse = finiteNumber(evidence.appendResponse, "queue-doorbell-backpressure.appendResponse");
-  const followingStateRead = finiteNumber(evidence.followingStateRead, "queue-doorbell-backpressure.followingStateRead");
-  if (Object.hasOwn(evidence, "withinBound")) {
-    fail("queue-bound-declaration", "queue/doorbell withinBound is computed from measured ledger and trace values, never operator-declared");
-  }
-  const traceRootLatency = rootDuration(reference, "queue-doorbell-backpressure");
-  const ledgerResponseLatency = finiteNumber(reference.ledger?.responseLatencyMs, "queue-doorbell-backpressure.ledger.responseLatencyMs");
-  if (appendResponse > ledgerResponseLatency || followingStateRead > ledgerResponseLatency || traceRootLatency > ledgerResponseLatency) {
-    fail("queue-bound", "queue/doorbell measurements exceed the joined client-ledger response bound");
-  }
-  if (!["no-queue-difference", "same-tag-event-loop-or-input-ordering"].includes(evidence.classification)) {
-    fail("queue-classification", "queue/doorbell evidence must not name queue backlog as the cause");
-  }
-  if (disposition !== "excluded") fail("queue-classification", "queue/doorbell is an exclusion probe, not an attributed queue-backlog cause");
+function observationForRequest(index, requestId, predicate) {
+  return (index.observationsByRequestId.get(requestId) ?? []).filter(predicate);
 }
 
 /**
- * A single 21.5s outlier cannot be bucketed vaguely.  The evidence contains
- * one independently attributable-or-excluded record for every design
- * hypothesis, with the raw fields needed to reproduce that judgment.
+ * Builds the complete B observation ledger from client-captured request
+ * records. The runner owns these timestamps; no operator statement is
+ * accepted. Warmup and idle requests are deliberately not substituted into
+ * the fixed 100-request B performance-neutral trace cohort.
  */
-export function assertOutlierClassification(outliers, ledger, traces) {
-  if (!Array.isArray(outliers) || outliers.length !== OUTLIER_HYPOTHESES.length) {
-    fail("outliers", "outlier discrimination must contain exactly the four required hypotheses");
+export function observationLedgerForPhase(phaseB) {
+  const canonical = phaseB?.ledger;
+  const warmup = phaseB?.warmup?.requests;
+  const idle = phaseB?.idleExperiment?.requests;
+  if (!Array.isArray(canonical) || !Array.isArray(warmup) || !Array.isArray(idle)) {
+    fail("observation-ledger", "B requires canonical, warmup, and idle client request ledgers");
   }
-  const traceIndex = evidenceTraceIndex(ledger, traces, "outlier");
+  const records = [...canonical, ...warmup, ...idle];
   const seen = new Set();
-  for (const outlier of outliers) {
-    const hypothesis = outlier?.hypothesis;
-    if (!OUTLIER_HYPOTHESIS_SET.has(hypothesis) || seen.has(hypothesis)) {
-      fail("outlier", "outlier discrimination has an unsupported, collapsed, or duplicate hypothesis");
-    }
-    seen.add(hypothesis);
-    if (outlier?.classified !== true || !["attributed", "excluded"].includes(outlier?.disposition)) {
-      fail("outlier", `${hypothesis} must be explicitly attributed or excluded`);
-    }
-    const evidence = evidenceObjects(outlier, hypothesis);
-    const references = evidence.map((entry, index) => evidenceReference(entry.requestId, traceIndex, `${hypothesis}[${index}]`));
-    if (hypothesis === "worker-isolate-first") assertWorkerIsolateEvidence(evidence[0], references[0]);
-    if (hypothesis === "durable-object-wake") assertDurableObjectWakeEvidence(evidence[0]);
-    if (hypothesis === "token-rotation") assertTokenRotationEvidence(evidence[0], outlier.disposition, references, traceIndex);
-    if (hypothesis === "queue-doorbell-backpressure") assertQueueDoorbellEvidence(evidence[0], outlier.disposition, references[0]);
+  for (const [index, record] of records.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `observation-ledger[${index}].requestId`);
+    if (seen.has(requestId)) fail("observation-ledger", `B observation ledger repeats requestId ${requestId}`);
+    seen.add(requestId);
+    finiteNumber(record?.startedAtMs, `observation-ledger[${index}].startedAtMs`);
+    finiteNumber(record?.completedAtMs, `observation-ledger[${index}].completedAtMs`);
   }
-  if (!same([...seen].sort(), [...OUTLIER_HYPOTHESES].sort())) fail("outlier", "one or more required hypotheses is absent");
-  return Object.freeze({ classifiedOutliers: seen.size, unclassifiedOutliers: 0 });
+  return Object.freeze(records);
+}
+
+/**
+ * The normalized sdt.observe/v1 stream is fail-closed: every structured log
+ * must carry a platform-derived request id that joins to exactly one client
+ * ledger entry and S00 trace. Worker overlap facts are compared directly to
+ * S00, so copied/mismatched values cannot become evidence.
+ */
+export function assertObservationStream(ledger, traces, observations) {
+  if (!Array.isArray(observations)) fail("observation-input", "B requires exported sdt.observe/v1 observations");
+  const traceIndex = evidenceTraceIndex(ledger, traces, "observation");
+  const observationsByRequestId = new Map();
+  for (const [index, raw] of observations.entries()) {
+    const observation = object(raw);
+    if (observation === undefined) fail("observation-shape", `observation ${index} must be an object`);
+    if (observation.schema !== "sdt.observe/v1" || !OBSERVATION_EVENTS.has(observation.event)) {
+      fail("observation-schema", `observation ${index} is not a supported sdt.observe/v1 event`);
+    }
+    finiteNumber(observation.emittedAtMs, `observation[${index}].emittedAtMs`);
+    if (observation.storageWrites !== 0 || observation.usedForControl !== false || observation.exposedInPublicResponse !== false) {
+      fail("observation-isolation", `observation ${index} is not observation-only`);
+    }
+    const reference = evidenceReference(observation.requestId, traceIndex, `observation[${index}]`);
+    if (nonEmptyString(observation.traceId, `observation[${index}].traceId`) !== reference.trace.traceId) {
+      fail("observation-trace-id", `observation ${index} traceId does not match its joined request root`);
+    }
+    if (observation.event === "worker.invocation") {
+      if (observation.actorClass !== "WORKER" || typeof observation.activationFirst !== "boolean") {
+        fail("observation-worker", `worker observation ${index} lacks actor/activation facts`);
+      }
+      nonEmptyString(observation.isolateInstanceId, `observation[${index}].isolateInstanceId`);
+      const scriptVersion = nonEmptyString(observation.scriptVersion, `observation[${index}].scriptVersion`);
+      const colo = nonEmptyString(observation.colo, `observation[${index}].colo`);
+      const provider = assertObservationProviderOverlap(observation, reference, `observation[${index}]`);
+      if (rootBoolean(reference, "activation.first", `observation[${index}]`) !== observation.activationFirst) {
+        fail("observation-overlap-activation", `worker observation ${index} activation.first differs from S00`);
+      }
+      if (provider.scriptVersion !== scriptVersion || rootString(reference, "script.version", `observation[${index}]`) !== scriptVersion) {
+        fail("observation-overlap-script-version", `worker observation ${index} script.version differs from S00`);
+      }
+      if (provider.colo !== colo || rootString(reference, "colo", `observation[${index}]`) !== colo) {
+        fail("observation-overlap-colo", `worker observation ${index} colo differs from S00`);
+      }
+    } else if (observation.event === "do.handler") {
+      if (!DO_ACTORS.has(observation.actorClass) || typeof observation.activationFirst !== "boolean") {
+        fail("observation-do", `DO observation ${index} lacks actor/activation facts`);
+      }
+      nonEmptyString(observation.activationId, `observation[${index}].activationId`);
+      assertObservationProviderOverlap(observation, reference, `observation[${index}]`);
+      finiteNumber(observation.constructorToHandlerMs, `observation[${index}].constructorToHandlerMs`);
+      if (observation.firstStorageReadMs !== null) finiteNumber(observation.firstStorageReadMs, `observation[${index}].firstStorageReadMs`);
+      if (observation.subrequestWallMs !== null) finiteNumber(observation.subrequestWallMs, `observation[${index}].subrequestWallMs`);
+    } else {
+      nonEmptyString(observation.barrierId, `observation[${index}].barrierId`);
+      if (!["started", "ended", "drained"].includes(observation.stage)) fail("observation-fault", `fault observation ${index} has an invalid stage`);
+      finiteNumber(observation.boundedWindowMs, `observation[${index}].boundedWindowMs`);
+    }
+    const existing = observationsByRequestId.get(reference.requestId) ?? [];
+    existing.push(observation);
+    observationsByRequestId.set(reference.requestId, existing);
+  }
+  for (const requestId of traceIndex.ledgerByRequestId.keys()) {
+    const worker = observationForRequest({ observationsByRequestId }, requestId, (entry) => entry.event === "worker.invocation");
+    if (worker.length !== 1) fail("observation-worker", `request ${requestId} requires exactly one joined worker observation`);
+  }
+  return Object.freeze({ ...traceIndex, observationsByRequestId });
+}
+
+/** Five B-on warmup requests must be observed from the same raw log export. */
+export function assertWarmupProof(phase, warmup, observationIndex) {
+  if (phase !== "B") fail("warmup-phase", "only the trace-sampled B phase may claim a joined activation warmup proof");
+  if (warmup === null || typeof warmup !== "object" || Array.isArray(warmup)) fail("warmup", "B warmup request ledger is missing");
+  if (!Number.isSafeInteger(warmup.requested) || warmup.requested < 5 || warmup.requested > 30 || !Array.isArray(warmup.requests) || warmup.requests.length !== warmup.requested) {
+    fail("warmup", "B warmup must retain 5..30 client requests");
+  }
+  for (const [requestIndex, record] of warmup.requests.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `warmup[${requestIndex}].requestId`);
+    evidenceReference(requestId, observationIndex, `warmup[${requestIndex}]`);
+    for (const actor of WARM_ACTORS) {
+      const events = observationForRequest(
+        observationIndex,
+        requestId,
+        (entry) => actor === "WORKER"
+          ? entry.event === "worker.invocation"
+          : entry.event === "do.handler" && entry.actorClass === actor,
+      );
+      if (events.length === 0 || events.some((entry) => entry.activationFirst !== false)) {
+        fail("warmup-activation", `B ${actor} lacks a non-first raw observation for warmup request ${requestIndex}`);
+      }
+    }
+  }
+  return Object.freeze({ phase, attempts: warmup.requested, actors: WARM_ACTORS });
+}
+
+/**
+ * The 2/15/180-second observation is computed from client request timelines
+ * and joined worker logs. A window without both surrounding request ids is
+ * intentionally unprovable; a literal claimed gap is not accepted.
+ */
+export function assertActivationIdleEvidence(idleExperiment, observationIndex) {
+  const idle = object(idleExperiment);
+  if (idle === undefined || !same(idle.scheduleMs, G30_IDLE_SCHEDULE_MS) || !Array.isArray(idle.windows)) {
+    fail("idle-schedule", "idle experiment must use exactly 2000/15000/180000ms with raw windows");
+  }
+  if (idle.windows.length !== G30_IDLE_SCHEDULE_MS.length) fail("idle-observations", "idle experiment must contain exactly one window per schedule value");
+  const observedSchedule = new Set();
+  const derived = [];
+  for (const [index, raw] of idle.windows.entries()) {
+    const window = object(raw);
+    if (window === undefined) fail("idle-observation", `idle window ${index} must be an object`);
+    const scheduledGapMs = finiteNumber(window.scheduledGapMs, `idle[${index}].scheduledGapMs`);
+    if (!G30_IDLE_SCHEDULE_MS.includes(scheduledGapMs) || observedSchedule.has(scheduledGapMs)) fail("idle-schedule", `idle window ${index} has an invalid schedule`);
+    observedSchedule.add(scheduledGapMs);
+    const references = assertIdleRequestReferences(window, `idle[${index}]`);
+    const previous = evidenceReference(references.previousRequestId, observationIndex, `idle[${index}].previous`);
+    const next = evidenceReference(references.nextRequestId, observationIndex, `idle[${index}].next`);
+    const previousCompletedAtMs = finiteNumber(previous.ledger.completedAtMs, `idle[${index}].previous.completedAtMs`);
+    const nextStartedAtMs = finiteNumber(next.ledger.startedAtMs, `idle[${index}].next.startedAtMs`);
+    if (nextStartedAtMs < previousCompletedAtMs) fail("idle-ledger", `idle window ${index} reverses its complete ledger order`);
+    const worker = observationForRequest(observationIndex, next.requestId, (entry) => entry.event === "worker.invocation");
+    if (worker.length !== 1) fail("idle-observation", `idle window ${index} needs exactly one next-request worker observation`);
+    const scriptVersion = nonEmptyString(worker[0].scriptVersion, `idle[${index}].worker.scriptVersion`);
+    const colo = nonEmptyString(worker[0].colo, `idle[${index}].worker.colo`);
+    const reactivationCause = rootString(previous, "script.version", `idle[${index}].previous`) === scriptVersion
+      ? "unknown"
+      : "deployment-correlated";
+    if (!REACTIVATION_CAUSES.has(reactivationCause)) fail("reactivation-cause", `idle window ${index} has an unsupported cause`);
+    derived.push(Object.freeze({
+      scheduledGapMs,
+      actualGapMs: nextStartedAtMs - previousCompletedAtMs,
+      previousRequestId: previous.requestId,
+      nextRequestId: next.requestId,
+      activationFirst: worker[0].activationFirst,
+      scriptVersion,
+      colo,
+      reactivationCause,
+      observedIdleGapLowerBoundMs: nextStartedAtMs - previousCompletedAtMs,
+    }));
+  }
+  if (!same([...observedSchedule].sort((left, right) => left - right), G30_IDLE_SCHEDULE_MS)) fail("idle-schedule", "idle experiment does not cover every required gap");
+  return Object.freeze({ scheduleMs: G30_IDLE_SCHEDULE_MS, observations: derived.length, raw: derived });
+}
+
+function targetOutlierReferences(phaseB, observationIndex) {
+  if (!Array.isArray(phaseB?.ledger)) fail("outlier-ledger", "B canonical ledger is missing");
+  return phaseB.ledger
+    .filter((record) => finiteNumber(record?.responseLatencyMs, "outlier.responseLatencyMs") >= OUTLIER_TARGET_MS)
+    .map((record, index) => evidenceReference(record.requestId, observationIndex, `outlier-target[${index}]`));
+}
+
+function assertFaultBarrier(observationIndex, requiredForObservedOutlier) {
+  const grouped = new Map();
+  for (const [requestId, events] of observationIndex.observationsByRequestId) {
+    for (const event of events.filter((entry) => entry.event === "fault.barrier")) {
+      const existing = grouped.get(event.barrierId) ?? [];
+      existing.push({ requestId, event });
+      grouped.set(event.barrierId, existing);
+    }
+  }
+  if (grouped.size === 0) {
+    if (requiredForObservedOutlier) fail("fault-barrier", "queue/doorbell probe has no observed sdt.observe/v1 fault barrier for an observed outlier");
+    return Object.freeze([]);
+  }
+  const completed = [];
+  for (const [barrierId, events] of grouped) {
+    const ordered = [...events].sort((left, right) => left.event.emittedAtMs - right.event.emittedAtMs);
+    if (!same(ordered.map((entry) => entry.event.stage), ["started", "ended", "drained"])) {
+      fail("fault-barrier", `fault barrier ${barrierId} must emit started/ended/drained exactly once`);
+    }
+    const [started, ended, drained] = ordered;
+    const bound = finiteNumber(started.event.boundedWindowMs, `fault-barrier.${barrierId}.bound`);
+    if (ended.event.emittedAtMs - started.event.emittedAtMs > bound || drained.event.emittedAtMs < ended.event.emittedAtMs) {
+      fail("fault-barrier", `fault barrier ${barrierId} exceeded its bounded window or did not drain after release`);
+    }
+    const reference = evidenceReference(started.requestId, observationIndex, `fault-barrier.${barrierId}`);
+    if (rootDuration(reference, `fault-barrier.${barrierId}`) > finiteNumber(reference.ledger.responseLatencyMs, `fault-barrier.${barrierId}.responseLatencyMs`)) {
+      fail("queue-bound", `fault barrier ${barrierId} exceeded its joined response bound`);
+    }
+    completed.push(Object.freeze({ barrierId, requestId: started.requestId, boundedWindowMs: bound }));
+  }
+  return Object.freeze(completed);
+}
+
+/**
+ * Four outlier dispositions are derived only from joined telemetry. The
+ * absence of a 21.5s target is an observed exclusion, not a declared one.
+ */
+export function assertOutlierClassification(phaseB, observationIndex) {
+  const targets = targetOutlierReferences(phaseB, observationIndex);
+  const targetIds = new Set(targets.map((reference) => reference.requestId));
+  const workerEvents = targets.flatMap((reference) => observationForRequest(observationIndex, reference.requestId, (entry) => entry.event === "worker.invocation"));
+  const workerFirst = workerEvents.find((entry) => entry.activationFirst === true);
+  const worker = Object.freeze({
+    hypothesis: "worker-isolate-first",
+    disposition: workerFirst === undefined ? "excluded" : "attributed",
+    classified: true,
+    rawEvidence: workerFirst === undefined ? [] : [workerFirst],
+  });
+  const doEvents = targets.flatMap((reference) => observationForRequest(observationIndex, reference.requestId, (entry) => entry.event === "do.handler" && entry.activationFirst === true));
+  const wakeActors = new Set(doEvents.map((entry) => entry.actorClass));
+  const durableObject = Object.freeze({
+    hypothesis: "durable-object-wake",
+    disposition: wakeActors.size === 1 ? "attributed" : "excluded",
+    classified: true,
+    rawEvidence: doEvents,
+  });
+  const refreshes = refreshRequestIds(observationIndex, "token-rotation");
+  const token = Object.freeze({
+    hypothesis: "token-rotation",
+    disposition: [...refreshes].some((requestId) => targetIds.has(requestId)) ? "attributed" : "excluded",
+    classified: true,
+    rawEvidence: [...refreshes].filter((requestId) => targetIds.has(requestId)).map((requestId) => evidenceReference(requestId, observationIndex, "token-rotation")),
+  });
+  // A no-outlier B0 run excludes this hypothesis from the measured universe;
+  // it must not invent a fault claim. If a 21.5s target is observed, the
+  // bounded probe's lifecycle is mandatory and comes only from sdt.observe.
+  const barriers = assertFaultBarrier(observationIndex, targets.length > 0);
+  const queue = Object.freeze({
+    hypothesis: "queue-doorbell-backpressure",
+    disposition: "excluded",
+    classified: true,
+    rawEvidence: barriers,
+  });
+  const outliers = [worker, durableObject, token, queue];
+  if (!same(outliers.map((entry) => entry.hypothesis).sort(), [...OUTLIER_HYPOTHESES].sort())) fail("outlier", "one or more required hypotheses is absent");
+  return Object.freeze({ classifiedOutliers: outliers.length, unclassifiedOutliers: 0, targetCount: targets.length, observations: outliers });
 }
 
 export function assertB0Evidence(evidence) {
   if (evidence?.task !== "SDT-G30" || evidence?.baseline !== "B0" || evidence?.purpose !== "attribution-only-not-g37-denominator") {
     fail("identity", "evidence must identify G30 B0 as attribution-only");
+  }
+  if (Object.hasOwn(evidence, "activationIdle") || Object.hasOwn(evidence, "outlierDiscrimination")) {
+    fail("observation-declaration", "activation and outlier evidence must be derived from exported sdt.observe/v1 data");
   }
   const phases = evidence.phases;
   const windows = Object.fromEntries(G30_PHASES.map((phase) => [phase, assertEligiblePhaseWindow(phase, phases?.[phase]?.ledger, phases?.[phase]?.rawAttempts)]));
@@ -522,12 +647,14 @@ export function assertB0Evidence(evidence) {
     fail("cohort-cross-phase", "A/B/A-prime cohort identity differs");
   }
   const config = assertPhaseConfiguration(phases);
-  const warmup = Object.fromEntries(G30_PHASES.map((phase) => [phase, assertWarmupProof(phase, phases?.[phase]?.warmup)]));
   const traces = assertTraceCohort(phases.B.ledger, evidence.traces, evidence.traceExportCompletedAtMs);
   const latency = assertAaaDrift(phases.A.ledger, phases.B.ledger, phases["A-prime"].ledger);
-  const activationIdle = assertActivationIdleEvidence(evidence.activationIdle, phases.B.ledger, evidence.traces);
-  const outliers = assertOutlierClassification(evidence.outlierDiscrimination, phases.B.ledger, evidence.traces);
-  return Object.freeze({ windows, config, warmup, traces, latency, activationIdle, outliers });
+  const observationLedger = observationLedgerForPhase(phases.B);
+  const observation = assertObservationStream(observationLedger, evidence.observationTraces, evidence.observations);
+  const warmup = assertWarmupProof("B", phases.B.warmup, observation);
+  const activationIdle = assertActivationIdleEvidence(phases.B.idleExperiment, observation);
+  const outliers = assertOutlierClassification(phases.B, observation);
+  return Object.freeze({ windows, config, warmup: { B: warmup }, traces, latency, observation: { requests: observationLedger.length, events: evidence.observations.length }, activationIdle, outliers });
 }
 
 function makeRecords(phase, responseLatencyMs = 100) {
@@ -563,7 +690,7 @@ function makeTrace(record) {
     const attributes = {
       "schema.version": "sdt.commit/v1",
       "correlation.id": `corr-${record.requestId}`,
-      "service.id": record.serviceId,
+      "service.id": record.serviceId ?? "g32-9043d626fe1149cb",
       "actor.class": row.emitter === "allocator-do" ? "ALLOCATOR" : "ROOT",
       operation: row.span,
       "span.kind": row.kind,
@@ -573,7 +700,7 @@ function makeTrace(record) {
       ...(manifest.attributeMatrix.attributes["member.index"].rowScope?.includes(rowId) ? { "member.index": 0 } : {}),
       ...(manifest.attributeMatrix.attributes["tag.key_hash"].rowScope?.includes(rowId) ? { "tag.key_hash": "b".repeat(64) } : {}),
       ...(rowId === "S00" ? {
-        "activation.first": Number(record.requestId.slice(record.requestId.lastIndexOf("-") + 1)) === 2,
+        "activation.first": !record.requestId.includes("warm") && Number(record.requestId.slice(record.requestId.lastIndexOf("-") + 1)) === 2,
         "script.version": "g30-synthetic",
         colo: "test-colo",
       } : {}),
@@ -597,6 +724,7 @@ function makeTrace(record) {
   });
   return {
     requestId: record.requestId,
+    traceId: `trace-${record.requestId}`,
     schema: "sdt.commit/v1",
     complete: true,
     runtimeVerified: true,
@@ -608,126 +736,78 @@ function makeTrace(record) {
   };
 }
 
-function makeActivationIdle() {
-  return {
-    scheduleMs: [...G30_IDLE_SCHEDULE_MS],
-    observations: G30_IDLE_SCHEDULE_MS.map((scheduledGapMs, index) => ({
-      requestId: `b-${index}`,
-      scheduledGapMs,
-      actualGapMs: scheduledGapMs + index,
-      activationFirst: index === 2,
-      scriptVersion: "g30-synthetic",
-      colo: "test-colo",
-      previousComplete: index !== 0,
-      observedIdleGapLowerBoundMs: index === 0 ? null : scheduledGapMs,
-      reactivationCause: "unknown",
-      storageWrites: 0,
-      usedForControl: false,
-      exposedInPublicResponse: false,
-    })),
-  };
-}
-
-function makeOutlierDiscrimination() {
+function makeObservation(record) {
+  const activationFirst = !String(record.requestId).includes("warm") && Number(String(record.requestId).split("-").at(-1)) === 2;
+  const provider = { scriptVersion: "g30-synthetic", colo: "test-colo", cpuTimeMs: 1, wallTimeMs: record.responseLatencyMs };
+  const isolated = { storageWrites: 0, usedForControl: false, exposedInPublicResponse: false };
   return [
-    {
-      hypothesis: "worker-isolate-first",
-      disposition: "excluded",
-      classified: true,
-      rawEvidence: [{
-        requestId: "b-10",
-        isolateInstanceId: "isolate-synthetic",
-        firstInvocation: true,
-        rootVersion: "g30-synthetic",
-        colo: "test-colo",
-        cpuTimeMs: 1,
-        wallTimeMs: 100,
-        warmComparison: "warm roots held durable actors warm",
-      }],
-    },
-    {
-      hypothesis: "durable-object-wake",
-      disposition: "excluded",
-      classified: true,
-      rawEvidence: [{
-        requestId: "b-11",
-        actorClass: "TAG",
-        idleGapMs: 15_001,
-        constructorToHandlerMs: 2,
-        firstStorageReadMs: 3,
-        subrequestWallMs: 5,
-        variedOneClass: true,
-      }],
-    },
-    {
-      hypothesis: "token-rotation",
-      disposition: "excluded",
-      classified: true,
-      rawEvidence: [{
-        requestId: "b-12",
-        authBranch: "synchronous-string-comparison",
-        deployedVersion: "g30-synthetic",
-        configDigest: "d".repeat(64),
-        httpOutcome: 200,
-      }],
-    },
-    {
-      hypothesis: "queue-doorbell-backpressure",
-      disposition: "excluded",
-      classified: true,
-      rawEvidence: [{
-        requestId: "b-13",
-        faultBarrier: true,
-        appendResponse: 20,
-        followingStateRead: 10,
-        classification: "no-queue-difference",
-      }],
-    },
+    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, actorClass: "WORKER", isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, provider, ...isolated },
+    ...["BOOTSTRAP", "ALLOCATOR", "TAG"].map((actorClass) => ({
+      schema: "sdt.observe/v1", event: "do.handler", emittedAtMs: record.completedAtMs - 2, requestId: record.requestId, traceId: `trace-${record.requestId}`,
+      actorClass, activationId: `${actorClass.toLowerCase()}-${record.requestId}`, activationFirst: false,
+      constructorToHandlerMs: 1, firstStorageReadMs: 1, subrequestWallMs: actorClass === "ALLOCATOR" ? 1 : null, provider, ...isolated,
+    })),
   ];
 }
 
-export function selfTest() {
+function syntheticB0Evidence() {
   const a = makeRecords("A", 100);
   const b = makeRecords("B", 110);
+  b[13].responseLatencyMs = OUTLIER_TARGET_MS;
+  b[13].completedAtMs = b[13].startedAtMs + OUTLIER_TARGET_MS;
   const prime = makeRecords("A-prime", 102);
+  const warmupRequests = Array.from({ length: 5 }, (_, index) => ({
+    requestId: `b-warm-${index}`, status: 200, startedAtMs: 980_000 + index * 2_000, completedAtMs: 980_100 + index * 2_000, responseLatencyMs: 100,
+  }));
+  const idleRequests = [];
+  const idleWindows = [];
+  let previous = b.at(-1);
+  for (const [index, scheduledGapMs] of G30_IDLE_SCHEDULE_MS.entries()) {
+    const startedAtMs = previous.completedAtMs + scheduledGapMs;
+    const next = { requestId: `b-idle-${index}`, status: 200, startedAtMs, completedAtMs: startedAtMs + 110, responseLatencyMs: 110 };
+    idleRequests.push(next);
+    idleWindows.push({ scheduledGapMs, previousRequestId: previous.requestId, nextRequestId: next.requestId });
+    previous = next;
+  }
   const baseConfig = { placement: "off", serviceId: "g32-9043d626fe1149cb", observability: { traces: { enabled: true, head_sampling_rate: 0 } } };
-  const evidence = {
-    task: "SDT-G30",
-    baseline: "B0",
-    purpose: "attribution-only-not-g37-denominator",
-    phases: {
-      A: { ledger: a, rawAttempts: [], configuration: baseConfig, warmup: { attempts: 5, source: "synthetic", actors: { WORKER: [false, false, false, false, false], BOOTSTRAP: [false, false, false, false, false], ALLOCATOR: [false, false, false, false, false], TAG: [false, false, false, false, false] } } },
-      B: { ledger: b, rawAttempts: [], configuration: { ...baseConfig, deployedVersion: "on", observability: { traces: { enabled: true, head_sampling_rate: 1 } } }, warmup: { attempts: 5, source: "synthetic", actors: { WORKER: [false, false, false, false, false], BOOTSTRAP: [false, false, false, false, false], ALLOCATOR: [false, false, false, false, false], TAG: [false, false, false, false, false] } } },
-      "A-prime": { ledger: prime, rawAttempts: [], configuration: { ...baseConfig, deployedVersion: "off-prime" }, warmup: { attempts: 5, source: "synthetic", actors: { WORKER: [false, false, false, false, false], BOOTSTRAP: [false, false, false, false, false], ALLOCATOR: [false, false, false, false, false], TAG: [false, false, false, false, false] } } },
-    },
-    traces: b.map(makeTrace),
-    traceExportCompletedAtMs: b.at(-1).completedAtMs + 10,
-    activationIdle: makeActivationIdle(),
-    outlierDiscrimination: makeOutlierDiscrimination(),
+  const phaseB = {
+    ledger: b,
+    rawAttempts: [],
+    configuration: { ...baseConfig, deployedVersion: "on", observability: { traces: { enabled: true, head_sampling_rate: 1 } } },
+    warmup: { requested: 5, requests: warmupRequests },
+    idleExperiment: { scheduleMs: G30_IDLE_SCHEDULE_MS, requests: idleRequests, windows: idleWindows },
   };
+  const allRecords = observationLedgerForPhase(phaseB);
+  const observationTraces = allRecords.map(makeTrace);
+  const observations = allRecords.flatMap(makeObservation);
+  observations.push(
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 20, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, barrierId: "synthetic-fault", stage: "started", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 15, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, barrierId: "synthetic-fault", stage: "ended", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 10, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, barrierId: "synthetic-fault", stage: "drained", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+  );
+  return {
+    task: "SDT-G30", baseline: "B0", purpose: "attribution-only-not-g37-denominator",
+    phases: {
+      A: { ledger: a, rawAttempts: [], configuration: baseConfig },
+      B: phaseB,
+      "A-prime": { ledger: prime, rawAttempts: [], configuration: { ...baseConfig, deployedVersion: "off-prime" } },
+    },
+    traces: b.map(makeTrace), observationTraces, observations, traceExportCompletedAtMs: b.at(-1).completedAtMs + 10,
+  };
+}
+
+export function selfTest() {
+  const evidence = syntheticB0Evidence();
   assertB0Evidence(evidence);
   const failures = {};
   for (const [name, mutate, marker] of [
     ["trace-loss", (value) => { value.traces.pop(); }, "trace-count"],
     ["out-of-window-replacement", (value) => { value.phases.B.ledger[99].replacement = true; }, "window-eligibility"],
     ["sampling-delta", (value) => { value.phases.B.configuration.placement = "smart"; }, "placement"],
-    ["unattributed", (value) => {
-      for (const span of value.traces[0].spans) {
-        if (span.rowId !== "S00") span.endMs = span.startMs + 1;
-      }
-    }, "unattributed"],
-    ["outlier-unclassified", (value) => { value.outlierDiscrimination[0].classified = false; }, "outlier"],
-    ["outlier-collapsed", (value) => { value.outlierDiscrimination[1].hypothesis = "worker-isolate-first"; }, "outlier"],
-    ["outlier-evidence-free", (value) => { delete value.outlierDiscrimination[0].rawEvidence[0].warmComparison; }, "string"],
-    ["outlier-raw-evidence-missing", (value) => { value.outlierDiscrimination[0].rawEvidence = []; }, "outlier-evidence"],
-    ["idle-schedule", (value) => { value.activationIdle.scheduleMs[2] = 179_000; }, "idle-schedule"],
-    ["activation-storage", (value) => { value.activationIdle.observations[0].storageWrites = 1; }, "activation-isolation"],
-    ["activation-unknown-request", (value) => { value.activationIdle.observations[0].requestId = "missing-request"; }, "activation[0]-trace-join"],
-    ["activation-first-mismatch", (value) => { value.activationIdle.observations[0].activationFirst = !value.activationIdle.observations[0].activationFirst; }, "activation-trace-activation-first"],
-    ["activation-script-version-mismatch", (value) => { value.activationIdle.observations[0].scriptVersion = "different-script"; }, "activation-trace-script-version"],
-    ["activation-colo-mismatch", (value) => { value.activationIdle.observations[0].colo = "different-colo"; }, "activation-trace-colo"],
-    ["token-refresh-declaration", (value) => { value.outlierDiscrimination[2].rawEvidence[0].refreshSpanPresent = true; }, "token-rotation-declaration"],
-    ["outlier-unknown-request", (value) => { value.outlierDiscrimination[0].rawEvidence[0].requestId = "missing-request"; }, "worker-isolate-first[0]-trace-join"],
+    ["unjoined-observation", (value) => { value.observations[0].requestId = "missing-request"; }, "observation[0]-trace-join"],
+    ["overlap-mismatch", (value) => { value.observations.find((entry) => entry.event === "worker.invocation").scriptVersion = "wrong"; }, "observation-overlap-script-version"],
+    ["barrier-missing", (value) => { value.observations = value.observations.filter((entry) => entry.event !== "fault.barrier"); }, "fault-barrier"],
+    ["idle-reference-missing", (value) => { delete value.phases.B.idleExperiment.windows[0].previousRequestId; }, "idle[0].previous.requestId"],
   ]) {
     const altered = structuredClone(evidence);
     mutate(altered);

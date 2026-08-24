@@ -21,6 +21,12 @@ import {
   type NativeTraceSpan,
   type NativeTracing,
 } from "../packages/dcb-runtime/src/trace/CommitTrace";
+import {
+  beginDurableObjectHandlerObservation,
+  observeFaultBarrier,
+  observeWorkerInvocation,
+  type ObservationEvent,
+} from "../packages/dcb-runtime/src/trace/ObservationStream";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
 import { JournalDurableObject } from "../packages/dcb-runtime/src/journal/JournalDurableObject";
 import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
@@ -910,7 +916,7 @@ describe("SDT-G30 runtime trace verifier", () => {
       runAlarm(activation: DurableObjectActivationObservation): Promise<JournalRecord | undefined>;
     };
 
-    const result = await runner.runAlarm({ activationId: ATTEMPT, first: true });
+    const result = await runner.runAlarm({ activationId: ATTEMPT, first: true, handlerStartedAtMs: 0, constructorToHandlerMs: 0 });
 
     expect(result).toMatchObject({ state: "COMPLETE", alarm: null });
     expect(fixture.alarmDeletes()).toBe(1);
@@ -945,7 +951,7 @@ describe("SDT-G30 runtime trace verifier", () => {
         attemptId: ATTEMPT,
         serviceId: SERVICE,
         actorKey: "journal:g30-r00",
-        activation: { activationId: ATTEMPT, first: true },
+        activation: { activationId: ATTEMPT, first: true, handlerStartedAtMs: 0, constructorToHandlerMs: 0 },
         alarmEventId: "alarm-generation-1",
         invocationId: "alarm-invocation-1",
         retryCount: 0,
@@ -962,7 +968,7 @@ describe("SDT-G30 runtime trace verifier", () => {
           serviceId: SERVICE,
           actorClass: "JOURNAL",
           actorKey: "journal:g30-r00",
-          activation: { activationId: ATTEMPT, first: true },
+          activation: { activationId: ATTEMPT, first: true, handlerStartedAtMs: 0, constructorToHandlerMs: 0 },
           operation: "journal.alarm_rearm",
           kind: "direct",
         }, async () => undefined);
@@ -993,7 +999,7 @@ describe("SDT-G30 runtime trace verifier", () => {
 
   it("emits manifest-attributed native spans at allocator and callee callback boundaries", async () => {
     const capture = recordingNativeTracing();
-    const activation = { activationId: ATTEMPT, first: true };
+    const activation = { activationId: ATTEMPT, first: true, handlerStartedAtMs: 0, constructorToHandlerMs: 0 };
 
     await enterNativeCommitSpan(capture.tracing, "allocator.bootstrap.finalize", {
       schema: "sdt.commit/v1",
@@ -1058,7 +1064,7 @@ describe("SDT-G30 runtime trace verifier", () => {
       serviceId: SERVICE,
       actorClass: "ALLOCATOR",
       actorKey: "allocator:g30",
-      activation: { activationId: "not-a-uuid", first: true },
+      activation: { activationId: "not-a-uuid", first: true, handlerStartedAtMs: 0, constructorToHandlerMs: 0 },
       operation: "allocator.bootstrap.finalize",
       kind: "nested",
     }, async () => {
@@ -1238,6 +1244,48 @@ describe("SDT-G30 runtime trace verifier", () => {
     expect(classifyReactivationCause({ deployedVersionChanged: false, elapsedMs: 180_000 })).toBe("unknown");
     expect(classifyReactivationCause({ deployedVersionChanged: false, platformEvidence: "runtime-restart" })).toBe("platform-evidenced");
     expect(classifyReactivationCause({ deployedVersionChanged: true, platformEvidence: "runtime-restart" })).toBe("deployment-correlated");
+  });
+
+  it("emits isolated sdt.observe events from actual Worker and DO handler measurements", async () => {
+    const events: ObservationEvent[] = [];
+    const sink = { emit: (event: ObservationEvent) => events.push(event) };
+    observeWorkerInvocation({
+      isolateInstanceId: "worker-isolate-fixture",
+      firstInvocation: true,
+      scriptVersion: "worker-version-fixture",
+      colo: "SJC",
+    }, sink);
+    const activation = new DurableObjectActivation().beginHandler();
+    const handler = beginDurableObjectHandlerObservation("TAG", activation, sink);
+    handler.markFirstStorageRead();
+    await handler.subrequest(async () => undefined);
+    handler.finish();
+    handler.finish();
+    observeFaultBarrier({ barrierId: "fixture-fault", stage: "started", boundedWindowMs: 10 }, sink);
+
+    expect(events).toHaveLength(3);
+    expect(events[0]).toMatchObject({
+      schema: "sdt.observe/v1",
+      event: "worker.invocation",
+      isolateInstanceId: "worker-isolate-fixture",
+      scriptVersion: "worker-version-fixture",
+      colo: "SJC",
+      storageWrites: 0,
+      usedForControl: false,
+      exposedInPublicResponse: false,
+    });
+    expect(events[1]).toMatchObject({
+      schema: "sdt.observe/v1",
+      event: "do.handler",
+      actorClass: "TAG",
+      activationId: activation.activationId,
+      activationFirst: true,
+      storageWrites: 0,
+      usedForControl: false,
+      exposedInPublicResponse: false,
+    });
+    expect((events[1] as Extract<ObservationEvent, { event: "do.handler" }>).firstStorageReadMs).not.toBeNull();
+    expect(events[2]).toMatchObject({ schema: "sdt.observe/v1", event: "fault.barrier", stage: "started", barrierId: "fixture-fault" });
   });
 
   it("ends S00 before a detached waitUntil-style observation can complete", async () => {

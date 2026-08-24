@@ -1,0 +1,27 @@
+{
+  "queryId": "sdt-g30-b0-telemetry-v1",
+  "view": "events",
+  "limit": 2000,
+  "dry": true,
+  "parameters": {
+    "filterCombination": "or",
+    "filters": [
+      {
+        "key": "$workers.scriptName",
+        "operation": "eq",
+        "type": "string",
+        "value": "sekiban-dcb-meeting-room-cloudflare-only"
+      },
+      {
+        "key": "$workers.scriptName",
+        "operation": "eq",
+        "type": "string",
+        "value": "sekiban-dcb-meeting-room-doorbell"
+      }
+    ]
+  },
+  "timeframe": {
+    "from": 0,
+    "to": 0
+  }
+}
