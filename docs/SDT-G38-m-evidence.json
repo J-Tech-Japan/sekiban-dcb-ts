@@ -1,0 +1,81 @@
+{
+  "schemaVersion": "1",
+  "unit": "SDT-G38",
+  "phase": "M",
+  "recordedAt": "2026-08-24T10:09:17.192Z",
+  "baseCommit": "d9859e71e287c87b872bd9347e117d1b7ee08512",
+  "sourceCommit": "720fcd9d4d888c1eaec196cc33a228e64495b44f",
+  "configDigest": "sha256:cf890ab3df11bc004d87c7cce3f1e96190f9252897843d64f5b0ff0e6597768a",
+  "manifestSelfDigest": "sha256:0510cde6691ffc9e6aad8c78a02ce6d4b4bb91df3fb94185144000385e7f68fc",
+  "deployIdentity": {
+    "workerName": "sekiban-dcb-meeting-room-doorbell",
+    "deploymentId": "05ed1c67-5d27-4a34-b13a-0d8873463190",
+    "versionId": "cae6bb80-3ab5-4472-b527-fbf16c3e9e0f",
+    "percentage": 100,
+    "message": "SDT-G38 Phase M 720fcd9d4d888c1eaec196cc33a228e64495b44f"
+  },
+  "preWitness": {
+    "phase": "pre",
+    "capturedAt": "2026-08-24T10:09:07.562Z",
+    "accountId": "3ede2188f4cf39a28e0aa3722d3d02c5",
+    "workerName": "sekiban-dcb-meeting-room-doorbell",
+    "registry": {
+      "accountSubdomain": "ttakaoka",
+      "settings": {
+        "workersDevEnabled": true,
+        "previewsEnabled": true
+      },
+      "workersDevUrl": "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev",
+      "versionedPreviewUrls": [],
+      "aliases": [],
+      "activeDeployment": {
+        "deploymentId": "d3be2e38-89a1-40d2-a2d5-2a1c4dee51f2",
+        "createdOn": "2026-08-23T04:49:24.756697Z",
+        "message": "SDT-G32 C6 forward receiver 825b7c7795c3695ee7054131bf1f4e79f59f5602",
+        "versions": [
+          {
+            "versionId": "95bca51d-205a-4c04-9d68-77108691d4b9",
+            "percentage": 100
+          }
+        ]
+      }
+    }
+  },
+  "postWitness": {
+    "phase": "post",
+    "capturedAt": "2026-08-24T10:09:16.949Z",
+    "accountId": "3ede2188f4cf39a28e0aa3722d3d02c5",
+    "workerName": "sekiban-dcb-meeting-room-doorbell",
+    "registry": {
+      "accountSubdomain": "ttakaoka",
+      "settings": {
+        "workersDevEnabled": false,
+        "previewsEnabled": false
+      },
+      "workersDevUrl": "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev",
+      "versionedPreviewUrls": [],
+      "aliases": [],
+      "activeDeployment": {
+        "deploymentId": "05ed1c67-5d27-4a34-b13a-0d8873463190",
+        "createdOn": "2026-08-24T10:09:10.867037Z",
+        "message": "SDT-G38 Phase M 720fcd9d4d888c1eaec196cc33a228e64495b44f",
+        "versions": [
+          {
+            "versionId": "cae6bb80-3ab5-4472-b527-fbf16c3e9e0f",
+            "percentage": 100
+          }
+        ]
+      }
+    },
+    "preCapturedUrls": [
+      "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev"
+    ],
+    "rechecks": [
+      {
+        "url": "https://sekiban-dcb-meeting-room-doorbell.ttakaoka.workers.dev",
+        "status": 404
+      }
+    ]
+  },
+  "phaseMDoesNotCloseFenceSplit": "Phase M does NOT close the AC4 fence split."
+}
