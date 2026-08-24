@@ -43,6 +43,7 @@
     "test/g30-trace.spec.ts",
     "test/g30-b0.spec.ts",
     "test/g29-delivery.spec.ts",
+    "test/g26-doorbell.spec.ts",
     "tsconfig.json",
     "vitest.config.ts"
   ],
@@ -80,6 +81,7 @@
     { "rootId": "trace-fixture", "path": "test/g30-trace.spec.ts", "kind": "file" },
     { "rootId": "b0-fixture", "path": "test/g30-b0.spec.ts", "kind": "file" },
     { "rootId": "doorbell-observation-fixture", "path": "test/g29-delivery.spec.ts", "kind": "file" },
+    { "rootId": "g26-correlation-log-fixture", "path": "test/g26-doorbell.spec.ts", "kind": "file" },
     { "rootId": "oracle-map", "path": "docs/SDT-G30-oracle-map.md", "kind": "file" },
     { "rootId": "pr-body", "path": "docs/SDT-G30-pr-body.md", "kind": "file" },
     { "rootId": "repeatable-runbook-doc", "path": "docs/commit-tracing.md", "kind": "file" }

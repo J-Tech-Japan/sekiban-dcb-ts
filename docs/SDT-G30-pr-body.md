@@ -34,7 +34,9 @@ telemetry-anchor fixtures, manifest `--check` and mutations, exact G30 config
 check, a Node/provider import-boundary probe, production-source trace mutations,
 candidate-independent recorder test, and shell syntax check. CI runs this lane
 plus a forced-red proof. Existing
-G13–G32 lanes remain required, including the G13 five-endpoint byte oracle.
+G13–G32 lanes remain required, including the G13 five-endpoint byte oracle and
+the G26 correlation-log fixture that proves unrelated structured observation
+events cannot weaken the doorbell diagnostic oracle.
 
 ## Candidate and evidence protocol
 
