@@ -34,12 +34,12 @@
     {
       "hostPath": "intents/sekiban-dcb-ts/intent-tree/means/19-commit-latency.md",
       "targetPath": null,
-      "digest": "sha256:374928efba08477f77d64b56d622f197fec11e1ba716a294203dec6adbdeca4c"
+      "digest": "sha256:dc9e22ce1744207c0f474e12f555c697f986b2cc68d207ef6cbccad5c141a27c"
     },
     {
       "hostPath": "intents/sekiban-dcb-ts/intent-tree/means/12-bootstrap-import.md",
       "targetPath": null,
-      "digest": "sha256:28b1f72db90f6f6227b29951c1da7b203ce00412f21f6e02362af1ee611b8e4a"
+      "digest": "sha256:20e038f713219f5b28cb1648711746043dfea3e102d6931159cc01231f350a8d"
     },
     {
       "hostPath": "intents/sekiban-dcb-ts/contracts/epoch-reasons.curated.json",
@@ -52,7 +52,7 @@
       "digest": "sha256:f3483f58e4b7d8d85bc2d95d82e9d12602574b8a67cf6a62ca76b935d7ad168c"
     }
   ],
-  "bundleDigest": "sha256:35c10f63e8d527fbd001ddc22b292d14961031fa40487219dc71770700d5ceb4",
+  "bundleDigest": "sha256:7fa89d23bbb532d40010f8e39fb002d676e9542abe058a5b326ccfa5940af441",
   "targetCheckerContract": [
     "verify every mirroredFiles digest against the checked-out target copy at targetPath",
     "recompute bundleDigest from the hostPath+digest sequence and compare",

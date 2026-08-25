@@ -349,7 +349,7 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
       const name = hasSpanTiming(event) ? providerSpanName(event) : undefined;
       if (name !== undefined) group.providerSpanNames.add(name);
       const span = normalizedSpan(event, traceId);
-      if (span !== undefined) group.events.push({ span });
+      if (span !== undefined) group.events.push({ span, event });
     }
     if (observation !== undefined) rawObservations.push({ payload: observation, event });
   }
@@ -381,29 +381,53 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
 
   const output = [];
   const observations = [];
-  for (const [correlationId, joined] of observationsByCorrelation) {
-    const rooted = rootsByCorrelation.get(correlationId);
-    if (rooted === undefined) fail("observation-root", `structured observation correlation ${correlationId} has no S00 root`);
-    const { group } = rooted;
+  // The S00 root, rather than an observation's arrival order, is the trace
+  // authority.  When running against the live API its provider CF-Ray joins
+  // directly back to the client ledger.  That lets AC5 distinguish a missing
+  // root from a root whose remaining schema/observation has not arrived.
+  for (const [correlationId, rooted] of rootsByCorrelation) {
+    const { group, root } = rooted;
+    const joined = observationsByCorrelation.get(correlationId) ?? [];
     const worker = joined.filter((entry) => entry.payload.event === "worker.invocation");
-    if (worker.length !== 1) fail("observation-worker", `S00 trace ${group.traceId} requires exactly one worker observation`);
-    const observedWorkerRequestId = worker[0].payload.requestId;
-    if (typeof observedWorkerRequestId !== "string" || observedWorkerRequestId.length === 0) {
-      fail("observation-request-id", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);
+    const rootRayValue = metadataField(metadataFor(root.event), root.event, ["rayId", "ray_id"]);
+    let requestId;
+    let platformRayId;
+    if (clientRequestIdsByRayId !== undefined) {
+      platformRayId = cloudflareRayId(rootRayValue, `S00 trace ${group.traceId} root provider ray`);
+      requestId = clientRequestIdsByRayId.get(platformRayId);
+      if (typeof requestId !== "string" || requestId.length === 0) {
+        fail("observation-ray-join", `S00 trace ${group.traceId} root has no client CF-Ray ledger join`);
+      }
+    } else if (worker.length === 1 && typeof worker[0].payload.requestId === "string" && worker[0].payload.requestId.length > 0) {
+      requestId = worker[0].payload.requestId;
+    } else {
+      // The input-mode unit fixtures do not supply real CF-Ray values. A
+      // root without exactly one worker observation therefore cannot be
+      // named in that mode and remains outside the normalized trace set.
+      continue;
     }
-    const platformRayId = clientRequestIdsByRayId === undefined
-      ? undefined
-      : cloudflareRayId(observedWorkerRequestId, `S00 trace ${group.traceId} worker observation`);
-    const requestId = platformRayId === undefined
-      ? observedWorkerRequestId
-      : clientRequestIdsByRayId.get(platformRayId);
-    if (typeof requestId !== "string" || requestId.length === 0) {
-      fail("observation-ray-join", `S00 trace ${group.traceId} worker observation has no client CF-Ray ledger join`);
+    if (worker.length === 1) {
+      const observedWorkerRequestId = worker[0].payload.requestId;
+      if (typeof observedWorkerRequestId !== "string" || observedWorkerRequestId.length === 0) {
+        fail("observation-request-id", `S00 trace ${group.traceId} worker observation lacks the client CF-Ray`);
+      }
+      if (clientRequestIdsByRayId !== undefined) {
+        const workerRayId = cloudflareRayId(observedWorkerRequestId, `S00 trace ${group.traceId} worker observation`);
+        if (workerRayId !== platformRayId) {
+          fail("observation-request-id", `S00 trace ${group.traceId} worker observation conflicts with its root provider ray`);
+        }
+      } else if (observedWorkerRequestId !== requestId) {
+        fail("observation-request-id", `S00 trace ${group.traceId} worker observation conflicts with its root request`);
+      }
     }
     const spans = group.events.map((entry) => entry.span);
     const rowCounts = new Map(spans.map((span) => [span.rowId, 0]));
     for (const span of spans) rowCounts.set(span.rowId, (rowCounts.get(span.rowId) ?? 0) + 1);
-    const complete = SUCCESS_REQUIRED.every((rowId) => (rowCounts.get(rowId) ?? 0) > 0);
+    const rowsComplete = SUCCESS_REQUIRED.every((rowId) => (rowCounts.get(rowId) ?? 0) > 0);
+    // A root with an absent/duplicate worker observation is not a complete
+    // schema observation. It remains explicitly represented so the B0
+    // contract can record schema-incomplete instead of silently dropping it.
+    const complete = rowsComplete && worker.length === 1;
     const trace = {
       requestId,
       traceId: group.traceId,
@@ -416,10 +440,14 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
       spans,
     };
     if (complete) verifyRuntimeSuccessTrace(trace);
-    output.push({
+    const normalizedTrace = Object.freeze({
       ...trace,
       runtimeVerified: complete,
     });
+    output.push(normalizedTrace);
+    // Incomplete observations remain in raw telemetry but are not allowed to
+    // masquerade as joined evidence for activation/outlier conclusions.
+    if (!complete) continue;
     for (const observed of joined) {
       observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId, correlationId, platformRayId));
     }
@@ -609,7 +637,6 @@ async function queryByValues({ accountId, token, template, key, values, fixedFil
  */
 export async function exportCohortTelemetry({ accountId, token, template, ledger }) {
   const clientRequestIdsByRayId = clientRequestIdByPlatformRayId(ledger);
-  const requestIds = [...clientRequestIdsByRayId.values()];
   const platformRayIds = [...clientRequestIdsByRayId.keys()];
   const workerRaws = await queryByValues({
     accountId,
@@ -624,25 +651,25 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     const providerRayId = cloudflareRayId(providerRayValue, "worker observation provider ray");
     const requestId = clientRequestIdsByRayId.get(providerRayId);
     const correlationId = observationCorrelation(payload);
-    if (typeof requestId !== "string" || correlationId === undefined) continue;
+    if (typeof requestId !== "string") continue;
     if (cloudflareRayId(payload?.requestId, "worker observation payload ray") !== providerRayId) {
       fail("cohort-worker", "worker observation payload ray conflicts with its provider ray");
     }
+    if (correlationId === undefined) fail("cohort-worker", `client request ${requestId} worker observation lacks correlation`);
     const existing = workerByRequestId.get(requestId) ?? new Set();
     existing.add(correlationId);
     workerByRequestId.set(requestId, existing);
   }
-  for (const requestId of requestIds) {
-    const correlations = workerByRequestId.get(requestId);
-    if (correlations?.size !== 1) fail("cohort-worker", `client request ${requestId} lacks exactly one correlated worker observation`);
-  }
-  const correlations = [...new Set([...workerByRequestId.values()].flatMap((entries) => [...entries]))];
+  // Query roots directly by the provider identity. A missing Worker Logs
+  // observation must not make the root disappear from the AC5 classification:
+  // it is either a schema-incomplete root or a root-absent loss, never an
+  // arrival-order guess.
   const rootRaws = await queryByValues({
     accountId,
     token,
     template,
-    key: "correlation.id",
-    values: correlations,
+    key: "$metadata.rayId",
+    values: platformRayIds,
     fixedFilters: [queryFilter("schema.version", "sdt.commit/v1"), queryFilter("$metadata.spanName", "sdt.commit")],
   });
   const traceIdsByCorrelation = new Map();
@@ -650,21 +677,31 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     for (const event of rawEvents(raw)) {
       const attributes = attributesFor(event);
       const correlationId = attributes["correlation.id"];
+      const rootRayValue = metadataField(metadataFor(event), event, ["rayId", "ray_id"]);
       const traceId = metadataField(metadataFor(event), event, ["traceId", "trace_id"]);
-      if (typeof correlationId === "string" && correlations.includes(correlationId) && typeof traceId === "string" && traceId.length > 0) {
+      if (
+        typeof correlationId === "string"
+        && typeof traceId === "string"
+        && traceId.length > 0
+        && clientRequestIdsByRayId.has(cloudflareRayId(rootRayValue, "S00 root provider ray"))
+      ) {
         const existing = traceIdsByCorrelation.get(correlationId) ?? new Set();
         existing.add(traceId);
         traceIdsByCorrelation.set(correlationId, existing);
       }
     }
   }
-  for (const correlationId of correlations) {
-    if (traceIdsByCorrelation.get(correlationId)?.size !== 1) {
-      fail("cohort-root", "every correlated worker observation must resolve exactly one S00 trace");
+  for (const [correlationId, traceIds] of traceIdsByCorrelation) {
+    if (traceIds.size !== 1) {
+      fail("cohort-root", `S00 correlation ${correlationId} resolves to more than one trace`);
     }
   }
   const traceIds = new Set([...traceIdsByCorrelation.values()].flatMap((entries) => [...entries]));
-  const traceRaws = await queryByValues({
+  const correlations = [...new Set([
+    ...[...traceIdsByCorrelation.keys()],
+    ...[...workerByRequestId.values()].flatMap((entries) => [...entries]),
+  ])];
+  const traceRaws = traceIds.size === 0 ? [] : await queryByValues({
     accountId,
     token,
     template,
@@ -672,7 +709,7 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     values: [...traceIds],
     batchSize: 4,
   });
-  const observationRaws = await queryByValues({
+  const observationRaws = correlations.length === 0 ? [] : await queryByValues({
     accountId,
     token,
     template,
@@ -683,7 +720,8 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
   const merged = mergeTelemetryEvents([...workerRaws, ...rootRaws, ...traceRaws, ...observationRaws]);
   // Body-less internal reads intentionally have no attempt identity and are
   // outside the B0 correlation universe. Retain every event that can be
-  // joined; fail closed for missing identities in the worker query above.
+  // classified by a queried root or worker observation; no time-nearest join
+  // is used for a root-absent loss.
   return {
     events: merged.events.filter((event) => {
       const payload = observationPayload(event);
@@ -707,7 +745,7 @@ function pendingTelemetryError(error) {
   // found S00 but one or more child spans have not become query-visible yet.
   // Treat that as the same telemetry-arrival condition as a missing trace;
   // keep the original B ledger and retry only until its fixed export deadline.
-  return /g30-b0:(?:trace-count|trace-complete|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:cohort-worker|cohort-root|observation-root|observation-worker|observation-request-id)/.test(message);
+  return /g30-b0:(?:delivery-budget|tail-coverage|trace-complete|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:cohort-worker|cohort-root|observation-worker|observation-request-id)/.test(message);
 }
 
 /**
@@ -770,12 +808,18 @@ async function main() {
       const retainedRequestIds = new Set(ledgerDocument.ledger?.map((record) => record?.requestId));
       const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
       const proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());
-      assertObservationStream(observationLedger, bundle.traces, bundle.observations);
-      return Object.freeze({ bundle, traces, proof });
+      const observationTraces = bundle.traces.filter((trace) => trace.complete === true && trace.runtimeVerified === true);
+      assertObservationStream(
+        observationLedger,
+        observationTraces,
+        bundle.observations,
+        { allowedMissingRequestIds: proof.missingRequestIds },
+      );
+      return Object.freeze({ bundle, traces, observationTraces, proof });
     },
   });
   const raw = acquisition.raw;
-  const { bundle, traces, proof } = acquisition.value;
+  const { bundle, traces, observationTraces, proof } = acquisition.value;
   const result = {
     task: "SDT-G30",
     phase: "B",
@@ -783,7 +827,7 @@ async function main() {
     exportCompletedAtMs: Date.now(),
     proof,
     traces,
-    observationTraces: bundle.traces,
+    observationTraces,
     observations: bundle.observations,
   };
   mkdirSync(dirname(output), { recursive: true });
@@ -792,7 +836,7 @@ async function main() {
     writeFileSync(rawOutput, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   }
   writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ traceCount: traces.length, observationTraceCount: bundle.traces.length, observationCount: bundle.observations.length, requestCount: proof.requestCount, observationLedgerCount: observationLedger.length }, null, 2));
+  console.log(JSON.stringify({ traceCount: traces.length, observationTraceCount: observationTraces.length, observationCount: bundle.observations.length, requestCount: proof.requestCount, schemaCompleteCount: proof.schemaCompleteCount, missingCount: proof.missingCount, observationLedgerCount: observationLedger.length }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

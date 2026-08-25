@@ -35,7 +35,7 @@ All events declare `storageWrites: 0`, `usedForControl: false`, and
 commit branch.
 
 Activation IDs are constructor-local observations. Idle evidence is collected
-from the client ledger, complete B trace cohort, and this raw observation
+from the client ledger, schema-complete joined B trace cohort, and this raw observation
 stream at exactly 2 s, 15 s, and 180 s. Each interval explicitly names both
 the preceding and following request IDs. Overlapping `activationFirst`,
 `scriptVersion`, and `colo` must exactly equal the joined S00 root. A human
@@ -80,14 +80,20 @@ does not assert a performance pass/fail.
    witness records the source candidate, configuration digest, service, and
    placement observation. No G30 route,
    header, body field, or runtime variable is added for this purpose.
-6. The exporter materializes bounded cohort queries from B's client ledger:
-   CF-Ray to Worker observation, correlation to S00, then bounded trace and
-   correlated-observation exports. It rejects a saturated subquery rather than
-   accepting a partial page, and never joins by time proximity or assumes a
-   structured console log has a platform trace ID. It rejects missing traces,
-   replacements, incomplete schema rows, unknown/mismatched observations, an
-   export after the 10-minute deadline, or any accepted request whose
-   caller-union unattributed ratio is above 5%. It retains safe provider span
+6. The exporter materializes bounded cohort queries from B's immutable,
+   100-request client ledger. It queries S00 roots directly by provider CF-Ray,
+   then bounded per-trace and correlated-observation exports; it never joins by
+   time proximity or assumes a structured console log has a platform trace ID.
+   `schemaCompleteCount >= 95` is the frozen delivery ceiling: six losses fail,
+   while every permitted loss is enumerated as either `root-absent` or
+   `schema-incomplete` UNKNOWN. The exact rank-1..5 tail, sorted by client
+   latency descending then request ID ascending, must all be schema-complete.
+   Client p50/p95/p99 use the sealed nearest-rank estimator over all 100
+   client rows, never the joined subset. Joined per-hop metrics are explicitly
+   conditional and retain a missing-stage sensitivity envelope. A saturated
+   subquery, replacement, unknown/mismatched observation, export after the
+   ten-minute deadline, a tail loss, or a schema-complete joined request whose
+   caller-union unattributed ratio exceeds 5% fails the run. It retains safe provider span
    names for refresh exclusion, while queue/doorbell lifecycle, idle, and
    activation facts come from the joined observation stream—not an
    operator-supplied boolean or declaration.
@@ -103,7 +109,7 @@ candidate and a new B0 acquisition.
 The B0 validator derives one attributable or excluded result for each
 hypothesis: Worker-isolate first invocation, Durable Object wake, token
 rotation, and queue/doorbell backpressure. Every raw observation cites a B
-request present in both the client ledger and complete trace cohort. Worker
+request present in both the client ledger and schema-complete joined trace cohort. Worker
 facts are cross-checked against the cited root's version and colo. Token
 rotation is excluded only when the exporter finds no refresh span on the
 joined trace. When a 21.5-second target is observed, the queue/doorbell path

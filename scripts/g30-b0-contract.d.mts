@@ -1,5 +1,8 @@
 export const G30_PHASES: readonly ["A", "B", "A-prime"];
 export const G30_SAMPLE_COUNT: 100;
+export const G30_MIN_SCHEMA_COMPLETE_COUNT: 95;
+export const G30_TAIL_RANK_COUNT: 5;
+export const G30_LATENCY_ESTIMATOR: "nearest-rank/full-client-ledger/v1";
 export const G30_CADENCE_MS: 2_000;
 export const G30_EXPORT_DEADLINE_MS: number;
 export const G30_IDLE_SCHEDULE_MS: readonly [2_000, 15_000, 180_000];
@@ -52,6 +55,55 @@ export interface G30ObservationIndex {
   observationsByRequestId: Map<string, G30Observation[]>;
 }
 
+export interface G30MissingTrace {
+  phase: "A" | "B" | "A-prime";
+  ordinal: number;
+  requestId: string;
+  attemptId?: string;
+  clientLatency: number;
+  fullLedgerRank: number;
+  percentile: number;
+  stage: "root-absent" | "schema-incomplete";
+  sensitivityEnvelope: {
+    lowerBoundMs: 0;
+    upperBoundMs: number;
+    upperBoundSource: "client-latency" | "observed-root-duration";
+  };
+}
+
+export interface G30TraceCohortProof {
+  phase: "A" | "B" | "A-prime";
+  requestCount: 100;
+  clientCount: 100;
+  schemaCompleteCount: number;
+  missingCount: number;
+  missingRequestIds: readonly string[];
+  missing: readonly G30MissingTrace[];
+  tailCoverage: {
+    ordering: "clientLatency desc, requestId asc";
+    ranks: readonly { rank: number; requestId: string; clientLatency: number }[];
+    requestIds: readonly string[];
+    complete: true;
+  };
+  latency: {
+    universe: "full-100-client-ledger";
+    estimator: "nearest-rank/full-client-ledger/v1";
+    p50: number;
+    p95: number;
+    p99: number;
+  };
+  unattributed: readonly { requestId: string; rootDurationMs: number; coveredDurationMs: number; unattributedRatio: number }[];
+  perHop: {
+    basis: "schema-complete-joined-cohort";
+    wholeCohortConclusion: false;
+    joinedRequestCount: number;
+    missingRequestCount: number;
+    [key: string]: unknown;
+  };
+  exportDeadlineMs: number;
+  [key: string]: unknown;
+}
+
 export function assertEligiblePhaseWindow(
   phase: "A" | "B" | "A-prime",
   records: readonly object[],
@@ -61,12 +113,14 @@ export function assertTraceCohort(
   ledger: readonly object[],
   traces: readonly G30Trace[],
   exportCompletedAtMs: number,
-): Readonly<{ requestCount: number; exportDeadlineMs: number }>;
+  phase?: "A" | "B" | "A-prime",
+): Readonly<G30TraceCohortProof>;
 export function observationLedgerForPhase(phaseB: unknown): readonly Record<string, unknown>[];
 export function assertObservationStream(
   ledger: readonly Record<string, unknown>[],
   traces: readonly G30Trace[],
   observations: readonly G30Observation[],
+  options?: Readonly<{ allowedMissingRequestIds?: readonly string[] }>,
 ): G30ObservationIndex;
 export function assertIdleRequestReferences(
   window: unknown,

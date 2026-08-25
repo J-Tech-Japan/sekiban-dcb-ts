@@ -17,6 +17,8 @@ export const G30_DEPLOYMENT_CONFIG_PATHS = Object.freeze([
   "scripts/deploy/g30-b0-record-evidence.mjs",
   "scripts/deploy/g30-trace-export.mjs",
   "scripts/g30-b0-contract.mjs",
+  "scripts/g30-ac5-structural-check.mjs",
+  "scripts/g30-ac5-mutation-runner.mjs",
   "scripts/g30-trace-runtime-verifier.mjs",
 ]);
 

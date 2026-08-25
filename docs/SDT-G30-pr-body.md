@@ -14,7 +14,9 @@ Closes #70
 - Binds each B0 deployment to Cloudflare Worker Version metadata outside the
   Worker protocol; it adds no G30 conformance endpoint or runtime witness
   variable.
-- Computes per-accepted-request caller-interval union attribution and emits
+- Computes caller-interval union attribution for every schema-complete joined
+  request; a provider-delivery miss is enumerated as UNKNOWN rather than
+  counted as an absence or a pass. It emits
   an isolated `sdt.observe/v1` Workers Logs stream for facts that cannot fit
   the sealed commit-span schema (Worker isolate, DO handler/storage/subrequest
   measurements, and bounded doorbell test seams). Worker logs retain the
@@ -28,8 +30,13 @@ Closes #70
   cohort query, including a found-but-incomplete success trace, retry only
   until the canonical ten-minute deadline; a
   saturated page is rejected rather than accepted as partial telemetry. The A/B/A′
-  runner, cohort contract, evidence recorder, and candidate retention gate join
-  every retained observation to the B ledger and S00 root. Human
+  runner retains the original 100-request client ledger as the fixed universe:
+  `schemaCompleteCount >= 95`, all six-or-more losses fail, and every missing
+  identity records its `root-absent` or `schema-incomplete` stage. The exact
+  rank-1..5 tail is ordered by client latency descending then request ID
+  ascending and may not be missing. Full-ledger p50/p95/p99 use the sealed
+  nearest-rank estimator; joined per-hop values are conditional and retain a
+  sensitivity envelope. Human
   activation/outlier records are rejected; refresh, idle, and queue/doorbell
   disposition are calculated from raw telemetry and client timelines only.
 - Defers Worker isolate randomness to the first request-handler boundary,
@@ -66,8 +73,12 @@ as a phase-specific variable.
 R is evidence-only: `docs/SDT-G30-*evidence*.{json,md}` plus exactly one C
 append in `.github/workflows/ci.yml`. The evidence states
 `sourceCommit === deployedRuntimeCommit === C`, carries tree/config digests,
-keeps raw A/B/A′ ledgers, B traces, and structured observations, requires every B trace’s individual
-unattributed ratio to be at most 5%, records the A/A′ drift and B overhead
+keeps raw A/B/A′ ledgers, the full 100-request B client universe, B traces,
+and structured observations. It requires each schema-complete joined B trace’s
+individual unattributed ratio to be at most 5%, enumerates UNKNOWN delivery
+loss and tail coverage, records full-ledger nearest-rank client percentiles,
+and labels joined per-hop values as conditional with their sensitivity envelope.
+It records the A/A′ drift and B overhead
 without asserting a performance pass/fail, and explicitly marks B0 as not a
 G37 denominator. No token value is included in a command argument, log,
 commit, or evidence artifact.

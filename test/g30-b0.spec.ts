@@ -301,6 +301,22 @@ function evidence() {
   };
 }
 
+function setDistinctClientLatencies(ledger: Array<Record<string, unknown>>) {
+  for (const [index, record] of ledger.entries()) {
+    const responseLatencyMs = index + 1;
+    record.responseLatencyMs = responseLatencyMs;
+    record.completedAtMs = Number(record.startedAtMs) + responseLatencyMs;
+  }
+}
+
+function withoutTrace(document: ReturnType<typeof evidence>, requestIds: readonly string[]) {
+  const removed = new Set(requestIds);
+  document.traces = document.traces.filter((trace) => !removed.has(trace.requestId));
+  document.observationTraces = document.observationTraces.filter((trace) => !removed.has(trace.requestId));
+  document.observations = document.observations.filter((observation) => !removed.has(observation.requestId));
+  return document;
+}
+
 describe("SDT-G30 B0 trace/evidence gates", () => {
   it("allows only head sampling to vary across the deployment configs", () => {
     expect(assertG30Config(deploymentConfig(0), deploymentConfig(1), deploymentConfig(0))).toMatchObject({
@@ -691,6 +707,34 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(acquisition.value).toMatchObject({ requestCount: 100 });
   });
 
+  it("retries a sub-budget cohort before the B export deadline", async () => {
+    const document = evidence();
+    const observationLedger = observationLedgerForPhase(document.phases.B);
+    const retainedRequestIds = new Set(document.phases.B.ledger.map((record) => record.requestId));
+    const sleeps: number[] = [];
+    let validations = 0;
+    let now = Number(document.phases.B.ledger.at(-1)!.completedAtMs) + 1;
+    const acquisition = await acquireCohortTelemetry({
+      deadlineMs: exportDeadline(document.phases.B.ledger),
+      fetchCohort: async () => rawTelemetry(observationLedger),
+      validate: (raw) => {
+        validations += 1;
+        if (validations === 1) throw new Error("g30-b0:delivery-budget:B schemaCompleteCount=94 is below frozen 95/100");
+        const bundle = normalizeTelemetryBundle(raw, now);
+        const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
+        return assertTraceCohort(document.phases.B.ledger, traces, now);
+      },
+      now: () => now,
+      sleepFor: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        now += milliseconds;
+      },
+    });
+    expect(validations).toBe(2);
+    expect(sleeps).toEqual([TELEMETRY_RETRY_DELAY_MS]);
+    expect(acquisition.value).toMatchObject({ schemaCompleteCount: 100 });
+  });
+
   it("rejects an unsealed D1 database identity before migration listing", () => {
     const config = {
       d1_databases: [
@@ -724,31 +768,118 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("must use a binding");
   });
 
-  it("rejects a telemetry group without an S00 correlation anchor instead of matching by time", () => {
+  it("classifies a telemetry group without an S00 root as root-absent instead of matching by time", () => {
     const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
     raw.events = raw.events.filter((entry) => !(
-      entry.$metadata?.traceId === "trace-B-0" && entry.attributes?.operation === "sdt.commit"
+      entry.$metadata?.traceId === "trace-B-99" && entry.attributes?.operation === "sdt.commit"
     ));
-    expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-root/);
+    const document = evidence();
+    const retained = new Set(document.phases.B.ledger.map((record) => String(record.requestId)));
+    const traces = normalizeTelemetryExport(raw).filter((trace) => retained.has(trace.requestId));
+    const proof = assertTraceCohort(document.phases.B.ledger, traces, document.traceExportCompletedAtMs);
+    expect(proof.missing).toMatchObject([{ requestId: "B-99", stage: "root-absent" }]);
   });
 
-  it("requires the exported runtime-verification result for every retained trace", () => {
+  it("classifies a non-runtime-verified root as schema-incomplete rather than silently passing it", () => {
     const document = structuredClone(evidence());
-    document.traces[0]!.runtimeVerified = false;
-    // Test the cohort gate directly: evidenceTraceIndex independently rejects
-    // the same flag later, so a full-evidence assertion would hide a removal
-    // of this earlier guard.
-    expect(() => assertTraceCohort(
+    const trace = document.traces.find((entry) => entry.requestId === "B-99");
+    if (trace === undefined) throw new Error("fixture lacks B-99 trace");
+    trace.runtimeVerified = false;
+    const proof = assertTraceCohort(
       document.phases.B.ledger,
       document.traces,
       document.traceExportCompletedAtMs,
-    )).toThrow(/trace-complete/);
+    );
+    expect(proof.missing).toMatchObject([{ requestId: "B-99", stage: "schema-incomplete" }]);
   });
 
-  it("joins the independent client ledger only to its exact worker-observed CF-Ray and rejects a dropped trace", () => {
+  it("keeps a dropped non-tail trace in the fixed denominator as UNKNOWN", () => {
     const document = evidence();
-    document.traces.pop();
-    expect(() => assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs)).toThrow(/trace-count/);
+    document.traces = document.traces.filter((trace) => trace.requestId !== "B-99");
+    const proof = assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs);
+    expect(proof).toMatchObject({ clientCount: 100, schemaCompleteCount: 99, missingCount: 1 });
+    expect(proof.missing).toMatchObject([{ requestId: "B-99", clientLatency: 108, stage: "root-absent" }]);
+  });
+
+  it("enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator", () => {
+    const document = evidence();
+    setDistinctClientLatencies(document.phases.B.ledger);
+    const pass = withoutTrace(structuredClone(document), ["B-0", "B-1", "B-2", "B-3", "B-4"]);
+    const passProof = assertTraceCohort(pass.phases.B.ledger, pass.traces, pass.traceExportCompletedAtMs);
+    expect(passProof).toMatchObject({ clientCount: 100, schemaCompleteCount: 95, missingCount: 5 });
+    expect(passProof.latency).toMatchObject({ universe: "full-100-client-ledger", p50: 50, p95: 95, p99: 99 });
+
+    const fail = withoutTrace(structuredClone(document), ["B-0", "B-1", "B-2", "B-3", "B-4", "B-5"]);
+    expect(() => assertTraceCohort(fail.phases.B.ledger, fail.traces, fail.traceExportCompletedAtMs)).toThrow(/delivery-budget/);
+  });
+
+  it("uses the exact rank-1..5 client-latency tail set, including a deterministic rank-5/6 tie", () => {
+    const document = evidence();
+    for (const record of document.phases.B.ledger) {
+      record.responseLatencyMs = 1;
+      record.completedAtMs = Number(record.startedAtMs) + 1;
+    }
+    // Deliberately invert the immutable ledger encounter order for the tied
+    // identities. The rank rule is requestId ascending, never stable-input
+    // ordering, so B-94 must precede B-95 despite appearing later here.
+    [document.phases.B.ledger[94]!.requestId, document.phases.B.ledger[95]!.requestId] = [
+      document.phases.B.ledger[95]!.requestId,
+      document.phases.B.ledger[94]!.requestId,
+    ];
+    const latency = new Map([["B-99", 1_000], ["B-98", 999], ["B-97", 998], ["B-96", 997], ["B-94", 996], ["B-95", 996]]);
+    for (const record of document.phases.B.ledger) {
+      const value = latency.get(String(record.requestId));
+      if (value === undefined) continue;
+      record.responseLatencyMs = value;
+      record.completedAtMs = Number(record.startedAtMs) + value;
+    }
+    const proof = assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs);
+    expect(proof.tailCoverage.requestIds).toEqual(["B-99", "B-98", "B-97", "B-96", "B-94"]);
+    const rankSixMissing = withoutTrace(structuredClone(document), ["B-95"]);
+    expect(assertTraceCohort(rankSixMissing.phases.B.ledger, rankSixMissing.traces, rankSixMissing.traceExportCompletedAtMs).tailCoverage.requestIds)
+      .toEqual(["B-99", "B-98", "B-97", "B-96", "B-94"]);
+    const rankFiveMissing = withoutTrace(structuredClone(document), ["B-94"]);
+    expect(() => assertTraceCohort(rankFiveMissing.phases.B.ledger, rankFiveMissing.traces, rankFiveMissing.traceExportCompletedAtMs)).toThrow(/tail-coverage/);
+  });
+
+  it("records a per-missing sensitivity source and keeps per-hop aggregates conditional", () => {
+    const document = structuredClone(evidence());
+    setDistinctClientLatencies(document.phases.B.ledger);
+    const incomplete = document.traces.find((trace) => trace.requestId === "B-1");
+    if (incomplete === undefined) throw new Error("fixture lacks B-1 trace");
+    incomplete.complete = false;
+    incomplete.runtimeVerified = false;
+    document.traces = document.traces.filter((trace) => trace.requestId !== "B-0");
+    const proof = assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs);
+    expect(proof.missing).toEqual(expect.arrayContaining([
+      expect.objectContaining({ requestId: "B-0", stage: "root-absent", sensitivityEnvelope: expect.objectContaining({ upperBoundSource: "client-latency", upperBoundMs: 1 }) }),
+      expect.objectContaining({ requestId: "B-1", stage: "schema-incomplete", sensitivityEnvelope: expect.objectContaining({ upperBoundSource: "observed-root-duration" }) }),
+    ]));
+    expect(proof.perHop).toMatchObject({ wholeCohortConclusion: false, joinedRequestCount: 98, missingRequestCount: 2 });
+    expect(proof.unattributed).toHaveLength(98);
+  });
+
+  it("applies the delivery ceiling to the B phase independently rather than aggregating another phase", () => {
+    const document = evidence();
+    setDistinctClientLatencies(document.phases.A.ledger);
+    const aTraces = normalizeTelemetryBundle(rawTelemetry(document.phases.A.ledger, false), document.traceExportCompletedAtMs).traces;
+    const incompleteA = aTraces.filter((trace) => !["A-0", "A-1", "A-2", "A-3", "A-4", "A-5"].includes(trace.requestId));
+    expect(() => assertTraceCohort(document.phases.A.ledger, incompleteA, document.traceExportCompletedAtMs, "A")).toThrow(/delivery-budget/);
+    expect(assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs)).toMatchObject({ schemaCompleteCount: 100 });
+  });
+
+  it("allows only the explicitly enumerated AC5 UNKNOWN set through the joined observation stream", () => {
+    const document = structuredClone(evidence());
+    setDistinctClientLatencies(document.phases.B.ledger);
+    withoutTrace(document, ["B-0", "B-1", "B-2", "B-3", "B-4"]);
+    document.observations = document.observations.filter((entry) => entry.event !== "fault.barrier");
+    const result = assertB0Evidence(document) as { traces: { clientCount: number; schemaCompleteCount: number; missing: Array<{ requestId: string; stage: string }> } };
+    expect(result.traces).toMatchObject({ clientCount: 100, schemaCompleteCount: 95 });
+    expect(result.traces.missing.map((entry) => entry.requestId)).toEqual(["B-4", "B-3", "B-2", "B-1", "B-0"]);
+
+    const unjoined = structuredClone(document);
+    unjoined.observations = [...unjoined.observations, structuredClone(evidence().observations.find((entry) => entry.requestId === "B-0")!)];
+    expect(() => assertB0Evidence(unjoined)).toThrow(/observation\[.*\]-trace-join/);
   });
 
   it("re-verifies every retained trace instead of trusting a stale success flag", () => {
@@ -909,12 +1040,22 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-correlation/);
   });
 
+  it("classifies a root with a missing worker observation as schema-incomplete", () => {
+    const requestId = "a304f4ff2b982517-SJC";
+    const raw = rawTelemetry([{ index: 0, requestId, startedAtMs: 1_000, completedAtMs: 1_100, responseLatencyMs: 100 }], false);
+    raw.events = raw.events.filter((entry) => entry.source?.event !== "worker.invocation");
+    const normalized = normalizeTelemetryBundle(raw, 1_101, clientRequestIdByPlatformRayId([{ requestId, startedAtMs: 1_000, completedAtMs: 1_100 }]));
+    expect(normalized.traces).toMatchObject([{ requestId, complete: false, runtimeVerified: false }]);
+  });
+
   it("rejects a worker observation without the client CF-Ray used by the ledger", () => {
-    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    const requestId = "a304f4ff2b982517-SJC";
+    const ledger = [{ index: 0, requestId, startedAtMs: 1_000, completedAtMs: 1_100, responseLatencyMs: 100 }];
+    const raw = rawTelemetry(ledger, false);
     const observation = raw.events.find((entry) => entry.source?.event === "worker.invocation");
     if (observation?.source === undefined) throw new Error("fixture lacks worker event");
     delete observation.source.requestId;
-    expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-request-id/);
+    expect(() => normalizeTelemetryBundle(raw, 1_101, clientRequestIdByPlatformRayId(ledger))).toThrow(/observation-request-id/);
   });
 
   it("rejects a structured observation without its provider request id", () => {

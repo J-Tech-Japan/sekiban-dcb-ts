@@ -68,7 +68,8 @@ function markdown(evidence) {
     "",
     `- Candidate/source/deployed runtime: \`${evidence.candidateCommit}\``,
     `- Service: \`${evidence.serviceId}\`; placement: \`off\`.`,
-    `- Trace completeness: ${evidence.attribution?.traces?.requestCount ?? 0}/100; export deadline observed.`,
+    `- Trace delivery: ${evidence.attribution?.traces?.schemaCompleteCount ?? 0}/${evidence.attribution?.traces?.clientCount ?? 100} schema-complete; ${evidence.attribution?.traces?.missingCount ?? "n/a"} UNKNOWN loss(es); rank-1..5 tail coverage observed.`,
+    `- Client latency universe: full 100-request ledger with ${evidence.attribution?.traces?.latency?.estimator ?? "nearest-rank/full-client-ledger/v1"}; joined per-hop evidence is conditional and carries its missing-stage sensitivity envelope.`,
     `- Idle schedule: ${(evidence.attribution?.activationIdle?.scheduleMs ?? []).join("/")} ms; ${evidence.attribution?.activationIdle?.observations ?? 0} raw observations.`,
     `- Outlier discrimination: ${evidence.attribution?.outliers?.classifiedOutliers ?? 0}/4 independently evidenced hypotheses; unclassified ${evidence.attribution?.outliers?.unclassifiedOutliers ?? "n/a"}.`,
     `- A→B overhead: p50 ${latency?.overhead?.p50Ms ?? "n/a"} ms; p95 ${latency?.overhead?.p95Ms ?? "n/a"} ms.`,
@@ -159,8 +160,8 @@ function main() {
   const manifest = readJson(argument("--manifest", "docs/SDT-G30-required-roots.json"));
   const authority = {
     A: readJson("contracts/host-pin.json").hostCommit,
-    S: "0632c3ed01449efc33eb6afcbb06854ee5a9b862",
-    P: "794e31b594f70de2ea346f43c9baca48e58a6738",
+    S: "26fb3b474e22fdb880955b8e7240bdbf605622ee",
+    P: "46d34ad72a1f4ddbf9e7aab7f44d32b3a082b541",
     bundleDigest: readJson("contracts/commit-trace-bundle.json").bundleDigest,
   };
   const evidence = buildEvidence({
@@ -177,7 +178,7 @@ function main() {
   const markdownOutput = argument("--markdown-output", "docs/SDT-G30-b0-evidence.md");
   writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
   writeFileSync(markdownOutput, markdown(evidence), "utf8");
-  console.log(JSON.stringify({ candidate: evidence.candidateCommit, traces: evidence.attribution.traces.requestCount }, null, 2));
+  console.log(JSON.stringify({ candidate: evidence.candidateCommit, schemaCompleteCount: evidence.attribution.traces.schemaCompleteCount, missingCount: evidence.attribution.traces.missingCount }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main();

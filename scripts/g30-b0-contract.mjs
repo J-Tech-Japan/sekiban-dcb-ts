@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * SDT-G30's B0 contract is intentionally an evidence validator, not a
- * performance evaluator.  It refuses a cohort with loss, replacement, an
- * un-attributed accepted request, or a phase/config change outside the one
- * permitted trace sampling setting.
+ * performance evaluator.  It refuses delivery loss beyond the frozen AC5
+ * budget, replacement, an un-attributed schema-complete joined request, or a
+ * phase/config change outside the one permitted trace sampling setting.
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -12,6 +12,10 @@ import { verifyExportedSuccessTrace } from "./g30-trace-runtime-verifier.mjs";
 
 export const G30_PHASES = Object.freeze(["A", "B", "A-prime"]);
 export const G30_SAMPLE_COUNT = 100;
+/** AC5's sealed provider-delivery ceiling; it is not a provider SLA. */
+export const G30_MIN_SCHEMA_COMPLETE_COUNT = 95;
+export const G30_TAIL_RANK_COUNT = 5;
+export const G30_LATENCY_ESTIMATOR = "nearest-rank/full-client-ledger/v1";
 export const G30_CADENCE_MS = 2_000;
 export const G30_EXPORT_DEADLINE_MS = 10 * 60 * 1_000;
 export const G30_IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
@@ -186,35 +190,217 @@ export function unattributedRatioFromTrace(trace) {
   });
 }
 
-export function assertTraceCohort(ledger, traces, exportCompletedAtMs) {
-  if (!Array.isArray(traces) || traces.length !== G30_SAMPLE_COUNT) fail("trace-count", `B requires exactly ${G30_SAMPLE_COUNT} complete exported traces`);
-  const ledgerIds = new Set(ledger.map((record) => record.requestId));
-  const observed = new Set();
-  for (const trace of traces) {
-    const requestId = nonEmptyString(trace?.requestId, "trace.requestId");
-    if (!ledgerIds.has(requestId) || observed.has(requestId)) fail("trace-join", `trace requestId ${requestId} is missing from or duplicated in the B ledger`);
-    observed.add(requestId);
-    if (trace.schema !== "sdt.commit/v1" || trace.complete !== true || trace.boundary !== "success" || trace.runtimeVerified !== true) {
-      fail("trace-complete", `${requestId} is not a complete sdt.commit/v1 success trace`);
-    }
-    // A summary flag from the first export pass is not evidence by itself.
-    // Re-run the runtime-shaped verifier here so post-export row/attribute
-    // edits cannot survive merely by retaining runtimeVerified: true.
-    try {
-      verifyExportedSuccessTrace(trace);
-    } catch (error) {
-      fail("trace-runtime", `${requestId} failed re-verification: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    const ratio = unattributedRatioFromTrace(trace);
-    if (ratio.unattributedRatio > 0.05) fail("unattributed", `${requestId} exceeds the 5% attribution budget`);
-    if (typeof trace.exportedAtMs !== "number") fail("trace-export", `${requestId} lacks export time`);
+function requestIdOrder(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * AC5 always ranks the immutable, original 100-client ledger.  A joined
+ * subset may never become a substitute denominator for either the tail or a
+ * latency percentile.
+ */
+function fullLedgerRanking(ledger, phase) {
+  if (!Array.isArray(ledger) || ledger.length !== G30_SAMPLE_COUNT) {
+    fail("client-count", `${phase} requires exactly ${G30_SAMPLE_COUNT} client ledger requests`);
   }
-  if (observed.size !== ledgerIds.size) fail("trace-loss", `trace loss: ledger=${ledgerIds.size} traces=${observed.size}`);
-  const finalRequestAt = Math.max(...ledger.map((record) => finiteNumber(record.completedAtMs, "ledger.completedAtMs")));
+  const byRequestId = new Map();
+  const entries = ledger.map((record, index) => {
+    if (record?.index !== index) fail("client-index", `${phase}.ledger[${index}] is not the immutable consecutive client window`);
+    const requestId = nonEmptyString(record?.requestId, `${phase}.ledger[${index}].requestId`);
+    if (byRequestId.has(requestId)) fail("client-duplicate", `${phase} ledger repeats requestId ${requestId}`);
+    const clientLatency = finiteNumber(record?.responseLatencyMs, `${phase}.ledger[${index}].responseLatencyMs`);
+    const ordinal = index + 1;
+    const entry = Object.freeze({ record, requestId, clientLatency, ordinal });
+    byRequestId.set(requestId, entry);
+    return entry;
+  });
+  const ranked = [...entries]
+    .sort((left, right) => right.clientLatency - left.clientLatency || requestIdOrder(left.requestId, right.requestId))
+    .map((entry, index) => Object.freeze({ ...entry, fullLedgerRank: index + 1, percentile: (index + 1) / G30_SAMPLE_COUNT }));
+  return Object.freeze({
+    byRequestId,
+    ranked,
+    rankByRequestId: new Map(ranked.map((entry) => [entry.requestId, entry])),
+  });
+}
+
+function rootForTrace(trace, requestId) {
+  const roots = Array.isArray(trace?.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
+  if (roots.length === 0) return undefined;
+  if (roots.length !== 1) fail("trace-root", `${requestId} has ${roots.length} S00 roots`);
+  return roots[0];
+}
+
+function observedRootDuration(trace, requestId) {
+  const root = rootForTrace(trace, requestId);
+  if (root === undefined) return undefined;
+  const start = finiteNumber(root.startMs, `${requestId}.S00.startMs`);
+  const end = finiteNumber(root.endMs, `${requestId}.S00.endMs`);
+  if (end < start) fail("sensitivity-bound", `${requestId} S00 ends before it starts`);
+  return end - start;
+}
+
+function attemptIdForTrace(trace, requestId) {
+  const root = rootForTrace(trace, requestId);
+  const attemptId = root?.attributes?.["attempt.id"];
+  return typeof attemptId === "string" && attemptId.length > 0 ? attemptId : undefined;
+}
+
+function completeTrace(trace, requestId) {
+  if (trace?.schema !== "sdt.commit/v1" || trace?.boundary !== "success" || trace?.complete !== true || trace?.runtimeVerified !== true) {
+    return false;
+  }
+  if (typeof trace.exportedAtMs !== "number" || !Number.isFinite(trace.exportedAtMs)) {
+    fail("trace-export", `${requestId} lacks a finite export time`);
+  }
+  // A summary flag from the first export pass is not evidence by itself.
+  // Re-run the runtime-shaped verifier here so post-export row/attribute
+  // edits cannot survive merely by retaining runtimeVerified: true.
+  try {
+    verifyExportedSuccessTrace(trace);
+  } catch (error) {
+    fail("trace-runtime", `${requestId} failed re-verification: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return true;
+}
+
+function conditionalPerHopSummary(complete, missing) {
+  const rows = new Map();
+  for (const trace of complete) {
+    for (const span of trace.spans ?? []) {
+      const rowId = nonEmptyString(span?.rowId, "per-hop.rowId");
+      const start = finiteNumber(span?.startMs, `${rowId}.startMs`);
+      const end = finiteNumber(span?.endMs, `${rowId}.endMs`);
+      if (end < start) fail("per-hop", `${rowId} ends before it starts`);
+      const aggregate = rows.get(rowId) ?? { joinedCount: 0, totalDurationMs: 0 };
+      aggregate.joinedCount += 1;
+      aggregate.totalDurationMs += end - start;
+      rows.set(rowId, aggregate);
+    }
+  }
+  const rowDurations = Object.fromEntries([...rows.entries()]
+    .sort(([left], [right]) => requestIdOrder(left, right))
+    .map(([rowId, aggregate]) => [rowId, Object.freeze({
+      ...aggregate,
+      meanDurationMs: aggregate.joinedCount === 0 ? 0 : aggregate.totalDurationMs / aggregate.joinedCount,
+    })]));
+  const unknownUpperBoundMs = missing.reduce((total, entry) => total + entry.sensitivityEnvelope.upperBoundMs, 0);
+  return Object.freeze({
+    basis: "schema-complete-joined-cohort",
+    wholeCohortConclusion: false,
+    joinedRequestCount: complete.length,
+    missingRequestCount: missing.length,
+    rows: rowDurations,
+    sensitivityEnvelope: Object.freeze({
+      lowerBoundMs: 0,
+      upperBoundMs: unknownUpperBoundMs,
+      sources: missing.map((entry) => Object.freeze({
+        requestId: entry.requestId,
+        stage: entry.stage,
+        upperBoundSource: entry.sensitivityEnvelope.upperBoundSource,
+        upperBoundMs: entry.sensitivityEnvelope.upperBoundMs,
+      })),
+    }),
+  });
+}
+
+/**
+ * Validates one independently-delivered phase.  A provider loss is UNKNOWN,
+ * never an absence or a passed trace: only a frozen 95/100 budget permits it,
+ * and every rank-1..5 client-latency identity remains mandatory.
+ */
+export function assertTraceCohort(ledger, traces, exportCompletedAtMs, phase = "B") {
+  if (!G30_PHASES.includes(phase)) fail("phase", `unknown trace phase ${phase}`);
+  if (!Array.isArray(traces)) fail("trace-input", `${phase} traces must be an array`);
+  const ranking = fullLedgerRanking(ledger, phase);
+  const tracesByRequestId = new Map();
+  for (const [index, trace] of traces.entries()) {
+    const requestId = nonEmptyString(trace?.requestId, `${phase}.traces[${index}].requestId`);
+    if (!ranking.byRequestId.has(requestId) || tracesByRequestId.has(requestId)) {
+      fail("trace-join", `${phase} trace requestId ${requestId} is missing from or duplicated in the client ledger`);
+    }
+    tracesByRequestId.set(requestId, trace);
+  }
+
+  const complete = [];
+  const missing = [];
+  const unattributed = [];
+  for (const entry of ranking.ranked) {
+    const trace = tracesByRequestId.get(entry.requestId);
+    const rootDurationMs = trace === undefined ? undefined : observedRootDuration(trace, entry.requestId);
+    if (trace !== undefined && rootDurationMs !== undefined && completeTrace(trace, entry.requestId)) {
+      const ratio = unattributedRatioFromTrace(trace);
+      if (ratio.unattributedRatio > 0.05) fail("unattributed", `${entry.requestId} exceeds the 5% attribution budget`);
+      complete.push(trace);
+      unattributed.push(Object.freeze({ requestId: entry.requestId, ...ratio }));
+      continue;
+    }
+    const stage = rootDurationMs === undefined ? "root-absent" : "schema-incomplete";
+    const upperBoundMs = stage === "root-absent" ? entry.clientLatency : rootDurationMs;
+    if (!Number.isFinite(upperBoundMs) || upperBoundMs < 0) {
+      fail("sensitivity-bound", `${entry.requestId} has no usable ${stage} upper bound`);
+    }
+    const attemptId = trace === undefined ? undefined : attemptIdForTrace(trace, entry.requestId);
+    missing.push(Object.freeze({
+      phase,
+      ordinal: entry.ordinal,
+      requestId: entry.requestId,
+      ...(attemptId === undefined ? {} : { attemptId }),
+      clientLatency: entry.clientLatency,
+      fullLedgerRank: entry.fullLedgerRank,
+      percentile: entry.percentile,
+      stage,
+      sensitivityEnvelope: Object.freeze({
+        lowerBoundMs: 0,
+        upperBoundMs,
+        upperBoundSource: stage === "root-absent" ? "client-latency" : "observed-root-duration",
+      }),
+    }));
+  }
+
+  const tail = ranking.ranked.slice(0, G30_TAIL_RANK_COUNT);
+  const missingRequestIds = new Set(missing.map((entry) => entry.requestId));
+  const missingTail = tail.filter((entry) => missingRequestIds.has(entry.requestId));
+  if (missingTail.length > 0) {
+    fail("tail-coverage", `${phase} is missing required rank-1..${G30_TAIL_RANK_COUNT} request(s): ${missingTail.map((entry) => entry.requestId).join(",")}`);
+  }
+  if (complete.length < G30_MIN_SCHEMA_COMPLETE_COUNT) {
+    fail("delivery-budget", `${phase} schemaCompleteCount=${complete.length} is below frozen ${G30_MIN_SCHEMA_COMPLETE_COUNT}/${G30_SAMPLE_COUNT}`);
+  }
+  const finalRequestAt = Math.max(...ledger.map((record) => finiteNumber(record?.completedAtMs, "ledger.completedAtMs")));
   if (finiteNumber(exportCompletedAtMs, "exportCompletedAtMs") > finalRequestAt + G30_EXPORT_DEADLINE_MS) {
-    fail("export-deadline", "B trace export exceeded the 10 minute deadline");
+    fail("export-deadline", `${phase} trace export exceeded the 10 minute deadline`);
   }
-  return Object.freeze({ requestCount: observed.size, exportDeadlineMs: finalRequestAt + G30_EXPORT_DEADLINE_MS });
+  const clientLatencies = ledger.map((record) => finiteNumber(record?.responseLatencyMs, "ledger.responseLatencyMs"));
+  return Object.freeze({
+    phase,
+    requestCount: G30_SAMPLE_COUNT,
+    clientCount: G30_SAMPLE_COUNT,
+    schemaCompleteCount: complete.length,
+    missingCount: missing.length,
+    missingRequestIds: Object.freeze(missing.map((entry) => entry.requestId)),
+    missing: Object.freeze(missing),
+    tailCoverage: Object.freeze({
+      ordering: "clientLatency desc, requestId asc",
+      ranks: Object.freeze(tail.map((entry) => Object.freeze({
+        rank: entry.fullLedgerRank,
+        requestId: entry.requestId,
+        clientLatency: entry.clientLatency,
+      }))),
+      requestIds: Object.freeze(tail.map((entry) => entry.requestId)),
+      complete: true,
+    }),
+    latency: Object.freeze({
+      universe: "full-100-client-ledger",
+      estimator: G30_LATENCY_ESTIMATOR,
+      p50: percentile(clientLatencies, 0.50),
+      p95: percentile(clientLatencies, 0.95),
+      p99: percentile(clientLatencies, 0.99),
+    }),
+    unattributed: Object.freeze(unattributed),
+    perHop: conditionalPerHopSummary(complete, missing),
+    exportDeadlineMs: finalRequestAt + G30_EXPORT_DEADLINE_MS,
+  });
 }
 
 export function assertAaaDrift(a, b, aprime) {
@@ -258,7 +444,7 @@ const TOKEN_REFRESH_SPAN_NAMES = new Set([
  * export.  It joins by the provider's trace/request identifiers, never by
  * time proximity and never through an operator-authored declaration file.
  */
-function evidenceTraceIndex(ledger, traces, label) {
+function evidenceTraceIndex(ledger, traces, label, allowedMissingRequestIds = []) {
   if (!Array.isArray(ledger) || !Array.isArray(traces)) fail(`${label}-trace-input`, `${label} requires a ledger and exported trace array`);
   const ledgerByRequestId = new Map();
   for (const [index, record] of ledger.entries()) {
@@ -286,10 +472,23 @@ function evidenceTraceIndex(ledger, traces, label) {
     traceByRequestId.set(requestId, trace);
     requestIdByTraceId.set(traceId, requestId);
   }
-  if (traceByRequestId.size !== ledgerByRequestId.size) {
-    fail(`${label}-trace-loss`, `${label} is missing a trace for one or more observation-ledger requests`);
+  if (!Array.isArray(allowedMissingRequestIds)) fail(`${label}-missing`, `${label} allowed missing request ids must be an array`);
+  const allowedMissing = new Set();
+  for (const [index, requestIdValue] of allowedMissingRequestIds.entries()) {
+    const requestId = nonEmptyString(requestIdValue, `${label}.allowedMissing[${index}]`);
+    if (!ledgerByRequestId.has(requestId) || allowedMissing.has(requestId)) {
+      fail(`${label}-missing`, `${label} has an invalid or duplicate allowed missing request ${requestId}`);
+    }
+    if (traceByRequestId.has(requestId)) {
+      fail(`${label}-missing`, `${label} marks an actually joined trace as missing: ${requestId}`);
+    }
+    allowedMissing.add(requestId);
   }
-  return Object.freeze({ ledgerByRequestId, traceByRequestId, requestIdByTraceId });
+  for (const requestId of ledgerByRequestId.keys()) {
+    if (traceByRequestId.has(requestId) || allowedMissing.has(requestId)) continue;
+    fail(`${label}-trace-loss`, `${label} is missing a trace for request ${requestId} outside the AC5 UNKNOWN set`);
+  }
+  return Object.freeze({ ledgerByRequestId, traceByRequestId, requestIdByTraceId, allowedMissing });
 }
 
 function evidenceReference(requestIdValue, index, label) {
@@ -413,9 +612,9 @@ export function observationLedgerForPhase(phaseB) {
  * ledger entry and S00 trace. Worker overlap facts are compared directly to
  * S00, so copied/mismatched values cannot become evidence.
  */
-export function assertObservationStream(ledger, traces, observations) {
+export function assertObservationStream(ledger, traces, observations, options = {}) {
   if (!Array.isArray(observations)) fail("observation-input", "B requires exported sdt.observe/v1 observations");
-  const traceIndex = evidenceTraceIndex(ledger, traces, "observation");
+  const traceIndex = evidenceTraceIndex(ledger, traces, "observation", options?.allowedMissingRequestIds ?? []);
   const observationsByRequestId = new Map();
   for (const [index, raw] of observations.entries()) {
     const observation = object(raw);
@@ -468,6 +667,7 @@ export function assertObservationStream(ledger, traces, observations) {
     observationsByRequestId.set(reference.requestId, existing);
   }
   for (const requestId of traceIndex.ledgerByRequestId.keys()) {
+    if (traceIndex.allowedMissing.has(requestId)) continue;
     const worker = observationForRequest({ observationsByRequestId }, requestId, (entry) => entry.event === "worker.invocation");
     if (worker.length !== 1) fail("observation-worker", `request ${requestId} requires exactly one joined worker observation`);
   }
@@ -650,7 +850,12 @@ export function assertB0Evidence(evidence) {
   const traces = assertTraceCohort(phases.B.ledger, evidence.traces, evidence.traceExportCompletedAtMs);
   const latency = assertAaaDrift(phases.A.ledger, phases.B.ledger, phases["A-prime"].ledger);
   const observationLedger = observationLedgerForPhase(phases.B);
-  const observation = assertObservationStream(observationLedger, evidence.observationTraces, evidence.observations);
+  const observation = assertObservationStream(
+    observationLedger,
+    evidence.observationTraces,
+    evidence.observations,
+    { allowedMissingRequestIds: traces.missingRequestIds },
+  );
   const warmup = assertWarmupProof("B", phases.B.warmup, observation);
   const activationIdle = assertActivationIdleEvidence(phases.B.idleExperiment, observation);
   const outliers = assertOutlierClassification(phases.B, observation);
@@ -801,7 +1006,10 @@ export function selfTest() {
   assertB0Evidence(evidence);
   const failures = {};
   for (const [name, mutate, marker] of [
-    ["trace-loss", (value) => { value.traces.pop(); }, "trace-count"],
+    ["delivery-budget-94", (value) => {
+      const missing = new Set(["b-90", "b-91", "b-92", "b-93", "b-94", "b-95"]);
+      value.traces = value.traces.filter((trace) => !missing.has(trace.requestId));
+    }, "delivery-budget"],
     ["out-of-window-replacement", (value) => { value.phases.B.ledger[99].replacement = true; }, "window-eligibility"],
     ["sampling-delta", (value) => { value.phases.B.configuration.placement = "smart"; }, "placement"],
     ["unjoined-observation", (value) => { value.observations[0].requestId = "missing-request"; }, "observation[0]-trace-join"],
