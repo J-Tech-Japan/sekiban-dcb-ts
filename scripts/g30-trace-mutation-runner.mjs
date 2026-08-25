@@ -332,6 +332,15 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     testFile: "test/g30-b0.spec.ts",
   },
   {
+    id: "telemetry-incomplete-success-trace-retry-gate",
+    file: source.traceExport,
+    from: "trace-count|trace-complete|trace-loss|",
+    to: "trace-count|trace-loss|",
+    target: "retries an incomplete success trace before the B export deadline",
+    unrelated: "retries an initially incomplete cohort before the B export deadline",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
     id: "b0-consistency-tag-fanout-gate",
     file: source.measure,
     from: "    consistencyTags: [{ tag: FIXTURE_TAG, lastSortableUniqueId: consistencyHead }],",

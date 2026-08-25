@@ -656,6 +656,41 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(acquisition.value).toMatchObject({ requestCount: 100 });
   });
 
+  it("retries an incomplete success trace before the B export deadline", async () => {
+    const document = evidence();
+    const observationLedger = observationLedgerForPhase(document.phases.B);
+    const retainedRequestIds = new Set(document.phases.B.ledger.map((record) => record.requestId));
+    const sleeps: number[] = [];
+    let fetches = 0;
+    let validations = 0;
+    let now = Number(document.phases.B.ledger.at(-1)!.completedAtMs) + 1;
+    const acquisition = await acquireCohortTelemetry({
+      deadlineMs: exportDeadline(document.phases.B.ledger),
+      fetchCohort: async () => {
+        fetches += 1;
+        return rawTelemetry(observationLedger);
+      },
+      validate: (raw) => {
+        validations += 1;
+        if (validations === 1) {
+          throw new Error("g30-b0:trace-complete:initial custom-span cohort has not arrived");
+        }
+        const bundle = normalizeTelemetryBundle(raw, now);
+        const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
+        return assertTraceCohort(document.phases.B.ledger, traces, now);
+      },
+      now: () => now,
+      sleepFor: async (milliseconds) => {
+        sleeps.push(milliseconds);
+        now += milliseconds;
+      },
+    });
+    expect(fetches).toBe(2);
+    expect(validations).toBe(2);
+    expect(sleeps).toEqual([TELEMETRY_RETRY_DELAY_MS]);
+    expect(acquisition.value).toMatchObject({ requestCount: 100 });
+  });
+
   it("rejects a telemetry group without an S00 correlation anchor instead of matching by time", () => {
     const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
     raw.events = raw.events.filter((entry) => !(

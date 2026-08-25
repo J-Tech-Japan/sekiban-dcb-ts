@@ -703,7 +703,11 @@ export function exportDeadline(ledger) {
 
 function pendingTelemetryError(error) {
   const message = error instanceof Error ? error.message : String(error);
-  return /g30-b0:(?:trace-count|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:cohort-worker|cohort-root|observation-root|observation-worker|observation-request-id)/.test(message);
+  // A complete-success assertion can fail while the bounded query has already
+  // found S00 but one or more child spans have not become query-visible yet.
+  // Treat that as the same telemetry-arrival condition as a missing trace;
+  // keep the original B ledger and retry only until its fixed export deadline.
+  return /g30-b0:(?:trace-count|trace-complete|trace-loss|observation-trace-loss|observation-worker|observation-trace-complete)|g30-trace-export:(?:cohort-worker|cohort-root|observation-root|observation-worker|observation-request-id)/.test(message);
 }
 
 /**

@@ -25,7 +25,8 @@ Closes #70
   subqueries whose values are serialized as the provider's comma-separated
   `in` membership form and are structurally limited to the provider's 16
   filter-node maximum. The initial query and every subsequent incomplete
-  cohort query retry only until the canonical ten-minute deadline; a
+  cohort query, including a found-but-incomplete success trace, retry only
+  until the canonical ten-minute deadline; a
   saturated page is rejected rather than accepted as partial telemetry. The A/B/A′
   runner, cohort contract, evidence recorder, and candidate retention gate join
   every retained observation to the B ledger and S00 root. Human
