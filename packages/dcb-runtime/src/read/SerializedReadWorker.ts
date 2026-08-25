@@ -30,6 +30,7 @@ class ReadFailure extends Error {
   constructor(
     readonly failingSubCall: "ensureWindowDeterminate" | "readTag",
     cause: unknown,
+    readonly diagnostic?: Record<string, unknown>,
   ) {
     const message = cause instanceof Error ? cause.message : String(cause);
     super(message);
@@ -111,6 +112,7 @@ export class SerializedReadWorker {
           errorClass: caught.name,
           message: caught.message,
           failingSubCall: caught.failingSubCall,
+          ...caught.diagnostic,
         };
       }
       return json(body, 500);
@@ -167,10 +169,14 @@ export class SerializedReadWorker {
     try {
       const store = this.storeProvider.create(this.env);
       await store.initialize();
-      if (safeWindowCeilingExceeded(await store.currentLagBound(this.serviceId, Date.now()))) {
-        throw new Error("Read-side SafeWindow ceiling exceeded; durable state is indeterminate");
+      const nowMs = Date.now();
+      const diagnostic = await store.lagBoundDiagnostics?.(this.serviceId, nowMs);
+      const dynamicLagBoundMs = diagnostic?.dynamicLagBoundMs ?? await store.currentLagBound(this.serviceId, nowMs);
+      if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
+        throw new ReadFailure("ensureWindowDeterminate", new Error("Read-side SafeWindow ceiling exceeded; durable state is indeterminate"), diagnostic);
       }
     } catch (caught) {
+      if (caught instanceof ReadFailure) throw caught;
       throw new ReadFailure("ensureWindowDeterminate", caught);
     }
   }
