@@ -69,6 +69,12 @@ does not assert a performance pass/fail.
    service ID. It retains a 100-request, fixed-payload, fixed-tag,
    single-client-region, single-concurrency ledger per phase at a 2-second
    cadence.
+   If the authenticated fixed-tag point read is not HTTP 200, the measuring
+   helper writes a local failure artifact containing the complete conformance
+   response body, raw response text, CF-Ray, and the provider-response
+   timestamp before exiting fail-closed. It never retains the request tag or
+   either credential; do not retry after the temporary conformance token has
+   been removed by the run trap.
 5. The phase is an external runbook/evidence label. It is never sent through
    deployed Worker variables. The only phase configuration difference is the
    selected `observability.traces.head_sampling_rate` (0, 1, 0) and the

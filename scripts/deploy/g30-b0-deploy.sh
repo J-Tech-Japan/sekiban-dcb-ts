@@ -36,6 +36,10 @@ readonly TRACE_QUERY_FILE="${ARTIFACTS_DIR}/g30-observability-query.json"
 readonly A_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-deployment.json"
 readonly B_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-B-deployment.json"
 readonly APRIME_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-prime-deployment.json"
+# The measuring helper writes this before it exits on a non-200 fixed-tag
+# point read. It contains only the authenticated conformance response, the
+# provider cf-ray, and the response timestamp -- never the token or request.
+readonly HEAD_READ_FAILURE_FILE="${ARTIFACTS_DIR}/g30-b0-${SOURCE_COMMIT:0:12}-head-read-failure.json"
 
 # The sealed config's database_id/name/migrations_dir identity is checked
 # before this function runs. Use only those verified binding aliases: direct
@@ -152,12 +156,12 @@ deploy_phase A "${RECEIVER_CONFIG}"
 capture_primary_predeploy_versions "${A_WITNESS_FILE}"
 deploy_phase A "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A "${A_WITNESS_FILE}"
-node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${A_WITNESS_FILE}" --output "${A_FILE}"
+node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${A_WITNESS_FILE}" --output "${A_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
 
 capture_primary_predeploy_versions "${B_WITNESS_FILE}"
 deploy_phase B "${PRIMARY_ON_CONFIG}"
 capture_primary_witness B "${B_WITNESS_FILE}"
-node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase B --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${B_WITNESS_FILE}" --output "${B_FILE}"
+node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase B --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${B_WITNESS_FILE}" --output "${B_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
 
 # The checked-in query template is materialized from the actual B client
 # ledger; it has no human-supplied request IDs or observation declarations.
@@ -168,7 +172,7 @@ node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${A
 capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"
 deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A-prime "${APRIME_WITNESS_FILE}"
-node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A-prime --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${APRIME_WITNESS_FILE}" --output "${APRIME_FILE}"
+node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A-prime --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${APRIME_WITNESS_FILE}" --output "${APRIME_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
 
 # The recorder derives activation, idle, and four-hypothesis dispositions from
 # the joined structured Workers Logs export. No operator-authored claim file

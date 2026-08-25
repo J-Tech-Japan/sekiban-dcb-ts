@@ -22,7 +22,13 @@ import {
   TELEMETRY_RETRY_DELAY_MS,
   telemetryFilterNodeCount,
 } from "../scripts/deploy/g30-trace-export.mjs";
-import { assertDeploymentWitness, establishB0Consistency, measureB0Phase } from "../scripts/deploy/g30-b0-measure.mjs";
+import {
+  assertDeploymentWitness,
+  buildHeadReadFailureEvidence,
+  establishB0Consistency,
+  G30HeadReadFailure,
+  measureB0Phase,
+} from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
 import manifest from "../contracts/commit-trace-manifest.json";
 import meetingRoomWorker, { type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
@@ -389,6 +395,57 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
         eventCandidates: expect.any(Array),
         consistencyTags: [],
       }]);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("retains the full authenticated fixed-tag error body, cf-ray, and response time before failing closed", async () => {
+    const body = {
+      error: "Read could not determine the durable tag state",
+      code: "internal_error",
+      detail: {
+        errorClass: "ReadFailure",
+        message: "Read-side SafeWindow ceiling exceeded; durable state is indeterminate",
+        failingSubCall: "ensureWindowDeterminate",
+        serviceIdUsed: SERVICE,
+        dynamicLagBoundMs: 70_797_953,
+        rowFound: true,
+        rawEstimateMs: 70_797_953,
+        rawObservedAt: 1_787_672_393_000,
+        nowMs: 1_787_686_565_000,
+      },
+    };
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(body), {
+      status: 500,
+      headers: { "content-type": "application/json", "cf-ray": "head-read-ray-SJC" },
+    }));
+    try {
+      let failure: unknown;
+      try {
+        await establishB0Consistency({ baseUrl: "https://g30.test", token: "fixture-token" });
+      } catch (caught) {
+        failure = caught;
+      }
+      expect(failure).toBeInstanceOf(G30HeadReadFailure);
+      const evidence = buildHeadReadFailureEvidence({
+        phase: "A",
+        sourceCommit: "a".repeat(40),
+        configDigest: "b".repeat(64),
+      }, failure as G30HeadReadFailure);
+      expect(evidence).toMatchObject({
+        phase: "A",
+        sourceCommit: "a".repeat(40),
+        configDigest: "b".repeat(64),
+        response: {
+          status: 500,
+          cfRay: "head-read-ray-SJC",
+          body,
+          rawBody: JSON.stringify(body),
+          receivedAt: expect.any(String),
+          receivedAtMs: expect.any(Number),
+        },
+      });
     } finally {
       fetchSpy.mockRestore();
     }

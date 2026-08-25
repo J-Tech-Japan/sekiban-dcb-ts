@@ -64,11 +64,22 @@ function seedEnvelope() {
 async function request(baseUrl, path, init = {}) {
   const headers = new Headers(init.headers);
   headers.set("cache-control", "no-cache");
+  const startedAtMs = Date.now();
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, { ...init, headers, cache: "no-store" });
+  // Capture this at the response boundary, rather than after parsing the
+  // body, so a failed fixed-tag read has an exact provider-response time.
+  const receivedAtMs = Date.now();
   const raw = await response.text();
   let body;
   try { body = raw.length === 0 ? {} : JSON.parse(raw); } catch { body = { raw }; }
-  return { response, body, raw };
+  return {
+    response,
+    body,
+    raw,
+    startedAtMs,
+    receivedAtMs,
+    receivedAt: new Date(receivedAtMs).toISOString(),
+  };
 }
 
 function requestId(response) {
@@ -93,6 +104,34 @@ function nextConsistencyHead(result) {
   return Object.freeze({ event, head });
 }
 
+export class G30HeadReadFailure extends Error {
+  constructor(record) {
+    super(`G30 B0 could not read the fixed tag head: HTTP ${record.response.status}`);
+    this.name = "G30HeadReadFailure";
+    this.record = Object.freeze(record);
+  }
+}
+
+function headReadFailure(result) {
+  return new G30HeadReadFailure({
+    task: "SDT-G30",
+    kind: "fixed-tag-head-read-failure",
+    endpoint: "/conformance/v1/api/sekiban/serialized/tag-latest-sortable",
+    capturedAt: result.receivedAt,
+    response: {
+      status: result.response.status,
+      cfRay: result.response.headers.get("cf-ray"),
+      receivedAtMs: result.receivedAtMs,
+      receivedAt: result.receivedAt,
+      // The authenticated conformance error detail is retained in both its
+      // parsed and original form. The request body and credential are never
+      // part of this record.
+      body: result.body,
+      rawBody: result.raw,
+    },
+  });
+}
+
 async function readConsistencyHead(baseUrl, token) {
   const result = await request(baseUrl, "/conformance/v1/api/sekiban/serialized/tag-latest-sortable", {
     method: "POST",
@@ -100,7 +139,7 @@ async function readConsistencyHead(baseUrl, token) {
     body: JSON.stringify({ tag: FIXTURE_TAG }),
   });
   if (result.response.status !== 200 || typeof result.body?.exists !== "boolean" || typeof result.body?.lastSortableUniqueId !== "string") {
-    throw new Error(`G30 B0 could not read the fixed tag head: HTTP ${result.response.status}`);
+    throw headReadFailure(result);
   }
   if (result.body.exists === false) {
     if (result.body.lastSortableUniqueId !== "") throw new Error("G30 B0 empty fixed tag read must carry the V1 empty head");
@@ -110,6 +149,28 @@ async function readConsistencyHead(baseUrl, token) {
     throw new Error("G30 B0 fixed tag head is not a 30-digit SortableUniqueId");
   }
   return result.body.lastSortableUniqueId;
+}
+
+/**
+ * Persist the full authenticated conformance failure before the runbook exits.
+ * This is deliberately limited to the fixed-tag point read: no request tag,
+ * request body, or conformance credential is written to evidence.
+ */
+export function buildHeadReadFailureEvidence({ phase, sourceCommit, configDigest }, failure) {
+  if (!(failure instanceof G30HeadReadFailure)) throw new Error("G30 B0 failure evidence requires a fixed-tag head-read failure");
+  return Object.freeze({
+    ...failure.record,
+    phase,
+    sourceCommit,
+    configDigest,
+  });
+}
+
+export function writeHeadReadFailureEvidence(output, context, failure) {
+  const evidence = buildHeadReadFailureEvidence(context, failure);
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+  return evidence;
 }
 
 /**
@@ -304,22 +365,31 @@ async function main() {
   const deploymentWitness = JSON.parse(readFileSync(required("--deployment-witness", argument("--deployment-witness")), "utf8"));
   if (token.length === 0) throw new Error("G30 conformance token is empty");
   const output = argument("--output", `.artifacts/g30-b0-${phase}.json`);
+  const failureOutput = argument("--failure-output", process.env.G30_B0_FAILURE_OUTPUT);
   // Each phase starts by reading the durable tag state again.  A local file
   // could be stale after an interrupted phase, whereas this indexed point
   // read is the actual admission authority for the next sequential command.
-  const established = await establishB0Consistency({ baseUrl, token });
-  const measured = await measureB0Phase({
-    baseUrl,
-    token,
-    phase,
-    sourceCommit,
-    configDigest,
-    deploymentWitness,
-    consistencyHead: established.head,
-  });
-  mkdirSync(dirname(output), { recursive: true });
-  writeFileSync(output, `${JSON.stringify(measured, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ phase, samples: measured.ledger.length, firstRequestId: measured.ledger[0]?.requestId ?? null, consistency: established.source }, null, 2));
+  try {
+    const established = await establishB0Consistency({ baseUrl, token });
+    const measured = await measureB0Phase({
+      baseUrl,
+      token,
+      phase,
+      sourceCommit,
+      configDigest,
+      deploymentWitness,
+      consistencyHead: established.head,
+    });
+    mkdirSync(dirname(output), { recursive: true });
+    writeFileSync(output, `${JSON.stringify(measured, null, 2)}\n`, "utf8");
+    console.log(JSON.stringify({ phase, samples: measured.ledger.length, firstRequestId: measured.ledger[0]?.requestId ?? null, consistency: established.source }, null, 2));
+  } catch (error) {
+    if (failureOutput !== undefined && error instanceof G30HeadReadFailure) {
+      const evidence = writeHeadReadFailureEvidence(failureOutput, { phase, sourceCommit, configDigest }, error);
+      console.error(`G30 B0 saved fixed-tag head-read failure evidence to ${failureOutput} (HTTP ${evidence.response.status}; cf-ray ${evidence.response.cfRay ?? "absent"})`);
+    }
+    throw error;
+  }
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

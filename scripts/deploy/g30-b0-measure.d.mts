@@ -37,6 +37,34 @@ export function establishB0Consistency(input: {
   seedEventId?: string | null;
 }>;
 
+export class G30HeadReadFailure extends Error {
+  readonly record: {
+    task: "SDT-G30";
+    kind: "fixed-tag-head-read-failure";
+    endpoint: "/conformance/v1/api/sekiban/serialized/tag-latest-sortable";
+    capturedAt: string;
+    response: {
+      status: number;
+      cfRay: string | null;
+      receivedAtMs: number;
+      receivedAt: string;
+      body: unknown;
+      rawBody: string;
+    };
+  };
+}
+
+export function buildHeadReadFailureEvidence(
+  context: { phase: "A" | "B" | "A-prime"; sourceCommit: string; configDigest: string },
+  failure: G30HeadReadFailure,
+): Record<string, unknown>;
+
+export function writeHeadReadFailureEvidence(
+  output: string,
+  context: { phase: "A" | "B" | "A-prime"; sourceCommit: string; configDigest: string },
+  failure: G30HeadReadFailure,
+): Record<string, unknown>;
+
 export function measureB0Phase(input: {
   baseUrl: string;
   token: string;
