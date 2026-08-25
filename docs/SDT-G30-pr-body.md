@@ -71,3 +71,9 @@ unattributed ratio to be at most 5%, records the A/A′ drift and B overhead
 without asserting a performance pass/fail, and explicitly marks B0 as not a
 G37 denominator. No token value is included in a command argument, log,
 commit, or evidence artifact.
+
+The remote migration preflight first verifies the sealed config's exact D1
+`database_id`, `database_name`, and `migrations_dir` values, then calls
+Wrangler through the verified `D1` and `D1_MV` binding aliases. Direct
+durable-name lookup is not an authorized operation in this account; its
+redacted HTTP 403/code-7403 result is retained as diagnostic evidence only.

@@ -37,3 +37,9 @@ optimizations. `B0` is explicitly not a G37 improvement denominator.
 The evidence records all four outlier hypotheses as attributed or excluded
 with joined raw observations. It never accepts a human declaration, labels a
 time-derived activation cause, or turns B0 overhead into a performance pass/fail.
+
+The remote migration preflight verifies the sealed config's exact
+`database_id`, `database_name`, and `migrations_dir` values before calling
+Wrangler through the `D1` and `D1_MV` binding aliases. Direct durable-name
+lookup is retained only as a redacted HTTP 403/code-7403 observation outside
+G30 scope.

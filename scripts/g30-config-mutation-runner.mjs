@@ -29,8 +29,24 @@ const MUTATIONS = Object.freeze([
   {
     id: "remote-migration-binding",
     file: "scripts/deploy/g30-b0-deploy.sh",
-    from: 'd1 migrations list "${database}"',
-    to: 'd1 migrations list "${binding}"',
+    from: 'd1 migrations list "${binding}"',
+    to: 'd1 migrations list "${database}"',
+  },
+  {
+    id: "remote-migration-preflight-order",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: 'assert_sealed_d1_config\n  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do',
+    to: 'for binding in "${PRIMARY_D1_BINDINGS[@]}"; do\n    assert_sealed_d1_config',
+  },
+  {
+    id: "remote-migration-id-verification",
+    file: "scripts/g30-config-check.mjs",
+    from: 'if (entry?.database_id !== expected.id || entry?.database_name !== expected.name || entry?.migrations_dir !== expected.migrationsDir)',
+    to: 'if (false && entry?.database_id !== expected.id || entry?.database_name !== expected.name || entry?.migrations_dir !== expected.migrationsDir)',
+    target: "rejects an unsealed D1 database identity before migration listing",
+    unrelated: "rejects a direct durable database-name migration lookup",
+    testFile: "test/g30-b0.spec.ts",
+    checkerRed: false,
   },
   {
     id: "receiver-public-surface",
@@ -109,7 +125,7 @@ function execute(mutation) {
       requireRed(testNamed(mutation.target), mutation.id);
       requirePass(testNamed(mutation.unrelated));
     }
-    requireRed(run(process.execPath, [checker], "G30 phase-isolation target oracle"), mutation.id);
+    if (mutation.checkerRed !== false) requireRed(run(process.execPath, [checker], "G30 phase-isolation target oracle"), mutation.id);
     requirePass(run(process.execPath, [authority, "--check"], "G30 immutable bundle unrelated oracle"));
   } finally {
     writeFileSync(path, original, "utf8");

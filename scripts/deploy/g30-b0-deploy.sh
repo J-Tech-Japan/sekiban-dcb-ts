@@ -13,9 +13,9 @@ readonly PRIMARY_ON_CONFIG="samples/meeting-room/wrangler.g30-primary-on.jsonc"
 readonly RECEIVER_CONFIG="samples/meeting-room/wrangler.g30-receiver-off.jsonc"
 readonly PRIMARY_CONFIG_NAME="wrangler.g30-primary-off.jsonc"
 readonly PRIMARY_WORKER_NAME="sekiban-dcb-meeting-room-cloudflare-only"
-readonly PRIMARY_D1_DATABASES=(
-  "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline"
-  "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv"
+readonly PRIMARY_D1_BINDINGS=(
+  "D1"
+  "D1_MV"
 )
 readonly BASE_URL="${G30_PRIMARY_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
 readonly SOURCE_COMMIT="${G30_SOURCE_COMMIT:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
@@ -37,16 +37,23 @@ readonly A_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-deployment.json"
 readonly B_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-B-deployment.json"
 readonly APRIME_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-prime-deployment.json"
 
-# `wrangler d1 migrations list` accepts the durable database name, not the
-# Worker binding label. Keep this check remote and read-only so the normal
-# deployment preflight proves both G32 D1 databases have no pending schema
-# work before the A/B/A-prime run changes any Worker version.
+# The sealed config's database_id/name/migrations_dir identity is checked
+# before this function runs. Use only those verified binding aliases: direct
+# durable-name lookup is not an authorized Wrangler call in this account.
+# Keep this check remote and read-only so the normal deployment preflight
+# proves both G32 D1 databases have no pending schema work before the
+# A/B/A-prime run changes any Worker version.
+assert_sealed_d1_config() {
+  node scripts/g30-config-check.mjs --check >/dev/null
+}
+
 assert_no_remote_migrations() {
-  local database output
-  for database in "${PRIMARY_D1_DATABASES[@]}"; do
-    output="$("${WRANGLER_BIN}" d1 migrations list "${database}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
+  local binding output
+  assert_sealed_d1_config
+  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do
+    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
     printf '%s\n' "${output}"
-    [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${database}" >&2; exit 1; }
+    [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${binding}" >&2; exit 1; }
   done
 }
 

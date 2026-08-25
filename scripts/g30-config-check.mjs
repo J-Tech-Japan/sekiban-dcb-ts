@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
+import cutover from "../contracts/g32-cutover.json" with { type: "json" };
 
 const PRIMARY_OFF = "samples/meeting-room/wrangler.g30-primary-off.jsonc";
 const PRIMARY_ON = "samples/meeting-room/wrangler.g30-primary-on.jsonc";
@@ -83,28 +84,33 @@ export function assertPhaseRuntimeIsolation(workerSource, runbookSource) {
 }
 
 /**
- * The remote migration preflight must address D1 by durable database name.
- * Passing a Worker binding label happens to reach a different Wrangler API
- * path and cannot prove the production databases have no pending migration.
+ * The sealed config owns D1 identity.  Wrangler's remote migration command
+ * uses the verified binding alias; direct durable-name lookup is not an
+ * authorized call in this account.
  */
 export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
   if (!Array.isArray(primaryOff?.d1_databases)) throw new Error("G30 primary config must declare D1 databases");
   if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for migration-preflight verification");
-  const databases = ["D1", "D1_MV"].map((binding) => {
+  const expectedByBinding = { D1: cutover.final.pipelineDatabase, D1_MV: cutover.final.materializedViewDatabase };
+  const bindings = ["D1", "D1_MV"].map((binding) => {
     const entry = primaryOff.d1_databases.find((candidate) => candidate?.binding === binding);
-    if (typeof entry?.database_name !== "string" || entry.database_name.length === 0) throw new Error(`G30 primary config lacks durable database name for ${binding}`);
-    return entry.database_name;
+    const expected = expectedByBinding[binding];
+    if (entry?.database_id !== expected.id || entry?.database_name !== expected.name || entry?.migrations_dir !== expected.migrationsDir) {
+      throw new Error(`G30 ${binding} database identity is not sealed in the selected config`);
+    }
+    return binding;
   });
-  if (!/d1 migrations list "\$\{database\}"/.test(runbookSource)) {
-    throw new Error("G30 remote migration preflight must pass the durable database name to Wrangler");
+  if (!/d1 migrations list "\$\{binding\}"/.test(runbookSource)) {
+    throw new Error("G30 remote migration preflight must use a binding from an ID-verified config");
   }
-  if (/d1 migrations list "\$\{binding\}"/.test(runbookSource)) {
-    throw new Error("G30 remote migration preflight must not pass a Worker binding label to Wrangler");
+  if (/d1 migrations list "\$\{database\}"/.test(runbookSource)) {
+    throw new Error("G30 remote migration preflight must not pass a durable database name directly to Wrangler");
   }
-  for (const database of databases) {
-    if (!runbookSource.includes(`"${database}"`)) throw new Error(`G30 remote migration preflight omits configured database ${database}`);
+  const functionBody = /assert_no_remote_migrations\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
+  if (!/assert_sealed_d1_config\n\s+for binding/.test(functionBody)) {
+    throw new Error("G30 remote migration preflight must verify sealed D1 identities before listing migrations");
   }
-  return { migrationDatabases: databases };
+  return { migrationBindings: bindings, identityAuthority: "sealed-config-database-id/name/migrations-dir" };
 }
 
 /**
@@ -174,8 +180,20 @@ export function selfTest() {
   try { assertPhaseRuntimeIsolation("const phase = G30_TRACE_PHASE;", "clean runbook"); } catch (error) { phaseRuntimeRed = String(error).includes("runtime diagnostic protocol surface"); }
   if (!phaseRuntimeRed) throw new Error("G30 phase runtime mutation unexpectedly passed");
   let bindingRed = false;
-  try { assertRemoteMigrationPreflight(off, runbook.replace('migrations list "${database}"', 'migrations list "${binding}"')); } catch { bindingRed = true; }
-  if (!bindingRed) throw new Error("G30 migration binding mutation unexpectedly passed");
+  try { assertRemoteMigrationPreflight(off, runbook.replace('migrations list "${binding}"', 'migrations list "${database}"')); } catch { bindingRed = true; }
+  if (!bindingRed) throw new Error("G30 migration durable-name mutation unexpectedly passed");
+  let idRed = false;
+  try {
+    const altered = structuredClone(off);
+    altered.d1_databases[0].database_id = "unsealed-database-id";
+    assertRemoteMigrationPreflight(altered, runbook);
+  } catch (error) { idRed = String(error).includes("database identity is not sealed"); }
+  if (!idRed) throw new Error("G30 migration database-id mutation unexpectedly passed");
+  let orderRed = false;
+  try {
+    assertRemoteMigrationPreflight(off, runbook.replace('assert_sealed_d1_config\n  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do', 'for binding in "${PRIMARY_D1_BINDINGS[@]}"; do\n    assert_sealed_d1_config'));
+  } catch (error) { orderRed = String(error).includes("before listing migrations"); }
+  if (!orderRed) throw new Error("G30 migration preflight-order mutation unexpectedly passed");
   let receiverSurfaceRed = false;
   try { const altered = structuredClone(receiver); altered.workers_dev = true; assertG30Config(off, on, altered); } catch (error) { receiverSurfaceRed = String(error).includes("G38 Phase M"); }
   if (!receiverSurfaceRed) throw new Error("G30 receiver public-surface mutation unexpectedly passed");
@@ -190,7 +208,7 @@ export function selfTest() {
   let witnessReplayRed = false;
   try { assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', '--without-prior-versions "${prior}"')); } catch (error) { witnessReplayRed = String(error).includes("pre-deploy snapshot"); }
   if (!witnessReplayRed) throw new Error("G30 witness-replay snapshot mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
+  return { ...result, ...isolation, ...migration, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

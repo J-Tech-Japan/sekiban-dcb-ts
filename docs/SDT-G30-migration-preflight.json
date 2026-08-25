@@ -1,0 +1,17 @@
+{
+  "task": "SDT-G30",
+  "purpose": "remote-migration-preflight",
+  "authority": "sealed-config-database-id/name/migrations-dir",
+  "invocation": "wrangler d1 migrations list via D1 and D1_MV bindings",
+  "bindingResults": {
+    "D1": "No migrations to apply",
+    "D1_MV": "No migrations to apply"
+  },
+  "rejectedDirectNameProbe": {
+    "httpStatus": 403,
+    "errorCode": 7403,
+    "disposition": "recorded-only; direct durable-name lookup is outside G30 scope"
+  },
+  "ordering": "sealed config identity check precedes migration listing",
+  "secrets": "none"
+}

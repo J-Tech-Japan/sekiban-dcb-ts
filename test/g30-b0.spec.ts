@@ -7,7 +7,7 @@ import {
   assertTraceCohort,
   observationLedgerForPhase,
 } from "../scripts/g30-b0-contract.mjs";
-import { assertG30Config, assertPhaseRuntimeIsolation, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
+import { assertG30Config, assertPhaseRuntimeIsolation, assertRemoteMigrationPreflight, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
 import {
   acquireCohortTelemetry,
   buildBoundedTelemetryQuery,
@@ -689,6 +689,39 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(validations).toBe(2);
     expect(sleeps).toEqual([TELEMETRY_RETRY_DELAY_MS]);
     expect(acquisition.value).toMatchObject({ requestCount: 100 });
+  });
+
+  it("rejects an unsealed D1 database identity before migration listing", () => {
+    const config = {
+      d1_databases: [
+        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+      ],
+    };
+    const runbook = String.raw`assert_no_remote_migrations() {
+  assert_sealed_d1_config
+  for binding in "\${PRIMARY_D1_BINDINGS[@]}"; do
+    output="\$(wrangler d1 migrations list "\${binding}" --remote)"
+  done
+}`;
+    config.d1_databases[0].database_id = "unsealed-database-id";
+    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("database identity is not sealed");
+  });
+
+  it("rejects a direct durable database-name migration lookup", () => {
+    const config = {
+      d1_databases: [
+        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+      ],
+    };
+    const runbook = String.raw`assert_no_remote_migrations() {
+  assert_sealed_d1_config
+  for binding in "\${PRIMARY_D1_BINDINGS[@]}"; do
+    output="\$(wrangler d1 migrations list "\${database}" --remote)"
+  done
+}`;
+    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("must use a binding");
   });
 
   it("rejects a telemetry group without an S00 correlation anchor instead of matching by time", () => {
