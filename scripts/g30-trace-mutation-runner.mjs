@@ -305,6 +305,15 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     testFile: "test/g30-b0.spec.ts",
   },
   {
+    id: "telemetry-trace-id-capacity-batch-gate",
+    file: source.traceExport,
+    from: "    batchSize: TELEMETRY_TRACE_ID_BATCH,",
+    to: "    batchSize: 4,",
+    target: "uses one exact traceId per full-trace telemetry query to stay beneath provider result capacity",
+    unrelated: "discovers a rayless S00 root through exact worker-observation correlation",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
     id: "telemetry-query-node-budget-gate",
     file: source.traceExport,
     from: "  if (nodeCount > CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES) {\n    fail(\"query-node-budget\", `telemetry query has ${nodeCount} filter nodes; provider maximum is ${CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES}`);\n  }",

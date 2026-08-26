@@ -26,10 +26,12 @@ Closes #70
   restores the original client value in evidence. When a custom S00 root has
   no provider Ray, it uses only that existing worker correlation to query one
   exact traceId; ambiguity fails and time-proximity fallback is forbidden. It
-  uses bounded ten-value
-  subqueries whose values are serialized as the provider's comma-separated
-  `in` membership form and are structurally limited to the provider's 16
-  filter-node maximum. The initial query and every subsequent incomplete
+  uses bounded ten-value discovery and observation subqueries whose values
+  are serialized as the provider's comma-separated `in` membership form and
+  are structurally limited to the provider's 16 filter-node maximum. Each
+  full-trace expansion is one exact traceId: the provider saturated a
+  four-trace expansion at 2,000 results while every single trace was below
+  that cap, so batching cannot hide a valid cohort. The initial query and every subsequent incomplete
   cohort query, including a found-but-incomplete success trace, retry only
   until the canonical ten-minute deadline; a
   saturated page is rejected rather than accepted as partial telemetry. The A/B/A′

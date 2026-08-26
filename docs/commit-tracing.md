@@ -98,8 +98,11 @@ does not assert a performance pass/fail.
    100-request client ledger. It discovers S00 first by provider CF-Ray and,
    when a custom root omits that field, only through the existing
    `worker.invocation` post-admission correlation and an exact
-   `correlation.id` → one-traceId query. It then performs bounded per-trace
-   and correlated-observation exports; it never joins by time proximity or
+   `correlation.id` → one-traceId query. It then performs each full-trace
+   expansion through exactly one traceId (while discovery and observation
+   queries remain bounded at ten identities): a four-trace live query reached
+   the provider's 2,000-result ceiling although every individual trace was
+   below it. It never joins by time proximity or
    assumes a structured console log has a platform trace ID.
    `schemaCompleteCount >= 95` is the frozen delivery ceiling: six losses fail,
    while every permitted loss is enumerated as either `root-absent` or

@@ -516,6 +516,13 @@ export async function queryTelemetry({ accountId, token, payload }) {
 // provider node limit structurally before issuing any request.
 export const CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES = 16;
 export const TELEMETRY_QUERY_VALUE_BATCH = 10;
+// A full commit trace can contain substantially more provider events than a
+// root-discovery or observation query.  The live capacity probe recorded a
+// 2,000-result saturation for four exact trace IDs while every constituent
+// identity was below that ceiling (the largest was 805).  Expand each known
+// trace through one exact identity so saturation stays fail-closed rather than
+// discarding a valid cohort behind a provider result cap.
+export const TELEMETRY_TRACE_ID_BATCH = 1;
 export const TELEMETRY_RETRY_DELAY_MS = 15_000;
 
 /**
@@ -769,7 +776,7 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     template,
     key: "$metadata.traceId",
     values: [...traceIds],
-    batchSize: 4,
+    batchSize: TELEMETRY_TRACE_ID_BATCH,
   });
   const observationRaws = correlations.length === 0 ? [] : await queryByValues({
     accountId,

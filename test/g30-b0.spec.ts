@@ -21,6 +21,7 @@ import {
   normalizeTelemetryBundle,
   normalizeTelemetryExport,
   queryTelemetry,
+  TELEMETRY_TRACE_ID_BATCH,
   TELEMETRY_QUERY_VALUE_BATCH,
   TELEMETRY_RETRY_DELAY_MS,
   telemetryFilterNodeCount,
@@ -974,6 +975,81 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     }}), { status: 200, headers: { "content-type": "application/json" } }));
     try {
       await expect(queryTelemetry({ accountId: "account", token: "redacted", payload: { limit: 2 } })).rejects.toThrow(/query-saturated/);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("uses one exact traceId per full-trace telemetry query to stay beneath provider result capacity", async () => {
+    const firstRequestId = "a304f4ff2b982517-SJC";
+    const secondRequestId = "b304f4ff2b982517-SJC";
+    const ledger = [
+      { index: 0, requestId: firstRequestId, startedAtMs: 1_000, completedAtMs: 1_100, responseLatencyMs: 100 },
+      { index: 1, requestId: secondRequestId, startedAtMs: 3_000, completedAtMs: 3_100, responseLatencyMs: 100 },
+    ];
+    const raw = rawTelemetry(ledger, false);
+    const workerEvents = raw.events.filter((entry) => entry.source?.event === "worker.invocation");
+    const roots = raw.events.filter((entry) => entry.attributes?.operation === "sdt.commit");
+    const observations = raw.events.filter((entry) => entry.source?.schema === "sdt.observe/v1");
+    const traceRequests: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { parameters?: { filters?: Array<Record<string, unknown>> } };
+      const filters = body.parameters?.filters ?? [];
+      const traceFilter = filters.find((filter) => filter.key === "$metadata.traceId");
+      const has = (key: string) => filters.some((filter) => filter.key === key);
+      let events: RawEvent[];
+      let count: number;
+      if (traceFilter !== undefined) {
+        const values = String(traceFilter.value).split(",");
+        traceRequests.push(String(traceFilter.value));
+        // This simulates the observed provider capacity: a multi-trace
+        // expansion reaches the 2,000 result ceiling, while a single exact
+        // trace remains queryable.  A batched mutation therefore fails in
+        // queryTelemetry rather than merely changing an implementation detail.
+        if (values.length > 1) {
+          events = [];
+          count = 2_000;
+        } else {
+          events = raw.events.filter((entry) => entry.attributes !== undefined && entry.$metadata?.traceId === values[0]);
+          count = events.length;
+        }
+      } else if (has("correlation.id")) {
+        events = roots;
+        count = events.length;
+      } else if (has("correlationId")) {
+        events = observations;
+        count = events.length;
+      } else {
+        events = workerEvents;
+        count = events.length;
+      }
+      return new Response(JSON.stringify({ success: true, result: { events: { count, events } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const exported = await exportCohortTelemetry({
+        accountId: "account",
+        token: "redacted",
+        template: {
+          view: "events",
+          limit: 2_000,
+          parameters: {
+            filterCombination: "or",
+            filters: [
+              { key: "$workers.scriptName", operation: "eq", type: "string", value: "primary" },
+              { key: "$workers.scriptName", operation: "eq", type: "string", value: "receiver" },
+            ],
+          },
+        },
+        ledger,
+      });
+      expect(exported.events).not.toHaveLength(0);
+      expect(TELEMETRY_TRACE_ID_BATCH).toBe(1);
+      expect(traceRequests).toHaveLength(2);
+      expect(traceRequests.every((value) => value.split(",").length === 1)).toBe(true);
+      expect(new Set(traceRequests)).toEqual(new Set([`trace-${firstRequestId}`, `trace-${secondRequestId}`]));
     } finally {
       fetchSpy.mockRestore();
     }
