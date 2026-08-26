@@ -31,6 +31,12 @@ export type ObservationEvent =
     /** Existing post-admission trace correlation; not a new wire field. */
     correlationId: string;
     actorClass: "WORKER";
+    /**
+     * Worker-local native span callbacks entered for this accepted request.
+     * This is an observation-only set used to classify a later missing
+     * exported row; it never supplies a completeness pass.
+     */
+    emittedWorkerRowIds: readonly string[];
     isolateInstanceId: string;
     activationFirst: boolean;
     /** Overlaps S00 and is cross-checked by the exported evidence contract. */
@@ -106,6 +112,7 @@ export function observeWorkerInvocation(input: Readonly<{
   firstInvocation: boolean;
   requestId: string;
   correlationId: string;
+  emittedWorkerRowIds: readonly string[];
   scriptVersion?: string;
   colo?: string;
 }>, sink?: ObservationLogSink): void {
@@ -119,6 +126,7 @@ export function observeWorkerInvocation(input: Readonly<{
     requestId: input.requestId,
     correlationId: input.correlationId,
     actorClass: "WORKER",
+    emittedWorkerRowIds: Object.freeze([...input.emittedWorkerRowIds]),
     isolateInstanceId: input.isolateInstanceId,
     activationFirst: input.firstInvocation,
     ...(typeof input.scriptVersion === "string" && input.scriptVersion.length > 0 ? { scriptVersion: input.scriptVersion } : {}),

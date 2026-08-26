@@ -8,10 +8,12 @@ import {
   assertTraceCohort,
   G30_WINDOW_RESET_LIMIT,
   observationLedgerForPhase,
+  reconcileEmittedRowInventory,
 } from "../scripts/g30-b0-contract.mjs";
 import { assertConformancePropagationRetry, assertG30Config, assertPhaseRuntimeIsolation, assertRemoteMigrationPreflight, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
 import {
   acquireCohortTelemetry,
+  buildTraceExportFailureEvidence,
   buildBoundedTelemetryQuery,
   clientRequestIdByPlatformRayId,
   CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES,
@@ -46,6 +48,10 @@ type Phase = "A" | "B" | "A-prime";
 const SERVICE = "g32-9043d626fe1149cb";
 const ROOT_ROWS = manifest.schemas["sdt.commit/v1"].boundaries
   .find((boundary) => boundary.name === "success")!.requiredRows;
+const EMITTED_WORKER_ROWS = manifest.schemas["sdt.commit/v1"].rows
+  .filter((row) => row.emitter === "root-worker" || row.emitter === "caller-worker")
+  .map((row) => row.rowId)
+  .sort();
 const IDLE_SCHEDULE_MS = [2_000, 15_000, 180_000];
 
 function deploymentConfig(sample: 0 | 1): Record<string, unknown> {
@@ -227,6 +233,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>, includeFau
         requestId,
         correlationId,
         actorClass: "WORKER",
+        emittedWorkerRowIds: EMITTED_WORKER_ROWS,
         isolateInstanceId: "fixture-isolate",
         activationFirst: activationFirst(requestId),
         scriptVersion: "g30-test-version",
@@ -311,6 +318,8 @@ function evidence() {
   const fullLedger = observationLedgerForPhase(phaseB);
   const bundle = normalizeTelemetryBundle(rawTelemetry(fullLedger), Number(b.at(-1)!.completedAtMs) + 1);
   const retained = new Set(b.map((record) => record.requestId));
+  const traces = bundle.traces.filter((trace) => retained.has(trace.requestId));
+  const inventoryObservations = bundle.inventoryObservations.filter((observation) => retained.has(observation.requestId));
   return {
     task: "SDT-G30",
     baseline: "B0",
@@ -320,9 +329,11 @@ function evidence() {
       B: phaseB,
       "A-prime": { ledger: aprime, rawAttempts: [], configuration: phaseConfiguration(0, "off-prime") },
     },
-    traces: bundle.traces.filter((trace) => retained.has(trace.requestId)),
+    traces,
     observationTraces: bundle.traces,
     observations: bundle.observations,
+    inventoryObservations,
+    emittedRowInventory: reconcileEmittedRowInventory(b, traces, inventoryObservations),
     traceExportCompletedAtMs: Number(b.at(-1)!.completedAtMs) + 1,
   };
 }
@@ -340,6 +351,13 @@ function withoutTrace(document: ReturnType<typeof evidence>, requestIds: readonl
   document.traces = document.traces.filter((trace) => !removed.has(trace.requestId));
   document.observationTraces = document.observationTraces.filter((trace) => !removed.has(trace.requestId));
   document.observations = document.observations.filter((observation) => !removed.has(observation.requestId));
+  // A raw Worker inventory can survive an incomplete trace; retain it so the
+  // sidecar records ingestion loss, then derive (never hand-edit) its diff.
+  document.emittedRowInventory = reconcileEmittedRowInventory(
+    document.phases.B.ledger,
+    document.traces,
+    document.inventoryObservations,
+  );
   return document;
 }
 
@@ -1249,6 +1267,50 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(acquisition.value).toMatchObject({ schemaCompleteCount: 100 });
   });
 
+  it("captures every canonical join state and missing row set for a terminal trace export failure", () => {
+    const document = evidence();
+    const raw = rawTelemetry(observationLedgerForPhase(document.phases.B));
+    raw.events = raw.events.filter((entry) => !(
+      entry.$metadata?.traceId === "trace-B-0" && entry.attributes?.operation === "journal.transition" && entry.attributes?.["phase.ordinal"] === 0
+    ) && !(entry.$metadata?.traceId === "trace-B-1" && entry.attributes !== undefined));
+    const retainedRequestIds = new Set(document.phases.B.ledger.map((record) => String(record.requestId)));
+    const traces = normalizeTelemetryBundle(raw, document.traceExportCompletedAtMs).traces
+      .filter((trace) => retainedRequestIds.has(String(trace.requestId)));
+    const failure = buildTraceExportFailureEvidence({
+      ledger: document.phases.B.ledger,
+      traces,
+      capturedAtMs: document.traceExportCompletedAtMs,
+      deadlineMs: exportDeadline(document.phases.B.ledger),
+      error: new Error("g30-b0:delivery-budget:B schemaCompleteCount=98 is below frozen 95/100"),
+    });
+    expect(failure).toMatchObject({
+      failureClass: "g30-b0:delivery-budget",
+      clientCount: 100,
+      schemaCompleteCount: 98,
+      missingCount: 2,
+      missingRequestIds: ["B-0", "B-1"],
+    });
+    expect(failure.requestJoinStates).toHaveLength(100);
+    expect(failure.requestJoinStates.find((entry) => entry.requestId === "B-0")).toMatchObject({
+      ordinal: 1,
+      stage: "schema-incomplete",
+      tracePresent: true,
+      rootPresent: true,
+      missingRequiredRows: ["S05a"],
+    });
+    expect(failure.requestJoinStates.find((entry) => entry.requestId === "B-1")).toMatchObject({
+      ordinal: 2,
+      stage: "root-absent",
+      tracePresent: false,
+      rootPresent: false,
+      missingRequiredRows: ROOT_ROWS,
+    });
+    expect(failure.requestJoinStates.find((entry) => entry.requestId === "B-99")).toMatchObject({
+      schemaComplete: true,
+      missingRequiredRows: [],
+    });
+  });
+
   it("rejects an unsealed D1 database identity before migration listing", () => {
     const config = {
       d1_databases: [
@@ -1683,6 +1745,34 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     if (observation?.$metadata === undefined) throw new Error("fixture lacks DO event metadata");
     delete observation.$metadata.requestId;
     expect(() => normalizeTelemetryExport(raw)).toThrow(/observation-platform-request-id/);
+  });
+
+  it("rejects a Worker observation that lacks the emitted-row inventory", () => {
+    const raw = rawTelemetry([{ index: 0, requestId: "inventory-missing", startedAtMs: 1_000, completedAtMs: 1_100, responseLatencyMs: 100 }], false);
+    const worker = raw.events.find((entry) => entry.source?.event === "worker.invocation");
+    if (worker?.source === undefined) throw new Error("fixture lacks worker observation");
+    delete worker.source.emittedWorkerRowIds;
+    expect(() => normalizeTelemetryBundle(raw, 1_101)).toThrow(/emitted-row-inventory/);
+  });
+
+  it("classifies emitted-versus-ingested Worker row differences without changing trace completion", () => {
+    const ledger = [{ index: 0, requestId: "inventory-diff", startedAtMs: 1_000, completedAtMs: 1_100, responseLatencyMs: 100 }];
+    const raw = rawTelemetry(ledger, false);
+    const worker = raw.events.find((entry) => entry.source?.event === "worker.invocation");
+    if (worker?.source === undefined) throw new Error("fixture lacks worker observation");
+    worker.source.emittedWorkerRowIds = EMITTED_WORKER_ROWS.filter((rowId) => rowId !== "S03");
+    const s03 = manifest.schemas["sdt.commit/v1"].rows.find((row) => row.rowId === "S03")!;
+    const s05a = manifest.schemas["sdt.commit/v1"].rows.find((row) => row.rowId === "S05a")!;
+    raw.events = raw.events.filter((entry) => entry.attributes?.operation !== s03.span && entry.attributes?.operation !== s05a.span);
+
+    const bundle = normalizeTelemetryBundle(raw, 1_101);
+    const inventory = reconcileEmittedRowInventory(ledger, bundle.traces, bundle.inventoryObservations);
+    const diff = inventory[0]!.diff;
+
+    expect(bundle.traces[0]).toMatchObject({ complete: false, runtimeVerified: false });
+    expect(diff.classification).toBe("mixed");
+    expect(diff.rows.find((row) => row.rowId === "S03")).toEqual({ rowId: "S03", classification: "emission-missing" });
+    expect(diff.rows.find((row) => row.rowId === "S05a")).toEqual({ rowId: "S05a", classification: "ingestion-missing" });
   });
 
   it("normalizes a Workers Logs structured message from provider metadata", () => {

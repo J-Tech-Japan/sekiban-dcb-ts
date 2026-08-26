@@ -179,6 +179,17 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     unrelated: "emits the partial-handoff boundary and never claims the complete transition",
   },
   {
+    // This changes a real production observation hook. Its target runs a
+    // CommitWorker through native callbacks; no source-text assertion can
+    // make the inventory test pass after the recorder is removed.
+    id: "emitted-worker-row-inventory-recording",
+    file: source.trace,
+    from: "      this.recordEmittedWorkerRow(row, native);",
+    to: "      void row;",
+    target: "records every native-emitted Worker row in the post-response observation",
+    unrelated: "emits every caller-owned success row from the real CommitWorker path",
+  },
+  {
     id: "reservation-cancel-boundary",
     file: source.commit,
     from: '      : await traceScope.span("S18", {}, async (stage) => cancel(stage));',

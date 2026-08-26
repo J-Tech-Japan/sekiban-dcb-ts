@@ -272,6 +272,10 @@ function nonSuccessWorker(
   scenario: CommitTraceScenario,
   snapshots: CommitTraceSnapshot[],
   tags: readonly string[] = ["room:g30-non-success"],
+  options: Readonly<{
+    nativeTracing?: NativeTracing;
+    workerObservationSink?: { emit(event: ObservationEvent): void };
+  }> = {},
 ): CommitWorker {
   const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
     status,
@@ -348,6 +352,8 @@ function nonSuccessWorker(
     // clock records the platform-limited form explicitly, avoiding a local
     // wall-clock quantization artifact from becoming an attribution finding.
     commitTraceClock: { now: () => 0 },
+    nativeTracing: options.nativeTracing,
+    workerObservationSink: options.workerObservationSink,
   });
 }
 
@@ -739,6 +745,46 @@ describe("SDT-G30 runtime trace verifier", () => {
       "tag.key_hash": stableTraceHash("room:g30-success"),
     });
     expect(captured.runtimeVerification).toEqual({ passed: true });
+  });
+
+  it("records every native-emitted Worker row in the post-response observation", async () => {
+    const snapshots: CommitTraceSnapshot[] = [];
+    const observations: ObservationEvent[] = [];
+    const capture = recordingNativeTracing();
+    const tags = ["room:g30-emitted-row-inventory"];
+    const worker = nonSuccessWorker("success", snapshots, tags, {
+      nativeTracing: capture.tracing,
+      workerObservationSink: { emit: (event) => observations.push(event) },
+    });
+
+    const response = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-ray": "fixture-emitted-row-ray" },
+      body: JSON.stringify({
+        version: 1,
+        eventCandidates: [{
+          payload: btoa(JSON.stringify({ roomId: "g30-emitted-row-inventory" })),
+          eventPayloadName: "Trace",
+          tags,
+        }],
+        consistencyTags: tags.map((tag) => ({
+          tag,
+          lastSortableUniqueId: "063891500000000000000000000000",
+        })),
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    const workerObservation = observations.find((event): event is Extract<ObservationEvent, { event: "worker.invocation" }> => event.event === "worker.invocation");
+    expect(workerObservation).toBeDefined();
+    expect(workerObservation!.emittedWorkerRowIds).toEqual([
+      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S07", "S08",
+      "S05b", "S05c", "S10", "S11", "S12", "S05d", "S13", "S14", "S15",
+    ]);
+    // The sidecar comes from native Worker callbacks only; allocator S09 is
+    // owned by the remote DO and never becomes a local emission claim.
+    expect(workerObservation!.emittedWorkerRowIds).not.toContain("S09");
+    expect(capture.spans.map((span) => span.name)).toContain("sdt.commit");
   });
 
   it("emits the reservation-failure boundary from the real cancel-barrier path", async () => {
@@ -1254,6 +1300,7 @@ describe("SDT-G30 runtime trace verifier", () => {
       firstInvocation: true,
       requestId: "fixture-ray",
       correlationId: "corr-fixture-attempt",
+      emittedWorkerRowIds: ["S00", "S01"],
       scriptVersion: "worker-version-fixture",
       colo: "SJC",
     }, sink);
@@ -1272,6 +1319,7 @@ describe("SDT-G30 runtime trace verifier", () => {
       event: "worker.invocation",
       requestId: "fixture-ray",
       correlationId: "corr-fixture-attempt",
+      emittedWorkerRowIds: ["S00", "S01"],
       isolateInstanceId: "worker-isolate-fixture",
       scriptVersion: "worker-version-fixture",
       colo: "SJC",

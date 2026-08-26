@@ -123,6 +123,11 @@ does not assert a performance pass/fail.
    names for refresh exclusion, while queue/doorbell lifecycle, idle, and
    activation facts come from the joined observation stream—not an
    operator-supplied boolean or declaration.
+   The same Worker observation carries the set of local native span callbacks
+   actually entered through S15. The exporter retains a per-request emitted /
+   ingested / diff sidecar solely to classify a missing Worker row as emission
+   or ingestion. It is never an input to schema completeness, the 95/100
+   floor, the tail set, the deadline, or an otherwise successful result.
 
 The live run writes only raw evidence artifacts and the summary evidence.
 After it succeeds, make bookkeeping commit R with exactly the evidence files

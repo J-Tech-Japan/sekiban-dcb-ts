@@ -126,6 +126,10 @@ export function buildEvidence({ sourceCommit, treeish = sourceCommit, manifest, 
     traces: traces.traces,
     observationTraces: traces.observationTraces,
     observations: traces.observations,
+    // The inventory is an attribution sidecar only. assertB0Evidence still
+    // evaluates AC5 solely from the independently ingested span cohort.
+    inventoryObservations: traces.inventoryObservations,
+    emittedRowInventory: traces.emittedRowInventory,
     traceExportCompletedAtMs: traces.exportCompletedAtMs,
     rawArtifacts: {
       phaseA: "docs/SDT-G30-B0-evidence-A.json",

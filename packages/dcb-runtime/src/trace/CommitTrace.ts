@@ -223,6 +223,15 @@ function rowFor(schema: CommitTraceSchema, rowId: string): ManifestRow {
   return row;
 }
 
+/**
+ * G30's emitted-row inventory is deliberately limited to rows emitted from
+ * the primary Worker process. It is an observation-side discriminator, not a
+ * new trace attribute or a cross-actor propagation mechanism.
+ */
+function isWorkerLocalEmitter(row: ManifestRow): boolean {
+  return row.emitter === "root-worker" || row.emitter === "caller-worker";
+}
+
 function faceState(attribute: string, face: CommitTraceFace): "required" | "optional" | "forbidden" {
   const matrix = manifest.attributeMatrix.attributes[attribute];
   if (matrix === undefined) {
@@ -448,6 +457,7 @@ export class CommitTraceScope {
 
 export class CommitTrace {
   private readonly spans: CommitTraceSpan[] = [];
+  private readonly emittedWorkerRows = new Set<string>();
   private readonly provider: CommitTraceProviderAdapter;
   private readonly diagnostics: Readonly<Record<string, TraceAttributeValue>>;
   private correlationId: string;
@@ -518,6 +528,16 @@ export class CommitTrace {
       // response or durable outcome produced by the callback above.
       this.publishSnapshot();
     }
+  }
+
+  /**
+   * Returns the Worker-local rows for which a native tracing callback was
+   * actually entered on this request. This private-in-effect observation is
+   * copied only into sdt.observe/v1 by CommitWorker; it never changes the
+   * sealed trace schema, verifier, public response, or a control branch.
+   */
+  emittedWorkerRowIds(): readonly string[] {
+    return Object.freeze([...this.emittedWorkerRows]);
   }
 
   snapshot(): CommitTraceSnapshot {
@@ -635,6 +655,7 @@ export class CommitTrace {
     }
     const execute = async (native: NativeTraceSpan | undefined): Promise<T> => {
       this.setNativeAttributes(native, attributes);
+      this.recordEmittedWorkerRow(row, native);
       const startMs = this.now();
       const record: CommitTraceSpan = {
         rowId,
@@ -718,6 +739,16 @@ export class CommitTrace {
       ...(outcome?.httpStatus === undefined ? {} : { "http.status": outcome.httpStatus }),
     });
     return next;
+  }
+
+  private recordEmittedWorkerRow(row: ManifestRow, native: NativeTraceSpan | undefined): void {
+    // `enterNativeSpan` calls this callback only after the platform has
+    // accepted the child callback. A declined/untraced span remains absent
+    // from the inventory so the exporter can distinguish local emission from
+    // a later provider-ingestion loss. DO and provider-subrequest rows are
+    // intentionally outside this Worker-local inventory.
+    if (native === undefined || native.isTraced === false || !isWorkerLocalEmitter(row)) return;
+    this.emittedWorkerRows.add(row.rowId);
   }
 
   private attributesFor(row: ManifestRow, options: CommitTraceSpanOptions): Record<string, TraceAttributeValue> {

@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import manifest from "../../contracts/commit-trace-manifest.json" with { type: "json" };
-import { assertObservationStream, assertTraceCohort, observationLedgerForPhase } from "../g30-b0-contract.mjs";
+import { assertObservationStream, assertTraceCohort, observationLedgerForPhase, reconcileEmittedRowInventory } from "../g30-b0-contract.mjs";
 import {
   SUCCESS_REQUIRED,
   verifyExportedSuccessTrace as verifyRuntimeSuccessTrace,
@@ -169,6 +169,9 @@ function telemetryField(metadata, event, attributes, names) {
 
 const ROWS = manifest.schemas["sdt.commit/v1"].rows;
 const ROW_BY_ID = new Map(ROWS.map((row) => [row.rowId, row]));
+const WORKER_ROW_IDS = new Set(ROWS
+  .filter((row) => row.emitter === "root-worker" || row.emitter === "caller-worker")
+  .map((row) => row.rowId));
 const ATTRIBUTE_MATRIX = manifest.attributeMatrix.attributes;
 const ATTRIBUTE_IDS = new Set(Object.keys(ATTRIBUTE_MATRIX));
 const RAW_TAG_KEY = /(^|[._])tag($|[._])/i;
@@ -199,6 +202,23 @@ function normalizableAttributes(raw) {
     }
   }
   return Object.fromEntries(Object.entries(raw).filter(([key, value]) => ATTRIBUTE_IDS.has(key) && scalar(value) !== undefined));
+}
+
+function normalizedEmittedWorkerRowIds(value) {
+  if (!Array.isArray(value)) {
+    fail("emitted-row-inventory", "worker observation lacks emittedWorkerRowIds");
+  }
+  const rows = [];
+  const seen = new Set();
+  for (const [index, raw] of value.entries()) {
+    if (typeof raw !== "string" || raw.length === 0 || !WORKER_ROW_IDS.has(raw)) {
+      fail("emitted-row-inventory", `worker observation emittedWorkerRowIds[${index}] is not a Worker-local manifest row`);
+    }
+    if (seen.has(raw)) fail("emitted-row-inventory", `worker observation repeats emitted row ${raw}`);
+    seen.add(raw);
+    rows.push(raw);
+  }
+  return Object.freeze(rows.sort());
 }
 
 function normalizedSpan(event, traceId) {
@@ -314,8 +334,12 @@ function normalizeObservation(payload, event, requestId, traceId, correlationId,
   if (typeof platformRequestId !== "string" || platformRequestId.length === 0) {
     fail("observation-platform-request-id", "structured observation has no provider request id");
   }
+  const emittedWorkerRowIds = payload.event === "worker.invocation"
+    ? normalizedEmittedWorkerRowIds(payload.emittedWorkerRowIds)
+    : undefined;
   return Object.freeze({
     ...payload,
+    ...(emittedWorkerRowIds === undefined ? {} : { emittedWorkerRowIds }),
     requestId,
     traceId,
     platformRequestId,
@@ -383,6 +407,7 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
 
   const output = [];
   const observations = [];
+  const inventoryObservations = [];
   // The S00 root, rather than an observation's arrival order, is the trace
   // authority.  When running against the live API its provider CF-Ray joins
   // directly back to the client ledger.  That lets AC5 distinguish a missing
@@ -441,6 +466,10 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
         fail("observation-request-id", `S00 trace ${group.traceId} worker observation conflicts with its root request`);
       }
     }
+    const normalizedWorker = worker.length === 1
+      ? normalizeObservation(worker[0].payload, worker[0].event, requestId, group.traceId, correlationId, platformRayId)
+      : undefined;
+    if (normalizedWorker !== undefined) inventoryObservations.push(normalizedWorker);
     const spans = group.events.map((entry) => entry.span);
     const rowCounts = new Map(spans.map((span) => [span.rowId, 0]));
     for (const span of spans) rowCounts.set(span.rowId, (rowCounts.get(span.rowId) ?? 0) + 1);
@@ -470,12 +499,17 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
     // masquerade as joined evidence for activation/outlier conclusions.
     if (!complete) continue;
     for (const observed of joined) {
-      observations.push(normalizeObservation(observed.payload, observed.event, requestId, group.traceId, correlationId, platformRayId));
+      observations.push(observed === worker[0] && normalizedWorker !== undefined
+        ? normalizedWorker
+        : normalizeObservation(observed.payload, observed.event, requestId, group.traceId, correlationId, platformRayId));
     }
   }
   return Object.freeze({
     traces: output.sort((left, right) => left.requestId.localeCompare(right.requestId)),
     observations: observations.sort((left, right) =>
+      left.requestId.localeCompare(right.requestId) || left.emittedAtMs - right.emittedAtMs,
+    ),
+    inventoryObservations: inventoryObservations.sort((left, right) =>
       left.requestId.localeCompare(right.requestId) || left.emittedAtMs - right.emittedAtMs,
     ),
   });
@@ -808,6 +842,98 @@ export function exportDeadline(ledger) {
   return Math.max(...ledger.map((record, index) => numberFrom(record?.completedAtMs, `ledger[${index}].completedAtMs`))) + 10 * 60 * 1_000;
 }
 
+function requestIdOrder(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function safeFailureClass(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = /^(g30-(?:trace-export|b0):[a-z0-9-]+)/.exec(message);
+  return match?.[1] ?? "unknown";
+}
+
+function traceIsSchemaComplete(trace, requestId) {
+  const roots = Array.isArray(trace?.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
+  if (roots.length !== 1) return false;
+  if (trace?.schema !== "sdt.commit/v1" || trace?.boundary !== "success" || trace?.complete !== true || trace?.runtimeVerified !== true) {
+    return false;
+  }
+  try {
+    verifyRuntimeSuccessTrace(trace);
+    return true;
+  } catch {
+    // The live failure artifact is a classification record, not a second
+    // validator. A failed runtime re-verification remains schema-incomplete.
+    return false;
+  }
+}
+
+/**
+ * Captures the immutable client ledger's complete join state when the trace
+ * export fails. It deliberately keeps request identity only in the local
+ * failure artifact: no raw trace/correlation/tag/token data is copied into
+ * it, and the normal evidence copier never publishes this file.
+ */
+export function buildTraceExportFailureEvidence({ ledger, traces, emittedRowInventory = [], capturedAtMs = Date.now(), deadlineMs, error }) {
+  if (!Array.isArray(ledger) || ledger.length === 0) fail("failure-evidence", "failure evidence needs the canonical B ledger");
+  if (!Array.isArray(traces)) fail("failure-evidence", "failure evidence needs normalized traces");
+  if (!Array.isArray(emittedRowInventory)) fail("failure-evidence", "failure evidence needs emitted-row inventory");
+  const tracesByRequestId = new Map();
+  for (const trace of traces) {
+    if (typeof trace?.requestId === "string" && trace.requestId.length > 0) tracesByRequestId.set(trace.requestId, trace);
+  }
+  const ranked = ledger.map((record, index) => ({
+    record,
+    ordinal: index + 1,
+    requestId: required(`ledger[${index}].requestId`, record?.requestId),
+    clientLatencyMs: numberFrom(record?.responseLatencyMs, `ledger[${index}].responseLatencyMs`),
+  })).sort((left, right) => right.clientLatencyMs - left.clientLatencyMs || requestIdOrder(left.requestId, right.requestId));
+  const rankByRequestId = new Map(ranked.map((entry, index) => [entry.requestId, index + 1]));
+  const requestJoinStates = ledger.map((record, index) => {
+    const requestId = required(`ledger[${index}].requestId`, record?.requestId);
+    const trace = tracesByRequestId.get(requestId);
+    const spans = Array.isArray(trace?.spans) ? trace.spans : [];
+    const observedRows = new Set(spans.map((span) => span?.rowId).filter((rowId) => typeof rowId === "string"));
+    const rootPresent = observedRows.has("S00");
+    const schemaComplete = traceIsSchemaComplete(trace, requestId);
+    const stage = schemaComplete ? "schema-complete" : rootPresent ? "schema-incomplete" : "root-absent";
+    return Object.freeze({
+      requestId,
+      ordinal: index + 1,
+      fullLedgerRank: rankByRequestId.get(requestId),
+      clientLatencyMs: numberFrom(record?.responseLatencyMs, `ledger[${index}].responseLatencyMs`),
+      tracePresent: trace !== undefined,
+      rootPresent,
+      runtimeVerified: trace?.runtimeVerified === true,
+      schemaComplete,
+      stage,
+      observedRequiredRows: Object.freeze(SUCCESS_REQUIRED.filter((rowId) => observedRows.has(rowId))),
+      missingRequiredRows: Object.freeze(SUCCESS_REQUIRED.filter((rowId) => !observedRows.has(rowId))),
+    });
+  });
+  const missing = requestJoinStates.filter((entry) => !entry.schemaComplete);
+  return Object.freeze({
+    task: "SDT-G30",
+    phase: "B",
+    result: "trace-export-failed",
+    capturedAt: new Date(numberFrom(capturedAtMs, "failure.capturedAtMs")).toISOString(),
+    exportDeadline: new Date(numberFrom(deadlineMs, "failure.deadlineMs")).toISOString(),
+    failureClass: safeFailureClass(error),
+    clientCount: requestJoinStates.length,
+    schemaCompleteCount: requestJoinStates.length - missing.length,
+    missingCount: missing.length,
+    missingRequestIds: Object.freeze(missing.map((entry) => entry.requestId)),
+    requestJoinStates: Object.freeze(requestJoinStates),
+    emittedRowInventory: Object.freeze([...emittedRowInventory]),
+    rawDataHandling: "local failure artifact only; no raw telemetry, trace IDs, correlation IDs, tags, payloads, or credentials are retained",
+  });
+}
+
+function writeTraceExportFailureEvidence(path, evidence) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+}
+
 function pendingTelemetryError(error) {
   const message = error instanceof Error ? error.message : String(error);
   // A complete-success assertion can fail while the bounded query has already
@@ -853,6 +979,7 @@ async function main() {
   const ledgerPath = required("--ledger", argument("--ledger"));
   const output = argument("--output", ".artifacts/g30-b0-traces.json");
   const rawOutput = argument("--raw-output");
+  const failureOutput = argument("--failure-output");
   const ledgerDocument = JSON.parse(readFileSync(ledgerPath, "utf8"));
   const observationLedger = observationLedgerForPhase(ledgerDocument);
   const input = argument("--input");
@@ -868,27 +995,54 @@ async function main() {
     fetchCohort = async () => exportCohortTelemetry({ accountId, token, template, ledger: observationLedger });
   }
   const deadline = exportDeadline(ledgerDocument.ledger);
-  const acquisition = await acquireCohortTelemetry({
-    fetchCohort,
-    deadlineMs: deadline,
-    retry: input === undefined,
-    validate: async (raw) => {
-      const bundle = normalizeTelemetryBundle(raw, Date.now(), clientRequestIdByPlatformRayId(observationLedger));
-      const retainedRequestIds = new Set(ledgerDocument.ledger?.map((record) => record?.requestId));
-      const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
-      const proof = assertTraceCohort(ledgerDocument.ledger, traces, Date.now());
-      const observationTraces = bundle.traces.filter((trace) => trace.complete === true && trace.runtimeVerified === true);
-      assertObservationStream(
-        observationLedger,
-        observationTraces,
-        bundle.observations,
-        { allowedMissingRequestIds: proof.missingRequestIds },
-      );
-      return Object.freeze({ bundle, traces, observationTraces, proof });
-    },
-  });
+  let lastFailureEvidence;
+  let acquisition;
+  try {
+    acquisition = await acquireCohortTelemetry({
+      fetchCohort,
+      deadlineMs: deadline,
+      retry: input === undefined,
+      validate: async (raw) => {
+        const validationAtMs = Date.now();
+        const bundle = normalizeTelemetryBundle(raw, validationAtMs, clientRequestIdByPlatformRayId(observationLedger));
+        const retainedRequestIds = new Set(ledgerDocument.ledger?.map((record) => record?.requestId));
+        const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
+        const inventoryObservations = bundle.inventoryObservations.filter((observation) => retainedRequestIds.has(observation.requestId));
+        const emittedRowInventory = reconcileEmittedRowInventory(ledgerDocument.ledger, traces, inventoryObservations);
+        try {
+          const proof = assertTraceCohort(ledgerDocument.ledger, traces, validationAtMs);
+          const observationTraces = bundle.traces.filter((trace) => trace.complete === true && trace.runtimeVerified === true);
+          assertObservationStream(
+            observationLedger,
+            observationTraces,
+            bundle.observations,
+            { allowedMissingRequestIds: proof.missingRequestIds },
+          );
+          return Object.freeze({ bundle, traces, observationTraces, proof, inventoryObservations, emittedRowInventory });
+        } catch (error) {
+          // Preserve the latest normalized cohort even while the bounded retry
+          // loop keeps waiting. If the deadline expires, this is the exact
+          // identity-level state that caused the terminal failure.
+          lastFailureEvidence = buildTraceExportFailureEvidence({
+            ledger: ledgerDocument.ledger,
+            traces,
+            emittedRowInventory,
+            capturedAtMs: validationAtMs,
+            deadlineMs: deadline,
+            error,
+          });
+          throw error;
+        }
+      },
+    });
+  } catch (error) {
+    if (failureOutput !== undefined && lastFailureEvidence !== undefined) {
+      writeTraceExportFailureEvidence(failureOutput, lastFailureEvidence);
+    }
+    throw error;
+  }
   const raw = acquisition.raw;
-  const { bundle, traces, observationTraces, proof } = acquisition.value;
+  const { bundle, traces, observationTraces, proof, inventoryObservations, emittedRowInventory } = acquisition.value;
   const result = {
     task: "SDT-G30",
     phase: "B",
@@ -898,6 +1052,8 @@ async function main() {
     traces,
     observationTraces,
     observations: bundle.observations,
+    inventoryObservations,
+    emittedRowInventory,
   };
   mkdirSync(dirname(output), { recursive: true });
   if (rawOutput !== undefined) {
@@ -905,7 +1061,7 @@ async function main() {
     writeFileSync(rawOutput, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   }
   writeFileSync(output, `${JSON.stringify(result, null, 2)}\n`, "utf8");
-  console.log(JSON.stringify({ traceCount: traces.length, observationTraceCount: observationTraces.length, observationCount: bundle.observations.length, requestCount: proof.requestCount, schemaCompleteCount: proof.schemaCompleteCount, missingCount: proof.missingCount, observationLedgerCount: observationLedger.length }, null, 2));
+  console.log(JSON.stringify({ traceCount: traces.length, observationTraceCount: observationTraces.length, observationCount: bundle.observations.length, inventoryObservationCount: inventoryObservations.length, requestCount: proof.requestCount, schemaCompleteCount: proof.schemaCompleteCount, missingCount: proof.missingCount, observationLedgerCount: observationLedger.length }, null, 2));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

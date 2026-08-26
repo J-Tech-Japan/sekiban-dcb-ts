@@ -27,7 +27,7 @@ import {
   createTraceCorrelationId,
   type NativeTracing,
 } from "../trace/CommitTrace";
-import { observeWorkerInvocation } from "../trace/ObservationStream";
+import { observeWorkerInvocation, type ObservationLogSink } from "../trace/ObservationStream";
 import { verifyCommitTrace } from "../trace/CommitTraceVerifier";
 
 const INITIAL_OWNER_EPOCH = 0;
@@ -76,6 +76,8 @@ export interface CommitWorkerHooks {
   commitTraceProvider?: CommitTraceProviderAdapter;
   /** Cloudflare active-context span API supplied by the Worker entrypoint. */
   nativeTracing?: NativeTracing;
+  /** Test-only sink injection; production emits the structured log normally. */
+  workerObservationSink?: ObservationLogSink;
 }
 
 interface ReservationSuccess {
@@ -102,6 +104,7 @@ interface TagStateResponse {
 interface CommitTraceRequestState {
   readonly trace: CommitTrace;
   scope: CommitTraceScope;
+  enableWorkerObservation?: () => void;
   emitWorkerObservation?: () => void;
 }
 
@@ -411,11 +414,15 @@ export class CommitWorker {
       attributes: { "activation.first": workerObservation.firstInvocation },
     }, async (root) => {
       let workerObservationEmitted = false;
+      let workerObservationEligible = false;
       const state: CommitTraceRequestState = {
         trace,
         scope: root,
+        enableWorkerObservation: () => {
+          workerObservationEligible = true;
+        },
         emitWorkerObservation: () => {
-          if (workerObservationEmitted || requestId === undefined || requestId.length === 0) return;
+          if (!workerObservationEligible || workerObservationEmitted || requestId === undefined || requestId.length === 0) return;
           workerObservationEmitted = true;
           // This is deliberately a separate structured Workers Logs event.
           // It uses existing accepted identity without adding a span row,
@@ -424,13 +431,22 @@ export class CommitWorker {
             ...workerObservation,
             requestId,
             correlationId: trace.observationCorrelationId(),
+            emittedWorkerRowIds: trace.emittedWorkerRowIds(),
             scriptVersion: this.hooks.commitTraceProvider?.scriptVersion,
             colo: this.hooks.commitTraceProvider?.colo,
-          });
+          }, this.hooks.workerObservationSink);
         },
       };
-      const response = await this.handleUntraced(request, state);
-      return state.scope.span("S15", { httpStatus: response.status }, async () => response);
+      try {
+        const response = await this.handleUntraced(request, state);
+        // The one Worker observation is emitted only after S15 has settled,
+        // so its inventory covers every native Worker span entered by this
+        // request. Its console transport remains observation-only and is not
+        // awaited as part of the V1 response.
+        return await state.scope.span("S15", { httpStatus: response.status }, async () => response);
+      } finally {
+        state.emitWorkerObservation?.();
+      }
     });
   }
 
@@ -471,7 +487,7 @@ export class CommitWorker {
     if (traceState !== undefined) {
       traceState.trace.markAccepted(attemptId);
       traceState.scope = traceState.scope.accepted(attemptId);
-      traceState.emitWorkerObservation?.();
+      traceState.enableWorkerObservation?.();
     }
     const writeTimestamp = writeTimestampUtc(startedAt);
     const candidates = input.eventCandidates.map((candidate) => ({

@@ -42,6 +42,11 @@ readonly APRIME_FILE="${ARTIFACTS_DIR}/g30-b0-A-prime.json"
 readonly TRACES_FILE="${ARTIFACTS_DIR}/g30-b0-traces.json"
 readonly TRACE_RAW_FILE="${ARTIFACTS_DIR}/g30-b0-telemetry-raw.json"
 readonly TRACE_QUERY_FILE="${ARTIFACTS_DIR}/g30-observability-query.json"
+# A terminal trace-export failure must retain the exact canonical request set
+# and per-request join state locally. It is never copied into the docs-only R
+# evidence set, so it can support subsequent forensic classification without
+# leaking raw telemetry or credentials into published evidence.
+readonly TRACE_FAILURE_FILE="${ARTIFACTS_DIR}/g30-b0-${SOURCE_COMMIT:0:12}-trace-export-failure.json"
 readonly A_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-deployment.json"
 readonly B_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-B-deployment.json"
 readonly APRIME_WITNESS_FILE="${ARTIFACTS_DIR}/g30-b0-A-prime-deployment.json"
@@ -176,7 +181,7 @@ node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "$
 # ledger; it has no human-supplied request IDs or observation declarations.
 # The token is file-fed and this export may not replace a missing/slow trace.
 node "${SCRIPT_DIR}/g30-observability-query.mjs" --ledger "${B_FILE}" --output "${TRACE_QUERY_FILE}"
-node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${ACCOUNT_ID}" --api-token-file "${TRACE_TOKEN_FILE}" --query "${TRACE_QUERY_FILE}" --output "${TRACES_FILE}" --raw-output "${TRACE_RAW_FILE}"
+node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${ACCOUNT_ID}" --api-token-file "${TRACE_TOKEN_FILE}" --query "${TRACE_QUERY_FILE}" --output "${TRACES_FILE}" --raw-output "${TRACE_RAW_FILE}" --failure-output "${TRACE_FAILURE_FILE}"
 
 capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"
 deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"

@@ -51,6 +51,25 @@ export interface G30Observation {
   [key: string]: unknown;
 }
 
+export interface G30EmittedRowInventoryEntry {
+  requestId: string;
+  inventoryAvailable: boolean;
+  tracePresent: boolean;
+  emittedRows: readonly string[];
+  ingestedRows: readonly string[];
+  diff: {
+    expectedNotEmitted: readonly string[];
+    expectedNotIngested: readonly string[];
+    emittedNotIngested: readonly string[];
+    ingestedNotEmitted: readonly string[];
+    rows: readonly {
+      rowId: string;
+      classification: "matched" | "ingestion-missing" | "inventory-divergence" | "emission-missing" | "inventory-unavailable";
+    }[];
+    classification: "matched" | "emission" | "ingestion" | "mixed" | "inventory-divergence" | "inventory-unavailable";
+  };
+}
+
 export interface G30ObservationIndex {
   ledgerByRequestId: Map<string, Record<string, unknown>>;
   traceByRequestId: Map<string, G30Trace>;
@@ -126,6 +145,17 @@ export function assertObservationStream(
   observations: readonly G30Observation[],
   options?: Readonly<{ allowedMissingRequestIds?: readonly string[] }>,
 ): G30ObservationIndex;
+export function reconcileEmittedRowInventory(
+  ledger: readonly object[],
+  traces: readonly G30Trace[],
+  inventoryObservations: readonly G30Observation[],
+): readonly G30EmittedRowInventoryEntry[];
+export function assertEmittedRowInventory(
+  ledger: readonly object[],
+  traces: readonly G30Trace[],
+  inventoryObservations: readonly G30Observation[],
+  evidenceInventory: readonly G30EmittedRowInventoryEntry[],
+): readonly G30EmittedRowInventoryEntry[];
 export function assertIdleRequestReferences(
   window: unknown,
   label: string,

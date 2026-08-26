@@ -44,6 +44,12 @@ Closes #70
   sensitivity envelope. Human
   activation/outlier records are rejected; refresh, idle, and queue/doorbell
   disposition are calculated from raw telemetry and client timelines only.
+  For an incomplete caller trace, the post-response Worker observation also
+  carries the manifest-derived set of native Worker rows whose callbacks were
+  actually entered. Exported evidence records the per-request emitted /
+  ingested / diff classification, but it is diagnostic only: it cannot supply
+  a missing span, relax the sealed delivery floor, alter the tail, or make
+  AC5 pass.
 - Defers Worker isolate randomness to the first request-handler boundary,
   which preserves per-isolate tracing while keeping the local workerd module
   loader free of forbidden global-scope random generation. CI retains the G15

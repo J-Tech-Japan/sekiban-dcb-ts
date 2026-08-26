@@ -29,6 +29,19 @@ const OUTLIER_HYPOTHESES = Object.freeze([
   "queue-doorbell-backpressure",
 ]);
 const REACTIVATION_CAUSES = new Set(["deployment-correlated", "platform-evidenced", "unknown"]);
+const WORKER_ROW_EMITTERS = new Set(["root-worker", "caller-worker"]);
+const EMITTED_WORKER_ROW_IDS = Object.freeze(
+  manifest.schemas["sdt.commit/v1"].rows
+    .filter((row) => WORKER_ROW_EMITTERS.has(row.emitter))
+    .map((row) => row.rowId)
+    .sort(),
+);
+const EMITTED_WORKER_ROW_ID_SET = new Set(EMITTED_WORKER_ROW_IDS);
+const SUCCESS_EMITTED_WORKER_ROW_IDS = Object.freeze(
+  (manifest.schemas["sdt.commit/v1"].boundaries.find((boundary) => boundary.name === "success")?.requiredRows ?? [])
+    .filter((rowId) => EMITTED_WORKER_ROW_ID_SET.has(rowId))
+    .sort(),
+);
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -44,6 +57,135 @@ function same(left, right) {
 
 function fail(code, message) {
   throw new Error(`g30-b0:${code}:${message}`);
+}
+
+function orderedKnownWorkerRows(value, label) {
+  if (!Array.isArray(value)) fail("emitted-row-inventory", `${label} must be an array`);
+  const rows = [];
+  const seen = new Set();
+  for (const [index, raw] of value.entries()) {
+    const rowId = nonEmptyString(raw, `${label}[${index}]`);
+    if (!EMITTED_WORKER_ROW_ID_SET.has(rowId)) {
+      fail("emitted-row-inventory", `${label}[${index}] is not a Worker-local manifest row`);
+    }
+    if (seen.has(rowId)) fail("emitted-row-inventory", `${label} repeats ${rowId}`);
+    seen.add(rowId);
+    rows.push(rowId);
+  }
+  return Object.freeze(rows.sort(requestIdOrder));
+}
+
+/**
+ * Reconciles raw sdt.observe/v1 Worker inventory against the separately
+ * ingested custom-span rows. It intentionally has no AC5 completion verdict:
+ * a row observed in the inventory but absent from telemetry remains an
+ * ingestion finding, not a substitute for a complete trace.
+ */
+export function reconcileEmittedRowInventory(ledger, traces, inventoryObservations) {
+  if (!Array.isArray(ledger) || !Array.isArray(traces) || !Array.isArray(inventoryObservations)) {
+    fail("emitted-row-inventory", "reconciliation requires ledger, traces, and Worker observations");
+  }
+  const ledgerIds = new Set();
+  for (const [index, record] of ledger.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `emitted-row-ledger[${index}].requestId`);
+    if (ledgerIds.has(requestId)) fail("emitted-row-inventory", `ledger repeats ${requestId}`);
+    ledgerIds.add(requestId);
+  }
+  const tracesByRequestId = new Map();
+  for (const [index, trace] of traces.entries()) {
+    const requestId = nonEmptyString(trace?.requestId, `emitted-row-traces[${index}].requestId`);
+    if (!ledgerIds.has(requestId) || tracesByRequestId.has(requestId)) {
+      fail("emitted-row-inventory", `trace ${requestId} is outside or duplicated in the ledger`);
+    }
+    tracesByRequestId.set(requestId, trace);
+  }
+  const inventoryByRequestId = new Map();
+  for (const [index, observation] of inventoryObservations.entries()) {
+    if (observation?.schema !== "sdt.observe/v1" || observation?.event !== "worker.invocation") {
+      fail("emitted-row-inventory", `inventory observation ${index} is not a Worker sdt.observe/v1 event`);
+    }
+    const requestId = nonEmptyString(observation?.requestId, `emitted-row-observations[${index}].requestId`);
+    if (!ledgerIds.has(requestId) || inventoryByRequestId.has(requestId)) {
+      fail("emitted-row-inventory", `inventory observation ${requestId} is outside or duplicated in the ledger`);
+    }
+    inventoryByRequestId.set(requestId, observation);
+  }
+  return Object.freeze(ledger.map((record, index) => {
+    const requestId = nonEmptyString(record?.requestId, `emitted-row-ledger[${index}].requestId`);
+    const trace = tracesByRequestId.get(requestId);
+    const observation = inventoryByRequestId.get(requestId);
+    const inventoryAvailable = observation !== undefined;
+    const emittedRows = inventoryAvailable
+      ? orderedKnownWorkerRows(observation.emittedWorkerRowIds, `inventory[${requestId}].emittedWorkerRowIds`)
+      : Object.freeze([]);
+    const ingestedRows = Object.freeze([...new Set(
+      (Array.isArray(trace?.spans) ? trace.spans : [])
+        .map((span) => span?.rowId)
+        .filter((rowId) => typeof rowId === "string" && EMITTED_WORKER_ROW_ID_SET.has(rowId)),
+    )].sort(requestIdOrder));
+    const emittedSet = new Set(emittedRows);
+    const ingestedSet = new Set(ingestedRows);
+    const expectedRows = SUCCESS_EMITTED_WORKER_ROW_IDS;
+    const expectedNotEmitted = inventoryAvailable
+      ? Object.freeze(expectedRows.filter((rowId) => !emittedSet.has(rowId)))
+      : Object.freeze([]);
+    const expectedNotIngested = Object.freeze(expectedRows.filter((rowId) => !ingestedSet.has(rowId)));
+    const emittedNotIngested = inventoryAvailable
+      ? Object.freeze(emittedRows.filter((rowId) => !ingestedSet.has(rowId)))
+      : Object.freeze([]);
+    const ingestedNotEmitted = inventoryAvailable
+      ? Object.freeze(ingestedRows.filter((rowId) => !emittedSet.has(rowId)))
+      : Object.freeze([]);
+    const rows = Object.freeze(expectedRows.map((rowId) => {
+      if (!inventoryAvailable) return Object.freeze({ rowId, classification: "inventory-unavailable" });
+      const emitted = emittedSet.has(rowId);
+      const ingested = ingestedSet.has(rowId);
+      return Object.freeze({
+        rowId,
+        classification: emitted && ingested
+          ? "matched"
+          : emitted
+            ? "ingestion-missing"
+            : ingested
+              ? "inventory-divergence"
+              : "emission-missing",
+      });
+    }));
+    const classification = !inventoryAvailable
+      ? "inventory-unavailable"
+      : expectedNotEmitted.length === 0 && emittedNotIngested.length === 0 && ingestedNotEmitted.length === 0
+        ? "matched"
+        : expectedNotEmitted.length > 0 && emittedNotIngested.length > 0
+          ? "mixed"
+          : expectedNotEmitted.length > 0
+            ? "emission"
+            : emittedNotIngested.length > 0
+              ? "ingestion"
+              : "inventory-divergence";
+    return Object.freeze({
+      requestId,
+      inventoryAvailable,
+      tracePresent: trace !== undefined,
+      emittedRows,
+      ingestedRows,
+      diff: Object.freeze({
+        expectedNotEmitted,
+        expectedNotIngested,
+        emittedNotIngested,
+        ingestedNotEmitted,
+        rows,
+        classification,
+      }),
+    });
+  }));
+}
+
+export function assertEmittedRowInventory(ledger, traces, inventoryObservations, evidenceInventory) {
+  const derived = reconcileEmittedRowInventory(ledger, traces, inventoryObservations);
+  if (!same(derived, evidenceInventory)) {
+    fail("emitted-row-inventory", "evidence inventory is not the exact exported observation/trace reconciliation");
+  }
+  return derived;
 }
 
 function nonEmptyString(value, label) {
@@ -997,10 +1139,37 @@ export function assertB0Evidence(evidence) {
     evidence.observations,
     { allowedMissingRequestIds: traces.missingRequestIds },
   );
+  // This is deliberately after the sealed AC5 trace gate and after the
+  // existing observation join gate. The inventory can explain a missing row,
+  // but can never turn that missing span into a pass or hide an invalid log.
+  const emittedRowInventory = assertEmittedRowInventory(
+    phases.B.ledger,
+    evidence.traces,
+    evidence.inventoryObservations,
+    evidence.emittedRowInventory,
+  );
   const warmup = assertWarmupProof("B", phases.B.warmup, observation);
   const activationIdle = assertActivationIdleEvidence(phases.B.idleExperiment, observation);
   const outliers = assertOutlierClassification(phases.B, observation);
-  return Object.freeze({ windows, config, traceSamplingSettlement, warmup: { B: warmup }, traces, latency, observation: { requests: observationLedger.length, events: evidence.observations.length }, activationIdle, outliers });
+  return Object.freeze({
+    windows,
+    config,
+    traceSamplingSettlement,
+    warmup: { B: warmup },
+    traces,
+    latency,
+    observation: { requests: observationLedger.length, events: evidence.observations.length },
+    emittedRowInventory: Object.freeze({
+      requests: emittedRowInventory.length,
+      classifications: Object.freeze(Object.fromEntries(
+        [...new Set(emittedRowInventory.map((entry) => entry.diff.classification))]
+          .sort(requestIdOrder)
+          .map((classification) => [classification, emittedRowInventory.filter((entry) => entry.diff.classification === classification).length]),
+      )),
+    }),
+    activationIdle,
+    outliers,
+  });
 }
 
 function makeRecords(phase, responseLatencyMs = 100) {
@@ -1087,7 +1256,7 @@ function makeObservation(record) {
   const provider = { scriptVersion: "g30-synthetic", colo: "test-colo", cpuTimeMs: 1, wallTimeMs: record.responseLatencyMs };
   const isolated = { storageWrites: 0, usedForControl: false, exposedInPublicResponse: false };
   return [
-    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}`, actorClass: "WORKER", isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, provider, ...isolated },
+    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}`, actorClass: "WORKER", emittedWorkerRowIds: SUCCESS_EMITTED_WORKER_ROW_IDS, isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, provider, ...isolated },
     ...["BOOTSTRAP", "ALLOCATOR", "TAG"].map((actorClass) => ({
       schema: "sdt.observe/v1", event: "do.handler", emittedAtMs: record.completedAtMs - 2, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}-${actorClass}`,
       actorClass, activationId: `${actorClass.toLowerCase()}-${record.requestId}`, activationFirst: false,
@@ -1140,6 +1309,9 @@ function syntheticB0Evidence() {
   const allRecords = observationLedgerForPhase(phaseB);
   const observationTraces = allRecords.map(makeTrace);
   const observations = allRecords.flatMap(makeObservation);
+  const bRequestIds = new Set(b.map((record) => record.requestId));
+  const inventoryObservations = observations.filter((entry) => entry.event === "worker.invocation" && bRequestIds.has(entry.requestId));
+  const emittedRowInventory = reconcileEmittedRowInventory(b, b.map(makeTrace), inventoryObservations);
   observations.push(
     { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 20, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "started", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
     { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 15, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "ended", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
@@ -1152,7 +1324,12 @@ function syntheticB0Evidence() {
       B: phaseB,
       "A-prime": { ledger: prime, rawAttempts: [], configuration: { ...baseConfig, deployedVersion: "off-prime" } },
     },
-    traces: b.map(makeTrace), observationTraces, observations, traceExportCompletedAtMs: b.at(-1).completedAtMs + 10,
+    traces: b.map(makeTrace),
+    observationTraces,
+    observations,
+    inventoryObservations,
+    emittedRowInventory,
+    traceExportCompletedAtMs: b.at(-1).completedAtMs + 10,
   };
 }
 
@@ -1172,6 +1349,7 @@ export function selfTest() {
     ["provider-request-id-missing", (value) => { delete value.observations[0].platformRequestId; }, "observation[0].platformRequestId"],
     ["barrier-missing", (value) => { value.observations = value.observations.filter((entry) => entry.event !== "fault.barrier"); }, "fault-barrier"],
     ["idle-reference-missing", (value) => { delete value.phases.B.idleExperiment.windows[0].previousRequestId; }, "idle[0].previous.requestId"],
+    ["emitted-row-inventory-forged", (value) => { value.emittedRowInventory[0].diff.classification = "emission"; }, "emitted-row-inventory"],
   ]) {
     const altered = structuredClone(evidence);
     mutate(altered);
