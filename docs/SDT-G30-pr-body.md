@@ -88,6 +88,9 @@ commit, or evidence artifact.
 
 The remote migration preflight first verifies the sealed config's exact D1
 `database_id`, `database_name`, and `migrations_dir` values, then calls
-Wrangler through the verified `D1` and `D1_MV` binding aliases. Direct
-durable-name lookup is not an authorized operation in this account; its
-redacted HTTP 403/code-7403 result is retained as diagnostic evidence only.
+Wrangler through the verified `D1` and `D1_MV` binding aliases using that
+config's repo-root absolute path. A cwd-relative config invocation is a
+separate rejected mutation, since Wrangler can otherwise resolve it
+inconsistently. Direct durable-name lookup is not an authorized operation in
+this account; its redacted HTTP 403/code-7403 result is retained as diagnostic
+evidence only.

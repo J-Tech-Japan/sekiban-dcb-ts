@@ -39,6 +39,12 @@ const MUTATIONS = Object.freeze([
     to: 'for binding in "${PRIMARY_D1_BINDINGS[@]}"; do\n    assert_sealed_d1_config',
   },
   {
+    id: "remote-migration-cwd-relative-config",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: 'd1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote',
+    to: 'd1 migrations list "${binding}" --cwd samples/meeting-room --config "wrangler.g30-primary-off.jsonc" --remote',
+  },
+  {
     id: "remote-migration-id-verification",
     file: "scripts/g30-config-check.mjs",
     from: 'if (entry?.database_id !== expected.id || entry?.database_name !== expected.name || entry?.migrations_dir !== expected.migrationsDir)',

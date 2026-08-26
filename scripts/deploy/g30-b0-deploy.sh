@@ -11,7 +11,11 @@ readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 readonly PRIMARY_OFF_CONFIG="samples/meeting-room/wrangler.g30-primary-off.jsonc"
 readonly PRIMARY_ON_CONFIG="samples/meeting-room/wrangler.g30-primary-on.jsonc"
 readonly RECEIVER_CONFIG="samples/meeting-room/wrangler.g30-receiver-off.jsonc"
-readonly PRIMARY_CONFIG_NAME="wrangler.g30-primary-off.jsonc"
+# `wrangler --cwd` and a relative `--config` are not composed consistently
+# by the remote D1 subcommand.  Keep the binding lookup rooted in the same
+# sealed primary-off config that the config checker verifies; this preserves
+# the ID authority while avoiding a cwd-relative fallback/7403 failure.
+readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"
 readonly PRIMARY_WORKER_NAME="sekiban-dcb-meeting-room-cloudflare-only"
 readonly PRIMARY_D1_BINDINGS=(
   "D1"
@@ -55,7 +59,7 @@ assert_no_remote_migrations() {
   local binding output
   assert_sealed_d1_config
   for binding in "${PRIMARY_D1_BINDINGS[@]}"; do
-    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --cwd samples/meeting-room --config "${PRIMARY_CONFIG_NAME}" --remote)"
+    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote)"
     printf '%s\n' "${output}"
     [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${binding}" >&2; exit 1; }
   done

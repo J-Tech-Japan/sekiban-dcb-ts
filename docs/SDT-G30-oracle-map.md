@@ -40,6 +40,8 @@ time-derived activation cause, or turns B0 overhead into a performance pass/fail
 
 The remote migration preflight verifies the sealed config's exact
 `database_id`, `database_name`, and `migrations_dir` values before calling
-Wrangler through the `D1` and `D1_MV` binding aliases. Direct durable-name
-lookup is retained only as a redacted HTTP 403/code-7403 observation outside
-G30 scope.
+Wrangler through the `D1` and `D1_MV` binding aliases, with the repo-root
+absolute path to that verified config. It rejects a cwd-relative config
+invocation, which Wrangler can otherwise resolve inconsistently. Direct
+durable-name lookup is retained only as a redacted HTTP 403/code-7403
+observation outside G30 scope.

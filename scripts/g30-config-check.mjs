@@ -106,9 +106,15 @@ export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
   if (/d1 migrations list "\$\{database\}"/.test(runbookSource)) {
     throw new Error("G30 remote migration preflight must not pass a durable database name directly to Wrangler");
   }
+  if (!runbookSource.includes('readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"')) {
+    throw new Error("G30 remote migration preflight must bind Wrangler to the sealed primary-off config path");
+  }
   const functionBody = /assert_no_remote_migrations\(\) \{([\s\S]*?)\n\}/.exec(runbookSource)?.[1] ?? "";
   if (!/assert_sealed_d1_config\n\s+for binding/.test(functionBody)) {
     throw new Error("G30 remote migration preflight must verify sealed D1 identities before listing migrations");
+  }
+  if (!/d1 migrations list "\$\{binding\}" --config "\$\{PRIMARY_CONFIG_PATH\}" --remote/.test(functionBody) || /--cwd\s+samples\/meeting-room/.test(functionBody)) {
+    throw new Error("G30 remote migration preflight must use the ID-verified absolute config path, not a cwd-relative config");
   }
   return { migrationBindings: bindings, identityAuthority: "sealed-config-database-id/name/migrations-dir" };
 }
@@ -194,6 +200,14 @@ export function selfTest() {
     assertRemoteMigrationPreflight(off, runbook.replace('assert_sealed_d1_config\n  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do', 'for binding in "${PRIMARY_D1_BINDINGS[@]}"; do\n    assert_sealed_d1_config'));
   } catch (error) { orderRed = String(error).includes("before listing migrations"); }
   if (!orderRed) throw new Error("G30 migration preflight-order mutation unexpectedly passed");
+  let cwdRelativeConfigRed = false;
+  try {
+    assertRemoteMigrationPreflight(off, runbook.replace(
+      '--config "${PRIMARY_CONFIG_PATH}" --remote',
+      '--cwd samples/meeting-room --config "wrangler.g30-primary-off.jsonc" --remote',
+    ));
+  } catch (error) { cwdRelativeConfigRed = String(error).includes("ID-verified absolute config path"); }
+  if (!cwdRelativeConfigRed) throw new Error("G30 migration cwd-relative-config mutation unexpectedly passed");
   let receiverSurfaceRed = false;
   try { const altered = structuredClone(receiver); altered.workers_dev = true; assertG30Config(off, on, altered); } catch (error) { receiverSurfaceRed = String(error).includes("G38 Phase M"); }
   if (!receiverSurfaceRed) throw new Error("G30 receiver public-surface mutation unexpectedly passed");
@@ -208,7 +222,7 @@ export function selfTest() {
   let witnessReplayRed = false;
   try { assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', '--without-prior-versions "${prior}"')); } catch (error) { witnessReplayRed = String(error).includes("pre-deploy snapshot"); }
   if (!witnessReplayRed) throw new Error("G30 witness-replay snapshot mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
+  return { ...result, ...isolation, ...migration, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "remote-migration-cwd-relative-config", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
