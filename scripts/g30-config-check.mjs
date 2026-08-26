@@ -116,7 +116,14 @@ export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
   if (!/d1 migrations list "\$\{binding\}" --config "\$\{PRIMARY_CONFIG_PATH\}" --remote/.test(functionBody) || /--cwd\s+samples\/meeting-room/.test(functionBody)) {
     throw new Error("G30 remote migration preflight must use the ID-verified absolute config path, not a cwd-relative config");
   }
-  return { migrationBindings: bindings, identityAuthority: "sealed-config-database-id/name/migrations-dir" };
+  if (!functionBody.includes('env -u CLOUDFLARE_ACCOUNT_ID "${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote')) {
+    throw new Error("G30 remote migration preflight must unset CLOUDFLARE_ACCOUNT_ID for the ID-verified binding call");
+  }
+  return {
+    migrationBindings: bindings,
+    identityAuthority: "sealed-config-database-id/name/migrations-dir",
+    migrationPreflightEnvironment: "CLOUDFLARE_ACCOUNT_ID-unset-for-binding-read",
+  };
 }
 
 /**
@@ -227,6 +234,9 @@ export function selfTest() {
     ));
   } catch (error) { cwdRelativeConfigRed = String(error).includes("ID-verified absolute config path"); }
   if (!cwdRelativeConfigRed) throw new Error("G30 migration cwd-relative-config mutation unexpectedly passed");
+  let accountEnvironmentRed = false;
+  try { assertRemoteMigrationPreflight(off, runbook.replace("env -u CLOUDFLARE_ACCOUNT_ID ", "")); } catch (error) { accountEnvironmentRed = String(error).includes("must unset CLOUDFLARE_ACCOUNT_ID"); }
+  if (!accountEnvironmentRed) throw new Error("G30 migration account-environment mutation unexpectedly passed");
   let conformancePropagationRed = false;
   try { assertConformancePropagationRetry(runbook.replace("readonly CONFORMANCE_RETRY_ATTEMPTS=15", "readonly CONFORMANCE_RETRY_ATTEMPTS=1")); } catch (error) { conformancePropagationRed = String(error).includes("15x1s"); }
   if (!conformancePropagationRed) throw new Error("G30 conformance propagation retry mutation unexpectedly passed");
@@ -244,7 +254,7 @@ export function selfTest() {
   let witnessReplayRed = false;
   try { assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', '--without-prior-versions "${prior}"')); } catch (error) { witnessReplayRed = String(error).includes("pre-deploy snapshot"); }
   if (!witnessReplayRed) throw new Error("G30 witness-replay snapshot mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, ...conformancePropagation, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "remote-migration-cwd-relative-config", "conformance-propagation-retry", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
+  return { ...result, ...isolation, ...migration, ...conformancePropagation, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "remote-migration-cwd-relative-config", "remote-migration-account-env-isolation", "conformance-propagation-retry", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

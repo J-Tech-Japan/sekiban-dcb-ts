@@ -1369,6 +1369,25 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("ID-verified absolute config path");
   });
 
+  it("rejects a migration listing that inherits the telemetry account override", () => {
+    const config = {
+      d1_databases: [
+        { binding: "D1", database_id: "eccf6048-7fc8-4412-a157-9fa180353f6d", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline", migrations_dir: "../../migrations/d1/g32" },
+        { binding: "D1_MV", database_id: "c733dfb2-013a-4a5d-a72c-47931a63bac4", database_name: "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv", migrations_dir: "../../migrations/mv" },
+      ],
+    };
+    const runbook = [
+      'readonly PRIMARY_CONFIG_PATH="${REPO_ROOT}/samples/meeting-room/wrangler.g30-primary-off.jsonc"',
+      "assert_no_remote_migrations() {",
+      "  assert_sealed_d1_config",
+      '  for binding in "${PRIMARY_D1_BINDINGS[@]}"; do',
+      '    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote)"',
+      "  done",
+      "}",
+    ].join("\n");
+    expect(() => assertRemoteMigrationPreflight(config, runbook)).toThrow("must unset CLOUDFLARE_ACCOUNT_ID");
+  });
+
   it("classifies a telemetry group without an S00 root as root-absent instead of matching by time", () => {
     const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
     raw.events = raw.events.filter((entry) => !(

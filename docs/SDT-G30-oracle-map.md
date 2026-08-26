@@ -42,6 +42,10 @@ The remote migration preflight verifies the sealed config's exact
 `database_id`, `database_name`, and `migrations_dir` values before calling
 Wrangler through the `D1` and `D1_MV` binding aliases, with the repo-root
 absolute path to that verified config. It rejects a cwd-relative config
-invocation, which Wrangler can otherwise resolve inconsistently. Direct
-durable-name lookup is retained only as a redacted HTTP 403/code-7403
-observation outside G30 scope.
+invocation, which Wrangler can otherwise resolve inconsistently. The binding
+subprocess alone unsets the ambient `CLOUDFLARE_ACCOUNT_ID`: on 2026-08-26 the
+same sealed binding returned Wrangler API code 7403 when that telemetry-export
+override was inherited and `No migrations to apply` without it. The checker
+and source mutation require this isolation; the captured account ID remains an
+explicit input to the later trace exporter. Direct durable-name lookup is
+retained only as a redacted HTTP 403/code-7403 observation outside G30 scope.

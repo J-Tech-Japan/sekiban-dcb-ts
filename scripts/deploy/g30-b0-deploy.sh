@@ -69,7 +69,14 @@ assert_no_remote_migrations() {
   local binding output
   assert_sealed_d1_config
   for binding in "${PRIMARY_D1_BINDINGS[@]}"; do
-    output="$("${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote)"
+    # Keep the telemetry account override for the later trace exporter, but do
+    # not inherit it into this config-selected D1 binding call.  On 2026-08-26
+    # Wrangler returned API 7403 only with CLOUDFLARE_ACCOUNT_ID inherited;
+    # the same sealed config/binding succeeded through the logged-in OAuth
+    # account without that ambient override.  The sealed ID check above remains
+    # the identity authority; this merely prevents an unrelated env override
+    # from redirecting the read-only migration preflight.
+    output="$(env -u CLOUDFLARE_ACCOUNT_ID "${WRANGLER_BIN}" d1 migrations list "${binding}" --config "${PRIMARY_CONFIG_PATH}" --remote)"
     printf '%s\n' "${output}"
     [[ "${output}" == *"No migrations to apply"* ]] || { printf 'G30 %s has unapplied migration(s)\n' "${binding}" >&2; exit 1; }
   done

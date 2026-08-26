@@ -124,6 +124,10 @@ The remote migration preflight first verifies the sealed config's exact D1
 Wrangler through the verified `D1` and `D1_MV` binding aliases using that
 config's repo-root absolute path. A cwd-relative config invocation is a
 separate rejected mutation, since Wrangler can otherwise resolve it
-inconsistently. Direct durable-name lookup is not an authorized operation in
-this account; its redacted HTTP 403/code-7403 result is retained as diagnostic
-evidence only.
+inconsistently. The read-only binding subprocess alone unsets the ambient
+`CLOUDFLARE_ACCOUNT_ID`: the same verified binding reproduced Wrangler API
+code 7403 with that telemetry-export override inherited and passed without it;
+the captured account ID remains an explicit trace-export input. A source
+mutation that restores the inheritance is independently red. Direct
+durable-name lookup is not an authorized operation in this account; its
+redacted HTTP 403/code-7403 result is retained as diagnostic evidence only.

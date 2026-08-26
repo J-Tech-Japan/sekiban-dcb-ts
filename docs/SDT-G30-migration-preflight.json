@@ -7,6 +7,20 @@
     "D1": "No migrations to apply",
     "D1_MV": "No migrations to apply"
   },
+  "environmentIsolation": {
+    "observedAt": "2026-08-26T22:43:12Z",
+    "reproduction": {
+      "withAmbientCloudflareAccountId": {
+        "result": "Wrangler D1 migrations list failed before deployment",
+        "apiErrorCode": 7403
+      },
+      "withoutAmbientCloudflareAccountId": {
+        "result": "the same sealed config and binding returned No migrations to apply"
+      }
+    },
+    "repair": "after the sealed database identity check, the D1 migrations-list child process runs with CLOUDFLARE_ACCOUNT_ID unset; the captured account ID remains an explicit trace-export input only",
+    "scope": "read-only migration preflight only; no runtime, Worker configuration, protocol, D1 schema, or placement change"
+  },
   "rejectedDirectNameProbe": {
     "httpStatus": 403,
     "errorCode": 7403,

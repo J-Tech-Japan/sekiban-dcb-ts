@@ -45,6 +45,12 @@ const MUTATIONS = Object.freeze([
     to: 'd1 migrations list "${binding}" --cwd samples/meeting-room --config "wrangler.g30-primary-off.jsonc" --remote',
   },
   {
+    id: "remote-migration-account-env-isolation",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: "env -u CLOUDFLARE_ACCOUNT_ID ",
+    to: "",
+  },
+  {
     id: "conformance-propagation-retry",
     file: "scripts/deploy/g30-b0-deploy.sh",
     from: "readonly CONFORMANCE_RETRY_ATTEMPTS=15",
