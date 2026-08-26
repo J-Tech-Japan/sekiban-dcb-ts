@@ -17,6 +17,11 @@ const SORTABLE_UNIQUE_ID = /^\d{30}$/;
 // any real conformance/read failure retains its exact response and stops.
 export const CONFORMANCE_RETRY_ATTEMPTS = 15;
 export const CONFORMANCE_RETRY_DELAY_MS = 1_000;
+// A deployed Worker version can accept primary traffic before the same
+// trace-sampling decision is visible to its Durable Object callbacks.  B0
+// must not open its immutable 100-request trace cohort in that convergence
+// interval.  This is an external-runbook delay, not a runtime/config delta.
+export const B_TRACE_SAMPLING_SETTLE_MS = 120_000;
 // Use a registered Meeting Room event rather than a synthetic payload so the
 // exact same B0 command crosses the production admission parser as well as
 // the normal commit path. The payload deliberately carries no discriminator.
@@ -358,6 +363,38 @@ export function assertDeploymentWitness(witness, phase, sourceCommit, configDige
   return witness;
 }
 
+/**
+ * B's Worker Version creation timestamp is the sole authority for this
+ * settling window.  The returned record is retained in the external phase
+ * ledger so a later evidence document cannot claim that a pre-settlement
+ * cohort was canonical.
+ */
+export async function awaitBTraceSamplingSettlement({
+  phase,
+  deploymentWitness,
+  now = Date.now,
+  sleepFor = sleep,
+}) {
+  if (phase !== "B") return undefined;
+  const deployedAtMs = Date.parse(deploymentWitness?.deployedVersion?.createdOn ?? "");
+  if (!Number.isFinite(deployedAtMs)) throw new Error("G30 B trace sampling settlement requires a parseable deployed version timestamp");
+  const readyAtMs = deployedAtMs + B_TRACE_SAMPLING_SETTLE_MS;
+  const startedAtMs = now();
+  while (now() < readyAtMs) await sleepFor(readyAtMs - now());
+  const settledAtMs = now();
+  if (settledAtMs < readyAtMs) throw new Error("G30 B trace sampling settlement returned before the immutable version-based deadline");
+  return Object.freeze({
+    authority: "worker-version-created-on",
+    deployedVersionId: deploymentWitness.deployedVersion.id,
+    deployedAtMs,
+    minimumSettleMs: B_TRACE_SAMPLING_SETTLE_MS,
+    readyAtMs,
+    startedAtMs,
+    settledAtMs,
+    waitedMs: Math.max(0, settledAtMs - startedAtMs),
+  });
+}
+
 function classifyReadback(expectedConsistencyHead, observedConsistencyHead) {
   if (observedConsistencyHead === undefined) return "empty";
   if (observedConsistencyHead === expectedConsistencyHead) return "unchanged";
@@ -438,6 +475,7 @@ export async function measureB0Phase({
   samples = SAMPLE_COUNT,
   warmup = 5,
   sleepFor = sleep,
+  now = Date.now,
   conformanceRetryAttempts = CONFORMANCE_RETRY_ATTEMPTS,
   conformanceRetryDelayMs = CONFORMANCE_RETRY_DELAY_MS,
 }) {
@@ -449,24 +487,38 @@ export async function measureB0Phase({
   const readbackDelayMs = nonNegativeInteger("G30 conformance retry delay", conformanceRetryDelayMs);
   const authorization = { authorization: `Bearer ${token}` };
   const configWitness = assertDeploymentWitness(deploymentWitness, phase, sourceCommit, configDigest);
+  let traceSamplingSettlement = await awaitBTraceSamplingSettlement({
+    phase,
+    deploymentWitness: configWitness,
+    now,
+    sleepFor,
+  });
+  // Warmup itself is an observation proof, so it must be inside the same
+  // post-version sampling interval as the retained 100-request cohort.
+  if (traceSamplingSettlement !== undefined) {
+    traceSamplingSettlement = Object.freeze({
+      ...traceSamplingSettlement,
+      firstMeasurementStartedAtMs: now(),
+    });
+  }
   const endpoint = "/conformance/v1/api/sekiban/serialized/commit";
   const initialConsistencyHead = consistencyHead;
   let expectedConsistencyHead = consistencyHead;
   const warmupLedger = [];
   for (let index = 0; index < warmup; index += 1) {
-    const startedAtMs = Date.now();
+    const startedAtMs = now();
     const result = await request(baseUrl, endpoint, {
       method: "POST",
       headers: { ...authorization, "content-type": "application/json" },
       body: JSON.stringify(commitEnvelope(expectedConsistencyHead)),
     });
-    const completedAtMs = Date.now();
+    const completedAtMs = now();
     const committed = nextConsistencyHead(result);
     warmupLedger.push({ index, requestId: requestId(result.response), startedAtMs, completedAtMs, eventId: committed.event.id ?? null, status: result.response.status, consistencyHead: expectedConsistencyHead });
     expectedConsistencyHead = committed.head;
     await sleepFor(CADENCE_MS);
   }
-  let fixedStartMs = Date.now() + CADENCE_MS;
+  let fixedStartMs = now() + CADENCE_MS;
   const ledger = [];
   const rawAttempts = [];
   let windowResets = 0;
@@ -539,13 +591,13 @@ export async function measureB0Phase({
     expectedConsistencyHead = reread.head;
     // The new 100-request window starts only after durable reread. No failed
     // attempt occupies an index in the retained cadence.
-    fixedStartMs = Date.now() + CADENCE_MS;
+    fixedStartMs = now() + CADENCE_MS;
   };
 
   while (ledger.length < samples) {
     const index = ledger.length;
     const scheduledStartMs = fixedStartMs + index * CADENCE_MS;
-    await sleepFor(scheduledStartMs - Date.now());
+    await sleepFor(scheduledStartMs - now());
     const attempt = await measuredCommitAttempt(baseUrl, endpoint, authorization, expectedConsistencyHead);
     if (attempt.kind === "ineligible") {
       await resetEligibleWindow(attempt.trigger);
@@ -553,7 +605,7 @@ export async function measureB0Phase({
     }
     const result = attempt.result;
     const startedAtMs = result.startedAtMs;
-    const completedAtMs = Date.now();
+    const completedAtMs = now();
     const committed = nextConsistencyHead(result);
     ledger.push({
       index,
@@ -590,13 +642,13 @@ export async function measureB0Phase({
     if (previous === undefined) throw new Error("G30 B idle experiment requires a retained canonical request");
     for (const scheduledGapMs of IDLE_SCHEDULE_MS) {
       await sleepFor(scheduledGapMs);
-      const startedAtMs = Date.now();
+      const startedAtMs = now();
       const result = await request(baseUrl, endpoint, {
         method: "POST",
         headers: { ...authorization, "content-type": "application/json" },
         body: JSON.stringify(commitEnvelope(expectedConsistencyHead)),
       });
-      const completedAtMs = Date.now();
+      const completedAtMs = now();
       const committed = nextConsistencyHead(result);
       const next = {
         requestId: requestId(result.response),
@@ -640,6 +692,7 @@ export async function measureB0Phase({
       // config is permitted to vary with the phase.
       observability: { traces: { enabled: true, head_sampling_rate: phase === "B" ? 1 : 0 } },
     },
+    ...(traceSamplingSettlement === undefined ? {} : { traceSamplingSettlement }),
     warmup: { requested: warmup, requests: warmupLedger },
     rawAttempts,
     windowResets,

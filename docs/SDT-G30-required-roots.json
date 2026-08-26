@@ -46,6 +46,7 @@
     "docs/SDT-G30-migration-preflight.json",
     "docs/SDT-G30-lag-estimate-analysis.md",
     "docs/SDT-G30-run6-root-join-retroactive.json",
+    "docs/SDT-G30-run10-trace-sampling-convergence.json",
     "test/g30-trace.spec.ts",
     "test/g30-b0.spec.ts",
     "test/g29-delivery.spec.ts",
@@ -96,6 +97,7 @@
     { "rootId": "m-invariant-regression", "path": "docs/SDT-G30-m-invariant-regression.json", "kind": "file" },
     { "rootId": "migration-preflight", "path": "docs/SDT-G30-migration-preflight.json", "kind": "file" },
     { "rootId": "lag-estimate-analysis", "path": "docs/SDT-G30-lag-estimate-analysis.md", "kind": "file" },
-    { "rootId": "run6-retroactive-root-join", "path": "docs/SDT-G30-run6-root-join-retroactive.json", "kind": "file" }
+    { "rootId": "run6-retroactive-root-join", "path": "docs/SDT-G30-run6-root-join-retroactive.json", "kind": "file" },
+    { "rootId": "run10-trace-sampling-convergence", "path": "docs/SDT-G30-run10-trace-sampling-convergence.json", "kind": "file" }
   ]
 }

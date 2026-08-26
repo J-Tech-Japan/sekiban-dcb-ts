@@ -413,6 +413,15 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     testFile: "test/g30-b0.spec.ts",
   },
   {
+    id: "b0-trace-sampling-settlement-gate",
+    file: source.measure,
+    from: "  let traceSamplingSettlement = await awaitBTraceSamplingSettlement({\n    phase,\n    deploymentWitness: configWitness,\n    now,\n    sleepFor,\n  });",
+    to: "  let traceSamplingSettlement = undefined;",
+    target: "retains B trace-sampling settlement before the canonical cohort",
+    unrelated: "chains one fixed tag's observed head through every B0 commit",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
     id: "platform-ray-client-join-gate",
     file: source.traceExport,
     from: "      requestId = clientRequestIdsByRayId.get(platformRayId);",
@@ -440,6 +449,15 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     to: " || false)",
     target: "classifies a non-runtime-verified root as schema-incomplete rather than silently passing it",
     unrelated: "keeps a dropped non-tail trace in the fixed denominator as UNKNOWN",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    id: "b0-trace-sampling-settlement-evidence-gate",
+    file: source.b0,
+    from: "  const traceSamplingSettlement = assertBTraceSamplingSettlement(phases.B);",
+    to: "  const traceSamplingSettlement = undefined;",
+    target: "rejects B evidence opened before DO trace sampling settled",
+    unrelated: "derives B0 activation, idle, and all outlier dispositions from raw telemetry only",
     testFile: "test/g30-b0.spec.ts",
   },
   {

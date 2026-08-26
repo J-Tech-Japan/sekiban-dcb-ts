@@ -81,6 +81,17 @@ secret-propagation bound. A 500 or any other read failure is still captured
 with its conformance response detail and fails closed; the retry neither
 changes the V1 wire nor treats a failed command as a sample replacement.
 
+For B(on), the immutable `deployedVersion.createdOn` is also the authority for
+a 120-second trace-sampling settlement interval before the first warmup or
+canonical request. This is an external measurement precondition, not a Worker
+variable, protocol change, or replacement rule. The phase ledger records the
+version identity, deadline, completion time, and first measurement time, and
+the evidence validator rejects a B cohort whose warmup started earlier. The
+pre-C convergence record documents why this is necessary: primary traffic and
+structured observations reached the new version while native allocator spans
+were absent during the initial post-deploy interval. The cohort still retains
+the frozen delivery, tail, and ten-minute export gates after it opens.
+
 Within a phase's eligible 100-request window, a timeout or any non-200 commit
 is indeterminate rather than a retryable replacement. The measuring helper
 retains its redacted raw response/transport record, CF-Ray and timestamps,

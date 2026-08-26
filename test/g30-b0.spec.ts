@@ -28,6 +28,8 @@ import {
 } from "../scripts/deploy/g30-trace-export.mjs";
 import {
   assertDeploymentWitness,
+  awaitBTraceSamplingSettlement,
+  B_TRACE_SAMPLING_SETTLE_MS,
   buildHeadReadFailureEvidence,
   establishB0Consistency,
   G30PhaseMeasurementFailure,
@@ -290,6 +292,18 @@ function evidence() {
   const phaseB = {
     ledger: b,
     rawAttempts: [],
+    deploymentWitness: { deployedVersion: { id: "on", createdOn: new Date(800_000).toISOString() } },
+    traceSamplingSettlement: {
+      authority: "worker-version-created-on",
+      deployedVersionId: "on",
+      deployedAtMs: 800_000,
+      minimumSettleMs: B_TRACE_SAMPLING_SETTLE_MS,
+      readyAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      startedAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      settledAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      waitedMs: 0,
+      firstMeasurementStartedAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+    },
     configuration: phaseConfiguration(1, "on"),
     warmup: { requested: 5, requests: warmupRecords() },
     idleExperiment: idleExperiment(b),
@@ -598,6 +612,89 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       };
       expect(measured.consistency).toMatchObject({ initialHead: sortableHead(0), finalHead: sortableHead(108) });
       expect(measured.ledger.every((entry, index) => entry.consistencyHead === sortableHead(index + 5))).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("waits for the B deployment's DO trace-sampling settlement before opening its window", async () => {
+    const deployedAtMs = 1_000_000;
+    let nowMs = deployedAtMs + 1;
+    const sleeps: number[] = [];
+    const settlement = await awaitBTraceSamplingSettlement({
+      phase: "B",
+      deploymentWitness: { deployedVersion: { id: "fixture-version", createdOn: new Date(deployedAtMs).toISOString() } },
+      now: () => nowMs,
+      sleepFor: async (milliseconds) => { sleeps.push(milliseconds); nowMs += milliseconds; },
+    });
+    expect(sleeps).toEqual([B_TRACE_SAMPLING_SETTLE_MS - 1]);
+    expect(settlement).toMatchObject({
+      authority: "worker-version-created-on",
+      minimumSettleMs: B_TRACE_SAMPLING_SETTLE_MS,
+      readyAtMs: deployedAtMs + B_TRACE_SAMPLING_SETTLE_MS,
+      settledAtMs: deployedAtMs + B_TRACE_SAMPLING_SETTLE_MS,
+    });
+    await expect(awaitBTraceSamplingSettlement({
+      phase: "A",
+      deploymentWitness: { deployedVersion: { id: "fixture-version", createdOn: new Date(deployedAtMs).toISOString() } },
+      now: () => nowMs,
+      sleepFor: async () => { throw new Error("A must not wait for B-only trace settlement"); },
+    })).resolves.toBeUndefined();
+  });
+
+  it("retains B trace-sampling settlement before the canonical cohort", async () => {
+    const sourceCommit = "a".repeat(40);
+    const configDigest = "b".repeat(64);
+    const witness = {
+      task: "SDT-G30",
+      phase: "B",
+      sourceCommit,
+      configDigest,
+      placement: "off",
+      serviceId: SERVICE,
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      deployedVersion: {
+        id: "fixture-version",
+        number: 1,
+        createdOn: "2026-08-24T00:00:00.000Z",
+        message: deploymentMessage("B", sourceCommit, configDigest, SERVICE),
+      },
+    };
+    const deployedAtMs = 1_000_000;
+    let nowMs = deployedAtMs;
+    const actions: string[] = [];
+    witness.deployedVersion.createdOn = new Date(deployedAtMs).toISOString();
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      actions.push("fetch");
+      const sequence = actions.filter((action) => action === "fetch").length;
+      return new Response(JSON.stringify({ writtenEvents: [{ id: `event-${sequence}`, sortableUniqueIdValue: sortableHead(sequence) }] }), {
+        status: 200,
+        headers: { "content-type": "application/json", "cf-ray": `settle-${sequence}-LAX` },
+      });
+    });
+    try {
+      const phase = await measureB0Phase({
+        baseUrl: "https://g30.test",
+        token: "fixture-token",
+        phase: "B",
+        sourceCommit,
+        configDigest,
+        deploymentWitness: witness,
+        consistencyHead: sortableHead(0),
+        now: () => nowMs,
+        sleepFor: async (milliseconds) => {
+          actions.push("sleep");
+          nowMs += milliseconds;
+        },
+      }) as { traceSamplingSettlement?: Record<string, unknown> };
+      expect(actions[0]).toBe("sleep");
+      expect(actions.findIndex((action) => action === "fetch")).toBeGreaterThan(0);
+      expect(phase.traceSamplingSettlement).toMatchObject({
+        authority: "worker-version-created-on",
+        deployedVersionId: "fixture-version",
+        minimumSettleMs: B_TRACE_SAMPLING_SETTLE_MS,
+        firstMeasurementStartedAtMs: deployedAtMs + B_TRACE_SAMPLING_SETTLE_MS,
+      });
     } finally {
       fetchSpy.mockRestore();
     }
@@ -1345,6 +1442,18 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       activationIdle: { scheduleMs: [2_000, 15_000, 180_000], observations: 3 },
       outliers: { classifiedOutliers: 4, unclassifiedOutliers: 0, targetCount: 1 },
     });
+  });
+
+  it("rejects B evidence opened before DO trace sampling settled", () => {
+    const document = evidence();
+    document.phases.B.traceSamplingSettlement.settledAtMs -= 1;
+    expect(() => assertB0Evidence(document)).toThrow(/trace-sampling-settlement/);
+  });
+
+  it("rejects B evidence whose warmup began before DO trace sampling settled", () => {
+    const document = evidence();
+    document.phases.B.traceSamplingSettlement.firstMeasurementStartedAtMs -= 1;
+    expect(() => assertB0Evidence(document)).toThrow(/trace-sampling-settlement/);
   });
 
   it("requires real warm activation observations for every reusable actor", () => {

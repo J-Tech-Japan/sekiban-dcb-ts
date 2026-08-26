@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import manifest from "../contracts/commit-trace-manifest.json" with { type: "json" };
+import { B_TRACE_SAMPLING_SETTLE_MS } from "./deploy/g30-b0-measure.mjs";
 import { verifyExportedSuccessTrace } from "./g30-trace-runtime-verifier.mjs";
 
 export const G30_PHASES = Object.freeze(["A", "B", "A-prime"]);
@@ -781,6 +782,60 @@ export function assertWarmupProof(phase, warmup, observationIndex) {
 }
 
 /**
+ * A B deployment can route primary traffic before trace sampling has reached
+ * its allocator Durable Object callbacks.  The immutable Worker Version
+ * creation timestamp, not a runtime variable or operator statement, is the
+ * sole authority for the pre-cohort settlement delay.
+ */
+export function assertBTraceSamplingSettlement(phaseB) {
+  const settlement = object(phaseB?.traceSamplingSettlement);
+  const witness = object(phaseB?.deploymentWitness);
+  if (settlement === undefined || witness === undefined) {
+    fail("trace-sampling-settlement", "B requires a version-bound trace sampling settlement record");
+  }
+  const deployedAtMs = finiteNumber(settlement.deployedAtMs, "B.traceSamplingSettlement.deployedAtMs");
+  const readyAtMs = finiteNumber(settlement.readyAtMs, "B.traceSamplingSettlement.readyAtMs");
+  const startedAtMs = finiteNumber(settlement.startedAtMs, "B.traceSamplingSettlement.startedAtMs");
+  const settledAtMs = finiteNumber(settlement.settledAtMs, "B.traceSamplingSettlement.settledAtMs");
+  const waitedMs = finiteNumber(settlement.waitedMs, "B.traceSamplingSettlement.waitedMs");
+  const firstMeasurementStartedAtMs = finiteNumber(
+    settlement.firstMeasurementStartedAtMs,
+    "B.traceSamplingSettlement.firstMeasurementStartedAtMs",
+  );
+  if (
+    settlement.authority !== "worker-version-created-on" ||
+    settlement.minimumSettleMs !== B_TRACE_SAMPLING_SETTLE_MS ||
+    typeof settlement.deployedVersionId !== "string" ||
+    settlement.deployedVersionId.length === 0 ||
+    settlement.deployedVersionId !== witness?.deployedVersion?.id
+  ) {
+    fail("trace-sampling-settlement", "B trace sampling settlement is not bound to its immutable deployment witness");
+  }
+  const witnessCreatedAtMs = Date.parse(witness?.deployedVersion?.createdOn ?? "");
+  if (!Number.isFinite(witnessCreatedAtMs) || deployedAtMs !== witnessCreatedAtMs || readyAtMs !== deployedAtMs + B_TRACE_SAMPLING_SETTLE_MS) {
+    fail("trace-sampling-settlement", "B trace sampling settlement has an invalid version-created-on deadline");
+  }
+  if (
+    startedAtMs < deployedAtMs ||
+    settledAtMs < readyAtMs ||
+    waitedMs < 0 ||
+    settledAtMs < startedAtMs ||
+    firstMeasurementStartedAtMs < settledAtMs
+  ) {
+    fail("trace-sampling-settlement", "B canonical window opened before trace sampling settled");
+  }
+  return Object.freeze({
+    authority: settlement.authority,
+    minimumSettleMs: settlement.minimumSettleMs,
+    deployedAtMs,
+    readyAtMs,
+    settledAtMs,
+    waitedMs,
+    firstMeasurementStartedAtMs,
+  });
+}
+
+/**
  * The 2/15/180-second observation is computed from client request timelines
  * and joined worker logs. A window without both surrounding request ids is
  * intentionally unprovable; a literal claimed gap is not accepted.
@@ -932,6 +987,7 @@ export function assertB0Evidence(evidence) {
     fail("cohort-cross-phase", "A/B/A-prime cohort identity differs");
   }
   const config = assertPhaseConfiguration(phases);
+  const traceSamplingSettlement = assertBTraceSamplingSettlement(phases.B);
   const traces = assertTraceCohort(phases.B.ledger, evidence.traces, evidence.traceExportCompletedAtMs);
   const latency = assertAaaDrift(phases.A.ledger, phases.B.ledger, phases["A-prime"].ledger);
   const observationLedger = observationLedgerForPhase(phases.B);
@@ -944,7 +1000,7 @@ export function assertB0Evidence(evidence) {
   const warmup = assertWarmupProof("B", phases.B.warmup, observation);
   const activationIdle = assertActivationIdleEvidence(phases.B.idleExperiment, observation);
   const outliers = assertOutlierClassification(phases.B, observation);
-  return Object.freeze({ windows, config, warmup: { B: warmup }, traces, latency, observation: { requests: observationLedger.length, events: evidence.observations.length }, activationIdle, outliers });
+  return Object.freeze({ windows, config, traceSamplingSettlement, warmup: { B: warmup }, traces, latency, observation: { requests: observationLedger.length, events: evidence.observations.length }, activationIdle, outliers });
 }
 
 function makeRecords(phase, responseLatencyMs = 100) {
@@ -1063,6 +1119,20 @@ function syntheticB0Evidence() {
   const phaseB = {
     ledger: b,
     rawAttempts: [],
+    deploymentWitness: {
+      deployedVersion: { id: "on", createdOn: new Date(800_000).toISOString() },
+    },
+    traceSamplingSettlement: {
+      authority: "worker-version-created-on",
+      deployedVersionId: "on",
+      deployedAtMs: 800_000,
+      minimumSettleMs: B_TRACE_SAMPLING_SETTLE_MS,
+      readyAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      startedAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      settledAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      waitedMs: 0,
+      firstMeasurementStartedAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+    },
     configuration: { ...baseConfig, deployedVersion: "on", observability: { traces: { enabled: true, head_sampling_rate: 1 } } },
     warmup: { requested: 5, requests: warmupRequests },
     idleExperiment: { scheduleMs: G30_IDLE_SCHEDULE_MS, requests: idleRequests, windows: idleWindows },

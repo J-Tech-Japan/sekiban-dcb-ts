@@ -69,6 +69,12 @@ does not assert a performance pass/fail.
    service ID. It retains a 100-request, fixed-payload, fixed-tag,
    single-client-region, single-concurrency ledger per phase at a 2-second
    cadence.
+   Before B's warmups begin, it waits until 120 seconds after B's immutable
+   Worker Version `createdOn` timestamp. The B ledger records that version,
+   the derived deadline, settlement completion, and first measurement time;
+   the evidence validator rejects a cohort that began earlier. This is a
+   post-deploy Durable Object trace-sampling convergence precondition, not a
+   phase-specific Worker setting or a delivery-loss exception.
    If the authenticated fixed-tag point read is not HTTP 200, the measuring
    helper writes a local failure artifact containing the complete conformance
    response body, raw response text, CF-Ray, and the provider-response

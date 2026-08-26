@@ -1,3 +1,5 @@
+import type { G30TraceSamplingSettlement } from "./deploy/g30-b0-measure.mjs";
+
 export const G30_PHASES: readonly ["A", "B", "A-prime"];
 export const G30_SAMPLE_COUNT: 100;
 export const G30_MIN_SCHEMA_COMPLETE_COUNT: 95;
@@ -129,6 +131,7 @@ export function assertIdleRequestReferences(
   label: string,
 ): Readonly<{ previousRequestId: string; nextRequestId: string }>;
 export function assertWarmupProof(phase: "B", warmup: unknown, observationIndex: G30ObservationIndex): Readonly<Record<string, unknown>>;
+export function assertBTraceSamplingSettlement(phaseB: unknown): Readonly<G30TraceSamplingSettlement>;
 export function assertActivationIdleEvidence(
   idleExperiment: unknown,
   observationIndex: G30ObservationIndex,

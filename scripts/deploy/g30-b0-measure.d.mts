@@ -30,6 +30,26 @@ export function commitEnvelope(consistencyHead: string): {
 export const CONFORMANCE_RETRY_ATTEMPTS: 15;
 export const CONFORMANCE_RETRY_DELAY_MS: 1000;
 export const MAX_WINDOW_RESETS: 5;
+export const B_TRACE_SAMPLING_SETTLE_MS: 120000;
+
+export interface G30TraceSamplingSettlement {
+  authority: "worker-version-created-on";
+  deployedVersionId: string;
+  deployedAtMs: number;
+  minimumSettleMs: 120000;
+  readyAtMs: number;
+  startedAtMs: number;
+  settledAtMs: number;
+  waitedMs: number;
+  firstMeasurementStartedAtMs: number;
+}
+
+export function awaitBTraceSamplingSettlement(input: {
+  phase: "A" | "B" | "A-prime";
+  deploymentWitness: unknown;
+  now?: () => number;
+  sleepFor?: (milliseconds: number) => Promise<void>;
+}): Promise<G30TraceSamplingSettlement | undefined>;
 
 export function establishB0Consistency(input: {
   baseUrl: string;
@@ -111,6 +131,7 @@ export function measureB0Phase(input: {
   samples?: number;
   warmup?: number;
   sleepFor?: (milliseconds: number) => Promise<void>;
+  now?: () => number;
   conformanceRetryAttempts?: number;
   conformanceRetryDelayMs?: number;
 }): Promise<Record<string, unknown>>;
