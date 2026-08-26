@@ -7,7 +7,7 @@ import {
   assertTraceCohort,
   observationLedgerForPhase,
 } from "../scripts/g30-b0-contract.mjs";
-import { assertG30Config, assertPhaseRuntimeIsolation, assertRemoteMigrationPreflight, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
+import { assertConformancePropagationRetry, assertG30Config, assertPhaseRuntimeIsolation, assertRemoteMigrationPreflight, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
 import {
   acquireCohortTelemetry,
   buildBoundedTelemetryQuery,
@@ -361,6 +361,35 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     }
   });
 
+  it("retries only a transient post-deploy 403 before reading the durable fixed-tag head", async () => {
+    const observedHead = sortableHead(38);
+    let calls = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(JSON.stringify({ error: "Conformance authentication required", code: "unauthorized" }), {
+          status: 403,
+          headers: { "content-type": "application/json", "cf-ray": "propagation-403-SJC" },
+        });
+      }
+      return new Response(JSON.stringify({ exists: true, lastSortableUniqueId: observedHead }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      await expect(establishB0Consistency({
+        baseUrl: "https://g30.test",
+        token: "fixture-token",
+        conformanceRetryAttempts: 2,
+        conformanceRetryDelayMs: 0,
+      })).resolves.toEqual({ head: observedHead, source: "existing-fixed-tag-head", seeded: false });
+      expect(calls).toBe(2);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it("seeds the fixed tag only after a durable empty read", async () => {
     const seededHead = sortableHead(1);
     const requestPaths: string[] = [];
@@ -447,9 +476,24 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
           receivedAtMs: expect.any(Number),
         },
       });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
     } finally {
       fetchSpy.mockRestore();
     }
+  });
+
+  it("requires the fixed 15x1s conformance propagation retry for every phase", () => {
+    const runbook = [
+      "readonly CONFORMANCE_RETRY_ATTEMPTS=15",
+      "readonly CONFORMANCE_RETRY_DELAY_MS=1000",
+      'node g30-b0-measure.mjs --phase A --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}"',
+      'node g30-b0-measure.mjs --phase B --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}"',
+      'node g30-b0-measure.mjs --phase A-prime --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}"',
+    ].join("\n");
+    expect(assertConformancePropagationRetry(runbook)).toEqual({
+      conformancePropagationRetry: { attempts: 15, delayMs: 1_000, retryStatus: 403, nonAuthFailures: "fail-closed" },
+    });
+    expect(() => assertConformancePropagationRetry(runbook.replace("readonly CONFORMANCE_RETRY_ATTEMPTS=15", "readonly CONFORMANCE_RETRY_ATTEMPTS=1"))).toThrow(/15x1s/);
   });
 
   it("chains one fixed tag's observed head through every B0 commit", async () => {

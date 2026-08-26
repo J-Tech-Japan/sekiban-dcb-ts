@@ -370,7 +370,7 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
   {
     id: "b0-consistency-durable-authority-gate",
     file: source.measure,
-    from: "  const existingHead = await readConsistencyHead(baseUrl, token);",
+    from: "  const existingHead = await readConsistencyHeadAfterConformancePropagation(baseUrl, token, attempts, delayMs);",
     to: "  const existingHead = undefined;",
     target: "takes phase continuity from the durable fixed-tag head",
     unrelated: "chains one fixed tag's observed head through every B0 commit",

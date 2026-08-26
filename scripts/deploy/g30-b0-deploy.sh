@@ -25,6 +25,11 @@ readonly BASE_URL="${G30_PRIMARY_BASE_URL:-https://sekiban-dcb-meeting-room-clou
 readonly SOURCE_COMMIT="${G30_SOURCE_COMMIT:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
 readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 readonly TRACE_TOKEN_FILE="${G30_OBSERVABILITY_TOKEN_FILE:-}"
+# A fresh secret bundled into a newly deployed Worker version can take a few
+# edge seconds to become visible. Keep the operational retry fixed and local
+# to authenticated conformance reads; no protocol/runtime config changes.
+readonly CONFORMANCE_RETRY_ATTEMPTS=15
+readonly CONFORMANCE_RETRY_DELAY_MS=1000
 
 cd "${REPO_ROOT}"
 readonly CONFIG_DIGEST="$(node "${SCRIPT_DIR}/g30-config-digest.mjs" "${SOURCE_COMMIT}")"
@@ -160,12 +165,12 @@ deploy_phase A "${RECEIVER_CONFIG}"
 capture_primary_predeploy_versions "${A_WITNESS_FILE}"
 deploy_phase A "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A "${A_WITNESS_FILE}"
-node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${A_WITNESS_FILE}" --output "${A_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
+node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${A_WITNESS_FILE}" --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}" --output "${A_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
 
 capture_primary_predeploy_versions "${B_WITNESS_FILE}"
 deploy_phase B "${PRIMARY_ON_CONFIG}"
 capture_primary_witness B "${B_WITNESS_FILE}"
-node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase B --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${B_WITNESS_FILE}" --output "${B_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
+node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase B --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${B_WITNESS_FILE}" --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}" --output "${B_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
 
 # The checked-in query template is materialized from the actual B client
 # ledger; it has no human-supplied request IDs or observation declarations.
@@ -176,7 +181,7 @@ node "${SCRIPT_DIR}/g30-trace-export.mjs" --ledger "${B_FILE}" --account-id "${A
 capture_primary_predeploy_versions "${APRIME_WITNESS_FILE}"
 deploy_phase A-prime "${PRIMARY_OFF_CONFIG}"
 capture_primary_witness A-prime "${APRIME_WITNESS_FILE}"
-node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A-prime --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${APRIME_WITNESS_FILE}" --output "${APRIME_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
+node "${SCRIPT_DIR}/g30-b0-measure.mjs" --base-url "${BASE_URL}" --token-file "${TOKEN_FILE}" --phase A-prime --source-commit "${SOURCE_COMMIT}" --config-digest "${CONFIG_DIGEST}" --deployment-witness "${APRIME_WITNESS_FILE}" --conformance-retry-attempts "${CONFORMANCE_RETRY_ATTEMPTS}" --conformance-retry-delay-ms "${CONFORMANCE_RETRY_DELAY_MS}" --output "${APRIME_FILE}" --failure-output "${HEAD_READ_FAILURE_FILE}"
 
 # The recorder derives activation, idle, and four-hypothesis dispositions from
 # the joined structured Workers Logs export. No operator-authored claim file

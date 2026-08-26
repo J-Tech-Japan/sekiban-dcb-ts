@@ -45,6 +45,12 @@ const MUTATIONS = Object.freeze([
     to: 'd1 migrations list "${binding}" --cwd samples/meeting-room --config "wrangler.g30-primary-off.jsonc" --remote',
   },
   {
+    id: "conformance-propagation-retry",
+    file: "scripts/deploy/g30-b0-deploy.sh",
+    from: "readonly CONFORMANCE_RETRY_ATTEMPTS=15",
+    to: "readonly CONFORMANCE_RETRY_ATTEMPTS=1",
+  },
+  {
     id: "remote-migration-id-verification",
     file: "scripts/g30-config-check.mjs",
     from: 'if (entry?.database_id !== expected.id || entry?.database_name !== expected.name || entry?.migrations_dir !== expected.migrationsDir)',

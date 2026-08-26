@@ -73,6 +73,12 @@ only for an otherwise empty service and is outside all phase ledgers. Phase
 remains an external evidence label; it is never passed to the deployed Worker
 as a phase-specific variable.
 
+Immediately after each primary version deployment, only a transient 403 on
+that authenticated initial head read is retried with the fixed 15×1s
+secret-propagation bound. A 500 or any other read failure is still captured
+with its conformance response detail and fails closed; the retry neither
+changes the V1 wire nor treats a failed command as a sample replacement.
+
 R is evidence-only: `docs/SDT-G30-*evidence*.{json,md}` plus exactly one C
 append in `.github/workflows/ci.yml`. The evidence states
 `sourceCommit === deployedRuntimeCommit === C`, carries tree/config digests,

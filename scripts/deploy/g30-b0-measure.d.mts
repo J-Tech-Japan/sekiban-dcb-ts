@@ -27,9 +27,14 @@ export function commitEnvelope(consistencyHead: string): {
   consistencyTags: Array<{ tag: string; lastSortableUniqueId: string }>;
 };
 
+export const CONFORMANCE_RETRY_ATTEMPTS: 15;
+export const CONFORMANCE_RETRY_DELAY_MS: 1000;
+
 export function establishB0Consistency(input: {
   baseUrl: string;
   token: string;
+  conformanceRetryAttempts?: number;
+  conformanceRetryDelayMs?: number;
 }): Promise<{
   head: string;
   source: "existing-fixed-tag-head" | "one-time-fixed-tag-seed";

@@ -9,6 +9,11 @@ const IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
 const FIXTURE_VERSION = "sdt-g30-b0-v1";
 const FIXTURE_TAG = "room:g30-baseline";
 const SORTABLE_UNIQUE_ID = /^\d{30}$/;
+// Worker version activation and the secret bundled with it are eventually
+// consistent at the edge.  Retry only the unauthenticated first point read;
+// any real conformance/read failure retains its exact response and stops.
+export const CONFORMANCE_RETRY_ATTEMPTS = 15;
+export const CONFORMANCE_RETRY_DELAY_MS = 1_000;
 // Use a registered Meeting Room event rather than a synthetic payload so the
 // exact same B0 command crosses the production admission parser as well as
 // the normal commit path. The payload deliberately carries no discriminator.
@@ -22,6 +27,18 @@ function argument(name, fallback) {
 function required(name, value) {
   if (typeof value !== "string" || value.length === 0) throw new Error(`${name} is required`);
   return value;
+}
+
+function positiveInteger(name, value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${name} must be a positive integer`);
+  return parsed;
+}
+
+function nonNegativeInteger(name, value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new Error(`${name} must be a non-negative integer`);
+  return parsed;
 }
 
 function sha(value) {
@@ -151,6 +168,26 @@ async function readConsistencyHead(baseUrl, token) {
   return result.body.lastSortableUniqueId;
 }
 
+async function readConsistencyHeadAfterConformancePropagation(baseUrl, token, attempts, delayMs) {
+  let lastFailure;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await readConsistencyHead(baseUrl, token);
+    } catch (error) {
+      // A fresh file-fed token may reach a newly deployed version a few edge
+      // seconds before that version's secret is visible.  Never retry a
+      // successful authentication with an application failure: those errors
+      // carry the attribution detail required for fail-closed evidence.
+      if (!(error instanceof G30HeadReadFailure) || error.record.response.status !== 403 || attempt === attempts) {
+        throw error;
+      }
+      lastFailure = error;
+      await sleep(delayMs);
+    }
+  }
+  throw lastFailure;
+}
+
 /**
  * Persist the full authenticated conformance failure before the runbook exits.
  * This is deliberately limited to the fixed-tag point read: no request tag,
@@ -178,8 +215,15 @@ export function writeHeadReadFailureEvidence(output, context, failure) {
  * service only, establish that head once before phase A's warmup; the seed is
  * outside all A/B/A-prime ledgers and is never a replacement.
  */
-export async function establishB0Consistency({ baseUrl, token }) {
-  const existingHead = await readConsistencyHead(baseUrl, token);
+export async function establishB0Consistency({
+  baseUrl,
+  token,
+  conformanceRetryAttempts = CONFORMANCE_RETRY_ATTEMPTS,
+  conformanceRetryDelayMs = CONFORMANCE_RETRY_DELAY_MS,
+}) {
+  const attempts = positiveInteger("G30 conformance retry attempts", conformanceRetryAttempts);
+  const delayMs = nonNegativeInteger("G30 conformance retry delay", conformanceRetryDelayMs);
+  const existingHead = await readConsistencyHeadAfterConformancePropagation(baseUrl, token, attempts, delayMs);
   if (existingHead !== undefined) {
     return Object.freeze({ head: existingHead, source: "existing-fixed-tag-head", seeded: false });
   }
@@ -364,13 +408,26 @@ async function main() {
   const configDigest = required("--config-digest", argument("--config-digest", process.env.G30_CONFIG_DIGEST));
   const deploymentWitness = JSON.parse(readFileSync(required("--deployment-witness", argument("--deployment-witness")), "utf8"));
   if (token.length === 0) throw new Error("G30 conformance token is empty");
+  const conformanceRetryAttempts = positiveInteger(
+    "--conformance-retry-attempts",
+    argument("--conformance-retry-attempts", String(CONFORMANCE_RETRY_ATTEMPTS)),
+  );
+  const conformanceRetryDelayMs = nonNegativeInteger(
+    "--conformance-retry-delay-ms",
+    argument("--conformance-retry-delay-ms", String(CONFORMANCE_RETRY_DELAY_MS)),
+  );
   const output = argument("--output", `.artifacts/g30-b0-${phase}.json`);
   const failureOutput = argument("--failure-output", process.env.G30_B0_FAILURE_OUTPUT);
   // Each phase starts by reading the durable tag state again.  A local file
   // could be stale after an interrupted phase, whereas this indexed point
   // read is the actual admission authority for the next sequential command.
   try {
-    const established = await establishB0Consistency({ baseUrl, token });
+    const established = await establishB0Consistency({
+      baseUrl,
+      token,
+      conformanceRetryAttempts,
+      conformanceRetryDelayMs,
+    });
     const measured = await measureB0Phase({
       baseUrl,
       token,

@@ -120,6 +120,24 @@ export function assertRemoteMigrationPreflight(primaryOff, runbookSource) {
 }
 
 /**
+ * A deployment packages a fresh file-fed conformance secret into a new Worker
+ * version.  The first authenticated point read is allowed a bounded 403-only
+ * propagation retry; every other failure remains immediately attributable.
+ */
+export function assertConformancePropagationRetry(runbookSource) {
+  if (typeof runbookSource !== "string") throw new Error("G30 B0 runbook source is unavailable for conformance propagation verification");
+  if (!runbookSource.includes("readonly CONFORMANCE_RETRY_ATTEMPTS=15") || !runbookSource.includes("readonly CONFORMANCE_RETRY_DELAY_MS=1000")) {
+    throw new Error("G30 B0 runbook must retain the fixed 15x1s conformance propagation retry");
+  }
+  const attemptFlags = runbookSource.match(/--conformance-retry-attempts "\$\{CONFORMANCE_RETRY_ATTEMPTS\}"/g) ?? [];
+  const delayFlags = runbookSource.match(/--conformance-retry-delay-ms "\$\{CONFORMANCE_RETRY_DELAY_MS\}"/g) ?? [];
+  if (attemptFlags.length !== 3 || delayFlags.length !== 3) {
+    throw new Error("G30 B0 runbook must pass the bounded conformance propagation retry to every A/B/A-prime measurement");
+  }
+  return { conformancePropagationRetry: { attempts: 15, delayMs: 1_000, retryStatus: 403, nonAuthFailures: "fail-closed" } };
+}
+
+/**
  * With `set -u`, Bash does not make a value assigned in the same `local`
  * declaration visible to a later assignment in that declaration.  Keep the
  * witness output path scoped in ordered declarations so B0 cannot stop after
@@ -165,6 +183,7 @@ export function selfTest() {
   const runbook = readFileSync(RUNBOOK, "utf8");
   const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
   const migration = assertRemoteMigrationPreflight(off, runbook);
+  const conformancePropagation = assertConformancePropagationRetry(runbook);
   const witnessCapture = assertWitnessCaptureShellSafety(runbook);
   const witnessReplay = assertWitnessReplaySnapshotSafety(runbook);
   let samplingRed = false;
@@ -208,6 +227,9 @@ export function selfTest() {
     ));
   } catch (error) { cwdRelativeConfigRed = String(error).includes("ID-verified absolute config path"); }
   if (!cwdRelativeConfigRed) throw new Error("G30 migration cwd-relative-config mutation unexpectedly passed");
+  let conformancePropagationRed = false;
+  try { assertConformancePropagationRetry(runbook.replace("readonly CONFORMANCE_RETRY_ATTEMPTS=15", "readonly CONFORMANCE_RETRY_ATTEMPTS=1")); } catch (error) { conformancePropagationRed = String(error).includes("15x1s"); }
+  if (!conformancePropagationRed) throw new Error("G30 conformance propagation retry mutation unexpectedly passed");
   let receiverSurfaceRed = false;
   try { const altered = structuredClone(receiver); altered.workers_dev = true; assertG30Config(off, on, altered); } catch (error) { receiverSurfaceRed = String(error).includes("G38 Phase M"); }
   if (!receiverSurfaceRed) throw new Error("G30 receiver public-surface mutation unexpectedly passed");
@@ -222,7 +244,7 @@ export function selfTest() {
   let witnessReplayRed = false;
   try { assertWitnessReplaySnapshotSafety(runbook.replace('--prior-versions "${prior}"', '--without-prior-versions "${prior}"')); } catch (error) { witnessReplayRed = String(error).includes("pre-deploy snapshot"); }
   if (!witnessReplayRed) throw new Error("G30 witness-replay snapshot mutation unexpectedly passed");
-  return { ...result, ...isolation, ...migration, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "remote-migration-cwd-relative-config", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
+  return { ...result, ...isolation, ...migration, ...conformancePropagation, ...witnessCapture, ...witnessReplay, mutations: ["sampling", "placement", "extra-config-delta", "observation-log-persistence", "version-metadata-binding", "phase-runtime-config", "remote-migration-binding", "remote-migration-id-verification", "remote-migration-preflight-order", "remote-migration-cwd-relative-config", "conformance-propagation-retry", "receiver-public-surface", "witness-capture-local-scope", "witness-replay-snapshot"] };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -231,7 +253,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const runbook = readFileSync(RUNBOOK, "utf8");
   const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
   const migration = assertRemoteMigrationPreflight(readConfig(PRIMARY_OFF), runbook);
+  const conformancePropagation = assertConformancePropagationRetry(runbook);
   const witnessCapture = assertWitnessCaptureShellSafety(runbook);
   const witnessReplay = assertWitnessReplaySnapshotSafety(runbook);
-  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration, ...witnessCapture, ...witnessReplay }, null, 2));
+  console.log(JSON.stringify(process.argv.includes("--self-test") ? selfTest() : { ...config, ...isolation, ...migration, ...conformancePropagation, ...witnessCapture, ...witnessReplay }, null, 2));
 }
