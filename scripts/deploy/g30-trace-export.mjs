@@ -852,7 +852,7 @@ function safeFailureClass(error) {
   return match?.[1] ?? "unknown";
 }
 
-function traceIsSchemaComplete(trace, requestId) {
+function traceIsSchemaComplete(trace) {
   const roots = Array.isArray(trace?.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
   if (roots.length !== 1) return false;
   if (trace?.schema !== "sdt.commit/v1" || trace?.boundary !== "success" || trace?.complete !== true || trace?.runtimeVerified !== true) {
@@ -895,7 +895,7 @@ export function buildTraceExportFailureEvidence({ ledger, traces, emittedRowInve
     const spans = Array.isArray(trace?.spans) ? trace.spans : [];
     const observedRows = new Set(spans.map((span) => span?.rowId).filter((rowId) => typeof rowId === "string"));
     const rootPresent = observedRows.has("S00");
-    const schemaComplete = traceIsSchemaComplete(trace, requestId);
+    const schemaComplete = traceIsSchemaComplete(trace);
     const stage = schemaComplete ? "schema-complete" : rootPresent ? "schema-incomplete" : "root-absent";
     return Object.freeze({
       requestId,
