@@ -75,6 +75,14 @@ does not assert a performance pass/fail.
    timestamp before exiting fail-closed. It never retains the request tag or
    either credential; do not retry after the temporary conformance token has
    been removed by the run trap.
+   A timeout or other non-200 **commit** inside the eligible phase window is
+   different: it is an AC7 window-reset event, not an invitation to resend the
+   same attempt. The helper retains its redacted response/transport evidence,
+   rereads the durable fixed-tag head, moves every provisional successful row
+   to `rawAttempts`, and starts a new 100-request window with a new attempt.
+   Missing/regressing rereads fail closed; a sixth reset stops with the full
+   reset distribution. The resulting evidence never claims whether the
+   indeterminate request itself landed merely because the durable head advanced.
 5. The phase is an external runbook/evidence label. It is never sent through
    deployed Worker variables. The only phase configuration difference is the
    selected `observability.traces.head_sampling_rate` (0, 1, 0) and the

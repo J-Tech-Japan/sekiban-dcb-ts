@@ -19,6 +19,8 @@ export const G30_LATENCY_ESTIMATOR = "nearest-rank/full-client-ledger/v1";
 export const G30_CADENCE_MS = 2_000;
 export const G30_EXPORT_DEADLINE_MS = 10 * 60 * 1_000;
 export const G30_IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
+export const G30_WINDOW_RESET_LIMIT = 5;
+const SORTABLE_UNIQUE_ID = /^\d{30}$/;
 const OUTLIER_HYPOTHESES = Object.freeze([
   "worker-isolate-first",
   "durable-object-wake",
@@ -86,9 +88,11 @@ function stableCohortIdentity(record) {
 /**
  * Validates a retained, consecutive window. Failed/non-200/window-reset
  * attempts belong in rawAttempts, never as replacement candidates inside the
- * 100-record window.
+ * 100-record window. A retained reset trigger must prove that the indeterminate
+ * request was not resent and that a durable fixed-tag reread selected the next
+ * independent attempt's authority.
  */
-export function assertEligiblePhaseWindow(phase, records, rawAttempts = []) {
+export function assertEligiblePhaseWindow(phase, records, rawAttempts = [], windowResets = 0) {
   if (!G30_PHASES.includes(phase)) fail("phase", `unknown phase ${phase}`);
   if (!Array.isArray(records) || records.length !== G30_SAMPLE_COUNT) {
     fail("window-size", `${phase} requires exactly ${G30_SAMPLE_COUNT} consecutive eligible requests`);
@@ -118,10 +122,86 @@ export function assertEligiblePhaseWindow(phase, records, rawAttempts = []) {
     priorScheduled = scheduled;
   }
   if (!Array.isArray(rawAttempts)) fail("raw-attempts", `${phase} rawAttempts must be an array`);
+  if (!Number.isInteger(windowResets) || windowResets < 0 || windowResets > G30_WINDOW_RESET_LIMIT) {
+    fail("window-reset-limit", `${phase} window reset count must be 0..${G30_WINDOW_RESET_LIMIT}`);
+  }
+  const resetNumbers = new Set();
+  const resetRecords = new Map();
+  const discardedByReset = new Map();
   for (const attempt of rawAttempts) {
     if (attempt?.windowIndex !== undefined && (!Number.isInteger(attempt.windowIndex) || attempt.windowIndex < 0 || attempt.windowIndex >= G30_SAMPLE_COUNT)) {
       fail("replacement", `${phase} raw attempt illegally maps an outside failure to a retained window index`);
     }
+    if (attempt?.kind === "discarded-window-entry") {
+      if (!Number.isInteger(attempt.resetNumber) || attempt.resetNumber < 1) fail("window-reset-discard", `${phase} discarded entry has no reset number`);
+      if (!Number.isInteger(attempt.priorWindowOrdinal) || attempt.priorWindowOrdinal < 0 || attempt.priorWindowOrdinal >= G30_SAMPLE_COUNT) {
+        fail("window-reset-discard", `${phase} discarded entry has an invalid prior ordinal`);
+      }
+      if (attempt.record?.status !== 200 || attempt.record?.eligible !== true || attempt.record?.nonEmpty !== true || attempt.record?.replacement !== false) {
+        fail("window-reset-discard", `${phase} discarded entry is not a raw prior eligible record`);
+      }
+      const discards = discardedByReset.get(attempt.resetNumber) ?? [];
+      discards.push(attempt.priorWindowOrdinal);
+      discardedByReset.set(attempt.resetNumber, discards);
+      continue;
+    }
+    if (attempt?.kind !== "window-reset-trigger") {
+      fail("raw-attempts", `${phase} raw attempt has an unknown kind`);
+    }
+    if (!Number.isInteger(attempt.resetNumber) || attempt.resetNumber < 1 || attempt.resetNumber > G30_WINDOW_RESET_LIMIT) {
+      fail("window-reset-number", `${phase} reset trigger has an invalid reset number`);
+    }
+    if (resetNumbers.has(attempt.resetNumber)) fail("window-reset-number", `${phase} repeats reset ${attempt.resetNumber}`);
+    resetNumbers.add(attempt.resetNumber);
+    resetRecords.set(attempt.resetNumber, attempt);
+    if (!Number.isInteger(attempt.priorWindowCount) || attempt.priorWindowCount < 0 || attempt.priorWindowCount >= G30_SAMPLE_COUNT) {
+      fail("window-reset-discard", `${phase} reset trigger has an invalid prior window count`);
+    }
+    if (attempt.sameAttemptResent !== false) fail("window-reset-retry", `${phase} indeterminate attempt was not marked no-resend`);
+    if (typeof attempt.expectedConsistencyHead !== "string" || !SORTABLE_UNIQUE_ID.test(attempt.expectedConsistencyHead)) {
+      fail("window-reset-head", `${phase} reset trigger lacks the attempted durable head`);
+    }
+    if (attempt.trigger === "http-non-200") {
+      if (!Number.isInteger(attempt.response?.status) || attempt.response.status === 200 || typeof attempt.response?.receivedAt !== "string" || !Number.isFinite(attempt.response?.receivedAtMs)) {
+        fail("window-reset-response", `${phase} non-200 reset lacks raw HTTP response evidence`);
+      }
+      if (!(typeof attempt.response?.cfRay === "string" || attempt.response?.cfRay === null)) fail("window-reset-response", `${phase} reset response has an invalid cf-ray`);
+    } else if (attempt.trigger === "transport-error") {
+      if (typeof attempt.transport?.errorClass !== "string" || typeof attempt.transport?.receivedAt !== "string" || !Number.isFinite(attempt.transport?.receivedAtMs)) {
+        fail("window-reset-transport", `${phase} transport reset lacks raw failure evidence`);
+      }
+    } else {
+      fail("window-reset-trigger", `${phase} reset trigger is neither HTTP nor transport evidence`);
+    }
+    const readback = attempt.readback;
+    if (
+      readback?.kind !== "fixed-tag-head-reread" ||
+      typeof readback?.head !== "string" || !SORTABLE_UNIQUE_ID.test(readback.head) ||
+      !["unchanged", "advanced"].includes(readback.classification) ||
+      readback?.statusRaw?.httpStatus !== 200 ||
+      !(typeof readback?.statusRaw?.cfRay === "string" || readback?.statusRaw?.cfRay === null) ||
+      !Number.isFinite(readback?.statusRaw?.receivedAtMs) || typeof readback?.statusRaw?.receivedAt !== "string"
+    ) {
+      fail("window-reset-reread", `${phase} reset lacks a successful durable fixed-tag reread`);
+    }
+    const serialized = JSON.stringify(attempt);
+    if (/room:g30-baseline|fixture-token|authorization|Bearer\s+/i.test(serialized)) {
+      fail("window-reset-redaction", `${phase} reset evidence leaked a raw tag or credential`);
+    }
+  }
+  if (resetNumbers.size !== windowResets) fail("window-reset-count", `${phase} reset count does not match retained reset evidence`);
+  for (let resetNumber = 1; resetNumber <= windowResets; resetNumber += 1) {
+    if (!resetNumbers.has(resetNumber)) fail("window-reset-number", `${phase} reset sequence is not consecutive`);
+    const discards = discardedByReset.get(resetNumber) ?? [];
+    if (resetRecords.get(resetNumber)?.priorWindowCount !== discards.length) {
+      fail("window-reset-discard", `${phase} reset ${resetNumber} does not retain its full discarded prefix`);
+    }
+    if (new Set(discards).size !== discards.length || discards.some((ordinal, index) => ordinal !== index)) {
+      fail("window-reset-discard", `${phase} discarded entries are not the exact prior window prefix`);
+    }
+  }
+  for (const resetNumber of discardedByReset.keys()) {
+    if (!resetNumbers.has(resetNumber)) fail("window-reset-discard", `${phase} discarded entries have no reset trigger`);
   }
   return Object.freeze({ phase, requestIds: [...ids], cohort, summary: phaseLatencySummary(records) });
 }
@@ -842,7 +922,12 @@ export function assertB0Evidence(evidence) {
     fail("observation-declaration", "activation and outlier evidence must be derived from exported sdt.observe/v1 data");
   }
   const phases = evidence.phases;
-  const windows = Object.fromEntries(G30_PHASES.map((phase) => [phase, assertEligiblePhaseWindow(phase, phases?.[phase]?.ledger, phases?.[phase]?.rawAttempts)]));
+  const windows = Object.fromEntries(G30_PHASES.map((phase) => [phase, assertEligiblePhaseWindow(
+    phase,
+    phases?.[phase]?.ledger,
+    phases?.[phase]?.rawAttempts,
+    phases?.[phase]?.windowResets ?? 0,
+  )]));
   if (!same(windows.A.cohort, windows.B.cohort) || !same(windows.A.cohort, windows["A-prime"].cohort)) {
     fail("cohort-cross-phase", "A/B/A-prime cohort identity differs");
   }

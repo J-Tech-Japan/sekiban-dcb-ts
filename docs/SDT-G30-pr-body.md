@@ -79,6 +79,14 @@ secret-propagation bound. A 500 or any other read failure is still captured
 with its conformance response detail and fails closed; the retry neither
 changes the V1 wire nor treats a failed command as a sample replacement.
 
+Within a phase's eligible 100-request window, a timeout or any non-200 commit
+is indeterminate rather than a retryable replacement. The measuring helper
+retains its redacted raw response/transport record, CF-Ray and timestamps,
+reads the fixed tag again, and discards the provisional window. It does not
+resend that attempt; only a new independent attempt may begin a new window
+from the durable reread. A missing, regressing, or unreadable reread fails
+closed, and more than five resets retains the reset distribution then stops.
+
 R is evidence-only: `docs/SDT-G30-*evidence*.{json,md}` plus exactly one C
 append in `.github/workflows/ci.yml`. The evidence states
 `sourceCommit === deployedRuntimeCommit === C`, carries tree/config digests,

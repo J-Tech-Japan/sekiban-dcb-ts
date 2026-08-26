@@ -5,6 +5,9 @@ import { dirname } from "node:path";
 
 const SAMPLE_COUNT = 100;
 const CADENCE_MS = 2_000;
+// AC7 permits a bounded number of *new* windows after an indeterminate
+// request. It never permits resending the indeterminate request itself.
+export const MAX_WINDOW_RESETS = 5;
 const IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
 const FIXTURE_VERSION = "sdt-g30-b0-v1";
 const FIXTURE_TAG = "room:g30-baseline";
@@ -43,6 +46,27 @@ function nonNegativeInteger(name, value) {
 
 function sha(value) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function redactEvidenceText(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replaceAll(FIXTURE_TAG, "[redacted-tag]")
+    .replaceAll(FIXTURE_PAYLOAD, "[redacted-payload]")
+    .replaceAll(encodedPayload(), "[redacted-payload]")
+    .replace(/Bearer\s+[^\s"'}]+/gi, "Bearer [redacted]");
+}
+
+function redactEvidenceValue(value) {
+  if (typeof value === "string") return redactEvidenceText(value);
+  if (Array.isArray(value)) return value.map(redactEvidenceValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, nested]) => [
+      key,
+      /^(?:authorization|token|tag)$/i.test(key) ? "[redacted]" : redactEvidenceValue(nested),
+    ]));
+  }
+  return value;
 }
 
 function sleep(ms) {
@@ -105,6 +129,36 @@ function requestId(response) {
   return value;
 }
 
+function nullableRequestId(response) {
+  const value = response.headers.get("cf-ray");
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function responseEvidence(result) {
+  return Object.freeze({
+    status: result.response.status,
+    cfRay: nullableRequestId(result.response),
+    startedAtMs: result.startedAtMs,
+    receivedAtMs: result.receivedAtMs,
+    receivedAt: result.receivedAt,
+    body: redactEvidenceValue(result.body),
+    rawBody: redactEvidenceText(result.raw),
+  });
+}
+
+function transportEvidence(error, startedAtMs) {
+  const receivedAtMs = Date.now();
+  return Object.freeze({
+    errorClass: error instanceof Error ? error.name : typeof error,
+    // A transport failure has no HTTP body to retain. Keep only a scrubbed
+    // message so a fetch implementation cannot turn credentials into evidence.
+    message: redactEvidenceText(error instanceof Error ? error.message : String(error)),
+    startedAtMs,
+    receivedAtMs,
+    receivedAt: new Date(receivedAtMs).toISOString(),
+  });
+}
+
 function assertCommit(result) {
   if (result.response.status !== 200 || !Array.isArray(result.body?.writtenEvents) || result.body.writtenEvents.length === 0) {
     throw new Error(`G30 B0 commit was not an eligible non-empty HTTP-200 result: ${JSON.stringify({ status: result.response.status, body: result.body })}`);
@@ -129,6 +183,20 @@ export class G30HeadReadFailure extends Error {
   }
 }
 
+/**
+ * A B0 phase can only continue after a non-200/transport outcome by starting
+ * a fresh eligible window from a durable fixed-tag reread.  This error carries
+ * the complete redacted reset trail when that cannot be done safely (or when
+ * AC7's reset bound is exceeded).
+ */
+export class G30PhaseMeasurementFailure extends Error {
+  constructor(record) {
+    super(`G30 B0 ${record.phase} phase cannot continue safely: ${record.reason}`);
+    this.name = "G30PhaseMeasurementFailure";
+    this.record = Object.freeze(record);
+  }
+}
+
 function headReadFailure(result) {
   return new G30HeadReadFailure({
     task: "SDT-G30",
@@ -149,7 +217,21 @@ function headReadFailure(result) {
   });
 }
 
-async function readConsistencyHead(baseUrl, token) {
+function successfulHeadReadEvidence(result, head) {
+  return Object.freeze({
+    kind: "fixed-tag-head-reread",
+    endpoint: "/conformance/v1/api/sekiban/serialized/tag-latest-sortable",
+    head,
+    statusRaw: {
+      httpStatus: result.response.status,
+      cfRay: nullableRequestId(result.response),
+      receivedAtMs: result.receivedAtMs,
+      receivedAt: result.receivedAt,
+    },
+  });
+}
+
+async function readConsistencyHeadRecord(baseUrl, token) {
   const result = await request(baseUrl, "/conformance/v1/api/sekiban/serialized/tag-latest-sortable", {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -160,19 +242,23 @@ async function readConsistencyHead(baseUrl, token) {
   }
   if (result.body.exists === false) {
     if (result.body.lastSortableUniqueId !== "") throw new Error("G30 B0 empty fixed tag read must carry the V1 empty head");
-    return undefined;
+    return Object.freeze({ head: undefined, evidence: successfulHeadReadEvidence(result, undefined) });
   }
   if (!SORTABLE_UNIQUE_ID.test(result.body.lastSortableUniqueId)) {
     throw new Error("G30 B0 fixed tag head is not a 30-digit SortableUniqueId");
   }
-  return result.body.lastSortableUniqueId;
+  return Object.freeze({ head: result.body.lastSortableUniqueId, evidence: successfulHeadReadEvidence(result, result.body.lastSortableUniqueId) });
 }
 
-async function readConsistencyHeadAfterConformancePropagation(baseUrl, token, attempts, delayMs) {
+async function readConsistencyHead(baseUrl, token) {
+  return (await readConsistencyHeadRecord(baseUrl, token)).head;
+}
+
+async function readConsistencyHeadRecordAfterConformancePropagation(baseUrl, token, attempts, delayMs) {
   let lastFailure;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await readConsistencyHead(baseUrl, token);
+      return await readConsistencyHeadRecord(baseUrl, token);
     } catch (error) {
       // A fresh file-fed token may reach a newly deployed version a few edge
       // seconds before that version's secret is visible.  Never retry a
@@ -186,6 +272,10 @@ async function readConsistencyHeadAfterConformancePropagation(baseUrl, token, at
     }
   }
   throw lastFailure;
+}
+
+async function readConsistencyHeadAfterConformancePropagation(baseUrl, token, attempts, delayMs) {
+  return (await readConsistencyHeadRecordAfterConformancePropagation(baseUrl, token, attempts, delayMs)).head;
 }
 
 /**
@@ -205,6 +295,23 @@ export function buildHeadReadFailureEvidence({ phase, sourceCommit, configDigest
 
 export function writeHeadReadFailureEvidence(output, context, failure) {
   const evidence = buildHeadReadFailureEvidence(context, failure);
+  mkdirSync(dirname(output), { recursive: true });
+  writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
+  return evidence;
+}
+
+export function buildPhaseMeasurementFailureEvidence({ phase, sourceCommit, configDigest }, failure) {
+  if (!(failure instanceof G30PhaseMeasurementFailure)) throw new Error("G30 B0 failure evidence requires a phase measurement failure");
+  return Object.freeze({
+    ...failure.record,
+    phase,
+    sourceCommit,
+    configDigest,
+  });
+}
+
+export function writePhaseMeasurementFailureEvidence(output, context, failure) {
+  const evidence = buildPhaseMeasurementFailureEvidence(context, failure);
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
   return evidence;
@@ -255,6 +362,70 @@ export function assertDeploymentWitness(witness, phase, sourceCommit, configDige
   return witness;
 }
 
+function classifyReadback(expectedConsistencyHead, observedConsistencyHead) {
+  if (observedConsistencyHead === undefined) return "empty";
+  if (observedConsistencyHead === expectedConsistencyHead) return "unchanged";
+  return observedConsistencyHead > expectedConsistencyHead ? "advanced" : "regressed";
+}
+
+function discardedWindowAttempt(entry, resetNumber) {
+  return Object.freeze({
+    kind: "discarded-window-entry",
+    resetNumber,
+    priorWindowOrdinal: entry.index,
+    // Preserve the original raw client ledger entry outside the new canonical
+    // window. It is evidence of the reset, never a replacement sample.
+    record: entry,
+  });
+}
+
+async function measuredCommitAttempt(baseUrl, endpoint, authorization, consistencyHead) {
+  const startedAtMs = Date.now();
+  try {
+    const result = await request(baseUrl, endpoint, {
+      method: "POST",
+      headers: { ...authorization, "content-type": "application/json" },
+      body: JSON.stringify(commitEnvelope(consistencyHead)),
+    });
+    if (result.response.status === 200) return Object.freeze({ kind: "http-200", result });
+    return Object.freeze({
+      kind: "ineligible",
+      trigger: Object.freeze({
+        trigger: "http-non-200",
+        expectedConsistencyHead: consistencyHead,
+        response: responseEvidence(result),
+      }),
+    });
+  } catch (error) {
+    return Object.freeze({
+      kind: "ineligible",
+      trigger: Object.freeze({
+        trigger: "transport-error",
+        expectedConsistencyHead: consistencyHead,
+        transport: transportEvidence(error, startedAtMs),
+      }),
+    });
+  }
+}
+
+function measurementFailure({ phase, sourceCommit, configDigest, endpoint, reason, resetCount, rawAttempts, expectedConsistencyHead, readback }) {
+  return new G30PhaseMeasurementFailure({
+    task: "SDT-G30",
+    kind: "phase-window-reset-failure",
+    phase,
+    sourceCommit,
+    configDigest,
+    endpoint,
+    reason,
+    resetCount,
+    resetLimit: MAX_WINDOW_RESETS,
+    expectedConsistencyHead,
+    rawAttempts,
+    ...(readback === undefined ? {} : { readback }),
+    capturedAt: new Date().toISOString(),
+  });
+}
+
 /**
  * Sends the exact same V1 payload/tag fixture at a fixed 2-second schedule.
  * The body carries no G30 diagnostic extension.  cf-ray is a platform header
@@ -271,11 +442,15 @@ export async function measureB0Phase({
   samples = SAMPLE_COUNT,
   warmup = 5,
   sleepFor = sleep,
+  conformanceRetryAttempts = CONFORMANCE_RETRY_ATTEMPTS,
+  conformanceRetryDelayMs = CONFORMANCE_RETRY_DELAY_MS,
 }) {
   if (!["A", "B", "A-prime"].includes(phase)) throw new Error("G30 phase must be A, B, or A-prime");
   if (samples !== SAMPLE_COUNT) throw new Error(`G30 B0 requires exactly ${SAMPLE_COUNT} retained samples`);
   if (!Number.isSafeInteger(warmup) || warmup < 5 || warmup > 30) throw new Error("G30 warmup must be 5..30 requests");
   if (typeof consistencyHead !== "string" || !SORTABLE_UNIQUE_ID.test(consistencyHead)) throw new Error("G30 B0 phase requires the observed fixed-tag consistency head");
+  const readbackAttempts = positiveInteger("G30 conformance retry attempts", conformanceRetryAttempts);
+  const readbackDelayMs = nonNegativeInteger("G30 conformance retry delay", conformanceRetryDelayMs);
   const authorization = { authorization: `Bearer ${token}` };
   const configWitness = assertDeploymentWitness(deploymentWitness, phase, sourceCommit, configDigest);
   const endpoint = "/conformance/v1/api/sekiban/serialized/commit";
@@ -295,17 +470,93 @@ export async function measureB0Phase({
     expectedConsistencyHead = committed.head;
     await sleepFor(CADENCE_MS);
   }
-  const fixedStartMs = Date.now() + CADENCE_MS;
+  let fixedStartMs = Date.now() + CADENCE_MS;
   const ledger = [];
-  for (let index = 0; index < samples; index += 1) {
+  const rawAttempts = [];
+  let windowResets = 0;
+
+  const resetEligibleWindow = async (trigger) => {
+    const resetNumber = windowResets + 1;
+    const discarded = ledger.splice(0, ledger.length);
+    rawAttempts.push(...discarded.map((entry) => discardedWindowAttempt(entry, resetNumber)));
+    const reset = {
+      kind: "window-reset-trigger",
+      resetNumber,
+      priorWindowCount: discarded.length,
+      sameAttemptResent: false,
+      ...trigger,
+    };
+    rawAttempts.push(reset);
+
+    let reread;
+    try {
+      reread = await readConsistencyHeadRecordAfterConformancePropagation(baseUrl, token, readbackAttempts, readbackDelayMs);
+    } catch (error) {
+      reset.readback = error instanceof G30HeadReadFailure
+        ? { result: "failed", failure: error.record }
+        : { result: "failed", errorClass: error instanceof Error ? error.name : typeof error, message: redactEvidenceText(error instanceof Error ? error.message : String(error)) };
+      throw measurementFailure({
+        phase,
+        sourceCommit,
+        configDigest,
+        endpoint,
+        reason: "durable-fixed-tag-reread-failed-after-indeterminate-attempt",
+        resetCount: resetNumber,
+        rawAttempts,
+        expectedConsistencyHead,
+        readback: reset.readback,
+      });
+    }
+
+    const classification = classifyReadback(expectedConsistencyHead, reread.head);
+    reset.readback = { ...reread.evidence, classification };
+    // A new attempt may follow only a non-regressing durable authority. An
+    // advanced head is evidence that state progressed, not a claim that the
+    // indeterminate request itself landed; we never resend that request.
+    if (classification === "empty" || classification === "regressed") {
+      throw measurementFailure({
+        phase,
+        sourceCommit,
+        configDigest,
+        endpoint,
+        reason: `durable-fixed-tag-reread-${classification}-after-indeterminate-attempt`,
+        resetCount: resetNumber,
+        rawAttempts,
+        expectedConsistencyHead,
+        readback: reset.readback,
+      });
+    }
+    windowResets = resetNumber;
+    if (windowResets > MAX_WINDOW_RESETS) {
+      throw measurementFailure({
+        phase,
+        sourceCommit,
+        configDigest,
+        endpoint,
+        reason: "window-reset-limit-exceeded",
+        resetCount: windowResets,
+        rawAttempts,
+        expectedConsistencyHead,
+        readback: reset.readback,
+      });
+    }
+    expectedConsistencyHead = reread.head;
+    // The new 100-request window starts only after durable reread. No failed
+    // attempt occupies an index in the retained cadence.
+    fixedStartMs = Date.now() + CADENCE_MS;
+  };
+
+  while (ledger.length < samples) {
+    const index = ledger.length;
     const scheduledStartMs = fixedStartMs + index * CADENCE_MS;
     await sleepFor(scheduledStartMs - Date.now());
-    const startedAtMs = Date.now();
-    const result = await request(baseUrl, endpoint, {
-      method: "POST",
-      headers: { ...authorization, "content-type": "application/json" },
-      body: JSON.stringify(commitEnvelope(expectedConsistencyHead)),
-    });
+    const attempt = await measuredCommitAttempt(baseUrl, endpoint, authorization, expectedConsistencyHead);
+    if (attempt.kind === "ineligible") {
+      await resetEligibleWindow(attempt.trigger);
+      continue;
+    }
+    const result = attempt.result;
+    const startedAtMs = result.startedAtMs;
     const completedAtMs = Date.now();
     const committed = nextConsistencyHead(result);
     ledger.push({
@@ -394,7 +645,8 @@ export async function measureB0Phase({
       observability: { traces: { enabled: true, head_sampling_rate: phase === "B" ? 1 : 0 } },
     },
     warmup: { requested: warmup, requests: warmupLedger },
-    rawAttempts: [],
+    rawAttempts,
+    windowResets,
     ledger,
     ...(idleExperiment === undefined ? {} : { idleExperiment }),
   };
@@ -436,6 +688,8 @@ async function main() {
       configDigest,
       deploymentWitness,
       consistencyHead: established.head,
+      conformanceRetryAttempts,
+      conformanceRetryDelayMs,
     });
     mkdirSync(dirname(output), { recursive: true });
     writeFileSync(output, `${JSON.stringify(measured, null, 2)}\n`, "utf8");
@@ -444,6 +698,10 @@ async function main() {
     if (failureOutput !== undefined && error instanceof G30HeadReadFailure) {
       const evidence = writeHeadReadFailureEvidence(failureOutput, { phase, sourceCommit, configDigest }, error);
       console.error(`G30 B0 saved fixed-tag head-read failure evidence to ${failureOutput} (HTTP ${evidence.response.status}; cf-ray ${evidence.response.cfRay ?? "absent"})`);
+    }
+    if (failureOutput !== undefined && error instanceof G30PhaseMeasurementFailure) {
+      const evidence = writePhaseMeasurementFailureEvidence(failureOutput, { phase, sourceCommit, configDigest }, error);
+      console.error(`G30 B0 saved window-reset failure evidence to ${failureOutput} (${evidence.reason}; resets ${evidence.resetCount}/${evidence.resetLimit})`);
     }
     throw error;
   }

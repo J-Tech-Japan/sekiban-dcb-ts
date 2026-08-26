@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   assertB0Evidence,
+  assertEligiblePhaseWindow,
   assertIdleRequestReferences,
   assertObservationStream,
   assertTraceCohort,
+  G30_WINDOW_RESET_LIMIT,
   observationLedgerForPhase,
 } from "../scripts/g30-b0-contract.mjs";
 import { assertConformancePropagationRetry, assertG30Config, assertPhaseRuntimeIsolation, assertRemoteMigrationPreflight, assertWitnessCaptureShellSafety, assertWitnessReplaySnapshotSafety } from "../scripts/g30-config-check.mjs";
@@ -27,7 +29,9 @@ import {
   assertDeploymentWitness,
   buildHeadReadFailureEvidence,
   establishB0Consistency,
+  G30PhaseMeasurementFailure,
   G30HeadReadFailure,
+  MAX_WINDOW_RESETS,
   measureB0Phase,
 } from "../scripts/deploy/g30-b0-measure.mjs";
 import { deploymentMessage } from "../scripts/deploy/g30-deployment-witness.mjs";
@@ -496,6 +500,51 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => assertConformancePropagationRetry(runbook.replace("readonly CONFORMANCE_RETRY_ATTEMPTS=15", "readonly CONFORMANCE_RETRY_ATTEMPTS=1"))).toThrow(/15x1s/);
   });
 
+  it("requires raw durable reread evidence for every retained B0 window reset", () => {
+    const retained = records("A", 100);
+    const rawAttempts = [
+      {
+        kind: "discarded-window-entry",
+        resetNumber: 1,
+        priorWindowOrdinal: 0,
+        record: structuredClone(retained[0]),
+      },
+      {
+        kind: "window-reset-trigger",
+        resetNumber: 1,
+        priorWindowCount: 1,
+        sameAttemptResent: false,
+        trigger: "http-non-200",
+        expectedConsistencyHead: sortableHead(6),
+        response: {
+          status: 504,
+          cfRay: "timeout-504-SJC",
+          startedAtMs: 1_000,
+          receivedAtMs: 22_500,
+          receivedAt: "2026-08-26T00:00:22.500Z",
+          body: { error: "Commit outcome is undetermined", code: "timeout" },
+          rawBody: '{"error":"Commit outcome is undetermined","code":"timeout"}',
+        },
+        readback: {
+          kind: "fixed-tag-head-reread",
+          endpoint: "/conformance/v1/api/sekiban/serialized/tag-latest-sortable",
+          head: sortableHead(7),
+          classification: "advanced",
+          statusRaw: {
+            httpStatus: 200,
+            cfRay: "reread-504-SJC",
+            receivedAtMs: 22_600,
+            receivedAt: "2026-08-26T00:00:22.600Z",
+          },
+        },
+      },
+    ];
+    expect(assertEligiblePhaseWindow("A", retained, rawAttempts, 1)).toMatchObject({ phase: "A" });
+    expect(() => assertEligiblePhaseWindow("A", retained, rawAttempts.map((entry) => entry.kind === "window-reset-trigger" ? { ...entry, sameAttemptResent: true } : entry), 1)).toThrow(/window-reset-retry/);
+    expect(() => assertEligiblePhaseWindow("A", retained, rawAttempts.map((entry) => entry.kind === "window-reset-trigger" ? { ...entry, readback: undefined } : entry), 1)).toThrow(/window-reset-reread/);
+    expect(() => assertEligiblePhaseWindow("A", retained, rawAttempts, G30_WINDOW_RESET_LIMIT + 1)).toThrow(/window-reset-limit/);
+  });
+
   it("chains one fixed tag's observed head through every B0 commit", async () => {
     const sourceCommit = "a".repeat(40);
     const configDigest = "b".repeat(64);
@@ -548,6 +597,196 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       };
       expect(measured.consistency).toMatchObject({ initialHead: sortableHead(0), finalHead: sortableHead(108) });
       expect(measured.ledger.every((entry, index) => entry.consistencyHead === sortableHead(index + 5))).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("resets the retained window after a 504 without resending its attempt", async () => {
+    const sourceCommit = "a".repeat(40);
+    const configDigest = "b".repeat(64);
+    const witness = {
+      task: "SDT-G30",
+      phase: "A",
+      sourceCommit,
+      configDigest,
+      placement: "off",
+      serviceId: SERVICE,
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      deployedVersion: {
+        id: "fixture-version",
+        number: 1,
+        createdOn: "2026-08-24T00:00:00.000Z",
+        message: deploymentMessage("A", sourceCommit, configDigest, SERVICE),
+      },
+    };
+    const consistencyHeads: string[] = [];
+    let commits = 0;
+    let rereads = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/tag-latest-sortable")) {
+        rereads += 1;
+        return new Response(JSON.stringify({ exists: true, lastSortableUniqueId: sortableHead(7) }), {
+          status: 200,
+          headers: { "content-type": "application/json", "cf-ray": "reread-504-SJC" },
+        });
+      }
+      const body = JSON.parse(String((init as RequestInit | undefined)?.body)) as {
+        consistencyTags?: Array<{ lastSortableUniqueId?: string }>;
+      };
+      consistencyHeads.push(String(body.consistencyTags?.[0]?.lastSortableUniqueId));
+      commits += 1;
+      if (commits === 7) {
+        return new Response(JSON.stringify({ error: "Commit outcome is undetermined", code: "timeout" }), {
+          status: 504,
+          headers: { "content-type": "application/json", "cf-ray": "timeout-504-SJC" },
+        });
+      }
+      return new Response(JSON.stringify({
+        writtenEvents: [{ id: `event-${commits}`, sortableUniqueIdValue: sortableHead(commits) }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json", "cf-ray": `commit-${commits}-SJC` },
+      });
+    });
+    try {
+      const phase = await measureB0Phase({
+        baseUrl: "https://g30.test",
+        token: "fixture-token",
+        phase: "A",
+        sourceCommit,
+        configDigest,
+        deploymentWitness: witness,
+        consistencyHead: sortableHead(0),
+        conformanceRetryAttempts: 1,
+        conformanceRetryDelayMs: 0,
+        sleepFor: async () => undefined,
+      }) as {
+        ledger: Array<{ index: number; consistencyHead: string }>;
+        rawAttempts: Array<Record<string, unknown>>;
+        windowResets: number;
+        consistency: { initialHead: string; finalHead: string };
+      };
+      expect(commits).toBe(107); // five warmups + one discarded + one 504 + 100 retained
+      expect(rereads).toBe(1);
+      expect(consistencyHeads.filter((head) => head === sortableHead(6))).toHaveLength(1);
+      expect(consistencyHeads[7]).toBe(sortableHead(7));
+      expect(phase.windowResets).toBe(1);
+      expect(phase.ledger).toHaveLength(100);
+      expect(phase.ledger.map((entry) => entry.index)).toEqual(Array.from({ length: 100 }, (_, index) => index));
+      expect(phase.ledger[0]?.consistencyHead).toBe(sortableHead(7));
+      expect(phase.consistency).toMatchObject({ initialHead: sortableHead(0), finalHead: sortableHead(107) });
+      expect(phase.rawAttempts).toMatchObject([
+        {
+          kind: "discarded-window-entry",
+          resetNumber: 1,
+          priorWindowOrdinal: 0,
+          record: { consistencyHead: sortableHead(5) },
+        },
+        {
+          kind: "window-reset-trigger",
+          resetNumber: 1,
+          priorWindowCount: 1,
+          sameAttemptResent: false,
+          trigger: "http-non-200",
+          expectedConsistencyHead: sortableHead(6),
+          response: {
+            status: 504,
+            cfRay: "timeout-504-SJC",
+            body: { code: "timeout" },
+            rawBody: expect.stringContaining("timeout"),
+          },
+          readback: {
+            kind: "fixed-tag-head-reread",
+            head: sortableHead(7),
+            classification: "advanced",
+            statusRaw: { httpStatus: 200, cfRay: "reread-504-SJC" },
+          },
+        },
+      ]);
+      expect(JSON.stringify(phase.rawAttempts)).not.toContain("room:g30-baseline");
+      expect(JSON.stringify(phase.rawAttempts)).not.toContain("fixture-token");
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("stops with reset distribution evidence after more than five indeterminate attempts", async () => {
+    const sourceCommit = "a".repeat(40);
+    const configDigest = "b".repeat(64);
+    const witness = {
+      task: "SDT-G30",
+      phase: "A",
+      sourceCommit,
+      configDigest,
+      placement: "off",
+      serviceId: SERVICE,
+      worker: "sekiban-dcb-meeting-room-cloudflare-only",
+      deployedVersion: {
+        id: "fixture-version",
+        number: 1,
+        createdOn: "2026-08-24T00:00:00.000Z",
+        message: deploymentMessage("A", sourceCommit, configDigest, SERVICE),
+      },
+    };
+    let commits = 0;
+    let rereads = 0;
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith("/tag-latest-sortable")) {
+        rereads += 1;
+        return new Response(JSON.stringify({ exists: true, lastSortableUniqueId: sortableHead(5) }), {
+          status: 200,
+          headers: { "content-type": "application/json", "cf-ray": `reread-${rereads}-SJC` },
+        });
+      }
+      commits += 1;
+      if (commits <= 5) {
+        return new Response(JSON.stringify({
+          writtenEvents: [{ id: `warm-${commits}`, sortableUniqueIdValue: sortableHead(commits) }],
+        }), {
+          status: 200,
+          headers: { "content-type": "application/json", "cf-ray": `warm-${commits}-SJC` },
+        });
+      }
+      return new Response(JSON.stringify({ error: "Commit outcome is undetermined", code: "timeout" }), {
+        status: 504,
+        headers: { "content-type": "application/json", "cf-ray": `timeout-${commits}-SJC` },
+      });
+    });
+    try {
+      let failure: unknown;
+      try {
+        await measureB0Phase({
+          baseUrl: "https://g30.test",
+          token: "fixture-token",
+          phase: "A",
+          sourceCommit,
+          configDigest,
+          deploymentWitness: witness,
+          consistencyHead: sortableHead(0),
+          conformanceRetryAttempts: 1,
+          conformanceRetryDelayMs: 0,
+          sleepFor: async () => undefined,
+        });
+      } catch (caught) {
+        failure = caught;
+      }
+      expect(failure).toBeInstanceOf(G30PhaseMeasurementFailure);
+      const record = (failure as G30PhaseMeasurementFailure).record as {
+        reason: string;
+        resetCount: number;
+        resetLimit: number;
+        rawAttempts: Array<Record<string, unknown>>;
+      };
+      expect(record.reason).toBe("window-reset-limit-exceeded");
+      expect(record.resetCount).toBe(MAX_WINDOW_RESETS + 1);
+      expect(record.resetLimit).toBe(MAX_WINDOW_RESETS);
+      expect(record.rawAttempts.filter((entry) => entry.kind === "window-reset-trigger")).toHaveLength(MAX_WINDOW_RESETS + 1);
+      expect(record.rawAttempts.every((entry) => entry.sameAttemptResent !== true)).toBe(true);
+      expect(commits).toBe(5 + MAX_WINDOW_RESETS + 1);
+      expect(rereads).toBe(MAX_WINDOW_RESETS + 1);
     } finally {
       fetchSpy.mockRestore();
     }
