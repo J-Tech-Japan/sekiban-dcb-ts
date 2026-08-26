@@ -250,10 +250,6 @@ async function readConsistencyHeadRecord(baseUrl, token) {
   return Object.freeze({ head: result.body.lastSortableUniqueId, evidence: successfulHeadReadEvidence(result, result.body.lastSortableUniqueId) });
 }
 
-async function readConsistencyHead(baseUrl, token) {
-  return (await readConsistencyHeadRecord(baseUrl, token)).head;
-}
-
 async function readConsistencyHeadRecordAfterConformancePropagation(baseUrl, token, attempts, delayMs) {
   let lastFailure;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
