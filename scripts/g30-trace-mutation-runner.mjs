@@ -395,6 +395,18 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     testFile: "test/g30-b0.spec.ts",
   },
   {
+    // Rayless custom-span roots exist in live Workers telemetry. Reverting to
+    // the former CF-Ray-only discovery path must leave this exact cohort
+    // root-absent rather than allowing a time-nearest substitute.
+    id: "correlation-root-discovery-gate",
+    file: source.traceExport,
+    from: '    key: "correlation.id",',
+    to: '    key: "$metadata.rayId",',
+    target: "discovers a rayless S00 root through exact worker-observation correlation",
+    unrelated: "preserves the POP-suffixed client CF-Ray across the platform ray-id join",
+    testFile: "test/g30-b0.spec.ts",
+  },
+  {
     id: "runtime-verification-gate",
     file: source.b0,
     from: " || trace?.runtimeVerified !== true)",

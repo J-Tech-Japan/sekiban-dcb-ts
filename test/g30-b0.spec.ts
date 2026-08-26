@@ -15,6 +15,7 @@ import {
   CLOUDFLARE_TELEMETRY_MAX_FILTER_NODES,
   cohortValuesFilter,
   exportDeadline,
+  exportCohortTelemetry,
   normalizeTelemetryBundle,
   normalizeTelemetryExport,
   queryTelemetry,
@@ -1087,6 +1088,74 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     const mapping = clientRequestIdByPlatformRayId(ledger);
     expect(mapping.get(platformRayId)).toBe(clientRequestId);
     expect(normalizeTelemetryBundle(raw, 1_101, mapping).traces).toMatchObject([{ requestId: clientRequestId }]);
+  });
+
+  it("discovers a rayless S00 root through exact worker-observation correlation", async () => {
+    const clientRequestId = "a304f4ff2b982517-SJC";
+    const platformRayId = "a304f4ff2b982517";
+    const correlationId = `corr-${clientRequestId}`;
+    const ledger = [{ index: 0, requestId: clientRequestId, startedAtMs: 1_000, completedAtMs: 1_100, responseLatencyMs: 100 }];
+    const raw = rawTelemetry(ledger, false);
+    const worker = raw.events.find((entry) => entry.source?.event === "worker.invocation");
+    const root = raw.events.find((entry) => entry.attributes?.operation === "sdt.commit");
+    if (worker?.source === undefined || worker.$metadata === undefined || root?.$metadata === undefined) {
+      throw new Error("fixture lacks worker or S00 root");
+    }
+    worker.source.requestId = platformRayId;
+    worker.$metadata.rayId = platformRayId;
+    delete root.$metadata.rayId;
+
+    const workerEvents = raw.events.filter((entry) => entry.source?.event === "worker.invocation");
+    const correlationRootEvents = [root];
+    const traceEvents = raw.events.filter((entry) => entry.attributes !== undefined);
+    const observationEvents = raw.events.filter((entry) => entry.source?.schema === "sdt.observe/v1");
+    const requests: Array<Record<string, unknown>> = [];
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as { parameters?: { filters?: Array<Record<string, unknown>> } };
+      requests.push(body as Record<string, unknown>);
+      const filters = body.parameters?.filters ?? [];
+      const has = (key: string, value?: string) => filters.some((filter) => filter.key === key && (value === undefined || filter.value === value));
+      const events = has("$metadata.traceId")
+        ? traceEvents
+        : has("correlation.id")
+          ? correlationRootEvents
+          : has("correlationId")
+            ? observationEvents
+            : has("$metadata.rayId", platformRayId)
+              ? workerEvents
+              : [];
+      return new Response(JSON.stringify({ success: true, result: { events: { count: events.length, events } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      const exported = await exportCohortTelemetry({
+        accountId: "account",
+        token: "redacted",
+        template: {
+          view: "events",
+          limit: 2_000,
+          parameters: {
+            filterCombination: "or",
+            filters: [
+              { key: "$workers.scriptName", operation: "eq", type: "string", value: "primary" },
+              { key: "$workers.scriptName", operation: "eq", type: "string", value: "receiver" },
+            ],
+          },
+        },
+        ledger,
+      });
+      const normalized = normalizeTelemetryBundle(exported, 1_101, clientRequestIdByPlatformRayId(ledger));
+      expect(normalized.traces).toMatchObject([{ requestId: clientRequestId, complete: true, runtimeVerified: true }]);
+      expect(requests.some((body) => {
+        const filters = (body.parameters as { filters?: Array<Record<string, unknown>> }).filters ?? [];
+        return filters.some((filter) => filter.key === "correlation.id" && filter.operation === "in" && filter.value === correlationId)
+          && filters.some((filter) => filter.key === "$metadata.spanName" && filter.value === "sdt.commit");
+      })).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("rejects a structured observation that lacks its existing trace correlation", () => {

@@ -23,7 +23,10 @@ Closes #70
   provider CF-Ray and existing correlation; DO logs retain provider request
   identity and existing attempt correlation. The exporter joins the client's
   POP-suffixed CF-Ray through Cloudflare's 16-hex provider Ray index and
-  restores the original client value in evidence; it uses bounded ten-value
+  restores the original client value in evidence. When a custom S00 root has
+  no provider Ray, it uses only that existing worker correlation to query one
+  exact traceId; ambiguity fails and time-proximity fallback is forbidden. It
+  uses bounded ten-value
   subqueries whose values are serialized as the provider's comma-separated
   `in` membership form and are structurally limited to the provider's 16
   filter-node maximum. The initial query and every subsequent incomplete

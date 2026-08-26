@@ -87,9 +87,12 @@ does not assert a performance pass/fail.
    placement observation. No G30 route,
    header, body field, or runtime variable is added for this purpose.
 6. The exporter materializes bounded cohort queries from B's immutable,
-   100-request client ledger. It queries S00 roots directly by provider CF-Ray,
-   then bounded per-trace and correlated-observation exports; it never joins by
-   time proximity or assumes a structured console log has a platform trace ID.
+   100-request client ledger. It discovers S00 first by provider CF-Ray and,
+   when a custom root omits that field, only through the existing
+   `worker.invocation` post-admission correlation and an exact
+   `correlation.id` → one-traceId query. It then performs bounded per-trace
+   and correlated-observation exports; it never joins by time proximity or
+   assumes a structured console log has a platform trace ID.
    `schemaCompleteCount >= 95` is the frozen delivery ceiling: six losses fail,
    while every permitted loss is enumerated as either `root-absent` or
    `schema-incomplete` UNKNOWN. The exact rank-1..5 tail, sorted by client

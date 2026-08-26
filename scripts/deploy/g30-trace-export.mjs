@@ -327,7 +327,9 @@ function normalizeObservation(payload, event, requestId, traceId, correlationId,
  * Cloudflare structured console logs expose platform request identity but do
  * not expose a trace id.  The runtime therefore retains the existing
  * post-admission correlation in sdt.observe/v1, and this exporter joins
- * observation -> S00 -> client CF-Ray by that correlation.  No time-nearest
+ * observation -> S00 -> client CF-Ray by that correlation.  The root may not
+ * retain a provider CF-Ray, so the live exporter also discovers its trace ID
+ * by the same exact correlation before this normalizer runs. No time-nearest
  * fallback or manual trace-parent field is accepted.
  */
 export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientRequestIdsByRayId) {
@@ -393,10 +395,29 @@ export function normalizeTelemetryBundle(raw, exportedAtMs = Date.now(), clientR
     let requestId;
     let platformRayId;
     if (clientRequestIdsByRayId !== undefined) {
-      platformRayId = cloudflareRayId(rootRayValue, `S00 trace ${group.traceId} root provider ray`);
-      requestId = clientRequestIdsByRayId.get(platformRayId);
-      if (typeof requestId !== "string" || requestId.length === 0) {
-        fail("observation-ray-join", `S00 trace ${group.traceId} root has no client CF-Ray ledger join`);
+      if (rootRayValue !== undefined && rootRayValue !== null) {
+        platformRayId = cloudflareRayId(rootRayValue, `S00 trace ${group.traceId} root provider ray`);
+        requestId = clientRequestIdsByRayId.get(platformRayId);
+        if (typeof requestId !== "string" || requestId.length === 0) {
+          fail("observation-ray-join", `S00 trace ${group.traceId} root has no client CF-Ray ledger join`);
+        }
+      } else {
+        // Cloudflare custom-span roots can omit $metadata.rayId even though
+        // their exact post-admission correlation is present on the matching
+        // Worker observation.  The caller only supplies such roots after a
+        // correlation.id query, so retain the client join through that one
+        // observation rather than guessing by timestamp or span proximity.
+        if (worker.length !== 1) {
+          fail("observation-ray-join", `rayless S00 trace ${group.traceId} lacks one exact worker observation`);
+        }
+        const observedWorkerRequestId = worker[0].payload.requestId;
+        const workerRayId = cloudflareRayId(observedWorkerRequestId, `rayless S00 trace ${group.traceId} worker observation`);
+        const joinedRequestId = clientRequestIdsByRayId.get(workerRayId);
+        if (typeof joinedRequestId !== "string" || joinedRequestId.length === 0) {
+          fail("observation-ray-join", `rayless S00 trace ${group.traceId} worker observation has no client CF-Ray ledger join`);
+        }
+        platformRayId = workerRayId;
+        requestId = joinedRequestId;
       }
     } else if (worker.length === 1 && typeof worker[0].payload.requestId === "string" && worker[0].payload.requestId.length > 0) {
       requestId = worker[0].payload.requestId;
@@ -620,6 +641,12 @@ function payloadsFrom(raws, eventName) {
     .filter((entry) => entry.payload?.event === eventName));
 }
 
+function recordRootTraceId(traceIdsByCorrelation, correlationId, traceId) {
+  const existing = traceIdsByCorrelation.get(correlationId) ?? new Set();
+  existing.add(traceId);
+  traceIdsByCorrelation.set(correlationId, existing);
+}
+
 async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = TELEMETRY_QUERY_VALUE_BATCH }) {
   const result = [];
   for (const batch of chunks(nonEmptyTelemetryStrings(values, key), batchSize)) {
@@ -646,6 +673,7 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     values: platformRayIds,
   });
   const workerByRequestId = new Map();
+  const requestIdByCorrelation = new Map();
   for (const { payload, event } of payloadsFrom(workerRaws, "worker.invocation")) {
     const providerRayValue = metadataField(metadataFor(event), event, ["rayId", "ray_id"]);
     const providerRayId = cloudflareRayId(providerRayValue, "worker observation provider ray");
@@ -659,6 +687,16 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     const existing = workerByRequestId.get(requestId) ?? new Set();
     existing.add(correlationId);
     workerByRequestId.set(requestId, existing);
+    const priorRequestId = requestIdByCorrelation.get(correlationId);
+    if (priorRequestId !== undefined && priorRequestId !== requestId) {
+      fail("cohort-worker", `worker correlation ${correlationId} maps to more than one client request`);
+    }
+    requestIdByCorrelation.set(correlationId, requestId);
+  }
+  for (const [requestId, correlations] of workerByRequestId) {
+    if (correlations.size !== 1) {
+      fail("cohort-worker", `client request ${requestId} has more than one worker correlation`);
+    }
   }
   // Query roots directly by the provider identity. A missing Worker Logs
   // observation must not make the root disappear from the AC5 classification:
@@ -685,10 +723,34 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
         && traceId.length > 0
         && clientRequestIdsByRayId.has(cloudflareRayId(rootRayValue, "S00 root provider ray"))
       ) {
-        const existing = traceIdsByCorrelation.get(correlationId) ?? new Set();
-        existing.add(traceId);
-        traceIdsByCorrelation.set(correlationId, existing);
+        recordRootTraceId(traceIdsByCorrelation, correlationId, traceId);
       }
+    }
+  }
+  // Some Workers Logs custom-span roots do not retain $metadata.rayId.  The
+  // worker.invocation observation does retain a post-admission correlation,
+  // however, so use that exact provider-indexed correlation to discover the
+  // root trace ID.  This is an additional deterministic route; CF-Ray root
+  // discovery above remains authoritative when that provider identity exists.
+  const workerCorrelations = [...requestIdByCorrelation.keys()];
+  const correlationRootRaws = workerCorrelations.length === 0 ? [] : await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "correlation.id",
+    values: workerCorrelations,
+    fixedFilters: [queryFilter("schema.version", "sdt.commit/v1"), queryFilter("$metadata.spanName", "sdt.commit")],
+  });
+  for (const raw of correlationRootRaws) {
+    for (const event of rawEvents(raw)) {
+      const attributes = attributesFor(event);
+      const correlationId = attributes["correlation.id"];
+      const traceId = metadataField(metadataFor(event), event, ["traceId", "trace_id"]);
+      if (typeof correlationId !== "string" || typeof traceId !== "string" || traceId.length === 0) continue;
+      if (!requestIdByCorrelation.has(correlationId)) {
+        fail("cohort-root", `correlation-root query returned unjoined correlation ${correlationId}`);
+      }
+      recordRootTraceId(traceIdsByCorrelation, correlationId, traceId);
     }
   }
   for (const [correlationId, traceIds] of traceIdsByCorrelation) {
@@ -717,7 +779,7 @@ export async function exportCohortTelemetry({ accountId, token, template, ledger
     values: correlations,
     fixedFilters: [queryFilter("schema", "sdt.observe/v1")],
   });
-  const merged = mergeTelemetryEvents([...workerRaws, ...rootRaws, ...traceRaws, ...observationRaws]);
+  const merged = mergeTelemetryEvents([...workerRaws, ...rootRaws, ...correlationRootRaws, ...traceRaws, ...observationRaws]);
   // Body-less internal reads intentionally have no attempt identity and are
   // outside the B0 correlation universe. Retain every event that can be
   // classified by a queried root or worker observation; no time-nearest join
