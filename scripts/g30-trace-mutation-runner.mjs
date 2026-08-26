@@ -379,8 +379,8 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
   {
     id: "b0-consistency-empty-seed-gate",
     file: source.measure,
-    from: "  if (result.body.exists === false) {\n    if (result.body.lastSortableUniqueId !== \"\") throw new Error(\"G30 B0 empty fixed tag read must carry the V1 empty head\");\n    return undefined;\n  }",
-    to: "  if (false) {\n    if (result.body.lastSortableUniqueId !== \"\") throw new Error(\"G30 B0 empty fixed tag read must carry the V1 empty head\");\n    return undefined;\n  }",
+    from: "  if (result.body.exists === false) {\n    if (result.body.lastSortableUniqueId !== \"\") throw new Error(\"G30 B0 empty fixed tag read must carry the V1 empty head\");\n    return Object.freeze({ head: undefined, evidence: successfulHeadReadEvidence(result, undefined) });\n  }",
+    to: "  if (result.body.exists === false) {\n    if (result.body.lastSortableUniqueId !== \"\") throw new Error(\"G30 B0 empty fixed tag read must carry the V1 empty head\");\n    return Object.freeze({ head: \"\", evidence: successfulHeadReadEvidence(result, undefined) });\n  }",
     target: "seeds the fixed tag only after a durable empty read",
     unrelated: "takes phase continuity from the durable fixed-tag head",
     testFile: "test/g30-b0.spec.ts",
