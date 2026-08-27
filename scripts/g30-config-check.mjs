@@ -5,7 +5,14 @@ import cutover from "../contracts/g32-cutover.json" with { type: "json" };
 const PRIMARY_OFF = "samples/meeting-room/wrangler.g30-primary-off.jsonc";
 const PRIMARY_ON = "samples/meeting-room/wrangler.g30-primary-on.jsonc";
 const RECEIVER_OFF = "samples/meeting-room/wrangler.g30-receiver-off.jsonc";
-const WITNESS_ENTRYPOINT = "samples/meeting-room/src/worker.cloudflare-only.ts";
+// G38 split the worker into entry + env + receiver modules; the protocol-isolation
+// witness must cover every deployed source surface, not just the primary entry.
+const WITNESS_ENTRYPOINTS = Object.freeze([
+  "samples/meeting-room/src/worker.cloudflare-only.ts",
+  "samples/meeting-room/src/worker.cloudflare-env.ts",
+  "samples/meeting-room/src/worker.cloudflare-receiver-support.ts",
+  "samples/meeting-room/src/worker.g38-receiver.ts",
+]);
 const RUNBOOK = "scripts/deploy/g30-b0-deploy.sh";
 const WORKER_RUNTIME_MARKERS = Object.freeze([
   "G30_SOURCE_COMMIT",
@@ -188,7 +195,7 @@ export function selfTest() {
   const off = readConfig(PRIMARY_OFF); const on = readConfig(PRIMARY_ON); const receiver = readConfig(RECEIVER_OFF);
   const result = assertG30Config(off, on, receiver);
   const runbook = readFileSync(RUNBOOK, "utf8");
-  const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
+  const isolation = assertPhaseRuntimeIsolation(WITNESS_ENTRYPOINTS.map((p) => readFileSync(p, "utf8")).join("\n"), runbook);
   const migration = assertRemoteMigrationPreflight(off, runbook);
   const conformancePropagation = assertConformancePropagationRetry(runbook);
   const witnessCapture = assertWitnessCaptureShellSafety(runbook);
@@ -261,7 +268,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (process.env.SDT_G30_CONFIG_FORCE_FAILURE === "1") throw new Error("SDT-G30 config forced failure");
   const config = assertG30Config(readConfig(PRIMARY_OFF), readConfig(PRIMARY_ON), readConfig(RECEIVER_OFF));
   const runbook = readFileSync(RUNBOOK, "utf8");
-  const isolation = assertPhaseRuntimeIsolation(readFileSync(WITNESS_ENTRYPOINT, "utf8"), runbook);
+  const isolation = assertPhaseRuntimeIsolation(WITNESS_ENTRYPOINTS.map((p) => readFileSync(p, "utf8")).join("\n"), runbook);
   const migration = assertRemoteMigrationPreflight(readConfig(PRIMARY_OFF), runbook);
   const conformancePropagation = assertConformancePropagationRetry(runbook);
   const witnessCapture = assertWitnessCaptureShellSafety(runbook);
