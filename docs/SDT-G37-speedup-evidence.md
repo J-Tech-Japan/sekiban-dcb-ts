@@ -95,13 +95,30 @@ every window and prevents treating a raw delta as a placement claim.
 | A-2 — atomic BOOTSTRAP admit+release | `4440df9` (formal sample support at `7ca5f1d`) → `aa4ec605-76f8-4b50-be8e-ce683f2d1c3e` | 1,310 / 2,202 ms (PDX baseline) → 1,434 / 2,385 ms (ATL) | **Rejected and reverted** by `4ec4fc6`: p50 and p95 both worsened, with a colo change. The initial deployment `78803f58-16f7-4504-ada8-19a780791b10` briefly returned a platform 1101 before activation; the bounded-readiness helper was added, and the formal 50-request sample then completed normally. Artifact: `.artifacts/g37-a2-atomic-bootstrap-7ca5f1de422f.json`. |
 | A-3 — nested finalize piggyback | screened; no safe runtime commit | n/a | **Not adopted.** S09 is the ALLOCATOR's pre-allocation BOOTSTRAP finalize; S10 is the separate final epoch fence immediately before the first Tag append. Piggybacking S10 on the completed allocator call would create an unfenced allocation-response → append interval, so it would change the fail-closed bootstrap invariant rather than merely merge an RPC boundary. |
 | A-4 — seal parallelization / response-after-seal | screened; no successful-path commit | n/a | **Not adopted.** In the current success path, client response follows JOURNAL `COMPLETE`; seal/reconcile work is only the failed-append alarm handoff (S20). Moving or parallelizing it cannot improve a successful commit window without changing recovery/read semantics, which is outside this unit. |
-| A-5 — overlap JOURNAL admit with reservation fan-out | `c2dd342` → `7e6ecf4e-e78f-4690-b91d-cdf4717dcfb5`, repeat `a5dcff48-9a9c-4b2c-a5fa-6a3391b8879b` | 1,473 / 2,152 ms (PDX, `c64bd209-1217-45f9-8f01-6ac2c3030250`) → 1,302 / 1,942 ms (ATL), then **960 / 1,510 ms** (SJC) | **Adopted.** Both after windows improve over the immediate pre-A5 window (−171/−210 ms and −513/−642 ms); their p50 reductions match the overlapped 135–181 ms reservation window. The colos differ, so this is retained as a measured lightweight result rather than a claim that placement caused the gain. The direct CommitWorker fixture proves that S06/S07 begin before S04 resolves and that a rejected admission tombstones any acquired lease before allocator work. Artifacts: `.artifacts/g37-baseline-before-a5-2bd0b509bbb7.json`, `.artifacts/g37-a5-admit-reservation-overlap-c2dd3424d844.json`, `.artifacts/g37-a5-admit-reservation-overlap-repeat-c2dd3424d844.json`. |
+| A-5 — overlap JOURNAL admit with reservation fan-out | `c2dd342` → `7e6ecf4e-e78f-4690-b91d-cdf4717dcfb5`, repeat `a5dcff48-9a9c-4b2c-a5fa-6a3391b8879b` | 1,473 / 2,152 ms (PDX, `c64bd209-1217-45f9-8f01-6ac2c3030250`) → 1,302 / 1,942 ms (ATL), then **960 / 1,510 ms** (SJC) | **Adopted.** Both after windows improve over the immediate pre-A5 window (−171/−210 ms and −513/−642 ms); their p50 reductions match the overlapped 135–181 ms reservation window. The colos differ, so this is retained as a measured lightweight result rather than a claim that placement caused the gain. The direct CommitWorker fixture proves that S06/S07 begin before S04 resolves and that a rejected admission tombstones any acquired lease before allocator work. The recorded three-window inputs are committed in [`docs/evidence/SDT-G37-a5-sanitized-samples.json`](evidence/SDT-G37-a5-sanitized-samples.json). |
 
 The adopted path does not change the V1 request/response shape, trace-manifest
 row/attribute universe, allocation order, or confirm-before-publish rule. It
 starts the two independent requests together, requires both the durable
 `RESERVED` transition and every acquire to settle before allocation, and uses
 the existing force-tombstone barrier if admission rejects after an acquire.
+
+## AC2 reproducibility — recorded A-5 windows
+
+[`docs/evidence/SDT-G37-a5-sanitized-samples.json`](evidence/SDT-G37-a5-sanitized-samples.json)
+is the committed calculation input for the immediate-before, after, and repeat
+A-5 windows. Each contains the 50 ordinal client-latency values, full commit
+and deployed-version provenance, and the complete observed per-row duration
+multiset encoded as a duration histogram. The encoding preserves every
+duration and span count needed to recompute the descriptive per-hop medians,
+without retaining a request-to-trace mapping.
+
+Run `npm run test:g37:evidence` to verify all three windows. The checker
+recomputes nearest-rank p50/p95 and every per-hop median, verifies the 50
+ordinal values and provenance, and rejects request/CF-Ray/correlation/trace
+identifiers, SUIDs, service IDs, fixture values, tags, payloads, and bearer
+credentials. The original local `.artifacts/g37-*.json` files are not required
+to recalculate the reported A-5 result and are not committed.
 
 ## Post-adoption sample and residual attribution
 
