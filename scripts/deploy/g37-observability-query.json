@@ -16,7 +16,7 @@
         "key": "$workers.scriptName",
         "operation": "eq",
         "type": "string",
-        "value": "sekiban-dcb-meeting-room-doorbell-g38"
+        "value": "sekiban-dcb-meeting-room-doorbell"
       }
     ]
   },

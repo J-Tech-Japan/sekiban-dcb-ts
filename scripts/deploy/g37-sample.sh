@@ -32,8 +32,9 @@ readonly AFTER_VERSIONS="${PREFIX}-versions-after.json"
 readonly OUTPUT="${PREFIX}.json"
 readonly MESSAGE="SDT-G37 ${CANDIDATE} ${SERVICE_ID} ${SOURCE_COMMIT}"
 
-# The primary config is the G32 final topology plus persisted trace/log
-# collection. The receiver is not redeployed or retargeted by G37 sampling.
+# The primary config preserves the currently deployed G32 receiver binding
+# plus persisted trace/log collection. G38's separately owned new receiver
+# Worker is not yet live, so G37 neither creates it nor retargets to it.
 "${WRANGLER_BIN}" deploy --config "${CONFIG}" --dry-run --strict --var "SDT_SERVICE_ID:${SERVICE_ID}"
 "${WRANGLER_BIN}" versions list --name "${WORKER}" --json > "${BEFORE_VERSIONS}"
 
