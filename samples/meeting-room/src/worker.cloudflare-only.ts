@@ -1,133 +1,25 @@
 import type { ExecuteResult } from "@sekiban/dcb-client";
-import { WorkerEntrypoint } from "cloudflare:workers";
 import {
   createCloudflareOnlyRuntimeWorker,
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
   JournalDurableObject,
-  processDownstreamDoorbell,
-  observeFaultBarrier,
   readDirectDoorbellConfig,
-  selectDirectDoorbellViews,
   TagDurableObject,
-  type CloudflareOnlyEnv,
-  type DeliveryCoreOptions,
 } from "@sekiban/dcb-runtime/cloudflare";
-import { createD1StoreProvider, D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
+import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
-import { assertG32FinalFence } from "./compatibility";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
+import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
+import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
+import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
+
+export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
+export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 
-export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
-  readonly ASSETS?: Fetcher;
-  readonly CONFORMANCE_TOKEN?: string;
-  readonly G29_SOURCE_COMMIT?: string;
-  /** Sealed SDT-G31 source identity exposed only to the authenticated witness. */
-  readonly G31_SOURCE_COMMIT?: string;
-  /** Final-C identity and new-binding witness; absent only in local pre-G32 fixtures. */
-  readonly G32_SOURCE_COMMIT?: string;
-  readonly G32_PIPELINE_DATABASE_ID?: string;
-  readonly G32_MATERIALIZED_VIEW_DATABASE_ID?: string;
-  readonly G32_QUEUE_NAME?: string;
-  readonly G32_COMPONENT?: string;
-  readonly G32_CONFIG_DIGEST?: string;
-  readonly G32_CUTOVER_PHASE?: string;
-  readonly G32_FREEZE_RELEASE?: string;
-  readonly G32_CUTOVER_FENCE_TOKEN?: string;
-  readonly G32_CUTOVER_FENCE_FINGERPRINT?: string;
-  /** In-process integration seam; never configured by a deployed Worker. */
-  readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
-    readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
-    /** Existing in-process test seam only; no deployed binding can enable it. */
-    readonly faultBarrier?: Readonly<{
-      barrierId: string;
-      boundedWindowMs: number;
-      waitForRelease: () => Promise<void>;
-    }>;
-  };
-}
-
-/**
- * Separate non-public receiver entrypoint. It is deployed as the target of a
- * service binding; the primary Worker never exposes this method through fetch.
- */
-export class MeetingRoomDownstreamDoorbell extends WorkerEntrypoint<MeetingRoomCloudflareEnv> {
-  async deliver(message: unknown) {
-    await assertFinalCutoverFenceIfConfigured(this.env);
-    const testOverrides = this.env.__G29_DOORBELL_TEST__;
-    const attemptId = message !== null && typeof message === "object" && typeof (message as { attemptId?: unknown }).attemptId === "string"
-      ? (message as { attemptId: string }).attemptId
-      : undefined;
-    if (testOverrides?.faultBarrier !== undefined) {
-      await waitForTestFaultBarrier(testOverrides.faultBarrier, attemptId);
-    }
-    const config = readDirectDoorbellConfig(this.env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy);
-    const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(this.env);
-    const result = await processDownstreamDoorbell(message, this.env, {
-      ...(testOverrides?.store === undefined ? { storeProvider: createD1StoreProvider() } : { store: testOverrides.store }),
-      views: selectDirectDoorbellViews(configuredViews, config),
-      afterDelivery: testOverrides?.afterDelivery ?? (async () => {
-        this.ctx.waitUntil(drainMeetingRoomUnsafeKicks(this.env));
-      }),
-    });
-    console.log("direct_doorbell_core", {
-      correlationId: result.correlationId,
-      coreDurationMs: result.coreDurationMs,
-      viewDurationsMs: result.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
-      disposition: result.fastDisposition,
-    });
-    if (testOverrides?.faultBarrier !== undefined) {
-      observeFaultBarrier({
-        barrierId: testOverrides.faultBarrier.barrierId,
-        stage: "drained",
-        boundedWindowMs: testOverrides.faultBarrier.boundedWindowMs,
-        attemptId,
-      });
-    }
-    return result;
-  }
-}
-
-/**
- * G30's queue/doorbell discrimination uses the pre-existing in-process
- * receiver seam only. It is absent from deployed bindings and cannot change
- * public protocol/control behavior. The structured events let the evidence
- * contract verify start -> release -> drain from measured timestamps.
- */
-async function waitForTestFaultBarrier(barrier: Readonly<{
-  barrierId: string;
-  boundedWindowMs: number;
-  waitForRelease: () => Promise<void>;
-}>, attemptId?: string): Promise<void> {
-  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "started", boundedWindowMs: barrier.boundedWindowMs, attemptId });
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      barrier.waitForRelease(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`G30 test fault barrier ${barrier.barrierId} exceeded its bound`)), barrier.boundedWindowMs);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "ended", boundedWindowMs: barrier.boundedWindowMs, attemptId });
-}
-
-/** Local/legacy fixtures do not set G32 phase. A deployed final C always does. */
-async function assertFinalCutoverFenceIfConfigured(env: MeetingRoomCloudflareEnv): Promise<void> {
-  const configured = env.G32_CUTOVER_PHASE !== undefined || env.G32_CUTOVER_FENCE_TOKEN !== undefined || env.G32_CUTOVER_FENCE_FINGERPRINT !== undefined;
-  if (!configured) return;
-  await assertG32FinalFence({
-    phase: env.G32_CUTOVER_PHASE,
-    release: env.G32_FREEZE_RELEASE,
-    token: env.G32_CUTOVER_FENCE_TOKEN,
-    tokenFingerprint: env.G32_CUTOVER_FENCE_FINGERPRINT,
-  });
-}
 
 const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
@@ -273,6 +165,13 @@ async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: E
 }
 
 async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  const componentReject = rejectUnlessPrimaryComponent(env, "command");
+  if (componentReject !== undefined) return componentReject;
+  try {
+    await assertFinalCutoverFenceIfConfigured(env);
+  } catch {
+    return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+  }
   if (request.method !== "POST") return json({ error: "Command route requires POST", code: "validation_error" }, 400);
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
   let input: unknown;
@@ -283,6 +182,8 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
 }
 
 async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  const componentReject = rejectUnlessPrimaryComponent(env, "conformance");
+  if (componentReject !== undefined) return componentReject;
   const supplied = request.headers.get("authorization");
   if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
   try {
@@ -421,30 +322,63 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     });
   }
   url.pathname = url.pathname.slice("/conformance/v1".length) || "/";
+  const allowedRuntimePaths = new Set([
+    "/api/sekiban/serialized/commit",
+    "/api/sekiban/serialized/tag-latest-sortable",
+    "/api/sekiban/serialized/tag-state",
+    "/api/sekiban/serialized/query",
+    "/api/sekiban/serialized/list-query",
+  ]);
+  if (!allowedRuntimePaths.has(url.pathname)) {
+    return json({ error: "Conformance route is not allowlisted", code: "conformance_route_not_allowed" }, 404);
+  }
   return runtimeFetch(new Request(url.toString(), request), { ...env, G11_VERIFICATION_ENABLED: "true" }, ctx);
 }
 
 async function bootstrapOperator(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  const componentReject = rejectUnlessPrimaryComponent(env, "bootstrap-operator");
+  if (componentReject !== undefined) return componentReject;
+  try {
+    await assertFinalCutoverFenceIfConfigured(env);
+  } catch {
+    return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+  }
   const url = new URL(request.url); const headers = new Headers(); const authorization = request.headers.get("authorization");
   if (authorization !== null) headers.set("authorization", authorization);
   if (request.method !== "GET") headers.set("content-type", "application/json");
   return runtimeFetch(new Request(`https://runtime.internal${url.pathname}`, request.method === "GET" ? { method: "GET", headers } : { method: request.method, headers, body: await request.text() }), env, ctx);
 }
 
+async function repairOperator(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
+  const componentReject = rejectUnlessPrimaryComponent(env, "repair-operator");
+  if (componentReject !== undefined) return componentReject;
+  try {
+    await assertFinalCutoverFenceIfConfigured(env);
+  } catch {
+    return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+  }
+  const headers = new Headers();
+  const authorization = request.headers.get("authorization");
+  if (authorization !== null) headers.set("authorization", authorization);
+  if (request.method !== "GET") headers.set("content-type", "application/json");
+  return runtimeFetch(new Request("https://runtime.internal/operator/repair", request.method === "GET" ? { method: "GET", headers } : { method: request.method, headers, body: await request.text() }), env, ctx);
+}
+
 const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   async fetch(request, env, ctx) {
+    const path = new URL(request.url).pathname;
+    if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
+    if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
+    if (path === "/operator/repair") return repairOperator(request, env, ctx);
+    if (path.startsWith("/api/commands/")) return command(request, env, ctx);
     try {
       await assertFinalCutoverFenceIfConfigured(env);
     } catch {
       return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
     }
-    const path = new URL(request.url).pathname;
-    if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
-    if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
     if (path === "/api/sekiban/serialized" || path.startsWith("/api/sekiban/serialized/")) return json({ error: "Raw V1 routes are available only through the authenticated conformance lane", code: "not_found" }, 404);
     if (path === "/api/read/room" || path === "/api/read/reservation") return readProjection(request, env, ctx);
     if (path === "/api/read/reservations" || path === "/api/read/room-query") return readQuery(request, env, ctx);
-    if (path.startsWith("/api/commands/")) return command(request, env, ctx);
     if (env.ASSETS !== undefined) return env.ASSETS.fetch(request);
     if (path === "/" || path === "/index.html") return new Response("Meeting-room sample", { headers: { "content-type": "text/html; charset=utf-8" } });
     return new Response("Not found", { status: 404 });

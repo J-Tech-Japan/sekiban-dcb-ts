@@ -25,7 +25,7 @@
   "services": [
     {
       "binding": "DOWNSTREAM_DOORBELL",
-      "service": "sekiban-dcb-meeting-room-doorbell",
+      "service": "sekiban-dcb-meeting-room-doorbell-g38",
       "entrypoint": "MeetingRoomDownstreamDoorbell"
     }
   ],

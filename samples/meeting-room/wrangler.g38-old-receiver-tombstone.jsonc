@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "sekiban-dcb-meeting-room-doorbell",
+  "main": "src/worker.g38-tombstone.ts",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
+      { "name": "JOURNAL", "class_name": "JournalDurableObject" },
+      { "name": "TAG", "class_name": "TagDurableObject" },
+      { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
+    ]
+  },
+  "exports": {
+    "AllocatorDurableObject": { "type": "durable-object", "storage": "sqlite" },
+    "JournalDurableObject": { "type": "durable-object", "storage": "sqlite" },
+    "TagDurableObject": { "type": "durable-object", "storage": "sqlite" },
+    "BootstrapCoordinatorDurableObject": { "type": "durable-object", "storage": "sqlite" }
+  },
+  "workers_dev": false,
+  "preview_urls": false
+}

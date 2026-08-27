@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "sekiban-dcb-meeting-room-doorbell",
-  "main": "src/worker.cloudflare-only.ts",
+  "name": "sekiban-dcb-meeting-room-doorbell-g38",
+  "main": "src/worker.g38-receiver.ts",
   "compatibility_date": "2026-08-18",
   "compatibility_flags": ["nodejs_compat"],
   "vars": {
@@ -15,6 +15,7 @@
     "G32_CUTOVER_PHASE": "final-g32",
     "G32_FREEZE_RELEASE": "after-new-bindings",
     "G32_COMPONENT": "receiver",
+    "G38_DOORBELL_DELIVERY_ROLE": "receiver",
     "G32_PIPELINE_DATABASE_ID": "eccf6048-7fc8-4412-a157-9fa180353f6d",
     "G32_MATERIALIZED_VIEW_DATABASE_ID": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
     "G32_QUEUE_NAME": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox"
@@ -35,16 +36,13 @@
   ],
   "durable_objects": {
     "bindings": [
-      { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
-      { "name": "JOURNAL", "class_name": "JournalDurableObject" },
-      { "name": "TAG", "class_name": "TagDurableObject" },
-      { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
+      {
+        "name": "BOOTSTRAP",
+        "class_name": "BootstrapCoordinatorDurableObject",
+        "script_name": "sekiban-dcb-meeting-room-cloudflare-only"
+      }
     ]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
-    { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }
-  ],
   "workers_dev": false,
   "preview_urls": false
 }
