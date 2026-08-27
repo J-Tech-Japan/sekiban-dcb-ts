@@ -28,5 +28,11 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   /** In-process integration seam; never configured by a deployed Worker. */
   readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
     readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
+    /** Existing in-process test seam only; no deployed binding can enable it. */
+    readonly faultBarrier?: Readonly<{
+      barrierId: string;
+      boundedWindowMs: number;
+      waitForRelease: () => Promise<void>;
+    }>;
   };
 }

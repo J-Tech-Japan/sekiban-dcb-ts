@@ -139,6 +139,15 @@ export interface EventStore {
   recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource?: DeliverySource): Promise<DeliveryOutcome>;
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
+  /** Conformance-only read diagnostic; production callers must not use it. */
+  lagBoundDiagnostics?(serviceId: string, nowMs: number): Promise<{
+    serviceIdUsed: string;
+    dynamicLagBoundMs: number;
+    rowFound: boolean;
+    rawEstimateMs: number | null;
+    rawObservedAt: number | null;
+    nowMs: number;
+  }>;
   /** Cosmos uses this optional retryable async landing projection. */
   projectDeliveryIncidents?(serviceId?: string): Promise<number>;
 }

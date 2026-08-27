@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 4,
+  "name": "epoch-namespace-allowlist",
+  "description": "Occurrence-level classification of every naked `epoch`. The committed file is the authority; --check never rewrites it.",
+  "digest": {
+    "algorithm": "sha256",
+    "truncatedHexChars": 32,
+    "canonicalization": "v1: strip, collapse whitespace runs, UTF-8, hash the single line"
+  },
+  "scanScope": {
+    "documents": [
+      "means/19-commit-latency.md",
+      "means/12-bootstrap-import.md"
+    ],
+    "tokenPattern": "(?<![A-Za-z])epoch(?![A-Za-z])",
+    "granularity": "occurrence (documentId, contextDigest, occurrenceIndex, documentOccurrenceOrdinal)",
+    "note": "G36 raises schemaVersion when the scope extends to target-repo source"
+  },
+  "logicalNames": [
+    "bootstrapLeaseEpoch",
+    "journalOwnerEpoch",
+    "tagOwnerEpoch",
+    "repairEpoch"
+  ],
+  "reasonSource": "epoch-reasons.curated.json (operator-supplied; no default reason exists)",
+  "exclusions": {
+    "kind": "exact-occurrence",
+    "expectedCount": 15,
+    "entries": [
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "機械可読 contract が authority(第53周 v12・R51/R52 の drift 根治)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:2ccc9f937167d18b2c7c8d05f3a9d71e",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 0,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "機械可読 contract が authority(第53周 v12・R51/R52 の drift 根治)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:2ccc9f937167d18b2c7c8d05f3a9d71e",
+        "occurrenceIndex": 1,
+        "documentOccurrenceOrdinal": 1,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "機械可読 contract が authority(第53周 v12・R51/R52 の drift 根治)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:9eccd6b252f16135877d6a979c697d5a",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 2,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "機械可読 contract が authority(第53周 v12・R51/R52 の drift 根治)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:37bcee220314a1e5627747a9de63455a",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 3,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "機械可読 contract が authority(第53周 v12・R51/R52 の drift 根治)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:37bcee220314a1e5627747a9de63455a",
+        "occurrenceIndex": 1,
+        "documentOccurrenceOrdinal": 4,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:9b187eb598ad11c73bb9442610d9d46e",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 5,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:c4bdcd948fbd1d890325bcf4455fa1ff",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 9,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:3cd318ea5a6a2fe1ad77212ff7842f84",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 12,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:3cd318ea5a6a2fe1ad77212ff7842f84",
+        "occurrenceIndex": 1,
+        "documentOccurrenceOrdinal": 13,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/19-commit-latency.md",
+        "stableSectionId": "既存 authority との接続(R46-3 — permit を第二の outcome authority にしない)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:3956d69c0352b7cd8df10676966e9268",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 17,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/12-bootstrap-import.md",
+        "stableSectionId": "durable state machine(#4 — boolean flag の撤回)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:81291e15e60451389922a91dda4b8cc7",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 0,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/12-bootstrap-import.md",
+        "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:e9b0a9ae674ece517d0188352571c118",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 1,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/12-bootstrap-import.md",
+        "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:6cfe5c56ce9d58f506fbdd40e35e4aa6",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 2,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/12-bootstrap-import.md",
+        "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:2cdb90f2e6121f8aefae519966eb7b0f",
+        "occurrenceIndex": 0,
+        "documentOccurrenceOrdinal": 4,
+        "reason": "prohibition-rule-statement"
+      },
+      {
+        "documentId": "means/12-bootstrap-import.md",
+        "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+        "exactToken": "epoch",
+        "contextDigest": "sha256:2cdb90f2e6121f8aefae519966eb7b0f",
+        "occurrenceIndex": 1,
+        "documentOccurrenceOrdinal": 5,
+        "reason": "prohibition-rule-statement"
+      }
+    ],
+    "rule": "Only occurrences that state the prohibition rule itself. Section-wide exclusion is forbidden."
+  },
+  "expectedCount": 13,
+  "entries": [
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:2a878fc8413087963803f5e896be4f1f",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 6,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:8aa96c26215748d929c1becc5519937b",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 7,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:8aa96c26215748d929c1becc5519937b",
+      "occurrenceIndex": 1,
+      "documentOccurrenceOrdinal": 8,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:f1f300c38593837643aedf4949ae5b6e",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 10,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:4fc5ca1b92720768d0fc2c158b0b1f26",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 11,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:87fb0d9010002ec621c3ae5e6ac8b7d1",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 14,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:87fb0d9010002ec621c3ae5e6ac8b7d1",
+      "occurrenceIndex": 1,
+      "documentOccurrenceOrdinal": 15,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "epoch namespace(R48-5 — 規範 field の完全分類)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:87fb0d9010002ec621c3ae5e6ac8b7d1",
+      "occurrenceIndex": 2,
+      "documentOccurrenceOrdinal": 16,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/19-commit-latency.md",
+      "stableSectionId": "既存 authority との接続(R46-3 — permit を第二の outcome authority にしない)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:99ec125127e4bdc3f1f1303ef28e40dd",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 18,
+      "reason": "quoted-source"
+    },
+    {
+      "documentId": "means/12-bootstrap-import.md",
+      "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:22036076a12a01185f6aab52571acb22",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 3,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/12-bootstrap-import.md",
+      "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:1719833d44b297c6fb1c553a39c9508c",
+      "occurrenceIndex": 0,
+      "documentOccurrenceOrdinal": 6,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/12-bootstrap-import.md",
+      "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:1719833d44b297c6fb1c553a39c9508c",
+      "occurrenceIndex": 1,
+      "documentOccurrenceOrdinal": 7,
+      "reason": "legacy-stored-field"
+    },
+    {
+      "documentId": "means/12-bootstrap-import.md",
+      "stableSectionId": "epoch namespace(第48周 R48-5・means/19 と同期)",
+      "exactToken": "epoch",
+      "contextDigest": "sha256:1719833d44b297c6fb1c553a39c9508c",
+      "occurrenceIndex": 2,
+      "documentOccurrenceOrdinal": 8,
+      "reason": "legacy-stored-field"
+    }
+  ]
+}

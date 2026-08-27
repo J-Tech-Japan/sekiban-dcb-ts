@@ -2,6 +2,14 @@ import { parseBootstrapDump } from "./manifest";
 import type { BootstrapManifestError } from "./manifest";
 import type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord } from "./types";
 import { allocatorNameForService } from "../allocator/types";
+import {
+  DurableObjectActivation,
+  enterNativeActorHandleSpan,
+  noOpNativeTracing,
+  type DurableObjectActivationObservation,
+  type NativeTracing,
+} from "../trace/CommitTrace";
+import { beginDurableObjectHandlerObservation, type DurableObjectHandlerObservation } from "../trace/ObservationStream";
 
 const CONTROL = "bootstrap-control";
 const DUMP = "bootstrap-dump";
@@ -30,12 +38,25 @@ function encodedBytes(value: unknown): number { return new TextEncoder().encode(
 
 /** Per-service authority and linearization point for bootstrap and normal writes. */
 export class BootstrapCoordinatorDurableObject implements DurableObject {
-  constructor(private readonly ctx: DurableObjectState, private readonly env: BootstrapCoordinatorEnv) {}
+  /** Constructor-scoped observation only; never persisted or used for control. */
+  private readonly activation = new DurableObjectActivation();
+
+  constructor(
+    private readonly ctx: DurableObjectState,
+    private readonly env: BootstrapCoordinatorEnv,
+    private readonly nativeTracing: NativeTracing = noOpNativeTracing,
+  ) {}
 
   async fetch(request: Request): Promise<Response> {
+    // Flip before this handler performs its first await.
+    const activation = this.activation.beginHandler();
+    const observation = beginDurableObjectHandlerObservation("BOOTSTRAP", activation);
     const url = new URL(request.url); const serviceId = url.searchParams.get("__serviceId");
     if (!string(serviceId)) return reject("bootstrap_service_required", "target service identity is required", 400);
     if (request.method === "GET" && url.pathname === "/state") return response(await this.control(serviceId));
+    if (request.method === "POST" && url.pathname === "/command/admit") return this.traceCommand(request, serviceId, activation, observation, "admit");
+    if (request.method === "POST" && url.pathname === "/command/finalize") return this.traceCommand(request, serviceId, activation, observation, "finalize");
+    if (request.method === "POST" && url.pathname === "/command/release") return this.traceCommand(request, serviceId, activation, observation, "release");
     let body: unknown; try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
     if (request.method !== "POST") return reject("bootstrap_route_not_found", "bootstrap route was not found", 404);
     if (url.pathname === "/plan") return this.plan(serviceId, body);
@@ -44,10 +65,31 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (url.pathname === "/ready") return this.ready(serviceId, body);
     if (url.pathname === "/abort") return this.abort(serviceId, body);
     if (url.pathname === "/route/check") return this.route(serviceId, body);
-    if (url.pathname === "/command/admit") return this.command(serviceId, body, "admit");
-    if (url.pathname === "/command/finalize") return this.command(serviceId, body, "finalize");
-    if (url.pathname === "/command/release") return this.command(serviceId, body, "release");
     return reject("bootstrap_route_not_found", "bootstrap route was not found", 404);
+  }
+
+  private async traceCommand(
+    request: Request,
+    serviceId: string,
+    activation: DurableObjectActivationObservation,
+    observation: DurableObjectHandlerObservation,
+    action: "admit" | "finalize" | "release",
+  ): Promise<Response> {
+    return enterNativeActorHandleSpan(
+      this.nativeTracing,
+      { actorClass: "BOOTSTRAP", actorKey: `bootstrap:${serviceId}`, activation, observation },
+      async () => {
+        let body: unknown;
+        try { body = await request.clone().json(); } catch { return undefined; }
+        const commandId = object(body) && string(body.commandId) ? body.commandId : undefined;
+        return commandId === undefined ? undefined : { attemptId: commandId, serviceId };
+      },
+      async () => {
+        let body: unknown;
+        try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
+        return this.command(serviceId, body, action, observation);
+      },
+    );
   }
 
   private async control(serviceId: string): Promise<BootstrapControlRecord> { return (await this.ctx.storage.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); }
@@ -191,9 +233,15 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     return control.status === "EMPTY" || control.status === "READY" ? response({ admitted: true, leaseEpoch: control.leaseEpoch, route: body.route }) : reject("bootstrap_route_rejected", `${body.route} is unavailable during bootstrap`);
   }
 
-  private async command(serviceId: string, body: unknown, action: CommandAction): Promise<Response> {
+  private async command(
+    serviceId: string,
+    body: unknown,
+    action: CommandAction,
+    observation?: DurableObjectHandlerObservation,
+  ): Promise<Response> {
     if (!object(body) || !string(body.commandId)) return reject("bootstrap_command_invalid", "commandId is required", 400);
     const commandId = body.commandId as string;
+    observation?.markFirstStorageRead();
     const result = await this.ctx.storage.transaction(async (txn) => {
       const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); const current = commands(control); const completed = released(control);
       if (action === "admit") { if (control.status !== "EMPTY" && control.status !== "READY") return { rejected: true }; if (current[commandId] !== undefined) return { control }; current[commandId] = control.leaseEpoch; const updated = { ...control, normalInFlight: Object.keys(current).length, normalCommands: current }; await txn.put(CONTROL, updated); return { control: updated }; }

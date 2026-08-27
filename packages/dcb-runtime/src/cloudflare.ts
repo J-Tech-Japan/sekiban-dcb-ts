@@ -8,9 +8,9 @@
  * unchanged Postgres composition.
  */
 import type { DomainDefinition } from "@sekiban/dcb-core";
-import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { AllocatorDurableObject as RuntimeAllocatorDurableObject } from "./allocator/AllocatorDurableObject";
 import { allocatorNameForService } from "./allocator/types";
-import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
+import { BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
 import { handleSerializedCommit } from "./commit/CommitWorker";
@@ -22,15 +22,16 @@ import type { DeliveryCoreResult, DeliveryViewHandler } from "./downstream/Deliv
 import type { DownstreamDoorbellBinding } from "./downstream/Doorbell";
 import { handleOutboxDrainRequest } from "./downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "./downstream/types";
-import { JournalDurableObject } from "./journal/JournalDurableObject";
+import { JournalDurableObject as RuntimeJournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
-import { TagDurableObject } from "./tag/TagDurableObject";
+import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
 import type { StoredEvent } from "./store/types";
+import { cloudflareTracing } from "./trace/CloudflareTracing";
 
 export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
@@ -54,6 +55,23 @@ export interface CloudflareOnlyEnv {
   DIRECT_DOORBELL_RECEIVER_MODE?: string;
   DIRECT_DOORBELL_SELF_BINDING_PROOF?: string;
   G26_VIEW_COUNT?: string;
+  /** Bound from Cloudflare Worker Version metadata; observation-only. */
+  WORKER_VERSION?: Readonly<{ id?: unknown }>;
+}
+
+function cloudflareCommitTraceProvider(request: Request, env: CloudflareOnlyEnv): Readonly<{
+  scriptVersion?: string;
+  colo?: string;
+}> {
+  // These provider facts are optional schema attributes, never protocol
+  // inputs. They let sdt.observe/v1 cross-check the platform log metadata
+  // against S00 without adding a request header or response field.
+  const versionId = env.WORKER_VERSION?.id;
+  const cf = request.cf as unknown as { colo?: unknown } | undefined;
+  return Object.freeze({
+    ...(typeof versionId === "string" && versionId.length > 0 ? { scriptVersion: versionId } : {}),
+    ...(typeof cf?.colo === "string" && cf.colo.length > 0 ? { colo: cf.colo } : {}),
+  });
 }
 
 export interface CloudflareOnlyWorkerOptions {
@@ -78,6 +96,35 @@ export interface CloudflareOnlyWorkerOptions {
   }) => Promise<void>;
 }
 
+/**
+ * Keep the portable runtime free of a `cloudflare:workers` runtime import.
+ * These entrypoint-owned wrappers inject the active Cloudflare custom-span
+ * API into every Durable Object constructor used by the deployed Worker.
+ */
+export class AllocatorDurableObject extends RuntimeAllocatorDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, undefined, cloudflareTracing());
+  }
+}
+
+export class BootstrapCoordinatorDurableObject extends RuntimeBootstrapCoordinatorDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, cloudflareTracing());
+  }
+}
+
+export class JournalDurableObject extends RuntimeJournalDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, cloudflareTracing());
+  }
+}
+
+export class TagDurableObject extends RuntimeTagDurableObject {
+  constructor(ctx: DurableObjectState, env: CloudflareOnlyEnv) {
+    super(ctx, env, cloudflareTracing());
+  }
+}
+
 /** Compose the named two-D1 Cloudflare-only Worker. */
 export function createCloudflareOnlyRuntimeWorker(
   options: CloudflareOnlyWorkerOptions = {},
@@ -85,13 +132,15 @@ export function createCloudflareOnlyRuntimeWorker(
   const composition = composeRuntime(options.domain, options.config);
   const storeProvider = createD1StoreProvider();
   return {
-    async fetch(request, env): Promise<Response> {
+    async fetch(request, env, ctx): Promise<Response> {
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
+          nativeTracing: cloudflareTracing(ctx),
+          commitTraceProvider: cloudflareCommitTraceProvider(request, env),
         });
       }
       if (
@@ -106,7 +155,7 @@ export function createCloudflareOnlyRuntimeWorker(
         });
       }
       if (url.pathname === "/operator/repair") {
-        return handleOperatorRepair(request, env);
+        return handleOperatorRepair(request, env, cloudflareTracing(ctx));
       }
       if (url.pathname.startsWith("/operator/bootstrap/")) {
         return handleOperatorBootstrap(request, env, storeProvider, {
@@ -198,7 +247,6 @@ export function createCloudflareOnlyRuntimeWorker(
   };
 }
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
 export { processDownstreamDoorbell } from "./downstream/DownstreamAdapter";
 export {
   downstreamEnvelopeBytes,
@@ -210,6 +258,7 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export { observeFaultBarrier } from "./trace/ObservationStream";
 export type {
   DeliveryClass,
   DownstreamDoorbellBinding,

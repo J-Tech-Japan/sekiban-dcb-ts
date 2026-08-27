@@ -1,0 +1,1379 @@
+#!/usr/bin/env node
+/**
+ * SDT-G30's B0 contract is intentionally an evidence validator, not a
+ * performance evaluator.  It refuses delivery loss beyond the frozen AC5
+ * budget, replacement, an un-attributed schema-complete joined request, or a
+ * phase/config change outside the one permitted trace sampling setting.
+ */
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import manifest from "../contracts/commit-trace-manifest.json" with { type: "json" };
+import { B_TRACE_SAMPLING_SETTLE_MS } from "./deploy/g30-b0-measure.mjs";
+import { verifyExportedSuccessTrace } from "./g30-trace-runtime-verifier.mjs";
+
+export const G30_PHASES = Object.freeze(["A", "B", "A-prime"]);
+export const G30_SAMPLE_COUNT = 100;
+/** AC5's sealed operator-authorized closure risk budget; it is not a provider SLA. */
+export const G30_MIN_SCHEMA_COMPLETE_COUNT = 85;
+export const G30_TAIL_RANK_COUNT = 5;
+export const G30_LATENCY_ESTIMATOR = "nearest-rank/full-client-ledger/v1";
+export const G30_CADENCE_MS = 2_000;
+export const G30_EXPORT_DEADLINE_MS = 10 * 60 * 1_000;
+export const G30_IDLE_SCHEDULE_MS = Object.freeze([2_000, 15_000, 180_000]);
+export const G30_WINDOW_RESET_LIMIT = 5;
+const SORTABLE_UNIQUE_ID = /^\d{30}$/;
+const OUTLIER_HYPOTHESES = Object.freeze([
+  "worker-isolate-first",
+  "durable-object-wake",
+  "token-rotation",
+  "queue-doorbell-backpressure",
+]);
+const REACTIVATION_CAUSES = new Set(["deployment-correlated", "platform-evidenced", "unknown"]);
+const WORKER_ROW_EMITTERS = new Set(["root-worker", "caller-worker"]);
+const EMITTED_WORKER_ROW_IDS = Object.freeze(
+  manifest.schemas["sdt.commit/v1"].rows
+    .filter((row) => WORKER_ROW_EMITTERS.has(row.emitter))
+    .map((row) => row.rowId)
+    .sort(),
+);
+const EMITTED_WORKER_ROW_ID_SET = new Set(EMITTED_WORKER_ROW_IDS);
+const SUCCESS_EMITTED_WORKER_ROW_IDS = Object.freeze(
+  (manifest.schemas["sdt.commit/v1"].boundaries.find((boundary) => boundary.name === "success")?.requiredRows ?? [])
+    .filter((rowId) => EMITTED_WORKER_ROW_ID_SET.has(rowId))
+    .sort(),
+);
+
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, child]) => [key, canonical(child)]));
+  }
+  return value;
+}
+
+function same(left, right) {
+  return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+}
+
+function fail(code, message) {
+  throw new Error(`g30-b0:${code}:${message}`);
+}
+
+function orderedKnownWorkerRows(value, label) {
+  if (!Array.isArray(value)) fail("emitted-row-inventory", `${label} must be an array`);
+  const rows = [];
+  const seen = new Set();
+  for (const [index, raw] of value.entries()) {
+    const rowId = nonEmptyString(raw, `${label}[${index}]`);
+    if (!EMITTED_WORKER_ROW_ID_SET.has(rowId)) {
+      fail("emitted-row-inventory", `${label}[${index}] is not a Worker-local manifest row`);
+    }
+    if (seen.has(rowId)) fail("emitted-row-inventory", `${label} repeats ${rowId}`);
+    seen.add(rowId);
+    rows.push(rowId);
+  }
+  return Object.freeze(rows.sort(requestIdOrder));
+}
+
+/**
+ * Reconciles raw sdt.observe/v1 Worker inventory against the separately
+ * ingested custom-span rows. It intentionally has no AC5 completion verdict:
+ * a row observed in the inventory but absent from telemetry remains an
+ * ingestion finding, not a substitute for a complete trace.
+ */
+export function reconcileEmittedRowInventory(ledger, traces, inventoryObservations) {
+  if (!Array.isArray(ledger) || !Array.isArray(traces) || !Array.isArray(inventoryObservations)) {
+    fail("emitted-row-inventory", "reconciliation requires ledger, traces, and Worker observations");
+  }
+  const ledgerIds = new Set();
+  for (const [index, record] of ledger.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `emitted-row-ledger[${index}].requestId`);
+    if (ledgerIds.has(requestId)) fail("emitted-row-inventory", `ledger repeats ${requestId}`);
+    ledgerIds.add(requestId);
+  }
+  const tracesByRequestId = new Map();
+  for (const [index, trace] of traces.entries()) {
+    const requestId = nonEmptyString(trace?.requestId, `emitted-row-traces[${index}].requestId`);
+    if (!ledgerIds.has(requestId) || tracesByRequestId.has(requestId)) {
+      fail("emitted-row-inventory", `trace ${requestId} is outside or duplicated in the ledger`);
+    }
+    tracesByRequestId.set(requestId, trace);
+  }
+  const inventoryByRequestId = new Map();
+  for (const [index, observation] of inventoryObservations.entries()) {
+    if (observation?.schema !== "sdt.observe/v1" || observation?.event !== "worker.invocation") {
+      fail("emitted-row-inventory", `inventory observation ${index} is not a Worker sdt.observe/v1 event`);
+    }
+    const requestId = nonEmptyString(observation?.requestId, `emitted-row-observations[${index}].requestId`);
+    if (!ledgerIds.has(requestId) || inventoryByRequestId.has(requestId)) {
+      fail("emitted-row-inventory", `inventory observation ${requestId} is outside or duplicated in the ledger`);
+    }
+    inventoryByRequestId.set(requestId, observation);
+  }
+  return Object.freeze(ledger.map((record, index) => {
+    const requestId = nonEmptyString(record?.requestId, `emitted-row-ledger[${index}].requestId`);
+    const trace = tracesByRequestId.get(requestId);
+    const observation = inventoryByRequestId.get(requestId);
+    const inventoryAvailable = observation !== undefined;
+    const emittedRows = inventoryAvailable
+      ? orderedKnownWorkerRows(observation.emittedWorkerRowIds, `inventory[${requestId}].emittedWorkerRowIds`)
+      : Object.freeze([]);
+    const ingestedRows = Object.freeze([...new Set(
+      (Array.isArray(trace?.spans) ? trace.spans : [])
+        .map((span) => span?.rowId)
+        .filter((rowId) => typeof rowId === "string" && EMITTED_WORKER_ROW_ID_SET.has(rowId)),
+    )].sort(requestIdOrder));
+    const emittedSet = new Set(emittedRows);
+    const ingestedSet = new Set(ingestedRows);
+    const expectedRows = SUCCESS_EMITTED_WORKER_ROW_IDS;
+    const expectedNotEmitted = inventoryAvailable
+      ? Object.freeze(expectedRows.filter((rowId) => !emittedSet.has(rowId)))
+      : Object.freeze([]);
+    const expectedNotIngested = Object.freeze(expectedRows.filter((rowId) => !ingestedSet.has(rowId)));
+    const emittedNotIngested = inventoryAvailable
+      ? Object.freeze(emittedRows.filter((rowId) => !ingestedSet.has(rowId)))
+      : Object.freeze([]);
+    const ingestedNotEmitted = inventoryAvailable
+      ? Object.freeze(ingestedRows.filter((rowId) => !emittedSet.has(rowId)))
+      : Object.freeze([]);
+    const rows = Object.freeze(expectedRows.map((rowId) => {
+      if (!inventoryAvailable) return Object.freeze({ rowId, classification: "inventory-unavailable" });
+      const emitted = emittedSet.has(rowId);
+      const ingested = ingestedSet.has(rowId);
+      return Object.freeze({
+        rowId,
+        classification: emitted && ingested
+          ? "matched"
+          : emitted
+            ? "ingestion-missing"
+            : ingested
+              ? "inventory-divergence"
+              : "emission-missing",
+      });
+    }));
+    const classification = !inventoryAvailable
+      ? "inventory-unavailable"
+      : expectedNotEmitted.length === 0 && emittedNotIngested.length === 0 && ingestedNotEmitted.length === 0
+        ? "matched"
+        : expectedNotEmitted.length > 0 && emittedNotIngested.length > 0
+          ? "mixed"
+          : expectedNotEmitted.length > 0
+            ? "emission"
+            : emittedNotIngested.length > 0
+              ? "ingestion"
+              : "inventory-divergence";
+    return Object.freeze({
+      requestId,
+      inventoryAvailable,
+      tracePresent: trace !== undefined,
+      emittedRows,
+      ingestedRows,
+      diff: Object.freeze({
+        expectedNotEmitted,
+        expectedNotIngested,
+        emittedNotIngested,
+        ingestedNotEmitted,
+        rows,
+        classification,
+      }),
+    });
+  }));
+}
+
+export function assertEmittedRowInventory(ledger, traces, inventoryObservations, evidenceInventory) {
+  const derived = reconcileEmittedRowInventory(ledger, traces, inventoryObservations);
+  if (!same(derived, evidenceInventory)) {
+    fail("emitted-row-inventory", "evidence inventory is not the exact exported observation/trace reconciliation");
+  }
+  return derived;
+}
+
+function nonEmptyString(value, label) {
+  if (typeof value !== "string" || value.length === 0) fail("string", `${label} must be a non-empty string`);
+  return value;
+}
+
+function finiteNumber(value, label) {
+  if (typeof value !== "number" || !Number.isFinite(value)) fail("number", `${label} must be finite`);
+  return value;
+}
+
+function object(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
+}
+
+function percentile(values, percentileValue) {
+  if (!Array.isArray(values) || values.length === 0) fail("percentile", "requires one or more values");
+  const ordered = [...values].sort((left, right) => left - right);
+  const position = Math.max(0, Math.min(ordered.length - 1, Math.ceil(percentileValue * ordered.length) - 1));
+  return ordered[position];
+}
+
+export function phaseLatencySummary(records) {
+  const values = records.map((record) => finiteNumber(record.responseLatencyMs, "responseLatencyMs"));
+  return Object.freeze({
+    p50: percentile(values, 0.5),
+    p95: percentile(values, 0.95),
+    max: Math.max(...values),
+  });
+}
+
+function stableCohortIdentity(record) {
+  return {
+    serviceId: nonEmptyString(record.serviceId, "serviceId"),
+    clientRegion: nonEmptyString(record.clientRegion, "clientRegion"),
+    tagSetDigest: nonEmptyString(record.tagSetDigest, "tagSetDigest"),
+    payloadDigest: nonEmptyString(record.payloadDigest, "payloadDigest"),
+    fixtureVersion: nonEmptyString(record.fixtureVersion, "fixtureVersion"),
+  };
+}
+
+/**
+ * Validates a retained, consecutive window. Failed/non-200/window-reset
+ * attempts belong in rawAttempts, never as replacement candidates inside the
+ * 100-record window. A retained reset trigger must prove that the indeterminate
+ * request was not resent and that a durable fixed-tag reread selected the next
+ * independent attempt's authority.
+ */
+export function assertEligiblePhaseWindow(phase, records, rawAttempts = [], windowResets = 0) {
+  if (!G30_PHASES.includes(phase)) fail("phase", `unknown phase ${phase}`);
+  if (!Array.isArray(records) || records.length !== G30_SAMPLE_COUNT) {
+    fail("window-size", `${phase} requires exactly ${G30_SAMPLE_COUNT} consecutive eligible requests`);
+  }
+  const ids = new Set();
+  let cohort;
+  let priorScheduled;
+  for (const [index, record] of records.entries()) {
+    if (record?.index !== index) fail("window-index", `${phase} request index ${index} is not consecutive`);
+    const requestId = nonEmptyString(record?.requestId, `${phase}[${index}].requestId`);
+    if (ids.has(requestId)) fail("window-duplicate", `${phase} repeats requestId ${requestId}`);
+    ids.add(requestId);
+    if (record.status !== 200 || record.eligible !== true || record.nonEmpty !== true || record.replacement === true) {
+      fail("window-eligibility", `${phase}[${index}] is not one retained non-empty HTTP-200 request`);
+    }
+    const identity = stableCohortIdentity(record);
+    if (cohort === undefined) cohort = identity;
+    else if (!same(cohort, identity)) fail("cohort-drift", `${phase}[${index}] changes service, region, tag, payload, or fixture identity`);
+    const scheduled = finiteNumber(record.scheduledStartMs, `${phase}[${index}].scheduledStartMs`);
+    const started = finiteNumber(record.startedAtMs, `${phase}[${index}].startedAtMs`);
+    const completed = finiteNumber(record.completedAtMs, `${phase}[${index}].completedAtMs`);
+    if (completed < started || started < scheduled) fail("request-time", `${phase}[${index}] has an invalid request timeline`);
+    finiteNumber(record.responseLatencyMs, `${phase}[${index}].responseLatencyMs`);
+    if (priorScheduled !== undefined && scheduled - priorScheduled !== G30_CADENCE_MS) {
+      fail("cadence", `${phase}[${index}] scheduled cadence is not exactly ${G30_CADENCE_MS}ms`);
+    }
+    priorScheduled = scheduled;
+  }
+  if (!Array.isArray(rawAttempts)) fail("raw-attempts", `${phase} rawAttempts must be an array`);
+  if (!Number.isInteger(windowResets) || windowResets < 0 || windowResets > G30_WINDOW_RESET_LIMIT) {
+    fail("window-reset-limit", `${phase} window reset count must be 0..${G30_WINDOW_RESET_LIMIT}`);
+  }
+  const resetNumbers = new Set();
+  const resetRecords = new Map();
+  const discardedByReset = new Map();
+  for (const attempt of rawAttempts) {
+    if (attempt?.windowIndex !== undefined && (!Number.isInteger(attempt.windowIndex) || attempt.windowIndex < 0 || attempt.windowIndex >= G30_SAMPLE_COUNT)) {
+      fail("replacement", `${phase} raw attempt illegally maps an outside failure to a retained window index`);
+    }
+    if (attempt?.kind === "discarded-window-entry") {
+      if (!Number.isInteger(attempt.resetNumber) || attempt.resetNumber < 1) fail("window-reset-discard", `${phase} discarded entry has no reset number`);
+      if (!Number.isInteger(attempt.priorWindowOrdinal) || attempt.priorWindowOrdinal < 0 || attempt.priorWindowOrdinal >= G30_SAMPLE_COUNT) {
+        fail("window-reset-discard", `${phase} discarded entry has an invalid prior ordinal`);
+      }
+      if (attempt.record?.status !== 200 || attempt.record?.eligible !== true || attempt.record?.nonEmpty !== true || attempt.record?.replacement !== false) {
+        fail("window-reset-discard", `${phase} discarded entry is not a raw prior eligible record`);
+      }
+      const discards = discardedByReset.get(attempt.resetNumber) ?? [];
+      discards.push(attempt.priorWindowOrdinal);
+      discardedByReset.set(attempt.resetNumber, discards);
+      continue;
+    }
+    if (attempt?.kind !== "window-reset-trigger") {
+      fail("raw-attempts", `${phase} raw attempt has an unknown kind`);
+    }
+    if (!Number.isInteger(attempt.resetNumber) || attempt.resetNumber < 1 || attempt.resetNumber > G30_WINDOW_RESET_LIMIT) {
+      fail("window-reset-number", `${phase} reset trigger has an invalid reset number`);
+    }
+    if (resetNumbers.has(attempt.resetNumber)) fail("window-reset-number", `${phase} repeats reset ${attempt.resetNumber}`);
+    resetNumbers.add(attempt.resetNumber);
+    resetRecords.set(attempt.resetNumber, attempt);
+    if (!Number.isInteger(attempt.priorWindowCount) || attempt.priorWindowCount < 0 || attempt.priorWindowCount >= G30_SAMPLE_COUNT) {
+      fail("window-reset-discard", `${phase} reset trigger has an invalid prior window count`);
+    }
+    if (attempt.sameAttemptResent !== false) fail("window-reset-retry", `${phase} indeterminate attempt was not marked no-resend`);
+    if (typeof attempt.expectedConsistencyHead !== "string" || !SORTABLE_UNIQUE_ID.test(attempt.expectedConsistencyHead)) {
+      fail("window-reset-head", `${phase} reset trigger lacks the attempted durable head`);
+    }
+    if (attempt.trigger === "http-non-200") {
+      if (!Number.isInteger(attempt.response?.status) || attempt.response.status === 200 || typeof attempt.response?.receivedAt !== "string" || !Number.isFinite(attempt.response?.receivedAtMs)) {
+        fail("window-reset-response", `${phase} non-200 reset lacks raw HTTP response evidence`);
+      }
+      if (!(typeof attempt.response?.cfRay === "string" || attempt.response?.cfRay === null)) fail("window-reset-response", `${phase} reset response has an invalid cf-ray`);
+    } else if (attempt.trigger === "transport-error") {
+      if (typeof attempt.transport?.errorClass !== "string" || typeof attempt.transport?.receivedAt !== "string" || !Number.isFinite(attempt.transport?.receivedAtMs)) {
+        fail("window-reset-transport", `${phase} transport reset lacks raw failure evidence`);
+      }
+    } else {
+      fail("window-reset-trigger", `${phase} reset trigger is neither HTTP nor transport evidence`);
+    }
+    const readback = attempt.readback;
+    if (
+      readback?.kind !== "fixed-tag-head-reread" ||
+      typeof readback?.head !== "string" || !SORTABLE_UNIQUE_ID.test(readback.head) ||
+      !["unchanged", "advanced"].includes(readback.classification) ||
+      readback?.statusRaw?.httpStatus !== 200 ||
+      !(typeof readback?.statusRaw?.cfRay === "string" || readback?.statusRaw?.cfRay === null) ||
+      !Number.isFinite(readback?.statusRaw?.receivedAtMs) || typeof readback?.statusRaw?.receivedAt !== "string"
+    ) {
+      fail("window-reset-reread", `${phase} reset lacks a successful durable fixed-tag reread`);
+    }
+    const serialized = JSON.stringify(attempt);
+    if (/room:g30-baseline|fixture-token|authorization|Bearer\s+/i.test(serialized)) {
+      fail("window-reset-redaction", `${phase} reset evidence leaked a raw tag or credential`);
+    }
+  }
+  if (resetNumbers.size !== windowResets) fail("window-reset-count", `${phase} reset count does not match retained reset evidence`);
+  for (let resetNumber = 1; resetNumber <= windowResets; resetNumber += 1) {
+    if (!resetNumbers.has(resetNumber)) fail("window-reset-number", `${phase} reset sequence is not consecutive`);
+    const discards = discardedByReset.get(resetNumber) ?? [];
+    if (resetRecords.get(resetNumber)?.priorWindowCount !== discards.length) {
+      fail("window-reset-discard", `${phase} reset ${resetNumber} does not retain its full discarded prefix`);
+    }
+    if (new Set(discards).size !== discards.length || discards.some((ordinal, index) => ordinal !== index)) {
+      fail("window-reset-discard", `${phase} discarded entries are not the exact prior window prefix`);
+    }
+  }
+  for (const resetNumber of discardedByReset.keys()) {
+    if (!resetNumbers.has(resetNumber)) fail("window-reset-discard", `${phase} discarded entries have no reset trigger`);
+  }
+  return Object.freeze({ phase, requestIds: [...ids], cohort, summary: phaseLatencySummary(records) });
+}
+
+function configComparable(config) {
+  const copy = structuredClone(config);
+  if (copy?.observability?.traces !== undefined) delete copy.observability.traces.head_sampling_rate;
+  if (copy !== null && typeof copy === "object") delete copy.deployedVersion;
+  return copy;
+}
+
+/** Only the trace sampling rate and resultant deployed version may differ. */
+export function assertPhaseConfiguration(phases) {
+  const configurations = G30_PHASES.map((phase) => phases?.[phase]?.configuration);
+  if (configurations.some((configuration) => configuration === null || typeof configuration !== "object" || Array.isArray(configuration))) {
+    fail("config-shape", "every B0 phase needs a configuration observation");
+  }
+  const samples = configurations.map((configuration) => configuration.observability?.traces?.head_sampling_rate);
+  if (!same(samples, [0, 1, 0])) fail("sampling", "A/B/A-prime trace sampling must be exactly 0/1/0");
+  for (const configuration of configurations) {
+    if (configuration.observability?.traces?.enabled !== true) fail("traces-enabled", "traces must remain enabled while sampling is toggled");
+    if (configuration.placement !== undefined && configuration.placement !== "off") fail("placement", "G30 placement must stay off");
+  }
+  if (!same(configComparable(configurations[0]), configComparable(configurations[1])) || !same(configComparable(configurations[0]), configComparable(configurations[2]))) {
+    fail("config-delta", "B0 phases differ outside trace sampling/deployment version");
+  }
+  return Object.freeze({ sampling: samples, placement: "off" });
+}
+
+function unionDuration(intervals) {
+  const ordered = [...intervals].sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  let total = 0;
+  let current;
+  for (const interval of ordered) {
+    if (current === undefined) { current = [...interval]; continue; }
+    if (interval[0] <= current[1]) { current[1] = Math.max(current[1], interval[1]); continue; }
+    total += current[1] - current[0]; current = [...interval];
+  }
+  return total + (current === undefined ? 0 : current[1] - current[0]);
+}
+
+/** Recomputes the AC4 union using canonical exported span rows. */
+export function unattributedRatioFromTrace(trace) {
+  const root = trace?.spans?.find((span) => span?.rowId === "S00");
+  if (root === undefined) fail("trace-root", "trace lacks S00");
+  const rootStart = finiteNumber(root.startMs, "S00.startMs");
+  const rootEnd = finiteNumber(root.endMs, "S00.endMs");
+  if (rootEnd < rootStart) fail("trace-time", "S00 ends before it starts");
+  const rootDurationMs = rootEnd - rootStart;
+  const coverage = new Set(trace.callerCoverageIntervals ?? []);
+  const intervals = [];
+  for (const span of trace.spans ?? []) {
+    if (!coverage.has(span?.rowId)) continue;
+    if (span.clockDomain !== "caller" || span.kind === "nested" || span.kind === "fanout-member" || span.emitter === "callee-do") {
+      fail("coverage-source", `${span?.rowId} is not eligible caller coverage`);
+    }
+    const start = Math.max(rootStart, finiteNumber(span.startMs, `${span.rowId}.startMs`));
+    const end = Math.min(rootEnd, finiteNumber(span.endMs, `${span.rowId}.endMs`));
+    if (end >= start) intervals.push([start, end]);
+  }
+  const coveredDurationMs = Math.min(rootDurationMs, unionDuration(intervals));
+  return Object.freeze({
+    rootDurationMs,
+    coveredDurationMs,
+    unattributedRatio: rootDurationMs === 0 ? 0 : Math.max(0, rootDurationMs - coveredDurationMs) / rootDurationMs,
+  });
+}
+
+function requestIdOrder(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * AC5 always ranks the immutable, original 100-client ledger.  A joined
+ * subset may never become a substitute denominator for either the tail or a
+ * latency percentile.
+ */
+function fullLedgerRanking(ledger, phase) {
+  if (!Array.isArray(ledger) || ledger.length !== G30_SAMPLE_COUNT) {
+    fail("client-count", `${phase} requires exactly ${G30_SAMPLE_COUNT} client ledger requests`);
+  }
+  const byRequestId = new Map();
+  const entries = ledger.map((record, index) => {
+    if (record?.index !== index) fail("client-index", `${phase}.ledger[${index}] is not the immutable consecutive client window`);
+    const requestId = nonEmptyString(record?.requestId, `${phase}.ledger[${index}].requestId`);
+    if (byRequestId.has(requestId)) fail("client-duplicate", `${phase} ledger repeats requestId ${requestId}`);
+    const clientLatency = finiteNumber(record?.responseLatencyMs, `${phase}.ledger[${index}].responseLatencyMs`);
+    const ordinal = index + 1;
+    const entry = Object.freeze({ record, requestId, clientLatency, ordinal });
+    byRequestId.set(requestId, entry);
+    return entry;
+  });
+  const ranked = [...entries]
+    .sort((left, right) => right.clientLatency - left.clientLatency || requestIdOrder(left.requestId, right.requestId))
+    .map((entry, index) => Object.freeze({ ...entry, fullLedgerRank: index + 1, percentile: (index + 1) / G30_SAMPLE_COUNT }));
+  return Object.freeze({
+    byRequestId,
+    ranked,
+    rankByRequestId: new Map(ranked.map((entry) => [entry.requestId, entry])),
+  });
+}
+
+function rootForTrace(trace, requestId) {
+  const roots = Array.isArray(trace?.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
+  if (roots.length === 0) return undefined;
+  if (roots.length !== 1) fail("trace-root", `${requestId} has ${roots.length} S00 roots`);
+  return roots[0];
+}
+
+function observedRootDuration(trace, requestId) {
+  const root = rootForTrace(trace, requestId);
+  if (root === undefined) return undefined;
+  const start = finiteNumber(root.startMs, `${requestId}.S00.startMs`);
+  const end = finiteNumber(root.endMs, `${requestId}.S00.endMs`);
+  if (end < start) fail("sensitivity-bound", `${requestId} S00 ends before it starts`);
+  return end - start;
+}
+
+function attemptIdForTrace(trace, requestId) {
+  const root = rootForTrace(trace, requestId);
+  const attemptId = root?.attributes?.["attempt.id"];
+  return typeof attemptId === "string" && attemptId.length > 0 ? attemptId : undefined;
+}
+
+function completeTrace(trace, requestId) {
+  if (trace?.schema !== "sdt.commit/v1" || trace?.boundary !== "success" || trace?.complete !== true || trace?.runtimeVerified !== true) {
+    return false;
+  }
+  if (typeof trace.exportedAtMs !== "number" || !Number.isFinite(trace.exportedAtMs)) {
+    fail("trace-export", `${requestId} lacks a finite export time`);
+  }
+  // A summary flag from the first export pass is not evidence by itself.
+  // Re-run the runtime-shaped verifier here so post-export row/attribute
+  // edits cannot survive merely by retaining runtimeVerified: true.
+  try {
+    verifyExportedSuccessTrace(trace);
+  } catch (error) {
+    fail("trace-runtime", `${requestId} failed re-verification: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return true;
+}
+
+function conditionalPerHopSummary(complete, missing) {
+  const rows = new Map();
+  for (const trace of complete) {
+    for (const span of trace.spans ?? []) {
+      const rowId = nonEmptyString(span?.rowId, "per-hop.rowId");
+      const start = finiteNumber(span?.startMs, `${rowId}.startMs`);
+      const end = finiteNumber(span?.endMs, `${rowId}.endMs`);
+      if (end < start) fail("per-hop", `${rowId} ends before it starts`);
+      const aggregate = rows.get(rowId) ?? { joinedCount: 0, totalDurationMs: 0, durations: [] };
+      aggregate.joinedCount += 1;
+      const durationMs = end - start;
+      aggregate.totalDurationMs += durationMs;
+      aggregate.durations.push(durationMs);
+      rows.set(rowId, aggregate);
+    }
+  }
+  const rowDurations = Object.fromEntries([...rows.entries()]
+    .sort(([left], [right]) => requestIdOrder(left, right))
+    .map(([rowId, aggregate]) => {
+      const { durations, ...summary } = aggregate;
+      return [rowId, Object.freeze({
+        ...summary,
+        meanDurationMs: summary.joinedCount === 0 ? 0 : summary.totalDurationMs / summary.joinedCount,
+        p50DurationMs: percentile(durations, 0.50),
+        p95DurationMs: percentile(durations, 0.95),
+      })];
+    }));
+  const unknownUpperBoundMs = missing.reduce((total, entry) => total + entry.sensitivityEnvelope.upperBoundMs, 0);
+  return Object.freeze({
+    basis: "schema-complete-joined-cohort",
+    interpretation: "joined-cohort-conditional-descriptive-estimate",
+    metrics: Object.freeze(["p50DurationMs", "p95DurationMs"]),
+    wholeCohortConclusion: false,
+    joinedRequestCount: complete.length,
+    missingRequestCount: missing.length,
+    rows: rowDurations,
+    sensitivityEnvelope: Object.freeze({
+      lowerBoundMs: 0,
+      upperBoundMs: unknownUpperBoundMs,
+      sources: missing.map((entry) => Object.freeze({
+        requestId: entry.requestId,
+        stage: entry.stage,
+        upperBoundSource: entry.sensitivityEnvelope.upperBoundSource,
+        upperBoundMs: entry.sensitivityEnvelope.upperBoundMs,
+      })),
+    }),
+  });
+}
+
+/**
+ * Validates one independently-delivered phase.  A provider loss is UNKNOWN,
+ * never an absence or a passed trace: only the frozen 85/100 risk budget permits it,
+ * and every rank-1..5 client-latency identity remains mandatory.
+ */
+export function assertTraceCohort(ledger, traces, exportCompletedAtMs, phase = "B") {
+  if (!G30_PHASES.includes(phase)) fail("phase", `unknown trace phase ${phase}`);
+  if (!Array.isArray(traces)) fail("trace-input", `${phase} traces must be an array`);
+  const ranking = fullLedgerRanking(ledger, phase);
+  const tracesByRequestId = new Map();
+  for (const [index, trace] of traces.entries()) {
+    const requestId = nonEmptyString(trace?.requestId, `${phase}.traces[${index}].requestId`);
+    if (!ranking.byRequestId.has(requestId) || tracesByRequestId.has(requestId)) {
+      fail("trace-join", `${phase} trace requestId ${requestId} is missing from or duplicated in the client ledger`);
+    }
+    tracesByRequestId.set(requestId, trace);
+  }
+
+  const complete = [];
+  const missing = [];
+  const unattributed = [];
+  for (const entry of ranking.ranked) {
+    const trace = tracesByRequestId.get(entry.requestId);
+    const rootDurationMs = trace === undefined ? undefined : observedRootDuration(trace, entry.requestId);
+    if (trace !== undefined && rootDurationMs !== undefined && completeTrace(trace, entry.requestId)) {
+      const ratio = unattributedRatioFromTrace(trace);
+      if (ratio.unattributedRatio > 0.05) fail("unattributed", `${entry.requestId} exceeds the 5% attribution budget`);
+      complete.push(trace);
+      unattributed.push(Object.freeze({ requestId: entry.requestId, ...ratio }));
+      continue;
+    }
+    const stage = rootDurationMs === undefined ? "root-absent" : "schema-incomplete";
+    const upperBoundMs = stage === "root-absent" ? entry.clientLatency : rootDurationMs;
+    if (!Number.isFinite(upperBoundMs) || upperBoundMs < 0) {
+      fail("sensitivity-bound", `${entry.requestId} has no usable ${stage} upper bound`);
+    }
+    const attemptId = trace === undefined ? undefined : attemptIdForTrace(trace, entry.requestId);
+    missing.push(Object.freeze({
+      phase,
+      ordinal: entry.ordinal,
+      requestId: entry.requestId,
+      ...(attemptId === undefined ? {} : { attemptId }),
+      clientLatency: entry.clientLatency,
+      fullLedgerRank: entry.fullLedgerRank,
+      percentile: entry.percentile,
+      stage,
+      sensitivityEnvelope: Object.freeze({
+        lowerBoundMs: 0,
+        upperBoundMs,
+        upperBoundSource: stage === "root-absent" ? "client-latency" : "observed-root-duration",
+      }),
+    }));
+  }
+
+  const tail = ranking.ranked.slice(0, G30_TAIL_RANK_COUNT);
+  const missingRequestIds = new Set(missing.map((entry) => entry.requestId));
+  const missingTail = tail.filter((entry) => missingRequestIds.has(entry.requestId));
+  if (missingTail.length > 0) {
+    fail("tail-coverage", `${phase} is missing required rank-1..${G30_TAIL_RANK_COUNT} request(s): ${missingTail.map((entry) => entry.requestId).join(",")}`);
+  }
+  if (complete.length < G30_MIN_SCHEMA_COMPLETE_COUNT) {
+    fail("delivery-budget", `${phase} schemaCompleteCount=${complete.length} is below frozen ${G30_MIN_SCHEMA_COMPLETE_COUNT}/${G30_SAMPLE_COUNT}`);
+  }
+  const finalRequestAt = Math.max(...ledger.map((record) => finiteNumber(record?.completedAtMs, "ledger.completedAtMs")));
+  if (finiteNumber(exportCompletedAtMs, "exportCompletedAtMs") > finalRequestAt + G30_EXPORT_DEADLINE_MS) {
+    fail("export-deadline", `${phase} trace export exceeded the 10 minute deadline`);
+  }
+  const clientLatencies = ledger.map((record) => finiteNumber(record?.responseLatencyMs, "ledger.responseLatencyMs"));
+  return Object.freeze({
+    phase,
+    requestCount: G30_SAMPLE_COUNT,
+    clientCount: G30_SAMPLE_COUNT,
+    schemaCompleteCount: complete.length,
+    missingCount: missing.length,
+    missingRequestIds: Object.freeze(missing.map((entry) => entry.requestId)),
+    missing: Object.freeze(missing),
+    tailCoverage: Object.freeze({
+      ordering: "clientLatency desc, requestId asc",
+      ranks: Object.freeze(tail.map((entry) => Object.freeze({
+        rank: entry.fullLedgerRank,
+        requestId: entry.requestId,
+        clientLatency: entry.clientLatency,
+      }))),
+      requestIds: Object.freeze(tail.map((entry) => entry.requestId)),
+      complete: true,
+    }),
+    latency: Object.freeze({
+      universe: "full-100-client-ledger",
+      estimator: G30_LATENCY_ESTIMATOR,
+      p50: percentile(clientLatencies, 0.50),
+      p95: percentile(clientLatencies, 0.95),
+      p99: percentile(clientLatencies, 0.99),
+    }),
+    unattributed: Object.freeze(unattributed),
+    perHop: conditionalPerHopSummary(complete, missing),
+    exportDeadlineMs: finalRequestAt + G30_EXPORT_DEADLINE_MS,
+  });
+}
+
+export function assertAaaDrift(a, b, aprime) {
+  const aSummary = phaseLatencySummary(a);
+  const bSummary = phaseLatencySummary(b);
+  const primeSummary = phaseLatencySummary(aprime);
+  // B is compared with the bracketing off phases, not only the first A.
+  // This remains a recorded attribution observation; it is intentionally not
+  // a performance pass/fail threshold.
+  const offBaseline = {
+    p50: (aSummary.p50 + primeSummary.p50) / 2,
+    p95: (aSummary.p95 + primeSummary.p95) / 2,
+  };
+  const drift = {
+    p50: aSummary.p50 === 0 ? 0 : Math.abs(primeSummary.p50 - aSummary.p50) / aSummary.p50,
+    p95: aSummary.p95 === 0 ? 0 : Math.abs(primeSummary.p95 - aSummary.p95) / aSummary.p95,
+  };
+  if (drift.p50 > 0.10 || drift.p95 > 0.10) fail("aba-drift", "A and A-prime drift exceeds 10%; B0 must be re-run");
+  return Object.freeze({
+    A: aSummary,
+    B: bSummary,
+    Aprime: primeSummary,
+    drift,
+    overhead: {
+      p50Ms: bSummary.p50 - offBaseline.p50,
+      p95Ms: bSummary.p95 - offBaseline.p95,
+      p50Percent: offBaseline.p50 === 0 ? null : (bSummary.p50 - offBaseline.p50) / offBaseline.p50 * 100,
+      p95Percent: offBaseline.p95 === 0 ? null : (bSummary.p95 - offBaseline.p95) / offBaseline.p95 * 100,
+    },
+  });
+}
+
+const TOKEN_REFRESH_SPAN_NAMES = new Set([
+  "auth.refresh",
+  "auth.token.refresh",
+  "token.refresh",
+]);
+
+/**
+ * The only accepted activation/outlier source is the raw Workers telemetry
+ * export.  It joins by the provider's trace/request identifiers, never by
+ * time proximity and never through an operator-authored declaration file.
+ */
+function evidenceTraceIndex(ledger, traces, label, allowedMissingRequestIds = []) {
+  if (!Array.isArray(ledger) || !Array.isArray(traces)) fail(`${label}-trace-input`, `${label} requires a ledger and exported trace array`);
+  const ledgerByRequestId = new Map();
+  for (const [index, record] of ledger.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `${label}.ledger[${index}].requestId`);
+    if (ledgerByRequestId.has(requestId)) fail(`${label}-ledger-duplicate`, `${label} ledger repeats requestId ${requestId}`);
+    ledgerByRequestId.set(requestId, record);
+  }
+  const traceByRequestId = new Map();
+  const requestIdByTraceId = new Map();
+  for (const [index, trace] of traces.entries()) {
+    const requestId = nonEmptyString(trace?.requestId, `${label}.traces[${index}].requestId`);
+    if (!ledgerByRequestId.has(requestId) || traceByRequestId.has(requestId)) {
+      fail(`${label}-trace-join`, `${label} trace requestId ${requestId} is missing from or duplicated in the observation ledger`);
+    }
+    const traceId = nonEmptyString(trace?.traceId, `${label}.traces[${index}].traceId`);
+    if (requestIdByTraceId.has(traceId)) fail(`${label}-trace-duplicate`, `${label} traceId ${traceId} is duplicated`);
+    if (trace?.schema !== "sdt.commit/v1" || trace?.complete !== true || trace?.runtimeVerified !== true || trace?.boundary !== "success") {
+      fail(`${label}-trace-complete`, `${label} trace ${requestId} is not a complete runtime-verified success trace`);
+    }
+    try {
+      verifyExportedSuccessTrace(trace);
+    } catch (error) {
+      fail(`${label}-trace-runtime`, `${label} trace ${requestId} failed runtime verification: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    traceByRequestId.set(requestId, trace);
+    requestIdByTraceId.set(traceId, requestId);
+  }
+  if (!Array.isArray(allowedMissingRequestIds)) fail(`${label}-missing`, `${label} allowed missing request ids must be an array`);
+  const allowedMissing = new Set();
+  for (const [index, requestIdValue] of allowedMissingRequestIds.entries()) {
+    const requestId = nonEmptyString(requestIdValue, `${label}.allowedMissing[${index}]`);
+    if (!ledgerByRequestId.has(requestId) || allowedMissing.has(requestId)) {
+      fail(`${label}-missing`, `${label} has an invalid or duplicate allowed missing request ${requestId}`);
+    }
+    if (traceByRequestId.has(requestId)) {
+      fail(`${label}-missing`, `${label} marks an actually joined trace as missing: ${requestId}`);
+    }
+    allowedMissing.add(requestId);
+  }
+  for (const requestId of ledgerByRequestId.keys()) {
+    if (traceByRequestId.has(requestId) || allowedMissing.has(requestId)) continue;
+    fail(`${label}-trace-loss`, `${label} is missing a trace for request ${requestId} outside the AC5 UNKNOWN set`);
+  }
+  return Object.freeze({ ledgerByRequestId, traceByRequestId, requestIdByTraceId, allowedMissing });
+}
+
+function evidenceReference(requestIdValue, index, label) {
+  const requestId = nonEmptyString(requestIdValue, `${label}.requestId`);
+  const ledger = index.ledgerByRequestId.get(requestId);
+  const trace = index.traceByRequestId.get(requestId);
+  if (ledger === undefined || trace === undefined) {
+    fail(`${label}-trace-join`, `${label} requestId ${requestId} is not jointly present in the observation ledger and exported traces`);
+  }
+  const roots = Array.isArray(trace.spans) ? trace.spans.filter((span) => span?.rowId === "S00") : [];
+  if (roots.length !== 1) fail(`${label}-trace-root`, `${label} requestId ${requestId} must have exactly one S00 trace root`);
+  const attributes = object(roots[0]?.attributes);
+  if (attributes === undefined) fail(`${label}-trace-root`, `${label} requestId ${requestId} root attributes are missing`);
+  return Object.freeze({ requestId, ledger, trace, root: roots[0], rootAttributes: attributes });
+}
+
+/**
+ * An idle interval is evidence only when it explicitly names both requests
+ * around the idle period.  Keeping this guard separate lets its mutation
+ * oracle attribute a missing predecessor/successor to this boundary rather
+ * than to a later timing calculation.
+ */
+export function assertIdleRequestReferences(window, label) {
+  const previousRequestId = nonEmptyString(window?.previousRequestId, `${label}.previous.requestId`);
+  const nextRequestId = nonEmptyString(window?.nextRequestId, `${label}.next.requestId`);
+  if (previousRequestId === nextRequestId) fail("idle-reference", `${label} must name distinct prior and next requests`);
+  return Object.freeze({ previousRequestId, nextRequestId });
+}
+
+function rootBoolean(reference, attribute, label) {
+  const value = reference.rootAttributes[attribute];
+  if (typeof value !== "boolean") fail(`${label}-trace-root`, `${label} trace root lacks boolean ${attribute}`);
+  return value;
+}
+
+function rootString(reference, attribute, label) {
+  const value = reference.rootAttributes[attribute];
+  if (typeof value !== "string" || value.length === 0) fail(`${label}-trace-root`, `${label} trace root lacks string ${attribute}`);
+  return value;
+}
+
+/**
+ * Workers Logs gives structured console records a provider request identity,
+ * but its live export shape does not duplicate the request's version/colo
+ * metadata. The exact request/correlation -> S00 join is therefore the
+ * authority for those provider facts. A Worker observation independently
+ * carries the two overlap values and is checked below; DO observations do
+ * not invent a second propagation channel just to restate them.
+ */
+function assertObservationRootProviderFacts(reference, label) {
+  return Object.freeze({
+    scriptVersion: rootString(reference, "script.version", label),
+    colo: rootString(reference, "colo", label),
+  });
+}
+
+function rootDuration(reference, label) {
+  const start = finiteNumber(reference.root?.startMs, `${label}.S00.startMs`);
+  const end = finiteNumber(reference.root?.endMs, `${label}.S00.endMs`);
+  if (end < start) fail(`${label}-trace-root`, `${label} trace root ends before it starts`);
+  return end - start;
+}
+
+function providerSpanNames(reference, label) {
+  if (!Array.isArray(reference.trace?.providerSpanNames)) {
+    fail(`${label}-provider-spans`, `${label} trace must retain provider span names for refresh exclusion`);
+  }
+  return reference.trace.providerSpanNames.map((value, index) => nonEmptyString(value, `${label}.providerSpanNames[${index}]`));
+}
+
+function refreshRequestIds(index, label) {
+  const observed = new Set();
+  for (const [requestId, trace] of index.traceByRequestId) {
+    const names = providerSpanNames({ trace }, `${label}.${requestId}`);
+    if (names.some((name) => TOKEN_REFRESH_SPAN_NAMES.has(name.toLowerCase()))) observed.add(requestId);
+  }
+  return observed;
+}
+
+const WARM_ACTORS = Object.freeze(["WORKER", "BOOTSTRAP", "ALLOCATOR", "TAG"]);
+const DO_ACTORS = new Set(["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG"]);
+const OBSERVATION_EVENTS = new Set(["worker.invocation", "do.handler", "fault.barrier"]);
+const OUTLIER_TARGET_MS = 21_500;
+
+function observationForRequest(index, requestId, predicate) {
+  return (index.observationsByRequestId.get(requestId) ?? []).filter(predicate);
+}
+
+/**
+ * Builds the complete B observation ledger from client-captured request
+ * records. The runner owns these timestamps; no operator statement is
+ * accepted. Warmup and idle requests are deliberately not substituted into
+ * the fixed 100-request B performance-neutral trace cohort.
+ */
+export function observationLedgerForPhase(phaseB) {
+  const canonical = phaseB?.ledger;
+  const warmup = phaseB?.warmup?.requests;
+  const idle = phaseB?.idleExperiment?.requests;
+  if (!Array.isArray(canonical) || !Array.isArray(warmup) || !Array.isArray(idle)) {
+    fail("observation-ledger", "B requires canonical, warmup, and idle client request ledgers");
+  }
+  const records = [...canonical, ...warmup, ...idle];
+  const seen = new Set();
+  for (const [index, record] of records.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `observation-ledger[${index}].requestId`);
+    if (seen.has(requestId)) fail("observation-ledger", `B observation ledger repeats requestId ${requestId}`);
+    seen.add(requestId);
+    finiteNumber(record?.startedAtMs, `observation-ledger[${index}].startedAtMs`);
+    finiteNumber(record?.completedAtMs, `observation-ledger[${index}].completedAtMs`);
+  }
+  return Object.freeze(records);
+}
+
+/**
+ * The normalized sdt.observe/v1 stream is fail-closed: every structured log
+ * must carry a platform-derived request id that joins to exactly one client
+ * ledger entry and S00 trace. Worker overlap facts are compared directly to
+ * S00, so copied/mismatched values cannot become evidence.
+ */
+export function assertObservationStream(ledger, traces, observations, options = {}) {
+  if (!Array.isArray(observations)) fail("observation-input", "B requires exported sdt.observe/v1 observations");
+  const traceIndex = evidenceTraceIndex(ledger, traces, "observation", options?.allowedMissingRequestIds ?? []);
+  const observationsByRequestId = new Map();
+  for (const [index, raw] of observations.entries()) {
+    const observation = object(raw);
+    if (observation === undefined) fail("observation-shape", `observation ${index} must be an object`);
+    if (observation.schema !== "sdt.observe/v1" || !OBSERVATION_EVENTS.has(observation.event)) {
+      fail("observation-schema", `observation ${index} is not a supported sdt.observe/v1 event`);
+    }
+    finiteNumber(observation.emittedAtMs, `observation[${index}].emittedAtMs`);
+    if (observation.storageWrites !== 0 || observation.usedForControl !== false || observation.exposedInPublicResponse !== false) {
+      fail("observation-isolation", `observation ${index} is not observation-only`);
+    }
+    nonEmptyString(observation.platformRequestId, `observation[${index}].platformRequestId`);
+    const reference = evidenceReference(observation.requestId, traceIndex, `observation[${index}]`);
+    if (nonEmptyString(observation.traceId, `observation[${index}].traceId`) !== reference.trace.traceId) {
+      fail("observation-trace-id", `observation ${index} traceId does not match its joined request root`);
+    }
+    if (observation.event === "worker.invocation") {
+      if (observation.actorClass !== "WORKER" || typeof observation.activationFirst !== "boolean") {
+        fail("observation-worker", `worker observation ${index} lacks actor/activation facts`);
+      }
+      nonEmptyString(observation.isolateInstanceId, `observation[${index}].isolateInstanceId`);
+      const scriptVersion = nonEmptyString(observation.scriptVersion, `observation[${index}].scriptVersion`);
+      const colo = nonEmptyString(observation.colo, `observation[${index}].colo`);
+      const rootProvider = assertObservationRootProviderFacts(reference, `observation[${index}]`);
+      if (rootBoolean(reference, "activation.first", `observation[${index}]`) !== observation.activationFirst) {
+        fail("observation-overlap-activation", `worker observation ${index} activation.first differs from S00`);
+      }
+      if (rootProvider.scriptVersion !== scriptVersion) {
+        fail("observation-overlap-script-version", `worker observation ${index} script.version differs from its joined S00`);
+      }
+      if (rootProvider.colo !== colo) {
+        fail("observation-overlap-colo", `worker observation ${index} colo differs from its joined S00`);
+      }
+    } else if (observation.event === "do.handler") {
+      if (!DO_ACTORS.has(observation.actorClass) || typeof observation.activationFirst !== "boolean") {
+        fail("observation-do", `DO observation ${index} lacks actor/activation facts`);
+      }
+      nonEmptyString(observation.activationId, `observation[${index}].activationId`);
+      assertObservationRootProviderFacts(reference, `observation[${index}]`);
+      finiteNumber(observation.constructorToHandlerMs, `observation[${index}].constructorToHandlerMs`);
+      if (observation.firstStorageReadMs !== null) finiteNumber(observation.firstStorageReadMs, `observation[${index}].firstStorageReadMs`);
+      if (observation.subrequestWallMs !== null) finiteNumber(observation.subrequestWallMs, `observation[${index}].subrequestWallMs`);
+    } else {
+      nonEmptyString(observation.barrierId, `observation[${index}].barrierId`);
+      if (!["started", "ended", "drained"].includes(observation.stage)) fail("observation-fault", `fault observation ${index} has an invalid stage`);
+      finiteNumber(observation.boundedWindowMs, `observation[${index}].boundedWindowMs`);
+    }
+    const existing = observationsByRequestId.get(reference.requestId) ?? [];
+    existing.push(observation);
+    observationsByRequestId.set(reference.requestId, existing);
+  }
+  for (const requestId of traceIndex.ledgerByRequestId.keys()) {
+    if (traceIndex.allowedMissing.has(requestId)) continue;
+    const worker = observationForRequest({ observationsByRequestId }, requestId, (entry) => entry.event === "worker.invocation");
+    if (worker.length !== 1) fail("observation-worker", `request ${requestId} requires exactly one joined worker observation`);
+  }
+  return Object.freeze({ ...traceIndex, observationsByRequestId });
+}
+
+/** Five B-on warmup requests must be observed from the same raw log export. */
+export function assertWarmupProof(phase, warmup, observationIndex) {
+  if (phase !== "B") fail("warmup-phase", "only the trace-sampled B phase may claim a joined activation warmup proof");
+  if (warmup === null || typeof warmup !== "object" || Array.isArray(warmup)) fail("warmup", "B warmup request ledger is missing");
+  if (!Number.isSafeInteger(warmup.requested) || warmup.requested < 5 || warmup.requested > 30 || !Array.isArray(warmup.requests) || warmup.requests.length !== warmup.requested) {
+    fail("warmup", "B warmup must retain 5..30 client requests");
+  }
+  for (const [requestIndex, record] of warmup.requests.entries()) {
+    const requestId = nonEmptyString(record?.requestId, `warmup[${requestIndex}].requestId`);
+    evidenceReference(requestId, observationIndex, `warmup[${requestIndex}]`);
+    for (const actor of WARM_ACTORS) {
+      const events = observationForRequest(
+        observationIndex,
+        requestId,
+        (entry) => actor === "WORKER"
+          ? entry.event === "worker.invocation"
+          : entry.event === "do.handler" && entry.actorClass === actor,
+      );
+      if (events.length === 0 || events.some((entry) => entry.activationFirst !== false)) {
+        fail("warmup-activation", `B ${actor} lacks a non-first raw observation for warmup request ${requestIndex}`);
+      }
+    }
+  }
+  return Object.freeze({ phase, attempts: warmup.requested, actors: WARM_ACTORS });
+}
+
+/**
+ * A B deployment can route primary traffic before trace sampling has reached
+ * its allocator Durable Object callbacks.  The immutable Worker Version
+ * creation timestamp, not a runtime variable or operator statement, is the
+ * sole authority for the pre-cohort settlement delay.
+ */
+export function assertBTraceSamplingSettlement(phaseB) {
+  const settlement = object(phaseB?.traceSamplingSettlement);
+  const witness = object(phaseB?.deploymentWitness);
+  if (settlement === undefined || witness === undefined) {
+    fail("trace-sampling-settlement", "B requires a version-bound trace sampling settlement record");
+  }
+  const deployedAtMs = finiteNumber(settlement.deployedAtMs, "B.traceSamplingSettlement.deployedAtMs");
+  const readyAtMs = finiteNumber(settlement.readyAtMs, "B.traceSamplingSettlement.readyAtMs");
+  const startedAtMs = finiteNumber(settlement.startedAtMs, "B.traceSamplingSettlement.startedAtMs");
+  const settledAtMs = finiteNumber(settlement.settledAtMs, "B.traceSamplingSettlement.settledAtMs");
+  const waitedMs = finiteNumber(settlement.waitedMs, "B.traceSamplingSettlement.waitedMs");
+  const firstMeasurementStartedAtMs = finiteNumber(
+    settlement.firstMeasurementStartedAtMs,
+    "B.traceSamplingSettlement.firstMeasurementStartedAtMs",
+  );
+  if (
+    settlement.authority !== "worker-version-created-on" ||
+    settlement.minimumSettleMs !== B_TRACE_SAMPLING_SETTLE_MS ||
+    typeof settlement.deployedVersionId !== "string" ||
+    settlement.deployedVersionId.length === 0 ||
+    settlement.deployedVersionId !== witness?.deployedVersion?.id
+  ) {
+    fail("trace-sampling-settlement", "B trace sampling settlement is not bound to its immutable deployment witness");
+  }
+  const witnessCreatedAtMs = Date.parse(witness?.deployedVersion?.createdOn ?? "");
+  if (!Number.isFinite(witnessCreatedAtMs) || deployedAtMs !== witnessCreatedAtMs || readyAtMs !== deployedAtMs + B_TRACE_SAMPLING_SETTLE_MS) {
+    fail("trace-sampling-settlement", "B trace sampling settlement has an invalid version-created-on deadline");
+  }
+  if (
+    startedAtMs < deployedAtMs ||
+    settledAtMs < readyAtMs ||
+    waitedMs < 0 ||
+    settledAtMs < startedAtMs ||
+    firstMeasurementStartedAtMs < settledAtMs
+  ) {
+    fail("trace-sampling-settlement", "B canonical window opened before trace sampling settled");
+  }
+  return Object.freeze({
+    authority: settlement.authority,
+    minimumSettleMs: settlement.minimumSettleMs,
+    deployedAtMs,
+    readyAtMs,
+    settledAtMs,
+    waitedMs,
+    firstMeasurementStartedAtMs,
+  });
+}
+
+/**
+ * The 2/15/180-second observation is computed from client request timelines
+ * and joined worker logs. A window without both surrounding request ids is
+ * intentionally unprovable; a literal claimed gap is not accepted.
+ */
+export function assertActivationIdleEvidence(idleExperiment, observationIndex) {
+  const idle = object(idleExperiment);
+  if (idle === undefined || !same(idle.scheduleMs, G30_IDLE_SCHEDULE_MS) || !Array.isArray(idle.windows)) {
+    fail("idle-schedule", "idle experiment must use exactly 2000/15000/180000ms with raw windows");
+  }
+  if (idle.windows.length !== G30_IDLE_SCHEDULE_MS.length) fail("idle-observations", "idle experiment must contain exactly one window per schedule value");
+  const observedSchedule = new Set();
+  const derived = [];
+  for (const [index, raw] of idle.windows.entries()) {
+    const window = object(raw);
+    if (window === undefined) fail("idle-observation", `idle window ${index} must be an object`);
+    const scheduledGapMs = finiteNumber(window.scheduledGapMs, `idle[${index}].scheduledGapMs`);
+    if (!G30_IDLE_SCHEDULE_MS.includes(scheduledGapMs) || observedSchedule.has(scheduledGapMs)) fail("idle-schedule", `idle window ${index} has an invalid schedule`);
+    observedSchedule.add(scheduledGapMs);
+    const references = assertIdleRequestReferences(window, `idle[${index}]`);
+    const previous = evidenceReference(references.previousRequestId, observationIndex, `idle[${index}].previous`);
+    const next = evidenceReference(references.nextRequestId, observationIndex, `idle[${index}].next`);
+    const previousCompletedAtMs = finiteNumber(previous.ledger.completedAtMs, `idle[${index}].previous.completedAtMs`);
+    const nextStartedAtMs = finiteNumber(next.ledger.startedAtMs, `idle[${index}].next.startedAtMs`);
+    if (nextStartedAtMs < previousCompletedAtMs) fail("idle-ledger", `idle window ${index} reverses its complete ledger order`);
+    const worker = observationForRequest(observationIndex, next.requestId, (entry) => entry.event === "worker.invocation");
+    if (worker.length !== 1) fail("idle-observation", `idle window ${index} needs exactly one next-request worker observation`);
+    const scriptVersion = nonEmptyString(worker[0].scriptVersion, `idle[${index}].worker.scriptVersion`);
+    const colo = nonEmptyString(worker[0].colo, `idle[${index}].worker.colo`);
+    const reactivationCause = rootString(previous, "script.version", `idle[${index}].previous`) === scriptVersion
+      ? "unknown"
+      : "deployment-correlated";
+    if (!REACTIVATION_CAUSES.has(reactivationCause)) fail("reactivation-cause", `idle window ${index} has an unsupported cause`);
+    derived.push(Object.freeze({
+      scheduledGapMs,
+      actualGapMs: nextStartedAtMs - previousCompletedAtMs,
+      previousRequestId: previous.requestId,
+      nextRequestId: next.requestId,
+      activationFirst: worker[0].activationFirst,
+      scriptVersion,
+      colo,
+      reactivationCause,
+      observedIdleGapLowerBoundMs: nextStartedAtMs - previousCompletedAtMs,
+    }));
+  }
+  if (!same([...observedSchedule].sort((left, right) => left - right), G30_IDLE_SCHEDULE_MS)) fail("idle-schedule", "idle experiment does not cover every required gap");
+  return Object.freeze({ scheduleMs: G30_IDLE_SCHEDULE_MS, observations: derived.length, raw: derived });
+}
+
+function targetOutlierReferences(phaseB, observationIndex) {
+  if (!Array.isArray(phaseB?.ledger)) fail("outlier-ledger", "B canonical ledger is missing");
+  return phaseB.ledger
+    .filter((record) => finiteNumber(record?.responseLatencyMs, "outlier.responseLatencyMs") >= OUTLIER_TARGET_MS)
+    .map((record, index) => evidenceReference(record.requestId, observationIndex, `outlier-target[${index}]`));
+}
+
+function assertFaultBarrier(observationIndex, requiredForObservedOutlier) {
+  const grouped = new Map();
+  for (const [requestId, events] of observationIndex.observationsByRequestId) {
+    for (const event of events.filter((entry) => entry.event === "fault.barrier")) {
+      const existing = grouped.get(event.barrierId) ?? [];
+      existing.push({ requestId, event });
+      grouped.set(event.barrierId, existing);
+    }
+  }
+  if (grouped.size === 0) {
+    if (requiredForObservedOutlier) fail("fault-barrier", "queue/doorbell probe has no observed sdt.observe/v1 fault barrier for an observed outlier");
+    return Object.freeze([]);
+  }
+  const completed = [];
+  for (const [barrierId, events] of grouped) {
+    const ordered = [...events].sort((left, right) => left.event.emittedAtMs - right.event.emittedAtMs);
+    if (!same(ordered.map((entry) => entry.event.stage), ["started", "ended", "drained"])) {
+      fail("fault-barrier", `fault barrier ${barrierId} must emit started/ended/drained exactly once`);
+    }
+    const [started, ended, drained] = ordered;
+    const bound = finiteNumber(started.event.boundedWindowMs, `fault-barrier.${barrierId}.bound`);
+    if (ended.event.emittedAtMs - started.event.emittedAtMs > bound || drained.event.emittedAtMs < ended.event.emittedAtMs) {
+      fail("fault-barrier", `fault barrier ${barrierId} exceeded its bounded window or did not drain after release`);
+    }
+    const reference = evidenceReference(started.requestId, observationIndex, `fault-barrier.${barrierId}`);
+    if (rootDuration(reference, `fault-barrier.${barrierId}`) > finiteNumber(reference.ledger.responseLatencyMs, `fault-barrier.${barrierId}.responseLatencyMs`)) {
+      fail("queue-bound", `fault barrier ${barrierId} exceeded its joined response bound`);
+    }
+    completed.push(Object.freeze({ barrierId, requestId: started.requestId, boundedWindowMs: bound }));
+  }
+  return Object.freeze(completed);
+}
+
+/**
+ * Four outlier dispositions are derived only from joined telemetry. The
+ * absence of a 21.5s target is an observed exclusion, not a declared one.
+ */
+export function assertOutlierClassification(phaseB, observationIndex) {
+  const targets = targetOutlierReferences(phaseB, observationIndex);
+  const targetIds = new Set(targets.map((reference) => reference.requestId));
+  const workerEvents = targets.flatMap((reference) => observationForRequest(observationIndex, reference.requestId, (entry) => entry.event === "worker.invocation"));
+  const workerFirst = workerEvents.find((entry) => entry.activationFirst === true);
+  const worker = Object.freeze({
+    hypothesis: "worker-isolate-first",
+    disposition: workerFirst === undefined ? "excluded" : "attributed",
+    classified: true,
+    rawEvidence: workerFirst === undefined ? [] : [workerFirst],
+  });
+  const doEvents = targets.flatMap((reference) => observationForRequest(observationIndex, reference.requestId, (entry) => entry.event === "do.handler" && entry.activationFirst === true));
+  const wakeActors = new Set(doEvents.map((entry) => entry.actorClass));
+  const durableObject = Object.freeze({
+    hypothesis: "durable-object-wake",
+    disposition: wakeActors.size === 1 ? "attributed" : "excluded",
+    classified: true,
+    rawEvidence: doEvents,
+  });
+  const refreshes = refreshRequestIds(observationIndex, "token-rotation");
+  const token = Object.freeze({
+    hypothesis: "token-rotation",
+    disposition: [...refreshes].some((requestId) => targetIds.has(requestId)) ? "attributed" : "excluded",
+    classified: true,
+    rawEvidence: [...refreshes].filter((requestId) => targetIds.has(requestId)).map((requestId) => evidenceReference(requestId, observationIndex, "token-rotation")),
+  });
+  // A no-outlier B0 run excludes this hypothesis from the measured universe;
+  // it must not invent a fault claim. If a 21.5s target is observed, the
+  // bounded probe's lifecycle is mandatory and comes only from sdt.observe.
+  const barriers = assertFaultBarrier(observationIndex, targets.length > 0);
+  const queue = Object.freeze({
+    hypothesis: "queue-doorbell-backpressure",
+    disposition: "excluded",
+    classified: true,
+    rawEvidence: barriers,
+  });
+  const outliers = [worker, durableObject, token, queue];
+  if (!same(outliers.map((entry) => entry.hypothesis).sort(), [...OUTLIER_HYPOTHESES].sort())) fail("outlier", "one or more required hypotheses is absent");
+  return Object.freeze({ classifiedOutliers: outliers.length, unclassifiedOutliers: 0, targetCount: targets.length, observations: outliers });
+}
+
+export function assertB0Evidence(evidence) {
+  if (evidence?.task !== "SDT-G30" || evidence?.baseline !== "B0" || evidence?.purpose !== "attribution-only-not-g37-denominator") {
+    fail("identity", "evidence must identify G30 B0 as attribution-only");
+  }
+  if (Object.hasOwn(evidence, "activationIdle") || Object.hasOwn(evidence, "outlierDiscrimination")) {
+    fail("observation-declaration", "activation and outlier evidence must be derived from exported sdt.observe/v1 data");
+  }
+  const phases = evidence.phases;
+  const windows = Object.fromEntries(G30_PHASES.map((phase) => [phase, assertEligiblePhaseWindow(
+    phase,
+    phases?.[phase]?.ledger,
+    phases?.[phase]?.rawAttempts,
+    phases?.[phase]?.windowResets ?? 0,
+  )]));
+  if (!same(windows.A.cohort, windows.B.cohort) || !same(windows.A.cohort, windows["A-prime"].cohort)) {
+    fail("cohort-cross-phase", "A/B/A-prime cohort identity differs");
+  }
+  const config = assertPhaseConfiguration(phases);
+  const traceSamplingSettlement = assertBTraceSamplingSettlement(phases.B);
+  const traces = assertTraceCohort(phases.B.ledger, evidence.traces, evidence.traceExportCompletedAtMs);
+  const latency = assertAaaDrift(phases.A.ledger, phases.B.ledger, phases["A-prime"].ledger);
+  const observationLedger = observationLedgerForPhase(phases.B);
+  const observation = assertObservationStream(
+    observationLedger,
+    evidence.observationTraces,
+    evidence.observations,
+    { allowedMissingRequestIds: traces.missingRequestIds },
+  );
+  // This is deliberately after the sealed AC5 trace gate and after the
+  // existing observation join gate. The inventory can explain a missing row,
+  // but can never turn that missing span into a pass or hide an invalid log.
+  const emittedRowInventory = assertEmittedRowInventory(
+    phases.B.ledger,
+    evidence.traces,
+    evidence.inventoryObservations,
+    evidence.emittedRowInventory,
+  );
+  const warmup = assertWarmupProof("B", phases.B.warmup, observation);
+  const activationIdle = assertActivationIdleEvidence(phases.B.idleExperiment, observation);
+  const outliers = assertOutlierClassification(phases.B, observation);
+  return Object.freeze({
+    windows,
+    config,
+    traceSamplingSettlement,
+    warmup: { B: warmup },
+    traces,
+    latency,
+    observation: { requests: observationLedger.length, events: evidence.observations.length },
+    emittedRowInventory: Object.freeze({
+      requests: emittedRowInventory.length,
+      classifications: Object.freeze(Object.fromEntries(
+        [...new Set(emittedRowInventory.map((entry) => entry.diff.classification))]
+          .sort(requestIdOrder)
+          .map((classification) => [classification, emittedRowInventory.filter((entry) => entry.diff.classification === classification).length]),
+      )),
+    }),
+    activationIdle,
+    outliers,
+  });
+}
+
+function makeRecords(phase, responseLatencyMs = 100) {
+  const start = 1_000_000;
+  return Array.from({ length: G30_SAMPLE_COUNT }, (_, index) => ({
+    index,
+    requestId: `${phase.toLowerCase()}-${index}`,
+    status: 200,
+    eligible: true,
+    nonEmpty: true,
+    replacement: false,
+    serviceId: "g32-9043d626fe1149cb",
+    clientRegion: "test-region",
+    tagSetDigest: "a".repeat(64),
+    payloadDigest: "b".repeat(64),
+    fixtureVersion: "g30-v1",
+    scheduledStartMs: start + index * G30_CADENCE_MS,
+    startedAtMs: start + index * G30_CADENCE_MS,
+    completedAtMs: start + index * G30_CADENCE_MS + responseLatencyMs,
+    responseLatencyMs,
+  }));
+}
+
+function makeTrace(record) {
+  const start = record.startedAtMs;
+  const end = record.completedAtMs;
+  const rows = manifest.schemas["sdt.commit/v1"].rows;
+  const required = manifest.schemas["sdt.commit/v1"].boundaries.find((boundary) => boundary.name === "success")?.requiredRows ?? [];
+  const spans = required.map((rowId) => {
+    const row = rows.find((candidate) => candidate.rowId === rowId);
+    if (row === undefined) fail("self-test", `manifest lacks ${rowId}`);
+    const face = rowId === "S01" ? "pre-admission" : "accepted";
+    const attributes = {
+      "schema.version": "sdt.commit/v1",
+      "correlation.id": `corr-${record.requestId}`,
+      "service.id": record.serviceId ?? "g32-9043d626fe1149cb",
+      "actor.class": row.emitter === "allocator-do" ? "ALLOCATOR" : "ROOT",
+      operation: row.span,
+      "span.kind": row.kind,
+      outcome: "success",
+      ...(face === "pre-admission" ? {} : { "attempt.id": `attempt-${record.requestId}`, "actor.key_hash": "a".repeat(64) }),
+      ...(/^S05[a-e]$/.test(rowId) ? { "phase.ordinal": "abcde".indexOf(rowId.at(-1)) } : {}),
+      ...(manifest.attributeMatrix.attributes["member.index"].rowScope?.includes(rowId) ? { "member.index": 0 } : {}),
+      ...(manifest.attributeMatrix.attributes["tag.key_hash"].rowScope?.includes(rowId) ? { "tag.key_hash": "b".repeat(64) } : {}),
+      ...(rowId === "S00" ? {
+        "activation.first": !record.requestId.includes("warm") && Number(record.requestId.slice(record.requestId.lastIndexOf("-") + 1)) === 2,
+        "script.version": "g30-synthetic",
+        colo: "test-colo",
+      } : {}),
+    };
+    return {
+      rowId,
+      schema: "sdt.commit/v1",
+      face,
+      span: row.span,
+      startMs: start,
+      endMs: end,
+      emitter: row.emitter,
+      kind: row.kind,
+      logicalParent: row.logicalParent,
+      rootId: `trace-${record.requestId}`,
+      clockDomain: "caller",
+      present: true,
+      zeroDurationPlatformLimited: false,
+      attributes,
+    };
+  });
+  return {
+    requestId: record.requestId,
+    traceId: `trace-${record.requestId}`,
+    schema: "sdt.commit/v1",
+    complete: true,
+    runtimeVerified: true,
+    boundary: "success",
+    exportedAtMs: end + 1,
+    callerCoverageIntervals: ["S01"],
+    providerSpanNames: ["sdt.commit"],
+    spans,
+  };
+}
+
+function makeObservation(record) {
+  const activationFirst = !String(record.requestId).includes("warm") && Number(String(record.requestId).split("-").at(-1)) === 2;
+  const provider = { scriptVersion: "g30-synthetic", colo: "test-colo" };
+  const isolated = { storageWrites: 0, usedForControl: false, exposedInPublicResponse: false };
+  return [
+    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}`, actorClass: "WORKER", emittedWorkerRowIds: SUCCESS_EMITTED_WORKER_ROW_IDS, isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, ...isolated },
+    ...["BOOTSTRAP", "ALLOCATOR", "TAG"].map((actorClass) => ({
+      schema: "sdt.observe/v1", event: "do.handler", emittedAtMs: record.completedAtMs - 2, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}-${actorClass}`,
+      actorClass, activationId: `${actorClass.toLowerCase()}-${record.requestId}`, activationFirst: false,
+      constructorToHandlerMs: 1, firstStorageReadMs: 1, subrequestWallMs: actorClass === "ALLOCATOR" ? 1 : null, ...isolated,
+    })),
+  ];
+}
+
+function syntheticB0Evidence() {
+  const a = makeRecords("A", 100);
+  const b = makeRecords("B", 110);
+  b[13].responseLatencyMs = OUTLIER_TARGET_MS;
+  b[13].completedAtMs = b[13].startedAtMs + OUTLIER_TARGET_MS;
+  const prime = makeRecords("A-prime", 102);
+  const warmupRequests = Array.from({ length: 5 }, (_, index) => ({
+    requestId: `b-warm-${index}`, status: 200, startedAtMs: 980_000 + index * 2_000, completedAtMs: 980_100 + index * 2_000, responseLatencyMs: 100,
+  }));
+  const idleRequests = [];
+  const idleWindows = [];
+  let previous = b.at(-1);
+  for (const [index, scheduledGapMs] of G30_IDLE_SCHEDULE_MS.entries()) {
+    const startedAtMs = previous.completedAtMs + scheduledGapMs;
+    const next = { requestId: `b-idle-${index}`, status: 200, startedAtMs, completedAtMs: startedAtMs + 110, responseLatencyMs: 110 };
+    idleRequests.push(next);
+    idleWindows.push({ scheduledGapMs, previousRequestId: previous.requestId, nextRequestId: next.requestId });
+    previous = next;
+  }
+  const baseConfig = { placement: "off", serviceId: "g32-9043d626fe1149cb", observability: { traces: { enabled: true, head_sampling_rate: 0 } } };
+  const phaseB = {
+    ledger: b,
+    rawAttempts: [],
+    deploymentWitness: {
+      deployedVersion: { id: "on", createdOn: new Date(800_000).toISOString() },
+    },
+    traceSamplingSettlement: {
+      authority: "worker-version-created-on",
+      deployedVersionId: "on",
+      deployedAtMs: 800_000,
+      minimumSettleMs: B_TRACE_SAMPLING_SETTLE_MS,
+      readyAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      startedAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      settledAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+      waitedMs: 0,
+      firstMeasurementStartedAtMs: 800_000 + B_TRACE_SAMPLING_SETTLE_MS,
+    },
+    configuration: { ...baseConfig, deployedVersion: "on", observability: { traces: { enabled: true, head_sampling_rate: 1 } } },
+    warmup: { requested: 5, requests: warmupRequests },
+    idleExperiment: { scheduleMs: G30_IDLE_SCHEDULE_MS, requests: idleRequests, windows: idleWindows },
+  };
+  const allRecords = observationLedgerForPhase(phaseB);
+  const observationTraces = allRecords.map(makeTrace);
+  const observations = allRecords.flatMap(makeObservation);
+  const bRequestIds = new Set(b.map((record) => record.requestId));
+  const inventoryObservations = observations.filter((entry) => entry.event === "worker.invocation" && bRequestIds.has(entry.requestId));
+  const emittedRowInventory = reconcileEmittedRowInventory(b, b.map(makeTrace), inventoryObservations);
+  observations.push(
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 20, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "started", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 15, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "ended", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+    { schema: "sdt.observe/v1", event: "fault.barrier", emittedAtMs: b[13].completedAtMs - 10, requestId: b[13].requestId, traceId: `trace-${b[13].requestId}`, platformRequestId: `provider-${b[13].requestId}-fault`, barrierId: "synthetic-fault", stage: "drained", boundedWindowMs: 20, storageWrites: 0, usedForControl: false, exposedInPublicResponse: false },
+  );
+  return {
+    task: "SDT-G30", baseline: "B0", purpose: "attribution-only-not-g37-denominator",
+    phases: {
+      A: { ledger: a, rawAttempts: [], configuration: baseConfig },
+      B: phaseB,
+      "A-prime": { ledger: prime, rawAttempts: [], configuration: { ...baseConfig, deployedVersion: "off-prime" } },
+    },
+    traces: b.map(makeTrace),
+    observationTraces,
+    observations,
+    inventoryObservations,
+    emittedRowInventory,
+    traceExportCompletedAtMs: b.at(-1).completedAtMs + 10,
+  };
+}
+
+export function selfTest() {
+  const evidence = syntheticB0Evidence();
+  assertB0Evidence(evidence);
+  const failures = {};
+  for (const [name, mutate, marker] of [
+    ["accept-84", (value) => {
+      const missing = new Set(["b-50", "b-51", "b-52", "b-53", "b-54", "b-55", "b-56", "b-57", "b-58", "b-59", "b-60", "b-61", "b-62", "b-63", "b-64", "b-65"]);
+      value.traces = value.traces.filter((trace) => !missing.has(trace.requestId));
+    }, "delivery-budget"],
+    ["out-of-window-replacement", (value) => { value.phases.B.ledger[99].replacement = true; }, "window-eligibility"],
+    ["sampling-delta", (value) => { value.phases.B.configuration.placement = "smart"; }, "placement"],
+    ["unjoined-observation", (value) => { value.observations[0].requestId = "missing-request"; }, "observation[0]-trace-join"],
+    ["overlap-mismatch", (value) => { value.observations.find((entry) => entry.event === "worker.invocation").scriptVersion = "wrong"; }, "observation-overlap-script-version"],
+    ["provider-request-id-missing", (value) => { delete value.observations[0].platformRequestId; }, "observation[0].platformRequestId"],
+    ["barrier-missing", (value) => { value.observations = value.observations.filter((entry) => entry.event !== "fault.barrier"); }, "fault-barrier"],
+    ["idle-reference-missing", (value) => { delete value.phases.B.idleExperiment.windows[0].previousRequestId; }, "idle[0].previous.requestId"],
+    ["emitted-row-inventory-forged", (value) => { value.emittedRowInventory[0].diff.classification = "emission"; }, "emitted-row-inventory"],
+  ]) {
+    const altered = structuredClone(evidence);
+    mutate(altered);
+    try { assertB0Evidence(altered); } catch (error) { failures[name] = String(error).includes(marker); }
+  }
+  if (Object.values(failures).some((passed) => passed !== true)) fail("self-test", "an SDT-G30 B0 mutation unexpectedly passed");
+  return Object.freeze({ sampleCount: G30_SAMPLE_COUNT, failures });
+}
+
+function main() {
+  if (process.argv.includes("--self-test")) {
+    console.log(JSON.stringify(selfTest(), null, 2));
+    return;
+  }
+  const pathIndex = process.argv.indexOf("--evidence");
+  if (pathIndex < 0 || process.argv[pathIndex + 1] === undefined) fail("argument", "--evidence <path> is required");
+  const evidence = JSON.parse(readFileSync(process.argv[pathIndex + 1], "utf8"));
+  const result = assertB0Evidence(evidence);
+  console.log(JSON.stringify({ result, evidenceDigest: createHash("sha256").update(JSON.stringify(canonical(evidence))).digest("hex") }, null, 2));
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) main();

@@ -1,4 +1,5 @@
 import {
+  observeFaultBarrier,
   processDownstreamDoorbell,
   readDirectDoorbellConfig,
   selectDirectDoorbellViews,
@@ -33,6 +34,12 @@ export async function deliverMeetingRoomDoorbell(
 ) {
   await assertFinalCutoverFenceIfConfigured(env);
   const testOverrides = env.__G29_DOORBELL_TEST__;
+  const attemptId = message !== null && typeof message === "object" && typeof (message as { attemptId?: unknown }).attemptId === "string"
+    ? (message as { attemptId: string }).attemptId
+    : undefined;
+  if (testOverrides?.faultBarrier !== undefined) {
+    await waitForTestFaultBarrier(testOverrides.faultBarrier, attemptId);
+  }
   const config = readDirectDoorbellConfig(
     env as unknown as Record<string, unknown>,
     meetingRoomRuntimeConfig.deliveryClass,
@@ -52,5 +59,39 @@ export async function deliverMeetingRoomDoorbell(
     viewDurationsMs: result.views.map((view) => ({ id: view.id, durationMs: view.durationMs, status: view.status })),
     disposition: result.fastDisposition,
   });
+  if (testOverrides?.faultBarrier !== undefined) {
+    observeFaultBarrier({
+      barrierId: testOverrides.faultBarrier.barrierId,
+      stage: "drained",
+      boundedWindowMs: testOverrides.faultBarrier.boundedWindowMs,
+      attemptId,
+    });
+  }
   return result;
+}
+
+/**
+ * G30's queue/doorbell discrimination uses the pre-existing in-process
+ * receiver seam only. It is absent from deployed bindings and cannot change
+ * public protocol/control behavior. The structured events let the evidence
+ * contract verify start -> release -> drain from measured timestamps.
+ */
+async function waitForTestFaultBarrier(barrier: Readonly<{
+  barrierId: string;
+  boundedWindowMs: number;
+  waitForRelease: () => Promise<void>;
+}>, attemptId?: string): Promise<void> {
+  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "started", boundedWindowMs: barrier.boundedWindowMs, attemptId });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      barrier.waitForRelease(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`G30 test fault barrier ${barrier.barrierId} exceeded its bound`)), barrier.boundedWindowMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  observeFaultBarrier({ barrierId: barrier.barrierId, stage: "ended", boundedWindowMs: barrier.boundedWindowMs, attemptId });
 }

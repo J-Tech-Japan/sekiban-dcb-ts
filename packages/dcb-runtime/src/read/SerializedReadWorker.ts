@@ -26,6 +26,18 @@ interface ReadWorkerEnv {
   SDT_SERVICE_ID?: string;
 }
 
+class ReadFailure extends Error {
+  constructor(
+    readonly failingSubCall: "ensureWindowDeterminate" | "readTag",
+    cause: unknown,
+    readonly diagnostic?: Record<string, unknown>,
+  ) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    super(message);
+    this.name = cause instanceof Error ? cause.name : "UnknownError";
+  }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -93,8 +105,17 @@ export class SerializedReadWorker {
         return await this.tagState(body);
       }
       return error(404, "read_route_not_found", "Read route was not found");
-    } catch {
-      return error(500, "internal_error", "Read could not determine the durable tag state");
+    } catch (caught) {
+      const body: JsonObject = { error: "Read could not determine the durable tag state", code: "internal_error" };
+      if (this.env.G11_VERIFICATION_ENABLED === "true" && caught instanceof ReadFailure) {
+        body.detail = {
+          errorClass: caught.name,
+          message: caught.message,
+          failingSubCall: caught.failingSubCall,
+          ...caught.diagnostic,
+        };
+      }
+      return json(body, 500);
     }
   }
 
@@ -145,10 +166,18 @@ export class SerializedReadWorker {
     if (this.storeProvider === undefined || this.storeProvider.isConfigured?.(this.env) === false) {
       return;
     }
-    const store = this.storeProvider.create(this.env);
-    await store.initialize();
-    if (safeWindowCeilingExceeded(await store.currentLagBound(this.serviceId, Date.now()))) {
-      throw new Error("Read-side SafeWindow ceiling exceeded; durable state is indeterminate");
+    try {
+      const store = this.storeProvider.create(this.env);
+      await store.initialize();
+      const nowMs = Date.now();
+      const diagnostic = await store.lagBoundDiagnostics?.(this.serviceId, nowMs);
+      const dynamicLagBoundMs = diagnostic?.dynamicLagBoundMs ?? await store.currentLagBound(this.serviceId, nowMs);
+      if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
+        throw new ReadFailure("ensureWindowDeterminate", new Error("Read-side SafeWindow ceiling exceeded; durable state is indeterminate"), diagnostic);
+      }
+    } catch (caught) {
+      if (caught instanceof ReadFailure) throw caught;
+      throw new ReadFailure("ensureWindowDeterminate", caught);
     }
   }
 
@@ -156,18 +185,16 @@ export class SerializedReadWorker {
     const url = new URL("https://serialized-read.internal/state");
     url.searchParams.set("__tag", tag);
     const tagObject = this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
-    const response = await tagObject.fetch(new Request(url));
-    if (response.status === 404) {
-      return undefined;
+    try {
+      const response = await tagObject.fetch(new Request(url));
+      if (response.status === 404) return undefined;
+      if (response.status !== 200) throw new Error("Tag state lookup failed");
+      const record = (await response.json()) as TagRecord;
+      if (record.tag !== tag) throw new Error("Tag identity changed during read");
+      return record;
+    } catch (caught) {
+      throw new ReadFailure("readTag", caught);
     }
-    if (response.status !== 200) {
-      throw new Error("Tag state lookup failed");
-    }
-    const record = (await response.json()) as TagRecord;
-    if (record.tag !== tag) {
-      throw new Error("Tag identity changed during read");
-    }
-    return record;
   }
 }
 

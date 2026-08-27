@@ -43,6 +43,8 @@ export interface AlarmSchedule {
   attempt: number;
   dueAt: number;
   delayMs: number;
+  /** Durable generation for the next scheduled fire, not a retry counter. */
+  scheduledGenerationId?: string;
 }
 
 export type ReconciliationFailureCause =
@@ -142,6 +144,8 @@ export interface JournalRecord {
   state: JournalState;
   version: number;
   alarm: AlarmSchedule | null;
+  /** Generation that fired the current/most recent reconciliation handler. */
+  firedGenerationId?: string;
   reconciliation: ReconciliationInput | null;
   reservationFailure: ReservationFailure | null;
   takeover: TakeoverProgress | null;
