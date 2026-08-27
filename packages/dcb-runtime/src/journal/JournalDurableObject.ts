@@ -63,6 +63,11 @@ interface TransitionInput extends CasExpectation {
   alarmFaults?: AlarmFaultPoint[];
 }
 
+/** A-1's only legal batch: RESERVED → ALLOCATED → WRITING. */
+interface AllocatedWritingInput extends CasExpectation {
+  allocatorLineageId: string;
+}
+
 interface TakeoverInput extends CasExpectation {
   seals: Array<{ tag: string; sealed: boolean }>;
   fences: Array<{ tag: string; fenced: boolean }>;
@@ -687,6 +692,14 @@ function transitionFrom(value: unknown): { value?: TransitionInput; error?: stri
   };
 }
 
+function allocatedWritingFrom(value: unknown): { value?: AllocatedWritingInput; error?: string } {
+  if (!isObject(value)) return { error: "allocated-writing body must be an object" };
+  const expectation = expectationFrom(value);
+  if (expectation.value === undefined) return { error: expectation.error };
+  if (!isNonEmptyString(value.allocatorLineageId)) return { error: "allocatorLineageId is required" };
+  return { value: { ...expectation.value, allocatorLineageId: value.allocatorLineageId } };
+}
+
 function reservationFailureFrom(value: unknown): { value?: ReservationFailureInput; error?: string } {
   if (!isObject(value)) {
     return { error: "reservation failure body must be an object" };
@@ -865,6 +878,9 @@ export class JournalDurableObject implements DurableObject {
     }
     if (request.method === "POST" && path === "/transition") {
       return this.traceCommitActor(request, activation, observation, (body) => this.transition(body, observation));
+    }
+    if (request.method === "POST" && path === "/transition/allocated-writing") {
+      return this.traceCommitActor(request, activation, observation, (body) => this.transitionAllocatedWriting(body, observation));
     }
     if (request.method === "POST" && path === "/reconcile") {
       return this.traceCommitActor(request, activation, observation, (body) => this.reconcile(body, observation));
@@ -1185,6 +1201,47 @@ export class JournalDurableObject implements DurableObject {
       return { ok: true, record: updated };
     });
 
+    return result.ok
+      ? json(result.record)
+      : error(result.status, "journal_transition_rejected", result.error);
+  }
+
+  /**
+   * A-1 batches only the post-allocation consecutive pair.  There is no
+   * externally visible state between ALLOCATED and WRITING: the vector is
+   * already durable in ALLOCATOR, and a lost response recovers from WRITING
+   * through the existing post-allocation reconciliation branch.  RESERVED is
+   * intentionally outside this batch because it is the reservation-failure
+   * durability boundary.
+   */
+  private async transitionAllocatedWriting(body: unknown, observation?: DurableObjectHandlerObservation): Promise<Response> {
+    const parsed = allocatedWritingFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_journal_transition", parsed.error ?? "Invalid Journal allocated-writing transition");
+    }
+    const input = parsed.value;
+    observation?.markFirstStorageRead();
+    const result = await this.ctx.storage.transaction(async (txn): Promise<MutationResult> => {
+      const record = await txn.get<JournalRecord>(JOURNAL_KEY);
+      if (record === undefined) return { ok: false, status: 404, error: "Journal has not been admitted" };
+      if (!sameExpectation(record, input)) return { ok: false, status: 409, error: "CAS expectation did not match the durable Journal" };
+      if (record.state !== "RESERVED" || !isAllowedTransition(record.state, "ALLOCATED") || !isAllowedTransition("ALLOCATED", "WRITING")) {
+        return { ok: false, status: 422, error: "Allocated-writing batch requires RESERVED and two consecutive legal transitions" };
+      }
+      const updated: JournalRecord = {
+        ...record,
+        state: "WRITING",
+        commitContext: record.commitContext === undefined
+          ? record.commitContext
+          : { ...record.commitContext, allocatorLineageId: input.allocatorLineageId },
+        // Preserve the state-machine version sequence even though the two
+        // state changes share one durable transaction.
+        version: record.version + 2,
+        updatedAt: nowIso(),
+      };
+      await txn.put(JOURNAL_KEY, updated);
+      return { ok: true, record: updated };
+    });
     return result.ok
       ? json(result.record)
       : error(result.status, "journal_transition_rejected", result.error);

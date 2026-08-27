@@ -566,11 +566,12 @@ export class CommitWorker {
       return this.noApplicationOutcome(attemptId, true);
     }
 
-    const allocated = await this.transition(journal, reserved, "ALLOCATED", undefined, allocation.allocatorLineageId, traceState?.scope);
-    if (allocated === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-    const writing = await this.transition(journal, allocated, "WRITING", undefined, undefined, traceState?.scope);
+    const writing = await this.transitionAllocatedWriting(
+      journal,
+      reserved,
+      allocation.allocatorLineageId,
+      traceState?.scope,
+    );
     if (writing === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
@@ -717,6 +718,26 @@ export class CommitWorker {
       ...(allocatorLineageId === undefined ? {} : { allocatorLineageId }),
     }, traceScope, trace?.rowId, trace === undefined ? {} : { phaseOrdinal: trace.phaseOrdinal });
     return result.response.status === 200 ? result.body : undefined;
+  }
+
+  /** A-1: one Journal transaction for the two post-allocation transitions. */
+  private async transitionAllocatedWriting(
+    journal: DurableObjectStub,
+    reserved: JournalRecord,
+    allocatorLineageId: string,
+    traceScope?: CommitTraceScope,
+  ): Promise<JournalRecord | undefined> {
+    const result = await this.postJson<JournalRecord>(journal, "/transition/allocated-writing", {
+      expectedState: reserved.state,
+      expectedVersion: reserved.version,
+      expectedOwnerEpoch: reserved.ownerEpoch,
+      allocatorLineageId,
+    }, traceScope, "S05b", traceScope === undefined ? {} : { phaseOrdinal: 1 });
+    if (result.response.status !== 200 || result.body === undefined) return undefined;
+    // S05b/S05c remain separate sealed observations, but describe the same
+    // physical batch and must not be interpreted as serial network rounds.
+    if (traceScope === undefined) return result.body;
+    return traceScope.span("S05c", { phaseOrdinal: 2 }, async () => result.body);
   }
 
   private async acquireReservations(
