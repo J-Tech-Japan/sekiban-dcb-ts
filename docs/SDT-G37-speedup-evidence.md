@@ -84,14 +84,64 @@ outside this unit.
 
 ## Candidate ledger
 
-| Candidate | Commit series | Outcome | Client p50 / p95 | Delta vs baseline | Notes |
-| --- | --- | --- | ---: | ---: | --- |
-| Baseline | `c272e94` runtime | retained | 1,310 / 2,202 ms | — | AC1 sample above |
+Each runtime candidate was isolated in its own commit series and deployed
+against the same primary service. The client samples are small descriptive
+windows, not a randomized controlled experiment: caller colo is recorded for
+every window and prevents treating a raw delta as a placement claim.
 
-This table is extended only after each candidate's independent deployment and
-sample. Rejected candidates remain documented with their sample and are
-reverted before final CI.
+| Candidate | Commit / deployed version | Before → after client p50 / p95 | Result |
+| --- | --- | --- | --- |
+| A-1 — batch post-allocation JOURNAL transitions | `0b63bbb` → `23cb1ef7-be54-40ab-8739-ff962675faaa` | 1,170 / 2,549 ms (SJC, `2d4b3748-c2d3-49d2-9821-aec821e8e714`) → 1,358 / 2,096 ms (DEN) | **Rejected and reverted** by `2bd0b50`: p95 fell, but p50 increased 188 ms and the caller colo changed. The batch made the physical S05c call zero-duration as intended, but did not establish a p50 win. Artifacts: `.artifacts/g37-baseline-before-a1-4ec4fc6f2244.json`, `.artifacts/g37-a1-journal-transition-batch-0b63bbb2a199.json`. |
+| A-2 — atomic BOOTSTRAP admit+release | `4440df9` (formal sample support at `7ca5f1d`) → `aa4ec605-76f8-4b50-be8e-ce683f2d1c3e` | 1,310 / 2,202 ms (PDX baseline) → 1,434 / 2,385 ms (ATL) | **Rejected and reverted** by `4ec4fc6`: p50 and p95 both worsened, with a colo change. The initial deployment `78803f58-16f7-4504-ada8-19a780791b10` briefly returned a platform 1101 before activation; the bounded-readiness helper was added, and the formal 50-request sample then completed normally. Artifact: `.artifacts/g37-a2-atomic-bootstrap-7ca5f1de422f.json`. |
+| A-3 — nested finalize piggyback | screened; no safe runtime commit | n/a | **Not adopted.** S09 is the ALLOCATOR's pre-allocation BOOTSTRAP finalize; S10 is the separate final epoch fence immediately before the first Tag append. Piggybacking S10 on the completed allocator call would create an unfenced allocation-response → append interval, so it would change the fail-closed bootstrap invariant rather than merely merge an RPC boundary. |
+| A-4 — seal parallelization / response-after-seal | screened; no successful-path commit | n/a | **Not adopted.** In the current success path, client response follows JOURNAL `COMPLETE`; seal/reconcile work is only the failed-append alarm handoff (S20). Moving or parallelizing it cannot improve a successful commit window without changing recovery/read semantics, which is outside this unit. |
+| A-5 — overlap JOURNAL admit with reservation fan-out | `c2dd342` → `7e6ecf4e-e78f-4690-b91d-cdf4717dcfb5`, repeat `a5dcff48-9a9c-4b2c-a5fa-6a3391b8879b` | 1,473 / 2,152 ms (PDX, `c64bd209-1217-45f9-8f01-6ac2c3030250`) → 1,302 / 1,942 ms (ATL), then **960 / 1,510 ms** (SJC) | **Adopted.** Both after windows improve over the immediate pre-A5 window (−171/−210 ms and −513/−642 ms); their p50 reductions match the overlapped 135–181 ms reservation window. The colos differ, so this is retained as a measured lightweight result rather than a claim that placement caused the gain. The direct CommitWorker fixture proves that S06/S07 begin before S04 resolves and that a rejected admission tombstones any acquired lease before allocator work. Artifacts: `.artifacts/g37-baseline-before-a5-2bd0b509bbb7.json`, `.artifacts/g37-a5-admit-reservation-overlap-c2dd3424d844.json`, `.artifacts/g37-a5-admit-reservation-overlap-repeat-c2dd3424d844.json`. |
+
+The adopted path does not change the V1 request/response shape, trace-manifest
+row/attribute universe, allocation order, or confirm-before-publish rule. It
+starts the two independent requests together, requires both the durable
+`RESERVED` transition and every acquire to settle before allocation, and uses
+the existing force-tombstone barrier if admission rejects after an acquire.
+
+## Post-adoption sample and residual attribution
+
+The final A-5 repeat is the end-state lightweight sample. It is deployed from
+`c2dd3424d84433de18cbe480a667a3935e586265` as version
+`a5dcff48-9a9c-4b2c-a5fa-6a3391b8879b` and was captured at
+2026-08-27T18:45:24.821Z.
+
+| Field | Initial main baseline | End-state A-5 sample |
+| --- | ---: | ---: |
+| Client samples | 50 | 50 |
+| Client p50 | 1,310 ms | **960 ms** |
+| Client p95 | 2,202 ms | **1,510 ms** |
+| Observed / schema-complete traces | 48 / 45 | 50 / 46 |
+| Descriptive trace loss | 2 / 50 | 0 / 50 |
+| Caller colo distribution | PDX: 45 | SJC: 46 |
+
+| Residual row (end-state) | Observed spans | Descriptive median |
+| --- | ---: | ---: |
+| S00 root | 50 | 914 ms |
+| S02 / S03 BOOTSTRAP admit / release | 49 / 50 | 48 / 48 ms |
+| S04 JOURNAL admit | 50 | **408 ms** |
+| S05a / b / c / d transitions | 50 each | 34 / 27 / 33 / 34 ms |
+| S06 / S07 reservation stage / member | 49 / 49 | **135 / 135 ms** |
+| S08 / S09 allocator / nested fence | 50 / 48 | 64 / 17 ms |
+| S10 final BOOTSTRAP fence | 50 | 16 ms |
+| S11 / S12 tag append stage / member | 50 each | **89 / 89 ms** |
+| S13 / S14 result state stage / member | 50 each | 58 / 44 ms |
+| S15 response build | 50 | 0 ms |
+
+The 400–800 ms p50 band remains missed by 160 ms. The residual is honest:
+JOURNAL admission remains the dominant single window, followed by the
+reservation, append, and final state-read windows. A-3/A-4 cannot remove
+those windows without moving authoritative fencing/recovery semantics. This
+is the G41 decision input rather than grounds to weaken a correctness gate or
+manufacture a placement claim.
 
 ## Final outcome
 
-Pending A-lane candidate measurements.
+Adopted: A-5 reservation/admission concurrency (`c2dd342`). Rejected and
+reverted: A-1 and A-2. B-lane and A-3/A-4 were not deployed for the explicit
+evidence/safety reasons above. Final verification and PR CI status are added
+with the closeout commit.
