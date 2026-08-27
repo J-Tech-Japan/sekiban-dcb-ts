@@ -275,7 +275,6 @@ function nonSuccessWorker(
   options: Readonly<{
     nativeTracing?: NativeTracing;
     workerObservationSink?: { emit(event: ObservationEvent): void };
-    journalPaths?: string[];
   }> = {},
 ): CommitWorker {
   const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -287,15 +286,10 @@ function nonSuccessWorker(
       const url = new URL(request.url);
       if (kind === "bootstrap") return response({ leaseEpoch: 1 });
       if (kind === "journal") {
-        options.journalPaths?.push(url.pathname);
         if (url.pathname === "/admit") return response({ state: "ADMITTED", version: 0, ownerEpoch: 0 }, 201);
         if (url.pathname === "/transition") {
           const body = await request.json() as { nextState: string; expectedVersion: number; expectedOwnerEpoch: number };
           return response({ state: body.nextState, version: body.expectedVersion + 1, ownerEpoch: body.expectedOwnerEpoch });
-        }
-        if (url.pathname === "/transition/allocated-writing") {
-          const body = await request.json() as { expectedVersion: number; expectedOwnerEpoch: number };
-          return response({ state: "WRITING", version: body.expectedVersion + 2, ownerEpoch: body.expectedOwnerEpoch });
         }
         if (url.pathname === "/reservation-failure") {
           const body = await request.json() as { outcome: "REFUSED" | "FAILED" };
@@ -751,28 +745,6 @@ describe("SDT-G30 runtime trace verifier", () => {
       "tag.key_hash": stableTraceHash("room:g30-success"),
     });
     expect(captured.runtimeVerification).toEqual({ passed: true });
-  });
-
-  it("uses one Journal round for ALLOCATED plus WRITING without removing either observation row", async () => {
-    const snapshots: CommitTraceSnapshot[] = [];
-    const journalPaths: string[] = [];
-    const worker = nonSuccessWorker("success", snapshots, ["room:g37-transition-batch"], { journalPaths });
-    const response = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        version: 1,
-        eventCandidates: [{
-          payload: btoa(JSON.stringify({ roomId: "g37-transition-batch" })),
-          eventPayloadName: "Trace",
-          tags: ["room:g37-transition-batch"],
-        }],
-        consistencyTags: [{ tag: "room:g37-transition-batch", lastSortableUniqueId: "063891500000000000000000000000" }],
-      }),
-    }));
-    expect(response.status).toBe(200);
-    expect(journalPaths).toEqual(["/admit", "/transition", "/transition/allocated-writing", "/transition"]);
-    expect(emittedRows(snapshots[0]!)).toEqual(expect.arrayContaining(["S05a", "S05b", "S05c", "S05d"]));
   });
 
   it("records every native-emitted Worker row in the post-response observation", async () => {

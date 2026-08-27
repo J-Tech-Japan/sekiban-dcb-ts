@@ -199,36 +199,6 @@ describe("JournalDurableObject", () => {
     expect((await responseJson<JournalRecord>(resumed)).state).toBe("ABANDONED");
   });
 
-  it("batches only the consecutive post-allocation transitions without exposing an intermediate Journal state", async () => {
-    const attemptId = newAttempt();
-    const admitted = await admit(attemptId);
-    const reservedResponse = await transition(attemptId, admitted, "RESERVED");
-    expect(reservedResponse.status).toBe(200);
-    const reserved = await responseJson<JournalRecord>(reservedResponse);
-
-    const batch = await request(attemptId, "/transition/allocated-writing", {
-      expectedState: reserved.state,
-      expectedVersion: reserved.version,
-      expectedOwnerEpoch: reserved.ownerEpoch,
-      allocatorLineageId: "g37-batched-lineage",
-    });
-    expect(batch.status).toBe(200);
-    const writing = await responseJson<JournalRecord>(batch);
-    expect(writing).toMatchObject({ state: "WRITING", version: reserved.version + 2 });
-
-    // A stale caller cannot replay the two transitions after the atomic
-    // state change, and normal reconciliation still sees a legal WRITING
-    // post-allocation crash boundary.
-    expect((await transition(attemptId, reserved, "ALLOCATED")).status).toBe(409);
-    const reconciled = await reconcile(attemptId, writing, {
-      allocatorVector: allocatorVector(),
-      records: reconciliationRecords(writing.candidates, [false]),
-      failureCause: "write-failure",
-    });
-    expect(reconciled.status).toBe(200);
-    expect((await responseJson<JournalRecord>(reconciled)).state).toBe("SEALING");
-  });
-
   it("makes the competing worker/alarm winner and one-time terminalization observable", async () => {
     const attemptId = newAttempt();
     const interruptedAdmission = await request(attemptId, "/admit", {
