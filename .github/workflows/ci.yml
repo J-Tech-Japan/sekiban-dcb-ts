@@ -47,6 +47,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      - name: Verify SDT-G37 sanitized recorded-sample evidence
+        run: npm run test:g37:evidence
       - run: npm run typecheck
       - name: Run SDT-G28 dedicated compile-fail and package-boundary gates
         run: npm run test:g28:compile-fail
