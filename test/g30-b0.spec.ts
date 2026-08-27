@@ -976,7 +976,7 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     if (fetch === undefined) throw new Error("meeting-room Worker lacks fetch");
     const response = await fetch(
       new Request("https://g30.test/conformance/v1/g30-config", { headers: { authorization: "Bearer fixture-token" } }) as never,
-      { CONFORMANCE_TOKEN: "fixture-token", SDT_SERVICE_ID: SERVICE } as never as MeetingRoomCloudflareEnv,
+      { CONFORMANCE_TOKEN: "fixture-token", SDT_SERVICE_ID: SERVICE, G32_COMPONENT: "primary" } as never as MeetingRoomCloudflareEnv,
       { waitUntil: () => undefined } as never,
     );
     expect(response.status).toBe(404);
