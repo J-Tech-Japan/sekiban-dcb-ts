@@ -29,12 +29,6 @@ export interface G30NormalizedObservation {
   emittedAtMs: number;
   scriptVersion?: string;
   colo?: string;
-  provider: {
-    scriptVersion: string;
-    colo: string;
-    cpuTimeMs: number;
-    wallTimeMs: number;
-  };
   /** Present only on worker.invocation; it is observation-only attribution. */
   emittedWorkerRowIds?: readonly string[];
   [key: string]: unknown;

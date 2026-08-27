@@ -102,47 +102,6 @@ function observationPayload(event) {
   return undefined;
 }
 
-function nested(objectValue, path) {
-  let current = objectValue;
-  for (const part of path) {
-    if (current === undefined) return undefined;
-    current = object(current)?.[part];
-  }
-  return current;
-}
-
-function providerFact(event, paths) {
-  const metadata = metadataFor(event);
-  const scopes = [
-    metadata,
-    object(event?.$workers),
-    object(event?.workers),
-    object(metadata?.$workers),
-    object(metadata?.workers),
-    event,
-  ];
-  for (const scope of scopes) {
-    for (const path of paths) {
-      const value = nested(scope, path);
-      if (scalar(value) !== undefined) return value;
-    }
-  }
-  return undefined;
-}
-
-function providerFacts(event) {
-  const scriptVersion = providerFact(event, [["scriptVersion", "id"], ["script_version", "id"], ["scriptVersion"], ["script_version"]]);
-  const colo = providerFact(event, [["colo"], ["coloCode"]]);
-  const cpuTimeMs = providerFact(event, [["cpuTimeMs"], ["cpu_time_ms"]]);
-  const wallTimeMs = providerFact(event, [["wallTimeMs"], ["wall_time_ms"]]);
-  return Object.freeze({
-    ...(typeof scriptVersion === "string" && scriptVersion.length > 0 ? { scriptVersion } : {}),
-    ...(typeof colo === "string" && colo.length > 0 ? { colo } : {}),
-    ...(typeof cpuTimeMs === "number" ? { cpuTimeMs } : {}),
-    ...(typeof wallTimeMs === "number" ? { wallTimeMs } : {}),
-  });
-}
-
 function numberFrom(value, label) {
   const result = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(result)) fail("time", `${label} is not numeric`);
@@ -343,7 +302,6 @@ function normalizeObservation(payload, event, requestId, traceId, correlationId,
     requestId,
     traceId,
     platformRequestId,
-    provider: providerFacts(event),
   });
 }
 

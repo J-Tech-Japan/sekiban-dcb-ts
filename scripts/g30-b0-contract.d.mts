@@ -42,12 +42,6 @@ export interface G30Observation {
   /** Values emitted by the structured observation and cross-checked to S00. */
   scriptVersion?: string;
   colo?: string;
-  provider: {
-    scriptVersion: string;
-    colo: string;
-    cpuTimeMs: number;
-    wallTimeMs: number;
-  };
   [key: string]: unknown;
 }
 

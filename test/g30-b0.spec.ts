@@ -219,6 +219,16 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>, includeFau
       cpuTimeMs: 1,
       wallTimeMs: completedAtMs - startedAtMs,
     };
+    // This is the live structured-console shape: it carries a provider
+    // request identity but does not redundantly include version/colo. The
+    // exact request/correlation join reaches those facts through S00.
+    const observationMetadata = {
+      traceId: `trace-${requestId}`,
+      requestId: `provider-${requestId}`,
+      rayId: requestId,
+      cpuTimeMs: 1,
+      wallTimeMs: completedAtMs - startedAtMs,
+    };
     for (const rowId of ROOT_ROWS) {
       events.push({
         attributes: traceAttributes(rowId, requestId),
@@ -242,7 +252,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>, includeFau
         usedForControl: false,
         exposedInPublicResponse: false,
       },
-      $metadata: metadata,
+      $metadata: observationMetadata,
     });
     for (const actorClassValue of ["BOOTSTRAP", "ALLOCATOR", "TAG"]) {
       events.push({
@@ -261,7 +271,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>, includeFau
           usedForControl: false,
           exposedInPublicResponse: false,
         },
-        $metadata: metadata,
+        $metadata: observationMetadata,
       });
     }
   }
@@ -281,7 +291,7 @@ function rawTelemetry(ledger: ReadonlyArray<Record<string, unknown>>, includeFau
           usedForControl: false,
           exposedInPublicResponse: false,
         },
-        $metadata: { traceId: `trace-${faultRequestId}`, requestId: `provider-${faultRequestId}`, rayId: faultRequestId, scriptVersion: { id: "g30-test-version" }, colo: "test-colo", cpuTimeMs: 1, wallTimeMs: 108 },
+        $metadata: { traceId: `trace-${faultRequestId}`, requestId: `provider-${faultRequestId}`, rayId: faultRequestId, cpuTimeMs: 1, wallTimeMs: 108 },
       });
     }
   }
@@ -1567,12 +1577,12 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(() => assertB0Evidence(document)).toThrow(/observation-overlap-script-version/);
   });
 
-  it("rejects provider-owned observation metadata that disagrees with its joined S00 trace", () => {
+  it("rejects a Worker observation whose colo disagrees with its joined S00 trace", () => {
     const document = structuredClone(evidence());
-    const observation = document.observations.find((entry) => entry.event === "do.handler");
-    if (observation === undefined) throw new Error("fixture lacks a DO observation");
-    observation.provider.colo = "wrong-colo";
-    expect(() => assertB0Evidence(document)).toThrow(/observation-provider-colo/);
+    const worker = document.observations.find((entry) => entry.event === "worker.invocation");
+    if (worker === undefined) throw new Error("fixture lacks worker observation");
+    worker.colo = "wrong-colo";
+    expect(() => assertB0Evidence(document)).toThrow(/observation-overlap-colo/);
   });
 
   it("rejects a queue/doorbell fault probe without observed barrier lifecycle", () => {
@@ -1655,6 +1665,17 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       requestId: "B-0",
       correlationId: "corr-B-0",
     });
+  });
+
+  it("normalizes the live structured-log shape without duplicate provider version or colo metadata", () => {
+    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    const structured = raw.events.filter((entry) => entry.source?.schema === "sdt.observe/v1");
+    expect(structured).not.toHaveLength(0);
+    expect(structured.every((entry) => entry.$metadata?.scriptVersion === undefined && entry.$metadata?.colo === undefined)).toBe(true);
+    const normalized = normalizeTelemetryBundle(raw);
+    const worker = normalized.observations.find((entry) => entry.event === "worker.invocation");
+    expect(worker).toMatchObject({ scriptVersion: "g30-test-version", colo: "test-colo" });
+    expect(worker).not.toHaveProperty("provider");
   });
 
   it("preserves the POP-suffixed client CF-Ray across the platform ray-id join", () => {

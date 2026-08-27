@@ -27,9 +27,12 @@ isolate ID, the provider ingress CF-Ray, and the already-existing
 post-admission correlation alongside activation/version/colo facts; Durable
 Object events record constructor-to-handler, first-storage, actual subrequest
 timings, their provider request ID, and the existing attempt correlation when
-identity is available. The exporter checks provider version/colo against S00
-and resolves the correlation to the same ledger request, rather than adding an
-internal propagation header.
+identity is available. Actual structured-log metadata carries provider request
+identity but does not duplicate version/colo. The exporter therefore resolves
+each observation to the same S00 root by its exact provider request and
+correlation; it requires the root's version/colo facts, and checks the Worker
+event's overlapping values against them, rather than inventing a second
+propagation channel.
 All events declare `storageWrites: 0`, `usedForControl: false`, and
 `exposedInPublicResponse: false`; they are never persisted or used to choose a
 commit branch.

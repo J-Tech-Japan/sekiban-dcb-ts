@@ -763,22 +763,18 @@ function rootString(reference, attribute, label) {
 }
 
 /**
- * Workers Logs contributes version/colo as provider-owned metadata for every
- * structured observation. The DO payload deliberately does not invent a
- * second propagation channel for those facts; its raw provider metadata is
- * instead checked against the root's already-sealed optional attributes.
+ * Workers Logs gives structured console records a provider request identity,
+ * but its live export shape does not duplicate the request's version/colo
+ * metadata. The exact request/correlation -> S00 join is therefore the
+ * authority for those provider facts. A Worker observation independently
+ * carries the two overlap values and is checked below; DO observations do
+ * not invent a second propagation channel just to restate them.
  */
-function assertObservationProviderOverlap(observation, reference, label) {
-  const provider = object(observation.provider);
-  const scriptVersion = nonEmptyString(provider?.scriptVersion, `${label}.provider.scriptVersion`);
-  const colo = nonEmptyString(provider?.colo, `${label}.provider.colo`);
-  if (rootString(reference, "script.version", label) !== scriptVersion) {
-    fail("observation-provider-script-version", `${label} provider script.version differs from S00`);
-  }
-  if (rootString(reference, "colo", label) !== colo) {
-    fail("observation-provider-colo", `${label} provider colo differs from S00`);
-  }
-  return Object.freeze({ scriptVersion, colo });
+function assertObservationRootProviderFacts(reference, label) {
+  return Object.freeze({
+    scriptVersion: rootString(reference, "script.version", label),
+    colo: rootString(reference, "colo", label),
+  });
 }
 
 function rootDuration(reference, label) {
@@ -870,22 +866,22 @@ export function assertObservationStream(ledger, traces, observations, options = 
       nonEmptyString(observation.isolateInstanceId, `observation[${index}].isolateInstanceId`);
       const scriptVersion = nonEmptyString(observation.scriptVersion, `observation[${index}].scriptVersion`);
       const colo = nonEmptyString(observation.colo, `observation[${index}].colo`);
-      const provider = assertObservationProviderOverlap(observation, reference, `observation[${index}]`);
+      const rootProvider = assertObservationRootProviderFacts(reference, `observation[${index}]`);
       if (rootBoolean(reference, "activation.first", `observation[${index}]`) !== observation.activationFirst) {
         fail("observation-overlap-activation", `worker observation ${index} activation.first differs from S00`);
       }
-      if (provider.scriptVersion !== scriptVersion || rootString(reference, "script.version", `observation[${index}]`) !== scriptVersion) {
-        fail("observation-overlap-script-version", `worker observation ${index} script.version differs from S00`);
+      if (rootProvider.scriptVersion !== scriptVersion) {
+        fail("observation-overlap-script-version", `worker observation ${index} script.version differs from its joined S00`);
       }
-      if (provider.colo !== colo || rootString(reference, "colo", `observation[${index}]`) !== colo) {
-        fail("observation-overlap-colo", `worker observation ${index} colo differs from S00`);
+      if (rootProvider.colo !== colo) {
+        fail("observation-overlap-colo", `worker observation ${index} colo differs from its joined S00`);
       }
     } else if (observation.event === "do.handler") {
       if (!DO_ACTORS.has(observation.actorClass) || typeof observation.activationFirst !== "boolean") {
         fail("observation-do", `DO observation ${index} lacks actor/activation facts`);
       }
       nonEmptyString(observation.activationId, `observation[${index}].activationId`);
-      assertObservationProviderOverlap(observation, reference, `observation[${index}]`);
+      assertObservationRootProviderFacts(reference, `observation[${index}]`);
       finiteNumber(observation.constructorToHandlerMs, `observation[${index}].constructorToHandlerMs`);
       if (observation.firstStorageReadMs !== null) finiteNumber(observation.firstStorageReadMs, `observation[${index}].firstStorageReadMs`);
       if (observation.subrequestWallMs !== null) finiteNumber(observation.subrequestWallMs, `observation[${index}].subrequestWallMs`);
@@ -1262,14 +1258,14 @@ function makeTrace(record) {
 
 function makeObservation(record) {
   const activationFirst = !String(record.requestId).includes("warm") && Number(String(record.requestId).split("-").at(-1)) === 2;
-  const provider = { scriptVersion: "g30-synthetic", colo: "test-colo", cpuTimeMs: 1, wallTimeMs: record.responseLatencyMs };
+  const provider = { scriptVersion: "g30-synthetic", colo: "test-colo" };
   const isolated = { storageWrites: 0, usedForControl: false, exposedInPublicResponse: false };
   return [
-    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}`, actorClass: "WORKER", emittedWorkerRowIds: SUCCESS_EMITTED_WORKER_ROW_IDS, isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, provider, ...isolated },
+    { schema: "sdt.observe/v1", event: "worker.invocation", emittedAtMs: record.completedAtMs - 3, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}`, actorClass: "WORKER", emittedWorkerRowIds: SUCCESS_EMITTED_WORKER_ROW_IDS, isolateInstanceId: "synthetic-isolate", activationFirst, scriptVersion: provider.scriptVersion, colo: provider.colo, ...isolated },
     ...["BOOTSTRAP", "ALLOCATOR", "TAG"].map((actorClass) => ({
       schema: "sdt.observe/v1", event: "do.handler", emittedAtMs: record.completedAtMs - 2, requestId: record.requestId, traceId: `trace-${record.requestId}`, platformRequestId: `provider-${record.requestId}-${actorClass}`,
       actorClass, activationId: `${actorClass.toLowerCase()}-${record.requestId}`, activationFirst: false,
-      constructorToHandlerMs: 1, firstStorageReadMs: 1, subrequestWallMs: actorClass === "ALLOCATOR" ? 1 : null, provider, ...isolated,
+      constructorToHandlerMs: 1, firstStorageReadMs: 1, subrequestWallMs: actorClass === "ALLOCATOR" ? 1 : null, ...isolated,
     })),
   ];
 }
