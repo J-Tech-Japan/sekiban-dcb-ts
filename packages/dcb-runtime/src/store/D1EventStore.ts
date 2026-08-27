@@ -667,6 +667,29 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     return decayedLagEstimateMs(estimate, observedAt, decayNow);
   }
 
+  async lagBoundDiagnostics(serviceId: string, nowMs: number) {
+    this.ready();
+    const rows = await this.rows(
+      `SELECT estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = ?`,
+      serviceId,
+    );
+    const row = rows[0];
+    if (row === undefined) {
+      return { serviceIdUsed: serviceId, dynamicLagBoundMs: 0, rowFound: false, rawEstimateMs: null, rawObservedAt: null, nowMs };
+    }
+    const rawEstimateMs = asNumber(row.estimate_ms, "estimate_ms");
+    const rawObservedAt = asNumber(row.observed_at, "observed_at");
+    const decayNow = nowMs >= 100_000_000_000 && rawObservedAt >= 100_000_000_000 ? nowMs : rawObservedAt;
+    return {
+      serviceIdUsed: serviceId,
+      dynamicLagBoundMs: decayedLagEstimateMs(rawEstimateMs, rawObservedAt, decayNow),
+      rowFound: true,
+      rawEstimateMs,
+      rawObservedAt,
+      nowMs,
+    };
+  }
+
   async listProjectionTags(serviceId: string): Promise<string[]> {
     this.ready();
     const rows = await this.rows(

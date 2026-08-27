@@ -18,6 +18,7 @@ import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
 import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
+import { nativeTracingFromContext } from "./trace/CommitTrace";
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
@@ -44,6 +45,46 @@ export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } 
 export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
+export {
+  CommitTrace,
+  CommitTraceScope,
+  DurableObjectActivation,
+  IDLE_EXPERIMENT_SCHEDULE_MS,
+  beginWorkerInvocationObservation,
+  classifyReactivationCause,
+  correlationIdForAttempt,
+  createTraceCorrelationId,
+  enterNativeActorHandleSpan,
+  enterNativeCommitSpan,
+  enterNativeReconcileRootSpan,
+  nativeTracingFromContext,
+  noOpNativeTracing,
+  observedIdleGapLowerBoundMs,
+  stableTraceHash,
+  traceManifest,
+} from "./trace/CommitTrace";
+export type {
+  CommitTraceActorClass,
+  CommitTraceClock,
+  CommitTraceFace,
+  CommitTraceProviderAdapter,
+  CommitTraceSchema,
+  CommitTraceSink,
+  CommitTraceSnapshot,
+  CommitTraceSpan,
+  NativeTracing,
+  NativeActorHandleIdentity,
+  NativeActorHandleInput,
+  NativeReconcileRootIdentity,
+  ReactivationCause,
+  ReactivationEvidence,
+} from "./trace/CommitTrace";
+export {
+  CommitTraceVerificationError,
+  calculateUnattributedRatio,
+  verifyCommitTrace,
+} from "./trace/CommitTraceVerifier";
+export type { CommitTraceVerificationOptions, UnattributedRatio } from "./trace/CommitTraceVerifier";
 export { BootstrapManifestError, bootstrapDigest, parseBootstrapDump } from "./bootstrap/manifest";
 export { BootstrapIdentityConflictError, BootstrapStoreAdapter, createBootstrapStoreAdapter } from "./bootstrap/BootstrapStoreAdapter";
 export type { BootstrapExportCursor, BootstrapExportPage } from "./bootstrap/BootstrapStoreAdapter";
@@ -220,13 +261,14 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
   const composition = composeRuntime(options.domain, options.config);
   const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
   return {
-    async fetch(request, env): Promise<Response> {
+    async fetch(request, env, ctx): Promise<Response> {
       requireConfiguredServiceId(env.SDT_SERVICE_ID);
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
+          nativeTracing: nativeTracingFromContext(ctx),
         });
       }
       if (
@@ -242,7 +284,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         });
       }
       if (url.pathname === "/operator/repair") {
-        return handleOperatorRepair(request, env);
+        return handleOperatorRepair(request, env, nativeTracingFromContext(ctx));
       }
       if (url.pathname.startsWith("/operator/bootstrap/")) {
         return handleOperatorBootstrap(request, env, storeProvider);

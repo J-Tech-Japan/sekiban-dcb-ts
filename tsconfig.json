@@ -23,8 +23,13 @@
     "test/**/*.ts",
     "scripts/g29-mapping-contract.d.mts",
     "scripts/g29-delivery-matrix.d.mts",
+    "scripts/g30-b0-contract.d.mts",
+    "scripts/g30-config-check.d.mts",
     "scripts/deploy/g29-witness.d.mts",
     "scripts/deploy/g29-measure.d.mts",
+    "scripts/deploy/g30-b0-measure.d.mts",
+    "scripts/deploy/g30-deployment-witness.d.mts",
+    "scripts/deploy/g30-trace-export.d.mts",
     "vitest.config.ts",
     "worker.ts"
   ]

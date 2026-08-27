@@ -168,8 +168,14 @@ describe("SDT-G26 Tag doorbell handoff", () => {
     const failure = await append("failure", { deliver: async () => { throw new Error("receiver timeout"); } });
     const degraded = await append("degraded", undefined, true);
 
-    const logCalls = log.mock.calls.map(([, value]) => value as { correlationId?: string; envelopeBytes?: string });
-    const warnCalls = warn.mock.calls.map(([, value]) => value as { correlationId?: string; envelopeBytes?: string });
+    // G30 may emit its independent structured observation as a one-argument
+    // console event while this fixture is exercising G26's two-argument
+    // doorbell diagnostics.  Only inspect the latter; unrelated telemetry
+    // must not make the correlation oracle throw before it can assert.
+    const diagnosticObject = (value: unknown): value is { correlationId?: string; envelopeBytes?: string } =>
+      value !== null && typeof value === "object";
+    const logCalls = log.mock.calls.map(([, value]) => value).filter(diagnosticObject);
+    const warnCalls = warn.mock.calls.map(([, value]) => value).filter(diagnosticObject);
     expect(logCalls.find((value) => value.correlationId === success.correlationId)?.envelopeBytes).toEqual(expect.any(String));
     expect(warnCalls.filter((value) => value.correlationId === failure.correlationId)).toHaveLength(1);
     expect(warnCalls.filter((value) => value.correlationId === degraded.correlationId)).toHaveLength(1);

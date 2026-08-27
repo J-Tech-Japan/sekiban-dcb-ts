@@ -1,0 +1,2413 @@
+{
+  "schemaVersion": 2,
+  "name": "commit-trace-manifest",
+  "description": "Authority for the sdt.commit span manifests. means/19 links to RENDERED-VIEWS.md; it does not duplicate these tables.",
+  "remoteInvocationUniverse": [
+    "S16"
+  ],
+  "schemas": {
+    "sdt.commit/v1": {
+      "rows": [
+        {
+          "rowId": "S00",
+          "span": "sdt.commit",
+          "emitter": "root-worker",
+          "start": "handler entry (before validation)",
+          "end": "just before Response return",
+          "logicalParent": null,
+          "coverage": true,
+          "kind": "root",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S01",
+          "span": "request.decode_validate",
+          "emitter": "root-worker",
+          "start": "before request.json",
+          "end": "validation outcome fixed",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S02",
+          "span": "bootstrap.admit",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S03",
+          "span": "bootstrap.release",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S04",
+          "span": "journal.admit",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05a",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before RESERVED call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05b",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before ALLOCATED call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05c",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before WRITING call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05d",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before COMPLETE call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05e",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before terminal call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "terminal only"
+        },
+        {
+          "rowId": "S06",
+          "span": "tag.acquire.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S07",
+          "span": "tag.acquire.member",
+          "emitter": "caller-worker",
+          "start": "before TAG stub call",
+          "end": "settle",
+          "logicalParent": "S06",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "consistencyTags.length"
+        },
+        {
+          "rowId": "S08",
+          "span": "allocator.allocate",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S09",
+          "span": "allocator.bootstrap.finalize",
+          "emitter": "allocator-do",
+          "start": "before BOOTSTRAP call",
+          "end": "body consume",
+          "logicalParent": "S08",
+          "coverage": false,
+          "kind": "nested",
+          "successCardinality": "1 (v1 only)"
+        },
+        {
+          "rowId": "S10",
+          "span": "bootstrap.append_finalize",
+          "emitter": "caller-worker",
+          "start": "before validation call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1 (v1 only)"
+        },
+        {
+          "rowId": "S11",
+          "span": "tag.append.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S12",
+          "span": "tag.append.member",
+          "emitter": "caller-worker",
+          "start": "before TAG stub call",
+          "end": "settle",
+          "logicalParent": "S11",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "allTags.length"
+        },
+        {
+          "rowId": "S13",
+          "span": "tag.state.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "1 (v1 only)"
+        },
+        {
+          "rowId": "S14",
+          "span": "tag.state.member",
+          "emitter": "caller-worker",
+          "start": "before TAG stub call",
+          "end": "settle",
+          "logicalParent": "S13",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "allTags.length (v1 only)"
+        },
+        {
+          "rowId": "S15",
+          "span": "response.build",
+          "emitter": "root-worker",
+          "start": "result assembly start",
+          "end": "Response object complete",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S17",
+          "span": "journal.reservation_failure",
+          "emitter": "caller-worker",
+          "start": "before /reservation-failure call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "failure only"
+        },
+        {
+          "rowId": "S18",
+          "span": "tag.cancel.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "failure only"
+        },
+        {
+          "rowId": "S19",
+          "span": "tag.cancel.member",
+          "emitter": "caller-worker",
+          "start": "before TAG /cancel call",
+          "end": "settle",
+          "logicalParent": "S18",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "consistencyTags.length"
+        },
+        {
+          "rowId": "S20",
+          "span": "journal.seal_reconcile",
+          "emitter": "caller-worker",
+          "start": "before /reconcile call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "handoff only"
+        },
+        {
+          "rowId": "S16",
+          "span": "actor.handle",
+          "emitter": "callee-do",
+          "start": "callee handler entry",
+          "end": "response / throw",
+          "logicalParent": "provider-subrequest",
+          "coverage": false,
+          "kind": "callee",
+          "successCardinality": "per remote invocation"
+        }
+      ],
+      "universe": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05a",
+        "S05b",
+        "S05c",
+        "S05d",
+        "S05e",
+        "S06",
+        "S07",
+        "S08",
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "S14",
+        "S15",
+        "S17",
+        "S18",
+        "S19",
+        "S20"
+      ],
+      "boundaries": [
+        {
+          "name": "success",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S07",
+            "S08",
+            "S09",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "full write; COMPLETE before response"
+        },
+        {
+          "name": "validation-reject",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S05e",
+            "S06",
+            "S07",
+            "S08",
+            "S09",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "no attempt identity yet; zero downstream calls"
+        },
+        {
+          "name": "bootstrap-reject",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S05e",
+            "S06",
+            "S07",
+            "S08",
+            "S09",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "zero journal/tag writes"
+        },
+        {
+          "name": "reservation-failure",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S06",
+            "S07",
+            "S17",
+            "S18",
+            "S19",
+            "S05e",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05b",
+            "S05c",
+            "S05d",
+            "S08",
+            "S09",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S20"
+          ],
+          "stateAssertion": "cancel fan-out covers every consistency tag (forceTombstone)"
+        },
+        {
+          "name": "allocator-failure",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S06",
+            "S07",
+            "S08",
+            "S17",
+            "S18",
+            "S19",
+            "S05e",
+            "S15"
+          ],
+          "conditionalRows": [
+            {
+              "rowId": "S09",
+              "predicate": "allocator reached its bootstrap finalize before failing",
+              "instanceCount": 1,
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            }
+          ],
+          "forbiddenRows": [
+            "S05b",
+            "S05c",
+            "S05d",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S20"
+          ],
+          "stateAssertion": "S09 only when the allocator reached its finalize"
+        },
+        {
+          "name": "partial-handoff-to-alarm",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S06",
+            "S07",
+            "S08",
+            "S09",
+            "S10",
+            "S11",
+            "S12",
+            "S20",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05d",
+            "S05e",
+            "S13",
+            "S14",
+            "S17",
+            "S18",
+            "S19"
+          ],
+          "stateAssertion": "alarm side lives in sdt.commit.reconcile/v1"
+        }
+      ],
+      "callerCoverageIntervals": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05a",
+        "S05b",
+        "S05c",
+        "S05d",
+        "S05e",
+        "S06",
+        "S08",
+        "S10",
+        "S11",
+        "S13",
+        "S15"
+      ]
+    },
+    "sdt.commit/v2": {
+      "rows": [
+        {
+          "rowId": "S00",
+          "span": "sdt.commit",
+          "emitter": "root-worker",
+          "start": "handler entry (before validation)",
+          "end": "just before Response return",
+          "logicalParent": null,
+          "coverage": true,
+          "kind": "root",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S01",
+          "span": "request.decode_validate",
+          "emitter": "root-worker",
+          "start": "before request.json",
+          "end": "validation outcome fixed",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S02",
+          "span": "bootstrap.admit",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S03",
+          "span": "bootstrap.release",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S04",
+          "span": "journal.admit",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05a",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before RESERVED call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05b",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before ALLOCATED call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05c",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before WRITING call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05d",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before COMPLETE call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S05e",
+          "span": "journal.transition",
+          "emitter": "caller-worker",
+          "start": "before terminal call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "terminal only"
+        },
+        {
+          "rowId": "S06",
+          "span": "tag.acquire.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S07",
+          "span": "tag.acquire.member",
+          "emitter": "caller-worker",
+          "start": "before TAG stub call",
+          "end": "settle",
+          "logicalParent": "S06",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "consistencyTags.length"
+        },
+        {
+          "rowId": "S08",
+          "span": "allocator.allocate",
+          "emitter": "caller-worker",
+          "start": "before stub call",
+          "end": "body consume / typed failure",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S11",
+          "span": "tag.append.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S12",
+          "span": "tag.append.member",
+          "emitter": "caller-worker",
+          "start": "before TAG stub call",
+          "end": "settle",
+          "logicalParent": "S11",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "allTags.length"
+        },
+        {
+          "rowId": "S15",
+          "span": "response.build",
+          "emitter": "root-worker",
+          "start": "result assembly start",
+          "end": "Response object complete",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "S17",
+          "span": "journal.reservation_failure",
+          "emitter": "caller-worker",
+          "start": "before /reservation-failure call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "failure only"
+        },
+        {
+          "rowId": "S18",
+          "span": "tag.cancel.stage",
+          "emitter": "caller-worker",
+          "start": "before allSettled construction",
+          "end": "all members settled",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "failure only"
+        },
+        {
+          "rowId": "S19",
+          "span": "tag.cancel.member",
+          "emitter": "caller-worker",
+          "start": "before TAG /cancel call",
+          "end": "settle",
+          "logicalParent": "S18",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "consistencyTags.length"
+        },
+        {
+          "rowId": "S20",
+          "span": "journal.seal_reconcile",
+          "emitter": "caller-worker",
+          "start": "before /reconcile call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "handoff only"
+        },
+        {
+          "rowId": "P01",
+          "span": "bootstrap.permit_acquire",
+          "emitter": "caller-worker",
+          "start": "before acquire call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1 (v2 only)"
+        },
+        {
+          "rowId": "P02a",
+          "span": "allocator.permit_prepare",
+          "emitter": "allocator-do",
+          "start": "before Bootstrap validation call (pre-transaction)",
+          "end": "body consume",
+          "logicalParent": "S08",
+          "coverage": false,
+          "kind": "nested",
+          "successCardinality": "1 (v2 only)"
+        },
+        {
+          "rowId": "P02b",
+          "span": "allocator.permit_handoff",
+          "emitter": "allocator-do",
+          "start": "after allocator transaction commit, before handoff call",
+          "end": "body consume",
+          "logicalParent": "S08",
+          "coverage": false,
+          "kind": "nested",
+          "successCardinality": "1 (v2 only)"
+        },
+        {
+          "rowId": "P03",
+          "span": "bootstrap.permit_validate_append",
+          "emitter": "caller-worker",
+          "start": "before append validation call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1 (v2 only)"
+        },
+        {
+          "rowId": "P04",
+          "span": "bootstrap.permit_resolve",
+          "emitter": "caller-worker",
+          "start": "before resolution evidence call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1 (v2 only)"
+        },
+        {
+          "rowId": "P05",
+          "span": "bootstrap.permit_release",
+          "emitter": "caller-worker",
+          "start": "before release call",
+          "end": "body consume",
+          "logicalParent": "S00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "1 (v2 only)"
+        },
+        {
+          "rowId": "S16",
+          "span": "actor.handle",
+          "emitter": "callee-do",
+          "start": "callee handler entry",
+          "end": "response / throw",
+          "logicalParent": "provider-subrequest",
+          "coverage": false,
+          "kind": "callee",
+          "successCardinality": "per remote invocation"
+        }
+      ],
+      "universe": [
+        "S00",
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05a",
+        "S05b",
+        "S05c",
+        "S05d",
+        "S05e",
+        "S06",
+        "S07",
+        "S08",
+        "P01",
+        "P02a",
+        "P02b",
+        "P03",
+        "P04",
+        "P05",
+        "S11",
+        "S12",
+        "S15",
+        "S17",
+        "S18",
+        "S19",
+        "S20"
+      ],
+      "boundaries": [
+        {
+          "name": "success",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "permit released once after full write"
+        },
+        {
+          "name": "permit-acquire-reject",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S06",
+            "S07",
+            "P01",
+            "S17",
+            "S18",
+            "S19",
+            "S05e",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05b",
+            "S05c",
+            "S05d",
+            "S08",
+            "P02a",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S20"
+          ],
+          "stateAssertion": "no permit created; zero event/tag writes"
+        },
+        {
+          "name": "permit-prepare-reject",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "S17",
+            "S18",
+            "S19",
+            "S05e",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05b",
+            "S05c",
+            "S05d",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S20"
+          ],
+          "stateAssertion": "proven no-write: allocator vector absent"
+        },
+        {
+          "name": "permit-prepare-response-loss",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "P02a idempotent retry (retry.index>=1); allocation 0-call until success confirmed; then normal continuation"
+        },
+        {
+          "name": "permit-handoff-requery-active-allocate-retry",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "requeried permit == ACTIVE_ALLOCATE: P02b same-tuple retry required (retry.index>=1); append 0-call before success"
+        },
+        {
+          "name": "permit-handoff-requery-active-append-continue",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "requeried permit == ACTIVE_APPEND: P02b cardinality exactly 1 (double CAS forbidden); continuation"
+        },
+        {
+          "name": "permit-handoff-requery-alarm-handoff",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "S20",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05d",
+            "S05e",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S17",
+            "S18",
+            "S19"
+          ],
+          "stateAssertion": "either permit state may hand off; P02b retry.index recorded so the retry decision is derivable from row evidence"
+        },
+        {
+          "name": "permit-handoff-requery-mismatch-failclosed",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "S20",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05d",
+            "S05e",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S17",
+            "S18",
+            "S19"
+          ],
+          "stateAssertion": "owner/digest mismatch, missing, or unexpected terminal: typed fail-closed, event/tag write 0-call",
+          "outcome": "permit_state_mismatch"
+        },
+        {
+          "name": "permit-append-validation-reject",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "S20",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05d",
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S11",
+            "S12",
+            "P04",
+            "P05"
+          ],
+          "stateAssertion": "TAG append 0-call; no direct terminal; active permit handed to alarm"
+        },
+        {
+          "name": "permit-resolve-failure",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "S11",
+            "S12",
+            "P04",
+            "S20",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05d",
+            "S05e",
+            "P05",
+            "S17",
+            "S18",
+            "S19"
+          ],
+          "stateAssertion": "must not release; stays RESOLVING for alarm/repair"
+        },
+        {
+          "name": "permit-release-response-loss",
+          "requiredRows": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S07",
+            "S08",
+            "P01",
+            "P02a",
+            "P02b",
+            "P03",
+            "P04",
+            "P05",
+            "S11",
+            "S12",
+            "S15"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "S05e",
+            "S17",
+            "S18",
+            "S19",
+            "S20"
+          ],
+          "stateAssertion": "P05 retry.index 0..n; converges to one released tombstone with the same evidence digest"
+        }
+      ],
+      "callerCoverageIntervals": [
+        "S01",
+        "S02",
+        "S03",
+        "S04",
+        "S05a",
+        "S05b",
+        "S05c",
+        "S05d",
+        "S05e",
+        "S06",
+        "P01",
+        "S08",
+        "P03",
+        "S11",
+        "P04",
+        "P05",
+        "S15"
+      ]
+    },
+    "sdt.commit.reconcile/v1": {
+      "rows": [
+        {
+          "rowId": "R00",
+          "span": "sdt.commit.reconcile",
+          "emitter": "journal-do",
+          "start": "alarm handler entry",
+          "end": "handler return",
+          "logicalParent": null,
+          "coverage": true,
+          "kind": "root",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "R01",
+          "span": "journal.alarm_rearm",
+          "emitter": "journal-do",
+          "start": "durable re-arm start",
+          "end": "complete",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "non-terminal entry only"
+        },
+        {
+          "rowId": "R02",
+          "span": "journal.takeover_cas",
+          "emitter": "journal-do",
+          "start": "journalOwnerEpoch+1 CAS start",
+          "end": "complete",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "pre-takeover only"
+        },
+        {
+          "rowId": "R03",
+          "span": "tag.seal.stage",
+          "emitter": "journal-do",
+          "start": "before the SEQUENTIAL seal loop over allTags",
+          "end": "loop complete (members are ordered, not parallel)",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "sequential-stage",
+          "successCardinality": "post-allocation recovery only"
+        },
+        {
+          "rowId": "R04",
+          "span": "tag.seal.member",
+          "emitter": "journal-do",
+          "start": "before TAG /seal call",
+          "end": "response",
+          "logicalParent": "R03",
+          "coverage": false,
+          "kind": "sequential-member",
+          "successCardinality": "unsealed members only"
+        },
+        {
+          "rowId": "R09",
+          "span": "tag.cancel.stage",
+          "emitter": "journal-do",
+          "start": "before the parallel cancel barrier over consistencyTags",
+          "end": "all members settled",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "fanout-stage",
+          "successCardinality": "pre-allocation vector-absent recovery only"
+        },
+        {
+          "rowId": "R10",
+          "span": "tag.cancel.member",
+          "emitter": "journal-do",
+          "start": "before TAG /cancel (forceTombstone) call",
+          "end": "settle",
+          "logicalParent": "R09",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "consistencyTags.length"
+        },
+        {
+          "rowId": "R11",
+          "span": "journal.reconcile_apply",
+          "emitter": "journal-do",
+          "start": "before the applyReconciliation CAS",
+          "end": "CAS complete",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "reconciliation-terminated recovery only"
+        },
+        {
+          "rowId": "R05",
+          "span": "bootstrap.permit_transfer",
+          "emitter": "journal-do",
+          "start": "before transfer call",
+          "end": "body consume",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "v2 + active permit only"
+        },
+        {
+          "rowId": "R06",
+          "span": "journal.terminal_cas",
+          "emitter": "journal-do",
+          "start": "terminal CAS start",
+          "end": "complete",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "reached-terminal only"
+        },
+        {
+          "rowId": "R08",
+          "span": "journal.alarm_clear",
+          "emitter": "journal-do",
+          "start": "deleteAlarm() start",
+          "end": "complete",
+          "logicalParent": "R00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "terminal-at-entry only"
+        }
+      ],
+      "universe": [
+        "R00",
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "R05",
+        "R06",
+        "R08",
+        "R09",
+        "R10",
+        "R11"
+      ],
+      "recoveryDag": {
+        "pre-allocation-vector-absent": {
+          "factPredicate": "Journal state is ADMITTED/RESERVED and readAllocatorVector returns undefined; recoverPreAllocationCommit cancels every consistency reservation and then terminates. It does NOT take over the owner epoch.",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R09",
+            "R10"
+          ],
+          "conditionalRows": [
+            {
+              "rowId": "R06",
+              "predicate": "the record was RESERVED with a reservationFailure, so the terminal transition is used",
+              "instanceCount": 1,
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            },
+            {
+              "rowId": "R11",
+              "predicate": "otherwise the attempt is abandoned through applyReconciliation",
+              "instanceCount": 1,
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            }
+          ],
+          "forbiddenRows": [
+            "R02",
+            "R03",
+            "R04",
+            "R05",
+            "R08"
+          ],
+          "tagMutationPortCount": "zero",
+          "terminalOutcome": "no-write terminal (cancel barrier only)",
+          "appliesToSchema": [
+            "v1",
+            "v2"
+          ],
+          "terminatesInvocation": true
+        },
+        "journal-pre-allocation-vector-present": {
+          "factPredicate": "Journal is ADMITTED/RESERVED but readAllocatorVector returns a vector; applyReconciliation converges the record to ALLOCATED because the vector is the durable authority. This invocation does NOT terminate: a later alarm runs post-allocation recovery.",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R11"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "R02",
+            "R03",
+            "R04",
+            "R05",
+            "R06",
+            "R08",
+            "R09",
+            "R10"
+          ],
+          "tagMutationPortCount": "zero",
+          "terminalOutcome": "NON-TERMINAL: converges to ALLOCATED and hands over to the post-allocation path",
+          "appliesToSchema": [
+            "v1",
+            "v2"
+          ],
+          "terminatesInvocation": false
+        },
+        "post-allocation-full-write": {
+          "factPredicate": "state is ALLOCATED/WRITING/SEALING and the batch requery finds EVERY candidate present, so reconciliation converges to COMPLETE",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "[v2:transfer-done]",
+            "sealed",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R02",
+            "R03",
+            "R04",
+            "R06"
+          ],
+          "conditionalRows": [
+            {
+              "rowId": "R05",
+              "predicate": "schemaVersion == v2 AND an active permit exists for this attempt",
+              "instanceCount": 1,
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            }
+          ],
+          "forbiddenRows": [
+            "R08",
+            "R09",
+            "R10",
+            "R11"
+          ],
+          "tagMutationPortCount": "unsealed-members",
+          "terminalOutcome": "COMPLETE terminal (full batch requery found every candidate)",
+          "appliesToSchema": [
+            "v1",
+            "v2"
+          ],
+          "terminatesInvocation": true
+        },
+        "post-allocation-no-write": {
+          "factPredicate": "state is ALLOCATED/WRITING/SEALING and every tag is proven un-written; beginAlarmTakeover raises the owner epoch, then the sequential seal loop runs",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "[v2:transfer-done]",
+            "sealed",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R02",
+            "R03",
+            "R04",
+            "R06"
+          ],
+          "conditionalRows": [
+            {
+              "rowId": "R05",
+              "predicate": "schemaVersion == v2 AND an active permit exists for this attempt",
+              "instanceCount": 1,
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            }
+          ],
+          "forbiddenRows": [
+            "R08",
+            "R09",
+            "R10",
+            "R11"
+          ],
+          "tagMutationPortCount": "unsealed-members",
+          "terminalOutcome": "no-write terminal",
+          "appliesToSchema": [
+            "v1",
+            "v2"
+          ],
+          "terminatesInvocation": true
+        },
+        "post-allocation-partial-write": {
+          "factPredicate": "state is ALLOCATED/WRITING/SEALING with at least one tag written and at least one not",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "[v2:transfer-done]",
+            "sealed",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R02",
+            "R03",
+            "R04",
+            "R06"
+          ],
+          "conditionalRows": [
+            {
+              "rowId": "R05",
+              "predicate": "schemaVersion == v2 AND an active permit exists for this attempt",
+              "instanceCount": 1,
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            }
+          ],
+          "forbiddenRows": [
+            "R08",
+            "R09",
+            "R10",
+            "R11"
+          ],
+          "tagMutationPortCount": "unsealed-members",
+          "terminalOutcome": "PARTIAL terminal; permit stays active for repair",
+          "appliesToSchema": [
+            "v1",
+            "v2"
+          ],
+          "terminatesInvocation": true
+        },
+        "permit-release-won": {
+          "factPredicate": "v2 only: the old owner release won the Bootstrap CAS before this transfer",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R02",
+            "R06"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "R03",
+            "R04",
+            "R05",
+            "R08",
+            "R09",
+            "R10",
+            "R11"
+          ],
+          "tagMutationPortCount": "zero",
+          "terminalOutcome": "stop after re-verifying RELEASED evidence (tag mutation 0-call)",
+          "appliesToSchema": [
+            "v2"
+          ],
+          "terminatesInvocation": true
+        },
+        "permit-transfer-won": {
+          "factPredicate": "v2 only: this recovery won the Bootstrap permit transfer CAS",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "transfer-done",
+            "sealed",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R02",
+            "R05",
+            "R03",
+            "R04",
+            "R06"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "R08",
+            "R09",
+            "R10",
+            "R11"
+          ],
+          "tagMutationPortCount": "unsealed-members",
+          "terminalOutcome": "terminal as durable owner",
+          "appliesToSchema": [
+            "v2"
+          ],
+          "terminatesInvocation": true
+        },
+        "permit-corrupt-missing": {
+          "factPredicate": "v2 only: permit record missing, or owner/digest mismatch",
+          "transitions": [
+            "pre-takeover",
+            "takeover-done",
+            "terminal"
+          ],
+          "requiredRows": [
+            "R00",
+            "R01",
+            "R02",
+            "R06"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "R03",
+            "R04",
+            "R05",
+            "R08",
+            "R09",
+            "R10",
+            "R11"
+          ],
+          "tagMutationPortCount": "zero",
+          "terminalOutcome": "typed fail-closed (tag mutation 0-call)",
+          "appliesToSchema": [
+            "v2"
+          ],
+          "terminatesInvocation": true
+        }
+      },
+      "terminalAtEntryBoundary": {
+        "name": "terminal-at-entry",
+        "factPredicate": "durable.prefix.at_entry == terminal: the alarm fired on an already-terminal record",
+        "requiredRows": [
+          "R00",
+          "R08"
+        ],
+        "conditionalRows": [],
+        "forbiddenRows": [
+          "R01",
+          "R02",
+          "R03",
+          "R04",
+          "R05",
+          "R06",
+          "R09",
+          "R10",
+          "R11"
+        ],
+        "tagMutationPortCount": "zero",
+        "terminalOutcome": "no work; deleteAlarm() and return",
+        "appliesToSchema": [
+          "v1",
+          "v2"
+        ]
+      },
+      "generationStateMachine": {
+        "fields": {
+          "firedGenerationId": "durable id of the alarm generation that started THIS handler; R00 records this one",
+          "scheduledGenerationId": "durable id created by the R01 re-arm inside this handler (the NEXT generation)"
+        },
+        "rules": [
+          {
+            "ruleId": "fired-from-observed-scheduled",
+            "text": "handler entry: firedGenerationId := the scheduledGenerationId observed at entry"
+          },
+          {
+            "ruleId": "rearm-advances-scheduled-only",
+            "text": "R01 transaction: fired unchanged, scheduled_old -> scheduled_new"
+          },
+          {
+            "ruleId": "platform-retry-keeps-fired",
+            "text": "platform retry after throw: same firedGenerationId, retryCount incremented, isRetry true"
+          },
+          {
+            "ruleId": "self-rearm-fire-consumes-scheduled",
+            "text": "self re-armed fire: firedGenerationId equals the previous scheduledGenerationId, retryCount resets to 0"
+          },
+          {
+            "ruleId": "never-reattribute",
+            "text": "never reattribute a handler to the generation it scheduled"
+          }
+        ],
+        "mutations": [
+          {
+            "mutationId": "reattribute-to-latest",
+            "text": "reattribute all spans to the latest generation"
+          },
+          {
+            "mutationId": "overwrite-fired-at-rearm",
+            "text": "overwrite firedGenerationId at R01"
+          },
+          {
+            "mutationId": "retrycount-as-invocation-key",
+            "text": "use retryCount as the invocation-uniqueness key"
+          },
+          {
+            "mutationId": "drop-scheduled-generation",
+            "text": "drop scheduledGenerationId"
+          }
+        ]
+      },
+      "sealPredicates": {
+        "v1": {
+          "rows": [
+            "R03",
+            "R04"
+          ],
+          "permitDependent": false,
+          "boundTo": "journalTakeoverPrefix",
+          "predicate": "prefix.before in {takeover-done, sealed}",
+          "note": "must remain satisfiable with no permit facts at all"
+        },
+        "v2": {
+          "rows": [
+            "R03",
+            "R04"
+          ],
+          "permitDependent": true,
+          "boundTo": "journalOwnerEpoch",
+          "predicate": "durable permit owner == current journalOwnerEpoch",
+          "note": "binds to durable facts so a crash between transfer and seal can resume"
+        }
+      }
+    },
+    "sdt.commit.repair/v1": {
+      "rows": [
+        {
+          "rowId": "X00",
+          "span": "sdt.commit.repair",
+          "emitter": "repair-runner",
+          "start": "handler entry",
+          "end": "completion / throw",
+          "logicalParent": null,
+          "coverage": true,
+          "kind": "root",
+          "successCardinality": "1"
+        },
+        {
+          "rowId": "X02",
+          "span": "tag.repair_lease",
+          "emitter": "repair-runner",
+          "start": "before ensureLease acquire/renew call",
+          "end": "acquire/renew call response (there is no release call; LeaseContext lifetime is execution-local)",
+          "logicalParent": "X00",
+          "coverage": true,
+          "kind": "fanout-member",
+          "successCardinality": "distinct tags that actually reach ensureLease (dry-run: 0; all-items-resume-skip: 0; several items on one tag: 1)"
+        },
+        {
+          "rowId": "X03e",
+          "span": "tag.repair_item.execute_mutating",
+          "emitter": "repair-runner",
+          "start": "item branch decision start",
+          "end": "branch-specific terminal durable evidence (ROLLED_FORWARD/EXCLUDED_AUDITED: resolution+audit; FAILED_CLOSED: resolution only, audit forbidden)",
+          "logicalParent": "X00",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "mutating items only"
+        },
+        {
+          "rowId": "X03r",
+          "span": "tag.repair_item.resume_skip",
+          "emitter": "repair-runner",
+          "start": "durable-state read start",
+          "end": "skip decision (no durable write)",
+          "logicalParent": "X00",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "already-resolved items (durable write 0-call)"
+        },
+        {
+          "rowId": "X03p",
+          "span": "tag.repair_item.dry_run_plan",
+          "emitter": "repair-runner",
+          "start": "workset read start",
+          "end": "plan entry produced (no lease, no mutation)",
+          "logicalParent": "X00",
+          "coverage": false,
+          "kind": "fanout-member",
+          "successCardinality": "dry-run items over the FULL workset distinct tags (maxItems bounds mutating execution only, not the dry-run plan read)"
+        },
+        {
+          "rowId": "X01",
+          "span": "bootstrap.permit_resolved_safe",
+          "emitter": "caller",
+          "start": "before RESOLVED_SAFE CAS call",
+          "end": "body consume",
+          "logicalParent": "X00",
+          "coverage": true,
+          "kind": "direct",
+          "successCardinality": "per attempt reaching RESOLVED_SAFE"
+        }
+      ],
+      "universe": [
+        "X00",
+        "X01",
+        "X02",
+        "X03e",
+        "X03r",
+        "X03p"
+      ],
+      "boundaries": [
+        {
+          "name": "dry-run",
+          "requiredRows": [
+            "X00",
+            "X03p"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "X02",
+            "X03e",
+            "X03r",
+            "X01"
+          ],
+          "stateAssertion": "lease and mutation 0-call; X03p counts distinct tags of the FULL workset"
+        },
+        {
+          "name": "all-items-resume-skip",
+          "requiredRows": [
+            "X00",
+            "X03r"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "X02",
+            "X03e",
+            "X03p",
+            "X01"
+          ],
+          "stateAssertion": "ensureLease never reached, so X02 cardinality is 0; durable write 0-call"
+        },
+        {
+          "name": "execute-mutating-single-tag",
+          "requiredRows": [
+            "X00",
+            "X02",
+            "X03e"
+          ],
+          "conditionalRows": [
+            {
+              "rowId": "X01",
+              "predicate": "the attempt reached RESOLVED_SAFE in this execution",
+              "instanceCount": "1 per attempt",
+              "whenTrue": "required",
+              "whenFalse": "forbidden"
+            }
+          ],
+          "forbiddenRows": [
+            "X03p",
+            "X03r"
+          ],
+          "stateAssertion": "several mutating items on one tag reuse one lease: X02 == 1, X03e == N"
+        },
+        {
+          "name": "execute-failed-closed",
+          "requiredRows": [
+            "X00",
+            "X02",
+            "X03e"
+          ],
+          "conditionalRows": [],
+          "forbiddenRows": [
+            "X03p",
+            "X03r",
+            "X01"
+          ],
+          "stateAssertion": "FAILED_CLOSED writes a resolution but NO audit; X03e ends at the resolution record; X01 forbidden"
+        }
+      ],
+      "parentLinks": [
+        {
+          "row": "X03e",
+          "linkedTo": "X02",
+          "via": "repair.lease.id + tag.key_hash",
+          "note": "X02 ends at the acquire/renew response, so X03e must NOT be its child"
+        }
+      ]
+    }
+  },
+  "attributeMatrix": {
+    "faces": [
+      "pre-admission",
+      "accepted",
+      "reconcile-root",
+      "repair-root"
+    ],
+    "states": [
+      "required",
+      "optional",
+      "forbidden"
+    ],
+    "attributes": {
+      "schema.version": {
+        "type": "string-literal",
+        "values": [
+          "sdt.commit/v1",
+          "sdt.commit/v2",
+          "sdt.commit.reconcile/v1",
+          "sdt.commit.repair/v1"
+        ],
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "correlation.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "attempt.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "optional"
+        },
+        "note": "repair roots are multi-attempt; per-attempt rows carry it"
+      },
+      "service.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "actor.class": {
+        "type": "enum",
+        "values": [
+          "ROOT",
+          "BOOTSTRAP",
+          "JOURNAL",
+          "ALLOCATOR",
+          "TAG",
+          "REPAIR"
+        ],
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "actor.key_hash": {
+        "type": "hex64",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "activation.id": {
+        "type": "uuid",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "optional",
+          "reconcile-root": "required",
+          "repair-root": "optional"
+        },
+        "note": "callee rows only; observation-only, never persisted or branched on"
+      },
+      "activation.first": {
+        "type": "boolean",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "optional",
+          "reconcile-root": "required",
+          "repair-root": "optional"
+        }
+      },
+      "operation": {
+        "type": "enum-from-manifest-rows",
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "span.kind": {
+        "type": "enum",
+        "values": [
+          "root",
+          "direct",
+          "nested",
+          "fanout-stage",
+          "fanout-member",
+          "sequential-stage",
+          "sequential-member",
+          "callee"
+        ],
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "phase.ordinal": {
+        "type": "non-negative-integer",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "optional",
+          "reconcile-root": "forbidden",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "S05a",
+          "S05b",
+          "S05c",
+          "S05d",
+          "S05e"
+        ],
+        "note": "required on journal.transition rows only"
+      },
+      "retry.index": {
+        "type": "non-negative-integer",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "optional",
+          "reconcile-root": "optional",
+          "repair-root": "optional"
+        }
+      },
+      "member.index": {
+        "type": "non-negative-integer",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "optional",
+          "reconcile-root": "optional",
+          "repair-root": "optional"
+        },
+        "rowScope": [
+          "S07",
+          "S12",
+          "S14",
+          "S19",
+          "R04",
+          "R10",
+          "X02",
+          "X03e",
+          "X03r",
+          "X03p"
+        ],
+        "note": "every fan-out or sequential member row (S14 is v1-only and disappears with G36-2)"
+      },
+      "tag.key_hash": {
+        "type": "hex64",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "optional",
+          "reconcile-root": "optional",
+          "repair-root": "optional"
+        },
+        "rowScope": [
+          "S07",
+          "S12",
+          "S14",
+          "S19",
+          "R04",
+          "R10",
+          "X02",
+          "X03e",
+          "X03r",
+          "X03p"
+        ],
+        "note": "every member row; raw tag values are never emitted"
+      },
+      "outcome": {
+        "type": "enum-from-manifest-boundaries",
+        "faces": {
+          "pre-admission": "required",
+          "accepted": "required",
+          "reconcile-root": "required",
+          "repair-root": "required"
+        }
+      },
+      "http.status": {
+        "type": "integer",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "optional",
+          "reconcile-root": "forbidden",
+          "repair-root": "optional"
+        },
+        "note": "required on spans that receive a Response; forbidden on alarm-root, re-arm and local-CAS spans"
+      },
+      "script.version": {
+        "type": "provider-adapter",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "optional",
+          "reconcile-root": "optional",
+          "repair-root": "optional"
+        },
+        "note": "adapter input; never an authority and never a control branch"
+      },
+      "colo": {
+        "type": "provider-adapter",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "optional",
+          "reconcile-root": "optional",
+          "repair-root": "optional"
+        }
+      },
+      "placement": {
+        "type": "provider-adapter",
+        "faces": {
+          "pre-admission": "optional",
+          "accepted": "optional",
+          "reconcile-root": "optional",
+          "repair-root": "optional"
+        }
+      },
+      "alarm.event.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "required",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R00"
+        ],
+        "note": "framework durable alarm generation that fired this handler; root only"
+      },
+      "alarm.invocation.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "required",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R00"
+        ]
+      },
+      "alarm.retryCount": {
+        "type": "non-negative-integer",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "required",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R00"
+        ]
+      },
+      "alarm.isRetry": {
+        "type": "boolean",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "required",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R00"
+        ]
+      },
+      "recovery.kind": {
+        "type": "enum-from-manifest-recovery",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "required",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R00"
+        ],
+        "factDerived": true,
+        "note": "the kind is only decided after the allocator-vector requery, and a Cloudflare span cannot be updated after it ends, so ONLY the root (which ends last) may carry it"
+      },
+      "durable.prefix.at_entry": {
+        "type": "enum",
+        "values": [
+          "pre-takeover",
+          "takeover-done",
+          "transfer-done",
+          "sealed",
+          "terminal"
+        ],
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "required",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R00"
+        ]
+      },
+      "prefix.before": {
+        "type": "enum",
+        "values": [
+          "pre-takeover",
+          "takeover-done",
+          "transfer-done",
+          "sealed",
+          "terminal"
+        ],
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "optional",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R02",
+          "R03",
+          "R05",
+          "R06",
+          "R08",
+          "R09",
+          "R11"
+        ],
+        "note": "reconcile mutation rows only"
+      },
+      "prefix.after": {
+        "type": "enum",
+        "values": [
+          "pre-takeover",
+          "takeover-done",
+          "transfer-done",
+          "sealed",
+          "terminal"
+        ],
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "optional",
+          "repair-root": "forbidden"
+        },
+        "rowScope": [
+          "R02",
+          "R03",
+          "R05",
+          "R06",
+          "R08",
+          "R09",
+          "R11"
+        ]
+      },
+      "repair.execution.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "forbidden",
+          "repair-root": "required"
+        },
+        "rowScope": [
+          "X00"
+        ]
+      },
+      "repair.lease.id": {
+        "type": "string",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "forbidden",
+          "repair-root": "optional"
+        },
+        "rowScope": [
+          "X02",
+          "X03e"
+        ],
+        "note": "required on X02 and on X03e (the link key back to X02)"
+      },
+      "repairEpoch": {
+        "type": "integer",
+        "faces": {
+          "pre-admission": "forbidden",
+          "accepted": "forbidden",
+          "reconcile-root": "forbidden",
+          "repair-root": "optional"
+        },
+        "rowScope": [
+          "X02",
+          "X03e"
+        ]
+      }
+    }
+  },
+  "v1ToV2Mapping": [
+    {
+      "v1": "S09",
+      "v2": "P02a",
+      "bucket": "renamed-semantic"
+    },
+    {
+      "v1": "S10",
+      "v2": "P03",
+      "bucket": "renamed-semantic"
+    },
+    {
+      "v1": null,
+      "v2": "P01",
+      "bucket": "added"
+    },
+    {
+      "v1": null,
+      "v2": "P02b",
+      "bucket": "added"
+    },
+    {
+      "v1": null,
+      "v2": "P04",
+      "bucket": "added"
+    },
+    {
+      "v1": null,
+      "v2": "P05",
+      "bucket": "added"
+    },
+    {
+      "v1": "S13",
+      "v2": null,
+      "bucket": "removed"
+    },
+    {
+      "v1": "S14",
+      "v2": null,
+      "bucket": "removed"
+    }
+  ],
+  "unattributedRatio": "max(0, rootDuration - duration(union(clip(callerCoverageIntervals, root)))) / rootDuration"
+}

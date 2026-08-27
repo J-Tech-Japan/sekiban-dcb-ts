@@ -1,0 +1,73 @@
+{
+  "task": "SDT-G30",
+  "baseline": "B0",
+  "purpose": "attribution-only-not-g37-denominator",
+  "candidateCommit": "CANDIDATE",
+  "sourceCommit": "CANDIDATE",
+  "deployedRuntimeCommit": "CANDIDATE",
+  "recording": {
+    "candidateInput": "--source-commit",
+    "candidateIndependent": true,
+    "finalCandidateMustBeSealedOnce": true,
+    "postCandidateAllowlist": [
+      "docs/SDT-G30-*evidence*.json",
+      "docs/SDT-G30-*evidence*.md",
+      ".github/workflows/ci.yml"
+    ]
+  },
+  "protocol": {
+    "selfReference": false,
+    "protocolAndWireChanged": false,
+    "placement": "off",
+    "performancePassFailAsserted": false
+  },
+  "treeDigests": {
+    "algorithm": "sha256(path NUL content NUL, paths sorted)",
+    "runtimeRoots": ["packages/dcb-runtime/src"],
+    "configurationRoots": [
+      ".github/workflows/ci.yml",
+      "package.json",
+      "packages/dcb-runtime/package.json",
+      "contracts",
+      "samples/meeting-room/src/worker.cloudflare-only.ts",
+      "samples/meeting-room/wrangler.g30-primary-off.jsonc",
+      "samples/meeting-room/wrangler.g30-primary-on.jsonc",
+      "samples/meeting-room/wrangler.g30-receiver-off.jsonc",
+      "scripts/commit-trace-contract.mjs",
+      "scripts/g30-b0-contract.mjs",
+      "scripts/g30-b0-contract.d.mts",
+      "scripts/g30-trace-runtime-verifier.mjs",
+      "scripts/g30-config-check.mjs",
+      "scripts/g30-config-check.d.mts",
+      "scripts/g30-config-mutation-runner.mjs",
+      "scripts/g30-portable-import-check.mjs",
+      "scripts/g30-trace-mutation-runner.mjs",
+      "scripts/g30-candidate-check.mjs",
+      "scripts/deploy/g30-config-digest.mjs",
+      "scripts/deploy/g30-deployment-witness.mjs",
+      "scripts/deploy/g30-deployment-witness.d.mts",
+      "scripts/deploy/g30-b0-measure.mjs",
+      "scripts/deploy/g30-b0-measure.d.mts",
+      "scripts/deploy/g30-observability-query.mjs",
+      "scripts/deploy/g30-observability-query.json",
+      "scripts/deploy/g30-trace-export.mjs",
+      "scripts/deploy/g30-trace-export.d.mts",
+      "scripts/deploy/g30-b0-record-evidence.mjs",
+      "scripts/deploy/g30-b0-deploy.sh",
+      "docs/SDT-G30-required-roots.json",
+      "docs/SDT-G30-oracle-map.md",
+      "docs/SDT-G30-pr-body.md",
+      "docs/commit-tracing.md",
+      "docs/SDT-G30-b0-evidence.json",
+      "docs/SDT-G30-b0-evidence.md",
+      "test/g30-trace.spec.ts",
+      "test/g30-b0.spec.ts",
+      "test/g29-delivery.spec.ts",
+      "test/g26-doorbell.spec.ts",
+      "tsconfig.json",
+      "vitest.config.ts"
+    ],
+    "runtime": "0000000000000000000000000000000000000000000000000000000000000000",
+    "configuration": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
