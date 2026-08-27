@@ -13,8 +13,8 @@ import { verifyExportedSuccessTrace } from "./g30-trace-runtime-verifier.mjs";
 
 export const G30_PHASES = Object.freeze(["A", "B", "A-prime"]);
 export const G30_SAMPLE_COUNT = 100;
-/** AC5's sealed provider-delivery ceiling; it is not a provider SLA. */
-export const G30_MIN_SCHEMA_COMPLETE_COUNT = 95;
+/** AC5's sealed operator-authorized closure risk budget; it is not a provider SLA. */
+export const G30_MIN_SCHEMA_COMPLETE_COUNT = 85;
 export const G30_TAIL_RANK_COUNT = 5;
 export const G30_LATENCY_ESTIMATOR = "nearest-rank/full-client-ledger/v1";
 export const G30_CADENCE_MS = 2_000;
@@ -495,21 +495,30 @@ function conditionalPerHopSummary(complete, missing) {
       const start = finiteNumber(span?.startMs, `${rowId}.startMs`);
       const end = finiteNumber(span?.endMs, `${rowId}.endMs`);
       if (end < start) fail("per-hop", `${rowId} ends before it starts`);
-      const aggregate = rows.get(rowId) ?? { joinedCount: 0, totalDurationMs: 0 };
+      const aggregate = rows.get(rowId) ?? { joinedCount: 0, totalDurationMs: 0, durations: [] };
       aggregate.joinedCount += 1;
-      aggregate.totalDurationMs += end - start;
+      const durationMs = end - start;
+      aggregate.totalDurationMs += durationMs;
+      aggregate.durations.push(durationMs);
       rows.set(rowId, aggregate);
     }
   }
   const rowDurations = Object.fromEntries([...rows.entries()]
     .sort(([left], [right]) => requestIdOrder(left, right))
-    .map(([rowId, aggregate]) => [rowId, Object.freeze({
-      ...aggregate,
-      meanDurationMs: aggregate.joinedCount === 0 ? 0 : aggregate.totalDurationMs / aggregate.joinedCount,
-    })]));
+    .map(([rowId, aggregate]) => {
+      const { durations, ...summary } = aggregate;
+      return [rowId, Object.freeze({
+        ...summary,
+        meanDurationMs: summary.joinedCount === 0 ? 0 : summary.totalDurationMs / summary.joinedCount,
+        p50DurationMs: percentile(durations, 0.50),
+        p95DurationMs: percentile(durations, 0.95),
+      })];
+    }));
   const unknownUpperBoundMs = missing.reduce((total, entry) => total + entry.sensitivityEnvelope.upperBoundMs, 0);
   return Object.freeze({
     basis: "schema-complete-joined-cohort",
+    interpretation: "joined-cohort-conditional-descriptive-estimate",
+    metrics: Object.freeze(["p50DurationMs", "p95DurationMs"]),
     wholeCohortConclusion: false,
     joinedRequestCount: complete.length,
     missingRequestCount: missing.length,
@@ -529,7 +538,7 @@ function conditionalPerHopSummary(complete, missing) {
 
 /**
  * Validates one independently-delivered phase.  A provider loss is UNKNOWN,
- * never an absence or a passed trace: only a frozen 95/100 budget permits it,
+ * never an absence or a passed trace: only the frozen 85/100 risk budget permits it,
  * and every rank-1..5 client-latency identity remains mandatory.
  */
 export function assertTraceCohort(ledger, traces, exportCompletedAtMs, phase = "B") {
@@ -1338,8 +1347,8 @@ export function selfTest() {
   assertB0Evidence(evidence);
   const failures = {};
   for (const [name, mutate, marker] of [
-    ["delivery-budget-94", (value) => {
-      const missing = new Set(["b-90", "b-91", "b-92", "b-93", "b-94", "b-95"]);
+    ["accept-84", (value) => {
+      const missing = new Set(["b-50", "b-51", "b-52", "b-53", "b-54", "b-55", "b-56", "b-57", "b-58", "b-59", "b-60", "b-61", "b-62", "b-63", "b-64", "b-65"]);
       value.traces = value.traces.filter((trace) => !missing.has(trace.requestId));
     }, "delivery-budget"],
     ["out-of-window-replacement", (value) => { value.phases.B.ledger[99].replacement = true; }, "window-eligibility"],

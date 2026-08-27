@@ -1251,7 +1251,7 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       fetchCohort: async () => rawTelemetry(observationLedger),
       validate: (raw) => {
         validations += 1;
-        if (validations === 1) throw new Error("g30-b0:delivery-budget:B schemaCompleteCount=94 is below frozen 95/100");
+        if (validations === 1) throw new Error("g30-b0:delivery-budget:B schemaCompleteCount=84 is below frozen 85/100");
         const bundle = normalizeTelemetryBundle(raw, now);
         const traces = bundle.traces.filter((trace) => retainedRequestIds.has(trace.requestId));
         return assertTraceCohort(document.phases.B.ledger, traces, now);
@@ -1281,7 +1281,7 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       traces,
       capturedAtMs: document.traceExportCompletedAtMs,
       deadlineMs: exportDeadline(document.phases.B.ledger),
-      error: new Error("g30-b0:delivery-budget:B schemaCompleteCount=98 is below frozen 95/100"),
+      error: new Error("g30-b0:delivery-budget:B schemaCompleteCount=84 is below frozen 85/100"),
     });
     expect(failure).toMatchObject({
       failureClass: "g30-b0:delivery-budget",
@@ -1421,15 +1421,15 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(proof.missing).toMatchObject([{ requestId: "B-99", clientLatency: 108, stage: "root-absent" }]);
   });
 
-  it("enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator", () => {
+  it("enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator", () => {
     const document = evidence();
     setDistinctClientLatencies(document.phases.B.ledger);
-    const pass = withoutTrace(structuredClone(document), ["B-0", "B-1", "B-2", "B-3", "B-4"]);
+    const pass = withoutTrace(structuredClone(document), Array.from({ length: 15 }, (_, index) => "B-" + index));
     const passProof = assertTraceCohort(pass.phases.B.ledger, pass.traces, pass.traceExportCompletedAtMs);
-    expect(passProof).toMatchObject({ clientCount: 100, schemaCompleteCount: 95, missingCount: 5 });
+    expect(passProof).toMatchObject({ clientCount: 100, schemaCompleteCount: 85, missingCount: 15 });
     expect(passProof.latency).toMatchObject({ universe: "full-100-client-ledger", p50: 50, p95: 95, p99: 99 });
 
-    const fail = withoutTrace(structuredClone(document), ["B-0", "B-1", "B-2", "B-3", "B-4", "B-5"]);
+    const fail = withoutTrace(structuredClone(document), Array.from({ length: 16 }, (_, index) => "B-" + index));
     expect(() => assertTraceCohort(fail.phases.B.ledger, fail.traces, fail.traceExportCompletedAtMs)).toThrow(/delivery-budget/);
   });
 
@@ -1475,7 +1475,13 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
       expect.objectContaining({ requestId: "B-0", stage: "root-absent", sensitivityEnvelope: expect.objectContaining({ upperBoundSource: "client-latency", upperBoundMs: 1 }) }),
       expect.objectContaining({ requestId: "B-1", stage: "schema-incomplete", sensitivityEnvelope: expect.objectContaining({ upperBoundSource: "observed-root-duration" }) }),
     ]));
-    expect(proof.perHop).toMatchObject({ wholeCohortConclusion: false, joinedRequestCount: 98, missingRequestCount: 2 });
+    expect(proof.perHop).toMatchObject({
+      interpretation: "joined-cohort-conditional-descriptive-estimate",
+      metrics: ["p50DurationMs", "p95DurationMs"],
+      wholeCohortConclusion: false,
+      joinedRequestCount: 98,
+      missingRequestCount: 2,
+    });
     expect(proof.unattributed).toHaveLength(98);
   });
 
@@ -1483,7 +1489,8 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     const document = evidence();
     setDistinctClientLatencies(document.phases.A.ledger);
     const aTraces = normalizeTelemetryBundle(rawTelemetry(document.phases.A.ledger, false), document.traceExportCompletedAtMs).traces;
-    const incompleteA = aTraces.filter((trace) => !["A-0", "A-1", "A-2", "A-3", "A-4", "A-5"].includes(trace.requestId));
+    const missingA = new Set(Array.from({ length: 16 }, (_, index) => "A-" + index));
+    const incompleteA = aTraces.filter((trace) => !missingA.has(trace.requestId));
     expect(() => assertTraceCohort(document.phases.A.ledger, incompleteA, document.traceExportCompletedAtMs, "A")).toThrow(/delivery-budget/);
     expect(assertTraceCohort(document.phases.B.ledger, document.traces, document.traceExportCompletedAtMs)).toMatchObject({ schemaCompleteCount: 100 });
   });

@@ -69,7 +69,7 @@ function markdown(evidence) {
     `- Candidate/source/deployed runtime: \`${evidence.candidateCommit}\``,
     `- Service: \`${evidence.serviceId}\`; placement: \`off\`.`,
     `- Trace delivery: ${evidence.attribution?.traces?.schemaCompleteCount ?? 0}/${evidence.attribution?.traces?.clientCount ?? 100} schema-complete; ${evidence.attribution?.traces?.missingCount ?? "n/a"} UNKNOWN loss(es); rank-1..5 tail coverage observed.`,
-    `- Client latency universe: full 100-request ledger with ${evidence.attribution?.traces?.latency?.estimator ?? "nearest-rank/full-client-ledger/v1"}; joined per-hop evidence is conditional and carries its missing-stage sensitivity envelope.`,
+    `- Client latency universe: full 100-request ledger with ${evidence.attribution?.traces?.latency?.estimator ?? "nearest-rank/full-client-ledger/v1"}; joined per-hop p50/p95 are joined-cohort conditional descriptive estimates and carry their missing-stage sensitivity envelope.`,
     `- Idle schedule: ${(evidence.attribution?.activationIdle?.scheduleMs ?? []).join("/")} ms; ${evidence.attribution?.activationIdle?.observations ?? 0} raw observations.`,
     `- Outlier discrimination: ${evidence.attribution?.outliers?.classifiedOutliers ?? 0}/4 independently evidenced hypotheses; unclassified ${evidence.attribution?.outliers?.unclassifiedOutliers ?? "n/a"}.`,
     `- A→B overhead: p50 ${latency?.overhead?.p50Ms ?? "n/a"} ms; p95 ${latency?.overhead?.p95Ms ?? "n/a"} ms.`,
@@ -152,7 +152,10 @@ export function selfTest() {
   let hardCodeRed = false;
   try { bindCandidate(candidate, () => "b".repeat(40)); } catch (error) { hardCodeRed = String(error).includes("substitution"); }
   if (!hardCodeRed) throw new Error("G30 candidate hard-code mutation unexpectedly passed");
-  return { candidateIndependent: true, hardCodeRed };
+  const rendered = markdown({ candidateCommit: candidate, attribution: { traces: {} } });
+  const descriptivePerHopPresent = rendered.includes("joined-cohort conditional descriptive estimates");
+  if (!descriptivePerHopPresent) throw new Error("G30 recorder omitted the conditional descriptive per-hop label");
+  return { candidateIndependent: true, hardCodeRed, descriptivePerHopPresent };
 }
 
 function main() {
@@ -164,8 +167,8 @@ function main() {
   const manifest = readJson(argument("--manifest", "docs/SDT-G30-required-roots.json"));
   const authority = {
     A: readJson("contracts/host-pin.json").hostCommit,
-    S: "26fb3b474e22fdb880955b8e7240bdbf605622ee",
-    P: "46d34ad72a1f4ddbf9e7aab7f44d32b3a082b541",
+    S: "160b4be0b3752c36425597ed9bc46002a1671cff",
+    P: "7ede7b07a1cd88b315319204059099d319984ec4",
     bundleDigest: readJson("contracts/commit-trace-bundle.json").bundleDigest,
   };
   const evidence = buildEvidence({

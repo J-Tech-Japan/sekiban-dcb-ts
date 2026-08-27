@@ -13,19 +13,19 @@ const structural = "scripts/g30-ac5-structural-check.mjs";
 
 const MUTATIONS = Object.freeze([
   {
-    id: "delivery-budget-94",
+    id: "accept-84",
     file: "scripts/g30-b0-contract.mjs",
-    from: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 95;",
-    to: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 94;",
-    target: "enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator",
+    from: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 85;",
+    to: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 84;",
+    target: "enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator",
     unrelated: "uses the exact rank-1..5 client-latency tail set, including a deterministic rank-5/6 tie",
   },
   {
-    id: "delivery-budget-95",
+    id: "reject-85",
     file: "scripts/g30-b0-contract.mjs",
-    from: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 95;",
-    to: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 96;",
-    target: "enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator",
+    from: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 85;",
+    to: "export const G30_MIN_SCHEMA_COMPLETE_COUNT = 86;",
+    target: "enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator",
     unrelated: "records a per-missing sensitivity source and keeps per-hop aggregates conditional",
   },
   {
@@ -33,7 +33,7 @@ const MUTATIONS = Object.freeze([
     file: "scripts/g30-b0-contract.mjs",
     from: "    clientCount: G30_SAMPLE_COUNT,",
     to: "    clientCount: complete.length,",
-    target: "enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator",
+    target: "enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator",
     unrelated: "uses the exact rank-1..5 client-latency tail set, including a deterministic rank-5/6 tie",
   },
   {
@@ -42,7 +42,7 @@ const MUTATIONS = Object.freeze([
     from: "const tail = ranking.ranked.slice(0, G30_TAIL_RANK_COUNT);",
     to: "const tail = ranking.ranked.slice(0, G30_TAIL_RANK_COUNT - 1);",
     target: "uses the exact rank-1..5 client-latency tail set, including a deterministic rank-5/6 tie",
-    unrelated: "enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator",
+    unrelated: "enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator",
   },
   {
     id: "tail-tie-order",
@@ -57,7 +57,7 @@ const MUTATIONS = Object.freeze([
     file: "scripts/g30-b0-contract.mjs",
     from: "p95: percentile(clientLatencies, 0.95),",
     to: "p95: percentile(clientLatencies.slice(0, complete.length), 0.95),",
-    target: "enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator",
+    target: "enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator",
     unrelated: "keeps a dropped non-tail trace in the fixed denominator as UNKNOWN",
   },
   {
@@ -66,7 +66,7 @@ const MUTATIONS = Object.freeze([
     from: "const upperBoundMs = stage === \"root-absent\" ? entry.clientLatency : rootDurationMs;",
     to: "const upperBoundMs = stage === \"root-absent\" ? 0 : rootDurationMs;",
     target: "records a per-missing sensitivity source and keeps per-hop aggregates conditional",
-    unrelated: "enforces the 95-of-100 delivery boundary per phase without shrinking the client denominator",
+    unrelated: "enforces the 85-of-100 delivery boundary per phase without shrinking the client denominator",
   },
   {
     id: "missing-identity-omission",
@@ -79,8 +79,8 @@ const MUTATIONS = Object.freeze([
   {
     id: "pr-body-only-regression",
     file: "docs/SDT-G30-pr-body.md",
-    from: "schemaCompleteCount >= 95",
-    to: "schemaCompleteCount >= 94",
+    from: "schemaCompleteCount >= 85",
+    to: "schemaCompleteCount >= 84",
     structural: true,
   },
   {

@@ -107,8 +107,8 @@ function assertAuthority(evidence) {
   const pin = readJson(resolve(root, "contracts/host-pin.json"));
   const bundle = readJson(resolve(root, "contracts/commit-trace-bundle.json"));
   if (
-    evidence?.authority?.A !== pin.hostCommit || evidence?.authority?.S !== "26fb3b474e22fdb880955b8e7240bdbf605622ee" ||
-    evidence?.authority?.P !== "46d34ad72a1f4ddbf9e7aab7f44d32b3a082b541" || evidence?.authority?.bundleDigest !== bundle.bundleDigest
+    evidence?.authority?.A !== pin.hostCommit || evidence?.authority?.S !== "160b4be0b3752c36425597ed9bc46002a1671cff" ||
+    evidence?.authority?.P !== "7ede7b07a1cd88b315319204059099d319984ec4" || evidence?.authority?.bundleDigest !== bundle.bundleDigest
   ) throw new Error("G30 evidence does not bind the sealed host A/S/P/bundle authority");
 }
 

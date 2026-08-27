@@ -34,7 +34,7 @@
     {
       "hostPath": "intents/sekiban-dcb-ts/intent-tree/means/19-commit-latency.md",
       "targetPath": null,
-      "digest": "sha256:dc9e22ce1744207c0f474e12f555c697f986b2cc68d207ef6cbccad5c141a27c"
+      "digest": "sha256:173ef152786cbeacb468eac5776ef35db3303d594dfbf12c69d5200653b3f571"
     },
     {
       "hostPath": "intents/sekiban-dcb-ts/intent-tree/means/12-bootstrap-import.md",
@@ -52,7 +52,7 @@
       "digest": "sha256:f3483f58e4b7d8d85bc2d95d82e9d12602574b8a67cf6a62ca76b935d7ad168c"
     }
   ],
-  "bundleDigest": "sha256:7fa89d23bbb532d40010f8e39fb002d676e9542abe058a5b326ccfa5940af441",
+  "bundleDigest": "sha256:31f28838c2255b8d45268fea81d3433bb64296098b01bb9857ba973bc3b54391",
   "targetCheckerContract": [
     "verify every mirroredFiles digest against the checked-out target copy at targetPath",
     "recompute bundleDigest from the hostPath+digest sequence and compare",

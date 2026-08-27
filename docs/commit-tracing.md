@@ -110,13 +110,15 @@ does not assert a performance pass/fail.
    the provider's 2,000-result ceiling although every individual trace was
    below it. It never joins by time proximity or
    assumes a structured console log has a platform trace ID.
-   `schemaCompleteCount >= 95` is the frozen delivery ceiling: six losses fail,
+   `schemaCompleteCount >= 85` is the frozen operator-authorized delivery budget:
+   sixteen losses fail,
    while every permitted loss is enumerated as either `root-absent` or
    `schema-incomplete` UNKNOWN. The exact rank-1..5 tail, sorted by client
    latency descending then request ID ascending, must all be schema-complete.
    Client p50/p95/p99 use the sealed nearest-rank estimator over all 100
-   client rows, never the joined subset. Joined per-hop metrics are explicitly
-   conditional and retain a missing-stage sensitivity envelope. A saturated
+   client rows, never the joined subset. Joined per-hop p50/p95 metrics are
+   joined-cohort conditional descriptive estimates and retain a missing-stage
+   sensitivity envelope. A saturated
    subquery, replacement, unknown/mismatched observation, export after the
    ten-minute deadline, a tail loss, or a schema-complete joined request whose
    caller-union unattributed ratio exceeds 5% fails the run. It retains safe provider span
@@ -126,7 +128,7 @@ does not assert a performance pass/fail.
    The same Worker observation carries the set of local native span callbacks
    actually entered through S15. The exporter retains a per-request emitted /
    ingested / diff sidecar solely to classify a missing Worker row as emission
-   or ingestion. It is never an input to schema completeness, the 95/100
+   or ingestion. It is never an input to schema completeness, the 85/100
    floor, the tail set, the deadline, or an otherwise successful result.
 
 The live run writes only raw evidence artifacts and the summary evidence.

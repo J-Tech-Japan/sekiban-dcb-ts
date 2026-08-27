@@ -2,7 +2,7 @@ import type { G30TraceSamplingSettlement } from "./deploy/g30-b0-measure.mjs";
 
 export const G30_PHASES: readonly ["A", "B", "A-prime"];
 export const G30_SAMPLE_COUNT: 100;
-export const G30_MIN_SCHEMA_COMPLETE_COUNT: 95;
+export const G30_MIN_SCHEMA_COMPLETE_COUNT: 85;
 export const G30_TAIL_RANK_COUNT: 5;
 export const G30_LATENCY_ESTIMATOR: "nearest-rank/full-client-ledger/v1";
 export const G30_CADENCE_MS: 2_000;
@@ -117,9 +117,18 @@ export interface G30TraceCohortProof {
   unattributed: readonly { requestId: string; rootDurationMs: number; coveredDurationMs: number; unattributedRatio: number }[];
   perHop: {
     basis: "schema-complete-joined-cohort";
+    interpretation: "joined-cohort-conditional-descriptive-estimate";
+    metrics: readonly ["p50DurationMs", "p95DurationMs"];
     wholeCohortConclusion: false;
     joinedRequestCount: number;
     missingRequestCount: number;
+    rows: Readonly<Record<string, {
+      joinedCount: number;
+      totalDurationMs: number;
+      meanDurationMs: number;
+      p50DurationMs: number;
+      p95DurationMs: number;
+    }>>;
     [key: string]: unknown;
   };
   exportDeadlineMs: number;

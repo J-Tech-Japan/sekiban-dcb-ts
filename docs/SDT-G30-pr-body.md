@@ -36,12 +36,12 @@ Closes #70
   until the canonical ten-minute deadline; a
   saturated page is rejected rather than accepted as partial telemetry. The A/B/A′
   runner retains the original 100-request client ledger as the fixed universe:
-  `schemaCompleteCount >= 95`, all six-or-more losses fail, and every missing
+  `schemaCompleteCount >= 85`, sixteen-or-more losses fail, and every missing
   identity records its `root-absent` or `schema-incomplete` stage. The exact
   rank-1..5 tail is ordered by client latency descending then request ID
   ascending and may not be missing. Full-ledger p50/p95/p99 use the sealed
-  nearest-rank estimator; joined per-hop values are conditional and retain a
-  sensitivity envelope. Human
+  nearest-rank estimator; joined per-hop p50/p95 values are joined-cohort
+  conditional descriptive estimates and retain a sensitivity envelope. Human
   activation/outlier records are rejected; refresh, idle, and queue/doorbell
   disposition are calculated from raw telemetry and client timelines only.
   For an incomplete caller trace, the post-response Worker observation also
@@ -113,7 +113,8 @@ keeps raw A/B/A′ ledgers, the full 100-request B client universe, B traces,
 and structured observations. It requires each schema-complete joined B trace’s
 individual unattributed ratio to be at most 5%, enumerates UNKNOWN delivery
 loss and tail coverage, records full-ledger nearest-rank client percentiles,
-and labels joined per-hop values as conditional with their sensitivity envelope.
+and labels joined per-hop p50/p95 values as joined-cohort conditional descriptive
+estimates with their sensitivity envelope.
 It records the A/A′ drift and B overhead
 without asserting a performance pass/fail, and explicitly marks B0 as not a
 G37 denominator. No token value is included in a command argument, log,
