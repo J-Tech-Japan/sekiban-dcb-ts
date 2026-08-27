@@ -19,6 +19,8 @@ import {
 const DEFAULT_SAMPLE_COUNT = 50;
 const MAX_SAMPLE_COUNT = 100;
 const DEFAULT_SETTLE_MS = 60_000;
+const DEFAULT_READY_TIMEOUT_MS = 30_000;
+const READY_RETRY_MS = 2_000;
 const SERVICE_ID = "g32-9043d626fe1149cb";
 const FIXTURE_TAG = "room:g37-speedup";
 const FIXTURE_PAYLOAD = JSON.stringify({ roomId: "g37-speedup", name: "SDT-G37 hop-reduction sample" });
@@ -154,6 +156,41 @@ async function readHead(baseUrl, token) {
   return result.body.lastSortableUniqueId;
 }
 
+/**
+ * A just-deployed Worker can briefly return a platform 5xx while its new
+ * version activates.  Sampling begins only after the authenticated read
+ * path is ready, while retaining each transient failure as evidence instead
+ * of silently treating it as a client latency observation.
+ */
+async function waitForReadyHead(baseUrl, token, timeoutMs) {
+  const startedAtMs = Date.now();
+  const failures = [];
+  for (;;) {
+    try {
+      const head = await readHead(baseUrl, token);
+      return Object.freeze({
+        head,
+        attempts: failures.length + 1,
+        ...(failures.length === 0 ? {} : { transientFailures: Object.freeze(failures) }),
+      });
+    } catch (error) {
+      const evidence = error instanceof Error && "evidence" in error
+        ? error.evidence
+        : undefined;
+      const status = typeof evidence === "object" && evidence !== null && "status" in evidence
+        ? evidence.status
+        : undefined;
+      if (typeof status !== "number" || status < 500 || Date.now() - startedAtMs >= timeoutMs) throw error;
+      failures.push(Object.freeze({
+        status,
+        cfRay: typeof evidence === "object" && evidence !== null && "cfRay" in evidence ? evidence.cfRay : null,
+        observedAtMs: Date.now(),
+      }));
+      await sleep(READY_RETRY_MS);
+    }
+  }
+}
+
 function perHopMedians(traces) {
   const durationsByRow = new Map();
   for (const trace of traces) {
@@ -203,9 +240,11 @@ export async function captureG37Sample({
   sourceCommit,
   sampleCount = DEFAULT_SAMPLE_COUNT,
   settleMs = DEFAULT_SETTLE_MS,
+  readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS,
   deployment,
 }) {
-  const establishedHead = await readHead(baseUrl, token);
+  const readiness = await waitForReadyHead(baseUrl, token, readyTimeoutMs);
+  const establishedHead = readiness.head;
   let head = establishedHead;
   let seed;
   if (head === undefined) {
@@ -273,6 +312,7 @@ export async function captureG37Sample({
     serviceId: SERVICE_ID,
     sampleCount: ledger.length,
     fixture: Object.freeze({ tagDigest: sha(FIXTURE_TAG), payloadDigest: sha(FIXTURE_PAYLOAD), rawValues: "redacted" }),
+    readiness,
     ...(seed === undefined ? {} : { seed }),
     deployment,
     client: summary(ledger.map((entry) => entry.clientLatencyMs)),
@@ -291,6 +331,7 @@ async function main() {
   const sourceCommit = required("--source-commit", argument("--source-commit"));
   const sampleCount = positiveInteger("--samples", argument("--samples", String(DEFAULT_SAMPLE_COUNT)), MAX_SAMPLE_COUNT);
   const settleMs = nonNegativeInteger("--settle-ms", argument("--settle-ms", String(DEFAULT_SETTLE_MS)));
+  const readyTimeoutMs = nonNegativeInteger("--ready-timeout-ms", argument("--ready-timeout-ms", String(DEFAULT_READY_TIMEOUT_MS)));
   const output = argument("--output", `.artifacts/g37-${candidate.replace(/[^a-z0-9._-]/gi, "-")}.json`);
   const priorVersionsPath = argument("--prior-versions");
   const versionsPath = argument("--versions");
@@ -308,7 +349,7 @@ async function main() {
       deploymentMessage,
     );
 
-  const sample = await captureG37Sample({ baseUrl, token, accountId, observabilityToken, template, candidate, sourceCommit, sampleCount, settleMs, deployment });
+  const sample = await captureG37Sample({ baseUrl, token, accountId, observabilityToken, template, candidate, sourceCommit, sampleCount, settleMs, readyTimeoutMs, deployment });
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, `${JSON.stringify(sample, null, 2)}\n`, "utf8");
   console.log(JSON.stringify({ candidate, samples: sample.sampleCount, client: sample.client, telemetry: sample.telemetry }, null, 2));
