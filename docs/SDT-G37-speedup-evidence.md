@@ -143,5 +143,15 @@ manufacture a placement claim.
 
 Adopted: A-5 reservation/admission concurrency (`c2dd342`). Rejected and
 reverted: A-1 and A-2. B-lane and A-3/A-4 were not deployed for the explicit
-evidence/safety reasons above. Final verification and PR CI status are added
-with the closeout commit.
+evidence/safety reasons above.
+
+## Verification
+
+`npm run check` passed against a newly created, isolated local PostgreSQL
+database on 2026-08-27. This covers lint, type checking, 593 Vitest tests
+(one existing skip), the provider/contract checks, and all retained candidate
+gates. A pre-existing shared local database initially produced unrelated
+PostgreSQL queue/FK residue failures; the same affected integration suites
+passed 57/57 against the isolated database, so the candidate was verified
+without mutating shared test state. `git diff --check` also passed. PR CI is
+the independent final verification record.
