@@ -275,6 +275,7 @@ function nonSuccessWorker(
   options: Readonly<{
     nativeTracing?: NativeTracing;
     workerObservationSink?: { emit(event: ObservationEvent): void };
+    bootstrapPaths?: string[];
   }> = {},
 ): CommitWorker {
   const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -284,7 +285,10 @@ function nonSuccessWorker(
   const stubFor = (kind: "bootstrap" | "journal" | "allocator" | "tag") => ({
     fetch: async (request: Request): Promise<Response> => {
       const url = new URL(request.url);
-      if (kind === "bootstrap") return response({ leaseEpoch: 1 });
+      if (kind === "bootstrap") {
+        options.bootstrapPaths?.push(url.pathname);
+        return response({ leaseEpoch: 1 });
+      }
       if (kind === "journal") {
         if (url.pathname === "/admit") return response({ state: "ADMITTED", version: 0, ownerEpoch: 0 }, 201);
         if (url.pathname === "/transition") {
@@ -745,6 +749,34 @@ describe("SDT-G30 runtime trace verifier", () => {
       "tag.key_hash": stableTraceHash("room:g30-success"),
     });
     expect(captured.runtimeVerification).toEqual({ passed: true });
+  });
+
+  it("uses one atomic BOOTSTRAP entry round while retaining the final-write fence", async () => {
+    const snapshots: CommitTraceSnapshot[] = [];
+    const bootstrapPaths: string[] = [];
+    const tags = ["room:g37-admit-release"];
+    const worker = nonSuccessWorker("success", snapshots, tags, { bootstrapPaths });
+
+    const response = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        version: 1,
+        eventCandidates: [{
+          payload: btoa(JSON.stringify({ roomId: "g37-admit-release" })),
+          eventPayloadName: "Trace",
+          tags,
+        }],
+        consistencyTags: tags.map((tag) => ({
+          tag,
+          lastSortableUniqueId: "063891500000000000000000000000",
+        })),
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(bootstrapPaths).toEqual(["/command/admit-release", "/command/finalize"]);
+    expect(emittedRows(snapshots[0]!)).toEqual(expect.arrayContaining(["S02", "S03", "S10"]));
   });
 
   it("records every native-emitted Worker row in the post-response observation", async () => {
