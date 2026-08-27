@@ -16,7 +16,7 @@ const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 const MUTATIONS = Object.freeze([
   {
     id: "runtime-witness-protocol-in-worker",
-    file: "samples/meeting-room/src/worker.cloudflare-only.ts",
+    file: "samples/meeting-room/src/worker.cloudflare-env.ts",
     from: "  readonly G32_FREEZE_RELEASE?: string;",
     to: "  readonly G32_FREEZE_RELEASE?: string;\n  readonly G30_SOURCE_COMMIT?: string;",
   },
