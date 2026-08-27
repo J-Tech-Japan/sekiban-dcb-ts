@@ -495,9 +495,15 @@ export class CommitWorker {
       eventId: createUuidV7(startedAt),
       timestamp: writeTimestamp,
     }));
-    const bootstrapEpoch = await this.bootstrapAdmitAndRelease(attemptId, traceState?.scope);
+    const bootstrapEpoch = await this.bootstrapCommand("admit", attemptId, undefined, traceState?.scope, "S02");
     if (bootstrapEpoch === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap is importing; commit is unavailable"), attemptId, fault !== undefined);
+    }
+    // Admission only linearizes the entry check.  Do not retain it through
+    // remote work: PLANNED may start after in-flight work reaches zero, and
+    // the epoch check at the authoritative write is what fences that race.
+    if ((await this.bootstrapCommand("release", attemptId, bootstrapEpoch, traceState?.scope, "S03")) === undefined) {
+      return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap admission could not be released"), attemptId, fault !== undefined);
     }
     try {
     const journal = this.journalFor(attemptId);
@@ -604,7 +610,7 @@ export class CommitWorker {
         fault !== undefined,
       );
     }
-    } finally { /* the entry admission was atomically recorded as released above */ }
+    } finally { /* the entry admission was deliberately released above */ }
   }
 
   private journalFor(attemptId: string): DurableObjectStub {
@@ -613,37 +619,6 @@ export class CommitWorker {
 
   private tagFor(tag: string): DurableObjectStub {
     return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
-  }
-
-  /**
-   * A-2: collapse the entry-only admit/release pair into one BOOTSTRAP
-   * transaction.  S02 and S03 remain distinct observations because the
-   * manifest is immutable; both deliberately describe the same physical
-   * service-binding round and must therefore not be added as serial time.
-   */
-  private async bootstrapAdmitAndRelease(
-    commandId: string,
-    traceScope?: CommitTraceScope,
-  ): Promise<number | undefined> {
-    if (this.env.BOOTSTRAP === undefined) return 0;
-    const invoke = async (): Promise<{ readonly leaseEpoch: number | undefined }> => {
-      const url = new URL("https://commit-worker.internal/command/admit-release");
-      url.searchParams.set("__serviceId", this.serviceId);
-      const response = await this.env.BOOTSTRAP!.get(this.env.BOOTSTRAP!.idFromName(this.serviceId)).fetch(new Request(url, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId }),
-      }));
-      if (!response.ok) return { leaseEpoch: undefined };
-      const body = await response.clone().json().catch(() => undefined) as { leaseEpoch?: unknown } | undefined;
-      return { leaseEpoch: typeof body?.leaseEpoch === "number" ? body.leaseEpoch : undefined };
-    };
-    const admitted = traceScope === undefined
-      ? await invoke()
-      : await traceScope.span("S02", {}, invoke);
-    // A rejected atomic command never reaches the release sub-operation.
-    // On success, retain the existing S03 observation as the local completion
-    // of that sub-operation; it intentionally has no second DO round.
-    if (admitted.leaseEpoch === undefined || traceScope === undefined) return admitted.leaseEpoch;
-    return (await traceScope.span("S03", {}, async () => admitted)).leaseEpoch;
   }
 
   private async bootstrapCommand(

@@ -69,26 +69,6 @@ describe("SDT-G21 bootstrap core", () => {
     expect(tag.status).toBe(409);
   });
 
-  it("atomically records entry admission as released and retains its stale epoch for the final fence", async () => {
-    const serviceId = `bootstrap-admit-release-${crypto.randomUUID()}`;
-    const first = await post(serviceId, "/command/admit-release", { commandId: "atomic-command" });
-    expect(first.status).toBe(200);
-    const { leaseEpoch } = await first.json<{ leaseEpoch: number }>();
-    const beforePlan = await (await SELF.fetch(`https://bootstrap.test/bootstrap/${encodeURIComponent(serviceId)}/state`)).json<{
-      normalInFlight: number; normalCommands: Record<string, number>; releasedCommands: Record<string, number>;
-    }>();
-    expect(beforePlan).toMatchObject({ normalInFlight: 0, normalCommands: {}, releasedCommands: { "atomic-command": leaseEpoch } });
-
-    // The entry check is no longer held across a second RPC, so a plan may
-    // start immediately.  A replayed pair retains its original epoch and can
-    // never bypass the authoritative final-write fence after that advance.
-    expect((await post(serviceId, "/plan", { importId: "atomic-plan", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
-    const replay = await post(serviceId, "/command/admit-release", { commandId: "atomic-command" });
-    expect(replay.status).toBe(200);
-    expect(await replay.json()).toMatchObject({ leaseEpoch });
-    expect((await post(serviceId, "/command/finalize", { commandId: "atomic-command", leaseEpoch })).status).toBe(409);
-  });
-
   it("uses the serving allocator lineage after READY so a real commit reaches the downstream store query", async () => {
     const serviceId = `ready-delivery-${crypto.randomUUID()}`;
     const servingAllocator = await allocatorPost(allocatorNameForService(serviceId), "/state", undefined);

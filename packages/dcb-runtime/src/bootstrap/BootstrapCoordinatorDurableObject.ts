@@ -24,7 +24,7 @@ const response = (body: unknown, status = 200) => new Response(JSON.stringify(bo
 const reject = (code: string, message: string, status = 409) => response({ code, error: message }, status);
 
 interface BootstrapCoordinatorEnv { TAG: DurableObjectNamespace; ALLOCATOR: DurableObjectNamespace; }
-type CommandAction = "admit" | "admit-release" | "finalize" | "release";
+type CommandAction = "admit" | "finalize" | "release";
 type FaultPoint = "mode-record" | "tag-chunk" | "store-progress-gap" | "allocator-seed" | "verifying" | "ready-cas";
 
 function empty(serviceId: string): BootstrapControlRecord {
@@ -55,7 +55,6 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     if (!string(serviceId)) return reject("bootstrap_service_required", "target service identity is required", 400);
     if (request.method === "GET" && url.pathname === "/state") return response(await this.control(serviceId));
     if (request.method === "POST" && url.pathname === "/command/admit") return this.traceCommand(request, serviceId, activation, observation, "admit");
-    if (request.method === "POST" && url.pathname === "/command/admit-release") return this.traceCommand(request, serviceId, activation, observation, "admit-release");
     if (request.method === "POST" && url.pathname === "/command/finalize") return this.traceCommand(request, serviceId, activation, observation, "finalize");
     if (request.method === "POST" && url.pathname === "/command/release") return this.traceCommand(request, serviceId, activation, observation, "release");
     let body: unknown; try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
@@ -74,7 +73,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     serviceId: string,
     activation: DurableObjectActivationObservation,
     observation: DurableObjectHandlerObservation,
-    action: CommandAction,
+    action: "admit" | "finalize" | "release",
   ): Promise<Response> {
     return enterNativeActorHandleSpan(
       this.nativeTracing,
@@ -246,24 +245,6 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     const result = await this.ctx.storage.transaction(async (txn) => {
       const control = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); const current = commands(control); const completed = released(control);
       if (action === "admit") { if (control.status !== "EMPTY" && control.status !== "READY") return { rejected: true }; if (current[commandId] !== undefined) return { control }; current[commandId] = control.leaseEpoch; const updated = { ...control, normalInFlight: Object.keys(current).length, normalCommands: current }; await txn.put(CONTROL, updated); return { control: updated }; }
-      // Normal commits only need admission as a linearized entry check.  The
-      // authoritative mutation remains protected by /finalize, so record an
-      // immediately released command in the same transaction rather than
-      // holding normalInFlight across a separate caller↔BOOTSTRAP round.
-      // A lost response is idempotent: retain the original epoch even after a
-      // bootstrap plan advances the coordinator epoch, where /finalize will
-      // correctly reject the stale commit before any tag mutation.
-      if (action === "admit-release") {
-        if (current[commandId] !== undefined) return { rejected: true };
-        const releasedEpoch = completed[commandId];
-        if (releasedEpoch !== undefined) return { control, leaseEpoch: releasedEpoch };
-        if (control.status !== "EMPTY" && control.status !== "READY") return { rejected: true };
-        completed[commandId] = control.leaseEpoch;
-        for (const stale of Object.keys(completed).slice(0, Math.max(0, Object.keys(completed).length - MAX_RELEASED_COMMANDS))) delete completed[stale];
-        const updated = { ...control, normalInFlight: Object.keys(current).length, normalCommands: current, releasedCommands: completed };
-        await txn.put(CONTROL, updated);
-        return { control: updated, leaseEpoch: control.leaseEpoch };
-      }
       const expectedEpoch = body.leaseEpoch;
       // Release is cleanup only and may be retried after a lost response; it
       // may never authorize a mutation. Finalize retains the strict epoch CAS.
@@ -271,6 +252,6 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
       if (!epoch(expectedEpoch) || (current[commandId] !== expectedEpoch && completed[commandId] !== expectedEpoch) || control.leaseEpoch !== expectedEpoch || (control.status !== "EMPTY" && control.status !== "READY")) return { rejected: true };
       return { control };
     });
-    return "rejected" in result ? reject("bootstrap_command_rejected", "bootstrap epoch rejects normal durable mutation") : response({ leaseEpoch: result.leaseEpoch ?? result.control.leaseEpoch, admitted: true });
+    return "rejected" in result ? reject("bootstrap_command_rejected", "bootstrap epoch rejects normal durable mutation") : response({ leaseEpoch: result.control.leaseEpoch, admitted: true });
   }
 }
