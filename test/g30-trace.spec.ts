@@ -732,7 +732,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const captured = await successTrace();
 
     expect(emittedRows(captured)).toEqual([
-      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S07", "S08",
+      "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S05a", "S08",
       "S05b", "S05c", "S10", "S11", "S12", "S05d", "S13", "S14", "S15",
     ]);
     expect(captured.spans.some((entry) => entry.rowId === "S09")).toBe(false);
@@ -778,7 +778,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const workerObservation = observations.find((event): event is Extract<ObservationEvent, { event: "worker.invocation" }> => event.event === "worker.invocation");
     expect(workerObservation).toBeDefined();
     expect(workerObservation!.emittedWorkerRowIds).toEqual([
-      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S07", "S08",
+      "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S05a", "S08",
       "S05b", "S05c", "S10", "S11", "S12", "S05d", "S13", "S14", "S15",
     ]);
     // The sidecar comes from native Worker callbacks only; allocator S09 is
@@ -792,7 +792,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const captured = await nonSuccessTrace("reservation-failure", tags);
 
     expect(emittedRows(captured)).toEqual([
-      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S07", "S07",
+      "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S07", "S05a",
       "S17", "S18", "S19", "S19", "S05e", "S15",
     ]);
     expect(captured.spans.filter((entry) => entry.rowId === "S07").map((entry) => entry.attributes)).toEqual([
@@ -812,7 +812,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const captured = await nonSuccessTrace("allocator-failure", tags);
 
     expect(emittedRows(captured)).toEqual([
-      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S07", "S07", "S08",
+      "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S07", "S05a", "S08",
       "S17", "S18", "S19", "S19", "S05e", "S15",
     ]);
     expect(captured.spans.filter((entry) => entry.rowId === "S07").map((entry) => entry.attributes)).toEqual([
@@ -836,7 +836,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const rows = emittedRows(captured);
 
     expect(rows).toEqual([
-      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S07", "S08",
+      "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S05a", "S08",
       "S05b", "S05c", "S10", "S11", "S12", "S11", "S12", "S20", "S15",
     ]);
     expect(captured.spans.filter((entry) => entry.rowId === "S11").map((entry) => entry.attributes["retry.index"])).toEqual([0, 1]);
@@ -934,7 +934,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const captured = snapshots.at(-1);
     expect(captured).toBeDefined();
     expect(emittedRows(captured!)).toEqual([
-      "S00", "S01", "S02", "S03", "S04", "S05a", "S06", "S08",
+      "S00", "S01", "S02", "S03", "S04", "S06", "S05a", "S08",
       "S05b", "S05c", "S10", "S11", "S12", "S05d", "S13", "S14", "S15",
     ]);
     const s14 = captured!.spans.filter((entry) => entry.rowId === "S14");

@@ -507,7 +507,13 @@ export class CommitWorker {
     }
     try {
     const journal = this.journalFor(attemptId);
-    const admitted = await this.postJson<JournalRecord>(journal, "/admit", {
+    // Journal admission and tag reservation are independent rounds. Start
+    // both before waiting for either response so the successful path overlaps
+    // S04 with S06/S07. No allocation or append can start until a durable
+    // RESERVED transition and every acquire have both settled. A crash before
+    // Journal durability leaves only the Tag's bounded reservation lease; a
+    // rejected admission actively tombstones every observed lease below.
+    const admission = this.postJson<JournalRecord>(journal, "/admit", {
       candidates: candidates.map(({ eventId, payload, eventType, tags, timestamp }) => ({ eventId, payload, eventType, tags, timestamp })),
       consistencyTags: input.consistencyTags,
       commitContext: {
@@ -517,7 +523,18 @@ export class CommitWorker {
         ...(fault === "fence-install-partial" ? { testFenceInstallFaultOnce: true } : {}),
       },
     }, traceState?.scope, "S04");
+    const reservationAttempt = this.acquireReservations(input, attemptId, fault, traceState?.scope);
+    const admitted = await admission;
     if (admitted.response.status !== 201 || admitted.body === undefined) {
+      const reservations = await reservationAttempt;
+      if (reservations.successes.size > 0 && !await this.cancelReservations(
+        input.consistencyTags,
+        attemptId,
+        fault,
+        traceState?.scope,
+      )) {
+        return this.noApplicationOutcome(attemptId, fault !== undefined);
+      }
       return responseWithAttempt(error(500, "internal_error", "Commit Journal admission failed"), attemptId, fault !== undefined);
     }
 
@@ -528,7 +545,7 @@ export class CommitWorker {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
 
-    const reservations = await this.acquireReservations(input, attemptId, fault, traceState?.scope);
+    const reservations = await reservationAttempt;
     if (reservations.failure !== undefined) {
       return this.finishReservationFailure(
         journal,
@@ -946,6 +963,37 @@ export class CommitWorker {
     return this.noApplicationOutcome(attemptId, fault !== undefined);
   }
 
+  /**
+   * Settle the same force-tombstone barrier used by the durable reservation
+   * failure path.  A concurrently-started admission can reject after one or
+   * more acquire calls have succeeded; in that branch there is no terminal
+   * Journal record to perform this cleanup on the caller's behalf.
+   */
+  private async cancelReservations(
+    consistencyTags: ConsistencyTag[],
+    attemptId: string,
+    fault: CommitTestFault | undefined,
+    traceScope?: CommitTraceScope,
+  ): Promise<boolean> {
+    const cancel = (stageScope?: CommitTraceScope) => Promise.allSettled(
+      consistencyTags.map(async ({ tag }, memberIndex) => {
+        const response = await this.tagRequest(tag, "/cancel", {
+          attemptId,
+          epoch: INITIAL_OWNER_EPOCH,
+          forceTombstone: true,
+        }, stageScope?.fork(), stageScope === undefined ? undefined : "S19", { memberIndex, attemptId });
+        return response.status >= 200 && response.status < 300;
+      }),
+    );
+    const cancelled = traceScope === undefined
+      ? await cancel()
+      : await traceScope.span("S18", {}, async (stage) => cancel(stage));
+    if (!cancelled.every((result) => result.status === "fulfilled" && result.value)) {
+      return false;
+    }
+    return fault !== "tombstone-after-durable";
+  }
+
   private async finishReservationFailure(
     journal: DurableObjectStub,
     reserved: JournalRecord,
@@ -966,24 +1014,8 @@ export class CommitWorker {
     if (classified.response.status !== 200 || classified.body === undefined) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
-    const cancel = (stageScope?: CommitTraceScope) => Promise.allSettled(
-      consistencyTags.map(async ({ tag }, memberIndex) => {
-        const response = await this.tagRequest(tag, "/cancel", {
-          attemptId,
-          epoch: INITIAL_OWNER_EPOCH,
-          forceTombstone: true,
-        }, stageScope?.fork(), stageScope === undefined ? undefined : "S19", { memberIndex, attemptId });
-        return response.status >= 200 && response.status < 300;
-      }),
-    );
-    const cancelled = traceScope === undefined
-      ? await cancel()
-      : await traceScope.span("S18", {}, async (stage) => cancel(stage));
-    if (!cancelled.every((result) => result.status === "fulfilled" && result.value)) {
+    if (!await this.cancelReservations(consistencyTags, attemptId, fault, traceScope)) {
       return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-    if (fault === "tombstone-after-durable") {
-      return this.noApplicationOutcome(attemptId, true);
     }
     const terminal = await this.transition(journal, classified.body, failure.outcome, failure.reason, undefined, traceScope);
     if (terminal === undefined) {
