@@ -3,9 +3,17 @@ import {
   createCloudflareOnlyRuntimeWorker,
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
+  cleanupG42JournalProbeTrial,
+  G42_JOURNAL_PROBE_PATH,
+  inventoryG42JournalProbeTrial,
   JournalDurableObject,
+  measureG42JournalProbeTrial,
+  parseG42JournalProbeRequest,
+  prepareG42JournalProbeTrial,
   readDirectDoorbellConfig,
+  runG42JournalProbeTrial,
   TagDurableObject,
+  type G42JournalProbeRequest,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
@@ -102,6 +110,40 @@ function positiveInteger(value: string | null, name: string, fallback: number): 
   return parsed;
 }
 
+type G42ProbeRouteInput =
+  | Readonly<{ kind: "not-g42" }>
+  | Readonly<{ kind: "invalid"; error: string }>
+  | Readonly<{ kind: "valid"; value: G42JournalProbeRequest }>;
+
+/**
+ * This parser deliberately runs before the G32 fence only for G42's one
+ * exact conformance endpoint.  It cannot touch a Durable Object; the fence
+ * remains mandatory before a valid request is allowed to resolve JOURNAL.
+ */
+async function g42ProbeRouteInput(request: Request, url: URL): Promise<G42ProbeRouteInput> {
+  if (url.pathname !== G42_JOURNAL_PROBE_PATH) return { kind: "not-g42" };
+  if (request.method !== "POST") return { kind: "invalid", error: "G42 probe requires POST" };
+  if (url.search.length !== 0) return { kind: "invalid", error: "G42 probe query must be empty" };
+  if (request.headers.get("content-type") !== "application/json") {
+    return { kind: "invalid", error: "G42 probe content-type must be application/json" };
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(await request.text()) as unknown;
+  } catch {
+    return { kind: "invalid", error: "G42 probe body must be JSON" };
+  }
+  const parsed = parseG42JournalProbeRequest(body);
+  return "value" in parsed
+    ? { kind: "valid", value: parsed.value }
+    : { kind: "invalid", error: parsed.error };
+}
+
+function callerColo(request: Request): string | null {
+  const cf = request.cf as unknown as { colo?: unknown } | undefined;
+  return typeof cf?.colo === "string" && cf.colo.length > 0 ? cf.colo : null;
+}
+
 async function readProjection(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {
   if (request.method !== "GET") return json({ error: "Projection routes require GET", code: "validation_error" }, 400);
   const url = new URL(request.url);
@@ -186,12 +228,44 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
   if (componentReject !== undefined) return componentReject;
   const supplied = request.headers.get("authorization");
   if (env.CONFORMANCE_TOKEN === undefined || supplied !== `Bearer ${env.CONFORMANCE_TOKEN}`) return json({ error: "Conformance authentication required", code: "unauthorized" }, 403);
+  const url = new URL(request.url);
+  const g42 = await g42ProbeRouteInput(request, url);
+  if (g42.kind === "invalid") {
+    // Exact method/path/query/content-type/schema validation deliberately
+    // precedes both the cutover fence and Durable Object namespace lookup.
+    return json({ error: g42.error, code: "g42_probe_validation_error" }, 400);
+  }
+  if (g42.kind === "valid") {
+    try {
+      await assertFinalCutoverFenceIfConfigured(env);
+    } catch {
+      return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+    }
+    try {
+      if (g42.value.action === "trial") {
+        return json(await runG42JournalProbeTrial(env.JOURNAL, g42.value, callerColo(request)));
+      }
+      if (g42.value.action === "prepare") {
+        return json(await prepareG42JournalProbeTrial(env.JOURNAL, g42.value));
+      }
+      if (g42.value.action === "measure") {
+        return json(await measureG42JournalProbeTrial(env.JOURNAL, g42.value, callerColo(request)));
+      }
+      if (g42.value.action === "cleanup") {
+        return json(await cleanupG42JournalProbeTrial(env.JOURNAL, g42.value));
+      }
+      return json(await inventoryG42JournalProbeTrial(env.JOURNAL, g42.value));
+    } catch {
+      // Conformance authentication grants diagnostic access but does not make
+      // internal Journal error text part of a public/protocol response.
+      return json({ error: "G42 Journal probe could not complete", code: "g42_probe_unavailable" }, 503);
+    }
+  }
   try {
     await assertFinalCutoverFenceIfConfigured(env);
   } catch {
     return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
   }
-  const url = new URL(request.url);
   if (url.pathname === "/conformance/v1/g26-config") {
     const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
     return json({

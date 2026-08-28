@@ -1,0 +1,33 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.127.0)
+───────────────────────────────────────────────
+✨ Read 7 files from the assets directory /private/tmp/sdt-g42-candidate-bf89c0d/samples/meeting-room/public
+Total Upload: 2043.85 KiB / gzip: 335.11 KiB
+Your Worker has access to the following bindings:
+Binding                                                                                                      Resource                     
+env.ALLOCATOR (AllocatorDurableObject)                                                                       Durable Object               
+env.JOURNAL (JournalDurableObject)                                                                           Durable Object               
+env.TAG (TagDurableObject)                                                                                   Durable Object               
+env.BOOTSTRAP (BootstrapCoordinatorDurableObject)                                                            Durable Object               
+env.DOWNSTREAM_QUEUE (sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox)                                  Queue                        
+env.D1 (sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline)                                              D1 Database                  
+env.D1_MV (sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv)                                                 D1 Database                  
+env.DOWNSTREAM_DOORBELL (sekiban-dcb-meeting-room-doorbell#MeetingRoomDownstreamDoorbell)                    Worker                       
+env.WORKER_VERSION                                                                                           Worker Version Metadata      
+env.AUTO_DRAIN_OUTBOX ("true")                                                                               Environment Variable         
+env.DOMAIN_DELIVERY_CLASS ("immediate-preferred")                                                            Environment Variable         
+env.DIRECT_DOORBELL ("true")                                                                                 Environment Variable         
+env.DIRECT_DOORBELL_ALLOWED_VIEWS ("RoomProjector,ReservationProjector")                                     Environment Variable         
+env.DIRECT_DOORBELL_MAX_INVOCATIONS ("32")                                                                   Environment Variable         
+env.DIRECT_DOORBELL_DEGRADATION ("queued-degraded")                                                          Environment Variable         
+env.DIRECT_DOORBELL_RECEIVER_MODE ("separate")                                                               Environment Variable         
+env.G26_VIEW_COUNT ("2")                                                                                     Environment Variable         
+env.G32_CUTOVER_PHASE ("final-g32")                                                                          Environment Variable         
+env.G32_FREEZE_RELEASE ("after-new-bindings")                                                                Environment Variable         
+env.G32_COMPONENT ("primary")                                                                                Environment Variable         
+env.G32_PIPELINE_DATABASE_ID ("eccf6048-7fc8-4412-a157-9fa180353f6d")                                        Environment Variable         
+env.G32_MATERIALIZED_VIEW_DATABASE_ID ("c733dfb2-013a-4a5d-a72c-47931a63bac4")                               Environment Variable         
+env.G32_QUEUE_NAME ("sekiban-dcb-meeting-room-g32-9043d626...")                                              Environment Variable         
+env.SDT_SERVICE_ID ("(hidden)")                                                                              Environment Variable         
+
+--dry-run: exiting now.

@@ -259,6 +259,43 @@ export {
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
 export { observeFaultBarrier } from "./trace/ObservationStream";
+export {
+  G42_JOURNAL_PROBE_ALARM_KEY,
+  G42_JOURNAL_PROBE_IDENTITY_PREFIX,
+  G42_JOURNAL_PROBE_INDEX_KEY,
+  G42_JOURNAL_PROBE_INTERNAL_PREFIX,
+  G42_JOURNAL_PROBE_LOGICAL_KEY_PREFIX,
+  G42_JOURNAL_PROBE_PATH,
+  G42_JOURNAL_PROBE_SCHEMA,
+  G42_JOURNAL_PROBE_STORAGE_PREFIX,
+  cleanupG42JournalProbeTrial,
+  g42ProbeStorageKey,
+  inventoryG42JournalProbeTrial,
+  isG42ProbeIdentity,
+  isG42ProbeLogicalKey,
+  parseG42JournalProbeRequest,
+  prepareG42JournalProbeTrial,
+  measureG42JournalProbeTrial,
+  runG42JournalProbeTrial,
+} from "./journal/JournalFirstTouchProbe";
+export type {
+  G42JournalProbeCleanup,
+  G42JournalProbeCleanupReceipt,
+  G42JournalProbeInventory,
+  G42JournalProbeInventoryReceipt,
+  G42JournalProbeMeasurement,
+  G42JournalProbeMeasurementReceipt,
+  G42JournalProbePreparation,
+  G42JournalProbePreparationReceipt,
+  G42JournalProbeRequest,
+  G42JournalProbeTrial,
+  G42JournalProbeTrialReceipt,
+  G42ProbeActivationFact,
+  G42ProbeAlarmMode,
+  G42ProbeCell,
+  G42ProbeMediator,
+  G42ProbeOperationResult,
+} from "./journal/JournalFirstTouchProbe";
 export type {
   DeliveryClass,
   DownstreamDoorbellBinding,

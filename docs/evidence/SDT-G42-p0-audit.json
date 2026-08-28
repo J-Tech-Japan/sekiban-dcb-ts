@@ -1,0 +1,98 @@
+{
+  "schema": "sdt.g42.p0-audit/v1",
+  "outcome": "PARTIAL",
+  "cohort": {
+    "source": "SDT-G37 A-5 repeat final cohort",
+    "expectedIdentityCount": 50,
+    "joinedIdentityCount": 46,
+    "exactJoinedIdentityCount": 0,
+    "unknownIdentityCount": 4
+  },
+  "query": {
+    "request": {
+      "method": "POST",
+      "endpoint": "/accounts/{account}/workers/observability/telemetry/query",
+      "chain": "exact client cf-ray -> worker observation correlation -> S00 traceId -> trace and sdt.observe/v1 correlation queries",
+      "template": {
+        "queryId": "sdt-g37-speedup-telemetry-v1",
+        "view": "events",
+        "limit": 2000,
+        "dry": true,
+        "filterCombination": "or",
+        "workerFilters": [
+          "sekiban-dcb-meeting-room-cloudflare-only",
+          "sekiban-dcb-meeting-room-doorbell"
+        ],
+        "timeframe": {
+          "from": 1787856112008,
+          "to": 1787856825924
+        }
+      },
+      "cohortIdentityCount": 50,
+      "identityHandling": "The local source retained exact fixture CF-Ray IDs. This committed audit preserves only ordinal/hash failure identities."
+    },
+    "response": {
+      "availability": "AVAILABLE",
+      "observedAt": "2026-08-28T05:02:01.546Z",
+      "rawEventCount": 8656
+    },
+    "providerRetention": {
+      "source": "Workers Logs retention is provider/config dependent and short (commonly 3 or 7 days); availability is measured by this bounded read-only query, not inferred from missing joins.",
+      "queryMode": "bounded exact cohort identities"
+    }
+  },
+  "unknowns": [
+    { "ordinal": 31, "identityHash": "9a81a162e93f2246", "stage": "journal-handler-absent" },
+    { "ordinal": 36, "identityHash": "1292b32db80d9d28", "stage": "journal-handler-absent" },
+    { "ordinal": 45, "identityHash": "2a440febea771a9f", "stage": "journal-handler-absent" },
+    { "ordinal": 48, "identityHash": "0c3f4eeeb1cd85da", "stage": "journal-handler-absent" }
+  ],
+  "correlationGroupSummary": {
+    "activationIdCountHistogram": { "1": 46 },
+    "handlerFactCountHistogram": { "4": 2, "5": 44 },
+    "interpretation": "At correlation-group scope, all 46 joined request groups retain one Journal activation ID. Existing do.handler facts do not retain S04/S05 row identity, so no individual S04 or S05 fact is inferred from observation order."
+  },
+  "exactS04Conclusions": {
+    "mappedIdentityCount": 0,
+    "activationFirstTrueCount": 0,
+    "activationFirstFalseCount": 0,
+    "activationFirstUnknownCount": 50,
+    "sharesActivationIdWithAllS05TrueCount": 0,
+    "sharesActivationIdWithAllS05FalseCount": 0,
+    "sharesActivationIdUnknownCount": 50,
+    "statement": "P0 remains PARTIAL: every S04-specific activation claim is UNKNOWN, rather than inferred from correlation-group ordering."
+  },
+  "distributions": {
+    "journalHandlerConstructorToHandlerMs": {
+      "count": 228,
+      "min": 0,
+      "p50": 147,
+      "p95": 452,
+      "max": 2687,
+      "histogram": {
+        "0": 46,
+        "25-49": 16,
+        "50-99": 28,
+        "100-199": 59,
+        "200-399": 63,
+        "400-799": 12,
+        "800-1599": 2,
+        "1600-3199": 2
+      }
+    },
+    "journalHandlerFirstStorageReadMs": {
+      "count": 228,
+      "min": 0,
+      "p50": 0,
+      "p95": 0,
+      "max": 0,
+      "histogram": { "0": 228 }
+    },
+    "scope": "All correlation-joined JOURNAL do.handler facts; no per-row S04 distribution is claimed."
+  },
+  "semanticLimits": {
+    "constructorToHandlerMs": "Begins only after the platform has instantiated the JavaScript class. It excludes routing, placement, and pre-construction startup; it is not a platform cold-start timer.",
+    "firstStorageReadMs": "Captured immediately before the first durable read or transaction begins. It is handler-entry-to-storage-touch, not storage-read latency."
+  },
+  "noNewTraffic": true
+}

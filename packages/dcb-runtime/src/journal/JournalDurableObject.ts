@@ -40,12 +40,23 @@ import {
   beginDurableObjectHandlerObservation,
   type DurableObjectHandlerObservation,
 } from "../trace/ObservationStream";
+import {
+  G42_JOURNAL_PROBE_ALARM_KEY,
+  G42_JOURNAL_PROBE_INTERNAL_PREFIX,
+  G42_JOURNAL_PROBE_SCHEMA,
+  G42_JOURNAL_PROBE_INDEX_KEY,
+  g42ProbeStorageKey,
+  isG42ProbeLogicalKey,
+  type G42ProbeActivationFact,
+} from "./JournalFirstTouchProbe";
 
 const JOURNAL_KEY = "journal";
 const INITIAL_ALARM_DELAY_MS = 5_000;
 export const MAX_ALARM_BACKOFF_MS = 30_000;
 const ALARM_BACKOFF_BASE_MS = 250;
 const TEST_FAULT_ALARM_DELAY_MS = 60_000;
+/** The probe alarm is deliberately far outside its measurement interval. */
+const G42_PROBE_ALARM_DELAY_MS = 24 * 60 * 60 * 1_000;
 
 type JsonObject = Record<string, unknown>;
 
@@ -75,6 +86,38 @@ interface FaultInput extends CasExpectation {
 }
 
 interface ReservationFailureInput extends CasExpectation, ReservationFailure {}
+
+interface G42ProbeRecord {
+  readonly schema: typeof G42_JOURNAL_PROBE_SCHEMA;
+  readonly trialId: string;
+  readonly logicalKey: string;
+  readonly recordKind: "warmup" | "measure";
+  readonly payload: string;
+  readonly createdAtMs: number;
+}
+
+interface G42ProbeIndex {
+  readonly schema: typeof G42_JOURNAL_PROBE_SCHEMA;
+  readonly logicalKeys: readonly string[];
+  /** D warm-up trial IDs, read with the same index read as every cell. */
+  readonly warmupTrialIds: readonly string[];
+}
+
+interface G42ProbeAlarmMarker {
+  readonly schema: typeof G42_JOURNAL_PROBE_SCHEMA;
+  readonly dueAt: number;
+}
+
+interface G42ProbeInternalRequest {
+  readonly action: "ping" | "state" | "write" | "cleanup" | "inventory";
+  readonly trialId: string;
+  readonly cell?: "A" | "B" | "C" | "D";
+  readonly logicalKey?: string;
+  readonly recordKind?: "warmup" | "measure";
+  readonly payload?: string;
+  readonly alarmMode?: "on" | "off";
+  readonly requestBytes: number;
+}
 
 type RepairObservationInput = Omit<RepairObservation, "observedAt">;
 
@@ -252,6 +295,74 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function g42ProbeInternalRequest(value: unknown, requestBytes: number): { value?: G42ProbeInternalRequest; error?: string } {
+  if (!isObject(value) || value.schema !== G42_JOURNAL_PROBE_SCHEMA || !isNonEmptyString(value.trialId)) {
+    return { error: "G42 probe request requires its schema and trialId" };
+  }
+  if (value.action !== "ping" && value.action !== "state" && value.action !== "write" && value.action !== "cleanup" && value.action !== "inventory") {
+    return { error: "G42 probe action is not recognized" };
+  }
+  if ((value.action === "state" || value.action === "write") && !isG42ProbeLogicalKey(value.logicalKey)) {
+    return { error: "G42 probe logical key lacks the reserved fixed-length prefix" };
+  }
+  if (value.action === "write") {
+    if ((value.recordKind !== "warmup" && value.recordKind !== "measure") || !isNonEmptyString(value.payload)) {
+      return { error: "G42 probe write requires recordKind and payload" };
+    }
+    if (new TextEncoder().encode(value.payload).byteLength > 8_192) {
+      return { error: "G42 probe payload exceeds the fixed probe limit" };
+    }
+    if (value.alarmMode !== "on" && value.alarmMode !== "off") {
+      return { error: "G42 probe write requires a recognized alarmMode" };
+    }
+    if (value.cell !== "A" && value.cell !== "B" && value.cell !== "C" && value.cell !== "D") {
+      return { error: "G42 probe write requires a recognized fixed-width cell" };
+    }
+    if (value.recordKind === "warmup" && value.alarmMode !== "off") {
+      return { error: "G42 probe warmup must not install an alarm" };
+    }
+  }
+  return {
+    value: {
+      action: value.action,
+      trialId: value.trialId,
+      ...(value.cell === "A" || value.cell === "B" || value.cell === "C" || value.cell === "D" ? { cell: value.cell } : {}),
+      ...(isG42ProbeLogicalKey(value.logicalKey) ? { logicalKey: value.logicalKey } : {}),
+      ...(value.recordKind === "warmup" || value.recordKind === "measure" ? { recordKind: value.recordKind } : {}),
+      ...(isNonEmptyString(value.payload) ? { payload: value.payload } : {}),
+      ...(value.alarmMode === "on" || value.alarmMode === "off" ? { alarmMode: value.alarmMode } : {}),
+      requestBytes,
+    },
+  };
+}
+
+function g42ProbeIndex(value: unknown): G42ProbeIndex {
+  if (!isObject(value) || value.schema !== G42_JOURNAL_PROBE_SCHEMA || !Array.isArray(value.logicalKeys) || !Array.isArray(value.warmupTrialIds)) {
+    return { schema: G42_JOURNAL_PROBE_SCHEMA, logicalKeys: [], warmupTrialIds: [] };
+  }
+  const logicalKeys = value.logicalKeys.filter(isG42ProbeLogicalKey);
+  const warmupTrialIds = value.warmupTrialIds.filter(isNonEmptyString);
+  if (logicalKeys.length !== value.logicalKeys.length || new Set(logicalKeys).size !== logicalKeys.length
+    || warmupTrialIds.length !== value.warmupTrialIds.length || new Set(warmupTrialIds).size !== warmupTrialIds.length) {
+    return { schema: G42_JOURNAL_PROBE_SCHEMA, logicalKeys: [], warmupTrialIds: [] };
+  }
+  return { schema: G42_JOURNAL_PROBE_SCHEMA, logicalKeys, warmupTrialIds };
+}
+
+function g42ProbeAlarmMarker(value: unknown): G42ProbeAlarmMarker | undefined {
+  if (!isObject(value) || value.schema !== G42_JOURNAL_PROBE_SCHEMA || !isNonNegativeInteger(value.dueAt)) return undefined;
+  return { schema: G42_JOURNAL_PROBE_SCHEMA, dueAt: value.dueAt };
+}
+
+function g42ProbeActivation(activation: DurableObjectActivationObservation, firstStorageReadMs: number | null): G42ProbeActivationFact {
+  return {
+    activationId: activation.activationId,
+    activationFirst: activation.first,
+    constructorToHandlerMs: activation.constructorToHandlerMs,
+    firstStorageReadMs,
+  };
 }
 
 function nowIso(): string {
@@ -839,6 +950,12 @@ export class JournalDurableObject implements DurableObject {
     const activation = this.activation.beginHandler();
     const observation = beginDurableObjectHandlerObservation("JOURNAL", activation);
     const path = new URL(request.url).pathname;
+    // G42 has a private, conformance-only synthetic namespace.  It does not
+    // enter the normal commit trace or recovery surface: its receipts carry a
+    // distinct schema and its storage keys can never be JOURNAL_KEY.
+    if (request.method === "POST" && path.startsWith(`${G42_JOURNAL_PROBE_INTERNAL_PREFIX}/`)) {
+      return this.g42Probe(request, path, activation, observation);
+    }
     if (request.method === "GET" && path === "/state") {
       const record = await this.readRecord();
       return record === undefined ? error(404, "journal_not_found", "Journal has not been admitted") : json(record);
@@ -899,6 +1016,10 @@ export class JournalDurableObject implements DurableObject {
 
   async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {
     const activation = this.activation.beginHandler();
+    // A deliberately uncleaned G42 probe alarm is inert: it clears only the
+    // reserved probe marker and never calls a production recovery port. This
+    // branch is selected solely by a probe-only durable marker, not by input.
+    if (await this.clearG42ProbeAlarmIfPresent()) return;
     await this.runAlarm(activation, alarmInfo);
   }
 
@@ -940,6 +1061,234 @@ export class JournalDurableObject implements DurableObject {
 
   private async readRecord(): Promise<JournalRecord | undefined> {
     return this.ctx.storage.get<JournalRecord>(JOURNAL_KEY);
+  }
+
+  /**
+   * Implements the G42-only storage-layout screen.  The outer Worker is the
+   * sole public entrypoint and authenticates/fences it before a JOURNAL stub
+   * is even resolved.  This method still validates its private message so an
+   * accidental internal route cannot touch a normal Journal record.
+   */
+  private async g42Probe(
+    request: Request,
+    path: string,
+    activation: DurableObjectActivationObservation,
+    observation: DurableObjectHandlerObservation,
+  ): Promise<Response> {
+    let raw: string;
+    try {
+      raw = await request.text();
+    } catch {
+      return error(400, "g42_probe_malformed", "G42 probe request body is unavailable");
+    }
+    const requestBytes = new TextEncoder().encode(raw).byteLength;
+    let body: unknown;
+    try {
+      body = JSON.parse(raw) as unknown;
+    } catch {
+      return error(400, "g42_probe_malformed", "G42 probe request body must be JSON");
+    }
+    const parsed = g42ProbeInternalRequest(body, requestBytes);
+    if (parsed.value === undefined) return error(400, "g42_probe_invalid", parsed.error ?? "G42 probe request is invalid");
+    const input = parsed.value;
+    if (path !== `${G42_JOURNAL_PROBE_INTERNAL_PREFIX}/${input.action}`) {
+      return error(404, "g42_probe_route_not_found", "G42 probe action does not match its internal route");
+    }
+
+    let firstStorageReadMs: number | null = null;
+    const markFirstStorageRead = (): void => {
+      if (firstStorageReadMs !== null) return;
+      observation.markFirstStorageRead();
+      firstStorageReadMs = Math.max(0, Date.now() - activation.handlerStartedAtMs);
+    };
+    const respond = (
+      action: G42ProbeInternalRequest["action"],
+      detail: Readonly<{
+        transactionWallMs?: number | null;
+        recordBytes?: number | null;
+        alarmStateBefore?: number | null;
+        alarmDueAt?: number | null;
+        setAlarmCalls?: number;
+        logicalKey?: string;
+        expectedWarmupKeyPresent?: boolean;
+        keyPresent?: boolean;
+        inventory?: readonly string[];
+        productionJournalPresent?: boolean;
+      }> = {},
+    ): Response => json({
+      schema: G42_JOURNAL_PROBE_SCHEMA,
+      action,
+      activation: g42ProbeActivation(activation, firstStorageReadMs),
+      handlerWallMs: Math.max(0, Date.now() - activation.handlerStartedAtMs),
+      transactionWallMs: detail.transactionWallMs ?? null,
+      requestBytes: input.requestBytes,
+      recordBytes: detail.recordBytes ?? null,
+      alarmStateBefore: detail.alarmStateBefore ?? null,
+      alarmDueAt: detail.alarmDueAt ?? null,
+      setAlarmCalls: detail.setAlarmCalls ?? 0,
+      ...(detail.logicalKey === undefined ? {} : { logicalKey: detail.logicalKey }),
+      ...(detail.expectedWarmupKeyPresent === undefined ? {} : { expectedWarmupKeyPresent: detail.expectedWarmupKeyPresent }),
+      ...(detail.keyPresent === undefined ? {} : { keyPresent: detail.keyPresent }),
+      ...(detail.inventory === undefined ? {} : { inventory: [...detail.inventory] }),
+      ...(detail.productionJournalPresent === undefined ? {} : { productionJournalPresent: detail.productionJournalPresent }),
+    });
+
+    if (input.action === "ping") {
+      return respond("ping");
+    }
+
+    if (input.action === "state") {
+      const logicalKey = input.logicalKey!;
+      markFirstStorageRead();
+      const startedAtMs = Date.now();
+      const record = await this.ctx.storage.get<G42ProbeRecord>(g42ProbeStorageKey(logicalKey));
+      const response = respond("state", {
+        transactionWallMs: Math.max(0, Date.now() - startedAtMs),
+        logicalKey,
+        keyPresent: record !== undefined,
+      });
+      // C is deliberately a real missing-key storage read. The outer probe
+      // helper accepts this schema-preserving 404 as an expected mediator,
+      // while retaining the actual status in the per-trial receipt.
+      return record === undefined
+        ? new Response(response.body, { status: 404, headers: response.headers })
+        : response;
+    }
+
+    if (input.action === "write") {
+      const logicalKey = input.logicalKey!;
+      const recordKind = input.recordKind!;
+      const payload = input.payload!;
+      const alarmMode = input.alarmMode!;
+      markFirstStorageRead();
+      const startedAtMs = Date.now();
+      const result = await this.ctx.storage.transaction(async (txn) => {
+        // The G42 namespace is deliberately disjoint. Do not share a physical
+        // object with a normal Journal even if an internal caller is buggy.
+        const productionJournal = await txn.get<JournalRecord>(JOURNAL_KEY);
+        if (productionJournal !== undefined) return { conflict: "production_journal_present" } as const;
+        const storageKey = g42ProbeStorageKey(logicalKey);
+        const existing = await txn.get<G42ProbeRecord>(storageKey);
+        if (existing !== undefined) return { conflict: "logical_key_already_present" } as const;
+        const alarmStateBefore = await txn.getAlarm();
+        if (alarmStateBefore !== null) return { conflict: "probe_alarm_prestate_not_empty" } as const;
+        const record: G42ProbeRecord = {
+          schema: G42_JOURNAL_PROBE_SCHEMA,
+          trialId: input.trialId,
+          logicalKey,
+          recordKind,
+          payload,
+          createdAtMs: Date.now(),
+        };
+        const index = g42ProbeIndex(await txn.get<G42ProbeIndex>(G42_JOURNAL_PROBE_INDEX_KEY));
+        // This is deliberately an index-only check.  A and D execute the
+        // same measured storage reads and request shape; D's already-read
+        // index proves its distinct alarm-free warm-up by trial ID.
+        let expectedWarmupKeyPresent: boolean | undefined;
+        if (recordKind === "measure" && input.cell === "D") {
+          expectedWarmupKeyPresent = index.warmupTrialIds.includes(input.trialId);
+          if (!expectedWarmupKeyPresent) return { conflict: "expected_warmup_record_missing" } as const;
+        }
+        const nextIndex: G42ProbeIndex = {
+          schema: G42_JOURNAL_PROBE_SCHEMA,
+          logicalKeys: [...index.logicalKeys, logicalKey].sort(),
+          warmupTrialIds: recordKind === "warmup"
+            ? [...index.warmupTrialIds, input.trialId].sort()
+            : index.warmupTrialIds,
+        };
+        await txn.put(storageKey, record);
+        await txn.put(G42_JOURNAL_PROBE_INDEX_KEY, nextIndex);
+        let alarmDueAt: number | null = null;
+        let setAlarmCalls = 0;
+        if (alarmMode === "on") {
+          alarmDueAt = Date.now() + G42_PROBE_ALARM_DELAY_MS;
+          await txn.put(G42_JOURNAL_PROBE_ALARM_KEY, {
+            schema: G42_JOURNAL_PROBE_SCHEMA,
+            dueAt: alarmDueAt,
+          } satisfies G42ProbeAlarmMarker);
+          await txn.setAlarm(alarmDueAt);
+          setAlarmCalls = 1;
+        }
+        return {
+          conflict: undefined,
+          recordBytes: new TextEncoder().encode(JSON.stringify(record)).byteLength,
+          alarmStateBefore,
+          alarmDueAt,
+          setAlarmCalls,
+          expectedWarmupKeyPresent,
+        } as const;
+      });
+      if (result.conflict !== undefined) {
+        return error(409, "g42_probe_conflict", result.conflict);
+      }
+      return respond("write", {
+        transactionWallMs: Math.max(0, Date.now() - startedAtMs),
+        recordBytes: result.recordBytes,
+        alarmStateBefore: result.alarmStateBefore,
+        alarmDueAt: result.alarmDueAt,
+        setAlarmCalls: result.setAlarmCalls,
+        logicalKey,
+        ...(result.expectedWarmupKeyPresent === undefined ? {} : { expectedWarmupKeyPresent: result.expectedWarmupKeyPresent }),
+      });
+    }
+
+    if (input.action === "cleanup") {
+      markFirstStorageRead();
+      const startedAtMs = Date.now();
+      const result = await this.ctx.storage.transaction(async (txn) => {
+        const productionJournal = await txn.get<JournalRecord>(JOURNAL_KEY);
+        if (productionJournal !== undefined) return { conflict: "production_journal_present" } as const;
+        const index = g42ProbeIndex(await txn.get<G42ProbeIndex>(G42_JOURNAL_PROBE_INDEX_KEY));
+        for (const logicalKey of index.logicalKeys) {
+          await txn.delete(g42ProbeStorageKey(logicalKey));
+        }
+        await txn.delete(G42_JOURNAL_PROBE_INDEX_KEY);
+        const marker = g42ProbeAlarmMarker(await txn.get<G42ProbeAlarmMarker>(G42_JOURNAL_PROBE_ALARM_KEY));
+        if (marker !== undefined) {
+          await txn.delete(G42_JOURNAL_PROBE_ALARM_KEY);
+          await txn.deleteAlarm();
+        }
+        return { conflict: undefined, cleared: index.logicalKeys.length, hadAlarm: marker !== undefined } as const;
+      });
+      if (result.conflict !== undefined) return error(409, "g42_probe_conflict", result.conflict);
+      return respond("cleanup", {
+        transactionWallMs: Math.max(0, Date.now() - startedAtMs),
+        inventory: [],
+        alarmDueAt: null,
+        productionJournalPresent: false,
+      });
+    }
+
+    markFirstStorageRead();
+    const startedAtMs = Date.now();
+    const inventory = await this.ctx.storage.transaction(async (txn) => {
+      const index = g42ProbeIndex(await txn.get<G42ProbeIndex>(G42_JOURNAL_PROBE_INDEX_KEY));
+      const marker = g42ProbeAlarmMarker(await txn.get<G42ProbeAlarmMarker>(G42_JOURNAL_PROBE_ALARM_KEY));
+      const alarmDueAt = await txn.getAlarm();
+      const productionJournal = await txn.get<JournalRecord>(JOURNAL_KEY);
+      return {
+        logicalKeys: index.logicalKeys,
+        alarmDueAt: marker === undefined ? null : alarmDueAt,
+        productionJournalPresent: productionJournal !== undefined,
+      } as const;
+    });
+    return respond("inventory", {
+      transactionWallMs: Math.max(0, Date.now() - startedAtMs),
+      inventory: inventory.logicalKeys,
+      alarmDueAt: inventory.alarmDueAt,
+      productionJournalPresent: inventory.productionJournalPresent,
+    });
+  }
+
+  /** A probe alarm must be inert even if an interrupted runner never cleans it. */
+  private async clearG42ProbeAlarmIfPresent(): Promise<boolean> {
+    return this.ctx.storage.transaction(async (txn) => {
+      const marker = g42ProbeAlarmMarker(await txn.get<G42ProbeAlarmMarker>(G42_JOURNAL_PROBE_ALARM_KEY));
+      if (marker === undefined) return false;
+      await txn.delete(G42_JOURNAL_PROBE_ALARM_KEY);
+      await txn.deleteAlarm();
+      return true;
+    });
   }
 
   private async repairWorkset(): Promise<Response> {

@@ -1,0 +1,10 @@
+{
+  "schema": "sdt.g42.build-facts/v1",
+  "sourceCommit": "85bebb3d1f8fdd310f3a4f62b60d65e30ea8780a",
+  "configPath": "samples/meeting-room/wrangler.g37-primary.jsonc",
+  "configDigest": "709024b77c68b8366b945a00646d470372ddcfb8b101425e83dbe29beea86158",
+  "moduleBundleDigest": "a7aadfda886ed164164ad01e390ea3559af1189472494136dfd4abd08f7d40a1",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "accountId": "3ede2188f4cf39a28e0aa3722d3d02c5"
+}
