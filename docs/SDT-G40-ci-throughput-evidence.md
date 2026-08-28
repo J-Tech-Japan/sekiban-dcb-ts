@@ -37,10 +37,12 @@ entries. The PR-lane checker re-derives the current set from the working
 node scripts/g40-ci-coverage-check.mjs
 ```
 
-Local result before opening the PR: baseline 174 entries, current 179 entries,
-zero missing entries, five allowed additions. The additions are only the G40
-inventory checker, its mutation proof, the aggregate-needs checker (including
-its self-test), and the cache-miss pinned Sekiban checkout command. No existing
+The current checker result (also enforced in the PR lane) is baseline 174
+entries, current 180 entries, zero missing entries, and six allowed additions.
+The additions are only the G40 inventory checker, its mutation proof, the
+aggregate-needs checker (including its self-test), the cache-miss pinned
+Sekiban checkout command, and the explicit `npm run build:packages` setup
+command used by the two isolated lanes that need package artifacts. No existing
 check or forced-red probe is an allowed addition/removal trade.
 
 The mutation proof is an executable forced-red check, not a prose assertion:
@@ -82,10 +84,30 @@ complete `tools/sekiban-parity/**` content hash. The runner still verifies the
 pinned commit at execution time, so cache reuse cannot substitute a stale
 source graph.
 
+The original serial `verify` had made workspace package output available before
+the G28 compile-fail and G38 receiver-surface checks. Their isolated jobs now
+run the same `npm run build:packages` preparation explicitly. This preserves
+that environment prerequisite without removing, weakening, or relocating either
+check.
+
 ## After measurement
 
-To be completed after the PR head has a full green GitHub Actions run. The
-record will name the run id, head SHA, start/completion timestamps, wall-clock,
-and the longest remaining split job. If the result exceeds 45 minutes, this
-document will retain the complete result and name that dominant lane without
-weakening coverage.
+The full green PR Actions run is
+[33137238213](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/33137238213),
+for configuration commit `4cd35bc2eb7518f7c2f145f8f677a5cd1d663a38`.
+
+| Measure | Actions record |
+| --- | --- |
+| Run start | 2026-08-28T02:52:54Z |
+| Run completion | 2026-08-28T03:31:36Z |
+| End-to-end wall-clock | 38:42 (2,322 seconds) |
+| Change from baseline | 1:06:37 faster (3,997 seconds; 63.3% reduction) |
+| Longest split job | `ci-g30-core`, 38:28 (02:52:58Z–03:31:26Z) |
+| Next-longest split job | `ci-g30-forced-red`, 37:34 (02:52:58Z–03:30:32Z) |
+| Aggregate required context | `verify` success (03:31:29Z–03:31:35Z) |
+
+All 13 split jobs and the aggregate `verify` job completed successfully. The
+result is 6:18 below the 45-minute objective while retaining the complete
+pre-split inventory and all PR-lane forced-red probes. The final evidence-only
+commit does not modify the workflow; its PR-head CI run is retained as the
+final confirmation of the same configuration.
