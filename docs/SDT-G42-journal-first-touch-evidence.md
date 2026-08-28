@@ -51,9 +51,25 @@ The checker compares the P schedule, receipts, and result by exact identity coun
 
 Before P1, `scripts/deploy/g42-deploy-probe.sh` first performs a non-live build preflight. Only an explicit `G42_DEPLOY_LIVE=1` after CI is green performs the primary code-only deploy through the existing G37 primary config. It preserves the secret value in protected files, captures dry-run/deploy/read-back logs, and uses `wrangler deployments list` plus `wrangler versions view` to prove the newest provider deployment (by a unique `created_on` timestamp) is one 100-percent version whose runtime/handler/binding projection is unchanged. Historical 100-percent deployment snapshots are never treated as current merely because they occur first in the provider list. `scripts/deploy/g42-promote-deploy-evidence.mjs` copies those exact artifacts into the normal evidence commit only after rejecting any bearer/token content; the Worker bundle is bound by its recorded SHA-256. The sole stated code surface is this primary conformance route.
 
-The first CI-green C2 deploy (`3ee8d5a`, 2026-08-28T06:59Z) created provider version `aa48724b-cd7c-4573-9bd5-d79af3784520`, but its witness correctly failed closed because the original helper selected the first historical 100-percent row rather than the newest deployment. No P1 trial or evidence promotion was performed from that failed witness. The corrected helper is covered by a reversed-history fixture and an ambiguous-timestamp rejection; the successor candidate will take the authoritative deploy/read-back and P1 evidence.
+The first CI-green C2 deploy (`3ee8d5a`, 2026-08-28T06:59Z) created provider version `aa48724b-cd7c-4573-9bd5-d79af3784520`, but its witness correctly failed closed because the original helper selected the first historical 100-percent row rather than the newest deployment. No P1 trial or evidence promotion was performed from that failed witness. The corrected helper is covered by a reversed-history fixture and an ambiguous-timestamp rejection.
 
-P, remote witness, raw receipt document, derived result, and per-regime P1 figures are intentionally pending until the deployed candidate's CI is green. They will be committed normally after the run, then checked with `scripts/g42-probe-check.mjs`; no P1 outcome is fabricated in this candidate.
+The authoritative C3 source candidate is `85bebb3d1f8fdd310f3a4f62b60d65e30ea8780a`. Its full CI run `33149988185` was green before deployment. The normal deploy/read-back produced newest 100-percent deployment `6e698ac5-0986-4af7-8655-bde9daf2ecbb`, provider version `f5db9c2a-b3aa-4093-bf50-87957d360c36` (version 162), and unchanged runtime/config projection digest `ba486308efcd2dc1432caeee6c453bd668b40060f10a471c115ce0c480136b14`. The promoted sanitized command logs, build facts, and read-back are in [`docs/evidence/SDT-G42-deploy-audit.json`](evidence/SDT-G42-deploy-audit.json).
+
+P is commit `a694880ead539cd4b53a98066c30ca64eb526278`, plan ID `g42-p1-plan-85bebb3d1f8f`, and plan digest `7d3dd91d5f406aaefad4524e34f1a35eff27cb68d36d7d2ea0295a17a1415d66`. The clean-tree runner started at exactly P, retained all 184 scheduled identities, and recorded C3 as the source/provider identity on every receipt. The raw receipts and derived result are committed at [`docs/evidence/SDT-G42-p1-receipts.json`](evidence/SDT-G42-p1-receipts.json) and [`docs/evidence/SDT-G42-p1-result.json`](evidence/SDT-G42-p1-result.json).
+
+P1 completed 180 trials as `COMPLETE` and retained four as `UNKNOWN`; no trial was replaced. Both 180-second sensitivity blocks were `UNKNOWN` because their A and D caller colos disagreed (`PDX` versus `DEN`), so they cannot enter a selectively retained contrast. The 40 immediate real-512 alarm-on primary blocks were all complete in `DFW`.
+
+| Precommitted primary calculation | Result |
+| --- | --- |
+| Complete primary blocks | 40 / 40 (floor 30) |
+| Paired median, A − D caller wall | 234.0 ms |
+| Fixed-seed whole-block bootstrap 95% interval | 210.0–253.5 ms (1,024 replicates; seed `4242421`) |
+| Threshold | 160 ms |
+| Advisory verdict | `SUPPORTS_C1_PACKETIZATION` |
+
+The sensitivity-only medians were 154.5 ms (2 s), 187.0 ms (15 s), and unavailable for the two 180 s blocks. They do not select the verdict. The primary explanatory handler-wall and transaction-wall paired medians are both 0 ms; the caller-minus-handler descriptive median is 234.0 ms. These descriptive figures do not convert the advisory result into a candidate acceptance claim.
+
+`node scripts/g42-probe-check.mjs --plan docs/evidence/SDT-G42-pre-run-plan.json --receipts docs/evidence/SDT-G42-p1-receipts.json --result docs/evidence/SDT-G42-p1-result.json --pre-run-commit a694880ead539cd4b53a98066c30ca64eb526278` recomputed the P calculator and passed exact identity count/set, typed outcome, receipt digest, cleanup, and committed-verdict checks. The verdict only permits drafting a later C-1 packet; a later candidate must obtain its own contemporaneous acceptance evidence.
 
 ## Non-regression checks
 
