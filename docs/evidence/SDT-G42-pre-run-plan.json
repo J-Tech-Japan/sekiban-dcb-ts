@@ -1,0 +1,3185 @@
+{
+  "schema": "sdt.g42.pre-run-plan/v1",
+  "planId": "g42-p1-plan-85bebb3d1f8f",
+  "createdAt": "2026-08-28T07:29:58.779Z",
+  "targetSourceCommit": "85bebb3d1f8fdd310f3a4f62b60d65e30ea8780a",
+  "configDigest": "709024b77c68b8366b945a00646d470372ddcfb8b101425e83dbe29beea86158",
+  "moduleBundleDigest": "a7aadfda886ed164164ad01e390ea3559af1189472494136dfd4abd08f7d40a1",
+  "providerIdentity": {
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "versionId": "f5db9c2a-b3aa-4093-bf50-87957d360c36",
+    "versionNumber": 162,
+    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "configReadbackDigest": "ba486308efcd2dc1432caeee6c453bd668b40060f10a471c115ce0c480136b14"
+  },
+  "calculator": {
+    "path": "scripts/g42-probe-calculator.mjs",
+    "sha256": "6e5fae276eedf5096478df1a521d1aa7b34e015d5d5253fd1ef5b293479fd604"
+  },
+  "decision": {
+    "schema": "sdt.g42.decision/v1",
+    "primaryRegime": {
+      "requestedIdleMs": 0,
+      "payloadProfile": "real-512",
+      "alarmMode": "on",
+      "contrast": "A-minus-D-caller-wall-ms"
+    },
+    "samplingUnit": "whole-balanced-block",
+    "bootstrap": {
+      "family": "percentile",
+      "replicates": 1024,
+      "prng": "mulberry32",
+      "seed": 4242421,
+      "median": "even-average; odd-middle; ties-retained",
+      "quantile": "nearest-rank-ceil",
+      "rounding": "nearest-0.1-ms-half-up"
+    },
+    "completeBlockFloor": 30,
+    "scheduledPrimaryBlocks": 40,
+    "actionabilityThresholdMs": 160,
+    "boundaries": {
+      "lowerEqual160": "INCONCLUSIVE",
+      "upperEqual160": "NOT_SUPPORTED_AS_NEXT_LEVER",
+      "fewerThan30CompleteBlocks": "INCONCLUSIVE"
+    },
+    "verdicts": [
+      "SUPPORTS_C1_PACKETIZATION",
+      "NOT_SUPPORTED_AS_NEXT_LEVER",
+      "INCONCLUSIVE"
+    ]
+  },
+  "schedule": {
+    "family": "balanced-randomized-block",
+    "scheduleSeed": 4242421,
+    "noReplacement": true,
+    "primaryContrast": "A-versus-D",
+    "blocks": [
+      {
+        "blockId": "g42-p1-block-01",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "B",
+          "A",
+          "D",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-01-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-3e4e9d945c89ca5bdd16ab65e570c4b9",
+            "logicalKey": "sdt-g42-p1-key-3040fcc253075a336ad1fa32bd1afaf8",
+            "warmupLogicalKey": "sdt-g42-p1-key-3040fcc253075a336ad1fa32bd1afaf8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-01-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-6c8354dfcb9c66f196eec1de196d154b",
+            "logicalKey": "sdt-g42-p1-key-fdc676dd8aaab4ecd1eb9b5f1b986f2e",
+            "warmupLogicalKey": "sdt-g42-p1-key-fdc676dd8aaab4ecd1eb9b5f1b986f2e",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-01-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-d8ab80080bcd30b99b549527c19658d1",
+            "logicalKey": "sdt-g42-p1-key-5b5a3a79392dcbddef5b0474cb0d9a4a",
+            "warmupLogicalKey": "sdt-g42-p1-key-e75077504099f609f334aa52e55384b0",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-01-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-cec5f9557e348a50e796765fd83ea026",
+            "logicalKey": "sdt-g42-p1-key-958b3f7a89d5cb657ff9e9864cb1f2c3",
+            "warmupLogicalKey": "sdt-g42-p1-key-958b3f7a89d5cb657ff9e9864cb1f2c3",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-02",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "C",
+          "B",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-02-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-7b2b6af6a5ed310ad2381c23f421d5c1",
+            "logicalKey": "sdt-g42-p1-key-11cdcc2bb8715af7d6d5fe291112ecba",
+            "warmupLogicalKey": "sdt-g42-p1-key-11cdcc2bb8715af7d6d5fe291112ecba",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-02-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-14f4acf3ad1a42f76e7790265baa46e0",
+            "logicalKey": "sdt-g42-p1-key-56e30f4e2c2de3a4d1bf6731e74defea",
+            "warmupLogicalKey": "sdt-g42-p1-key-56e30f4e2c2de3a4d1bf6731e74defea",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-02-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-6f274292ec8a9e2821344ed71f507156",
+            "logicalKey": "sdt-g42-p1-key-a1be4e815d0dfc92cf38c1f00e3e3a70",
+            "warmupLogicalKey": "sdt-g42-p1-key-a1be4e815d0dfc92cf38c1f00e3e3a70",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-02-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-e02d9874a90f0a73eccebe734d38c356",
+            "logicalKey": "sdt-g42-p1-key-23222c05648d9b30af6b6b90687bd7be",
+            "warmupLogicalKey": "sdt-g42-p1-key-5e43b5855240b9a76307e63940e626eb",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-03",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "B",
+          "C",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-03-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-e5e119ef5e889f7176765ff3d8ff21db",
+            "logicalKey": "sdt-g42-p1-key-f5d284df28727abb3221436f09befed1",
+            "warmupLogicalKey": "sdt-g42-p1-key-95de1bbf481b19305d057a9fcdcff4e4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-03-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-008c468507711c5103d55759383216e8",
+            "logicalKey": "sdt-g42-p1-key-5aad502dc9c79b20c0d31bfc8dac0c57",
+            "warmupLogicalKey": "sdt-g42-p1-key-5aad502dc9c79b20c0d31bfc8dac0c57",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-03-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-85fc253a85c66d5ff394936dce3c18d8",
+            "logicalKey": "sdt-g42-p1-key-26a41fc126135b53978d3d62a6f10d7d",
+            "warmupLogicalKey": "sdt-g42-p1-key-26a41fc126135b53978d3d62a6f10d7d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-03-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-52942dc5c3a2fc483874d63f41460d27",
+            "logicalKey": "sdt-g42-p1-key-82e4ca8f9ffb6ddbbf977b95e0e6f5ad",
+            "warmupLogicalKey": "sdt-g42-p1-key-82e4ca8f9ffb6ddbbf977b95e0e6f5ad",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-04",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D",
+          "C",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-04-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-e5fa85f7172379216c578d14cd95652d",
+            "logicalKey": "sdt-g42-p1-key-18ace19931ef7b5cc35d2c74dd344b2c",
+            "warmupLogicalKey": "sdt-g42-p1-key-18ace19931ef7b5cc35d2c74dd344b2c",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-04-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-84a6c9b5a30258a27f1a1a9482ea6051",
+            "logicalKey": "sdt-g42-p1-key-a45fe83402242cd961904023120c311c",
+            "warmupLogicalKey": "sdt-g42-p1-key-34f1eccdec1fc0193ee0e0e6ae202cc6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-04-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-dbc4fe8a463f3ad32bdf81c21b291cb6",
+            "logicalKey": "sdt-g42-p1-key-ee6041f63ab36081701e7913728d087b",
+            "warmupLogicalKey": "sdt-g42-p1-key-ee6041f63ab36081701e7913728d087b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-04-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-5fe94aabf161efc726c497a0420eec2f",
+            "logicalKey": "sdt-g42-p1-key-38e23e40a94ac4559a5c52f204d2ba65",
+            "warmupLogicalKey": "sdt-g42-p1-key-38e23e40a94ac4559a5c52f204d2ba65",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-05",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D",
+          "C",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-05-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-5f47ac9887aaf090767b3837893d3a3a",
+            "logicalKey": "sdt-g42-p1-key-9b5917a8635d5886c1be7447dc70ac94",
+            "warmupLogicalKey": "sdt-g42-p1-key-9b5917a8635d5886c1be7447dc70ac94",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-05-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-0837af0e3791294ed2345fdf488f4313",
+            "logicalKey": "sdt-g42-p1-key-ba39ff53b814bb855b119ce11d1cfb69",
+            "warmupLogicalKey": "sdt-g42-p1-key-2654c1aa0d58bfe6327bb9c702121118",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-05-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-d1a659e0027c61c0957add074f91a492",
+            "logicalKey": "sdt-g42-p1-key-e582e9b220affbd602a167bdc7602fd8",
+            "warmupLogicalKey": "sdt-g42-p1-key-e582e9b220affbd602a167bdc7602fd8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-05-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-e703701630f8c4b2581cebf13a8da549",
+            "logicalKey": "sdt-g42-p1-key-263b1a794dfae675597f4e5019bac4d0",
+            "warmupLogicalKey": "sdt-g42-p1-key-263b1a794dfae675597f4e5019bac4d0",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-06",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "D",
+          "B",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-06-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-ceb885adf6ef77caab6091e71c9924e4",
+            "logicalKey": "sdt-g42-p1-key-4fae0b33452d5a0aae0afdff900c42f6",
+            "warmupLogicalKey": "sdt-g42-p1-key-4fae0b33452d5a0aae0afdff900c42f6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-06-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-b1d054c4b93883161dad04d6b36e03d1",
+            "logicalKey": "sdt-g42-p1-key-24e984e3d2c140f0d70eedd2fe48eea9",
+            "warmupLogicalKey": "sdt-g42-p1-key-9ffa83eb7b645edf63d48e1950b0063a",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-06-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-b99e63b208178bbc5f9c4027999c0fea",
+            "logicalKey": "sdt-g42-p1-key-c7c687460f454b05a72a4e845dc31f6c",
+            "warmupLogicalKey": "sdt-g42-p1-key-c7c687460f454b05a72a4e845dc31f6c",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-06-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-76c8404187bfb9259f4ea646b5787409",
+            "logicalKey": "sdt-g42-p1-key-b7a6ceb2c9ffeef46a50a6ba31aafdd6",
+            "warmupLogicalKey": "sdt-g42-p1-key-b7a6ceb2c9ffeef46a50a6ba31aafdd6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-07",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A",
+          "C",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-07-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-2a68ea36e5d0f4e2070fa0d653a442fd",
+            "logicalKey": "sdt-g42-p1-key-eb3277662e87df92d047eab2b364758e",
+            "warmupLogicalKey": "sdt-g42-p1-key-653f7c16d36a5bfdd2a28e16b1cbc577",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-07-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-0c4a4b77fa9041d616986f80f809ffef",
+            "logicalKey": "sdt-g42-p1-key-686fbecf834c844596d64f7e08d03483",
+            "warmupLogicalKey": "sdt-g42-p1-key-686fbecf834c844596d64f7e08d03483",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-07-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-55fb99d60224572bf50d37f9cb444da1",
+            "logicalKey": "sdt-g42-p1-key-241ed73c0d7ebbf4a6a04dcbcc9fcbcf",
+            "warmupLogicalKey": "sdt-g42-p1-key-241ed73c0d7ebbf4a6a04dcbcc9fcbcf",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-07-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-336aef439b622e4ade3481e3499782c0",
+            "logicalKey": "sdt-g42-p1-key-f59238525e8fb59aa3a532023da61d2b",
+            "warmupLogicalKey": "sdt-g42-p1-key-f59238525e8fb59aa3a532023da61d2b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-08",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "C",
+          "D",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-08-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-ea720486ea48380d672aceffda5219be",
+            "logicalKey": "sdt-g42-p1-key-60952b83a85a0e90fc095b2078398a5b",
+            "warmupLogicalKey": "sdt-g42-p1-key-60952b83a85a0e90fc095b2078398a5b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-08-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-5cc1d2862e742708a61a846dd86e7780",
+            "logicalKey": "sdt-g42-p1-key-0932b194a85015e0584bcb49f02944f1",
+            "warmupLogicalKey": "sdt-g42-p1-key-0932b194a85015e0584bcb49f02944f1",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-08-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-0988de7ba35d0157395f888f2baf6a6c",
+            "logicalKey": "sdt-g42-p1-key-373c5d06ba450ef4c831a40a351c6c61",
+            "warmupLogicalKey": "sdt-g42-p1-key-b8ff2f7764652409967ebe873b1f19c2",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-08-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-ce86b9020ea027f7c66d60de90a048cc",
+            "logicalKey": "sdt-g42-p1-key-bbef734efde34d678cbd8c3c3b9d984e",
+            "warmupLogicalKey": "sdt-g42-p1-key-bbef734efde34d678cbd8c3c3b9d984e",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-09",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "B",
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-09-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-2ce9596e2ad927aeb26a94dce30b64ca",
+            "logicalKey": "sdt-g42-p1-key-7182617f8dc16a794462bcee18845690",
+            "warmupLogicalKey": "sdt-g42-p1-key-7182617f8dc16a794462bcee18845690",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-09-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-4dfe120cc72e1692675d64a400bcc0ef",
+            "logicalKey": "sdt-g42-p1-key-1fa2197ab1872e813ed75fd19890610f",
+            "warmupLogicalKey": "sdt-g42-p1-key-1fa2197ab1872e813ed75fd19890610f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-09-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-d7da744d948899cfe12502b3586bcb05",
+            "logicalKey": "sdt-g42-p1-key-a5da366c0ecbe1ad8cbccfda4dd42ab5",
+            "warmupLogicalKey": "sdt-g42-p1-key-a5da366c0ecbe1ad8cbccfda4dd42ab5",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-09-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-bb208bcc70be6d316055a917eb073601",
+            "logicalKey": "sdt-g42-p1-key-0d61de482f68044f0f1e8560c7a2fa17",
+            "warmupLogicalKey": "sdt-g42-p1-key-043489ea4f7f4b7f03c43baa22ca3b55",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-10",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "A",
+          "D",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-10-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-da623754355dab6f04473bb6e6ab7ec5",
+            "logicalKey": "sdt-g42-p1-key-31ffab055090c568ceea532f1fb56bb0",
+            "warmupLogicalKey": "sdt-g42-p1-key-31ffab055090c568ceea532f1fb56bb0",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-10-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-5abeb4eb3beab085009f82b702f1df4f",
+            "logicalKey": "sdt-g42-p1-key-388e1596d286558df6347a9c30ffe613",
+            "warmupLogicalKey": "sdt-g42-p1-key-388e1596d286558df6347a9c30ffe613",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-10-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-2ef49d42d9237ecc4f9b50238529c275",
+            "logicalKey": "sdt-g42-p1-key-c973abe1929f99dd9180d43e60acbf2d",
+            "warmupLogicalKey": "sdt-g42-p1-key-0ff6e1b39096863c4849991a2dc91baa",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-10-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-f0f88bb1e2be7752cded91835bea16a2",
+            "logicalKey": "sdt-g42-p1-key-e6696bff1ec1c98167744648764e6f2f",
+            "warmupLogicalKey": "sdt-g42-p1-key-e6696bff1ec1c98167744648764e6f2f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-11",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-11-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-5f2bd99a0957b862ef16f58ac88e0a8b",
+            "logicalKey": "sdt-g42-p1-key-459228b2e4039af4d9bad03ec84a1550",
+            "warmupLogicalKey": "sdt-g42-p1-key-459228b2e4039af4d9bad03ec84a1550",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-11-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-8f68e3a82c9f2f7099c0250ce2c577ca",
+            "logicalKey": "sdt-g42-p1-key-2b8c7dade34dc7c01befe2ac80352154",
+            "warmupLogicalKey": "sdt-g42-p1-key-2b8c7dade34dc7c01befe2ac80352154",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-11-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-5df935379b60e084831ad7107a43c2f3",
+            "logicalKey": "sdt-g42-p1-key-6f3ef7a90fe70a9b531337479cacaec1",
+            "warmupLogicalKey": "sdt-g42-p1-key-6f3ef7a90fe70a9b531337479cacaec1",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-11-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-88a10d771b810d5a66b65aba1914ed80",
+            "logicalKey": "sdt-g42-p1-key-e28531ac983994ebc063be6e75d1cdaa",
+            "warmupLogicalKey": "sdt-g42-p1-key-b9a353b7a8627c4824fde3365195ceae",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-12",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A",
+          "B",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-12-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-f6cbb2968281c9750c7751ddeaa46e84",
+            "logicalKey": "sdt-g42-p1-key-8afbb04f05284dff088c3960fcf1c8c0",
+            "warmupLogicalKey": "sdt-g42-p1-key-ab65fdf9676fa56156f0a1046f731fe4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-12-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-e9b6460ddb567a1ae06edbfe58d0b25d",
+            "logicalKey": "sdt-g42-p1-key-486cb6d5bec4608e4abbaa1a63b5bdfe",
+            "warmupLogicalKey": "sdt-g42-p1-key-486cb6d5bec4608e4abbaa1a63b5bdfe",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-12-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-1ed4580d34cbba89cf50d4aa22bf28cb",
+            "logicalKey": "sdt-g42-p1-key-b4088f3c2d48fd994559edc9ad804705",
+            "warmupLogicalKey": "sdt-g42-p1-key-b4088f3c2d48fd994559edc9ad804705",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-12-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-8a23c33f2c4e41fac2a952a5802c4ff3",
+            "logicalKey": "sdt-g42-p1-key-52d861d2efe308332fc44cd4d06127a5",
+            "warmupLogicalKey": "sdt-g42-p1-key-52d861d2efe308332fc44cd4d06127a5",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-13",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "A",
+          "D",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-13-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-5122b2786da74eb519831bd072605bf5",
+            "logicalKey": "sdt-g42-p1-key-2f4a3f37b90705fb1f21bcca386e99f8",
+            "warmupLogicalKey": "sdt-g42-p1-key-2f4a3f37b90705fb1f21bcca386e99f8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-13-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-9b07a7174f4624284a029d001ee3b222",
+            "logicalKey": "sdt-g42-p1-key-d621ad1209799cfb54f1ee21bfdd8cfe",
+            "warmupLogicalKey": "sdt-g42-p1-key-d621ad1209799cfb54f1ee21bfdd8cfe",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-13-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-8ad343890bc4b12a9d1cc1581aadbb3e",
+            "logicalKey": "sdt-g42-p1-key-283519f5de7df5a3ea19e57b657530af",
+            "warmupLogicalKey": "sdt-g42-p1-key-1a75beb7f66ae35f83f030a1bda680d8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-13-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-d8d0ef6e397cbba2f4447856e321e9ae",
+            "logicalKey": "sdt-g42-p1-key-6f6d6baa9e914b1fafed0ae28e9fc326",
+            "warmupLogicalKey": "sdt-g42-p1-key-6f6d6baa9e914b1fafed0ae28e9fc326",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-14",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "A",
+          "D",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-14-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-b7eef9d5f61754579a442f9968453b08",
+            "logicalKey": "sdt-g42-p1-key-97c40815eaf1451f1225b37b2ddfcd3e",
+            "warmupLogicalKey": "sdt-g42-p1-key-97c40815eaf1451f1225b37b2ddfcd3e",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-14-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-736a0c87464973434635f86e5e8dc7e6",
+            "logicalKey": "sdt-g42-p1-key-9e66c998ed0ff8ceadd3344bb838fc56",
+            "warmupLogicalKey": "sdt-g42-p1-key-9e66c998ed0ff8ceadd3344bb838fc56",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-14-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-deab2d986102efdf7a1a760da5c83b3b",
+            "logicalKey": "sdt-g42-p1-key-fb582a7ad4fb431e8960e1311b4b3681",
+            "warmupLogicalKey": "sdt-g42-p1-key-c99e5e2ec5ff8fe287606e571586cb54",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-14-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-5133fd22a548575f589fea14bbd0ad91",
+            "logicalKey": "sdt-g42-p1-key-87b0a4c42b3ec9758fc3b426549a44f0",
+            "warmupLogicalKey": "sdt-g42-p1-key-87b0a4c42b3ec9758fc3b426549a44f0",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-15",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "A",
+          "B",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-15-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-eb56faa7db10711182b345f49a8c6c57",
+            "logicalKey": "sdt-g42-p1-key-a8468355e1a0f9d5b9b4fc5f6f5ebb49",
+            "warmupLogicalKey": "sdt-g42-p1-key-a8468355e1a0f9d5b9b4fc5f6f5ebb49",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-15-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-adc7f69ee16a3d708083b5c5a7a380bb",
+            "logicalKey": "sdt-g42-p1-key-299ed0f3664a207a84cbd818374d6bf8",
+            "warmupLogicalKey": "sdt-g42-p1-key-299ed0f3664a207a84cbd818374d6bf8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-15-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-e80e1ab69ce4f30b641db7cad540d252",
+            "logicalKey": "sdt-g42-p1-key-5abf3282cc522629bc6e6d42e0990947",
+            "warmupLogicalKey": "sdt-g42-p1-key-5abf3282cc522629bc6e6d42e0990947",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-15-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-beac5b95a8454bf0a7806a4fca9df439",
+            "logicalKey": "sdt-g42-p1-key-e91f072e69ef3180c78bc9ecf0941e32",
+            "warmupLogicalKey": "sdt-g42-p1-key-746f4084ae69bfbfe640ec22884c03a7",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-16",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "B",
+          "D",
+          "A",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-16-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-e1b66f4fd42bbbba1fbe0a910eabad99",
+            "logicalKey": "sdt-g42-p1-key-1c13b23f064d2676504bbdc8a3cab74c",
+            "warmupLogicalKey": "sdt-g42-p1-key-1c13b23f064d2676504bbdc8a3cab74c",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-16-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-d0ba28b91fe0fcf4120dc0419fe39c29",
+            "logicalKey": "sdt-g42-p1-key-bb1841fa78f0c1dc532bd6f00cc4d289",
+            "warmupLogicalKey": "sdt-g42-p1-key-30bdcc83b9161544dd89f560cf65acf4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-16-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-4391211e2d09ad35609744ba68f040a4",
+            "logicalKey": "sdt-g42-p1-key-03a15046468dd1c63548a4ce4572bba6",
+            "warmupLogicalKey": "sdt-g42-p1-key-03a15046468dd1c63548a4ce4572bba6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-16-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-49a983ff12418ff02f1fa1daba90eff5",
+            "logicalKey": "sdt-g42-p1-key-5ef390ca7df690c1faf28360d95810d5",
+            "warmupLogicalKey": "sdt-g42-p1-key-5ef390ca7df690c1faf28360d95810d5",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-17",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "B",
+          "C",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-17-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-3bf03aaaba46d7634cc9bf9585905f20",
+            "logicalKey": "sdt-g42-p1-key-e4feddd193a5293f18bfdd290da4c97f",
+            "warmupLogicalKey": "sdt-g42-p1-key-e4feddd193a5293f18bfdd290da4c97f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-17-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-bcc91acae98115b02668c3a525c5e378",
+            "logicalKey": "sdt-g42-p1-key-5c4b247a9f21f43806c5cd3d6ca3890b",
+            "warmupLogicalKey": "sdt-g42-p1-key-5c4b247a9f21f43806c5cd3d6ca3890b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-17-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-58f719ef7014ce290e28ad492411ad8b",
+            "logicalKey": "sdt-g42-p1-key-4c06a592bd8f5d1a9d2544d7f49a1f88",
+            "warmupLogicalKey": "sdt-g42-p1-key-4c06a592bd8f5d1a9d2544d7f49a1f88",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-17-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-93802d28a30b9a17dfbc07a3fe6307d9",
+            "logicalKey": "sdt-g42-p1-key-2e07e55b7c79fd93a0058e4544f20c52",
+            "warmupLogicalKey": "sdt-g42-p1-key-3989057ad411ee846a86d597b842159c",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-18",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "B",
+          "A",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-18-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-edc7847470b97ecff423746a4ddde023",
+            "logicalKey": "sdt-g42-p1-key-4bf93477d9a5fb90a36ec9a1b6d131ef",
+            "warmupLogicalKey": "sdt-g42-p1-key-a6ca90b71221fa11dacf45eb4ae6abcf",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-18-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-fac0f8b72ea90ce466bd0e9d523895b3",
+            "logicalKey": "sdt-g42-p1-key-c6f08e04c6f99fc19987a90b70a289bc",
+            "warmupLogicalKey": "sdt-g42-p1-key-c6f08e04c6f99fc19987a90b70a289bc",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-18-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-66c1956a0e6c5208b527098ca14c43b9",
+            "logicalKey": "sdt-g42-p1-key-82971fbd98476d721cc981b28e657617",
+            "warmupLogicalKey": "sdt-g42-p1-key-82971fbd98476d721cc981b28e657617",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-18-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-92dce6a648d75a37a79ad2023cfb9e24",
+            "logicalKey": "sdt-g42-p1-key-a5cdd8306e4fc8536a568913f042dd12",
+            "warmupLogicalKey": "sdt-g42-p1-key-a5cdd8306e4fc8536a568913f042dd12",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-19",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "B",
+          "C",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-19-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-3b9ff24e1ec41738bf8b79f99c632b8d",
+            "logicalKey": "sdt-g42-p1-key-b6b10af781d8bfafb859c29c6d8d4b71",
+            "warmupLogicalKey": "sdt-g42-p1-key-ddba9e8271813a0808087719933a67f5",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-19-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-5dcf02568102d54311ec14cc353f354e",
+            "logicalKey": "sdt-g42-p1-key-cc867e6f1ecf7cfdbd41790304b17d5d",
+            "warmupLogicalKey": "sdt-g42-p1-key-cc867e6f1ecf7cfdbd41790304b17d5d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-19-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-1d26743052c1d405ac6b9f37e079f51b",
+            "logicalKey": "sdt-g42-p1-key-15016e0ac2170a34500b170be03957a4",
+            "warmupLogicalKey": "sdt-g42-p1-key-15016e0ac2170a34500b170be03957a4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-19-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-eebd890e36f27b75b3b482f3b1fb008d",
+            "logicalKey": "sdt-g42-p1-key-efe0f8fdcd0411a4d0fc904b9fa18ea5",
+            "warmupLogicalKey": "sdt-g42-p1-key-efe0f8fdcd0411a4d0fc904b9fa18ea5",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-20",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D",
+          "B",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-20-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-54593c39147a6ff5ca4155920d9bf318",
+            "logicalKey": "sdt-g42-p1-key-fba33e64d7428bc60a5aa367592ab75f",
+            "warmupLogicalKey": "sdt-g42-p1-key-fba33e64d7428bc60a5aa367592ab75f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-20-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-6667ffd83148ec09657f492dbda052a7",
+            "logicalKey": "sdt-g42-p1-key-c81bb24e4a1b914e1cde3308bf362ebf",
+            "warmupLogicalKey": "sdt-g42-p1-key-5c2437489876e235166a7b00d7033ac7",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-20-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-a75a378cc9c04313d1430fbed03d9c69",
+            "logicalKey": "sdt-g42-p1-key-9eb17966f4b2c7223e5e56f828c903de",
+            "warmupLogicalKey": "sdt-g42-p1-key-9eb17966f4b2c7223e5e56f828c903de",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-20-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-64710f67885c6fc9e89b8c7eff4415f1",
+            "logicalKey": "sdt-g42-p1-key-586230b481e3607f562e6c6d62a290eb",
+            "warmupLogicalKey": "sdt-g42-p1-key-586230b481e3607f562e6c6d62a290eb",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-21",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "C",
+          "D",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-21-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-d832789bdf91699742e8b6a75b03a23e",
+            "logicalKey": "sdt-g42-p1-key-67dde4f66c4efd47280bac7433c3029f",
+            "warmupLogicalKey": "sdt-g42-p1-key-67dde4f66c4efd47280bac7433c3029f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-21-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-ee0489ebb12c84942aa9d27971cb7f0d",
+            "logicalKey": "sdt-g42-p1-key-25f5f0fb7dc4b42588f3537730e9f5d1",
+            "warmupLogicalKey": "sdt-g42-p1-key-25f5f0fb7dc4b42588f3537730e9f5d1",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-21-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-ea2a7919edefcd4bef9f27655655e356",
+            "logicalKey": "sdt-g42-p1-key-bcc2e65e351441a33c2a48c96518797c",
+            "warmupLogicalKey": "sdt-g42-p1-key-97e54e4fc38bb061be54e2592789856d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-21-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-d055ba2435a4abebf4b16963560f71de",
+            "logicalKey": "sdt-g42-p1-key-c0662ec84d2ac006157fc3a790a730fb",
+            "warmupLogicalKey": "sdt-g42-p1-key-c0662ec84d2ac006157fc3a790a730fb",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-22",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "C",
+          "B",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-22-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-591e81a160929954e12a7a6efdb29854",
+            "logicalKey": "sdt-g42-p1-key-7d6d919128a2287ed695f921eda4ced1",
+            "warmupLogicalKey": "sdt-g42-p1-key-7d6d919128a2287ed695f921eda4ced1",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-22-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-534d2e3137b099d4acf9ba445d4c857d",
+            "logicalKey": "sdt-g42-p1-key-40f8ad32c5867b9161ab94040baf58ab",
+            "warmupLogicalKey": "sdt-g42-p1-key-40f8ad32c5867b9161ab94040baf58ab",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-22-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-a99163301ab6b308b54896a2fa2061fd",
+            "logicalKey": "sdt-g42-p1-key-d610f5487ef2857d608602e946ba12b4",
+            "warmupLogicalKey": "sdt-g42-p1-key-d610f5487ef2857d608602e946ba12b4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-22-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-ffd57292e2ccb44d46a0d58911ab6220",
+            "logicalKey": "sdt-g42-p1-key-ec38a441e2c480e46bc2aaf706963bfd",
+            "warmupLogicalKey": "sdt-g42-p1-key-c91d935f7e08196b2b31b4dbd6125d9f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-23",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "B",
+          "C",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-23-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-4d7cb3c91b6c71bae4d200794c8d6889",
+            "logicalKey": "sdt-g42-p1-key-bd4fe6dcb7902d2c8cdccc3fa8aba138",
+            "warmupLogicalKey": "sdt-g42-p1-key-52649645b747068138b58e88904374ee",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-23-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-3f6ab2440614ae7090f22e8aa0cfdee5",
+            "logicalKey": "sdt-g42-p1-key-666081422fc6af4711226d8307e066af",
+            "warmupLogicalKey": "sdt-g42-p1-key-666081422fc6af4711226d8307e066af",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-23-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-56b83b9a1f67857c2e0239994373fd2f",
+            "logicalKey": "sdt-g42-p1-key-661904242d1dbb8d45f682b8b1a9ba6e",
+            "warmupLogicalKey": "sdt-g42-p1-key-661904242d1dbb8d45f682b8b1a9ba6e",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-23-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-fae8b4300dec49cbbd5742d09c251b2c",
+            "logicalKey": "sdt-g42-p1-key-44e8ef31ca31c7103c63afe162a7f48b",
+            "warmupLogicalKey": "sdt-g42-p1-key-44e8ef31ca31c7103c63afe162a7f48b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-24",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "B",
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-24-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-8bd740e4ff4153ca799d909eff26f7cf",
+            "logicalKey": "sdt-g42-p1-key-2fcbfcfdf922fcf00dc3fab553f069df",
+            "warmupLogicalKey": "sdt-g42-p1-key-2fcbfcfdf922fcf00dc3fab553f069df",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-24-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-6818c38d81bba8a52c4d2a64cbece027",
+            "logicalKey": "sdt-g42-p1-key-061a4881b9476358fc190444aac5f689",
+            "warmupLogicalKey": "sdt-g42-p1-key-061a4881b9476358fc190444aac5f689",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-24-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-2d3e288ffeecfc925d82de8a0bd109d2",
+            "logicalKey": "sdt-g42-p1-key-c000b0520ec3a465c8856d405789ba9c",
+            "warmupLogicalKey": "sdt-g42-p1-key-7227f913b5cf4dd5a08d9ed705195398",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-24-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-48cb86b4a2829c8588a07dce186fb618",
+            "logicalKey": "sdt-g42-p1-key-db18c903d802b8dd80f3feb63d1a0123",
+            "warmupLogicalKey": "sdt-g42-p1-key-db18c903d802b8dd80f3feb63d1a0123",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-25",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "B",
+          "C",
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-25-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-28595a0b4191e20a221d9f5f8054382b",
+            "logicalKey": "sdt-g42-p1-key-c5b66a3ab0377eac950b409656c6377a",
+            "warmupLogicalKey": "sdt-g42-p1-key-c5b66a3ab0377eac950b409656c6377a",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-25-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-d1c9fa0050fe5610d7103764875cea02",
+            "logicalKey": "sdt-g42-p1-key-024ec5b0b6b2b1e6675e7a253935381d",
+            "warmupLogicalKey": "sdt-g42-p1-key-024ec5b0b6b2b1e6675e7a253935381d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-25-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-47aeba49124ed8765ebbbc738f9bb91b",
+            "logicalKey": "sdt-g42-p1-key-2ce54de05daf74889c426e931abfdae1",
+            "warmupLogicalKey": "sdt-g42-p1-key-9991224fb6b870d269f6aace15445856",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-25-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-a1c4874b379e0bb816dc05576d0f678d",
+            "logicalKey": "sdt-g42-p1-key-c7bd01aa2348a544668b20155e1b97d6",
+            "warmupLogicalKey": "sdt-g42-p1-key-c7bd01aa2348a544668b20155e1b97d6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-26",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "D",
+          "A",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-26-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-5807a2d1b9f1701b58cfc41d7c62c247",
+            "logicalKey": "sdt-g42-p1-key-543987e019cce9b13674992a7a2efcc2",
+            "warmupLogicalKey": "sdt-g42-p1-key-543987e019cce9b13674992a7a2efcc2",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-26-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-4cce1be240a1a0d0b4383b8e4bd3648c",
+            "logicalKey": "sdt-g42-p1-key-c5890fd4b29e888743c8b6cbc05ab4d2",
+            "warmupLogicalKey": "sdt-g42-p1-key-732ad7406c203aed2d3e8731b13853dd",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-26-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-333902b4a38aebcd09ad58df7fc982a4",
+            "logicalKey": "sdt-g42-p1-key-20b87e7a867ca5a7a19cd6052c69311a",
+            "warmupLogicalKey": "sdt-g42-p1-key-20b87e7a867ca5a7a19cd6052c69311a",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-26-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-87f53368a2771630edf4805f6d4ff94b",
+            "logicalKey": "sdt-g42-p1-key-c080b1ba6dabd52adb5efa11dd107e02",
+            "warmupLogicalKey": "sdt-g42-p1-key-c080b1ba6dabd52adb5efa11dd107e02",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-27",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "B",
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-27-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-881777c6910e1fc97a8d8cc450cbdf9a",
+            "logicalKey": "sdt-g42-p1-key-8c90549a4309cbc8ddc2d2497025369d",
+            "warmupLogicalKey": "sdt-g42-p1-key-8c90549a4309cbc8ddc2d2497025369d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-27-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-79f33b69e4cd216dc27165ae5419d525",
+            "logicalKey": "sdt-g42-p1-key-0833f1ab3c38c5b41fa0a3cef0636328",
+            "warmupLogicalKey": "sdt-g42-p1-key-0833f1ab3c38c5b41fa0a3cef0636328",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-27-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-e14db15f01f20dedc6c7d9a2dc51dee0",
+            "logicalKey": "sdt-g42-p1-key-c9388023603dbfa40ed5b505dc8b73ed",
+            "warmupLogicalKey": "sdt-g42-p1-key-c9388023603dbfa40ed5b505dc8b73ed",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-27-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-102ad37cacd139b3a79762fadfad5870",
+            "logicalKey": "sdt-g42-p1-key-fcfd0651d4c932f7f81560a78edaf881",
+            "warmupLogicalKey": "sdt-g42-p1-key-b8bfb2e6a3019601b3971ab596f9ca68",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-28",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "D",
+          "A",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-28-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-a27828cd471001d0608fbfd69dd34006",
+            "logicalKey": "sdt-g42-p1-key-c7e32654915885666bb2c3773f472fcb",
+            "warmupLogicalKey": "sdt-g42-p1-key-c7e32654915885666bb2c3773f472fcb",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-28-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-5f6020a48a33bd8346e87a9efa3850bd",
+            "logicalKey": "sdt-g42-p1-key-b6dbcbb5fff07988ee434f38bca27ee0",
+            "warmupLogicalKey": "sdt-g42-p1-key-1c4f04ce8d60d4cbcaa51cb71cf23ab7",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-28-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-5e350db15e0d699b2dd3a9c61a40922e",
+            "logicalKey": "sdt-g42-p1-key-907a6f321c8c46e30e391149505949f9",
+            "warmupLogicalKey": "sdt-g42-p1-key-907a6f321c8c46e30e391149505949f9",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-28-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-32f5bf96341e7d5ee9229752447fe58c",
+            "logicalKey": "sdt-g42-p1-key-f845d5c52b0000da6b5bf610ec304f25",
+            "warmupLogicalKey": "sdt-g42-p1-key-f845d5c52b0000da6b5bf610ec304f25",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-29",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "D",
+          "B",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-29-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-3096aa5db61c30dc33b46cc42b1a29b4",
+            "logicalKey": "sdt-g42-p1-key-035778a03325a5e83a816ca4ca8f659b",
+            "warmupLogicalKey": "sdt-g42-p1-key-035778a03325a5e83a816ca4ca8f659b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-29-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-041b3507ab6bd5aa1af4f9d7bb4c7407",
+            "logicalKey": "sdt-g42-p1-key-4d1e814c5a25bc80daf638723e83e6cb",
+            "warmupLogicalKey": "sdt-g42-p1-key-61273f55d89365be071b7a4f6657ed75",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-29-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-219da1fdd8029084644f6c0b8c64deff",
+            "logicalKey": "sdt-g42-p1-key-c05530c6e4f38624c393189666fe82be",
+            "warmupLogicalKey": "sdt-g42-p1-key-c05530c6e4f38624c393189666fe82be",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-29-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-c52dd18e03945cf5fe77327489994c5e",
+            "logicalKey": "sdt-g42-p1-key-83ac130815673268ecb6ee9db4a370ab",
+            "warmupLogicalKey": "sdt-g42-p1-key-83ac130815673268ecb6ee9db4a370ab",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-30",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "A",
+          "D",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-30-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-a647d700c60dd3963106432302da8c35",
+            "logicalKey": "sdt-g42-p1-key-490f225c4f2a0e0fc23e3a54665217df",
+            "warmupLogicalKey": "sdt-g42-p1-key-490f225c4f2a0e0fc23e3a54665217df",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-30-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-07776fb6ff2f5dd32927030ae738ee40",
+            "logicalKey": "sdt-g42-p1-key-ee2bc247ef02085019b6d5811b0d7e3b",
+            "warmupLogicalKey": "sdt-g42-p1-key-ee2bc247ef02085019b6d5811b0d7e3b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-30-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-929bc94e1a961a6964e70f6ed7dd35e0",
+            "logicalKey": "sdt-g42-p1-key-acf2910cf7346bb09c75e02d910c53bd",
+            "warmupLogicalKey": "sdt-g42-p1-key-e183bee06a06ffd7109d1cb9a20d64b8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-30-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-9dc4cb904705ce303f265faf8104a096",
+            "logicalKey": "sdt-g42-p1-key-6a5c2890d21f1645f414ef46510cb13c",
+            "warmupLogicalKey": "sdt-g42-p1-key-6a5c2890d21f1645f414ef46510cb13c",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-31",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "B",
+          "D",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-31-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-e8d94e16ebfe2d611fd1064fff571a9c",
+            "logicalKey": "sdt-g42-p1-key-4a2e0f8050337d0284eae4ead4fcade7",
+            "warmupLogicalKey": "sdt-g42-p1-key-4a2e0f8050337d0284eae4ead4fcade7",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-31-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-ecd573e578cb9c5bf793dd26464d49d9",
+            "logicalKey": "sdt-g42-p1-key-67d95fe74c5b282b79c0e33b9f6cbfd8",
+            "warmupLogicalKey": "sdt-g42-p1-key-67d95fe74c5b282b79c0e33b9f6cbfd8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-31-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-f1edb6fbf505eafe6130cef5843279b5",
+            "logicalKey": "sdt-g42-p1-key-7bda4ee4a7e924319b27ffc6c1316423",
+            "warmupLogicalKey": "sdt-g42-p1-key-659ecaf75db6f527eb599324289b1598",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-31-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-25cf3a6e73e283ecc510d2cd16576cd1",
+            "logicalKey": "sdt-g42-p1-key-a9ab35d2ca291a3350cdbd20d9f74093",
+            "warmupLogicalKey": "sdt-g42-p1-key-a9ab35d2ca291a3350cdbd20d9f74093",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-32",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "B",
+          "A",
+          "D",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-32-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-163f5390669af0381780899c448cc3e7",
+            "logicalKey": "sdt-g42-p1-key-efb12407e26ff1a7b4b0adc6bbf9cdb7",
+            "warmupLogicalKey": "sdt-g42-p1-key-efb12407e26ff1a7b4b0adc6bbf9cdb7",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-32-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-a76dff2efafb1f695b6328d8f6340ac9",
+            "logicalKey": "sdt-g42-p1-key-f4043635c11223bd432f7019f6d5b806",
+            "warmupLogicalKey": "sdt-g42-p1-key-f4043635c11223bd432f7019f6d5b806",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-32-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-d0c38d5ce452ce4bef7d549a595b4a2b",
+            "logicalKey": "sdt-g42-p1-key-242f1b75db84f7c87375ae285cfb752b",
+            "warmupLogicalKey": "sdt-g42-p1-key-fb2efcabbb2eb91ff8ed9faa73a65914",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-32-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-743f8a54c74cd43c9261563ae65ac2e4",
+            "logicalKey": "sdt-g42-p1-key-b67dbf5dcadf548c9d40fa4d79a5af39",
+            "warmupLogicalKey": "sdt-g42-p1-key-b67dbf5dcadf548c9d40fa4d79a5af39",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-33",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "B",
+          "A",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-33-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-3621a4c472efd3844027c6923ce9ac90",
+            "logicalKey": "sdt-g42-p1-key-0e01c69585f7f5bccd9a73e68acd702e",
+            "warmupLogicalKey": "sdt-g42-p1-key-9248001a6e17fc223df228b7fe1e2974",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-33-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-71ef3a8267b0ed281fc79e4218ab191a",
+            "logicalKey": "sdt-g42-p1-key-878c6a70284981147291ba2db72ad282",
+            "warmupLogicalKey": "sdt-g42-p1-key-878c6a70284981147291ba2db72ad282",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-33-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-65b9cb3480bbc1e5180cb92db9885d79",
+            "logicalKey": "sdt-g42-p1-key-255a1ad2eb6d6880f7916af66dfffff6",
+            "warmupLogicalKey": "sdt-g42-p1-key-255a1ad2eb6d6880f7916af66dfffff6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-33-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-259d5f27605ed80f23aa919ad7b4f02e",
+            "logicalKey": "sdt-g42-p1-key-5b725b7330c5029ed655a152fd26c8c5",
+            "warmupLogicalKey": "sdt-g42-p1-key-5b725b7330c5029ed655a152fd26c8c5",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-34",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D",
+          "B",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-34-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-346461248e5c625d1e36fa955ccb0d86",
+            "logicalKey": "sdt-g42-p1-key-8bd6c1e15c79808fdacb4f4bacb97813",
+            "warmupLogicalKey": "sdt-g42-p1-key-8bd6c1e15c79808fdacb4f4bacb97813",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-34-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-14d536793c91bc9e0e60778b08ada04b",
+            "logicalKey": "sdt-g42-p1-key-3e4c128507350a01d52b15390c84db78",
+            "warmupLogicalKey": "sdt-g42-p1-key-22f42235efee0cfd808c1b14e014fb2a",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-34-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-c254476da9b674cd041cc320d7c705c5",
+            "logicalKey": "sdt-g42-p1-key-de77a5dcc9a251c587c7a0f71e157e08",
+            "warmupLogicalKey": "sdt-g42-p1-key-de77a5dcc9a251c587c7a0f71e157e08",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-34-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-ff8003c86beb6b7701d56d70e65af815",
+            "logicalKey": "sdt-g42-p1-key-d282648a21432fdb0be2ac4ba14be236",
+            "warmupLogicalKey": "sdt-g42-p1-key-d282648a21432fdb0be2ac4ba14be236",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-35",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "C",
+          "B",
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-35-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-fa65eaa859606e01e5ce1ab94f024f20",
+            "logicalKey": "sdt-g42-p1-key-a3264ea7822bc37c0706509dcecf11e9",
+            "warmupLogicalKey": "sdt-g42-p1-key-a3264ea7822bc37c0706509dcecf11e9",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-35-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-e21a44a8deacb876051ecf108e796191",
+            "logicalKey": "sdt-g42-p1-key-2ea7b6bea6e83464a1aa05d26c3a1ebc",
+            "warmupLogicalKey": "sdt-g42-p1-key-2ea7b6bea6e83464a1aa05d26c3a1ebc",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-35-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-cc1cfad70db24d4377a2e7e37c9bece4",
+            "logicalKey": "sdt-g42-p1-key-991c99344217e47e1ab772fc2ed959df",
+            "warmupLogicalKey": "sdt-g42-p1-key-787438dc89e447090242aa23fee544a2",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-35-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-a70f1b6b40cd8aefce3e349560975d1a",
+            "logicalKey": "sdt-g42-p1-key-172517f849c6ffd3cbfd4e308d6f3677",
+            "warmupLogicalKey": "sdt-g42-p1-key-172517f849c6ffd3cbfd4e308d6f3677",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-36",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D",
+          "B",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-36-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-9cb7c2185ee946a7a36334d6742ea1c0",
+            "logicalKey": "sdt-g42-p1-key-1f3838e1ee4f8c0fcbdf81c2aaf7ae6d",
+            "warmupLogicalKey": "sdt-g42-p1-key-1f3838e1ee4f8c0fcbdf81c2aaf7ae6d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-36-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-1d505335b75d1c0e634fcc39351f1067",
+            "logicalKey": "sdt-g42-p1-key-b20dd5b8b188e0b67913501197f79d1e",
+            "warmupLogicalKey": "sdt-g42-p1-key-05094f01765c34109b94529755e04977",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-36-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-e3b30d11ab90a0a0d6da4ff0ad972f30",
+            "logicalKey": "sdt-g42-p1-key-8d48e7f96a5003669930060a8b6ac15f",
+            "warmupLogicalKey": "sdt-g42-p1-key-8d48e7f96a5003669930060a8b6ac15f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-36-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-49308e5b5ab6941224907b1a10001103",
+            "logicalKey": "sdt-g42-p1-key-be382f9fd7ac3f21f1e948d810509d46",
+            "warmupLogicalKey": "sdt-g42-p1-key-be382f9fd7ac3f21f1e948d810509d46",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-37",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "B",
+          "C",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-37-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-395dbb5761e75633b9eaa382e14d5c6d",
+            "logicalKey": "sdt-g42-p1-key-debf4980b961604572326ad04fcab4c6",
+            "warmupLogicalKey": "sdt-g42-p1-key-7c64335cbce5e5db761bd1c470fb917f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-37-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-e00a151ae40fbbafc3461a0aa33118f1",
+            "logicalKey": "sdt-g42-p1-key-cb976dae6224a51585ccf233f4c173b6",
+            "warmupLogicalKey": "sdt-g42-p1-key-cb976dae6224a51585ccf233f4c173b6",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-37-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-8e86c6dff383c5c5095a56d2f0612ec8",
+            "logicalKey": "sdt-g42-p1-key-2fa594507a28c3f805d0a2e70eb55735",
+            "warmupLogicalKey": "sdt-g42-p1-key-2fa594507a28c3f805d0a2e70eb55735",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-37-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-39642ac9bc7d7329ad7ea146846932b5",
+            "logicalKey": "sdt-g42-p1-key-b1db4720b6f45ac5cc9f3f90e89a9fc8",
+            "warmupLogicalKey": "sdt-g42-p1-key-b1db4720b6f45ac5cc9f3f90e89a9fc8",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-38",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "C",
+          "B",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-38-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-ac20880accadf8597c370f3d1240dae9",
+            "logicalKey": "sdt-g42-p1-key-82dfc0280d9708db54121d0843394001",
+            "warmupLogicalKey": "sdt-g42-p1-key-82dfc0280d9708db54121d0843394001",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-38-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-dca199693180bf0b35711c08c3f14a55",
+            "logicalKey": "sdt-g42-p1-key-bf40ec8406c61c26f2f19b26d4fa6021",
+            "warmupLogicalKey": "sdt-g42-p1-key-bf40ec8406c61c26f2f19b26d4fa6021",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-38-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-83312b52ba4c569ae83773d08a2f68f3",
+            "logicalKey": "sdt-g42-p1-key-3c497d4c83cd11438e5ba6025e0eb704",
+            "warmupLogicalKey": "sdt-g42-p1-key-3c497d4c83cd11438e5ba6025e0eb704",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-38-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-6fc28bd343450b8749c4cc086c1b68b2",
+            "logicalKey": "sdt-g42-p1-key-20813e85b005af72b55aec5bdc371ddf",
+            "warmupLogicalKey": "sdt-g42-p1-key-5ae34886373f669a3483b52939a9532f",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-39",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "B",
+          "D",
+          "A",
+          "C"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-39-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-c3f578c97441333116296fe7d874bf8c",
+            "logicalKey": "sdt-g42-p1-key-880e34eadf1269f8e90d9313ff051899",
+            "warmupLogicalKey": "sdt-g42-p1-key-880e34eadf1269f8e90d9313ff051899",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          },
+          {
+            "trialId": "g42-p1-primary-39-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-2d605ee39786510b225188d797a11152",
+            "logicalKey": "sdt-g42-p1-key-09a7e16d52c05a5ce034b62cb3fd4e4b",
+            "warmupLogicalKey": "sdt-g42-p1-key-d20b79b57bc053668bc4eeaf0c8f597b",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-39-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-e95b0c6a10757cc90764d65b1a332b8d",
+            "logicalKey": "sdt-g42-p1-key-fa9a7ba50a6b4f1e3e198ebb3a530925",
+            "warmupLogicalKey": "sdt-g42-p1-key-fa9a7ba50a6b4f1e3e198ebb3a530925",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-39-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-ba47da718b28e6e6cdeb1c5b4d5076e4",
+            "logicalKey": "sdt-g42-p1-key-e8a626f1b88367653051108f397d227d",
+            "warmupLogicalKey": "sdt-g42-p1-key-e8a626f1b88367653051108f397d227d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-40",
+        "factor": {
+          "role": "primary",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D",
+          "C",
+          "B"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-primary-40-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-1ccf2ddaf45830e71983f766c615a931",
+            "logicalKey": "sdt-g42-p1-key-513a6bb7334fa487ae3e7ca5c925f391",
+            "warmupLogicalKey": "sdt-g42-p1-key-513a6bb7334fa487ae3e7ca5c925f391",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-40-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-905942f35ddc0027bf206879646ea7b7",
+            "logicalKey": "sdt-g42-p1-key-8a98772f90f18a7fc7f38f21cb781cb7",
+            "warmupLogicalKey": "sdt-g42-p1-key-5e7b3630e01e4f38b86b58c853978cea",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-primary-40-c",
+            "cell": "C",
+            "physicalIdentity": "sdt-g42-p1-identity-07d40fe569e3691f74ce03795a3c32c3",
+            "logicalKey": "sdt-g42-p1-key-6989794cb8f9dfd94d5ccbb802b6640e",
+            "warmupLogicalKey": "sdt-g42-p1-key-6989794cb8f9dfd94d5ccbb802b6640e",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "state-404"
+          },
+          {
+            "trialId": "g42-p1-primary-40-b",
+            "cell": "B",
+            "physicalIdentity": "sdt-g42-p1-identity-6d47c56db872342a2a98810fd40db13d",
+            "logicalKey": "sdt-g42-p1-key-00c188840d7d4011b4961a4686a1a160",
+            "warmupLogicalKey": "sdt-g42-p1-key-00c188840d7d4011b4961a4686a1a160",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "handler-ping"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-41",
+        "factor": {
+          "role": "factor-cross-small-on",
+          "requestedIdleMs": 0,
+          "payloadProfile": "small-128",
+          "payloadBytes": 128,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-factor-cross-small-on-41-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-59b1f01bc63e0d0a5f8ed12cbc6f5543",
+            "logicalKey": "sdt-g42-p1-key-e416671d8d2b46fd4efaade2c931a32b",
+            "warmupLogicalKey": "sdt-g42-p1-key-177a5838253e340e8214e1af37f44a59",
+            "alarmMode": "on",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-factor-cross-small-on-41-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-16a2c7bfd2802145edb67da36a4f839a",
+            "logicalKey": "sdt-g42-p1-key-7807b9a1b3c0614644af890dd8bda9b3",
+            "warmupLogicalKey": "sdt-g42-p1-key-7807b9a1b3c0614644af890dd8bda9b3",
+            "alarmMode": "on",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-42",
+        "factor": {
+          "role": "factor-cross-small-on",
+          "requestedIdleMs": 0,
+          "payloadProfile": "small-128",
+          "payloadBytes": 128,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-factor-cross-small-on-42-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-00eaecaad4dab49a4dbb3dfe5e8dbedc",
+            "logicalKey": "sdt-g42-p1-key-022a11d68f6475a3a52678818065679f",
+            "warmupLogicalKey": "sdt-g42-p1-key-022a11d68f6475a3a52678818065679f",
+            "alarmMode": "on",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-factor-cross-small-on-42-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-8dce54e9caed3ae8af6e02a3ba1d2d9f",
+            "logicalKey": "sdt-g42-p1-key-18663403e47b1597ea2f8c859ed90369",
+            "warmupLogicalKey": "sdt-g42-p1-key-8f448f4c3e7036af8cd8e8e00ce4db01",
+            "alarmMode": "on",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-43",
+        "factor": {
+          "role": "factor-cross-real-off",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "off"
+        },
+        "cellOrder": [
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-factor-cross-real-off-43-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-6c1474a6814b993eb0fd3566560138a3",
+            "logicalKey": "sdt-g42-p1-key-66f85307235de87bd4ad2dd9129f9170",
+            "warmupLogicalKey": "sdt-g42-p1-key-66f85307235de87bd4ad2dd9129f9170",
+            "alarmMode": "off",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-factor-cross-real-off-43-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-aa4af4ab7d8b6c147f10a643927cb0f5",
+            "logicalKey": "sdt-g42-p1-key-eba63a319f1f7be54cb167bf1a98c36b",
+            "warmupLogicalKey": "sdt-g42-p1-key-daebe6d3a13897343ef513d52b1c94b1",
+            "alarmMode": "off",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-44",
+        "factor": {
+          "role": "factor-cross-real-off",
+          "requestedIdleMs": 0,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "off"
+        },
+        "cellOrder": [
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-factor-cross-real-off-44-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-3017d5121bc3408b26a145b4853fa41d",
+            "logicalKey": "sdt-g42-p1-key-198376b9d1d2c45e2fc8ffeb7e3c2b10",
+            "warmupLogicalKey": "sdt-g42-p1-key-198376b9d1d2c45e2fc8ffeb7e3c2b10",
+            "alarmMode": "off",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-factor-cross-real-off-44-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-b00841aa7b7c0813cb4f5d8e99b8042d",
+            "logicalKey": "sdt-g42-p1-key-68e3831844c6860920cec31717113fe7",
+            "warmupLogicalKey": "sdt-g42-p1-key-c220aa50cb77f82124f9f460ddd86822",
+            "alarmMode": "off",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-45",
+        "factor": {
+          "role": "factor-cross-small-off",
+          "requestedIdleMs": 0,
+          "payloadProfile": "small-128",
+          "payloadBytes": 128,
+          "alarmMode": "off"
+        },
+        "cellOrder": [
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-factor-cross-small-off-45-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-177f0a163f4a3b67328481678c981d5c",
+            "logicalKey": "sdt-g42-p1-key-241282052c1e483be3b8f4634d08d120",
+            "warmupLogicalKey": "sdt-g42-p1-key-cf95a7ea945a538f73100cd7a7701bd0",
+            "alarmMode": "off",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-factor-cross-small-off-45-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-6972e24aa23ec6a024bfb9adf15044a0",
+            "logicalKey": "sdt-g42-p1-key-75b3c65f658c80285ba1ad2cdb3556d5",
+            "warmupLogicalKey": "sdt-g42-p1-key-75b3c65f658c80285ba1ad2cdb3556d5",
+            "alarmMode": "off",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-46",
+        "factor": {
+          "role": "factor-cross-small-off",
+          "requestedIdleMs": 0,
+          "payloadProfile": "small-128",
+          "payloadBytes": 128,
+          "alarmMode": "off"
+        },
+        "cellOrder": [
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-factor-cross-small-off-46-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-6a892c16160dd01dbcb4c14fb3d72338",
+            "logicalKey": "sdt-g42-p1-key-353a4e18ace1ebbc425513b596be2d20",
+            "warmupLogicalKey": "sdt-g42-p1-key-353a4e18ace1ebbc425513b596be2d20",
+            "alarmMode": "off",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-factor-cross-small-off-46-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-6c99391fa0b434357f1fe5a02821e69c",
+            "logicalKey": "sdt-g42-p1-key-71b72575976a242d161089a1e7510487",
+            "warmupLogicalKey": "sdt-g42-p1-key-92b14cc09d3c509631c39ecb80c0a614",
+            "alarmMode": "off",
+            "payloadProfile": "small-128",
+            "payloadBytes": 128,
+            "requestedIdleMs": 0,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-47",
+        "factor": {
+          "role": "idle-2000ms",
+          "requestedIdleMs": 2000,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-idle-2000ms-47-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-ac6f4ca75d7d7fa03b2e44c7bd1dfbd6",
+            "logicalKey": "sdt-g42-p1-key-08427d7d2806375c244c418436346648",
+            "warmupLogicalKey": "sdt-g42-p1-key-95de3c9e67c186229ee8362f028b9d45",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 2000,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-idle-2000ms-47-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-1678f56f7300173a19e38ccff793ab56",
+            "logicalKey": "sdt-g42-p1-key-07e05dd82d1d5169c58e8ef428fd4ac4",
+            "warmupLogicalKey": "sdt-g42-p1-key-07e05dd82d1d5169c58e8ef428fd4ac4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 2000,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-48",
+        "factor": {
+          "role": "idle-2000ms",
+          "requestedIdleMs": 2000,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-idle-2000ms-48-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-c321313dc91ce5b980adb9c6e152dbde",
+            "logicalKey": "sdt-g42-p1-key-390e306dc9c95f63372c40fcbed024d0",
+            "warmupLogicalKey": "sdt-g42-p1-key-390e306dc9c95f63372c40fcbed024d0",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 2000,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-idle-2000ms-48-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-13c8b4550d5de2f4ce9c47c1dd467b56",
+            "logicalKey": "sdt-g42-p1-key-0f0acfc35fd298f1c798e45abf8622ea",
+            "warmupLogicalKey": "sdt-g42-p1-key-3c5a0fe7d093a0c81e558c73c4149b6d",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 2000,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-49",
+        "factor": {
+          "role": "idle-15000ms",
+          "requestedIdleMs": 15000,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-idle-15000ms-49-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-4be44c766ca2a5035e25611266721705",
+            "logicalKey": "sdt-g42-p1-key-49b48e097e761881e1b0fd93862195be",
+            "warmupLogicalKey": "sdt-g42-p1-key-1b5b004bd27e19d335f3456d438b2ebd",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 15000,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-idle-15000ms-49-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-ec2526c9ca79a9fdd4bda209022301b7",
+            "logicalKey": "sdt-g42-p1-key-a2599b86b4a56cabb646b783e50a0a68",
+            "warmupLogicalKey": "sdt-g42-p1-key-a2599b86b4a56cabb646b783e50a0a68",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 15000,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-50",
+        "factor": {
+          "role": "idle-15000ms",
+          "requestedIdleMs": 15000,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-idle-15000ms-50-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-6f256abab4fef3960d81fd60a8763157",
+            "logicalKey": "sdt-g42-p1-key-e991a80c3ee0fe6321988bc8d9a66dd1",
+            "warmupLogicalKey": "sdt-g42-p1-key-cff4b2770e5f7e84825a9b98f904e5f4",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 15000,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-idle-15000ms-50-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-777cec8c9ed8134f5bf590003c9dd952",
+            "logicalKey": "sdt-g42-p1-key-7572c2e19008bca7ef103cfb7639c2a3",
+            "warmupLogicalKey": "sdt-g42-p1-key-7572c2e19008bca7ef103cfb7639c2a3",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 15000,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-51",
+        "factor": {
+          "role": "idle-180000ms",
+          "requestedIdleMs": 180000,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "A",
+          "D"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-idle-180000ms-51-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-39b8534f20fbcd0cbdb2f4af52fdd527",
+            "logicalKey": "sdt-g42-p1-key-db999a3db2fadff0effbf9d917fee6ec",
+            "warmupLogicalKey": "sdt-g42-p1-key-db999a3db2fadff0effbf9d917fee6ec",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 180000,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-idle-180000ms-51-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-78ec7f500cfb265e9b5cc1af84a64b40",
+            "logicalKey": "sdt-g42-p1-key-099a39d98743dc0a20fead2cf17367f0",
+            "warmupLogicalKey": "sdt-g42-p1-key-a0dcf20a2b45dd847b2675ac31b1bb20",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 180000,
+            "mediator": "none"
+          }
+        ]
+      },
+      {
+        "blockId": "g42-p1-block-52",
+        "factor": {
+          "role": "idle-180000ms",
+          "requestedIdleMs": 180000,
+          "payloadProfile": "real-512",
+          "payloadBytes": 512,
+          "alarmMode": "on"
+        },
+        "cellOrder": [
+          "D",
+          "A"
+        ],
+        "trials": [
+          {
+            "trialId": "g42-p1-idle-180000ms-52-d",
+            "cell": "D",
+            "physicalIdentity": "sdt-g42-p1-identity-7e232f865a95571641c3cc23a904a110",
+            "logicalKey": "sdt-g42-p1-key-6b7febac606737ecb0fcc2bd0072c145",
+            "warmupLogicalKey": "sdt-g42-p1-key-6522e9a5971221e0e92c25b7952e0327",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 180000,
+            "mediator": "none"
+          },
+          {
+            "trialId": "g42-p1-idle-180000ms-52-a",
+            "cell": "A",
+            "physicalIdentity": "sdt-g42-p1-identity-36aef70e82595845061a57f267086d4a",
+            "logicalKey": "sdt-g42-p1-key-049dbe1d45169c1f77cd1d56e1efa641",
+            "warmupLogicalKey": "sdt-g42-p1-key-049dbe1d45169c1f77cd1d56e1efa641",
+            "alarmMode": "on",
+            "payloadProfile": "real-512",
+            "payloadBytes": 512,
+            "requestedIdleMs": 180000,
+            "mediator": "none"
+          }
+        ]
+      }
+    ],
+    "scheduledTrialCount": 184,
+    "idleClassification": "observed activation; requested idle is not a warm label",
+    "idleProtocol": "D prepares its alarm-free warmup record before the requested gap, then measures after it; A is a fresh reference in the same randomized block/window."
+  },
+  "advisoryOnly": true,
+  "note": "P is this committed plan plus its clean Git HEAD supplied to the runner; no cryptographic or adversarial tamper-resistance claim is made.",
+  "planDigest": "7d3dd91d5f406aaefad4524e34f1a35eff27cb68d36d7d2ea0295a17a1415d66"
+}
