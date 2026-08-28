@@ -11,6 +11,22 @@ permissions:
 jobs:
   ci-foundation:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +54,22 @@ jobs:
 
   ci-g28:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,6 +134,22 @@ jobs:
 
   ci-g21-g25:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -162,6 +210,22 @@ jobs:
 
   ci-g26-g27:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -206,6 +270,22 @@ jobs:
 
   ci-g29:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -286,6 +366,22 @@ jobs:
 
   ci-g31:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -315,7 +411,22 @@ jobs:
   ci-g32-parity:
     runs-on: ubuntu-latest
     env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
       SEKIBAN_SOURCE_DIR: ${{ github.workspace }}/.artifacts/g40-sekiban-source
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -368,6 +479,22 @@ jobs:
 
   ci-g30-core:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -398,6 +525,22 @@ jobs:
 
   ci-g30-forced-red:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -424,6 +567,22 @@ jobs:
 
   ci-g38:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_URL: postgresql://postgres:postgres@127.0.0.1:5432/serialized_dcb
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: serialized_dcb
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d serialized_dcb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+        ports:
+          - 5432:5432
     steps:
       - uses: actions/checkout@v4
         with:
