@@ -1,0 +1,2770 @@
+{
+  "schema": "sdt-g37-sanitized-samples/v1",
+  "sanitization": {
+    "removed": [
+      "request IDs",
+      "CF-Ray IDs",
+      "correlation IDs",
+      "trace IDs",
+      "SUIDs",
+      "service IDs",
+      "tags",
+      "payloads",
+      "tokens",
+      "per-request timestamps"
+    ],
+    "durationEncoding": "Each per-row histogram key is an integer duration in milliseconds and its value is the number of observed spans at that duration. It preserves the complete duration multiset without a request-to-trace linkage."
+  },
+  "calculation": {
+    "client": "For n=50 accepted observations, nearest-rank p50 is sorted value at rank ceil(0.50*n)=25 and p95 is rank ceil(0.95*n)=48.",
+    "perHop": "Expand each durationHistogramMs by its count, sort ascending, and take rank ceil(0.50*observedSpanCount)."
+  },
+  "windows": [
+    {
+      "name": "immediate-before",
+      "provenance": {
+        "candidate": "baseline-before-a5",
+        "sourceCommit": "2bd0b509bbb76d48165526ce3e7455559582527e",
+        "capturedAt": "2026-08-27T18:33:48.150Z",
+        "deployedVersion": {
+          "id": "c64bd209-1217-45f9-8f01-6ac2c3030250",
+          "number": 158,
+          "createdOn": "2026-08-27T18:30:48.102683Z"
+        }
+      },
+      "client": {
+        "acceptedHttpStatus": 200,
+        "sampleCount": 50,
+        "estimator": "nearest-rank",
+        "ordinalLatencyMs": [
+          {
+            "ordinal": 1,
+            "clientLatencyMs": 2083
+          },
+          {
+            "ordinal": 2,
+            "clientLatencyMs": 968
+          },
+          {
+            "ordinal": 3,
+            "clientLatencyMs": 1034
+          },
+          {
+            "ordinal": 4,
+            "clientLatencyMs": 1476
+          },
+          {
+            "ordinal": 5,
+            "clientLatencyMs": 1151
+          },
+          {
+            "ordinal": 6,
+            "clientLatencyMs": 1225
+          },
+          {
+            "ordinal": 7,
+            "clientLatencyMs": 1290
+          },
+          {
+            "ordinal": 8,
+            "clientLatencyMs": 1405
+          },
+          {
+            "ordinal": 9,
+            "clientLatencyMs": 995
+          },
+          {
+            "ordinal": 10,
+            "clientLatencyMs": 1321
+          },
+          {
+            "ordinal": 11,
+            "clientLatencyMs": 1304
+          },
+          {
+            "ordinal": 12,
+            "clientLatencyMs": 1196
+          },
+          {
+            "ordinal": 13,
+            "clientLatencyMs": 1543
+          },
+          {
+            "ordinal": 14,
+            "clientLatencyMs": 1257
+          },
+          {
+            "ordinal": 15,
+            "clientLatencyMs": 1241
+          },
+          {
+            "ordinal": 16,
+            "clientLatencyMs": 1351
+          },
+          {
+            "ordinal": 17,
+            "clientLatencyMs": 1267
+          },
+          {
+            "ordinal": 18,
+            "clientLatencyMs": 1343
+          },
+          {
+            "ordinal": 19,
+            "clientLatencyMs": 2156
+          },
+          {
+            "ordinal": 20,
+            "clientLatencyMs": 1570
+          },
+          {
+            "ordinal": 21,
+            "clientLatencyMs": 1747
+          },
+          {
+            "ordinal": 22,
+            "clientLatencyMs": 1700
+          },
+          {
+            "ordinal": 23,
+            "clientLatencyMs": 1008
+          },
+          {
+            "ordinal": 24,
+            "clientLatencyMs": 1160
+          },
+          {
+            "ordinal": 25,
+            "clientLatencyMs": 960
+          },
+          {
+            "ordinal": 26,
+            "clientLatencyMs": 1301
+          },
+          {
+            "ordinal": 27,
+            "clientLatencyMs": 1423
+          },
+          {
+            "ordinal": 28,
+            "clientLatencyMs": 1880
+          },
+          {
+            "ordinal": 29,
+            "clientLatencyMs": 1285
+          },
+          {
+            "ordinal": 30,
+            "clientLatencyMs": 1338
+          },
+          {
+            "ordinal": 31,
+            "clientLatencyMs": 1614
+          },
+          {
+            "ordinal": 32,
+            "clientLatencyMs": 1714
+          },
+          {
+            "ordinal": 33,
+            "clientLatencyMs": 1278
+          },
+          {
+            "ordinal": 34,
+            "clientLatencyMs": 1535
+          },
+          {
+            "ordinal": 35,
+            "clientLatencyMs": 1587
+          },
+          {
+            "ordinal": 36,
+            "clientLatencyMs": 1914
+          },
+          {
+            "ordinal": 37,
+            "clientLatencyMs": 1523
+          },
+          {
+            "ordinal": 38,
+            "clientLatencyMs": 1619
+          },
+          {
+            "ordinal": 39,
+            "clientLatencyMs": 1370
+          },
+          {
+            "ordinal": 40,
+            "clientLatencyMs": 1638
+          },
+          {
+            "ordinal": 41,
+            "clientLatencyMs": 1606
+          },
+          {
+            "ordinal": 42,
+            "clientLatencyMs": 1473
+          },
+          {
+            "ordinal": 43,
+            "clientLatencyMs": 1991
+          },
+          {
+            "ordinal": 44,
+            "clientLatencyMs": 2045
+          },
+          {
+            "ordinal": 45,
+            "clientLatencyMs": 1960
+          },
+          {
+            "ordinal": 46,
+            "clientLatencyMs": 1864
+          },
+          {
+            "ordinal": 47,
+            "clientLatencyMs": 1647
+          },
+          {
+            "ordinal": 48,
+            "clientLatencyMs": 2101
+          },
+          {
+            "ordinal": 49,
+            "clientLatencyMs": 2543
+          },
+          {
+            "ordinal": 50,
+            "clientLatencyMs": 2152
+          }
+        ],
+        "reported": {
+          "p50": 1473,
+          "p95": 2152
+        }
+      },
+      "telemetry": {
+        "observedTraceCount": 49,
+        "schemaCompleteTraceCount": 45,
+        "descriptiveLossCount": 1,
+        "workerColoDistribution": {
+          "PDX": 45
+        },
+        "perHopDurationInputs": [
+          {
+            "rowId": "S00",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 1352,
+            "durationHistogramMs": {
+              "892": 1,
+              "904": 1,
+              "931": 1,
+              "949": 1,
+              "966": 1,
+              "1044": 1,
+              "1100": 1,
+              "1117": 1,
+              "1138": 1,
+              "1155": 1,
+              "1182": 1,
+              "1184": 1,
+              "1197": 1,
+              "1210": 1,
+              "1219": 1,
+              "1223": 1,
+              "1234": 1,
+              "1237": 1,
+              "1239": 1,
+              "1248": 1,
+              "1288": 1,
+              "1290": 1,
+              "1340": 1,
+              "1350": 1,
+              "1352": 1,
+              "1356": 1,
+              "1458": 1,
+              "1471": 1,
+              "1476": 1,
+              "1484": 1,
+              "1505": 1,
+              "1526": 1,
+              "1547": 1,
+              "1557": 1,
+              "1578": 1,
+              "1590": 1,
+              "1600": 1,
+              "1639": 1,
+              "1658": 1,
+              "1750": 1,
+              "1752": 1,
+              "1842": 1,
+              "1904": 1,
+              "1926": 1,
+              "1988": 1,
+              "2045": 1,
+              "2086": 1,
+              "2091": 1,
+              "2487": 1
+            }
+          },
+          {
+            "rowId": "S01",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 49
+            }
+          },
+          {
+            "rowId": "S02",
+            "observedSpanCount": 48,
+            "reportedMedianMs": 66,
+            "durationHistogramMs": {
+              "61": 4,
+              "62": 2,
+              "63": 7,
+              "64": 5,
+              "65": 1,
+              "66": 5,
+              "67": 3,
+              "68": 4,
+              "69": 1,
+              "70": 3,
+              "71": 2,
+              "72": 2,
+              "73": 2,
+              "74": 1,
+              "88": 1,
+              "338": 1,
+              "431": 1,
+              "448": 1,
+              "493": 1,
+              "773": 1
+            }
+          },
+          {
+            "rowId": "S03",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 65,
+            "durationHistogramMs": {
+              "58": 3,
+              "59": 3,
+              "60": 1,
+              "61": 2,
+              "62": 5,
+              "63": 5,
+              "64": 5,
+              "65": 4,
+              "66": 4,
+              "67": 4,
+              "68": 2,
+              "70": 2,
+              "71": 1,
+              "72": 2,
+              "73": 1,
+              "74": 3,
+              "77": 2
+            }
+          },
+          {
+            "rowId": "S04",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 523,
+            "durationHistogramMs": {
+              "366": 1,
+              "379": 1,
+              "390": 1,
+              "394": 1,
+              "397": 1,
+              "398": 1,
+              "408": 1,
+              "417": 1,
+              "424": 1,
+              "425": 1,
+              "434": 1,
+              "437": 1,
+              "449": 1,
+              "451": 1,
+              "456": 1,
+              "457": 1,
+              "460": 2,
+              "464": 1,
+              "470": 1,
+              "472": 1,
+              "482": 1,
+              "485": 1,
+              "505": 1,
+              "523": 2,
+              "525": 1,
+              "534": 1,
+              "537": 1,
+              "538": 1,
+              "541": 1,
+              "548": 2,
+              "558": 1,
+              "561": 1,
+              "565": 1,
+              "572": 1,
+              "581": 1,
+              "588": 1,
+              "589": 1,
+              "590": 1,
+              "592": 1,
+              "595": 1,
+              "608": 1,
+              "613": 1,
+              "637": 1,
+              "663": 1,
+              "892": 1,
+              "1399": 1
+            }
+          },
+          {
+            "rowId": "S05a",
+            "observedSpanCount": 47,
+            "reportedMedianMs": 52,
+            "durationHistogramMs": {
+              "30": 1,
+              "31": 1,
+              "33": 1,
+              "34": 3,
+              "36": 1,
+              "38": 1,
+              "40": 1,
+              "41": 1,
+              "42": 1,
+              "43": 1,
+              "46": 3,
+              "48": 2,
+              "50": 4,
+              "51": 1,
+              "52": 3,
+              "53": 2,
+              "54": 3,
+              "55": 2,
+              "56": 3,
+              "57": 1,
+              "58": 2,
+              "59": 1,
+              "61": 4,
+              "63": 1,
+              "66": 1,
+              "69": 1,
+              "76": 1
+            }
+          },
+          {
+            "rowId": "S05b",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 52,
+            "durationHistogramMs": {
+              "30": 1,
+              "31": 1,
+              "34": 2,
+              "35": 1,
+              "36": 1,
+              "38": 1,
+              "39": 1,
+              "40": 1,
+              "41": 1,
+              "43": 1,
+              "44": 2,
+              "47": 1,
+              "49": 1,
+              "50": 4,
+              "51": 3,
+              "52": 6,
+              "53": 1,
+              "54": 3,
+              "55": 2,
+              "56": 3,
+              "57": 1,
+              "58": 1,
+              "60": 1,
+              "62": 2,
+              "66": 1,
+              "71": 1,
+              "72": 1,
+              "73": 1,
+              "78": 1,
+              "85": 1,
+              "128": 1
+            }
+          },
+          {
+            "rowId": "S05c",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 49
+            }
+          },
+          {
+            "rowId": "S05d",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 53,
+            "durationHistogramMs": {
+              "29": 1,
+              "31": 2,
+              "32": 1,
+              "33": 2,
+              "34": 1,
+              "35": 1,
+              "37": 2,
+              "40": 1,
+              "42": 2,
+              "44": 1,
+              "48": 1,
+              "49": 2,
+              "50": 2,
+              "51": 2,
+              "52": 1,
+              "53": 4,
+              "54": 4,
+              "55": 5,
+              "56": 4,
+              "57": 1,
+              "58": 1,
+              "59": 3,
+              "61": 1,
+              "62": 2,
+              "63": 1,
+              "68": 1
+            }
+          },
+          {
+            "rowId": "S06",
+            "observedSpanCount": 47,
+            "reportedMedianMs": 176,
+            "durationHistogramMs": {
+              "72": 1,
+              "77": 1,
+              "80": 1,
+              "81": 2,
+              "83": 1,
+              "85": 1,
+              "90": 1,
+              "94": 1,
+              "95": 1,
+              "99": 1,
+              "101": 1,
+              "102": 1,
+              "105": 1,
+              "112": 1,
+              "115": 1,
+              "120": 1,
+              "121": 1,
+              "125": 1,
+              "128": 1,
+              "152": 1,
+              "160": 1,
+              "163": 1,
+              "176": 1,
+              "180": 1,
+              "196": 1,
+              "213": 2,
+              "222": 1,
+              "252": 1,
+              "257": 1,
+              "260": 1,
+              "263": 2,
+              "268": 1,
+              "269": 2,
+              "271": 1,
+              "272": 1,
+              "297": 1,
+              "313": 1,
+              "340": 1,
+              "350": 1,
+              "540": 1,
+              "630": 1,
+              "661": 1,
+              "674": 1
+            }
+          },
+          {
+            "rowId": "S07",
+            "observedSpanCount": 48,
+            "reportedMedianMs": 163,
+            "durationHistogramMs": {
+              "72": 1,
+              "76": 1,
+              "80": 1,
+              "81": 2,
+              "83": 1,
+              "85": 1,
+              "90": 1,
+              "93": 1,
+              "94": 1,
+              "95": 1,
+              "99": 1,
+              "101": 1,
+              "102": 1,
+              "105": 1,
+              "111": 1,
+              "115": 1,
+              "119": 1,
+              "121": 1,
+              "125": 1,
+              "128": 1,
+              "152": 1,
+              "160": 1,
+              "163": 1,
+              "176": 1,
+              "180": 1,
+              "195": 1,
+              "213": 2,
+              "221": 1,
+              "252": 1,
+              "257": 1,
+              "260": 1,
+              "263": 2,
+              "268": 1,
+              "269": 2,
+              "271": 1,
+              "272": 1,
+              "297": 1,
+              "313": 1,
+              "340": 1,
+              "350": 1,
+              "540": 1,
+              "630": 1,
+              "660": 1,
+              "674": 1
+            }
+          },
+          {
+            "rowId": "S08",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 85,
+            "durationHistogramMs": {
+              "67": 1,
+              "72": 1,
+              "74": 3,
+              "75": 2,
+              "76": 3,
+              "77": 1,
+              "78": 2,
+              "79": 3,
+              "80": 3,
+              "81": 1,
+              "82": 3,
+              "84": 1,
+              "85": 1,
+              "86": 1,
+              "87": 3,
+              "90": 4,
+              "94": 1,
+              "98": 1,
+              "99": 1,
+              "100": 2,
+              "102": 1,
+              "109": 2,
+              "110": 2,
+              "112": 1,
+              "116": 1,
+              "131": 1,
+              "133": 1,
+              "136": 1,
+              "357": 1
+            }
+          },
+          {
+            "rowId": "S09",
+            "observedSpanCount": 47,
+            "reportedMedianMs": 22,
+            "durationHistogramMs": {
+              "14": 1,
+              "15": 4,
+              "16": 4,
+              "17": 1,
+              "18": 4,
+              "19": 2,
+              "20": 3,
+              "21": 2,
+              "22": 4,
+              "23": 2,
+              "25": 3,
+              "26": 1,
+              "28": 1,
+              "29": 2,
+              "30": 1,
+              "31": 1,
+              "33": 1,
+              "35": 1,
+              "37": 1,
+              "38": 1,
+              "43": 2,
+              "49": 1,
+              "52": 1,
+              "73": 1,
+              "79": 1,
+              "80": 1
+            }
+          },
+          {
+            "rowId": "S10",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 31,
+            "durationHistogramMs": {
+              "23": 1,
+              "24": 2,
+              "25": 3,
+              "26": 3,
+              "27": 3,
+              "28": 3,
+              "29": 4,
+              "30": 3,
+              "31": 3,
+              "32": 4,
+              "33": 3,
+              "34": 4,
+              "35": 4,
+              "36": 2,
+              "37": 2,
+              "38": 2,
+              "39": 1,
+              "58": 1,
+              "59": 1
+            }
+          },
+          {
+            "rowId": "S11",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 106,
+            "durationHistogramMs": {
+              "46": 1,
+              "48": 1,
+              "51": 1,
+              "52": 1,
+              "54": 2,
+              "55": 1,
+              "59": 3,
+              "61": 1,
+              "65": 1,
+              "67": 1,
+              "68": 2,
+              "69": 1,
+              "77": 1,
+              "78": 1,
+              "81": 1,
+              "85": 1,
+              "87": 2,
+              "93": 1,
+              "101": 1,
+              "106": 1,
+              "115": 1,
+              "118": 1,
+              "120": 1,
+              "125": 1,
+              "131": 1,
+              "144": 1,
+              "174": 1,
+              "186": 1,
+              "190": 1,
+              "208": 1,
+              "209": 1,
+              "217": 1,
+              "224": 1,
+              "247": 1,
+              "254": 1,
+              "263": 1,
+              "282": 1,
+              "283": 1,
+              "285": 1,
+              "300": 1,
+              "310": 1,
+              "356": 1,
+              "357": 1,
+              "547": 1
+            }
+          },
+          {
+            "rowId": "S12",
+            "observedSpanCount": 48,
+            "reportedMedianMs": 105,
+            "durationHistogramMs": {
+              "46": 1,
+              "51": 1,
+              "52": 1,
+              "54": 2,
+              "55": 1,
+              "59": 3,
+              "61": 1,
+              "65": 1,
+              "67": 2,
+              "68": 1,
+              "69": 1,
+              "77": 1,
+              "78": 1,
+              "81": 1,
+              "85": 1,
+              "87": 2,
+              "93": 1,
+              "101": 1,
+              "105": 1,
+              "115": 1,
+              "118": 1,
+              "120": 1,
+              "125": 1,
+              "131": 1,
+              "144": 1,
+              "174": 1,
+              "186": 1,
+              "190": 1,
+              "208": 1,
+              "209": 1,
+              "217": 1,
+              "224": 1,
+              "246": 1,
+              "254": 1,
+              "262": 1,
+              "282": 1,
+              "283": 1,
+              "285": 1,
+              "300": 1,
+              "310": 1,
+              "356": 1,
+              "357": 1,
+              "547": 1
+            }
+          },
+          {
+            "rowId": "S13",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 36,
+            "durationHistogramMs": {
+              "19": 3,
+              "20": 1,
+              "21": 3,
+              "22": 2,
+              "23": 2,
+              "24": 2,
+              "26": 2,
+              "27": 1,
+              "29": 2,
+              "30": 1,
+              "32": 4,
+              "36": 2,
+              "44": 1,
+              "46": 1,
+              "47": 1,
+              "49": 1,
+              "52": 1,
+              "54": 2,
+              "73": 1,
+              "79": 1,
+              "93": 1,
+              "107": 1,
+              "113": 1,
+              "152": 1,
+              "180": 1,
+              "184": 1,
+              "192": 1,
+              "212": 1,
+              "215": 1,
+              "218": 1,
+              "249": 1,
+              "258": 1,
+              "314": 1,
+              "316": 1,
+              "386": 1
+            }
+          },
+          {
+            "rowId": "S14",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 31,
+            "durationHistogramMs": {
+              "14": 1,
+              "15": 1,
+              "16": 3,
+              "17": 5,
+              "18": 3,
+              "20": 3,
+              "21": 3,
+              "23": 2,
+              "25": 2,
+              "30": 1,
+              "31": 1,
+              "32": 1,
+              "34": 1,
+              "40": 1,
+              "41": 2,
+              "44": 3,
+              "50": 1,
+              "52": 1,
+              "53": 1,
+              "71": 1,
+              "73": 1,
+              "91": 1,
+              "103": 1,
+              "108": 1,
+              "143": 1,
+              "178": 2,
+              "232": 1,
+              "250": 1,
+              "253": 1,
+              "268": 1,
+              "384": 1
+            }
+          },
+          {
+            "rowId": "S15",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 49
+            }
+          },
+          {
+            "rowId": "S16",
+            "observedSpanCount": 531,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 482,
+              "14": 1,
+              "15": 4,
+              "16": 4,
+              "17": 1,
+              "18": 4,
+              "19": 2,
+              "20": 3,
+              "21": 2,
+              "22": 4,
+              "23": 2,
+              "25": 3,
+              "26": 1,
+              "28": 1,
+              "29": 3,
+              "30": 1,
+              "31": 1,
+              "33": 1,
+              "34": 1,
+              "35": 1,
+              "37": 1,
+              "38": 1,
+              "43": 2,
+              "49": 1,
+              "52": 1,
+              "73": 1,
+              "79": 1,
+              "80": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "after",
+      "provenance": {
+        "candidate": "a5-admit-reservation-overlap",
+        "sourceCommit": "c2dd3424d84433de18cbe480a667a3935e586265",
+        "capturedAt": "2026-08-27T18:42:21.462Z",
+        "deployedVersion": {
+          "id": "7e6ecf4e-e78f-4690-b91d-cdf4717dcfb5",
+          "number": 159,
+          "createdOn": "2026-08-27T18:39:27.808488Z"
+        }
+      },
+      "client": {
+        "acceptedHttpStatus": 200,
+        "sampleCount": 50,
+        "estimator": "nearest-rank",
+        "ordinalLatencyMs": [
+          {
+            "ordinal": 1,
+            "clientLatencyMs": 1693
+          },
+          {
+            "ordinal": 2,
+            "clientLatencyMs": 1628
+          },
+          {
+            "ordinal": 3,
+            "clientLatencyMs": 1093
+          },
+          {
+            "ordinal": 4,
+            "clientLatencyMs": 1035
+          },
+          {
+            "ordinal": 5,
+            "clientLatencyMs": 2010
+          },
+          {
+            "ordinal": 6,
+            "clientLatencyMs": 1451
+          },
+          {
+            "ordinal": 7,
+            "clientLatencyMs": 1198
+          },
+          {
+            "ordinal": 8,
+            "clientLatencyMs": 1154
+          },
+          {
+            "ordinal": 9,
+            "clientLatencyMs": 1315
+          },
+          {
+            "ordinal": 10,
+            "clientLatencyMs": 1373
+          },
+          {
+            "ordinal": 11,
+            "clientLatencyMs": 1131
+          },
+          {
+            "ordinal": 12,
+            "clientLatencyMs": 1435
+          },
+          {
+            "ordinal": 13,
+            "clientLatencyMs": 1484
+          },
+          {
+            "ordinal": 14,
+            "clientLatencyMs": 1942
+          },
+          {
+            "ordinal": 15,
+            "clientLatencyMs": 1462
+          },
+          {
+            "ordinal": 16,
+            "clientLatencyMs": 1605
+          },
+          {
+            "ordinal": 17,
+            "clientLatencyMs": 1302
+          },
+          {
+            "ordinal": 18,
+            "clientLatencyMs": 1133
+          },
+          {
+            "ordinal": 19,
+            "clientLatencyMs": 1086
+          },
+          {
+            "ordinal": 20,
+            "clientLatencyMs": 1769
+          },
+          {
+            "ordinal": 21,
+            "clientLatencyMs": 1901
+          },
+          {
+            "ordinal": 22,
+            "clientLatencyMs": 2172
+          },
+          {
+            "ordinal": 23,
+            "clientLatencyMs": 1297
+          },
+          {
+            "ordinal": 24,
+            "clientLatencyMs": 1283
+          },
+          {
+            "ordinal": 25,
+            "clientLatencyMs": 1100
+          },
+          {
+            "ordinal": 26,
+            "clientLatencyMs": 1285
+          },
+          {
+            "ordinal": 27,
+            "clientLatencyMs": 1193
+          },
+          {
+            "ordinal": 28,
+            "clientLatencyMs": 1427
+          },
+          {
+            "ordinal": 29,
+            "clientLatencyMs": 1691
+          },
+          {
+            "ordinal": 30,
+            "clientLatencyMs": 1161
+          },
+          {
+            "ordinal": 31,
+            "clientLatencyMs": 1765
+          },
+          {
+            "ordinal": 32,
+            "clientLatencyMs": 1325
+          },
+          {
+            "ordinal": 33,
+            "clientLatencyMs": 1407
+          },
+          {
+            "ordinal": 34,
+            "clientLatencyMs": 1218
+          },
+          {
+            "ordinal": 35,
+            "clientLatencyMs": 1211
+          },
+          {
+            "ordinal": 36,
+            "clientLatencyMs": 1238
+          },
+          {
+            "ordinal": 37,
+            "clientLatencyMs": 1190
+          },
+          {
+            "ordinal": 38,
+            "clientLatencyMs": 1425
+          },
+          {
+            "ordinal": 39,
+            "clientLatencyMs": 1267
+          },
+          {
+            "ordinal": 40,
+            "clientLatencyMs": 1355
+          },
+          {
+            "ordinal": 41,
+            "clientLatencyMs": 1050
+          },
+          {
+            "ordinal": 42,
+            "clientLatencyMs": 1050
+          },
+          {
+            "ordinal": 43,
+            "clientLatencyMs": 1145
+          },
+          {
+            "ordinal": 44,
+            "clientLatencyMs": 1302
+          },
+          {
+            "ordinal": 45,
+            "clientLatencyMs": 1217
+          },
+          {
+            "ordinal": 46,
+            "clientLatencyMs": 1141
+          },
+          {
+            "ordinal": 47,
+            "clientLatencyMs": 1514
+          },
+          {
+            "ordinal": 48,
+            "clientLatencyMs": 1559
+          },
+          {
+            "ordinal": 49,
+            "clientLatencyMs": 1248
+          },
+          {
+            "ordinal": 50,
+            "clientLatencyMs": 1708
+          }
+        ],
+        "reported": {
+          "p50": 1302,
+          "p95": 1942
+        }
+      },
+      "telemetry": {
+        "observedTraceCount": 50,
+        "schemaCompleteTraceCount": 46,
+        "descriptiveLossCount": 0,
+        "workerColoDistribution": {
+          "ATL": 46
+        },
+        "perHopDurationInputs": [
+          {
+            "rowId": "S00",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 1222,
+            "durationHistogramMs": {
+              "906": 1,
+              "955": 1,
+              "975": 1,
+              "1005": 1,
+              "1007": 1,
+              "1026": 1,
+              "1045": 1,
+              "1050": 1,
+              "1059": 1,
+              "1061": 1,
+              "1064": 1,
+              "1078": 1,
+              "1082": 1,
+              "1115": 2,
+              "1117": 1,
+              "1136": 1,
+              "1142": 1,
+              "1152": 1,
+              "1162": 1,
+              "1163": 1,
+              "1183": 1,
+              "1192": 1,
+              "1198": 1,
+              "1222": 1,
+              "1226": 1,
+              "1233": 1,
+              "1246": 1,
+              "1252": 1,
+              "1283": 1,
+              "1299": 1,
+              "1324": 1,
+              "1345": 1,
+              "1359": 1,
+              "1372": 1,
+              "1384": 1,
+              "1403": 1,
+              "1438": 1,
+              "1486": 1,
+              "1526": 1,
+              "1530": 1,
+              "1573": 1,
+              "1605": 1,
+              "1635": 1,
+              "1685": 1,
+              "1695": 1,
+              "1825": 1,
+              "1863": 1,
+              "1877": 1,
+              "2092": 1
+            }
+          },
+          {
+            "rowId": "S01",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 49
+            }
+          },
+          {
+            "rowId": "S02",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 98,
+            "durationHistogramMs": {
+              "91": 1,
+              "92": 1,
+              "93": 2,
+              "94": 3,
+              "95": 3,
+              "96": 5,
+              "97": 3,
+              "98": 8,
+              "99": 3,
+              "100": 5,
+              "101": 3,
+              "102": 1,
+              "103": 2,
+              "105": 1,
+              "106": 1,
+              "109": 1,
+              "111": 1,
+              "113": 1,
+              "121": 1,
+              "308": 1,
+              "409": 1,
+              "711": 1
+            }
+          },
+          {
+            "rowId": "S03",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 97,
+            "durationHistogramMs": {
+              "91": 1,
+              "93": 4,
+              "94": 3,
+              "95": 8,
+              "96": 8,
+              "97": 5,
+              "98": 4,
+              "99": 3,
+              "101": 3,
+              "102": 2,
+              "103": 1,
+              "104": 3,
+              "105": 2,
+              "108": 1,
+              "109": 1,
+              "112": 1
+            }
+          },
+          {
+            "rowId": "S04",
+            "observedSpanCount": 48,
+            "reportedMedianMs": 344,
+            "durationHistogramMs": {
+              "196": 1,
+              "201": 1,
+              "222": 1,
+              "233": 2,
+              "247": 1,
+              "255": 2,
+              "257": 1,
+              "263": 1,
+              "269": 1,
+              "274": 1,
+              "284": 1,
+              "300": 1,
+              "311": 1,
+              "313": 1,
+              "315": 1,
+              "318": 1,
+              "328": 1,
+              "329": 1,
+              "339": 1,
+              "341": 1,
+              "342": 1,
+              "344": 1,
+              "345": 1,
+              "349": 1,
+              "351": 1,
+              "356": 1,
+              "362": 1,
+              "370": 1,
+              "371": 1,
+              "374": 1,
+              "380": 1,
+              "384": 1,
+              "402": 1,
+              "426": 1,
+              "427": 1,
+              "433": 1,
+              "437": 1,
+              "443": 1,
+              "446": 1,
+              "447": 1,
+              "490": 1,
+              "492": 1,
+              "530": 1,
+              "543": 1,
+              "576": 1,
+              "592": 1
+            }
+          },
+          {
+            "rowId": "S05a",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 26,
+            "durationHistogramMs": {
+              "21": 4,
+              "22": 4,
+              "23": 4,
+              "24": 4,
+              "25": 6,
+              "26": 5,
+              "28": 2,
+              "29": 1,
+              "38": 1,
+              "53": 2,
+              "55": 1,
+              "56": 3,
+              "57": 5,
+              "58": 3,
+              "61": 1,
+              "63": 1,
+              "64": 1,
+              "65": 1
+            }
+          },
+          {
+            "rowId": "S05b",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 25,
+            "durationHistogramMs": {
+              "20": 1,
+              "21": 3,
+              "22": 6,
+              "23": 3,
+              "24": 10,
+              "25": 3,
+              "26": 2,
+              "27": 3,
+              "40": 1,
+              "52": 1,
+              "53": 4,
+              "54": 3,
+              "55": 2,
+              "56": 1,
+              "57": 1,
+              "58": 3,
+              "59": 1,
+              "63": 1
+            }
+          },
+          {
+            "rowId": "S05c",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 25,
+            "durationHistogramMs": {
+              "20": 1,
+              "21": 8,
+              "22": 4,
+              "23": 5,
+              "24": 5,
+              "25": 3,
+              "26": 4,
+              "27": 2,
+              "51": 1,
+              "53": 2,
+              "54": 7,
+              "55": 2,
+              "57": 1,
+              "58": 4,
+              "63": 1
+            }
+          },
+          {
+            "rowId": "S05d",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 25,
+            "durationHistogramMs": {
+              "20": 1,
+              "21": 4,
+              "22": 4,
+              "23": 6,
+              "24": 9,
+              "25": 5,
+              "26": 1,
+              "28": 1,
+              "53": 2,
+              "54": 4,
+              "55": 7,
+              "56": 3,
+              "57": 1,
+              "60": 1,
+              "64": 1
+            }
+          },
+          {
+            "rowId": "S06",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 181,
+            "durationHistogramMs": {
+              "122": 1,
+              "123": 1,
+              "128": 1,
+              "130": 2,
+              "131": 1,
+              "132": 1,
+              "133": 4,
+              "134": 2,
+              "140": 1,
+              "141": 1,
+              "148": 1,
+              "150": 1,
+              "154": 1,
+              "156": 1,
+              "158": 1,
+              "169": 1,
+              "175": 1,
+              "177": 1,
+              "178": 1,
+              "181": 1,
+              "184": 1,
+              "190": 1,
+              "201": 2,
+              "207": 1,
+              "215": 1,
+              "221": 1,
+              "227": 1,
+              "230": 1,
+              "232": 2,
+              "239": 1,
+              "245": 1,
+              "251": 1,
+              "259": 1,
+              "271": 1,
+              "277": 1,
+              "280": 1,
+              "287": 1,
+              "292": 1,
+              "387": 1,
+              "392": 1,
+              "509": 1,
+              "527": 1
+            }
+          },
+          {
+            "rowId": "S07",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 181,
+            "durationHistogramMs": {
+              "122": 1,
+              "123": 1,
+              "128": 1,
+              "130": 2,
+              "131": 1,
+              "132": 1,
+              "133": 4,
+              "134": 2,
+              "140": 1,
+              "141": 1,
+              "148": 1,
+              "150": 1,
+              "154": 1,
+              "156": 1,
+              "158": 1,
+              "169": 1,
+              "175": 1,
+              "177": 1,
+              "178": 1,
+              "181": 1,
+              "184": 1,
+              "190": 1,
+              "201": 2,
+              "207": 1,
+              "215": 1,
+              "221": 1,
+              "227": 2,
+              "230": 1,
+              "232": 2,
+              "239": 1,
+              "245": 1,
+              "251": 1,
+              "259": 1,
+              "271": 1,
+              "277": 1,
+              "280": 1,
+              "287": 1,
+              "292": 1,
+              "387": 1,
+              "392": 1,
+              "509": 1,
+              "527": 1
+            }
+          },
+          {
+            "rowId": "S08",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 112,
+            "durationHistogramMs": {
+              "99": 1,
+              "100": 2,
+              "103": 3,
+              "104": 1,
+              "106": 4,
+              "107": 4,
+              "108": 3,
+              "109": 2,
+              "110": 3,
+              "112": 4,
+              "113": 2,
+              "114": 2,
+              "115": 4,
+              "116": 1,
+              "117": 2,
+              "119": 1,
+              "120": 1,
+              "121": 1,
+              "122": 1,
+              "124": 1,
+              "128": 1,
+              "129": 1,
+              "132": 1,
+              "137": 1,
+              "139": 1,
+              "141": 1,
+              "283": 1
+            }
+          },
+          {
+            "rowId": "S09",
+            "observedSpanCount": 48,
+            "reportedMedianMs": 15,
+            "durationHistogramMs": {
+              "11": 3,
+              "12": 4,
+              "13": 5,
+              "14": 8,
+              "15": 4,
+              "16": 2,
+              "17": 6,
+              "18": 1,
+              "20": 3,
+              "21": 4,
+              "23": 1,
+              "24": 1,
+              "26": 1,
+              "27": 2,
+              "30": 1,
+              "32": 1,
+              "35": 1
+            }
+          },
+          {
+            "rowId": "S10",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 66,
+            "durationHistogramMs": {
+              "61": 3,
+              "62": 3,
+              "63": 6,
+              "64": 6,
+              "65": 6,
+              "66": 4,
+              "67": 2,
+              "68": 4,
+              "69": 6,
+              "70": 6,
+              "71": 1,
+              "73": 1,
+              "74": 1,
+              "324": 1
+            }
+          },
+          {
+            "rowId": "S11",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 140,
+            "durationHistogramMs": {
+              "97": 3,
+              "98": 1,
+              "99": 1,
+              "100": 2,
+              "101": 1,
+              "102": 1,
+              "104": 1,
+              "105": 1,
+              "108": 2,
+              "116": 1,
+              "120": 1,
+              "127": 1,
+              "128": 3,
+              "133": 1,
+              "135": 1,
+              "136": 1,
+              "137": 1,
+              "139": 1,
+              "140": 1,
+              "141": 1,
+              "144": 1,
+              "145": 1,
+              "146": 1,
+              "156": 1,
+              "163": 2,
+              "164": 1,
+              "171": 1,
+              "172": 1,
+              "187": 1,
+              "201": 1,
+              "207": 2,
+              "229": 1,
+              "230": 1,
+              "233": 1,
+              "236": 1,
+              "247": 1,
+              "257": 1,
+              "320": 1,
+              "367": 1,
+              "402": 1,
+              "958": 1,
+              "1044": 1
+            }
+          },
+          {
+            "rowId": "S12",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 140,
+            "durationHistogramMs": {
+              "97": 3,
+              "98": 1,
+              "99": 1,
+              "100": 2,
+              "101": 2,
+              "104": 1,
+              "105": 1,
+              "107": 1,
+              "108": 1,
+              "116": 1,
+              "119": 1,
+              "127": 2,
+              "128": 2,
+              "132": 1,
+              "135": 2,
+              "137": 1,
+              "139": 1,
+              "140": 1,
+              "141": 1,
+              "144": 1,
+              "145": 1,
+              "146": 1,
+              "156": 1,
+              "162": 1,
+              "163": 2,
+              "171": 1,
+              "172": 1,
+              "187": 1,
+              "201": 1,
+              "207": 2,
+              "229": 1,
+              "230": 1,
+              "233": 1,
+              "235": 1,
+              "247": 1,
+              "257": 1,
+              "320": 1,
+              "367": 1,
+              "402": 1,
+              "958": 1,
+              "1044": 1
+            }
+          },
+          {
+            "rowId": "S13",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 153,
+            "durationHistogramMs": {
+              "89": 1,
+              "91": 3,
+              "93": 1,
+              "94": 1,
+              "97": 1,
+              "99": 1,
+              "100": 2,
+              "106": 1,
+              "110": 1,
+              "111": 2,
+              "113": 1,
+              "114": 1,
+              "121": 1,
+              "126": 1,
+              "127": 1,
+              "130": 1,
+              "134": 1,
+              "144": 2,
+              "151": 1,
+              "153": 1,
+              "155": 2,
+              "156": 1,
+              "162": 1,
+              "176": 1,
+              "186": 1,
+              "188": 1,
+              "189": 1,
+              "190": 1,
+              "208": 1,
+              "217": 1,
+              "218": 1,
+              "235": 1,
+              "240": 1,
+              "257": 1,
+              "263": 1,
+              "264": 1,
+              "284": 1,
+              "299": 1,
+              "311": 1,
+              "376": 1,
+              "380": 1,
+              "415": 1,
+              "420": 1,
+              "525": 1
+            }
+          },
+          {
+            "rowId": "S14",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 88,
+            "durationHistogramMs": {
+              "66": 4,
+              "67": 5,
+              "68": 1,
+              "69": 2,
+              "70": 3,
+              "71": 1,
+              "72": 2,
+              "77": 1,
+              "78": 1,
+              "79": 1,
+              "80": 1,
+              "86": 1,
+              "87": 1,
+              "88": 2,
+              "89": 1,
+              "90": 1,
+              "94": 1,
+              "96": 2,
+              "103": 1,
+              "112": 1,
+              "113": 1,
+              "117": 2,
+              "120": 2,
+              "124": 1,
+              "125": 1,
+              "132": 1,
+              "151": 1,
+              "164": 1,
+              "191": 1,
+              "203": 1,
+              "244": 1,
+              "269": 2,
+              "274": 1,
+              "301": 1
+            }
+          },
+          {
+            "rowId": "S15",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 50
+            }
+          },
+          {
+            "rowId": "S16",
+            "observedSpanCount": 586,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 536,
+              "1": 1,
+              "8": 1,
+              "11": 4,
+              "12": 4,
+              "13": 5,
+              "14": 8,
+              "15": 4,
+              "16": 2,
+              "17": 6,
+              "20": 3,
+              "21": 4,
+              "23": 1,
+              "24": 1,
+              "26": 1,
+              "27": 2,
+              "30": 1,
+              "32": 1,
+              "35": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "repeat",
+      "provenance": {
+        "candidate": "a5-admit-reservation-overlap-repeat",
+        "sourceCommit": "c2dd3424d84433de18cbe480a667a3935e586265",
+        "capturedAt": "2026-08-27T18:45:24.821Z",
+        "deployedVersion": {
+          "id": "a5dcff48-9a9c-4b2c-a5fa-6a3391b8879b",
+          "number": 160,
+          "createdOn": "2026-08-27T18:42:44.317757Z"
+        }
+      },
+      "client": {
+        "acceptedHttpStatus": 200,
+        "sampleCount": 50,
+        "estimator": "nearest-rank",
+        "ordinalLatencyMs": [
+          {
+            "ordinal": 1,
+            "clientLatencyMs": 927
+          },
+          {
+            "ordinal": 2,
+            "clientLatencyMs": 952
+          },
+          {
+            "ordinal": 3,
+            "clientLatencyMs": 922
+          },
+          {
+            "ordinal": 4,
+            "clientLatencyMs": 1000
+          },
+          {
+            "ordinal": 5,
+            "clientLatencyMs": 1047
+          },
+          {
+            "ordinal": 6,
+            "clientLatencyMs": 865
+          },
+          {
+            "ordinal": 7,
+            "clientLatencyMs": 882
+          },
+          {
+            "ordinal": 8,
+            "clientLatencyMs": 902
+          },
+          {
+            "ordinal": 9,
+            "clientLatencyMs": 792
+          },
+          {
+            "ordinal": 10,
+            "clientLatencyMs": 926
+          },
+          {
+            "ordinal": 11,
+            "clientLatencyMs": 912
+          },
+          {
+            "ordinal": 12,
+            "clientLatencyMs": 852
+          },
+          {
+            "ordinal": 13,
+            "clientLatencyMs": 1132
+          },
+          {
+            "ordinal": 14,
+            "clientLatencyMs": 956
+          },
+          {
+            "ordinal": 15,
+            "clientLatencyMs": 945
+          },
+          {
+            "ordinal": 16,
+            "clientLatencyMs": 4677
+          },
+          {
+            "ordinal": 17,
+            "clientLatencyMs": 796
+          },
+          {
+            "ordinal": 18,
+            "clientLatencyMs": 811
+          },
+          {
+            "ordinal": 19,
+            "clientLatencyMs": 1074
+          },
+          {
+            "ordinal": 20,
+            "clientLatencyMs": 1070
+          },
+          {
+            "ordinal": 21,
+            "clientLatencyMs": 720
+          },
+          {
+            "ordinal": 22,
+            "clientLatencyMs": 938
+          },
+          {
+            "ordinal": 23,
+            "clientLatencyMs": 1112
+          },
+          {
+            "ordinal": 24,
+            "clientLatencyMs": 857
+          },
+          {
+            "ordinal": 25,
+            "clientLatencyMs": 998
+          },
+          {
+            "ordinal": 26,
+            "clientLatencyMs": 1315
+          },
+          {
+            "ordinal": 27,
+            "clientLatencyMs": 1089
+          },
+          {
+            "ordinal": 28,
+            "clientLatencyMs": 1237
+          },
+          {
+            "ordinal": 29,
+            "clientLatencyMs": 1571
+          },
+          {
+            "ordinal": 30,
+            "clientLatencyMs": 1183
+          },
+          {
+            "ordinal": 31,
+            "clientLatencyMs": 1000
+          },
+          {
+            "ordinal": 32,
+            "clientLatencyMs": 1510
+          },
+          {
+            "ordinal": 33,
+            "clientLatencyMs": 801
+          },
+          {
+            "ordinal": 34,
+            "clientLatencyMs": 988
+          },
+          {
+            "ordinal": 35,
+            "clientLatencyMs": 928
+          },
+          {
+            "ordinal": 36,
+            "clientLatencyMs": 1147
+          },
+          {
+            "ordinal": 37,
+            "clientLatencyMs": 852
+          },
+          {
+            "ordinal": 38,
+            "clientLatencyMs": 821
+          },
+          {
+            "ordinal": 39,
+            "clientLatencyMs": 970
+          },
+          {
+            "ordinal": 40,
+            "clientLatencyMs": 811
+          },
+          {
+            "ordinal": 41,
+            "clientLatencyMs": 1136
+          },
+          {
+            "ordinal": 42,
+            "clientLatencyMs": 1283
+          },
+          {
+            "ordinal": 43,
+            "clientLatencyMs": 762
+          },
+          {
+            "ordinal": 44,
+            "clientLatencyMs": 836
+          },
+          {
+            "ordinal": 45,
+            "clientLatencyMs": 1094
+          },
+          {
+            "ordinal": 46,
+            "clientLatencyMs": 1031
+          },
+          {
+            "ordinal": 47,
+            "clientLatencyMs": 1100
+          },
+          {
+            "ordinal": 48,
+            "clientLatencyMs": 960
+          },
+          {
+            "ordinal": 49,
+            "clientLatencyMs": 1344
+          },
+          {
+            "ordinal": 50,
+            "clientLatencyMs": 1070
+          }
+        ],
+        "reported": {
+          "p50": 960,
+          "p95": 1510
+        }
+      },
+      "telemetry": {
+        "observedTraceCount": 50,
+        "schemaCompleteTraceCount": 46,
+        "descriptiveLossCount": 0,
+        "workerColoDistribution": {
+          "SJC": 46
+        },
+        "perHopDurationInputs": [
+          {
+            "rowId": "S00",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 914,
+            "durationHistogramMs": {
+              "674": 1,
+              "709": 1,
+              "711": 1,
+              "749": 1,
+              "756": 1,
+              "757": 1,
+              "760": 1,
+              "767": 1,
+              "772": 1,
+              "788": 1,
+              "791": 1,
+              "802": 1,
+              "804": 1,
+              "808": 1,
+              "809": 1,
+              "842": 1,
+              "845": 1,
+              "858": 1,
+              "866": 1,
+              "877": 1,
+              "888": 2,
+              "892": 1,
+              "913": 1,
+              "914": 1,
+              "920": 1,
+              "929": 1,
+              "938": 1,
+              "950": 1,
+              "960": 1,
+              "963": 1,
+              "999": 1,
+              "1024": 1,
+              "1026": 1,
+              "1030": 2,
+              "1036": 1,
+              "1053": 2,
+              "1063": 1,
+              "1074": 1,
+              "1090": 1,
+              "1106": 1,
+              "1133": 1,
+              "1148": 1,
+              "1219": 1,
+              "1273": 1,
+              "1306": 1,
+              "1451": 1,
+              "4638": 1
+            }
+          },
+          {
+            "rowId": "S01",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 49
+            }
+          },
+          {
+            "rowId": "S02",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 48,
+            "durationHistogramMs": {
+              "41": 1,
+              "42": 2,
+              "43": 1,
+              "44": 4,
+              "45": 3,
+              "46": 5,
+              "47": 6,
+              "48": 6,
+              "49": 4,
+              "50": 1,
+              "51": 3,
+              "52": 1,
+              "53": 1,
+              "55": 1,
+              "56": 1,
+              "57": 1,
+              "58": 2,
+              "60": 1,
+              "62": 1,
+              "64": 1,
+              "66": 1,
+              "93": 1,
+              "130": 1
+            }
+          },
+          {
+            "rowId": "S03",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 48,
+            "durationHistogramMs": {
+              "40": 2,
+              "41": 1,
+              "42": 1,
+              "43": 3,
+              "44": 5,
+              "45": 3,
+              "46": 2,
+              "47": 4,
+              "48": 4,
+              "49": 3,
+              "50": 2,
+              "51": 4,
+              "53": 5,
+              "54": 4,
+              "55": 1,
+              "56": 1,
+              "58": 3,
+              "59": 1,
+              "77": 1
+            }
+          },
+          {
+            "rowId": "S04",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 408,
+            "durationHistogramMs": {
+              "270": 1,
+              "285": 1,
+              "293": 1,
+              "298": 1,
+              "303": 1,
+              "306": 2,
+              "309": 1,
+              "322": 1,
+              "326": 1,
+              "334": 1,
+              "339": 1,
+              "342": 1,
+              "355": 1,
+              "357": 1,
+              "358": 1,
+              "364": 1,
+              "371": 1,
+              "384": 1,
+              "385": 1,
+              "386": 1,
+              "389": 1,
+              "393": 1,
+              "403": 1,
+              "408": 1,
+              "409": 1,
+              "410": 1,
+              "411": 1,
+              "412": 2,
+              "414": 1,
+              "415": 1,
+              "419": 1,
+              "444": 1,
+              "451": 1,
+              "453": 1,
+              "462": 1,
+              "464": 1,
+              "465": 1,
+              "475": 1,
+              "502": 1,
+              "515": 1,
+              "522": 1,
+              "530": 1,
+              "531": 1,
+              "542": 1,
+              "551": 1,
+              "573": 1,
+              "592": 1,
+              "1818": 1
+            }
+          },
+          {
+            "rowId": "S05a",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 34,
+            "durationHistogramMs": {
+              "16": 1,
+              "17": 1,
+              "18": 1,
+              "19": 2,
+              "20": 4,
+              "21": 5,
+              "24": 2,
+              "25": 2,
+              "26": 1,
+              "27": 1,
+              "28": 1,
+              "29": 2,
+              "33": 1,
+              "34": 1,
+              "35": 1,
+              "36": 3,
+              "37": 3,
+              "38": 5,
+              "39": 1,
+              "41": 3,
+              "42": 1,
+              "43": 3,
+              "44": 1,
+              "45": 1,
+              "52": 1,
+              "55": 1,
+              "840": 1
+            }
+          },
+          {
+            "rowId": "S05b",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 27,
+            "durationHistogramMs": {
+              "16": 1,
+              "17": 1,
+              "18": 1,
+              "19": 4,
+              "20": 4,
+              "21": 1,
+              "22": 3,
+              "23": 2,
+              "24": 2,
+              "26": 4,
+              "27": 2,
+              "34": 1,
+              "35": 3,
+              "36": 3,
+              "37": 6,
+              "38": 2,
+              "39": 1,
+              "40": 4,
+              "41": 1,
+              "42": 1,
+              "46": 1,
+              "52": 1,
+              "758": 1
+            }
+          },
+          {
+            "rowId": "S05c",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 33,
+            "durationHistogramMs": {
+              "17": 2,
+              "18": 3,
+              "19": 6,
+              "20": 2,
+              "21": 2,
+              "22": 3,
+              "25": 2,
+              "26": 1,
+              "27": 2,
+              "28": 1,
+              "33": 3,
+              "34": 2,
+              "35": 2,
+              "36": 4,
+              "38": 3,
+              "39": 4,
+              "40": 3,
+              "42": 1,
+              "43": 1,
+              "56": 1,
+              "60": 1,
+              "571": 1
+            }
+          },
+          {
+            "rowId": "S05d",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 34,
+            "durationHistogramMs": {
+              "16": 1,
+              "17": 1,
+              "18": 1,
+              "19": 2,
+              "20": 4,
+              "21": 4,
+              "22": 2,
+              "23": 2,
+              "24": 2,
+              "25": 1,
+              "26": 2,
+              "27": 1,
+              "28": 1,
+              "34": 2,
+              "35": 3,
+              "36": 3,
+              "37": 2,
+              "38": 4,
+              "39": 2,
+              "40": 5,
+              "41": 1,
+              "42": 1,
+              "43": 1,
+              "59": 1,
+              "286": 1
+            }
+          },
+          {
+            "rowId": "S06",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 135,
+            "durationHistogramMs": {
+              "87": 1,
+              "88": 1,
+              "90": 1,
+              "92": 1,
+              "96": 1,
+              "101": 1,
+              "102": 2,
+              "103": 1,
+              "105": 1,
+              "107": 1,
+              "109": 1,
+              "110": 2,
+              "111": 1,
+              "112": 2,
+              "113": 2,
+              "116": 2,
+              "126": 1,
+              "127": 1,
+              "134": 1,
+              "135": 1,
+              "142": 1,
+              "151": 1,
+              "153": 1,
+              "155": 1,
+              "159": 1,
+              "176": 1,
+              "177": 1,
+              "178": 1,
+              "180": 1,
+              "183": 1,
+              "185": 1,
+              "193": 1,
+              "198": 1,
+              "205": 1,
+              "218": 1,
+              "224": 1,
+              "230": 1,
+              "238": 1,
+              "255": 1,
+              "266": 1,
+              "270": 1,
+              "344": 1,
+              "352": 1,
+              "577": 1
+            }
+          },
+          {
+            "rowId": "S07",
+            "observedSpanCount": 49,
+            "reportedMedianMs": 135,
+            "durationHistogramMs": {
+              "87": 1,
+              "88": 1,
+              "90": 1,
+              "92": 1,
+              "96": 1,
+              "101": 1,
+              "102": 2,
+              "103": 1,
+              "105": 1,
+              "107": 1,
+              "109": 1,
+              "110": 2,
+              "111": 1,
+              "112": 2,
+              "113": 2,
+              "116": 2,
+              "126": 1,
+              "127": 1,
+              "134": 1,
+              "135": 1,
+              "142": 1,
+              "151": 1,
+              "153": 1,
+              "155": 1,
+              "159": 1,
+              "176": 1,
+              "177": 1,
+              "178": 1,
+              "180": 1,
+              "183": 1,
+              "185": 1,
+              "193": 1,
+              "198": 1,
+              "205": 1,
+              "218": 1,
+              "224": 1,
+              "230": 1,
+              "238": 1,
+              "255": 1,
+              "266": 1,
+              "270": 1,
+              "344": 1,
+              "352": 1,
+              "577": 1
+            }
+          },
+          {
+            "rowId": "S08",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 64,
+            "durationHistogramMs": {
+              "56": 3,
+              "57": 4,
+              "58": 4,
+              "59": 1,
+              "60": 3,
+              "61": 3,
+              "62": 2,
+              "63": 1,
+              "64": 5,
+              "65": 2,
+              "66": 1,
+              "67": 2,
+              "68": 3,
+              "69": 2,
+              "70": 2,
+              "71": 2,
+              "72": 1,
+              "74": 2,
+              "75": 1,
+              "80": 1,
+              "92": 1,
+              "94": 1,
+              "104": 1,
+              "118": 1,
+              "203": 1
+            }
+          },
+          {
+            "rowId": "S09",
+            "observedSpanCount": 48,
+            "reportedMedianMs": 17,
+            "durationHistogramMs": {
+              "13": 2,
+              "14": 5,
+              "15": 9,
+              "16": 5,
+              "17": 4,
+              "18": 4,
+              "19": 5,
+              "20": 3,
+              "21": 3,
+              "22": 2,
+              "23": 1,
+              "24": 2,
+              "27": 1,
+              "32": 2
+            }
+          },
+          {
+            "rowId": "S10",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 16,
+            "durationHistogramMs": {
+              "11": 2,
+              "12": 3,
+              "13": 4,
+              "15": 8,
+              "16": 8,
+              "17": 3,
+              "18": 4,
+              "19": 5,
+              "20": 4,
+              "21": 5,
+              "22": 2,
+              "25": 1,
+              "55": 1
+            }
+          },
+          {
+            "rowId": "S11",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 89,
+            "durationHistogramMs": {
+              "62": 1,
+              "64": 2,
+              "65": 4,
+              "66": 3,
+              "67": 1,
+              "68": 1,
+              "73": 1,
+              "74": 1,
+              "75": 2,
+              "76": 2,
+              "78": 1,
+              "80": 2,
+              "84": 1,
+              "87": 1,
+              "89": 2,
+              "90": 1,
+              "91": 1,
+              "92": 1,
+              "93": 1,
+              "95": 1,
+              "96": 1,
+              "106": 1,
+              "108": 1,
+              "116": 1,
+              "117": 1,
+              "120": 1,
+              "135": 1,
+              "143": 1,
+              "163": 2,
+              "188": 1,
+              "226": 1,
+              "234": 1,
+              "266": 1,
+              "276": 1,
+              "277": 1,
+              "299": 1,
+              "308": 1,
+              "400": 1,
+              "544": 1
+            }
+          },
+          {
+            "rowId": "S12",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 89,
+            "durationHistogramMs": {
+              "61": 1,
+              "64": 2,
+              "65": 4,
+              "66": 4,
+              "68": 1,
+              "73": 1,
+              "74": 1,
+              "75": 2,
+              "76": 2,
+              "78": 1,
+              "80": 2,
+              "84": 1,
+              "87": 1,
+              "89": 2,
+              "90": 2,
+              "92": 1,
+              "93": 1,
+              "95": 1,
+              "96": 1,
+              "106": 1,
+              "108": 1,
+              "115": 1,
+              "117": 1,
+              "120": 1,
+              "135": 1,
+              "143": 1,
+              "162": 1,
+              "163": 1,
+              "188": 1,
+              "226": 1,
+              "234": 1,
+              "266": 1,
+              "276": 1,
+              "277": 1,
+              "299": 1,
+              "308": 1,
+              "400": 1,
+              "544": 1
+            }
+          },
+          {
+            "rowId": "S13",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 58,
+            "durationHistogramMs": {
+              "40": 2,
+              "42": 1,
+              "43": 1,
+              "44": 2,
+              "45": 2,
+              "46": 3,
+              "47": 1,
+              "48": 1,
+              "49": 2,
+              "52": 2,
+              "53": 3,
+              "54": 2,
+              "56": 1,
+              "57": 1,
+              "58": 1,
+              "61": 1,
+              "62": 1,
+              "63": 1,
+              "64": 3,
+              "65": 1,
+              "67": 1,
+              "72": 1,
+              "80": 1,
+              "83": 2,
+              "84": 2,
+              "88": 1,
+              "101": 1,
+              "108": 1,
+              "122": 1,
+              "127": 1,
+              "131": 1,
+              "257": 1,
+              "267": 1,
+              "270": 1,
+              "280": 1,
+              "295": 1
+            }
+          },
+          {
+            "rowId": "S14",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 44,
+            "durationHistogramMs": {
+              "29": 1,
+              "31": 2,
+              "32": 2,
+              "33": 1,
+              "34": 1,
+              "35": 1,
+              "36": 3,
+              "37": 1,
+              "38": 2,
+              "39": 2,
+              "41": 2,
+              "42": 2,
+              "43": 2,
+              "44": 4,
+              "45": 1,
+              "46": 2,
+              "48": 1,
+              "51": 2,
+              "52": 1,
+              "54": 1,
+              "55": 1,
+              "56": 1,
+              "57": 1,
+              "58": 1,
+              "59": 1,
+              "60": 1,
+              "62": 2,
+              "64": 1,
+              "65": 1,
+              "92": 1,
+              "96": 1,
+              "112": 1,
+              "118": 1,
+              "123": 1,
+              "144": 1
+            }
+          },
+          {
+            "rowId": "S15",
+            "observedSpanCount": 50,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 50
+            }
+          },
+          {
+            "rowId": "S16",
+            "observedSpanCount": 592,
+            "reportedMedianMs": 0,
+            "durationHistogramMs": {
+              "0": 543,
+              "1": 1,
+              "13": 2,
+              "14": 5,
+              "15": 9,
+              "16": 5,
+              "17": 4,
+              "18": 4,
+              "19": 5,
+              "20": 3,
+              "21": 3,
+              "22": 2,
+              "23": 1,
+              "24": 2,
+              "27": 1,
+              "32": 2
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
