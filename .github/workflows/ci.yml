@@ -261,6 +261,14 @@ jobs:
             echo "SDT-G38 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G42 Journal first-touch probe and advisory evidence gates
+        run: npm run test:g42
+      - name: Prove SDT-G42 probe gate CI reachability
+        run: |
+          if SDT_G42_FORCE_FAILURE=1 npm run test:g42:forced-red; then
+            echo "SDT-G42 forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - run: npm run test:store-contract
       - name: Run required Miniflare D1 contract and fault lane
         run: npm run test:d1
