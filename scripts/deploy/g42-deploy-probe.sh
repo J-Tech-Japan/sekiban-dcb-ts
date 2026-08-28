@@ -82,7 +82,7 @@ trap 'rm -f "${SECRETS_FILE}"; if [[ "${OWN_TOKEN}" -eq 1 ]]; then rm -f "${TOKE
 node -e 'const fs=require("fs");const token=fs.readFileSync(process.argv[1],"utf8").trim();if(!token)throw new Error("empty G42 conformance token");fs.writeFileSync(process.argv[2],JSON.stringify({CONFORMANCE_TOKEN:token})+"\n",{mode:0o600});' "${TOKEN_FILE}" "${SECRETS_FILE}"
 
 "${WRANGLER_BIN}" deployments list --name "${WORKER}" --json > "${BEFORE_DEPLOYMENTS}"
-readonly BEFORE_VERSION_ID="$(node -e 'const fs=require("fs");const rows=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));const active=rows.find((row)=>Array.isArray(row.versions)&&row.versions.length===1&&row.versions[0]?.percentage===100);if(!active)throw new Error("no active 100 percent deployment");process.stdout.write(active.versions[0].version_id)' "${BEFORE_DEPLOYMENTS}")"
+readonly BEFORE_VERSION_ID="$(node "${SCRIPT_DIR}/g42-deployment-witness.mjs" --active-version-id --deployments "${BEFORE_DEPLOYMENTS}")"
 "${WRANGLER_BIN}" versions view "${BEFORE_VERSION_ID}" --name "${WORKER}" --json > "${BEFORE_VERSION}"
 
 "${WRANGLER_BIN}" deploy --config "${CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" \

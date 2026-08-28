@@ -43,10 +43,26 @@ function string(value, label) {
   return value;
 }
 
-function activeDeployment(deployments, label) {
+function newestDeployment(deployments, label) {
   const rows = array(deployments, label);
-  const active = rows.find((row) => Array.isArray(row?.versions) && row.versions.length === 1 && row.versions[0]?.percentage === 100);
-  if (active === undefined) fail(`${label} has no one-version 100 percent deployment`);
+  if (rows.length === 0) fail(`${label} must not be empty`);
+  const ordered = rows.map((row, index) => {
+    const timestampText = string(row?.created_on, `${label}[${index}].created_on`);
+    const timestampMs = Date.parse(timestampText);
+    if (!Number.isFinite(timestampMs)) fail(`${label}[${index}].created_on must be an ISO timestamp`);
+    return { row, timestampMs };
+  }).sort((left, right) => right.timestampMs - left.timestampMs);
+  if (ordered.length > 1 && ordered[0].timestampMs === ordered[1].timestampMs) {
+    fail(`${label} has an ambiguous newest deployment timestamp`);
+  }
+  return ordered[0].row;
+}
+
+function activeDeployment(deployments, label) {
+  const active = newestDeployment(deployments, label);
+  if (!Array.isArray(active?.versions) || active.versions.length !== 1 || active.versions[0]?.percentage !== 100) {
+    fail(`${label} newest deployment is not a one-version 100 percent deployment`);
+  }
   const versionId = string(active.versions[0].version_id, `${label}.versions[0].version_id`);
   return Object.freeze({ deploymentId: string(active.id, `${label}.id`), versionId, message: active.annotations?.["workers/message"] ?? null });
 }
@@ -135,17 +151,27 @@ export function selfTest() {
   const beforeVersion = { id: "before", number: 1, resources };
   const afterVersion = { id: "after", number: 2, resources: structuredClone(resources) };
   const sourceCommit = "a".repeat(40);
-  const beforeDeployments = [{ id: "prior-deploy", versions: [{ version_id: "before", percentage: 100 }], annotations: { "workers/message": "prior" } }];
-  const afterDeployments = [{ id: "g42-deploy", versions: [{ version_id: "after", percentage: 100 }], annotations: { "workers/message": `g42 ${sourceCommit}` } }, ...beforeDeployments];
+  const beforeDeployments = [{ id: "prior-deploy", created_on: "2026-08-28T00:00:00.000Z", versions: [{ version_id: "before", percentage: 100 }], annotations: { "workers/message": "prior" } }];
+  // The provider retains historical 100-percent deployment snapshots.  The
+  // newest timestamp, rather than list position or first 100-percent row, is
+  // the active deployment authority.
+  const afterDeployments = [...beforeDeployments, { id: "g42-deploy", created_on: "2026-08-28T00:01:00.000Z", versions: [{ version_id: "after", percentage: 100 }], annotations: { "workers/message": `g42 ${sourceCommit}` } }];
   const mutated = structuredClone(afterVersion);
   mutated.resources.bindings.push({ name: "EXTRA", type: "plain_text", text: "bad" });
   let forcedRed = false;
   const configText = JSON.stringify({ workers_dev: false, routes: [], triggers: { crons: [] }, assets: { directory: "public" } });
   const parameters = { beforeDeployments, afterDeployments, beforeVersion, afterVersion, message: `g42 ${sourceCommit}`, worker: "fixture", baseUrl: "https://fixture.example", sourceCommit, configText };
   const accepted = assertG42DeploymentWitness(parameters);
+  const orderingIndependent = assertG42DeploymentWitness({ ...parameters, afterDeployments: [...afterDeployments].reverse() });
+  if (orderingIndependent.providerIdentity.versionId !== "after") fail("newest deployment selection depends on provider list order");
   try { assertG42DeploymentWitness({ ...parameters, afterVersion: mutated }); } catch { forcedRed = true; }
   if (!forcedRed) fail("binding mutation unexpectedly passed");
-  return Object.freeze({ accepted, forcedRed: "binding-projection" });
+  const ambiguous = structuredClone(afterDeployments);
+  ambiguous[0].created_on = ambiguous[1].created_on;
+  let ambiguousTimestampRed = false;
+  try { assertG42DeploymentWitness({ ...parameters, afterDeployments: ambiguous }); } catch { ambiguousTimestampRed = true; }
+  if (!ambiguousTimestampRed) fail("ambiguous latest deployment timestamp unexpectedly passed");
+  return Object.freeze({ accepted, forcedRed: ["binding-projection", "ambiguous-newest-deployment"] });
 }
 
 function argument(name) {
@@ -159,6 +185,11 @@ function main() {
     return;
   }
   const required = (name) => string(argument(name), name);
+  if (process.argv.includes("--active-version-id")) {
+    const deployments = JSON.parse(readFileSync(required("--deployments"), "utf8"));
+    console.log(activeDeployment(deployments, "deployments").versionId);
+    return;
+  }
   const result = assertG42DeploymentWitness({
     beforeDeployments: JSON.parse(readFileSync(required("--before-deployments"), "utf8")),
     afterDeployments: JSON.parse(readFileSync(required("--after-deployments"), "utf8")),
