@@ -87,6 +87,8 @@ jobs:
           key: node-modules-${{ runner.os }}-node-24-${{ hashFiles('package-lock.json', 'package.json') }}
       - run: npm ci
         if: steps.node-modules.outputs.cache-hit != 'true'
+      - name: Build workspace packages before the isolated compile-fail lane
+        run: npm run build:packages
       - name: Run SDT-G28 dedicated compile-fail and package-boundary gates
         run: npm run test:g28:compile-fail
       - name: Prove SDT-G28 pinned compile-fail lane reachability
@@ -600,6 +602,8 @@ jobs:
           key: node-modules-${{ runner.os }}-node-24-${{ hashFiles('package-lock.json', 'package.json') }}
       - run: npm ci
         if: steps.node-modules.outputs.cache-hit != 'true'
+      - name: Build workspace packages before the isolated receiver-surface lane
+        run: npm run build:packages
       - name: Run SDT-G38 Phase C preparation contract and receiver-surface gates
         run: npm run test:g38:prep
       - name: Prove SDT-G38 Phase C preparation CI reachability
