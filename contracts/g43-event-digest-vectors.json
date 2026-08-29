@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "owner": "SDT-G43",
+  "spec": "contracts/g43-digest-spec.json",
+  "vectors": [
+    {
+      "id": "ascii-baseline",
+      "case": "ASCII-only baseline",
+      "input": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0001",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["room:a"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "expectedDigest": "f158a1d1b75a8eb07c64babbdf98915f0b5e69ea2fc4a34947cfb1647d6960b3"
+    },
+    {
+      "id": "non-ascii-tag",
+      "case": "tag containing non-ASCII characters",
+      "input": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0002",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["room:é"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "expectedDigest": "485f3c411c84acf424c8c49bb4cdd4e0bbaf184a7c7a47d577e48889d94d6a30"
+    },
+    {
+      "id": "supplementary-plane-tag",
+      "case": "tag containing a supplementary-plane character (outside the BMP)",
+      "input": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0003",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["room:😀"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "expectedDigest": "7ad61eefdf53b21fa8724223d70465d08b91a702820c498f23b1f2ce001aa1a8"
+    },
+    {
+      "id": "unit-separator-tag",
+      "case": "tag containing a U+001F unit-separator character (the v1 collision case)",
+      "input": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0004",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["a\u001fb"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "expectedDigest": "224369bbaf1b9ffcfd395fbfbe9d20d32de695e9be06cd3718d8b19ce68635ad"
+    },
+    {
+      "id": "length-prefixed-tag-set",
+      "case": "two tags whose concatenation equals another single tag, proving no collision",
+      "left": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0005",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["a", "b"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "right": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0006",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["a\u001fb"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "expectedLeftDigest": "744b9f929b22f03e287bebef7dcaa6e716fbc35494dca9e5093fa6c1f50e8faf",
+      "expectedRightDigest": "2187b7766daf0f01dab53e4c8f733a7d2575cb8b85608937c28ebfd33838907d",
+      "expectDistinct": true
+    },
+    {
+      "id": "invalid-utf8-payload",
+      "case": "payload that is not valid UTF-8 (raw bytes)",
+      "input": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0007",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "lineage-g43",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["room:a"],
+        "payloadHex": "ff00c328"
+      },
+      "expectedDigest": "d4cc860b85062e14e386b8e3c1697773d1b9eed616f7fbece150ffe68bcb8036"
+    },
+    {
+      "id": "optional-absent-versus-empty",
+      "case": "optional field absent versus optional field present-but-empty, proving distinct digests",
+      "absent": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0008",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["room:a"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "presentEmpty": {
+        "serviceId": "svc-g43",
+        "eventId": "event-0008",
+        "sortableUniqueId": "638920000000000000000000000001",
+        "eventType": "OrderPlaced",
+        "timestamp": "2026-08-29T00:00:00.000Z",
+        "allocatorLineageId": "",
+        "attemptId": "attempt-0001",
+        "declaredTagSet": ["room:a"],
+        "payloadHex": "7b226f6b223a747275657d"
+      },
+      "expectedAbsentDigest": "56f7f2ca07b27f50568db11f8113cb149dd0b98ed02ce480e3ecc951129305b2",
+      "expectedPresentEmptyDigest": "4e4fee3b074208d38da3f5517cfd9b6216a57c24ac6131d1bccea7676496e03f",
+      "expectDistinct": true
+    }
+  ]
+}

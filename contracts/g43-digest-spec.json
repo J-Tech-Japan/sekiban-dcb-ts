@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 2,
+  "owner": "SDT-G43",
+  "purpose": "Packet-owned INJECTIVE byte contract for eventDigest (AC2). The PR implements exactly this and may not choose an alternative. v2 fixes four non-injectivity defects found in v1.",
+  "algorithm": "SHA-256",
+  "domainSeparator": "sekiban-dcb-ts/eventDigest/v2",
+  "output": "lowercase hex, 64 characters",
+  "construction": "digest = SHA256( utf8(domainSeparator) || 0x00 || concat over fieldOrder of encodeField(field) )",
+  "encodeField": {
+    "rule": "encodeField(f) = presenceByte(f) || lenBE32(nameBytes) || nameBytes || lenBE32(valueBytes) || valueBytes",
+    "presenceByte": "0x01 when the field is present, 0x00 when a declared-optional field is absent; when absent, valueBytes is empty. This makes absent and empty-present distinguishable, which v1 did not.",
+    "nameBytes": "UTF-8 of the field name",
+    "lenBE32": "unsigned 32-bit big-endian byte length",
+    "requiredFieldAbsent": "a required field that is absent is a typed reject, never encoded as absent"
+  },
+  "fieldOrder": [
+    {
+      "name": "serviceId",
+      "required": true,
+      "valueBytes": "utf8"
+    },
+    {
+      "name": "eventId",
+      "required": true,
+      "valueBytes": "utf8"
+    },
+    {
+      "name": "sortableUniqueId",
+      "required": true,
+      "valueBytes": "utf8"
+    },
+    {
+      "name": "eventType",
+      "required": true,
+      "valueBytes": "utf8"
+    },
+    {
+      "name": "timestamp",
+      "required": true,
+      "valueBytes": "utf8",
+      "grammar": "the exact stored canonical UTC string, byte-identical to what is persisted; no re-normalisation, no re-formatting, no timezone conversion"
+    },
+    {
+      "name": "allocatorLineageId",
+      "required": false,
+      "valueBytes": "utf8"
+    },
+    {
+      "name": "attemptId",
+      "required": true,
+      "valueBytes": "utf8",
+      "rationale": "present on the current target event record; included because two attempts producing otherwise-identical bytes are distinct facts"
+    },
+    {
+      "name": "declaredTagSet",
+      "required": true,
+      "valueBytes": "tagSetEncoding"
+    },
+    {
+      "name": "payload",
+      "required": true,
+      "valueBytes": "rawBytes",
+      "rationale": "the exact stored bytes; never decoded, re-encoded, re-ordered or normalised"
+    }
+  ],
+  "excludedFields": [
+    {
+      "name": "causationId",
+      "reason": "delivery envelope metadata, not event identity"
+    },
+    {
+      "name": "correlationId",
+      "reason": "delivery envelope metadata, not event identity"
+    },
+    {
+      "name": "executedUser",
+      "reason": "delivery envelope metadata, not event identity"
+    }
+  ],
+  "excludedFieldsRule": "The exclusion list is CLOSED. A field present on the event record but absent from both fieldOrder and excludedFields is a typed reject, so silent omission is impossible.",
+  "tagSetEncoding": {
+    "rule": "sort ascending by UTF-8 byte order, remove exact duplicates, then encode as concat over elements of ( lenBE32(elementUtf8) || elementUtf8 ). Each element is individually length-prefixed.",
+    "v1Defect": "v1 joined elements with a U+001F separator and no per-element length prefix, so the two-element set [a, b] and the one-element set whose single element is a-U+001F-b both produced the same bytes 61 1F 62. Per-element length prefixing removes that collision without relying on any character being forbidden in a tag."
+  },
+  "rawBytes": {
+    "rule": "the stored payload bytes are used verbatim as valueBytes; no UTF-8 round trip is performed",
+    "v1Defect": "v1's construction sent every field through lengthPrefixedUtf8 while the payload rule demanded exact stored bytes - a contradiction. valueBytes is now typed per field."
+  },
+  "conflictRule": "Two writes sharing eventIdentity = (serviceId, eventId) but differing in eventDigest are a typed conflict, rejected fail-closed. Never merged, never last-writer-wins.",
+  "goldenVectors": {
+    "requirement": "The PR commits golden vectors with the exact expected lowercase hex digest for each case below, computed by the implementation and verified by an INDEPENDENT re-implementation in the checker (not the same serializer). Relation-only fixtures are insufficient because a shared faulty serializer would satisfy them.",
+    "cases": [
+      "ASCII-only baseline",
+      "tag containing non-ASCII characters",
+      "tag containing a supplementary-plane character (outside the BMP)",
+      "tag containing a U+001F unit-separator character (the v1 collision case)",
+      "two tags whose concatenation equals another single tag, proving no collision",
+      "payload that is not valid UTF-8 (raw bytes)",
+      "optional field absent versus optional field present-but-empty, proving distinct digests"
+    ]
+  },
+  "requiredNegativeFixtures": [
+    "same identity, payload byte changed -> conflict",
+    "same identity, declaredTagSet reordered -> SAME digest (canonical sort)",
+    "same identity, declaredTagSet with an exact duplicate entry -> SAME digest (dedup)",
+    "same identity, declaredTagSet with one extra tag -> conflict",
+    "same identity, a field present on the record but in neither fieldOrder nor excludedFields -> typed reject",
+    "different identity, identical remaining fields -> two distinct rows, no conflict"
+  ]
+}

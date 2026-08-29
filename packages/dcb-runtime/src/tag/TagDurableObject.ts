@@ -41,15 +41,24 @@ import {
   beginDurableObjectHandlerObservation,
   type DurableObjectHandlerObservation,
 } from "../trace/ObservationStream";
+import { canonicalDeclaredTagSet, eventDigestBytes, eventDigestHex } from "./EventDigest";
+import {
+  hasTagSqlStorage,
+  initializeTagSqlSchema,
+  TAG_READ_AFTER_SQL,
+} from "./TagSqlSchema";
+import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
 
-const TAG_KEY = "tag";
 const REPAIR_FACTS_KEY = "repair-facts";
-const OUTBOX_DELIVERIES_KEY = "outbox-deliveries";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
 const DEFAULT_REPAIR_LEASE_MS = 30_000;
 const MAX_REPAIR_LEASE_MS = 5 * 60_000;
+const OBLIGATION_RETRY_MS = 1_000;
+const OBLIGATION_MAX_ATTEMPTS = 3;
+const OBLIGATION_ALARM_BATCH_LIMIT = 32;
 
 type JsonObject = Record<string, unknown>;
+type SqlRow = Record<string, SqlStorageValue>;
 
 interface EpochInput {
   attemptId: string;
@@ -126,6 +135,7 @@ interface RepairClearInput extends RepairLeaseInput {
 
 interface OutboxPendingInput {
   nowMs: number;
+  limit?: number;
 }
 
 interface OutboxMarkInput {
@@ -206,6 +216,38 @@ function isSafeInteger(value: unknown): value is number {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return isSafeInteger(value) && value >= 0;
+}
+
+function sqlString(value: SqlStorageValue | undefined, column: string): string {
+  if (typeof value !== "string") throw new Error(`Tag SQL column ${column} is not a string`);
+  return value;
+}
+
+function sqlNumber(value: SqlStorageValue | undefined, column: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+    throw new Error(`Tag SQL column ${column} is not a safe integer`);
+  }
+  return value;
+}
+
+function sqlNullableNumber(value: SqlStorageValue | undefined, column: string): number | null {
+  return value === null || value === undefined ? null : sqlNumber(value, column);
+}
+
+function sqlNullableString(value: SqlStorageValue | undefined, column: string): string | null {
+  return value === null || value === undefined ? null : sqlString(value, column);
+}
+
+function sqlJson<T>(value: SqlStorageValue | undefined, column: string): T {
+  try {
+    return JSON.parse(sqlString(value, column)) as T;
+  } catch {
+    throw new Error(`Tag SQL column ${column} is not valid JSON`);
+  }
+}
+
+function copyArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 function nowIso(): string {
@@ -537,7 +579,11 @@ function outboxPendingFrom(value: unknown): { value?: OutboxPendingInput; error?
   if (!isSafeInteger(nowMs)) {
     return { error: "nowMs must be a safe integer when present" };
   }
-  return { value: { nowMs } };
+  const limit = value.limit;
+  if (limit !== undefined && (!isNonNegativeInteger(limit) || limit < 1 || limit > OBLIGATION_ALARM_BATCH_LIMIT)) {
+    return { error: `limit must be an integer in [1, ${OBLIGATION_ALARM_BATCH_LIMIT}] when present` };
+  }
+  return { value: { nowMs, limit } };
 }
 
 function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: string } {
@@ -891,12 +937,27 @@ function overlappingFenceReason(record: TagRecord, reason: string): string | und
 export class TagDurableObject implements DurableObject {
   /** Constructor-scoped observation only; never persisted or used for control. */
   private readonly activation = new DurableObjectActivation();
+  /**
+   * Direct unit seams intentionally omit `storage.sql`. They exercise
+   * transport behavior only; deployed and Miniflare Tag DOs always use the
+   * normalized SQL path. Keeping this ephemeral fallback out of durable KV
+   * prevents a TAG_KEY record from remaining a second source of truth.
+   */
+  private fallbackRecord: TagRecord | undefined;
+  private fallbackOutboxDeliveries: TagOutboxDelivery[] = [];
+  /** Ephemeral test/evidence seam; never exposed as an HTTP route or stored. */
+  private g43SqlMeasurement: G43SqlMeasurement | undefined;
+  /** Exercises alarm crash boundaries without adding a production control path. */
+  private g43SchedulerFault: "before-rearm" | "after-rearm" | undefined;
 
   constructor(
     private readonly ctx: DurableObjectState,
     private readonly env: TagDurableObjectEnv,
     private readonly nativeTracing: NativeTracing = noOpNativeTracing,
-  ) {}
+  ) {
+    const sql = this.sqlStorage();
+    if (sql !== undefined) initializeTagSqlSchema(sql);
+  }
 
   async fetch(request: Request): Promise<Response> {
     // Flip before this handler performs its first await.
@@ -911,7 +972,7 @@ export class TagDurableObject implements DurableObject {
     if (request.method === "GET" && url.pathname === "/state") {
       return this.traceCommitReadActor(request, tag, serviceId, activation, observation, async () => {
         observation.markFirstStorageRead();
-        const record = await this.ctx.storage.get<TagRecord>(TAG_KEY);
+        const record = this.readStoredRecord(tag);
         if (record === undefined) {
           return error(404, "tag_not_found", "Tag has no durable state yet");
         }
@@ -1002,6 +1063,81 @@ export class TagDurableObject implements DurableObject {
     await this.runAlarm();
   }
 
+  /**
+   * Structural-measurement seam used around a real handler request. The
+   * production wire cannot start it, and it neither changes control flow nor
+   * persists instrumentation. Completion is intentionally separate so the
+   * caller can first consume the response body (the specified boundary).
+   */
+  beginG43SqlMeasurement(): void {
+    if (this.g43SqlMeasurement !== undefined) throw new Error("G43 SQL measurement is already active");
+    this.g43SqlMeasurement = new G43SqlMeasurement();
+  }
+
+  completeG43SqlMeasurement(): G43SqlMeasurementSnapshot {
+    const measurement = this.g43SqlMeasurement;
+    if (measurement === undefined) throw new Error("G43 SQL measurement is not active");
+    this.g43SqlMeasurement = undefined;
+    return measurement.complete();
+  }
+
+  /** Test-only fault seam for AC6's transactional re-arm crash boundaries. */
+  setG43SchedulerFaultForTest(fault: "before-rearm" | "after-rearm" | undefined): void {
+    this.g43SchedulerFault = fault;
+  }
+
+  /**
+   * Internal Tag DO RPC seam for the normal incremental TagState source read.
+   * It is not an HTTP route and adds no role-facing surface. The later
+   * TagState/global-read work decides how callers checkpoint this cursor; G43
+   * makes the source query enumerable and range-indexed now.
+   */
+  async g43ReadAfter(sortableUniqueId: string, limit: number): Promise<TagEvent[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error("G43 readAfter limit must be a positive safe integer");
+    if (sortableUniqueId !== "") assertSortableUniqueId(sortableUniqueId);
+    const sql = this.sqlStorage();
+    if (sql === undefined) return [];
+    return sql.exec<SqlRow>(TAG_READ_AFTER_SQL, sortableUniqueId, limit)
+      .toArray()
+      .map((row) => sqlJson<TagEvent>(row.event_json, "tag_event.event_json"));
+  }
+
+  /**
+   * The bounded normal projection source operation: it reads only events
+   * newer than the supplied checkpoint and folds the fixed result window in
+   * memory. No existing history is reread.
+   */
+  async g43TagStateIncrementalCatchUp(sortableUniqueId: string, limit: number): Promise<{
+    readonly events: readonly TagEvent[];
+    readonly lastSortableUniqueId: string;
+  }> {
+    const events = await this.g43ReadAfter(sortableUniqueId, limit);
+    let lastSortableUniqueId = sortableUniqueId;
+    for (const event of events) lastSortableUniqueId = event.suid;
+    return { events, lastSortableUniqueId };
+  }
+
+  /** Full replay remains intentionally linear and is measurement-only info. */
+  async g43TagStateRebuild(): Promise<readonly TagEvent[]> {
+    const sql = this.sqlStorage();
+    if (sql === undefined) return [];
+    return sql.exec<SqlRow>("SELECT event_json FROM tag_event ORDER BY suid ASC")
+      .toArray()
+      .map((row) => sqlJson<TagEvent>(row.event_json, "tag_event.event_json"));
+  }
+
+  /**
+   * Internal source-authority scanner for the G43 obligation seam.  This is
+   * intentionally a DO RPC surface rather than a Worker route: it adds no
+   * role-facing HTTP API, and it does not share Queue/doorbell failure paths.
+   */
+  async g43ScanSourceObligations(tag: string, nowMs: number): Promise<unknown> {
+    if (!isSafeInteger(nowMs)) throw new Error("G43 source scan time must be a safe integer");
+    const response = await this.scanOutboxObligations(tag, nowMs);
+    if (!response.ok) throw new Error(`G43 source scan failed with ${response.status}`);
+    return response.json();
+  }
+
   private async traceCommitActor(
     request: Request,
     tag: string,
@@ -1058,23 +1194,821 @@ export class TagDurableObject implements DurableObject {
     }
   }
 
+  private sqlStorage(): SqlStorage | undefined {
+    const sql = hasTagSqlStorage(this.ctx.storage) ? this.ctx.storage.sql : undefined;
+    return sql === undefined ? undefined : this.g43SqlMeasurement?.instrument(sql) ?? sql;
+  }
+
+  /**
+   * Rehydrate the legacy response shape only at a state/read boundary.  The
+   * append path below deliberately does not call this method: it reads the
+   * head and candidate identities by index instead of deserializing history.
+   */
+  private readStoredRecord(tag: string): TagRecord | undefined {
+    const sql = this.sqlStorage();
+    if (sql === undefined) {
+      if (this.fallbackRecord !== undefined && this.fallbackRecord.tag !== tag) {
+        throw new Error("Tag Durable Object identity changed");
+      }
+      return this.fallbackRecord;
+    }
+
+    const identity = sql.exec<SqlRow>("SELECT tag, created_at FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (identity === undefined) return undefined;
+    if (sqlString(identity.tag, "tag_identity.tag") !== tag) {
+      throw new Error("Tag Durable Object identity changed");
+    }
+    const control = sql.exec<SqlRow>("SELECT * FROM tag_control WHERE singleton = 1").toArray()[0];
+    if (control === undefined) throw new Error("Tag SQL identity exists without control state");
+
+    const head = sql.exec<SqlRow>("SELECT head_suid FROM tag_head WHERE singleton = 1").toArray()[0];
+    if (head !== undefined && sqlString(head.head_suid, "tag_head.head_suid") !== sqlString(control.head_suid, "tag_control.head_suid")) {
+      throw new Error("Tag SQL head/control mismatch");
+    }
+
+    const reservationRow = sql.exec<SqlRow>("SELECT * FROM tag_reservation WHERE singleton = 1").toArray()[0];
+    const activeReservation: TagReservation | null = reservationRow === undefined
+      ? null
+      : {
+        attemptId: sqlString(reservationRow.attempt_id, "tag_reservation.attempt_id"),
+        epoch: sqlNumber(reservationRow.epoch, "tag_reservation.epoch"),
+        token: sqlString(reservationRow.reservation_token, "tag_reservation.reservation_token"),
+        expectedHead: sqlString(reservationRow.expected_head, "tag_reservation.expected_head"),
+        expiresAt: sqlNumber(reservationRow.expires_at, "tag_reservation.expires_at"),
+        alarmDueAt: sqlNumber(reservationRow.alarm_due_at, "tag_reservation.alarm_due_at"),
+      };
+
+    const events = sql.exec<SqlRow>("SELECT event_json FROM tag_event ORDER BY suid ASC").toArray().map((row) => sqlJson<TagEvent>(row.event_json, "tag_event.event_json"));
+    const outbox = sql.exec<SqlRow>(`
+      SELECT attempt_id, event_id, suid, payload, allocator_lineage_id, event_type, provenance, timestamp
+      FROM tag_outbox_obligation
+      ORDER BY obligation_sequence ASC
+    `).toArray().map((row): TagOutboxRow => ({
+      attemptId: sqlString(row.attempt_id, "tag_outbox_obligation.attempt_id"),
+      eventId: sqlString(row.event_id, "tag_outbox_obligation.event_id"),
+      suid: sqlString(row.suid, "tag_outbox_obligation.suid"),
+      payload: sqlString(row.payload, "tag_outbox_obligation.payload"),
+      allocatorLineageId: sqlString(row.allocator_lineage_id, "tag_outbox_obligation.allocator_lineage_id"),
+      eventType: sqlString(row.event_type, "tag_outbox_obligation.event_type"),
+      provenance: sqlString(row.provenance, "tag_outbox_obligation.provenance") as "g32",
+      timestamp: sqlString(row.timestamp, "tag_outbox_obligation.timestamp"),
+    }));
+
+    const epochRows = sql.exec<SqlRow>("SELECT * FROM tag_epoch ORDER BY attempt_id ASC").toArray();
+    const highestEpoch: TagEpoch[] = epochRows.map((row) => ({
+      attemptId: sqlString(row.attempt_id, "tag_epoch.attempt_id"),
+      epoch: sqlNumber(row.highest_epoch, "tag_epoch.highest_epoch"),
+    }));
+    const sealedEpoch: TagEpoch[] = epochRows.flatMap((row) => {
+      const epoch = sqlNullableNumber(row.sealed_epoch, "tag_epoch.sealed_epoch");
+      return epoch === null ? [] : [{ attemptId: sqlString(row.attempt_id, "tag_epoch.attempt_id"), epoch }];
+    });
+    const confirmations = sql.exec<SqlRow>(`
+      SELECT attempt_id, epoch FROM tag_commit_receipt
+      WHERE reservation_confirmed = 1
+      ORDER BY attempt_id ASC
+    `).toArray().map((row) => ({
+      attemptId: sqlString(row.attempt_id, "tag_commit_receipt.attempt_id"),
+      epoch: sqlNumber(row.epoch, "tag_commit_receipt.epoch"),
+    }));
+    const tombstones = sql.exec<SqlRow>("SELECT attempt_id, epoch FROM tag_tombstone ORDER BY attempt_id ASC").toArray().map((row) => ({
+      attemptId: sqlString(row.attempt_id, "tag_tombstone.attempt_id"),
+      epoch: sqlNumber(row.epoch, "tag_tombstone.epoch"),
+    }));
+    const fences = sql.exec<SqlRow>("SELECT reason, attempt_id, epoch FROM tag_fence ORDER BY reason, attempt_id").toArray().map((row): TagFence => ({
+      reason: sqlString(row.reason, "tag_fence.reason"),
+      attemptId: sqlString(row.attempt_id, "tag_fence.attempt_id"),
+      epoch: sqlNumber(row.epoch, "tag_fence.epoch"),
+    }));
+    const clearedFences = sql.exec<SqlRow>("SELECT reason, attempt_id, epoch FROM tag_cleared_fence ORDER BY reason, attempt_id").toArray().map((row): TagFence => ({
+      reason: sqlString(row.reason, "tag_cleared_fence.reason"),
+      attemptId: sqlString(row.attempt_id, "tag_cleared_fence.attempt_id"),
+      epoch: sqlNumber(row.epoch, "tag_cleared_fence.epoch"),
+    }));
+    const bootstrap = sql.exec<SqlRow>("SELECT * FROM tag_bootstrap_admission WHERE singleton = 1").toArray()[0];
+    const bootstrapAdmission: TagBootstrapAdmission | null = bootstrap === undefined ? null : {
+      importId: sqlString(bootstrap.import_id, "tag_bootstrap_admission.import_id"),
+      leaseEpoch: sqlNumber(bootstrap.lease_epoch, "tag_bootstrap_admission.lease_epoch"),
+      manifestDigest: sqlString(bootstrap.manifest_digest, "tag_bootstrap_admission.manifest_digest"),
+      targetServiceId: sqlString(bootstrap.target_service_id, "tag_bootstrap_admission.target_service_id"),
+      closed: sqlNumber(bootstrap.closed, "tag_bootstrap_admission.closed") === 1,
+    };
+    const repairScope = sql.exec<SqlRow>("SELECT item_json FROM tag_repair_scope ORDER BY attempt_id, event_id").toArray()
+      .map((row) => sqlJson<RepairScopeItem>(row.item_json, "tag_repair_scope.item_json"));
+    return {
+      schemaVersion: sqlNumber(control.schema_version, "tag_control.schema_version") as 3,
+      tag,
+      head: sqlString(control.head_suid, "tag_control.head_suid"),
+      activeReservation,
+      // `alarmDueAt` is retained as the reservation response/state fact. The
+      // actual durable alarm is the scheduler minimum and is intentionally
+      // inspected through the scheduler seam rather than this legacy shape.
+      alarmDueAt: activeReservation?.alarmDueAt ?? null,
+      events,
+      outbox,
+      highestEpoch,
+      sealedEpoch,
+      tombstones,
+      confirmations,
+      fences,
+      clearedFences,
+      bootstrapAdmission,
+      repairOwner: sqlNullableString(control.repair_owner, "tag_control.repair_owner"),
+      repairLeaseUntil: sqlNullableNumber(control.repair_lease_until, "tag_control.repair_lease_until"),
+      highestRepairEpoch: sqlNumber(control.highest_repair_epoch, "tag_control.highest_repair_epoch"),
+      repairScope,
+      repairScopeVersion: sqlNumber(control.repair_scope_version, "tag_control.repair_scope_version"),
+      clockOffsetMs: sqlNumber(control.clock_offset_ms, "tag_control.clock_offset_ms"),
+      clockNowMs: sqlNullableNumber(control.clock_now_ms, "tag_control.clock_now_ms"),
+      version: sqlNumber(control.version, "tag_control.version"),
+      createdAt: sqlString(control.created_at, "tag_control.created_at"),
+      updatedAt: sqlString(control.updated_at, "tag_control.updated_at"),
+    };
+  }
+
+  private async obligationArtifact(
+    event: TagEvent,
+    serviceId: string,
+    tag: string,
+  ): Promise<{ canonicalBytes: ArrayBuffer; eventDigest: string; declaredTagSet: string; localMembership: string }> {
+    const declaredTagSet = canonicalDeclaredTagSet(event.eventTags);
+    const payloadBytes = new TextEncoder().encode(event.payload);
+    const digestInput = {
+      serviceId,
+      eventId: event.eventId,
+      sortableUniqueId: event.suid,
+      eventType: event.eventType,
+      timestamp: event.timestamp,
+      allocatorLineageId: event.allocatorLineageId,
+      attemptId: event.attemptId,
+      declaredTagSet,
+      // TagEvent.payload is the exact persisted UTF-8 JSON text in the
+      // current G32 record. The digest encoder accepts this byte view rather
+      // than decoding/re-serializing it, which keeps the raw-byte rule at the
+      // boundary where persisted text becomes an obligation artifact.
+      payload: payloadBytes,
+    } as const;
+    return {
+      canonicalBytes: copyArrayBuffer(eventDigestBytes(digestInput)),
+      eventDigest: await eventDigestHex(digestInput),
+      declaredTagSet: JSON.stringify(declaredTagSet),
+      localMembership: JSON.stringify([{ serviceId, eventId: event.eventId, tag }]),
+    };
+  }
+
+  private ensureSqlTag(tag: string): void {
+    const sql = this.sqlStorage();
+    if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+    const existing = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (existing !== undefined) {
+      if (sqlString(existing.tag, "tag_identity.tag") !== tag) throw new Error("Tag Durable Object identity changed");
+      return;
+    }
+    const record = newRecord(tag);
+    sql.exec("INSERT INTO tag_identity (singleton, tag, created_at) VALUES (1, ?, ?)", tag, record.createdAt);
+    sql.exec(`
+      INSERT INTO tag_control (
+        singleton, schema_version, head_suid, clock_offset_ms, clock_now_ms,
+        version, repair_owner, repair_lease_until, highest_repair_epoch,
+        repair_scope_version, created_at, updated_at
+      ) VALUES (1, 3, '', 0, NULL, 0, NULL, NULL, 0, 0, ?, ?)
+    `, record.createdAt, record.updatedAt);
+    sql.exec("INSERT INTO tag_head (singleton, service_id, head_suid) VALUES (1, '', '')");
+  }
+
+  private writeCommittedSqlEvent(sql: SqlStorage, serviceId: string, event: TagEvent): void {
+    sql.exec(`
+      INSERT INTO tag_event (
+        service_id, event_id, attempt_id, suid, payload, event_tags_json,
+        allocator_lineage_id, event_type, provenance, timestamp, event_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, serviceId, event.eventId, event.attemptId, event.suid, event.payload,
+    JSON.stringify(event.eventTags), event.allocatorLineageId, event.eventType,
+    event.provenance, event.timestamp, JSON.stringify(event));
+  }
+
+  private writeCommittedSqlMembership(sql: SqlStorage, serviceId: string, eventId: string, tag: string, committedAt: string): void {
+    sql.exec(`
+      INSERT INTO tag_committed_membership (service_id, event_id, tag, committed_at)
+      VALUES (?, ?, ?, ?)
+    `, serviceId, eventId, tag, committedAt);
+  }
+
+  private writeCommittedSqlObligation(
+    sql: SqlStorage,
+    serviceId: string,
+    event: TagEvent,
+    artifact: { canonicalBytes: ArrayBuffer; eventDigest: string; declaredTagSet: string; localMembership: string },
+  ): void {
+    sql.exec(`
+      INSERT INTO tag_outbox_obligation (
+        service_id, event_id, attempt_id, suid, payload, allocator_lineage_id,
+        event_type, provenance, timestamp, canonical_bytes, event_digest,
+        declared_tag_set_json, local_committed_membership_json, status,
+        next_attempt_at, attempt_count, enqueued_at, acknowledged_at, last_error
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, NULL, NULL, NULL)
+    `, serviceId, event.eventId, event.attemptId, event.suid, event.payload,
+    event.allocatorLineageId, event.eventType, event.provenance, event.timestamp,
+    artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
+    artifact.localMembership, Date.now());
+  }
+
+  private writeCommittedSqlHead(sql: SqlStorage, serviceId: string, head: string, version: number, committedAt: string): void {
+    sql.exec("UPDATE tag_control SET head_suid = ?, version = ?, updated_at = ? WHERE singleton = 1", head, version, committedAt);
+    sql.exec("UPDATE tag_head SET service_id = ?, head_suid = ? WHERE singleton = 1", serviceId, head);
+  }
+
+  private writeCommittedSqlReceipt(
+    sql: SqlStorage,
+    input: AppendInput,
+    committedAt: string,
+    eventCount: number,
+    head: string,
+    confirmsReservation: boolean,
+  ): void {
+    sql.exec(`
+      INSERT INTO tag_commit_receipt
+        (attempt_id, epoch, committed_at, committed_event_count, head_suid, reservation_confirmed)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(attempt_id, epoch) DO UPDATE SET
+        committed_at = excluded.committed_at,
+        committed_event_count = excluded.committed_event_count,
+        head_suid = excluded.head_suid,
+        reservation_confirmed = excluded.reservation_confirmed
+    `, input.attemptId, input.epoch, committedAt, eventCount, head, confirmsReservation ? 1 : 0);
+  }
+
+  /**
+   * The normal append path deliberately probes only the indexed rows it needs
+   * (identity/control, this attempt, this reservation, and these candidates).
+   * It never calls `readStoredRecord`, so history size cannot turn append into
+   * a whole-array deserialize/copy/serialize operation.
+   */
+  private async appendSql(
+    tag: string,
+    input: AppendInput,
+    suppliedServiceId: string | null,
+  ): Promise<OperationResult> {
+    const serviceId = suppliedServiceId ?? "";
+    const events: TagEvent[] = input.candidates.map((candidate) => ({
+      attemptId: input.attemptId,
+      eventId: candidate.eventId,
+      suid: candidate.suid,
+      payload: candidate.payload,
+      eventTags: candidate.eventTags,
+      allocatorLineageId: candidate.allocatorLineageId,
+      eventType: candidate.eventType,
+      provenance: candidate.provenance,
+      timestamp: candidate.timestamp,
+    }));
+    const artifacts = await Promise.all(events.map((event) => this.obligationArtifact(event, serviceId, tag)));
+    return this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+      this.ensureSqlTag(tag);
+      const control = sql.exec<SqlRow>("SELECT * FROM tag_control WHERE singleton = 1").one();
+      let head = sqlString(control.head_suid, "tag_control.head_suid");
+      let version = sqlNumber(control.version, "tag_control.version");
+
+      const existingCandidates = input.candidates.map((candidate, index) => {
+        const event = sql.exec<SqlRow>(`
+          SELECT attempt_id, event_id, suid, payload, event_type, provenance, timestamp
+          FROM tag_event WHERE service_id = ? AND event_id = ?
+        `, serviceId, candidate.eventId).toArray()[0];
+        const obligation = event === undefined ? undefined : sql.exec<SqlRow>(`
+          SELECT event_digest FROM tag_outbox_obligation
+          WHERE service_id = ? AND event_id = ? ORDER BY obligation_sequence ASC LIMIT 1
+        `, serviceId, candidate.eventId).toArray()[0];
+        const exact = event !== undefined &&
+          sqlString(event.attempt_id, "tag_event.attempt_id") === input.attemptId &&
+          sqlString(event.event_id, "tag_event.event_id") === candidate.eventId &&
+          sqlString(event.suid, "tag_event.suid") === candidate.suid &&
+          sqlString(event.payload, "tag_event.payload") === candidate.payload &&
+          sqlString(event.event_type, "tag_event.event_type") === candidate.eventType &&
+          sqlString(event.provenance, "tag_event.provenance") === candidate.provenance &&
+          sqlString(event.timestamp, "tag_event.timestamp") === candidate.timestamp &&
+          (obligation === undefined || sqlString(obligation.event_digest, "tag_outbox_obligation.event_digest") === artifacts[index]!.eventDigest);
+        return { event, obligation, exact };
+      });
+      // Exact duplicate replay precedes all epoch/token checks by contract.
+      if (existingCandidates.every(({ exact }) => exact)) {
+        return { status: 200, body: { status: "duplicate", version } };
+      }
+
+      const active: SqlRow | undefined = sql.exec<SqlRow>("SELECT * FROM tag_reservation WHERE singleton = 1").toArray()[0];
+      const now = sqlNullableNumber(control.clock_now_ms, "tag_control.clock_now_ms") ??
+        Date.now() + sqlNumber(control.clock_offset_ms, "tag_control.clock_offset_ms");
+      let reservation: SqlRow | undefined = active;
+      if (reservation !== undefined && sqlNumber(reservation.expires_at, "tag_reservation.expires_at") <= now) {
+        sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+        version += 1;
+        sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+        reservation = undefined;
+      }
+
+      const epoch = sql.exec<SqlRow>("SELECT highest_epoch, sealed_epoch FROM tag_epoch WHERE attempt_id = ?", input.attemptId).toArray()[0];
+      const highest = epoch === undefined ? undefined : sqlNumber(epoch.highest_epoch, "tag_epoch.highest_epoch");
+      const sealed = epoch === undefined ? null : sqlNullableNumber(epoch.sealed_epoch, "tag_epoch.sealed_epoch");
+      const tombstone = sql.exec<SqlRow>("SELECT epoch FROM tag_tombstone WHERE attempt_id = ?", input.attemptId).toArray()[0];
+      const tombstoneEpoch = tombstone === undefined ? undefined : sqlNumber(tombstone.epoch, "tag_tombstone.epoch");
+      const epochError = highest !== undefined && input.epoch < highest
+        ? "stale_epoch"
+        : tombstoneEpoch !== undefined && input.epoch <= tombstoneEpoch
+          ? "tombstoned_epoch"
+          : sealed !== null && input.epoch <= sealed
+            ? "sealed_epoch"
+            : undefined;
+      if (epochError !== undefined) {
+        await this.rearmScheduler(txn);
+        return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version } };
+      }
+
+      const fenceCount = sql.exec<SqlRow>("SELECT COUNT(*) AS count FROM tag_fence").one();
+      if (sqlNumber(fenceCount.count, "tag_fence.count") > 0) {
+        await this.rearmScheduler(txn);
+        return fenceGateRejected();
+      }
+      const confirmsReservation = reservation !== undefined &&
+        sqlString(reservation.attempt_id, "tag_reservation.attempt_id") === input.attemptId &&
+        sqlNumber(reservation.epoch, "tag_reservation.epoch") === input.epoch &&
+        sqlString(reservation.reservation_token, "tag_reservation.reservation_token") === input.reservationToken;
+      if (reservation !== undefined && !confirmsReservation) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("reservation_token_required"),
+          body: { ...rejected("reservation_token_required").body as JsonObject, version },
+        };
+      }
+      if (
+        confirmsReservation && reservation !== undefined &&
+        sqlString(reservation.expected_head, "tag_reservation.expected_head") !== head
+      ) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("consistency_head_mismatch"),
+          body: { ...rejected("consistency_head_mismatch").body as JsonObject, version },
+        };
+      }
+      if (existingCandidates.some(({ event, obligation }, index) =>
+        event !== undefined && obligation !== undefined &&
+        sqlString(obligation.event_digest, "tag_outbox_obligation.event_digest") !== artifacts[index]!.eventDigest,
+      )) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("event_digest_conflict"),
+          body: { ...rejected("event_digest_conflict").body as JsonObject, version },
+        };
+      }
+      if (existingCandidates.some(({ event }) => event !== undefined)) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("event_conflict"),
+          body: { ...rejected("event_conflict").body as JsonObject, version },
+        };
+      }
+      for (const candidate of input.candidates) {
+        if (candidate.suid <= head) {
+          await this.rearmScheduler(txn);
+          return {
+            ...rejected("non_monotonic_suid"),
+            body: { ...rejected("non_monotonic_suid").body as JsonObject, version },
+          };
+        }
+        head = candidate.suid;
+      }
+
+      const nextHighest = Math.max(highest ?? input.epoch, input.epoch);
+      sql.exec(`
+        INSERT INTO tag_epoch (attempt_id, highest_epoch, sealed_epoch, confirmation_epoch)
+        VALUES (?, ?, NULL, NULL)
+        ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
+      `, input.attemptId, nextHighest);
+      const committedAt = nowIso();
+      for (let index = 0; index < events.length; index += 1) {
+        const event = events[index]!;
+        const artifact = artifacts[index]!;
+        this.writeCommittedSqlEvent(sql, serviceId, event);
+        this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
+        this.writeCommittedSqlObligation(sql, serviceId, event, artifact);
+      }
+      this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);
+      if (input.faultInjection === "after-append-before-confirm") {
+        throw new AppendTransactionFault("Simulated interruption before atomic commit receipt");
+      }
+      this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation);
+      if (confirmsReservation) sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+      await this.rearmScheduler(txn);
+      return {
+        status: 201,
+        body: {
+          status: "appended",
+          fenceGate: { checked: true, activeFenceCount: 0 },
+          version: version + 1,
+        },
+      };
+    });
+  }
+
+  /**
+   * SQL-native reservation transition. This deliberately reads only the
+   * control, epoch, tombstone, fence and reservation rows that participate in
+   * the transition; it never rehydrates tag_event history just to reserve.
+   */
+  private async acquireSql(tag: string, input: AcquireInput): Promise<OperationResult> {
+    return this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+      this.ensureSqlTag(tag);
+      const control = sql.exec<SqlRow>("SELECT * FROM tag_control WHERE singleton = 1").one();
+      let version = sqlNumber(control.version, "tag_control.version");
+      const now = sqlNullableNumber(control.clock_now_ms, "tag_control.clock_now_ms") ??
+        Date.now() + sqlNumber(control.clock_offset_ms, "tag_control.clock_offset_ms");
+      let reservation: SqlRow | undefined = sql.exec<SqlRow>("SELECT * FROM tag_reservation WHERE singleton = 1").toArray()[0];
+      const epoch = sql.exec<SqlRow>("SELECT highest_epoch, sealed_epoch FROM tag_epoch WHERE attempt_id = ?", input.attemptId).toArray()[0];
+      const tombstone = sql.exec<SqlRow>("SELECT epoch FROM tag_tombstone WHERE attempt_id = ?", input.attemptId).toArray()[0];
+      const highest = epoch === undefined ? undefined : sqlNumber(epoch.highest_epoch, "tag_epoch.highest_epoch");
+      const sealed = epoch === undefined ? null : sqlNullableNumber(epoch.sealed_epoch, "tag_epoch.sealed_epoch");
+      const tombstoneEpoch = tombstone === undefined ? undefined : sqlNumber(tombstone.epoch, "tag_tombstone.epoch");
+      const epochError = highest !== undefined && input.epoch < highest
+        ? "stale_epoch"
+        : tombstoneEpoch !== undefined && input.epoch <= tombstoneEpoch
+          ? "tombstoned_epoch"
+          : sealed !== null && input.epoch <= sealed
+            ? "sealed_epoch"
+            : undefined;
+      if (epochError !== undefined) {
+        await this.rearmScheduler(txn);
+        return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version } };
+      }
+
+      // Preserve the established ordering: an expired reservation is cleaned
+      // after its epoch has been validated, before head/fence/reservation use.
+      if (reservation !== undefined && sqlNumber(reservation.expires_at, "tag_reservation.expires_at") <= now) {
+        sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+        version += 1;
+        sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+        reservation = undefined;
+      }
+
+      const observed = input.expectedHead !== null;
+      const isEventTag = input.eventTags.includes(tag);
+      if (!observed || !isEventTag) {
+        await this.rearmScheduler(txn);
+        return { status: 200, body: { status: "omitted", reservation: null, fenceGateChecked: false, version } };
+      }
+
+      const fence = sql.exec<SqlRow>("SELECT COUNT(*) AS count FROM tag_fence").one();
+      if (sqlNumber(fence.count, "tag_fence.count") > 0) {
+        await this.rearmScheduler(txn);
+        return fenceGateRejected();
+      }
+      const head = sqlString(control.head_suid, "tag_control.head_suid");
+      if (head !== input.expectedHead) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("consistency_head_mismatch"),
+          body: { ...rejected("consistency_head_mismatch").body as JsonObject, version },
+        };
+      }
+      if (reservation !== undefined) {
+        if (
+          sqlString(reservation.attempt_id, "tag_reservation.attempt_id") === input.attemptId &&
+          sqlNumber(reservation.epoch, "tag_reservation.epoch") === input.epoch
+        ) {
+          const activeFenceCount = sqlNumber(sql.exec<SqlRow>(
+            "SELECT COUNT(*) AS count FROM tag_fence WHERE attempt_id = ?",
+            input.attemptId,
+          ).one().count, "tag_fence.attempt_count");
+          await this.rearmScheduler(txn);
+          return {
+            status: 200,
+            body: {
+              status: "reserved",
+              reservation: {
+                attemptId: input.attemptId,
+                epoch: input.epoch,
+                token: sqlString(reservation.reservation_token, "tag_reservation.reservation_token"),
+                expectedHead: sqlString(reservation.expected_head, "tag_reservation.expected_head"),
+                expiresAt: sqlNumber(reservation.expires_at, "tag_reservation.expires_at"),
+                alarmDueAt: sqlNumber(reservation.alarm_due_at, "tag_reservation.alarm_due_at"),
+              },
+              fenceGate: { checked: true, activeFenceCount },
+              version,
+            },
+          };
+        }
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("active_reservation_conflict"),
+          body: { ...rejected("active_reservation_conflict").body as JsonObject, version },
+        };
+      }
+
+      const reservationToken = crypto.randomUUID();
+      const reservationFact: TagReservation = {
+        attemptId: input.attemptId,
+        epoch: input.epoch,
+        token: reservationToken,
+        expectedHead: input.expectedHead,
+        expiresAt: now + RESERVATION_WINDOW_MS,
+        alarmDueAt: Date.now() + RESERVATION_WINDOW_MS,
+      };
+      sql.exec(`
+        INSERT INTO tag_epoch (attempt_id, highest_epoch, sealed_epoch, confirmation_epoch)
+        VALUES (?, ?, NULL, NULL)
+        ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
+      `, input.attemptId, input.epoch);
+      version += 1;
+      sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+      sql.exec(`
+        INSERT INTO tag_reservation
+          (singleton, attempt_id, epoch, reservation_token, expected_head, expires_at, alarm_due_at)
+        VALUES (1, ?, ?, ?, ?, ?, ?)
+      `, reservationFact.attemptId, reservationFact.epoch, reservationFact.token, reservationFact.expectedHead,
+      reservationFact.expiresAt, reservationFact.alarmDueAt);
+      await this.rearmScheduler(txn);
+      return {
+        status: 201,
+        body: { status: "reserved", reservation: reservationFact, fenceGate: { checked: true, activeFenceCount: 0 }, version },
+      };
+    });
+  }
+
+  /**
+   * SQL-native cancel transition. It only mutates reservation/epoch/tombstone
+   * control rows, so a cancellation cannot hide a committed event, membership
+   * or obligation and does not rewrite event history.
+   */
+  private async cancelSql(tag: string, input: ReservationInput): Promise<OperationResult> {
+    return this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+      const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      if (identity === undefined) {
+        return { ...rejected("reservation_token_required"), body: { ...rejected("reservation_token_required").body as JsonObject, version: 0 } };
+      }
+      if (sqlString(identity.tag, "tag_identity.tag") !== tag) throw new Error("Tag Durable Object identity changed");
+      const control = sql.exec<SqlRow>("SELECT * FROM tag_control WHERE singleton = 1").one();
+      let version = sqlNumber(control.version, "tag_control.version");
+      const now = sqlNullableNumber(control.clock_now_ms, "tag_control.clock_now_ms") ??
+        Date.now() + sqlNumber(control.clock_offset_ms, "tag_control.clock_offset_ms");
+      let reservation: SqlRow | undefined = sql.exec<SqlRow>("SELECT * FROM tag_reservation WHERE singleton = 1").toArray()[0];
+      if (reservation !== undefined && sqlNumber(reservation.expires_at, "tag_reservation.expires_at") <= now) {
+        sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+        version += 1;
+        sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+        reservation = undefined;
+      }
+      const tombstone = sql.exec<SqlRow>("SELECT epoch FROM tag_tombstone WHERE attempt_id = ?", input.attemptId).toArray()[0];
+      const tombstoneEpoch = tombstone === undefined ? undefined : sqlNumber(tombstone.epoch, "tag_tombstone.epoch");
+      const holdsReservation = reservation !== undefined &&
+        sqlString(reservation.attempt_id, "tag_reservation.attempt_id") === input.attemptId &&
+        sqlNumber(reservation.epoch, "tag_reservation.epoch") === input.epoch;
+
+      if (input.forceTombstone === true) {
+        if (!holdsReservation && tombstoneEpoch !== undefined && tombstoneEpoch >= input.epoch) {
+          await this.rearmScheduler(txn);
+          return { status: 200, body: { status: "cancelled", idempotent: true, version } };
+        }
+        sql.exec(`
+          INSERT INTO tag_epoch (attempt_id, highest_epoch, sealed_epoch, confirmation_epoch)
+          VALUES (?, ?, NULL, NULL)
+          ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
+        `, input.attemptId, input.epoch);
+        sql.exec(`
+          INSERT INTO tag_tombstone (attempt_id, epoch) VALUES (?, ?)
+          ON CONFLICT(attempt_id) DO UPDATE SET epoch = MAX(epoch, excluded.epoch)
+        `, input.attemptId, input.epoch);
+        if (holdsReservation) sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+        version += 1;
+        sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+        await this.rearmScheduler(txn);
+        return { status: 200, body: { status: "cancelled", idempotent: false, version } };
+      }
+
+      if (!holdsReservation && tombstoneEpoch === input.epoch) {
+        await this.rearmScheduler(txn);
+        return { status: 200, body: { status: "cancelled", idempotent: true, version } };
+      }
+      const epoch = sql.exec<SqlRow>("SELECT highest_epoch, sealed_epoch FROM tag_epoch WHERE attempt_id = ?", input.attemptId).toArray()[0];
+      const highest = epoch === undefined ? undefined : sqlNumber(epoch.highest_epoch, "tag_epoch.highest_epoch");
+      const sealed = epoch === undefined ? null : sqlNullableNumber(epoch.sealed_epoch, "tag_epoch.sealed_epoch");
+      const epochError = highest !== undefined && input.epoch < highest
+        ? "stale_epoch"
+        : tombstoneEpoch !== undefined && input.epoch <= tombstoneEpoch
+          ? "tombstoned_epoch"
+          : sealed !== null && input.epoch <= sealed
+            ? "sealed_epoch"
+            : undefined;
+      if (epochError !== undefined) {
+        await this.rearmScheduler(txn);
+        return { ...rejected(epochError), body: { ...rejected(epochError).body as JsonObject, version } };
+      }
+      if (!holdsReservation || reservation === undefined) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("reservation_token_required"),
+          body: { ...rejected("reservation_token_required").body as JsonObject, version },
+        };
+      }
+      if (sqlString(reservation.reservation_token, "tag_reservation.reservation_token") !== input.reservationToken) {
+        await this.rearmScheduler(txn);
+        return {
+          ...rejected("reservation_token_required"),
+          body: { ...rejected("reservation_token_required").body as JsonObject, version },
+        };
+      }
+      sql.exec(`
+        INSERT INTO tag_epoch (attempt_id, highest_epoch, sealed_epoch, confirmation_epoch)
+        VALUES (?, ?, NULL, NULL)
+        ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
+      `, input.attemptId, input.epoch);
+      sql.exec(`
+        INSERT INTO tag_tombstone (attempt_id, epoch) VALUES (?, ?)
+        ON CONFLICT(attempt_id) DO UPDATE SET epoch = MAX(epoch, excluded.epoch)
+      `, input.attemptId, input.epoch);
+      sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+      version += 1;
+      sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+      await this.rearmScheduler(txn);
+      return { status: 200, body: { status: "cancelled", idempotent: false, version } };
+    });
+  }
+
+  private async writeSqlRecord(record: TagRecord, requestedServiceId = ""): Promise<void> {
+    const sql = this.sqlStorage();
+    if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+    const existingIdentity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (existingIdentity === undefined) {
+      sql.exec("INSERT INTO tag_identity (singleton, tag, created_at) VALUES (1, ?, ?)", record.tag, record.createdAt);
+    } else if (sqlString(existingIdentity.tag, "tag_identity.tag") !== record.tag) {
+      throw new Error("Tag Durable Object identity changed");
+    }
+
+    sql.exec(`
+      INSERT INTO tag_control (
+        singleton, schema_version, head_suid, clock_offset_ms, clock_now_ms,
+        version, repair_owner, repair_lease_until, highest_repair_epoch,
+        repair_scope_version, created_at, updated_at
+      ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(singleton) DO UPDATE SET
+        schema_version = excluded.schema_version,
+        head_suid = excluded.head_suid,
+        clock_offset_ms = excluded.clock_offset_ms,
+        clock_now_ms = excluded.clock_now_ms,
+        version = excluded.version,
+        repair_owner = excluded.repair_owner,
+        repair_lease_until = excluded.repair_lease_until,
+        highest_repair_epoch = excluded.highest_repair_epoch,
+        repair_scope_version = excluded.repair_scope_version,
+        updated_at = excluded.updated_at
+    `,
+    record.schemaVersion, record.head, record.clockOffsetMs, record.clockNowMs,
+    record.version, record.repairOwner, record.repairLeaseUntil, record.highestRepairEpoch,
+    record.repairScopeVersion, record.createdAt, record.updatedAt);
+
+    const existingHead = sql.exec<SqlRow>("SELECT service_id FROM tag_head WHERE singleton = 1").toArray()[0];
+    const serviceId = requestedServiceId || (existingHead === undefined ? "" : sqlString(existingHead.service_id, "tag_head.service_id")) || record.bootstrapAdmission?.targetServiceId || "";
+    sql.exec(`
+      INSERT INTO tag_head (singleton, service_id, head_suid) VALUES (1, ?, ?)
+      ON CONFLICT(singleton) DO UPDATE SET service_id = excluded.service_id, head_suid = excluded.head_suid
+    `, serviceId, record.head);
+
+    sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+    if (record.activeReservation !== null) {
+      const reservation = record.activeReservation;
+      sql.exec(`
+        INSERT INTO tag_reservation
+          (singleton, attempt_id, epoch, reservation_token, expected_head, expires_at, alarm_due_at)
+        VALUES (1, ?, ?, ?, ?, ?, ?)
+      `, reservation.attemptId, reservation.epoch, reservation.token, reservation.expectedHead, reservation.expiresAt, reservation.alarmDueAt);
+    }
+
+    sql.exec("DELETE FROM tag_epoch");
+    const epochs = new Map<string, { highest: number; sealed: number | null; confirmation: number | null }>();
+    for (const entry of record.highestEpoch) epochs.set(entry.attemptId, { highest: entry.epoch, sealed: null, confirmation: null });
+    for (const entry of record.sealedEpoch) {
+      const prior = epochs.get(entry.attemptId) ?? { highest: entry.epoch, sealed: null, confirmation: null };
+      prior.highest = Math.max(prior.highest, entry.epoch); prior.sealed = entry.epoch; epochs.set(entry.attemptId, prior);
+    }
+    for (const entry of record.confirmations) {
+      const prior = epochs.get(entry.attemptId) ?? { highest: entry.epoch, sealed: null, confirmation: null };
+      prior.highest = Math.max(prior.highest, entry.epoch); prior.confirmation = entry.epoch; epochs.set(entry.attemptId, prior);
+    }
+    for (const [attemptId, epoch] of epochs) {
+      sql.exec("INSERT INTO tag_epoch (attempt_id, highest_epoch, sealed_epoch, confirmation_epoch) VALUES (?, ?, ?, ?)", attemptId, epoch.highest, epoch.sealed, epoch.confirmation);
+    }
+
+    sql.exec("DELETE FROM tag_tombstone");
+    for (const tombstone of record.tombstones) {
+      sql.exec("INSERT INTO tag_tombstone (attempt_id, epoch) VALUES (?, ?)", tombstone.attemptId, tombstone.epoch);
+    }
+    sql.exec("DELETE FROM tag_fence");
+    for (const fence of record.fences) sql.exec("INSERT INTO tag_fence (reason, attempt_id, epoch) VALUES (?, ?, ?)", fence.reason, fence.attemptId, fence.epoch);
+    sql.exec("DELETE FROM tag_cleared_fence");
+    for (const fence of record.clearedFences) sql.exec("INSERT INTO tag_cleared_fence (reason, attempt_id, epoch) VALUES (?, ?, ?)", fence.reason, fence.attemptId, fence.epoch);
+
+    sql.exec("DELETE FROM tag_bootstrap_admission WHERE singleton = 1");
+    if (record.bootstrapAdmission !== null) {
+      const admission = record.bootstrapAdmission;
+      sql.exec(`
+        INSERT INTO tag_bootstrap_admission
+          (singleton, import_id, lease_epoch, manifest_digest, target_service_id, closed)
+        VALUES (1, ?, ?, ?, ?, ?)
+      `, admission.importId, admission.leaseEpoch, admission.manifestDigest, admission.targetServiceId, admission.closed ? 1 : 0);
+    }
+    sql.exec("DELETE FROM tag_repair_scope");
+    for (const item of record.repairScope) {
+      sql.exec("INSERT INTO tag_repair_scope (attempt_id, event_id, item_json) VALUES (?, ?, ?)", item.attemptId, item.eventId, JSON.stringify(item));
+    }
+
+    const knownEvents = new Map(sql.exec<SqlRow>("SELECT service_id, event_id FROM tag_event").toArray().map((row) => [
+      sqlString(row.event_id, "tag_event.event_id"),
+      sqlString(row.service_id, "tag_event.service_id"),
+    ]));
+    const eventByOutboxIdentity = new Map(record.events.map((event) => [
+      outboxRowKey(event),
+      event,
+    ]));
+    for (const event of record.events) {
+      const eventServiceId = knownEvents.get(event.eventId) ?? serviceId;
+      if (!knownEvents.has(event.eventId)) {
+        sql.exec(`
+          INSERT INTO tag_event (
+            service_id, event_id, attempt_id, suid, payload, event_tags_json,
+            allocator_lineage_id, event_type, provenance, timestamp, event_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, eventServiceId, event.eventId, event.attemptId, event.suid, event.payload,
+        JSON.stringify(event.eventTags), event.allocatorLineageId, event.eventType,
+        event.provenance, event.timestamp, JSON.stringify(event));
+      }
+      sql.exec(`
+        INSERT OR IGNORE INTO tag_committed_membership (service_id, event_id, tag, committed_at)
+        VALUES (?, ?, ?, ?)
+      `, eventServiceId, event.eventId, record.tag, record.updatedAt);
+    }
+    for (const outbox of record.outbox) {
+      const event = eventByOutboxIdentity.get(outboxRowKey(outbox));
+      if (event === undefined) continue;
+      const eventServiceId = knownEvents.get(event.eventId) ?? serviceId;
+      const artifact = await this.obligationArtifact(event, eventServiceId, record.tag);
+      sql.exec(`
+        INSERT OR IGNORE INTO tag_outbox_obligation (
+          service_id, event_id, attempt_id, suid, payload, allocator_lineage_id,
+          event_type, provenance, timestamp, canonical_bytes, event_digest,
+          declared_tag_set_json, local_committed_membership_json, status,
+          next_attempt_at, attempt_count, enqueued_at, acknowledged_at, last_error
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, 0, NULL, NULL, NULL)
+      `, eventServiceId, outbox.eventId, outbox.attemptId, outbox.suid, outbox.payload,
+      outbox.allocatorLineageId, outbox.eventType, outbox.provenance, outbox.timestamp,
+      artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
+      artifact.localMembership, Date.now());
+    }
+    for (const confirmation of record.confirmations) {
+      sql.exec(`
+        INSERT OR IGNORE INTO tag_commit_receipt
+          (attempt_id, epoch, committed_at, committed_event_count, head_suid, reservation_confirmed)
+        VALUES (?, ?, ?, ?, ?, 1)
+      `, confirmation.attemptId, confirmation.epoch, record.updatedAt,
+      record.events.filter((event) => event.attemptId === confirmation.attemptId).length,
+      record.head);
+    }
+  }
+
+  private nextSqlAlarmDue(): number | null {
+    const sql = this.sqlStorage();
+    if (sql === undefined) return this.fallbackRecord?.alarmDueAt ?? null;
+    const row = sql.exec<SqlRow>(`
+      SELECT MIN(due_at) AS due_at FROM (
+        SELECT alarm_due_at AS due_at FROM tag_reservation
+        UNION ALL
+        SELECT next_attempt_at AS due_at FROM tag_outbox_obligation
+        WHERE status = 'pending'
+      )
+    `).toArray()[0];
+    return row === undefined ? null : sqlNullableNumber(row.due_at, "due_at");
+  }
+
   private async recordFor(
     txn: DurableObjectTransaction,
     tag: string,
   ): Promise<{ record: TagRecord; exists: boolean }> {
-    const existing = await txn.get<TagRecord>(TAG_KEY);
-    if (existing !== undefined && existing.tag !== tag) {
-      throw new Error("Tag Durable Object identity changed");
-    }
+    void txn;
+    const existing = this.readStoredRecord(tag);
     return { record: existing === undefined ? newRecord(tag) : requireG32TagRecord(existing), exists: existing !== undefined };
   }
 
-  private async write(txn: DurableObjectTransaction, record: TagRecord): Promise<void> {
-    await txn.put(TAG_KEY, record);
-    if (record.alarmDueAt === null) {
+  private async write(txn: DurableObjectTransaction, record: TagRecord, serviceId = ""): Promise<void> {
+    if (this.sqlStorage() === undefined) {
+      this.fallbackRecord = record;
+    } else {
+      await this.writeSqlRecord(record, serviceId);
+    }
+    const dueAt = this.nextSqlAlarmDue();
+    if (dueAt === null) {
       await txn.deleteAlarm();
     } else {
-      await txn.setAlarm(record.alarmDueAt);
+      await txn.setAlarm(dueAt);
     }
   }
 
@@ -1082,9 +2016,10 @@ export class TagDurableObject implements DurableObject {
     txn: DurableObjectTransaction,
     record: TagRecord,
     updates: Partial<TagRecord>,
+    serviceId = "",
   ): Promise<TagRecord> {
     const updated = changed(record, updates);
-    await this.write(txn, updated);
+    await this.write(txn, updated, serviceId);
     return updated;
   }
 
@@ -1102,6 +2037,10 @@ export class TagDurableObject implements DurableObject {
     }
     const input = parsed.value;
     observation?.markFirstStorageRead();
+    if (this.sqlStorage() !== undefined) {
+      const result = await this.acquireSql(tag, input);
+      return json(result.body, result.status);
+    }
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
       let record = loaded.record;
@@ -1183,6 +2122,10 @@ export class TagDurableObject implements DurableObject {
     }
     const input = parsed.value;
     observation?.markFirstStorageRead();
+    if (this.sqlStorage() !== undefined) {
+      const result = await this.cancelSql(tag, input);
+      return json(result.body, result.status);
+    }
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
       const expiry = expireReservation(loaded.record);
@@ -1312,7 +2255,12 @@ export class TagDurableObject implements DurableObject {
       // identity, or non-monotonic continuation can be rejected here.
       if (hasEventConflict(record, input.candidates) || monotonicityViolation(record.head, input.candidates)) return rejected("bootstrap_identity_or_order_conflict");
       const events: TagEvent[] = input.candidates.map((candidate) => ({ attemptId: `bootstrap:${input.importId}`, eventId: candidate.eventId, suid: candidate.suid, payload: candidate.payload, eventTags: candidate.eventTags, allocatorLineageId: candidate.allocatorLineageId, eventType: candidate.eventType, provenance: candidate.provenance, timestamp: candidate.timestamp }));
-      const updated = await this.commit(txn, record, { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events: [...record.events, ...events] });
+      const updated = await this.commit(
+        txn,
+        record,
+        { bootstrapAdmission: admission, head: input.candidates.at(-1)!.suid, events: [...record.events, ...events] },
+        input.targetServiceId,
+      );
       return { status: 201, body: { status: "bootstrap_admitted", version: updated.version } };
     });
     return json(result.body, result.status);
@@ -1366,6 +2314,24 @@ export class TagDurableObject implements DurableObject {
     try {
       const doorbellPreflight = this.directDoorbellPreflight(domainDeliveryClass);
       observation?.markFirstStorageRead();
+      // A real SQLite-backed DO takes the indexed transaction below. The
+      // fallback only exists for deliberately minimal transport seams that do
+      // not provide `storage.sql`; it is never a second persisted record
+      // format in a deployed Tag DO.
+      if (this.sqlStorage() !== undefined) {
+        const result = await this.appendSql(tag, input, serviceId);
+        const response = json(result.body, result.status);
+        if (
+          result.status === 201 &&
+          serviceId !== null && serviceId.length > 0 &&
+          this.env.AUTO_DRAIN_OUTBOX === "true" &&
+          (this.env.DOWNSTREAM_QUEUE !== undefined ||
+            (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
+        ) {
+          this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId, domainDeliveryClass).catch(() => undefined));
+        }
+        return response;
+      }
       const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
         const loaded = await this.recordFor(txn, tag);
         let record = loaded.record;
@@ -1453,7 +2419,7 @@ export class TagDurableObject implements DurableObject {
           events: [...record.events, ...appendedEvents],
           outbox: [...record.outbox, ...outboxRows],
         });
-        await txn.put(TAG_KEY, appendedOnly);
+        await this.write(txn, appendedOnly, serviceId ?? "");
         if (input.faultInjection === "after-append-before-confirm") {
           throw new AppendTransactionFault("Simulated interruption before reservation confirmation");
         }
@@ -1468,7 +2434,7 @@ export class TagDurableObject implements DurableObject {
             ? withMaxEpoch(record.confirmations, input.attemptId, input.epoch)
             : record.confirmations,
         });
-        await this.write(txn, updated);
+        await this.write(txn, updated, serviceId ?? "");
         return {
           status: 201,
           body: { status: "appended", fenceGate, version: updated.version },
@@ -1515,7 +2481,12 @@ export class TagDurableObject implements DurableObject {
     await this.autoDrainOutbox(tag, serviceId, domainDeliveryClass);
   }
 
-  private async autoDrainOutbox(tag: string, serviceId: string, domainDeliveryClass?: string): Promise<void> {
+  private async autoDrainOutbox(
+    tag: string,
+    serviceId: string,
+    domainDeliveryClass?: string,
+    limit?: number,
+  ): Promise<void> {
     const domainClass = domainDeliveryClass === undefined
       ? undefined
       : readDomainDeliveryClass({ DOMAIN_DELIVERY_CLASS: domainDeliveryClass });
@@ -1524,7 +2495,7 @@ export class TagDurableObject implements DurableObject {
     if (preflight.status === "fail-fast") {
       throw new Error(`direct_doorbell_preflight_failed:${preflight.reason}`);
     }
-    const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now() });
+    const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), limit });
     if (!pending.ok) {
       throw new Error(`automatic outbox pending read failed with ${pending.status}`);
     }
@@ -1536,6 +2507,7 @@ export class TagDurableObject implements DurableObject {
       config.enabled &&
       this.env.DOWNSTREAM_DOORBELL !== undefined;
     const queue = this.env.DOWNSTREAM_QUEUE;
+    const acceptedByQueue: DownstreamOutboxMessage[] = [];
     for (const row of rows) {
       // `row` is the object created by pendingOutbox. The bytes are captured
       // once for correlation/equality evidence and the exact same envelope is
@@ -1592,14 +2564,21 @@ export class TagDurableObject implements DurableObject {
         });
       }
       if (queue !== undefined) {
-        await queue.send(row, { contentType: "json" });
+        try {
+          await queue.send(row, { contentType: "json" });
+          acceptedByQueue.push(row);
+        } catch (failure) {
+          // A failed source-to-sink handoff is itself source state.  Do not
+          // let one poison row skip a later due row or suppress re-arming.
+          await this.recordOutboxFailure(tag, row, failure);
+        }
       }
     }
-    if (rows.length === 0 || queue === undefined) {
+    if (acceptedByQueue.length === 0) {
       return;
     }
     const mark = await this.markOutboxDelivered(tag, {
-      deliveries: rows.map(({ attemptId, eventId, suid, payload, eventType, provenance, timestamp, allocatorLineageId, enqueuedAt }) => ({
+      deliveries: acceptedByQueue.map(({ attemptId, eventId, suid, payload, eventType, provenance, timestamp, allocatorLineageId, enqueuedAt }) => ({
         attemptId,
         eventId,
         suid,
@@ -1741,7 +2720,7 @@ export class TagDurableObject implements DurableObject {
    */
   private async repairFacts(tag: string): Promise<Response> {
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
-      const record = await txn.get<TagRecord>(TAG_KEY);
+      const record = this.readStoredRecord(tag);
       if (record === undefined) {
         return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
       }
@@ -1787,14 +2766,17 @@ export class TagDurableObject implements DurableObject {
     }
     const input = parsed.value;
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
-      const record = await txn.get<TagRecord>(TAG_KEY);
+      if (this.sqlStorage() !== undefined) {
+        return this.pendingSqlOutbox(txn, tag, serviceId, input.nowMs, input.limit);
+      }
+      const record = this.readStoredRecord(tag);
       if (record === undefined) {
         return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
       }
       if (record.tag !== tag) {
         return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
       }
-      const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? [];
+      const deliveries = this.fallbackOutboxDeliveries;
       const byRow = new Map(deliveries.map((delivery) => [outboxRowKey(delivery), delivery]));
       let changedDeliveries = deliveries;
       const rows: Array<{
@@ -1816,6 +2798,7 @@ export class TagDurableObject implements DurableObject {
         enqueuedAt: number;
       }> = [];
       for (const row of record.outbox) {
+        if (input.limit !== undefined && rows.length >= input.limit) break;
         const key = outboxRowKey(row);
         let delivery = byRow.get(key);
         if (delivery === undefined) {
@@ -1862,11 +2845,122 @@ export class TagDurableObject implements DurableObject {
         });
       }
       if (changedDeliveries !== deliveries) {
-        await txn.put(OUTBOX_DELIVERIES_KEY, changedDeliveries);
+        this.fallbackOutboxDeliveries = changedDeliveries;
       }
       return { status: 200, body: { rows } };
     });
     return json(result.body, result.status);
+  }
+
+  /**
+   * Source-side obligation scanner.  It deliberately does not call the Queue,
+   * the doorbell, `pendingOutbox`, or any detector.  An obligation therefore
+   * remains visible when delivery is disabled, throws, or has not started.
+   */
+  private async scanOutboxObligations(tag: string, nowMs: number): Promise<Response> {
+    const result = await this.ctx.storage.transaction(async (): Promise<OperationResult> => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) {
+        const record = this.readStoredRecord(tag);
+        if (record === undefined) {
+          return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+        }
+        const delivered = new Set(this.fallbackOutboxDeliveries
+          .filter((delivery) => delivery.deliveredAt !== null)
+          .map((delivery) => outboxRowKey(delivery)));
+        const findings = record.outbox
+          .filter((row) => !delivered.has(outboxRowKey(row)))
+          .map((row, index) => ({
+            code: "tag_outbox_obligation_unacknowledged",
+            obligationSequence: index + 1,
+            attemptId: row.attemptId,
+            eventId: row.eventId,
+            status: "pending",
+            nextAttemptAt: nowMs,
+            source: "tag_outbox_obligation",
+          }));
+        return {
+          status: 200,
+          body: {
+            status: "scan-complete",
+            source: "tag_outbox_obligation",
+            scannedAt: nowMs,
+            pendingCount: findings.length,
+            findings,
+          },
+        };
+      }
+      const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      if (identity === undefined) {
+        return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+      }
+      if (sqlString(identity.tag, "tag_identity.tag") !== tag) {
+        return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
+      }
+      const findings = sql.exec<SqlRow>(`
+        SELECT obligation_sequence, attempt_id, event_id, status, next_attempt_at, attempt_count
+        FROM tag_outbox_obligation
+        WHERE status <> 'acknowledged'
+        ORDER BY obligation_sequence ASC
+      `).toArray().map((row) => ({
+        code: "tag_outbox_obligation_unacknowledged",
+        obligationSequence: sqlNumber(row.obligation_sequence, "tag_outbox_obligation.obligation_sequence"),
+        attemptId: sqlString(row.attempt_id, "tag_outbox_obligation.attempt_id"),
+        eventId: sqlString(row.event_id, "tag_outbox_obligation.event_id"),
+        status: sqlString(row.status, "tag_outbox_obligation.status"),
+        nextAttemptAt: sqlNumber(row.next_attempt_at, "tag_outbox_obligation.next_attempt_at"),
+        attemptCount: sqlNumber(row.attempt_count, "tag_outbox_obligation.attempt_count"),
+        source: "tag_outbox_obligation",
+      }));
+      return {
+        status: 200,
+        body: {
+          status: "scan-complete",
+          source: "tag_outbox_obligation",
+          scannedAt: nowMs,
+          pendingCount: findings.length,
+          findings,
+        },
+      };
+    });
+    return json(result.body, result.status);
+  }
+
+  /** Record a retry or terminal poison disposition without changing the source event. */
+  private async recordOutboxFailure(tag: string, delivery: DownstreamOutboxMessage, failure: unknown): Promise<void> {
+    await this.ctx.storage.transaction(async (txn) => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) {
+        // Minimal direct seams have no persistent SQL store.  They intentionally
+        // remain transport-only and cannot become a durable obligation source.
+        return;
+      }
+      const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      if (identity === undefined || sqlString(identity.tag, "tag_identity.tag") !== tag) {
+        throw new Error("Cannot record an outbox failure for a different tag identity");
+      }
+      const obligation = sql.exec<SqlRow>(`
+        SELECT obligation_sequence, attempt_count, status
+        FROM tag_outbox_obligation
+        WHERE attempt_id = ? AND event_id = ? AND suid = ? AND payload = ?
+          AND allocator_lineage_id = ? AND event_type = ? AND provenance = ? AND timestamp = ?
+      `, delivery.attemptId, delivery.eventId, delivery.suid, delivery.payload,
+      delivery.allocatorLineageId, delivery.eventType, delivery.provenance, delivery.timestamp).toArray()[0];
+      if (obligation === undefined || sqlString(obligation.status, "tag_outbox_obligation.status") === "acknowledged") {
+        await this.rearmScheduler(txn);
+        return;
+      }
+      const attempts = sqlNumber(obligation.attempt_count, "tag_outbox_obligation.attempt_count");
+      const status = attempts >= OBLIGATION_MAX_ATTEMPTS ? "poison" : "pending";
+      const message = String(failure).slice(0, 256);
+      sql.exec(`
+        UPDATE tag_outbox_obligation
+        SET status = ?, next_attempt_at = ?, last_error = ?
+        WHERE obligation_sequence = ?
+      `, status, Date.now() + OBLIGATION_RETRY_MS, message,
+      sqlNumber(obligation.obligation_sequence, "tag_outbox_obligation.obligation_sequence"));
+      await this.rearmScheduler(txn);
+    });
   }
 
   /** Marks only a previously enqueued row; repeating a mark is harmless. */
@@ -1877,14 +2971,17 @@ export class TagDurableObject implements DurableObject {
     }
     const input = parsed.value;
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
-      const record = await txn.get<TagRecord>(TAG_KEY);
+      if (this.sqlStorage() !== undefined) {
+        return this.markSqlOutboxDelivered(txn, tag, input);
+      }
+      const record = this.readStoredRecord(tag);
       if (record === undefined) {
         return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
       }
       if (record.tag !== tag) {
         return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
       }
-      const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? [];
+      const deliveries = this.fallbackOutboxDeliveries;
       const requested = new Map(input.deliveries.map((delivery) => [outboxRowKey(delivery), delivery]));
       for (const [key, delivery] of requested) {
         if (!record.outbox.some((row) => outboxRowKey(row) === key)) {
@@ -1905,11 +3002,128 @@ export class TagDurableObject implements DurableObject {
         return { ...delivery, deliveredAt: input.nowMs };
       });
       if (marked > 0) {
-        await txn.put(OUTBOX_DELIVERIES_KEY, updated);
+        this.fallbackOutboxDeliveries = updated;
       }
       return { status: 200, body: { marked, idempotent: marked === 0 } };
     });
     return json(result.body, result.status);
+  }
+
+  /**
+   * The delivery handoff reads its universe from `tag_outbox_obligation`.
+   * It does not consult the Queue, a sink receipt, or a runner's expected
+   * count.  Reserving the retry timestamp before the external handoff lets the
+   * single durable scheduler retry a crash/throw without treating delivery as
+   * the authority for obligation existence.
+   */
+  private async pendingSqlOutbox(
+    txn: DurableObjectTransaction,
+    tag: string,
+    serviceId: string,
+    nowMs: number,
+    limit?: number,
+  ): Promise<OperationResult> {
+    const sql = this.sqlStorage();
+    if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+    const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (identity === undefined) return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+    if (sqlString(identity.tag, "tag_identity.tag") !== tag) {
+      return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
+    }
+    const pending = sql.exec<SqlRow>(`
+      SELECT
+        o.obligation_sequence, o.service_id, o.event_id, o.attempt_id, o.suid,
+        o.payload, o.allocator_lineage_id, o.event_type, o.provenance,
+        o.timestamp, o.enqueued_at, e.event_tags_json
+      FROM tag_outbox_obligation AS o
+      JOIN tag_event AS e ON e.service_id = o.service_id AND e.event_id = o.event_id
+      WHERE o.status = 'pending' AND o.next_attempt_at <= ?
+      ORDER BY o.obligation_sequence ASC
+      LIMIT ?
+    `, nowMs, limit ?? Number.MAX_SAFE_INTEGER).toArray();
+    const rows: DownstreamOutboxMessage[] = [];
+    for (const obligation of pending) {
+      const storedServiceId = sqlString(obligation.service_id, "tag_outbox_obligation.service_id");
+      if (storedServiceId !== serviceId) {
+        return { status: 409, body: { error: "Outbox service identity changed", code: "outbox_service_identity_conflict" } };
+      }
+      const sequence = sqlNumber(obligation.obligation_sequence, "tag_outbox_obligation.obligation_sequence");
+      const enqueuedAt = sqlNullableNumber(obligation.enqueued_at, "tag_outbox_obligation.enqueued_at") ?? nowMs;
+      sql.exec(`
+        UPDATE tag_outbox_obligation
+        SET enqueued_at = ?, attempt_count = attempt_count + 1, next_attempt_at = ?
+        WHERE obligation_sequence = ? AND status = 'pending'
+      `, enqueuedAt, nowMs + OBLIGATION_RETRY_MS, sequence);
+      const eventId = sqlString(obligation.event_id, "tag_outbox_obligation.event_id");
+      const metadata = serializedEventMetadata(eventId);
+      rows.push({
+        version: 1,
+        serviceId,
+        tag,
+        attemptId: sqlString(obligation.attempt_id, "tag_outbox_obligation.attempt_id"),
+        eventId,
+        suid: sqlString(obligation.suid, "tag_outbox_obligation.suid"),
+        payload: sqlString(obligation.payload, "tag_outbox_obligation.payload"),
+        allocatorLineageId: sqlString(obligation.allocator_lineage_id, "tag_outbox_obligation.allocator_lineage_id"),
+        eventTags: sqlJson<string[]>(obligation.event_tags_json, "tag_event.event_tags_json"),
+        eventType: sqlString(obligation.event_type, "tag_outbox_obligation.event_type"),
+        provenance: sqlString(obligation.provenance, "tag_outbox_obligation.provenance") as "g32",
+        timestamp: sqlString(obligation.timestamp, "tag_outbox_obligation.timestamp"),
+        causationId: metadata.causationId,
+        correlationId: metadata.correlationId,
+        executedUser: metadata.executedUser,
+        enqueuedAt,
+      });
+    }
+    await this.rearmScheduler(txn);
+    return { status: 200, body: { rows } };
+  }
+
+  private async markSqlOutboxDelivered(
+    txn: DurableObjectTransaction,
+    tag: string,
+    input: OutboxMarkInput,
+  ): Promise<OperationResult> {
+    const sql = this.sqlStorage();
+    if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
+    const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (identity === undefined) return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
+    if (sqlString(identity.tag, "tag_identity.tag") !== tag) {
+      return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
+    }
+    let marked = 0;
+    for (const delivery of input.deliveries) {
+      const obligation = sql.exec<SqlRow>(`
+        SELECT obligation_sequence, enqueued_at, status
+        FROM tag_outbox_obligation
+        WHERE attempt_id = ? AND event_id = ? AND suid = ? AND payload = ?
+          AND allocator_lineage_id = ? AND event_type = ? AND provenance = ? AND timestamp = ?
+      `, delivery.attemptId, delivery.eventId, delivery.suid, delivery.payload,
+      delivery.allocatorLineageId, delivery.eventType, delivery.provenance, delivery.timestamp).toArray()[0];
+      if (obligation === undefined) {
+        return { status: 409, body: { error: "Outbox row is not durable", code: "outbox_row_not_found" } };
+      }
+      if (sqlNullableNumber(obligation.enqueued_at, "tag_outbox_obligation.enqueued_at") !== delivery.enqueuedAt) {
+        return { status: 409, body: { error: "Outbox row was not enqueued", code: "outbox_delivery_not_enqueued" } };
+      }
+      if (sqlString(obligation.status, "tag_outbox_obligation.status") === "acknowledged") continue;
+      sql.exec(`
+        UPDATE tag_outbox_obligation
+        SET status = 'acknowledged', acknowledged_at = ?, last_error = NULL
+        WHERE obligation_sequence = ?
+      `, input.nowMs, sqlNumber(obligation.obligation_sequence, "tag_outbox_obligation.obligation_sequence"));
+      marked += 1;
+    }
+    await this.rearmScheduler(txn);
+    return { status: 200, body: { marked, idempotent: marked === 0 } };
+  }
+
+  private async rearmScheduler(txn: DurableObjectTransaction): Promise<void> {
+    if (this.g43SchedulerFault === "before-rearm") throw new Error("G43 scheduler crash before re-arm");
+    const dueAt = this.nextSqlAlarmDue();
+    if (dueAt === null) await txn.deleteAlarm();
+    else await txn.setAlarm(dueAt);
+    if (this.g43SchedulerFault === "after-rearm") throw new Error("G43 scheduler crash after re-arm");
   }
 
   private async acquireRepairLease(tag: string, body: unknown): Promise<Response> {
@@ -2245,14 +3459,65 @@ export class TagDurableObject implements DurableObject {
   }
 
   private async runAlarm(): Promise<TagRecord | undefined> {
-    return this.ctx.storage.transaction(async (txn): Promise<TagRecord | undefined> => {
-      const record = await txn.get<TagRecord>(TAG_KEY);
-      if (record === undefined) {
-        return undefined;
+    const due = await this.ctx.storage.transaction(async (txn): Promise<{
+      record: TagRecord | undefined;
+      tag?: string;
+      serviceId?: string;
+      retryDue: boolean;
+    }> => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) {
+        const storedTag = this.fallbackRecord?.tag;
+        if (storedTag === undefined) return { record: undefined, retryDue: false };
+        const record = this.readStoredRecord(storedTag);
+        if (record === undefined) return { record: undefined, retryDue: false };
+        const expiry = expireReservation(record);
+        return {
+          record: expiry.expired ? await this.commit(txn, expiry.record, {}) : record,
+          retryDue: false,
+        };
       }
-      const expiry = expireReservation(record);
-      return expiry.expired ? this.commit(txn, expiry.record, {}) : record;
+
+      const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      if (identity === undefined) return { record: undefined, retryDue: false };
+      const tag = sqlString(identity.tag, "tag_identity.tag");
+      const control = sql.exec<SqlRow>("SELECT * FROM tag_control WHERE singleton = 1").one();
+      const now = sqlNullableNumber(control.clock_now_ms, "tag_control.clock_now_ms") ??
+        Date.now() + sqlNumber(control.clock_offset_ms, "tag_control.clock_offset_ms");
+      const reservation = sql.exec<SqlRow>("SELECT expires_at FROM tag_reservation WHERE singleton = 1").toArray()[0];
+      if (reservation !== undefined && sqlNumber(reservation.expires_at, "tag_reservation.expires_at") <= now) {
+        sql.exec("DELETE FROM tag_reservation WHERE singleton = 1");
+        sql.exec(
+          "UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1",
+          sqlNumber(control.version, "tag_control.version") + 1,
+          nowIso(),
+        );
+      }
+      const service = sql.exec<SqlRow>("SELECT service_id FROM tag_head WHERE singleton = 1").toArray()[0];
+      const retryDue = sqlNumber(sql.exec<SqlRow>(`
+        SELECT COUNT(*) AS count FROM tag_outbox_obligation
+        WHERE status = 'pending' AND next_attempt_at <= ?
+      `, Date.now()).one().count, "tag_outbox_obligation.count") > 0;
+      await this.rearmScheduler(txn);
+      return {
+        record: this.readStoredRecord(tag),
+        tag,
+        serviceId: service === undefined ? undefined : sqlString(service.service_id, "tag_head.service_id"),
+        retryDue,
+      };
     });
+    if (
+      due.retryDue &&
+      this.env.AUTO_DRAIN_OUTBOX === "true" &&
+      due.tag !== undefined &&
+      isNonEmptyString(due.serviceId)
+    ) {
+      // Delivery is outside the storage transaction. Each selected obligation
+      // already has a retry timestamp, and per-row failures cannot starve
+      // sibling rows or reservation expiry.
+      await this.autoDrainOutbox(due.tag, due.serviceId, undefined, OBLIGATION_ALARM_BATCH_LIMIT).catch(() => undefined);
+    }
+    return due.record;
   }
 }
 
