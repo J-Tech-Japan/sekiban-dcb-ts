@@ -50,6 +50,12 @@ import {
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
 
 const REPAIR_FACTS_KEY = "repair-facts";
+/**
+ * Only the deliberately SQL-less direct-test seam uses this legacy-shaped
+ * delivery clock fixture. Deployed Tag DOs always use tag_outbox_obligation;
+ * this is never a second persisted event-record authority.
+ */
+const OUTBOX_DELIVERIES_KEY = "outbox-deliveries";
 const MAX_EPOCH = Number.MAX_SAFE_INTEGER;
 const DEFAULT_REPAIR_LEASE_MS = 30_000;
 const MAX_REPAIR_LEASE_MS = 5 * 60_000;
@@ -2776,7 +2782,7 @@ export class TagDurableObject implements DurableObject {
       if (record.tag !== tag) {
         return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
       }
-      const deliveries = this.fallbackOutboxDeliveries;
+      const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? this.fallbackOutboxDeliveries;
       const byRow = new Map(deliveries.map((delivery) => [outboxRowKey(delivery), delivery]));
       let changedDeliveries = deliveries;
       const rows: Array<{
@@ -2846,6 +2852,7 @@ export class TagDurableObject implements DurableObject {
       }
       if (changedDeliveries !== deliveries) {
         this.fallbackOutboxDeliveries = changedDeliveries;
+        await txn.put(OUTBOX_DELIVERIES_KEY, changedDeliveries);
       }
       return { status: 200, body: { rows } };
     });
@@ -2858,14 +2865,15 @@ export class TagDurableObject implements DurableObject {
    * remains visible when delivery is disabled, throws, or has not started.
    */
   private async scanOutboxObligations(tag: string, nowMs: number): Promise<Response> {
-    const result = await this.ctx.storage.transaction(async (): Promise<OperationResult> => {
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const sql = this.sqlStorage();
       if (sql === undefined) {
         const record = this.readStoredRecord(tag);
         if (record === undefined) {
           return { status: 404, body: { error: "Tag has no durable state yet", code: "tag_not_found" } };
         }
-        const delivered = new Set(this.fallbackOutboxDeliveries
+        const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? this.fallbackOutboxDeliveries;
+        const delivered = new Set(deliveries
           .filter((delivery) => delivery.deliveredAt !== null)
           .map((delivery) => outboxRowKey(delivery)));
         const findings = record.outbox
@@ -2981,7 +2989,7 @@ export class TagDurableObject implements DurableObject {
       if (record.tag !== tag) {
         return { status: 409, body: { error: "Tag Durable Object identity changed", code: "tag_identity_conflict" } };
       }
-      const deliveries = this.fallbackOutboxDeliveries;
+      const deliveries = (await txn.get<TagOutboxDelivery[]>(OUTBOX_DELIVERIES_KEY)) ?? this.fallbackOutboxDeliveries;
       const requested = new Map(input.deliveries.map((delivery) => [outboxRowKey(delivery), delivery]));
       for (const [key, delivery] of requested) {
         if (!record.outbox.some((row) => outboxRowKey(row) === key)) {
@@ -3003,6 +3011,7 @@ export class TagDurableObject implements DurableObject {
       });
       if (marked > 0) {
         this.fallbackOutboxDeliveries = updated;
+        await txn.put(OUTBOX_DELIVERIES_KEY, updated);
       }
       return { status: 200, body: { marked, idempotent: marked === 0 } };
     });
