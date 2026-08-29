@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 2,
+  "owner": "SDT-G43",
+  "purpose": "Packet-owned finite oracle for AC8. The PR consumes this verbatim and may not choose its own values. v2 closes the endpoint-only decision rule, the cursor aggregation gap, the instrumentation boundary, and the informational-row accounting.",
+  "historySizes": [
+    1,
+    10,
+    100,
+    1000,
+    5000
+  ],
+  "operations": [
+    {
+      "id": "reserve",
+      "class": "bounded",
+      "description": "expected-head check plus reservation creation, one local transaction"
+    },
+    {
+      "id": "commit",
+      "class": "bounded",
+      "description": "token and expected-head re-check plus the five writes (event, head, committedMembership, outbox_obligation, commit_receipt), one local transaction"
+    },
+    {
+      "id": "cancel",
+      "class": "bounded",
+      "description": "reservation release and tombstone advance, one local transaction"
+    },
+    {
+      "id": "tagStateRebuild",
+      "class": "inherently-linear",
+      "description": "full replay from the first event; this path runs ONLY when the stored tag-projector version differs from the code's version, and it is chunked with progress persisted. Reported for information only and EXCLUDED from the growth bound because a full replay is linear by definition."
+    },
+    {
+      "id": "tagStateIncrementalCatchUp",
+      "class": "proportional-to-result",
+      "description": "normal-path projection: ask the tag for events strictly after the stored sortable unique id and fold them incrementally. Cost must scale with the number of NEW events, not with history length. Measured with a fixed 10 new events at every history size."
+    },
+    {
+      "id": "readAfter",
+      "class": "proportional-to-result",
+      "description": "range read of events strictly after a given sortable unique id",
+      "windowRows": 50,
+      "cursorPerHistorySize": "the SUID used at each history size is the one at ordinal (n - 50) so exactly 50 rows are expected; when n < 50 the expected set is the whole history and that is stated in the evidence",
+      "expectedIdentitySet": "the evidence records the exact expected event identity set at each history size and asserts count and set equality with the rows returned"
+    }
+  ],
+  "metrics": [
+    "rowsRead",
+    "rowsWritten",
+    "requestSerializedBytes",
+    "responseSerializedBytes"
+  ],
+  "collection": {
+    "perOperationPerHistorySize": true,
+    "cursorsFullyConsumed": true,
+    "note": "SQLite cursor rowsRead/rowsWritten update as the cursor is consumed, so full consumption before reading the final value is part of the oracle, not a measurement detail.",
+    "repetitionsPerPoint": 3,
+    "aggregate": "median",
+    "cursorAggregation": {
+      "rule": "rowsRead and rowsWritten are per query cursor and increase as the cursor is consumed. The operation must enumerate its COMPLETE SQL statement/cursor universe, fully consume every cursor, and report the SUM of the final counters across all cursors in the operation.",
+      "reject": "submitting the counter of a single cursor, or of a subset, is a fail"
+    },
+    "instrumentationBoundary": {
+      "start": "request entry into the Durable Object handler",
+      "end": "completion of response serialization",
+      "rule": "every SQL statement and cursor reached transitively from within that boundary counts, including helpers; nothing inside the boundary may be excluded",
+      "fixtureBytes": "the payload, tag set and identifier byte values used at every history point are fixed by this object and identical across points"
+    }
+  },
+  "decisionRules": {
+    "bounded": {
+      "rule": "For each bounded operation and each metric, max over ALL history points of value(n) minus min over ALL history points of value(n) <= allowedSpread. Every history point participates in the decision; a signed endpoint difference is NOT sufficient.",
+      "v1Defect": "v1 used value(5000) - value(1) <= slack, which passes for a series like {1:1000, 10:50000, 100:50000, 1000:50000, 5000:0} because the intermediate spike never enters the decision.",
+      "allowedSpread": {
+        "rowsRead": 2,
+        "rowsWritten": 0,
+        "requestSerializedBytes": 0,
+        "responseSerializedBytes": 0
+      },
+      "allowedSpreadRationale": "rowsRead is a ROW count, not a B-tree page-descent count, so the v1 rationale about index descent was wrong. The spread of 2 is allowed only for these named rows and must be justified in the evidence: at most one extra existence-probe row on the head table and at most one on the reservation table when the row is absent versus present. Any other source of spread fails.",
+      "requiredFixtures": [
+        "an intermediate-point spike must FAIL",
+        "a negative endpoint difference with an intermediate spike must FAIL",
+        "a single inflated point must FAIL"
+      ]
+    },
+    "proportionalToResult": {
+      "rule": "For readAfter, rowsRead(n) <= returnedRowCount(n) + constantOverhead for every history size. For tagStateIncrementalCatchUp with a fixed 10 new events, rowsRead(5000) - rowsRead(1) <= constantOverhead, proving the incremental path does not read the history it already folded.",
+      "constantOverhead": 4,
+      "requiredFixtures": [
+        "returnedRowCount + constantOverhead must PASS",
+        "returnedRowCount + constantOverhead + 1 must FAIL"
+      ]
+    },
+    "inherentlyLinear": {
+      "rule": "Reported only. No pass/fail bound. The evidence must state explicitly that this operation is expected to grow with history."
+    },
+    "boundaryFixtures": [
+      "a synthetic run where a bounded metric grows by exactly absoluteSlack must PASS",
+      "a synthetic run where a bounded metric grows by absoluteSlack + 1 must FAIL",
+      "a synthetic run where readAfter rowsRead equals returnedRowCount + constantOverhead must PASS",
+      "a synthetic run where it equals returnedRowCount + constantOverhead + 1 must FAIL"
+    ]
+  },
+  "rangeUseEvidence": {
+    "acceptedForms": [
+      "exactQueryTextPlusIndexIdentityPlusExplainQueryPlan"
+    ],
+    "note": "Closed enumeration. 'or equivalent' is not accepted. The evidence must record the exact query text, the exact index identity used, and the EXPLAIN QUERY PLAN output showing the index range scan.",
+    "requiredEquality": "count and set equality between the rows the plan is evidenced over and the rows actually returned",
+    "planAcceptancePredicate": {
+      "rule": "closed predicate, not human judgement: the EXPLAIN QUERY PLAN output must contain a row whose detail matches 'SEARCH' over the events table USING the exact named index, and must NOT contain any row whose detail matches 'SCAN' over the events table",
+      "reject": "a plan containing a full-table SCAN of the events table fails regardless of timing"
+    }
+  },
+  "integrity": {
+    "requireAllPoints": "count and set equality over historySizes x operations x metrics; missing, unknown, duplicate or unused rows all fail",
+    "rejectWallClockOnly": true,
+    "forbiddenClaims": [
+      "O(1)"
+    ],
+    "informationalRows": {
+      "rule": "tagStateRebuild rows and any other informational rows are still REQUIRED to be present for count/set equality, and each row carries an explicit consumer field of either 'decision' or 'informational'. An informational row never contributes to a pass, and a missing informational row still fails the completeness check."
+    }
+  },
+  "notes": "tagStateIncrementalCatchUp is the NORMAL read path (operator ruling 2026-08-29). Treating all tagState construction as inherently linear would hide the defect this spike exists to prevent."
+}

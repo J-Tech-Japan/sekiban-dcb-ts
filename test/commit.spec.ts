@@ -1,4 +1,4 @@
-import { SELF } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type { AllocatorState } from "../packages/dcb-runtime/src/allocator/types";
@@ -275,6 +275,22 @@ async function journalPost(attemptId: string, path: string, body: unknown): Prom
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(normalizeG32JournalBody(path, body)),
+  });
+}
+
+function journalStub(attemptId: string): DurableObjectStub {
+  const namespace = (env as unknown as { readonly JOURNAL: DurableObjectNamespace }).JOURNAL;
+  return namespace.get(namespace.idFromName(attemptId));
+}
+
+/**
+ * Removes the already-due test alarm before an explicit /debug/alarm request.
+ * The explicit request still runs the production handler and re-arms itself;
+ * this only prevents Miniflare from racing a second handler with it.
+ */
+async function clearJournalAlarm(attemptId: string): Promise<void> {
+  await runInDurableObject(journalStub(attemptId), async (_instance, state) => {
+    await state.storage.deleteAlarm();
   });
 }
 
@@ -714,6 +730,7 @@ describe("Serialized V1 commit worker", () => {
   it("F-G4-1: zero-durable recovery fails without installing partial-write fences", async () => {
     const prepared = await prepareSealingAttempt("zero-durable");
 
+    await clearJournalAlarm(prepared.attemptId);
     const recovered = await journalPost(prepared.attemptId, "/debug/alarm", {});
     expect(recovered.status).toBe(200);
     const terminal = await responseJson<JournalRecord>(recovered);
@@ -757,13 +774,16 @@ describe("Serialized V1 commit worker", () => {
       reconciliation,
     });
     expect(sealingResponse.status).toBe(200);
-    let owner = await responseJson<JournalRecord>(sealingResponse);
+    await clearJournalAlarm(attemptId);
+    let owner = await journalState(attemptId);
     if (owner.takeover === null) {
       const takeoverWake = await journalPost(attemptId, "/debug/alarm", {});
       expect(takeoverWake.status).toBe(200);
       owner = await responseJson<JournalRecord>(takeoverWake);
     }
     expect(owner.takeover).not.toBeNull();
+    await clearJournalAlarm(attemptId);
+    owner = await journalState(attemptId);
 
     const noFenceEvidence = await journalPost(attemptId, "/takeover", {
       expectedState: owner.state,
@@ -778,6 +798,7 @@ describe("Serialized V1 commit worker", () => {
     expect(noFence.takeover?.fencedTags).toEqual([]);
     expect(mapTerminalCommitOutcome(noFence)).toBeUndefined();
 
+    await clearJournalAlarm(attemptId);
     const blockedWake = await journalPost(attemptId, "/debug/alarm", {});
     expect(blockedWake.status).toBe(200);
     const blocked = await responseJson<JournalRecord>(blockedWake);
@@ -805,6 +826,7 @@ describe("Serialized V1 commit worker", () => {
       reconciliation,
     });
     expect(fencedEvidence.status).toBe(202);
+    await clearJournalAlarm(attemptId);
     const terminalWake = await journalPost(attemptId, "/debug/alarm", {});
     expect(terminalWake.status).toBe(200);
     expect((await responseJson<JournalRecord>(terminalWake)).state).toBe("PARTIAL");
