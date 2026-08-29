@@ -142,6 +142,11 @@ interface RepairClearInput extends RepairLeaseInput {
 interface OutboxPendingInput {
   nowMs: number;
   limit?: number;
+  /**
+   * An explicit drain is an immediate handoff attempt, not an alarm wake.
+   * `next_attempt_at` still remains the durable scheduler deadline.
+   */
+  force?: boolean;
 }
 
 interface OutboxMarkInput {
@@ -589,7 +594,11 @@ function outboxPendingFrom(value: unknown): { value?: OutboxPendingInput; error?
   if (limit !== undefined && (!isNonNegativeInteger(limit) || limit < 1 || limit > OBLIGATION_ALARM_BATCH_LIMIT)) {
     return { error: `limit must be an integer in [1, ${OBLIGATION_ALARM_BATCH_LIMIT}] when present` };
   }
-  return { value: { nowMs, limit } };
+  const force = value.force;
+  if (force !== undefined && typeof force !== "boolean") {
+    return { error: "force must be boolean when present" };
+  }
+  return { value: { nowMs, limit, force } };
 }
 
 function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: string } {
@@ -1299,7 +1308,13 @@ export class TagDurableObject implements DurableObject {
       targetServiceId: sqlString(bootstrap.target_service_id, "tag_bootstrap_admission.target_service_id"),
       closed: sqlNumber(bootstrap.closed, "tag_bootstrap_admission.closed") === 1,
     };
-    const repairScope = sql.exec<SqlRow>("SELECT item_json FROM tag_repair_scope ORDER BY attempt_id, event_id").toArray()
+    // The in-memory scope is canonicalized by SUID, then the identity key.
+    // The SQL representation stores the full item as JSON, so reproduce that
+    // order rather than substituting the table's composite-key order.
+    const repairScope = sql.exec<SqlRow>(`
+      SELECT item_json FROM tag_repair_scope
+      ORDER BY json_extract(item_json, '$.suid') ASC, attempt_id ASC, event_id ASC
+    `).toArray()
       .map((row) => sqlJson<RepairScopeItem>(row.item_json, "tag_repair_scope.item_json"));
     return {
       schemaVersion: sqlNumber(control.schema_version, "tag_control.schema_version") as 3,
@@ -2773,7 +2788,7 @@ export class TagDurableObject implements DurableObject {
     const input = parsed.value;
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       if (this.sqlStorage() !== undefined) {
-        return this.pendingSqlOutbox(txn, tag, serviceId, input.nowMs, input.limit);
+        return this.pendingSqlOutbox(txn, tag, serviceId, input.nowMs, input.limit, input.force === true);
       }
       const record = this.readStoredRecord(tag);
       if (record === undefined) {
@@ -3031,6 +3046,7 @@ export class TagDurableObject implements DurableObject {
     serviceId: string,
     nowMs: number,
     limit?: number,
+    force = false,
   ): Promise<OperationResult> {
     const sql = this.sqlStorage();
     if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
@@ -3046,10 +3062,10 @@ export class TagDurableObject implements DurableObject {
         o.timestamp, o.enqueued_at, e.event_tags_json
       FROM tag_outbox_obligation AS o
       JOIN tag_event AS e ON e.service_id = o.service_id AND e.event_id = o.event_id
-      WHERE o.status = 'pending' AND o.next_attempt_at <= ?
+      WHERE o.status = 'pending' AND (? = 1 OR o.next_attempt_at <= ?)
       ORDER BY o.obligation_sequence ASC
       LIMIT ?
-    `, nowMs, limit ?? Number.MAX_SAFE_INTEGER).toArray();
+    `, force ? 1 : 0, nowMs, limit ?? Number.MAX_SAFE_INTEGER).toArray();
     const rows: DownstreamOutboxMessage[] = [];
     for (const obligation of pending) {
       const storedServiceId = sqlString(obligation.service_id, "tag_outbox_obligation.service_id");

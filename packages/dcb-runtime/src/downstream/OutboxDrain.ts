@@ -89,7 +89,10 @@ export async function drainTagOutbox(
   env: OutboxDrainEnv,
   clock: PipelineClock = systemPipelineClock,
 ): Promise<DrainResult> {
-  const pending = await tagPost(env, input, "/outbox/pending", { nowMs: clock.now() });
+  // Queue-triggered draining is an explicit retry attempt. The source's
+  // `next_attempt_at` controls automatic alarm wakes, but must not suppress a
+  // caller that is already actively draining the durable obligation.
+  const pending = await tagPost(env, input, "/outbox/pending", { nowMs: clock.now(), force: true });
   if (!pending.ok) {
     throw new Error(`Tag outbox pending read failed with ${pending.status}`);
   }

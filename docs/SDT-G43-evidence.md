@@ -18,6 +18,8 @@ Append rechecks reservation token and head, then writes event, head, committed m
 
 `tag_outbox_obligation` contains monotone sequence, status, next retry, canonical bytes, digest, declared tags and local membership. `g43ScanSourceObligations()` is a DO-internal source-table RPC: it does not call Queue, doorbell, pending delivery, detector or runner count. The typed finding `tag_outbox_obligation_unacknowledged` is produced for no-delivery and always-throw delivery. Local sink acknowledgement is the only acknowledgement here; it is not a global receipt.
 
+An explicit Queue drain is an immediate handoff/retry attempt and may request pending obligations regardless of `next_attempt_at`; ordinary alarm selection remains governed by that durable retry deadline. This preserves the existing direct-drain seam without weakening the single-alarm scheduler.
+
 The sole scheduler recomputes the one DO alarm as the minimum of reservation expiry and pending retry. Fixtures cover before/after/equal due times, insertion while delivery runs, crash before/after re-arm, 33 items with a 32-row selection budget, and poison alongside sibling/reservation work. The backlog fixture proves exact source selection before delivery and then source identity-set progress after re-arm.
 
 ## AC7
