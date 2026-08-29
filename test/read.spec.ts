@@ -313,15 +313,19 @@ describe("Serialized V1 reads", () => {
     expect(body).not.toHaveProperty("code");
   });
 
-  it("returns 500 internal_error only when the durable tag state cannot be determined", async () => {
+  it("keeps latest-sortable's internal fold but maps G45 Tag identity conflicts on tag-state to typed source failure", async () => {
     const tag = tagFor("indeterminate");
     const [tagGroup, tagContent] = tag.split(":");
     await poisonTagIdentity(tag);
 
     await expectInternalError(await read("tag-latest-sortable", { tag }));
-    await expectInternalError(await read("tag-state", {
+    const tagStateFailure = await read("tag-state", {
       tagStateId: `${tagGroup}:${tagContent}:${TEST_TAG_STATE_PROJECTOR}`,
-    }));
+    });
+    expect(tagStateFailure.status).toBe(409);
+    expect(await responseJson<{ error: string; code: string }>(tagStateFailure)).toMatchObject({
+      code: "tag_state_source_frontier_failure",
+    });
   });
 
   it("fails closed with Section 6 JSON when a current lag estimate exceeds 120 seconds", async () => {
@@ -377,11 +381,11 @@ describe("Serialized V1 reads", () => {
     });
 
     const malformed = await read("tag-state", { tagStateId: `${tagGroup}:${tagContent}:unknown-projector` });
-    expect(malformed.status).toBe(400);
+    expect(malformed.status).toBe(404);
     expect(malformed.headers.get("content-type")).toBe("application/json; charset=utf-8");
     expect(await responseJson<{ error: string; code: string }>(malformed)).toMatchObject({
       error: expect.any(String),
-      code: "validation_error",
+      code: "tag_state_unknown_projector",
     });
   });
 });

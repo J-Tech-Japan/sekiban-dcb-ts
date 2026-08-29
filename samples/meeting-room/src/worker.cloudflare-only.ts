@@ -14,6 +14,7 @@ import {
   readDirectDoorbellConfig,
   runG42JournalProbeTrial,
   TagDurableObject,
+  TagStateDurableObject,
   type G42JournalProbeRequest,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
@@ -27,7 +28,7 @@ import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
 
 
 const runtime = createCloudflareOnlyRuntimeWorker({

@@ -131,18 +131,13 @@ export const DEPLOYED_TAG_STATE_PROJECTORS: readonly TagStateProjector[] = [
 ];
 export const DEPLOYED_PROJECTOR_REGISTRY = new ProjectorRegistry(DEPLOYED_TAG_STATE_PROJECTORS);
 
-export function tagStateIdentityFrom(
-  tagStateId: string,
-  registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
-): { value?: TagStateIdentity; error?: string } {
+/** Parse the public tag-state identifier without consulting a projector authority. */
+export function tagStateIdentitySyntaxFrom(tagStateId: string): { value?: TagStateIdentity; error?: string } {
   const parts = tagStateId.split(":");
   if (parts.length !== 3 || !parts.every(isNonEmptyString)) {
     return { error: "tagStateId must be group:content:projector" };
   }
   const [tagGroup, tagContent, tagProjector] = parts;
-  if (registry.resolve(tagProjector!) === undefined) {
-    return { error: "tagStateId names an unregistered projector" };
-  }
   return {
     value: {
       tag: `${tagGroup}:${tagContent}`,
@@ -151,6 +146,19 @@ export function tagStateIdentityFrom(
       tagProjector: tagProjector!,
     },
   };
+}
+
+export function tagStateIdentityFrom(
+  tagStateId: string,
+  registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
+): { value?: TagStateIdentity; error?: string } {
+  const parsed = tagStateIdentitySyntaxFrom(tagStateId);
+  if (parsed.value === undefined) return parsed;
+  const { tagProjector } = parsed.value;
+  if (registry.resolve(tagProjector!) === undefined) {
+    return { error: "tagStateId names an unregistered projector" };
+  }
+  return parsed;
 }
 
 export function projectionEventFromTagEvent(event: TagEvent): ProjectionEvent {

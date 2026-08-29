@@ -38,6 +38,29 @@ export interface TagEvent {
   allocatorLineageId: string;
 }
 
+/**
+ * The single internal source-read request for TagStateDO. It is dispatched
+ * directly between Durable Objects through TagDurableObject's private
+ * adapter, never through the public Worker router. `through` is omitted only
+ * by the first page; the Tag DO then freezes it from scalar, identity-checked
+ * head facts.
+ */
+export interface G43TagStateIncrementalRequest {
+  readonly tag: string;
+  readonly cursor: string;
+  readonly limit: number;
+  readonly through?: string;
+}
+
+/** A bounded page from the sole TagState event-source seam. */
+export interface G43TagStateIncrementalPage {
+  readonly events: readonly TagEvent[];
+  readonly lastSortableUniqueId: string;
+  readonly through: string;
+  /** Non-null only when this cursor has consumed the frozen frontier. */
+  readonly completeThrough: string | null;
+}
+
 export interface TagOutboxRow {
   attemptId: string;
   eventId: string;

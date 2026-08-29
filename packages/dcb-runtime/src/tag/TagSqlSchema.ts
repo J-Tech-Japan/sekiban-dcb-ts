@@ -179,6 +179,19 @@ export const TAG_READ_AFTER_SQL = `
   LIMIT ?
 `;
 
+/**
+ * SDT-G46's frozen-frontier form of the same G43 range index seam.  It is not
+ * a second source path: a caller supplies the immutable `through` that the
+ * first `g43TagStateIncrementalCatchUp` page obtained from `readHeadFacts`.
+ */
+export const TAG_READ_AFTER_THROUGH_SQL = `
+  SELECT event_json
+  FROM tag_event INDEXED BY tag_event_suid_idx
+  WHERE suid > ? AND suid <= ?
+  ORDER BY suid ASC
+  LIMIT ?
+`;
+
 export function initializeTagSqlSchema(sql: SqlStorage): void {
   sql.exec(TAG_SQL_SCHEMA_DDL);
 }

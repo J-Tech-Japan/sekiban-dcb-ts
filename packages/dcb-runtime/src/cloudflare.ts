@@ -30,6 +30,10 @@ import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
+import {
+  TagStateDurableObject as RuntimeTagStateDurableObject,
+  configureTagStateProjectorRegistry,
+} from "./tagstate/TagStateDurableObject";
 import { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
@@ -39,6 +43,7 @@ export interface CloudflareOnlyEnv {
   BOOTSTRAP: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
+  TAG_STATE: DurableObjectNamespace;
   DOWNSTREAM_QUEUE: Queue<DownstreamOutboxMessage>;
   DOWNSTREAM_DOORBELL?: DownstreamDoorbellBinding;
   D1: D1Database;
@@ -126,11 +131,15 @@ export class TagDurableObject extends RuntimeTagDurableObject {
   }
 }
 
+/** The dedicated (service, tag, projector) cache/replay Durable Object. */
+export class TagStateDurableObject extends RuntimeTagStateDurableObject {}
+
 /** Compose the named two-D1 Cloudflare-only Worker. */
 export function createCloudflareOnlyRuntimeWorker(
   options: CloudflareOnlyWorkerOptions = {},
 ): ExportedHandler<CloudflareOnlyEnv> {
   const composition = composeRuntime(options.domain, options.config);
+  configureTagStateProjectorRegistry(composition.projectors);
   const storeProvider = createD1StoreProvider();
   return {
     async fetch(request, env, ctx): Promise<Response> {
@@ -198,6 +207,11 @@ export function createCloudflareOnlyRuntimeWorker(
 
       const tagMatch = url.pathname.match(/^\/tags\/([^/]+)\/([^/]+)(\/.*)?$/);
       if (tagMatch !== null) {
+        // Keep G46's source adapter private to the direct TagStateDO -> Tag
+        // DO transport. Header spoofing must not make it a public tag route.
+        if (tagMatch[3]?.startsWith("/__internal/g46/")) {
+          return new Response("Tag internal route not found", { status: 404 });
+        }
         let serviceId: string;
         let tag: string;
         try {

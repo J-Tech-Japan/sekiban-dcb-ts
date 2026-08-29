@@ -16,6 +16,7 @@ import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
+import { TagStateDurableObject, configureTagStateProjectorRegistry } from "./tagstate/TagStateDurableObject";
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
 import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
 import { nativeTracingFromContext } from "./trace/CommitTrace";
@@ -44,7 +45,7 @@ export type {
 export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./mv/UnsafeWindowMaterializedView";
 export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
 export {
   CommitTrace,
   CommitTraceScope,
@@ -226,6 +227,7 @@ export interface Env {
   BOOTSTRAP: DurableObjectNamespace;
   JOURNAL: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
+  TAG_STATE: DurableObjectNamespace;
   /** Secret binding; deployment must configure this rather than a public var. */
   REPAIR_OPERATOR_TOKEN: string;
   /** Queue producer/consumer for durable Tag outbox rows. */
@@ -273,6 +275,7 @@ export interface RuntimeWorkerOptions {
  */
 export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): ExportedHandler<Env> {
   const composition = composeRuntime(options.domain, options.config);
+  configureTagStateProjectorRegistry(composition.projectors);
   const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
   return {
     async fetch(request, env, ctx): Promise<Response> {
@@ -335,6 +338,12 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
 
       const tagMatch = url.pathname.match(/^\/tags\/([^/]+)\/([^/]+)(\/.*)?$/);
       if (tagMatch !== null) {
+        // G46's bounded TagState source adapter is a direct DO-to-DO seam,
+        // never a role-facing `/tags/*` route.  Do not let an arbitrary
+        // client replay its header through the generic tag forwarder.
+        if (tagMatch[3]?.startsWith("/__internal/g46/")) {
+          return new Response("Tag internal route not found", { status: 404 });
+        }
         let serviceId: string;
         let tag: string;
         try {

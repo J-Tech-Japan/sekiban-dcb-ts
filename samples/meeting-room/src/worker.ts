@@ -4,6 +4,7 @@ import {
   AllocatorDurableObject,
   JournalDurableObject,
   TagDurableObject,
+  TagStateDurableObject,
   type Env as RuntimeEnv,
 } from "@sekiban/dcb-runtime";
 import { executeMeetingRoomCommand } from "./transport";
@@ -14,7 +15,7 @@ import {
   roomTag,
 } from "./domain";
 
-export { AllocatorDurableObject, JournalDurableObject, TagDurableObject };
+export { AllocatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
 
 export interface MeetingRoomEnv extends RuntimeEnv {
   readonly ASSETS?: Fetcher;
