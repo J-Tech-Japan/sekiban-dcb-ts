@@ -127,7 +127,7 @@
     "test:g44:forced-red": "npm run test:g44 && node -e \"if (process.env.SDT_G44_FORCE_FAILURE === '1') throw new Error('SDT-G44 forced-red CI wiring proof')\"",
     "test:g45": "npm run build:packages && node scripts/g45-head-facts-contract-check.mjs && node scripts/g45-head-facts-contract-check.mjs --self-test && vitest run --config vitest.config.ts test/g45-head-facts.spec.ts && node scripts/g45-head-facts-mutation-runner.mjs",
     "test:g45:forced-red": "npm run test:g45 && node -e \"if (process.env.SDT_G45_FORCE_FAILURE === '1') throw new Error('SDT-G45 forced-red CI wiring proof')\"",
-    "test:g46": "npm run build:packages && node scripts/g46-tagstate-contract-check.mjs && node scripts/g46-tagstate-contract-check.mjs --self-test && vitest run --config vitest.config.ts test/read.spec.ts test/g13-wire-invariance.spec.ts test/g43-measurement.spec.ts test/g46-tagstate.spec.ts && node scripts/g46-tagstate-mutation-runner.mjs",
+    "test:g46": "npm run build:packages && node scripts/g46-tagstate-contract-check.mjs && node scripts/g46-tagstate-contract-check.mjs --self-test && vitest run --config vitest.config.ts --maxWorkers=1 test/read.spec.ts test/g13-wire-invariance.spec.ts test/g43-measurement.spec.ts test/g46-tagstate.spec.ts && node scripts/g46-tagstate-mutation-runner.mjs",
     "test:g46:forced-red": "npm run test:g46 && node -e \"if (process.env.SDT_G46_FORCE_FAILURE === '1') throw new Error('SDT-G46 forced-red CI wiring proof')\"",
     "test:g26:topology": "vitest run --config vitest.g24-deploy.config.ts test/g26-topology.spec.mjs",
     "test:g26:forced-red": "npm run test:g26 && node -e \"if (process.env.SDT_G26_FORCE_FAILURE === '1') throw new Error('SDT-G26 forced-red CI wiring proof')\"",
