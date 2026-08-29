@@ -12,6 +12,7 @@ import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/Serializ
 import migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw asset import
 import manifestSource from "../contracts/event-store-ddl.json?raw";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
 type JsonObject = Record<string, unknown>;
 
@@ -58,13 +59,15 @@ function quoteIdentifier(value: string): string {
 
 async function ensureG32Migration(database: D1Database): Promise<void> {
   const existing = await database.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'dcb_events'").first<{ name: string }>();
-  if (existing !== null) return;
-  const statements = (migration as string)
-    .replace(/^\s*--.*$/gm, "")
-    .split(";")
-    .map((statement) => statement.trim())
-    .filter(Boolean);
-  await database.batch(statements.map((statement) => database.prepare(statement)));
+  if (existing === null) {
+    const statements = (migration as string)
+      .replace(/^\s*--.*$/gm, "")
+      .split(";")
+      .map((statement) => statement.trim())
+      .filter(Boolean);
+    await database.batch(statements.map((statement) => database.prepare(statement)));
+  }
+  await applyG44D1Migration(database);
 }
 
 function logicalFromProvider(row: JsonObject, provider: "postgres" | "cosmos"): JsonObject {
@@ -106,6 +109,13 @@ function sourceEnvelope(logical: JsonObject): DownstreamOutboxMessage {
     correlationId: logical.correlationId === null ? null : String(logical.correlationId),
     executedUser: logical.executedUser === null ? null : String(logical.executedUser),
     enqueuedAt: 1_787_414_836_123,
+    completeness: {
+      canonicalBytesBase64: "ZzMyLWNzaGFycC1pbXBvcnQ=",
+      eventDigest: "c".repeat(64),
+      declaredTagSet: [...tags].sort(),
+      localCommittedMembership: [{ serviceId: String(logical.serviceId), eventId: String(logical.id), tag: tags[0]! }],
+      obligationSequence: 1,
+    },
   };
 }
 

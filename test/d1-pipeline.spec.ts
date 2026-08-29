@@ -14,7 +14,8 @@ import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/Serializ
 import { handleSerializedRead } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
 import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
-import { g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
+import { g32EventId, g32Message, g32Suid, withG44FixtureFacts } from "./helpers/g32-fixtures";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
 function database(): D1Database {
   const binding = (env as unknown as { D1?: D1Database }).D1;
@@ -45,6 +46,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       .map((statement) => statement.trim())
       .filter((statement) => statement.length > 0);
     await database().batch(statements.map((statement) => database().prepare(statement)));
+    await applyG44D1Migration(database());
   });
 
   it("runs the exact shared PG/Cosmos contract against Miniflare D1", async () => {
@@ -152,13 +154,15 @@ describe("SDT-G18 D1 PipelineStore", () => {
     // would create a poisoned row while still returning lineage-mismatch.
     const beforeNonCollidingLineage = await store.readAllEvents(serviceId, "");
     const nonCollidingId = g32EventId("lineage-non-colliding-event");
-    const nonCollidingLineage = await store.recordDelivery({
-      ...first,
+    const { completeness: firstFacts, ...firstWithoutFacts } = first;
+    expect(firstFacts.eventDigest).toMatch(/^[0-9a-f]{64}$/);
+    const nonCollidingLineage = await store.recordDelivery(withG44FixtureFacts({
+      ...firstWithoutFacts,
       eventId: nonCollidingId,
       causationId: nonCollidingId,
       suid: g32Suid("guard-2"),
       allocatorLineageId: "different-lineage",
-    }, 2_050);
+    }), 2_050);
     expect(nonCollidingLineage.outcome).toBe("lineage-mismatch");
     expect((await store.listDeliveryIncidents(serviceId)).map((incident) => incident.classification)).toEqual([
       "LINEAGE_MISMATCH",
@@ -166,16 +170,16 @@ describe("SDT-G18 D1 PipelineStore", () => {
     expect(await store.readAllEvents(serviceId, "")).toEqual(beforeNonCollidingLineage);
 
     const lineageId = g32EventId("lineage-event");
-    const lineage = await store.recordDelivery({ ...first, eventId: lineageId, causationId: lineageId, allocatorLineageId: "different-lineage" }, 2_100);
+    const lineage = await store.recordDelivery(withG44FixtureFacts({ ...firstWithoutFacts, eventId: lineageId, causationId: lineageId, allocatorLineageId: "different-lineage" }), 2_100);
     expect(lineage.outcome).toBe("lineage-mismatch");
     expect((await store.listDeliveryIncidents(serviceId)).map((incident) => incident.classification)).toEqual(["LINEAGE_MISMATCH"]);
     expect(await store.readAllEvents(serviceId, "")).toHaveLength(1);
-    const repeatedLineage = await store.recordDelivery({ ...first, eventId: lineageId, causationId: lineageId, allocatorLineageId: "different-lineage" }, 2_200);
+    const repeatedLineage = await store.recordDelivery(withG44FixtureFacts({ ...firstWithoutFacts, eventId: lineageId, causationId: lineageId, allocatorLineageId: "different-lineage" }), 2_200);
     expect(repeatedLineage.outcome).toBe("lineage-mismatch");
     expect(await store.listDeliveryIncidents(serviceId)).toHaveLength(1);
 
     const collisionId = g32EventId("collision-event");
-    const collision = await store.recordDelivery({ ...first, eventId: collisionId, causationId: collisionId, allocatorLineageId: first.allocatorLineageId }, 2_300);
+    const collision = await store.recordDelivery(withG44FixtureFacts({ ...firstWithoutFacts, eventId: collisionId, causationId: collisionId, allocatorLineageId: first.allocatorLineageId }), 2_300);
     // Same SUID with a different EventId is rejected before event mutation.
     expect(collision.outcome).toBe("suid-collision");
     expect((await store.listDeliveryIncidents(serviceId)).map((incident) => incident.classification)).toEqual([
@@ -267,12 +271,17 @@ describe("SDT-G18 D1 PipelineStore", () => {
     ).all<{ name: string }>();
     expect(tables.results.map((row) => row.name)).toEqual([
       "serialized_dcb_allocator_bindings",
+      "serialized_dcb_completeness_findings",
+      "serialized_dcb_completeness_scanner_health",
       "serialized_dcb_delivery_incidents",
       "serialized_dcb_event_arrivals",
+      "serialized_dcb_global_memberships",
+      "serialized_dcb_global_receipts",
       "serialized_dcb_inconsistency_findings",
       "serialized_dcb_lag_estimates",
       "serialized_dcb_pending_arrivals",
       "serialized_dcb_projection_checkpoints",
+      "serialized_dcb_source_partitions",
       "serialized_dcb_wait_target_incidents",
     ]);
     const eventSql = await database().prepare(

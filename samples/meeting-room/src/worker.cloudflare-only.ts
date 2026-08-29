@@ -4,6 +4,7 @@ import {
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
   cleanupG42JournalProbeTrial,
+  GlobalCompletenessReconciler,
   G42_JOURNAL_PROBE_PATH,
   inventoryG42JournalProbeTrial,
   JournalDurableObject,
@@ -52,7 +53,19 @@ export async function runMeetingRoomScheduledMaintenance(input: {
   readonly catchUp: () => Promise<void>;
   readonly drainUnsafeKicks: () => Promise<void>;
   readonly runGenericScheduledWork: () => Promise<void>;
+  /**
+   * G44's one interim coverage decision.  It is intentionally an internal
+   * gate rather than a new public query-response policy.
+   */
+  readonly globalCoverage?: () => Promise<"SETTLED" | "BLOCK/UNSETTLED">;
 }): Promise<void> {
+  if (input.globalCoverage !== undefined && await input.globalCoverage() !== "SETTLED") {
+    // Keep generic scheduled work alive: it owns the independent source scan
+    // and can establish a new FULL frontier. Its own live-poll path is gated
+    // by that scan, while this materialized catch-up remains blocked here.
+    await input.runGenericScheduledWork();
+    return;
+  }
   await input.catchUp();
   await input.drainUnsafeKicks();
   await input.runGenericScheduledWork();
@@ -466,6 +479,12 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     await runMeetingRoomScheduledMaintenance({
       catchUp: () => catchUpMeetingRoomMaterializedViews(env),
       drainUnsafeKicks: () => drainMeetingRoomUnsafeKicks(env),
+      // A D1-only receiver fixture has no Tag source authority to scan. The
+      // deployed primary always binds both authorities; do not manufacture a
+      // mixed-version feature switch just to alter that invariant in tests.
+      globalCoverage: env.TAG === undefined
+        ? undefined
+        : async () => (await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(env.SDT_SERVICE_ID ?? "", Date.now())).kind,
       runGenericScheduledWork: async () => { await runtime.scheduled?.(controller, env, ctx); },
     });
   },

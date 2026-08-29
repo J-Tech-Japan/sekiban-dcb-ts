@@ -150,7 +150,7 @@ describe("SDT-G26 shared delivery core", () => {
     const fastWrapperStart = downstreamAdapterSource.indexOf("export async function processDownstreamDoorbell");
     const queueWrapperStart = downstreamAdapterSource.indexOf("/** Processes one Queue");
     const fastWrapper = downstreamAdapterSource.slice(fastWrapperStart, queueWrapperStart);
-    expect(downstreamAdapterSource).toMatch(/return processDeliveryCore\(message, "fast", env, options\)/);
+    expect(downstreamAdapterSource).toMatch(/return processDeliveryCore\(message, "fast", env, sourceAcknowledgementOptions\(env, options\)\)/);
     expect(fastWrapper).not.toMatch(/recordDelivery/);
     expect(fastWrapper).not.toMatch(/retry\(/);
     expect(downstreamAdapterSource).toMatch(/queueDisposition === "retry-once"\) queued\.retry\(\)/);

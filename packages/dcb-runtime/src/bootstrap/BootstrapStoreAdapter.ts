@@ -1,6 +1,13 @@
 import { bootstrapDigest } from "./manifest";
 import type { BootstrapDump, BootstrapEventRecord, BootstrapManifest, BootstrapStoreAdmissionPort } from "./types";
 import type { PipelineStore, StoredEvent } from "../store/types";
+import { canonicalDeclaredTagSet, eventDigestBytes, eventDigestHex } from "../tag/EventDigest";
+
+function arrayBufferBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
 
 export interface BootstrapExportCursor {
   readonly highWatermark: string | null;
@@ -109,12 +116,24 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
       // The provider-level identity guard deliberately fires before any write.
       if (prior !== undefined && !this.identityGuard(prior, record)) throw new BootstrapIdentityConflictError(this.provider, record.eventId);
       for (const tag of record.eventTags) {
+        const attemptId = `bootstrap:${input.importId}:${input.leaseEpoch}`;
+        const digestInput = {
+          serviceId: input.manifest.target.serviceId,
+          eventId: record.eventId,
+          sortableUniqueId: record.suid,
+          eventType: record.eventType,
+          timestamp: record.timestamp,
+          allocatorLineageId: input.manifest.target.allocatorLineageId,
+          attemptId,
+          declaredTagSet: canonicalDeclaredTagSet(record.eventTags),
+          payload: new TextEncoder().encode(record.payload),
+        } as const;
         const delivered = await this.store.recordDelivery({
           version: 1,
           serviceId: input.manifest.target.serviceId,
           allocatorLineageId: input.manifest.target.allocatorLineageId,
           tag,
-          attemptId: `bootstrap:${input.importId}:${input.leaseEpoch}`,
+          attemptId,
           eventId: record.eventId,
           suid: record.suid,
           payload: record.payload,
@@ -126,6 +145,16 @@ export class BootstrapStoreAdapter implements BootstrapStoreAdmissionPort {
           correlationId: record.correlationId,
           executedUser: record.executedUser,
           enqueuedAt: 0,
+          completeness: {
+            canonicalBytesBase64: arrayBufferBase64(eventDigestBytes(digestInput)),
+            eventDigest: await eventDigestHex(digestInput),
+            declaredTagSet: [...digestInput.declaredTagSet],
+            localCommittedMembership: [{ serviceId: input.manifest.target.serviceId, eventId: record.eventId, tag }],
+            // Bootstrap is not a source outbox replay path. The deterministic
+            // per-event/tag ordinal is only enough to satisfy the D1 receipt
+            // key while G44's source scanner remains explicitly out of scope.
+            obligationSequence: Math.max(1, [...new TextEncoder().encode(`${record.eventId}|${tag}`)].reduce((total, byte) => (total * 33 + byte) % 1_000_000_000, 5381)),
+          },
         // A C# import may contain a historical RFC 4122 Id. It bypasses
         // Queue/doorbell and is admitted only through this fenced path;
         // normal deliveries still require UUID v7.

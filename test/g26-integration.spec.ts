@@ -17,10 +17,12 @@ import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView";
 import { processDeliveryCore, type DeliveryCoreResult, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
+import { globalReceiptAcknowledgement } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
 import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { TagDurableObject } from "../packages/dcb-runtime/src/tag/TagDurableObject";
 import { g32Message } from "./helpers/g32-fixtures";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
 type Boundary = "none" | "before-record" | "after-pipeline" | "after-k-views" | "after-all-views";
 
@@ -220,6 +222,9 @@ async function runBoundary(boundary: Boundary, options: {
   const ctx = { storage, waitUntil: (promise: Promise<unknown>) => { waits.push(promise); } } as unknown as DurableObjectState;
   const tag = event.tag;
   const tagObject = new TagDurableObject(ctx, {
+    // G44 verifies this receipt through the same D1 source of truth before
+    // the queue replay can close the Tag-side obligation.
+    D1: pipeline,
     AUTO_DRAIN_OUTBOX: "true",
     DOMAIN_DELIVERY_CLASS: "immediate-preferred",
     DIRECT_DOORBELL: "true",
@@ -267,7 +272,21 @@ async function runBoundary(boundary: Boundary, options: {
     ).bind(event.serviceId, viewId, event.eventId).first<{ count: number }>();
     return { viewId, count: Number(receipt?.count) };
   }));
-  const queueResult = await processDeliveryCore(queued[0]!, "queue", {}, { store, views: handlers });
+  const queueResult = await processDeliveryCore(queued[0]!, "queue", {}, {
+    store,
+    views: handlers,
+    afterGlobalReceipt: async ({ message: delivered, receipt, arrivedAt }) => {
+      const acknowledged = await tagObject.fetch(new Request(
+        `https://tag.test/outbox/mark-delivered?__tag=${encodeURIComponent(tag)}&__serviceId=${event.serviceId}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(globalReceiptAcknowledgement(delivered, receipt.receivedAt || arrivedAt)),
+        },
+      ));
+      if (!acknowledged.ok) throw new Error(`G44 source acknowledgement failed:${acknowledged.status}`);
+    },
+  });
   queueResults.push(queueResult);
   const deliveries = values.get("outbox-deliveries") as Array<{ deliveredAt: number | null }> | undefined;
   const counts = await Promise.all(viewIds.map((viewId) => applyCount(mv, event.serviceId, viewId, event)));
@@ -296,6 +315,7 @@ describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
   beforeAll(async () => {
     const pipeline = database("D1");
     await pipeline.batch(statements(pipeline, g32Migration as string));
+    await applyG44D1Migration(pipeline);
     const mv = database("D1_MV");
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
       await mv.batch(statements(mv, migration as string));

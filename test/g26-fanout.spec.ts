@@ -24,6 +24,7 @@ import {
 } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message, g32Suid } from "./helpers/g32-fixtures";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
 function database(): D1Database {
   const value = (env as unknown as { D1_MV?: D1Database }).D1_MV;
@@ -55,6 +56,7 @@ describe("SDT-G26 fan-out and receipt-race oracles", () => {
       .filter(Boolean)
       .map((value) => pipelineDatabase().prepare(value));
     await pipelineDatabase().batch(pipelineStatements);
+    await applyG44D1Migration(pipelineDatabase());
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
       await database().batch(statements(migration as string));
     }

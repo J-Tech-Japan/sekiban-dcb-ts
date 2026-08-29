@@ -17,6 +17,7 @@ import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message, g32Suid } from "./helpers/g32-fixtures";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 // @ts-expect-error Vite raw deployed Queue configuration fixture.
 import workerConfig from "../samples/meeting-room/wrangler.cloudflare-only.jsonc?raw";
 import worker from "../samples/meeting-room/src/worker.cloudflare-only";
@@ -52,7 +53,11 @@ interface QueueResult {
 }
 
 function deployedEnvironment(serviceId: string): Record<string, unknown> {
-  return { ...(env as unknown as Record<string, unknown>), SDT_SERVICE_ID: serviceId };
+  // G25 deliberately exercises a receiver-only direct delivery fixture, not
+  // a source Tag obligation. Removing this test-only binding keeps it from
+  // pretending that its handcrafted envelope is a registered G44 source;
+  // G44's actual Tag/D1 acknowledgement path is covered separately.
+  return { ...(env as unknown as Record<string, unknown>), SDT_SERVICE_ID: serviceId, TAG: undefined };
 }
 
 async function invokeDeployedQueue(body: DownstreamOutboxMessage, serviceId: string, attempts = 1): Promise<QueueResult> {
@@ -92,6 +97,7 @@ async function invokeDeployedScheduled(serviceId: string): Promise<void> {
 describe("SDT-G25 unsafe-window consumer composition", () => {
   beforeAll(async () => {
     await database().batch(statements(g32Migration as string, database()));
+    await applyG44D1Migration(database());
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
       await mvDatabase().batch(statements(migration as string, mvDatabase()));
     }

@@ -333,16 +333,21 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
       if (row.eventId === candidate(value, "poison").eventId) throw new Error("fixture poison sink");
     });
     try {
-      // The first due pass must acknowledge the sibling even though the poison
-      // row throws. It must leave the poison row source-enumerable and rearmed.
+      // Transport acceptance is no longer source acknowledgement under G44.
+      // Both rows remain enumerable; the sibling must still receive an
+      // independent handoff attempt while the poison row throws.
       await makeRetryDue(value);
       expect(await runDurableObjectAlarm(tagStub(value))).toBe(true);
       let body = await scanSource(value, Date.now()) as { findings: Array<{ eventId: string; status: string; attemptCount: number }> };
-      expect(body.findings).toEqual([expect.objectContaining({
+      expect(body.findings).toEqual(expect.arrayContaining([expect.objectContaining({
         eventId: candidate(value, "poison").eventId,
         status: "pending",
         attemptCount: 2,
-      })]);
+      }), expect.objectContaining({
+        eventId: candidate(value, "sibling").eventId,
+        status: "pending",
+        attemptCount: 2,
+      })]));
 
       // A reservation and the final poison pass are due together. Both due
       // classes advance: the reservation expires while only the poison item is
@@ -360,17 +365,20 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
       await makeRetryDue(value);
       expect(await runDurableObjectAlarm(tagStub(value))).toBe(true);
       body = await scanSource(value, Date.now()) as typeof body;
-      expect(body.findings).toEqual([expect.objectContaining({
+      expect(body.findings).toEqual(expect.arrayContaining([expect.objectContaining({
         eventId: candidate(value, "poison").eventId,
         status: "poison",
         attemptCount: 3,
-      })]);
+      })]));
       const current = await SELF.fetch(
         `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/state`,
       );
       expect((await current.json<{ activeReservation: unknown }>()).activeReservation).toBeNull();
+      // The poison row is terminal, but the sibling remains source-pending
+      // until a receiver has proved its D1 receipt, so the shared alarm stays
+      // armed for that acknowledged-delivery retry.
       await runInDurableObject(tagStub(value), async (_instance, state) => {
-        await expect(state.storage.getAlarm()).resolves.toBeNull();
+        await expect(state.storage.getAlarm()).resolves.not.toBeNull();
       });
     } finally {
       await restoreQueue();
@@ -424,7 +432,7 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
         (instance as unknown as SchedulerSeam).runAlarm())).resolves.toBeDefined();
       expect(inserted).toBe(true);
       await expect(scanSource(value, Date.now())).resolves.toMatchObject({
-        findings: [expect.objectContaining({ eventId: candidate(value, "insert-2").eventId, status: "pending" })],
+        findings: expect.arrayContaining([expect.objectContaining({ eventId: candidate(value, "insert-2").eventId, status: "pending" })]),
       });
       expect(await waitForConfiguredAlarm(value)).not.toBeNull();
     } finally {
@@ -516,10 +524,20 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
         (instance as unknown as SchedulerSeam).runAlarm());
       expect(new Set(sent)).toHaveLength(32);
       expect(await configuredAlarm(value)).not.toBeNull();
+      // Simulate the distinct G44 receiver-side receipt verification. Queue
+      // send alone leaves all rows pending; this test isolates the scheduler
+      // once the first bounded batch has genuinely been acknowledged.
+      await runInDurableObject(tagStub(value), (_instance, state) => {
+        state.storage.sql.exec("UPDATE tag_outbox_obligation SET status = 'acknowledged' WHERE obligation_sequence <= 32");
+      });
       await makeRetryDue(value);
       await runInDurableObject(tagStub(value), (instance) =>
         (instance as unknown as SchedulerSeam).runAlarm());
       expect(new Set(sent)).toHaveLength(33);
+      await runInDurableObject(tagStub(value), (_instance, state) => {
+        state.storage.sql.exec("UPDATE tag_outbox_obligation SET status = 'acknowledged' WHERE obligation_sequence = 33");
+      });
+      await rearmScheduler(value);
       await expect(scanSource(value, Date.now())).resolves.toMatchObject({ pendingCount: 0, findings: [] });
       expect(await configuredAlarm(value)).toBeNull();
     } finally {

@@ -30,6 +30,7 @@ import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
+import { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
 
@@ -165,7 +166,7 @@ export function createCloudflareOnlyRuntimeWorker(
         });
       }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
-        return handleOutboxDrainRequest(request, env);
+        return handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt" });
       }
       if (url.pathname === "/internal/projection/lag") {
         return handleProjectionLag(request, env, composition.projectors, storeProvider);
@@ -240,8 +241,14 @@ export function createCloudflareOnlyRuntimeWorker(
     },
 
     async scheduled(_controller, env): Promise<void> {
-      requireConfiguredServiceId(env.SDT_SERVICE_ID);
+      const serviceId = requireConfiguredServiceId(env.SDT_SERVICE_ID);
       await stabilizeDownstream(env, { storeProvider });
+      // This scan is source-driven and independent from Queue arrival. Its
+      // health/finding tables are the only G44 interim BLOCK/UNSETTLED path.
+      const scan = await new GlobalCompletenessReconciler(env.D1, env.TAG).reconcile(serviceId, Date.now());
+      // A source gap, page failure, or stale/unknown scan can never advance
+      // a live projection. The source receipt still remains retryable.
+      if (scan.kind !== "FULL") return;
       await pollLiveProjections(env, { registry: composition.projectors, storeProvider });
     },
   };
@@ -258,6 +265,21 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
+export {
+  G44_HEALTH_STALE_AFTER_MS,
+  G44_SCANNER_VERSION,
+  GLOBAL_COMPLETENESS_INTERIM_DISPOSITION,
+} from "./completeness/types";
+export type {
+  GlobalCompletenessHealth,
+  GlobalCompletenessCoverage,
+  GlobalCompletenessHealthRecord,
+  GlobalCompletenessScanResult,
+  SourceObligationFact,
+  SourceObligationPage,
+  SourcePartitionSnapshot,
+} from "./completeness/types";
 export { observeFaultBarrier } from "./trace/ObservationStream";
 export {
   G42_JOURNAL_PROBE_ALARM_KEY,

@@ -12,6 +12,7 @@ import {
   type DeliveryOutcome,
   type DetectorStore,
   type EventStore,
+  type GlobalReceiptJoin,
   type InconsistencyClassification,
   type InconsistencyFinding,
   type PendingArrivalRecord,
@@ -77,6 +78,26 @@ function sortedUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort((left, right) => binaryCompare(left, right));
 }
 
+function equalStrings(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/** Reject an envelope whose declared source facts cannot describe this tag copy. */
+function assertCompletenessEnvelope(message: DownstreamOutboxMessage): void {
+  const facts = message.completeness;
+  const declared = sortedUnique(message.eventTags);
+  if (!equalStrings(declared, sortedUnique(facts.declaredTagSet))) {
+    throw new D1IdentityConflictError(`EventId ${message.eventId} declared tag set differs from its source obligation`);
+  }
+  if (facts.localCommittedMembership.length !== 1) {
+    throw new D1IdentityConflictError(`EventId ${message.eventId} source obligation has no exact local membership`);
+  }
+  const membership = facts.localCommittedMembership[0]!;
+  if (membership.serviceId !== message.serviceId || membership.eventId !== message.eventId || membership.tag !== message.tag) {
+    throw new D1IdentityConflictError(`EventId ${message.eventId} source obligation membership differs from its delivery envelope`);
+  }
+}
+
 /** V1 SUIDs and path names are opaque bytewise ordinals, never locale/numeric values. */
 export function binaryCompare(left: string, right: string): number {
   const leftBytes = new TextEncoder().encode(left);
@@ -116,6 +137,7 @@ function eventFrom(row: D1Row, arrivals: readonly D1Row[]): StoredEvent {
     correlationId: nullableString(row.correlation_id, "correlation_id"),
     executedUser: nullableString(row.executed_user, "executed_user"),
     provenance: "g32",
+    ...(typeof row.event_digest === "string" && row.event_digest.length > 0 ? { eventDigest: row.event_digest } : {}),
     firstArrivedAt: asNumber(row.first_arrived_at, "first_arrived_at"),
     lastArrivedAt: asNumber(row.last_arrived_at, "last_arrived_at"),
     maxDeliveryLagMs: asNumber(row.max_delivery_lag_ms, "max_delivery_lag_ms"),
@@ -272,6 +294,13 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
+    // G44 source facts belong to a Tag outbox obligation.  The fenced G22
+    // bootstrap import path has no Tag source partition to acknowledge, so it
+    // must not manufacture a receipt or turn an import record into scanner
+    // authority.  Normal Queue/fast delivery remains fail-closed on the full
+    // source envelope.
+    const requiresGlobalReceipt = deliverySource !== "import";
+    if (requiresGlobalReceipt) assertCompletenessEnvelope(message);
     const identity = resolveDeliveryIdentity(message, deliverySource);
     assertSortableUniqueId(message.suid);
     const acceptsImportedId = deliverySource === "import";
@@ -296,6 +325,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       storedBefore.suid !== message.suid ||
       storedBefore.payload !== message.payload ||
       JSON.stringify(storedBefore.eventTags) !== tagsJson ||
+      (requiresGlobalReceipt && storedBefore.eventDigest !== undefined && storedBefore.eventDigest !== message.completeness.eventDigest) ||
       storedBefore.timestamp !== timestamp ||
       storedBefore.causationId !== metadata.causationId ||
       storedBefore.correlationId !== metadata.correlationId ||
@@ -404,8 +434,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       ),
       this.database.prepare(
         `INSERT INTO dcb_events
-           ("ServiceId", "Id", "SortableUniqueId", "EventType", "Payload", "Tags", "Timestamp", "CausationId", "CorrelationId", "ExecutedUser")
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+           ("ServiceId", "Id", "SortableUniqueId", "EventType", "Payload", "Tags", "Timestamp", "CausationId", "CorrelationId", "ExecutedUser", "EventDigest")
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE NOT EXISTS (
             SELECT 1 FROM serialized_dcb_allocator_bindings
              WHERE service_id = ? AND allocator_lineage_id <> ?
@@ -426,11 +456,58 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         metadata.causationId,
         metadata.correlationId,
         metadata.executedUser,
+        requiresGlobalReceipt ? message.completeness.eventDigest : null,
         message.serviceId,
         message.allocatorLineageId,
         message.serviceId,
         message.suid,
         message.eventId,
+      ),
+      // The global declared event, this tag-side committed membership, and
+      // the source-obligation receipt are one D1 atomic batch. A Queue ack or
+      // a receipt without this join never becomes source acknowledgement.
+      this.database.prepare(
+        `INSERT INTO serialized_dcb_global_memberships
+           (service_id, event_id, partition_tag, event_digest, committed_at)
+         SELECT ?, ?, ?, ?, ?
+          WHERE ? = 1 AND EXISTS (
+            SELECT 1 FROM dcb_events
+             WHERE "ServiceId" = ? AND "Id" = ? AND "EventDigest" = ?
+          )
+         ON CONFLICT (service_id, event_id, partition_tag) DO NOTHING`,
+      ).bind(
+        message.serviceId,
+        message.eventId,
+        message.tag,
+        message.completeness.eventDigest,
+        arrivedAt,
+        requiresGlobalReceipt ? 1 : 0,
+        message.serviceId,
+        message.eventId,
+        message.completeness.eventDigest,
+      ),
+      this.database.prepare(
+        `INSERT INTO serialized_dcb_global_receipts
+           (service_id, partition_tag, obligation_sequence, event_id, event_digest, membership_tag, received_at)
+         SELECT ?, ?, ?, ?, ?, ?, ?
+          WHERE ? = 1 AND EXISTS (
+            SELECT 1 FROM serialized_dcb_global_memberships
+             WHERE service_id = ? AND event_id = ? AND partition_tag = ? AND event_digest = ?
+          )
+         ON CONFLICT (service_id, partition_tag, obligation_sequence) DO NOTHING`,
+      ).bind(
+        message.serviceId,
+        message.tag,
+        message.completeness.obligationSequence,
+        message.eventId,
+        message.completeness.eventDigest,
+        message.tag,
+        arrivedAt,
+        requiresGlobalReceipt ? 1 : 0,
+        message.serviceId,
+        message.eventId,
+        message.tag,
+        message.completeness.eventDigest,
       ),
       this.database.prepare(
         `INSERT INTO dcb_event_ops
@@ -577,11 +654,59 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       stored.suid !== message.suid ||
       stored.payload !== message.payload ||
       JSON.stringify(stored.eventTags) !== tagsJson ||
-      stored.eventType !== incomingEventType
+      stored.eventType !== incomingEventType ||
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest)
     ) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its durable D1 identity`);
     }
+    if (requiresGlobalReceipt) {
+      const receipt = await this.readGlobalReceiptJoin(message);
+      if (receipt === undefined) {
+        throw new Error(`D1 event ${message.eventId} has no readable global receipt/membership join`);
+      }
+    }
     return { outcome: "stored", kind: "stored", event: stored };
+  }
+
+  async readGlobalReceiptJoin(message: DownstreamOutboxMessage): Promise<GlobalReceiptJoin | undefined> {
+    this.ready();
+    const row = await this.database.prepare(
+      `SELECT receipt.service_id, receipt.partition_tag, receipt.obligation_sequence,
+              receipt.event_id, receipt.event_digest, receipt.membership_tag, receipt.received_at
+         FROM serialized_dcb_global_receipts AS receipt
+         JOIN serialized_dcb_global_memberships AS membership
+           ON membership.service_id = receipt.service_id
+          AND membership.event_id = receipt.event_id
+          AND membership.partition_tag = receipt.membership_tag
+          AND membership.event_digest = receipt.event_digest
+         JOIN dcb_events AS event
+           ON event."ServiceId" = receipt.service_id
+          AND event."Id" = receipt.event_id
+          AND event."EventDigest" = receipt.event_digest
+        WHERE receipt.service_id = ?
+          AND receipt.partition_tag = ?
+          AND receipt.obligation_sequence = ?
+          AND receipt.event_id = ?
+          AND receipt.event_digest = ?
+          AND receipt.membership_tag = ?`,
+    ).bind(
+      message.serviceId,
+      message.tag,
+      message.completeness.obligationSequence,
+      message.eventId,
+      message.completeness.eventDigest,
+      message.tag,
+    ).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    return {
+      serviceId: asString(row.service_id, "global_receipt.service_id"),
+      partitionTag: asString(row.partition_tag, "global_receipt.partition_tag"),
+      obligationSequence: asNumber(row.obligation_sequence, "global_receipt.obligation_sequence"),
+      eventId: asString(row.event_id, "global_receipt.event_id"),
+      eventDigest: asString(row.event_digest, "global_receipt.event_digest"),
+      membershipTag: asString(row.membership_tag, "global_receipt.membership_tag"),
+      receivedAt: asNumber(row.received_at, "global_receipt.received_at"),
+    };
   }
 
   async readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]> {
@@ -593,6 +718,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       `SELECT e."ServiceId" AS service_id, e."Id" AS event_id,
               e."SortableUniqueId" AS suid, e."Payload" AS payload,
               e."EventType" AS event_type, e."Tags" AS event_tags,
+              e."EventDigest" AS event_digest,
               e."Timestamp" AS timestamp, e."CausationId" AS causation_id,
               e."CorrelationId" AS correlation_id, e."ExecutedUser" AS executed_user,
               COALESCE(o."FirstArrivedAt", 0) AS first_arrived_at,
@@ -981,6 +1107,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       `SELECT e."ServiceId" AS service_id, e."Id" AS event_id,
               e."SortableUniqueId" AS suid, e."Payload" AS payload,
               e."EventType" AS event_type, e."Tags" AS event_tags,
+              e."EventDigest" AS event_digest,
               e."Timestamp" AS timestamp, e."CausationId" AS causation_id,
               e."CorrelationId" AS correlation_id, e."ExecutedUser" AS executed_user,
               COALESCE(o."FirstArrivedAt", 0) AS first_arrived_at,

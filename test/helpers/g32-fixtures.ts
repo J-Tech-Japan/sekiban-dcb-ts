@@ -76,6 +76,48 @@ export function g32EventId(seed: string): string {
 
 export const G32_FIXTURE_TIMESTAMP = "2026-08-22T17:00:00.123Z";
 
+function fixtureDigest(seed: string): string {
+  return ["a", "b", "c", "d"].map((prefix) => hash64(`${prefix}:${seed}`).toString(16).padStart(16, "0")).join("");
+}
+
+function fixtureBase64(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+/**
+ * Rebuild source-owned G44 facts after a fixture deliberately changes an
+ * envelope identity. This is test data construction, not the production
+ * digest implementation (which remains Tag EventDigest).
+ */
+export function withG44FixtureFacts(
+  message: Omit<DownstreamOutboxMessage, "completeness">,
+  obligationSequence?: number,
+): DownstreamOutboxMessage {
+  const declaredTagSet = [...message.eventTags].sort();
+  return {
+    ...message,
+    completeness: {
+      canonicalBytesBase64: fixtureBase64(JSON.stringify({
+        eventId: message.eventId,
+        payload: message.payload,
+        eventTags: message.eventTags,
+        eventType: message.eventType,
+        timestamp: message.timestamp,
+        allocatorLineageId: message.allocatorLineageId,
+        attemptId: message.attemptId,
+        suid: message.suid,
+      })),
+      eventDigest: fixtureDigest(`${message.serviceId}:${message.eventId}:${message.tag}:${message.attemptId}`),
+      declaredTagSet,
+      localCommittedMembership: [{ serviceId: message.serviceId, eventId: message.eventId, tag: message.tag }],
+      obligationSequence: obligationSequence ?? Number(hash64(`g44-obligation:${message.serviceId}:${message.tag}:${message.eventId}`) % 1_000_000_000n) + 1,
+    },
+  };
+}
+
 /** Normalizes a direct-delivery fixture into the complete G32 envelope. */
 export function g32Message(input: {
   readonly serviceId: string;
@@ -89,29 +131,37 @@ export function g32Message(input: {
   readonly allocatorLineageId?: string;
   readonly enqueuedAt?: number;
   readonly timestamp?: string;
+  readonly obligationSequence?: number;
 }): DownstreamOutboxMessage {
   const eventId = g32EventId(input.eventId);
   const metadata = serializedEventMetadata(eventId);
-  return {
+  const eventTags = [...(input.eventTags ?? [input.tag])];
+  const payload = input.payload !== undefined && (() => {
+    try { JSON.parse(input.payload); return true; } catch { return false; }
+  })() ? input.payload : JSON.stringify({ fixture: input.payload ?? input.eventId });
+  const attemptId = input.attemptId ?? `g32-attempt:${input.eventId}`;
+  const suid = g32Suid(input.suid);
+  const eventType = input.eventType ?? "FixtureEvent";
+  const timestamp = input.timestamp ?? G32_FIXTURE_TIMESTAMP;
+  const allocatorLineageId = input.allocatorLineageId ?? "g32-test-lineage";
+  return withG44FixtureFacts({
     version: 1,
     serviceId: input.serviceId,
-    allocatorLineageId: input.allocatorLineageId ?? "g32-test-lineage",
+    allocatorLineageId,
     tag: input.tag,
-    attemptId: input.attemptId ?? `g32-attempt:${input.eventId}`,
+    attemptId,
     eventId,
-    suid: g32Suid(input.suid),
-    payload: input.payload !== undefined && (() => {
-      try { JSON.parse(input.payload); return true; } catch { return false; }
-    })() ? input.payload : JSON.stringify({ fixture: input.payload ?? input.eventId }),
-    eventTags: [...(input.eventTags ?? [input.tag])],
-    eventType: input.eventType ?? "FixtureEvent",
+    suid,
+    payload,
+    eventTags,
+    eventType,
     provenance: "g32",
-    timestamp: input.timestamp ?? G32_FIXTURE_TIMESTAMP,
+    timestamp,
     causationId: metadata.causationId,
     correlationId: metadata.correlationId,
     executedUser: metadata.executedUser,
     enqueuedAt: input.enqueuedAt ?? 1_000,
-  };
+  }, input.obligationSequence);
 }
 
 /** Complete C#-logical StoredEvent fixture derived from a valid G32 envelope. */
