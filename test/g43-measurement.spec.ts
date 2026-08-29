@@ -22,9 +22,16 @@ interface MeasuredTagInstance {
   beginG43SqlMeasurement(): void;
   completeG43SqlMeasurement(): MeasurementSnapshot;
   g43ReadAfter(sortableUniqueId: string, limit: number): Promise<TagEvent[]>;
-  g43TagStateIncrementalCatchUp(sortableUniqueId: string, limit: number): Promise<{
+  g43TagStateIncrementalCatchUp(input: {
+    readonly tag: string;
+    readonly cursor: string;
+    readonly limit: number;
+    readonly through?: string;
+  }): Promise<{
     readonly events: readonly TagEvent[];
     readonly lastSortableUniqueId: string;
+    readonly through: string;
+    readonly completeThrough: string | null;
   }>;
   g43TagStateRebuild(): Promise<readonly TagEvent[]>;
 }
@@ -343,10 +350,18 @@ describe("SDT-G43 structural measurement", () => {
         const incrementalScope = scope("incremental", historySize, repetition);
         const prior = await seedHistory(incrementalScope, historySize + 10);
         const checkpoint = prior[historySize - 1]!.suid;
-        const incremental = await measureRpc(incrementalScope, { sortableUniqueId: checkpoint, limit: 10 }, (instance) =>
-          instance.g43TagStateIncrementalCatchUp(checkpoint, 10));
+        const incremental = await measureRpc(incrementalScope, {
+          tag: incrementalScope.tag,
+          cursor: checkpoint,
+          limit: 10,
+        }, (instance) => instance.g43TagStateIncrementalCatchUp({
+          tag: incrementalScope.tag,
+          cursor: checkpoint,
+          limit: 10,
+        }));
         expect(incremental.result.events).toHaveLength(10);
         expect(incremental.result.lastSortableUniqueId).toBe(prior.at(-1)!.suid);
+        expect(incremental.result.completeThrough).toBe(prior.at(-1)!.suid);
         raw.push(...metrics("tagStateIncrementalCatchUp", historySize, incremental, "decision"));
       }
     }

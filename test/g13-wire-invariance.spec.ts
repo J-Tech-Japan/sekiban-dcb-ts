@@ -95,7 +95,25 @@ function tagReadEnvironment(): ConstructorParameters<typeof SerializedReadWorker
       }),
     }),
   } as unknown as DurableObjectNamespace;
-  return { TAG: namespace };
+  // G13 observes the public wire rather than source/replay mechanics.  The
+  // TagState cache binding returns the same typed ready contract that the
+  // real G46 object exposes, so this golden continues to prove the five V1
+  // endpoint bodies without falling back to the pre-G46 in-memory fold.
+  const tagStateNamespace = {
+    idFromName: () => ({}),
+    get: () => ({
+      fetch: async () => new Response(JSON.stringify({
+        kind: "ready",
+        payload: "",
+        version: 0,
+        lastSortedUniqueId: "",
+        projectorVersion: "1",
+      }), {
+        headers: { "content-type": "application/json; charset=utf-8" },
+      }),
+    }),
+  } as unknown as DurableObjectNamespace;
+  return { TAG: namespace, TAG_STATE: tagStateNamespace };
 }
 
 function queryStore(): QueryProjectionStore {

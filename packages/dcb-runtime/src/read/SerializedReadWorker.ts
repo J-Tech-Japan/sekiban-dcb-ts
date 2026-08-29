@@ -1,14 +1,14 @@
-import { catchUpDurableTagState } from "../projection/ProjectionRuntime";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
   type ProjectorRegistry,
-  tagStateIdentityFrom,
+  tagStateIdentitySyntaxFrom,
   type TagStateIdentity,
 } from "../projection/ProjectorRegistry";
 import { safeWindowCeilingExceeded } from "../projection/ProjectionRuntime";
 import type { StoreProvider } from "../store/provider";
 import type { TagRecord } from "../tag/types";
 import { serviceIdForRequest } from "../http/testServiceId";
+import { tagStateObjectName, type TagStateReadSuccess } from "../tagstate/TagStateDurableObject";
 
 export { TEST_TAG_STATE_PROJECTOR } from "../projection/ProjectorRegistry";
 
@@ -16,6 +16,8 @@ type JsonObject = Record<string, unknown>;
 
 interface ReadWorkerEnv {
   TAG: DurableObjectNamespace;
+  /** SQLite-backed cache/replay owner for (serviceId, tag, projector). */
+  TAG_STATE?: DurableObjectNamespace;
   POSTGRES_URL?: string;
   HYPERDRIVE?: Hyperdrive;
   /** Optional explicit D1 provider binding; Postgres remains the default. */
@@ -65,18 +67,18 @@ function tagFromBody(value: unknown): { value?: string; error?: string } {
 
 function tagStateIdentityFromBody(
   value: unknown,
-  registry: ProjectorRegistry,
 ): { value?: TagStateIdentity; error?: string } {
   if (!isObject(value) || !isNonEmptyString(value.tagStateId)) {
     return { error: "tagStateId must be a non-empty string" };
   }
-  return tagStateIdentityFrom(value.tagStateId, registry);
+  return tagStateIdentitySyntaxFrom(value.tagStateId);
 }
 
 /**
- * V1 read surface. Tag-state validates a deploy-time projector and performs a
- * deterministic catch-up from the Tag DO's durable history. Its read decision
- * remains based on durable-state determinacy, never on fence presence/reason.
+ * V1 read surface. Tag-state validates a deploy-time projector and delegates
+ * its cache/replay to TagStateDO. It intentionally does not call the D1
+ * SafeWindow authority: the Tag-local G43 source RPC is the single source on
+ * this path, while latest-sortable retains its existing SafeWindow rule.
  */
 export class SerializedReadWorker {
   constructor(
@@ -133,24 +135,60 @@ export class SerializedReadWorker {
   }
 
   private async tagState(body: unknown): Promise<Response> {
-    const parsed = tagStateIdentityFromBody(body, this.registry);
+    const parsed = tagStateIdentityFromBody(body);
     if (parsed.value === undefined) {
       return error(400, "validation_error", parsed.error ?? "Invalid tag-state request");
     }
     const identity = parsed.value;
-    const projector = this.registry.resolve(identity.tagProjector);
-    // tagStateIdentityFrom validates the same registry. Keep the guard so a
-    // future registry implementation cannot turn a client mistake into 500.
-    if (projector === undefined) {
-      return error(400, "validation_error", "tagStateId names an unregistered projector");
+    let projector;
+    try {
+      projector = this.registry.resolve(identity.tagProjector);
+    } catch {
+      return error(503, "tag_state_projector_registry_failure", "Tag-state projector registry is unavailable");
     }
-    await this.ensureWindowDeterminate();
-    const record = await this.readTag(identity.tag);
-    const projected = catchUpDurableTagState(projector, record?.events ?? []);
+    if (projector === undefined) {
+      return error(404, "tag_state_unknown_projector", "Tag-state projector is not registered");
+    }
+    if (this.env.TAG_STATE === undefined) {
+      return error(503, "tag_state_source_frontier_failure", "Tag-state cache binding is unavailable");
+    }
+    const stateObject = this.env.TAG_STATE.get(this.env.TAG_STATE.idFromName(tagStateObjectName({
+      serviceId: this.serviceId,
+      tag: identity.tag,
+      projectorId: identity.tagProjector,
+    })));
+    let cached: Response;
+    try {
+      cached = await stateObject.fetch(new Request("https://tag-state.internal/read", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          serviceId: this.serviceId,
+          tag: identity.tag,
+          projectorId: identity.tagProjector,
+        }),
+      }));
+    } catch {
+      return error(503, "tag_state_source_frontier_failure", "Tag-state source cache could not be reached");
+    }
+    if (cached.status !== 200) return cached;
+    let projected: TagStateReadSuccess;
+    try {
+      projected = await cached.json<TagStateReadSuccess>();
+    } catch {
+      return error(503, "tag_state_cache_corrupt", "Tag-state cache returned an invalid result");
+    }
+    if (
+      projected.kind !== "ready" || typeof projected.payload !== "string" ||
+      !Number.isSafeInteger(projected.version) || typeof projected.lastSortedUniqueId !== "string" ||
+      projected.projectorVersion !== projector.projectorVersion
+    ) {
+      return error(503, "tag_state_cache_corrupt", "Tag-state cache returned an inconsistent result");
+    }
     return json({
       payload: projected.payload,
       version: projected.version,
-      lastSortedUniqueId: record?.head ?? "",
+      lastSortedUniqueId: projected.lastSortedUniqueId,
       tagGroup: identity.tagGroup,
       tagContent: identity.tagContent,
       tagProjector: identity.tagProjector,

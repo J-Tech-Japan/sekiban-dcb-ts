@@ -63,6 +63,10 @@
         "class_name": "TagDurableObject"
       },
       {
+        "name": "TAG_STATE",
+        "class_name": "TagStateDurableObject"
+      },
+      {
         "name": "BOOTSTRAP",
         "class_name": "BootstrapCoordinatorDurableObject"
       }
@@ -84,6 +88,10 @@
     {
       "tag": "v4",
       "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"]
+    },
+    {
+      "tag": "v5",
+      "new_sqlite_classes": ["TagStateDurableObject"]
     }
   ]
 }

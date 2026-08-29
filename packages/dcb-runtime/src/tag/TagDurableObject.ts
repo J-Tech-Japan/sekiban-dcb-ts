@@ -5,6 +5,8 @@ import {
   type TagConsistencyEntry,
   type TagEpoch,
   type TagEvent,
+  type G43TagStateIncrementalPage,
+  type G43TagStateIncrementalRequest,
   type TagFence,
   type TagHeadFacts,
   type TagOutboxDelivery,
@@ -30,7 +32,7 @@ import {
 } from "../downstream/Doorbell";
 import { deliveryCorrelationId } from "../downstream/DeliveryCore";
 import { assertCanonicalEventType } from "../eventIdentity";
-import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { assertSortableUniqueId, compareSortableUniqueId } from "../allocator/SortableUniqueId";
 import { CANONICAL_UTC_TIMESTAMP_PATTERN, isRfc4122Uuid, isUuidV7, serializedEventMetadata } from "../eventRecord";
 import {
   DurableObjectActivation,
@@ -48,6 +50,7 @@ import {
   hasTagSqlStorage,
   initializeTagSqlSchema,
   TAG_READ_AFTER_SQL,
+  TAG_READ_AFTER_THROUGH_SQL,
 } from "./TagSqlSchema";
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
 
@@ -199,7 +202,12 @@ interface FenceGateObservation {
 class AppendTransactionFault extends Error {}
 
 /** A mismatched immutable tag identity is a typed 409, not an internal error. */
-class TagIdentityConflict extends Error {}
+export class TagIdentityConflict extends Error {
+  constructor() {
+    super("Tag Durable Object identity changed");
+    this.name = "TagIdentityConflict";
+  }
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -718,6 +726,28 @@ function g44SourceScanFrom(value: unknown): { value?: G44SourceScanInput; error?
   };
 }
 
+function g46TagStateSourceFrom(value: unknown): { value?: G43TagStateIncrementalRequest; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.tag) || typeof value.cursor !== "string" ||
+    !isSafeInteger(value.limit) || value.limit < 1 || value.limit > 256 ||
+    (value.through !== undefined && typeof value.through !== "string")) {
+    return { error: "G46 source read needs tag, cursor, optional through, and a bounded limit" };
+  }
+  try {
+    if (value.cursor !== "") assertSortableUniqueId(value.cursor);
+    if (value.through !== undefined && value.through !== "") assertSortableUniqueId(value.through);
+  } catch {
+    return { error: "G46 source cursor and frontier must be SortableUniqueIds" };
+  }
+  return {
+    value: {
+      tag: value.tag,
+      cursor: value.cursor,
+      limit: value.limit,
+      ...(value.through === undefined ? {} : { through: value.through }),
+    },
+  };
+}
+
 function epochFor(entries: TagEpoch[], attemptId: string): number | undefined {
   return entries.find((entry) => entry.attemptId === attemptId)?.epoch;
 }
@@ -1122,6 +1152,28 @@ export class TagDurableObject implements DurableObject {
     if (body === undefined) {
       return error(400, "malformed_tag_request", "Request body must be JSON");
     }
+    // The portable runtime cannot rely on the Cloudflare native-RPC class
+    // brand, so TagStateDO reaches this *direct DO* adapter by stub.fetch.
+    // It is deliberately not routed from the Worker and calls the one G43
+    // bounded source method below; /state and the linear rebuild stay out of
+    // the TagState call universe.
+    if (request.method === "POST" && url.pathname === "/__internal/g46/tag-state-incremental") {
+      if (request.headers.get("x-sdt-g46-source-read") !== "1") {
+        return error(403, "g46_source_read_forbidden", "G46 source reads require the TagState adapter");
+      }
+      const parsed = g46TagStateSourceFrom(body);
+      if (parsed.value === undefined || parsed.value.tag !== tag) {
+        return error(400, "g46_source_read_invalid", parsed.error ?? "G46 source read is invalid");
+      }
+      try {
+        return json(await this.g43TagStateIncrementalCatchUp(parsed.value));
+      } catch (caught) {
+        if (caught instanceof TagIdentityConflict) {
+          return error(409, "tag_identity_conflict", "Tag Durable Object identity changed");
+        }
+        return error(503, "g46_source_read_unavailable", caught instanceof Error ? caught.message : "G46 source read is unavailable");
+      }
+    }
     // This is an internal Tag-to-scanner seam, not a Worker route or a
     // role-facing API. The scanner fixes its vector cursor from D1 before
     // calling it; Queue state and public delivery endpoints never enter it.
@@ -1213,17 +1265,22 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * Internal Tag DO RPC seam for the normal incremental TagState source read.
-   * It is not an HTTP route and adds no role-facing surface. The later
-   * TagState/global-read work decides how callers checkpoint this cursor; G43
-   * makes the source query enumerable and range-indexed now.
+   * Bounded source seam for the normal incremental TagState source read. Its
+   * direct-DO adapter above is transport-only; this method remains the one
+   * authority for cursor range reads and frozen-frontier completion.
    */
-  async g43ReadAfter(sortableUniqueId: string, limit: number): Promise<TagEvent[]> {
+  async g43ReadAfter(sortableUniqueId: string, limit: number, through?: string): Promise<TagEvent[]> {
     if (!Number.isSafeInteger(limit) || limit < 1) throw new Error("G43 readAfter limit must be a positive safe integer");
     if (sortableUniqueId !== "") assertSortableUniqueId(sortableUniqueId);
+    if (through !== undefined && through !== "") assertSortableUniqueId(through);
+    if (through !== undefined && sortableUniqueId !== "" && through !== "" && compareSortableUniqueId(sortableUniqueId, through) > 0) {
+      throw new Error("G43 readAfter cursor cannot exceed its frozen frontier");
+    }
     const sql = this.sqlStorage();
     if (sql === undefined) return [];
-    return sql.exec<SqlRow>(TAG_READ_AFTER_SQL, sortableUniqueId, limit)
+    if (through === "") return [];
+    return sql.exec<SqlRow>(through === undefined ? TAG_READ_AFTER_SQL : TAG_READ_AFTER_THROUGH_SQL,
+      ...(through === undefined ? [sortableUniqueId, limit] : [sortableUniqueId, through, limit]))
       .toArray()
       .map((row) => sqlJson<TagEvent>(row.event_json, "tag_event.event_json"));
   }
@@ -1233,14 +1290,38 @@ export class TagDurableObject implements DurableObject {
    * newer than the supplied checkpoint and folds the fixed result window in
    * memory. No existing history is reread.
    */
-  async g43TagStateIncrementalCatchUp(sortableUniqueId: string, limit: number): Promise<{
-    readonly events: readonly TagEvent[];
-    readonly lastSortableUniqueId: string;
-  }> {
-    const events = await this.g43ReadAfter(sortableUniqueId, limit);
-    let lastSortableUniqueId = sortableUniqueId;
+  async g43TagStateIncrementalCatchUp(input: G43TagStateIncrementalRequest): Promise<G43TagStateIncrementalPage> {
+    if (!Number.isSafeInteger(input.limit) || input.limit < 1) {
+      throw new Error("G43 TagState incremental limit must be a positive safe integer");
+    }
+    if (input.cursor !== "") assertSortableUniqueId(input.cursor);
+    if (input.through !== undefined && input.through !== "") assertSortableUniqueId(input.through);
+
+    // Always read scalar head facts at this boundary. The first page uses the
+    // checked head as its immutable frontier; later pages keep checking the
+    // same identity/control/head invariant without moving that frontier as
+    // concurrent appends advance the current Tag head.
+    const facts = this.readHeadFacts(input.tag);
+    if (facts === undefined && input.through !== undefined && input.through !== "") {
+      throw new Error("G43 TagState source disappeared before its frozen frontier completed");
+    }
+    const through = input.through ?? facts?.head ?? "";
+    if (facts !== undefined && through !== "" && facts.head !== "" && compareSortableUniqueId(facts.head, through) < 0) {
+      throw new Error("G43 TagState frozen frontier is ahead of Tag head facts");
+    }
+    if (through !== "" && input.cursor !== "" && compareSortableUniqueId(input.cursor, through) > 0) {
+      throw new Error("G43 TagState cursor cannot exceed its frozen frontier");
+    }
+    const events = await this.g43ReadAfter(input.cursor, input.limit, through);
+    let lastSortableUniqueId = input.cursor;
     for (const event of events) lastSortableUniqueId = event.suid;
-    return { events, lastSortableUniqueId };
+    const complete = events.length < input.limit || lastSortableUniqueId === through;
+    return {
+      events,
+      lastSortableUniqueId,
+      through,
+      completeThrough: complete ? through : null,
+    };
   }
 
   /** Full replay remains intentionally linear and is measurement-only info. */
