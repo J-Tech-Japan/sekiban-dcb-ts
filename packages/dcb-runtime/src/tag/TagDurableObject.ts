@@ -6,6 +6,7 @@ import {
   type TagEpoch,
   type TagEvent,
   type TagFence,
+  type TagHeadFacts,
   type TagOutboxDelivery,
   type TagOutboxRow,
   type TagRecord,
@@ -196,6 +197,9 @@ interface FenceGateObservation {
 }
 
 class AppendTransactionFault extends Error {}
+
+/** A mismatched immutable tag identity is a typed 409, not an internal error. */
+class TagIdentityConflict extends Error {}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1058,6 +1062,22 @@ export class TagDurableObject implements DurableObject {
       return error(400, "tag_identity_required", "Tag identity is required");
     }
     const serviceId = url.searchParams.get("__serviceId");
+    if (request.method === "GET" && url.pathname === "/head-facts") {
+      return this.traceCommitReadActor(request, tag, serviceId, activation, observation, async () => {
+        observation.markFirstStorageRead();
+        try {
+          const facts = this.readHeadFacts(tag);
+          return facts === undefined
+            ? error(404, "tag_not_found", "Tag has no durable state yet")
+            : json(facts);
+        } catch (caught) {
+          if (caught instanceof TagIdentityConflict) {
+            return error(409, "tag_identity_conflict", "Tag Durable Object identity changed");
+          }
+          throw caught;
+        }
+      });
+    }
     if (request.method === "GET" && url.pathname === "/state") {
       return this.traceCommitReadActor(request, tag, serviceId, activation, observation, async () => {
         observation.markFirstStorageRead();
@@ -1450,9 +1470,9 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * /state remains a body-less existing internal read. Its Cloudflare parent
-   * comes solely from active async context; G30 does not add a correlation
-   * header or alter this request's protocol shape just to label telemetry.
+   * Internal Tag reads keep their Cloudflare parent solely from active async
+   * context; G30 does not add a correlation header or alter either /state or
+   * /head-facts just to label telemetry.
    */
   private async traceCommitReadActor(
     request: Request,
@@ -1612,6 +1632,51 @@ export class TagDurableObject implements DurableObject {
       clockNowMs: sqlNullableNumber(control.clock_now_ms, "tag_control.clock_now_ms"),
       version: sqlNumber(control.version, "tag_control.version"),
       createdAt: sqlString(control.created_at, "tag_control.created_at"),
+      updatedAt: sqlString(control.updated_at, "tag_control.updated_at"),
+    };
+  }
+
+  /**
+   * Reads the scalar commit-response facts without rehydrating `tag_event`.
+   * Keep the identity and control/head consistency checks at this boundary:
+   * an internal caller is not allowed to turn an identity change into a
+   * plausible but stale response.
+   */
+  private readHeadFacts(tag: string): TagHeadFacts | undefined {
+    const sql = this.sqlStorage();
+    if (sql === undefined) {
+      if (this.fallbackRecord !== undefined && this.fallbackRecord.tag !== tag) {
+        throw new TagIdentityConflict();
+      }
+      return this.fallbackRecord === undefined
+        ? undefined
+        : {
+          head: this.fallbackRecord.head,
+          version: this.fallbackRecord.version,
+          updatedAt: this.fallbackRecord.updatedAt,
+        };
+    }
+
+    const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (identity === undefined) return undefined;
+    if (sqlString(identity.tag, "tag_identity.tag") !== tag) throw new TagIdentityConflict();
+
+    const control = sql.exec<SqlRow>(`
+      SELECT head_suid, version, updated_at
+      FROM tag_control
+      WHERE singleton = 1
+    `).toArray()[0];
+    if (control === undefined) throw new Error("Tag SQL identity exists without control state");
+
+    const head = sql.exec<SqlRow>("SELECT head_suid FROM tag_head WHERE singleton = 1").toArray()[0];
+    const controlHead = sqlString(control.head_suid, "tag_control.head_suid");
+    if (head !== undefined && sqlString(head.head_suid, "tag_head.head_suid") !== controlHead) {
+      throw new Error("Tag SQL head/control mismatch");
+    }
+
+    return {
+      head: controlHead,
+      version: sqlNumber(control.version, "tag_control.version"),
       updatedAt: sqlString(control.updated_at, "tag_control.updated_at"),
     };
   }
@@ -2772,7 +2837,7 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * A DO can receive the CommitWorker's immediate /state read as the next
+   * A DO can receive the CommitWorker's immediate /head-facts read as the next
    * input event. Yield once before starting the awaited service binding so the
    * append response and that authoritative state read are not serialized
    * behind a cold receiver's first MV-generation build. The binding call is

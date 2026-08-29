@@ -333,6 +333,9 @@ function nonSuccessWorker(
         if (url.pathname === "/state") {
           return response({ version: 5, updatedAt: "2026-08-23T00:00:00.000Z" });
         }
+        if (url.pathname === "/head-facts") {
+          return response({ head: "063891500000000000000000000000", version: 5, updatedAt: "2026-08-23T00:00:00.000Z" });
+        }
       }
       return response({ code: "unexpected" }, 500);
     },

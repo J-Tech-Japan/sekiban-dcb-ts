@@ -154,3 +154,14 @@ export interface TagRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * The immutable scalar facts needed by the commit response.  This is
+ * intentionally distinct from TagRecord: a caller that only needs the head
+ * must not hydrate or validate the tag's event history to obtain it.
+ */
+export interface TagHeadFacts {
+  head: string;
+  version: number;
+  updatedAt: string;
+}

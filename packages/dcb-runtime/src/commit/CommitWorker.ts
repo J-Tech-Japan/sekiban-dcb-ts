@@ -17,6 +17,7 @@ import type { DeliveryClass } from "../downstream/Doorbell";
 import { canonicalEventType } from "../eventIdentity";
 import { createUuidV7, serializedEventMetadata, writeTimestampUtc } from "../eventRecord";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import type { TagHeadFacts } from "../tag/types";
 import {
   beginWorkerInvocationObservation,
   CommitTrace,
@@ -94,11 +95,6 @@ interface ReservationFailure {
 interface ReservationAttempt {
   successes: Map<string, ReservationSuccess>;
   failure?: ReservationFailure;
-}
-
-interface TagStateResponse {
-  version: number;
-  updatedAt: string;
 }
 
 interface CommitTraceRequestState {
@@ -1039,12 +1035,12 @@ export class CommitWorker {
       if (fault === "tag-state-unavailable") {
         throw new Error("Test fault made the committed tag state unavailable");
       }
-      const response = await this.tagRequest(tag, "/state", undefined, stageScope?.fork(), stageScope === undefined ? undefined : "S14", { memberIndex, attemptId });
+      const response = await this.tagRequest(tag, "/head-facts", undefined, stageScope?.fork(), stageScope === undefined ? undefined : "S14", { memberIndex, attemptId });
       if (response.status !== 200) {
         throw new Error("Committed tag state was unavailable while preparing the response");
       }
-      const body = (await response.json()) as Partial<TagStateResponse>;
-      if (typeof body.version !== "number" || typeof body.updatedAt !== "string") {
+      const body = (await response.json()) as Partial<TagHeadFacts>;
+      if (typeof body.version !== "number" || typeof body.updatedAt !== "string" || typeof body.head !== "string") {
         throw new Error("Committed tag state was malformed while preparing the response");
       }
       return { tag, version: body.version, writtenAt: body.updatedAt };

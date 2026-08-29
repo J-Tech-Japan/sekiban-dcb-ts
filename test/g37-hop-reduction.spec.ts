@@ -67,6 +67,7 @@ describe("SDT-G37 A5 reservation/admission concurrency", () => {
       }
       if (path === "/append") return json({ appended: true }, 201);
       if (path === "/state") return json({ version: 1, updatedAt: "2026-08-27T00:00:00.000Z" });
+      if (path === "/head-facts") return json({ head: EXPECTED_HEAD, version: 1, updatedAt: "2026-08-27T00:00:00.000Z" });
       return json({ code: "unexpected_tag_path" }, 500);
     });
     const allocator = namespace(async (incoming) => {

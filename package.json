@@ -125,6 +125,8 @@
     "test:g43:forced-red": "npm run test:g43 && node -e \"if (process.env.SDT_G43_FORCE_FAILURE === '1') throw new Error('SDT-G43 forced-red CI wiring proof')\"",
     "test:g44": "npm run build:packages && node scripts/g44-contract-check.mjs && node scripts/g44-contract-check.mjs --self-test && vitest run --config vitest.config.ts test/g44-global-completeness.spec.ts && node scripts/g44-atomic-mutation-runner.mjs",
     "test:g44:forced-red": "npm run test:g44 && node -e \"if (process.env.SDT_G44_FORCE_FAILURE === '1') throw new Error('SDT-G44 forced-red CI wiring proof')\"",
+    "test:g45": "npm run build:packages && node scripts/g45-head-facts-contract-check.mjs && node scripts/g45-head-facts-contract-check.mjs --self-test && vitest run --config vitest.config.ts test/g45-head-facts.spec.ts && node scripts/g45-head-facts-mutation-runner.mjs",
+    "test:g45:forced-red": "npm run test:g45 && node -e \"if (process.env.SDT_G45_FORCE_FAILURE === '1') throw new Error('SDT-G45 forced-red CI wiring proof')\"",
     "test:g26:topology": "vitest run --config vitest.g24-deploy.config.ts test/g26-topology.spec.mjs",
     "test:g26:forced-red": "npm run test:g26 && node -e \"if (process.env.SDT_G26_FORCE_FAILURE === '1') throw new Error('SDT-G26 forced-red CI wiring proof')\"",
     "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
