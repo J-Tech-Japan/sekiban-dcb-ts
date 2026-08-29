@@ -17,6 +17,10 @@ interface SchedulerSeam {
   g43ScanSourceObligations(tag: string, nowMs: number): Promise<unknown>;
 }
 
+interface QueueReplacementControl {
+  disableAutoDrain(): void;
+}
+
 type SqlCount = Record<string, SqlStorageValue> & { readonly count: number };
 
 function scope(): Scope {
@@ -87,6 +91,18 @@ async function configuredAlarm(value: Scope): Promise<number | null> {
   return runInDurableObject(tagStub(value), (_instance, state) => state.storage.getAlarm());
 }
 
+async function waitForConfiguredAlarm(value: Scope): Promise<number | null> {
+  // SQLite alarm writes become observable on the following event turn in the
+  // Miniflare harness. This only yields the test event loop; it never
+  // advances time or re-runs the scheduler under test.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const alarm = await configuredAlarm(value);
+    if (alarm !== null) return alarm;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  return null;
+}
+
 async function scanSource(value: Scope, nowMs: number): Promise<unknown> {
   return runInDurableObject(tagStub(value), (instance) =>
     (instance as unknown as SchedulerSeam).g43ScanSourceObligations(value.tag, nowMs));
@@ -105,17 +121,26 @@ async function acquireReservation(value: Scope, suffix: string, expectedHead: st
 
 async function replaceQueue(
   value: Scope,
-  send: (row: DownstreamOutboxMessage) => Promise<void>,
+  send: (row: DownstreamOutboxMessage, control: QueueReplacementControl) => Promise<void>,
 ): Promise<() => Promise<void>> {
   let originalQueue: Queue<DownstreamOutboxMessage> | undefined;
   let originalAutoDrain: string | undefined;
+  let runtime: { env: { DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>; AUTO_DRAIN_OUTBOX?: string } } | undefined;
+  const control: QueueReplacementControl = {
+    disableAutoDrain(): void {
+      if (runtime === undefined) throw new Error("G43 test queue runtime is unavailable");
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    },
+  };
   await runInDurableObject(tagStub(value), (instance) => {
-    const runtime = instance as unknown as {
+    runtime = instance as unknown as {
       env: { DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>; AUTO_DRAIN_OUTBOX?: string };
     };
     originalQueue = runtime.env.DOWNSTREAM_QUEUE;
     originalAutoDrain = runtime.env.AUTO_DRAIN_OUTBOX;
-    runtime.env.DOWNSTREAM_QUEUE = { send } as unknown as Queue<DownstreamOutboxMessage>;
+    runtime.env.DOWNSTREAM_QUEUE = {
+      send: (row: DownstreamOutboxMessage) => send(row, control),
+    } as unknown as Queue<DownstreamOutboxMessage>;
     runtime.env.AUTO_DRAIN_OUTBOX = "true";
   });
   return async () => {
@@ -376,9 +401,15 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     const value = scope();
     expect((await append(value, "insert-1")).status).toBe(201);
     let inserted = false;
-    const restoreQueue = await replaceQueue(value, async (row) => {
+    const restoreQueue = await replaceQueue(value, async (row, control) => {
       if (row.eventId === candidate(value, "insert-1").eventId && !inserted) {
         inserted = true;
+        // This fixture isolates the alarm's in-flight source selection. The
+        // nested append itself normally schedules a response-after drain;
+        // letting that independent drain race this alarm would test timing,
+        // rather than whether the newly inserted source row is retained and
+        // re-armed for the next alarm.
+        control.disableAutoDrain();
         expect((await append(value, "insert-2")).status).toBe(201);
         return;
       }
@@ -386,12 +417,16 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     });
     try {
       await makeRetryDue(value);
-      expect(await runDurableObjectAlarm(tagStub(value))).toBe(true);
+      // Call the real handler body through the DO seam. Miniflare's synthetic
+      // alarm helper consumes an alarm when its handler returns, which would
+      // hide the re-arm produced by this fixture's in-flight insert.
+      await expect(runInDurableObject(tagStub(value), (instance) =>
+        (instance as unknown as SchedulerSeam).runAlarm())).resolves.toBeDefined();
       expect(inserted).toBe(true);
       await expect(scanSource(value, Date.now())).resolves.toMatchObject({
         findings: [expect.objectContaining({ eventId: candidate(value, "insert-2").eventId, status: "pending" })],
       });
-      expect(await configuredAlarm(value)).not.toBeNull();
+      expect(await waitForConfiguredAlarm(value)).not.toBeNull();
     } finally {
       await restoreQueue();
     }
