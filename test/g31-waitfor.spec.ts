@@ -38,6 +38,7 @@ import { D1EventStore } from "../packages/dcb-runtime/src/store/D1EventStore";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
 import { g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
 const VIEW_ID = "g31-wait-view";
 const QUERY_TYPE = "G31WaitListQuery";
@@ -433,6 +434,7 @@ async function assertStoredOutcomeReceipt(
 describe("SDT-G31 d1-mv waitFor", () => {
   beforeAll(async () => {
     await d1().batch(statements(d1(), g32Migration as string));
+    await applyG44D1Migration(d1());
     for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration]) {
       await mvDatabase().batch(statements(mvDatabase(), migration as string));
     }

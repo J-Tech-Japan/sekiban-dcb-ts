@@ -22,6 +22,7 @@ import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import type { CloudflareOnlyEnv } from "../packages/dcb-runtime/src/cloudflare";
 import { g32Message } from "./helpers/g32-fixtures";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 
 function statements(sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
@@ -63,6 +64,7 @@ function event(serviceId: string): DownstreamOutboxMessage {
 describe("SDT-G20 Cloudflare-only composition", () => {
   beforeAll(async () => {
     await database().batch(statements(g32Migration as string));
+    await applyG44D1Migration(database());
     await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string, unsafeFailureMvMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
       .filter(Boolean).map((value) => mvDatabase().prepare(value)));
   });

@@ -42,7 +42,10 @@ const PRE_SPLIT_GOLDEN = {
   queuePayload: {
     baselineKeys: ["allocatorLineageId", "attemptId", "enqueuedAt", "eventId", "eventTags", "payload", "serviceId", "suid", "tag", "version"],
     allowedG32AdditiveKeys: ["causationId", "correlationId", "eventType", "executedUser", "provenance", "timestamp"],
-    keys: ["allocatorLineageId", "attemptId", "causationId", "correlationId", "enqueuedAt", "eventId", "eventTags", "eventType", "executedUser", "payload", "provenance", "serviceId", "suid", "tag", "timestamp", "version"],
+    // G44 is the one explicit internal queue-envelope delta. It is not part
+    // of any of the five public V1 endpoint bodies above.
+    allowedG44AdditiveKeys: ["completeness"],
+    keys: ["allocatorLineageId", "attemptId", "causationId", "completeness", "correlationId", "enqueuedAt", "eventId", "eventTags", "eventType", "executedUser", "payload", "provenance", "serviceId", "suid", "tag", "timestamp", "version"],
   },
   storageSchema: {
     sqliteDurableObjectKeys: ["allocator-state", "attempt:*", "journal", "outbox-deliveries", "repair-facts", "tag"],
@@ -159,6 +162,7 @@ async function captureTranscript(): Promise<unknown> {
     queuePayload: {
       baselineKeys: PRE_SPLIT_GOLDEN.queuePayload.baselineKeys,
       allowedG32AdditiveKeys: PRE_SPLIT_GOLDEN.queuePayload.allowedG32AdditiveKeys,
+      allowedG44AdditiveKeys: PRE_SPLIT_GOLDEN.queuePayload.allowedG44AdditiveKeys,
       keys: Object.keys(queuePayload).sort(),
     },
     storageSchema: PRE_SPLIT_GOLDEN.storageSchema,
@@ -190,5 +194,9 @@ describe("SDT-G13 V1 wire-invariance oracle", () => {
     const payloadMutation = structuredClone(captured);
     payloadMutation.queuePayload.keys = payloadMutation.queuePayload.keys.filter((key) => key !== "eventTags");
     expect(() => assertGolden(payloadMutation)).toThrow();
+
+    const g44AllowlistMutation = structuredClone(captured);
+    g44AllowlistMutation.queuePayload.keys = g44AllowlistMutation.queuePayload.keys.filter((key) => key !== "completeness");
+    expect(() => assertGolden(g44AllowlistMutation)).toThrow();
   });
 });

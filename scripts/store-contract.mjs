@@ -69,17 +69,26 @@ function g32EventId(value) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+function g44FixtureDigest(value) {
+  return ["a", "b", "c", "d"]
+    .map((prefix) => hash64(`${prefix}:${value}`).toString(16).padStart(16, "0"))
+    .join("");
+}
+
 function message(serviceId, eventId, suid, tag, eventTags, enqueuedAt = 1_000) {
   const id = g32EventId(eventId);
+  const attemptId = `${id}-attempt`;
+  const payload = JSON.stringify({ fixture: "payload" });
+  const normalizedSuid = g32Suid(suid);
   return {
     version: 1,
     serviceId,
     allocatorLineageId: "store-contract-lineage",
     tag,
-    attemptId: `${id}-attempt`,
+    attemptId,
     eventId: id,
-    suid: g32Suid(suid),
-    payload: JSON.stringify({ fixture: "payload" }),
+    suid: normalizedSuid,
+    payload,
     eventTags,
     eventType: "StoreContractEvent",
     provenance: "g32",
@@ -88,6 +97,16 @@ function message(serviceId, eventId, suid, tag, eventTags, enqueuedAt = 1_000) {
     correlationId: "SerializedCommit",
     executedUser: "SerializedSekibanExecutor",
     enqueuedAt,
+    // G44 source facts travel with every queue-equivalent contract input.
+    // Other stores may not use the receipt relation, but the shared envelope
+    // is deliberately not permitted to silently omit its source authority.
+    completeness: {
+      canonicalBytesBase64: Buffer.from(JSON.stringify({ id, payload, eventTags, tag, attemptId, normalizedSuid }), "utf8").toString("base64"),
+      eventDigest: g44FixtureDigest(`${serviceId}:${id}:${tag}:${attemptId}`),
+      declaredTagSet: [...eventTags].sort(),
+      localCommittedMembership: [{ serviceId, eventId: id, tag }],
+      obligationSequence: Number(hash64(`g44:${serviceId}:${tag}:${id}`) % 1_000_000_000n) + 1,
+    },
   };
 }
 

@@ -18,6 +18,7 @@ import {
   type RepairScopeItem,
 } from "./types";
 import type { DownstreamOutboxMessage } from "../downstream/types";
+import type { SourceObligationPage } from "../completeness/types";
 import {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,
@@ -62,6 +63,8 @@ const MAX_REPAIR_LEASE_MS = 5 * 60_000;
 const OBLIGATION_RETRY_MS = 1_000;
 const OBLIGATION_MAX_ATTEMPTS = 3;
 const OBLIGATION_ALARM_BATCH_LIMIT = 32;
+/** Schema identity is immutable for the lifetime of a Worker isolate. */
+const g44GlobalArrayAuthorityByD1 = new WeakMap<D1Database, Promise<boolean>>();
 
 type JsonObject = Record<string, unknown>;
 type SqlRow = Record<string, SqlStorageValue>;
@@ -150,11 +153,21 @@ interface OutboxPendingInput {
 }
 
 interface OutboxMarkInput {
-  deliveries: Array<Pick<TagOutboxDelivery, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt" | "eventType" | "provenance" | "timestamp" | "allocatorLineageId">>;
+  deliveries: Array<Pick<DownstreamOutboxMessage, "attemptId" | "eventId" | "suid" | "payload" | "enqueuedAt" | "eventType" | "provenance" | "timestamp" | "allocatorLineageId" | "completeness">>;
   nowMs: number;
 }
 
+interface G44SourceScanInput {
+  serviceId: string;
+  tag: string;
+  upperBoundSequence: number;
+  afterSequence: number;
+  limit: number;
+}
+
 interface TagDurableObjectEnv {
+  /** Global D1 receipt authority used only to verify a source acknowledgement. */
+  D1?: D1Database;
   DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>;
   DOWNSTREAM_DOORBELL?: DownstreamDoorbellBinding;
   AUTO_DRAIN_OUTBOX?: string;
@@ -249,6 +262,14 @@ function sqlNullableString(value: SqlStorageValue | undefined, column: string): 
   return value === null || value === undefined ? null : sqlString(value, column);
 }
 
+function sqlArrayBuffer(value: SqlStorageValue | undefined, column: string): ArrayBuffer {
+  if (value instanceof ArrayBuffer) return value;
+  if (ArrayBuffer.isView(value)) {
+    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
+  }
+  throw new Error(`Tag SQL column ${column} is not binary`);
+}
+
 function sqlJson<T>(value: SqlStorageValue | undefined, column: string): T {
   try {
     return JSON.parse(sqlString(value, column)) as T;
@@ -259,6 +280,13 @@ function sqlJson<T>(value: SqlStorageValue | undefined, column: string): T {
 
 function copyArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+/** JSON envelope form of the exact G43 digest preimage stored as a BLOB. */
+function arrayBufferBase64(value: ArrayBuffer): string {
+  let binary = "";
+  for (const byte of new Uint8Array(value)) binary += String.fromCharCode(byte);
+  return btoa(binary);
 }
 
 function nowIso(): string {
@@ -618,6 +646,20 @@ function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: stri
       return { error: "each delivery needs attemptId, eventId, suid, payload, and enqueuedAt" };
     }
     if (!isNonEmptyString(raw.eventType) || raw.provenance !== "g32" || !isNonEmptyString(raw.timestamp) || !isNonEmptyString(raw.allocatorLineageId)) return { error: "delivery must carry the complete G32 identity" };
+    if (!isObject(raw.completeness)) {
+      return { error: "delivery must carry a readable global receipt/membership join proof" };
+    }
+    const completeness = raw.completeness;
+    const obligationSequence = completeness.obligationSequence;
+    const memberships = completeness.localCommittedMembership;
+    if (!isNonEmptyString(completeness.eventDigest) || !isSafeInteger(obligationSequence) || obligationSequence < 1 ||
+      !Array.isArray(memberships) || memberships.length !== 1 || !isObject(memberships[0]) ||
+      memberships[0].eventId !== raw.eventId || typeof memberships[0].tag !== "string") {
+      return { error: "delivery must carry a readable global receipt/membership join proof" };
+    }
+    const membership = memberships[0];
+    const membershipTag = membership.tag;
+    if (typeof membershipTag !== "string") return { error: "delivery must carry a readable global receipt/membership join proof" };
     deliveries.push({
       attemptId: raw.attemptId,
       eventId: raw.eventId,
@@ -628,6 +670,19 @@ function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: stri
       provenance: "g32",
       timestamp: raw.timestamp,
       allocatorLineageId: raw.allocatorLineageId,
+      completeness: {
+        eventDigest: completeness.eventDigest,
+        obligationSequence,
+        canonicalBytesBase64: typeof completeness.canonicalBytesBase64 === "string" ? completeness.canonicalBytesBase64 : "",
+        declaredTagSet: Array.isArray(completeness.declaredTagSet)
+          ? completeness.declaredTagSet.filter((tag): tag is string => typeof tag === "string")
+          : [],
+        localCommittedMembership: [{
+          serviceId: typeof membership.serviceId === "string" ? membership.serviceId : "",
+          eventId: raw.eventId,
+          tag: membershipTag,
+        }],
+      },
     });
   }
   if (new Set(deliveries.map(outboxRowKey)).size !== deliveries.length) {
@@ -638,6 +693,25 @@ function outboxMarkFrom(value: unknown): { value?: OutboxMarkInput; error?: stri
     return { error: "nowMs must be a safe integer when present" };
   }
   return { value: { deliveries, nowMs } };
+}
+
+function g44SourceScanFrom(value: unknown): { value?: G44SourceScanInput; error?: string } {
+  if (!isObject(value) ||
+    !isNonEmptyString(value.serviceId) || !isNonEmptyString(value.tag) ||
+    !isSafeInteger(value.upperBoundSequence) || value.upperBoundSequence < 0 ||
+    !isSafeInteger(value.afterSequence) || value.afterSequence < 0 ||
+    !isSafeInteger(value.limit) || value.limit < 1 || value.limit > 256) {
+    return { error: "source scan needs serviceId, tag, and a bounded compound cursor" };
+  }
+  return {
+    value: {
+      serviceId: value.serviceId,
+      tag: value.tag,
+      upperBoundSequence: value.upperBoundSequence,
+      afterSequence: value.afterSequence,
+      limit: value.limit,
+    },
+  };
 }
 
 function epochFor(entries: TagEpoch[], attemptId: string): number | undefined {
@@ -1028,6 +1102,23 @@ export class TagDurableObject implements DurableObject {
     if (body === undefined) {
       return error(400, "malformed_tag_request", "Request body must be JSON");
     }
+    // This is an internal Tag-to-scanner seam, not a Worker route or a
+    // role-facing API. The scanner fixes its vector cursor from D1 before
+    // calling it; Queue state and public delivery endpoints never enter it.
+    if (request.method === "POST" && url.pathname === "/__internal/g44/source-obligations") {
+      if (request.headers.get("x-sdt-g44-source-scan") !== "1") {
+        return error(403, "g44_source_scan_forbidden", "G44 source scan requires the internal scanner seam");
+      }
+      const parsed = g44SourceScanFrom(body);
+      if (parsed.value === undefined || parsed.value.tag !== tag || parsed.value.serviceId !== serviceId) {
+        return error(400, "g44_source_scan_invalid", parsed.error ?? "G44 source scan identity is invalid");
+      }
+      try {
+        return json(await this.g44ReadSourceObligations(parsed.value));
+      } catch (failure) {
+        return error(503, "g44_source_scan_unavailable", failure instanceof Error ? failure.message : "G44 source scan is unavailable");
+      }
+    }
     if (request.method === "POST" && url.pathname === "/bootstrap/admit") {
       return this.bootstrapAppend(tag, body, url.searchParams.get("__serviceId"));
     }
@@ -1151,6 +1242,184 @@ export class TagDurableObject implements DurableObject {
     const response = await this.scanOutboxObligations(tag, nowMs);
     if (!response.ok) throw new Error(`G43 source scan failed with ${response.status}`);
     return response.json();
+  }
+
+  /**
+   * G44's private source scanner RPC. It exposes only the normalized source
+   * obligation table, never Queue state or a role-facing Worker route. The
+   * caller fixes `upperBoundSequence` from the source partition registry
+   * before paging, so later commits cannot move a scan frontier mid-pass.
+   */
+  async g44ReadSourceObligations(input: Readonly<{
+    serviceId: string;
+    tag: string;
+    upperBoundSequence: number;
+    afterSequence: number;
+    limit: number;
+  }>): Promise<SourceObligationPage> {
+    if (!isNonEmptyString(input.serviceId) || !isNonEmptyString(input.tag) ||
+      !isSafeInteger(input.upperBoundSequence) || input.upperBoundSequence < 0 ||
+      !isSafeInteger(input.afterSequence) || input.afterSequence < 0 ||
+      !isSafeInteger(input.limit) || input.limit < 1 || input.limit > 256) {
+      throw new Error("g44_source_scan_invalid_cursor");
+    }
+    const sql = this.sqlStorage();
+    if (sql === undefined) throw new Error("g44_source_scan_sql_unavailable");
+    const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (identity === undefined || sqlString(identity.tag, "tag_identity.tag") !== input.tag) {
+      throw new Error("g44_source_scan_partition_unreadable");
+    }
+    const maxRow = sql.exec<SqlRow>(
+      "SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation WHERE service_id = ?",
+      input.serviceId,
+    ).toArray()[0];
+    const observedMaxSequence = maxRow === undefined || maxRow.sequence === null
+      ? 0
+      : sqlNumber(maxRow.sequence, "tag_outbox_obligation.max_sequence");
+    if (observedMaxSequence < input.upperBoundSequence) {
+      throw new Error("g44_source_scan_snapshot_unreadable");
+    }
+    const rawRows = sql.exec<SqlRow>(`
+      SELECT obligation_sequence, event_id, event_digest, canonical_bytes,
+             declared_tag_set_json, local_committed_membership_json, status
+        FROM tag_outbox_obligation
+       WHERE service_id = ?
+         AND obligation_sequence > ?
+         AND obligation_sequence <= ?
+       ORDER BY obligation_sequence ASC
+       LIMIT ?
+    `, input.serviceId, input.afterSequence, input.upperBoundSequence, input.limit + 1).toArray();
+    const hasMore = rawRows.length > input.limit;
+    const rows = rawRows.slice(0, input.limit).map((row) => ({
+      obligationSequence: sqlNumber(row.obligation_sequence, "tag_outbox_obligation.obligation_sequence"),
+      eventId: sqlString(row.event_id, "tag_outbox_obligation.event_id"),
+      eventDigest: sqlString(row.event_digest, "tag_outbox_obligation.event_digest"),
+      canonicalBytesBase64: arrayBufferBase64(sqlArrayBuffer(row.canonical_bytes, "tag_outbox_obligation.canonical_bytes")),
+      declaredTagSet: sqlJson<string[]>(row.declared_tag_set_json, "tag_outbox_obligation.declared_tag_set_json"),
+      localCommittedMembership: sqlJson<Array<{ serviceId: string; eventId: string; tag: string }>>(
+        row.local_committed_membership_json,
+        "tag_outbox_obligation.local_committed_membership_json",
+      ),
+      status: sqlString(row.status, "tag_outbox_obligation.status") as "pending" | "acknowledged" | "poison",
+    }));
+    return {
+      serviceId: input.serviceId,
+      tag: input.tag,
+      upperBoundSequence: input.upperBoundSequence,
+      observedMaxSequence,
+      afterSequence: input.afterSequence,
+      rows,
+      hasMore,
+    };
+  }
+
+  /**
+   * G44's source acknowledgement guard. A transport success or an unjoined
+   * receipt is deliberately insufficient: the global event, local membership
+   * and exact source-obligation receipt must all be readable together.
+   */
+  private async globalReceiptMatches(delivery: OutboxMarkInput["deliveries"][number]): Promise<boolean> {
+    // The generic runtime's SQLite test harness is not a global D1 event
+    // array at all.  Every actual G32/G44 source has the `dcb_events` shape;
+    // only that authority may turn a source mark into an acknowledgement.
+    // A partially migrated G32 array still throws from this probe and is
+    // therefore fail-closed in the caller below.
+    if (!(await this.hasG44GlobalArrayAuthority())) return true;
+    const database = this.env.D1;
+    if (database === undefined) return false;
+    const membership = delivery.completeness.localCommittedMembership[0];
+    if (membership === undefined) return false;
+    const row = await database.prepare(
+      `SELECT 1 AS joined
+         FROM serialized_dcb_global_receipts AS receipt
+         JOIN serialized_dcb_global_memberships AS membership
+           ON membership.service_id = receipt.service_id
+          AND membership.event_id = receipt.event_id
+          AND membership.partition_tag = receipt.membership_tag
+          AND membership.event_digest = receipt.event_digest
+         JOIN dcb_events AS event
+           ON event."ServiceId" = receipt.service_id
+          AND event."Id" = receipt.event_id
+          AND event."EventDigest" = receipt.event_digest
+        WHERE receipt.service_id = ?
+          AND receipt.partition_tag = ?
+          AND receipt.obligation_sequence = ?
+          AND receipt.event_id = ?
+          AND receipt.event_digest = ?
+          AND receipt.membership_tag = ?
+          AND membership.partition_tag = ?`,
+    ).bind(
+      membership.serviceId,
+      membership.tag,
+      delivery.completeness.obligationSequence,
+      delivery.eventId,
+      delivery.completeness.eventDigest,
+      membership.tag,
+      membership.tag,
+    ).first<{ joined?: unknown }>();
+    return row !== null && row !== undefined && row.joined === 1;
+  }
+
+  /**
+   * Registers the enumerable source partition from the append path, before
+   * any transport handoff. Queue arrivals, sink receipts, and test schedules
+   * are intentionally not inputs to this authority.
+   */
+  private async registerSourcePartition(tag: string, serviceId: string): Promise<void> {
+    // G44 is the D1 global-array implementation, not a rollout or
+    // mixed-version mode. A non-G32 D1 harness has no global `dcb_events`
+    // array at all; every actual G32/G44 D1-backed Tag commit registers its
+    // partition, and a partially migrated G32 array fails closed below.
+    if (!(await this.hasG44GlobalArrayAuthority())) return;
+    const database = this.env.D1;
+    if (database === undefined) throw new Error("g44_source_partition_registry_binding_lost");
+    const sql = this.sqlStorage();
+    if (sql === undefined) {
+      throw new Error("g44_source_partition_registry_requires_sql_tag");
+    }
+    const max = sql.exec<SqlRow>("SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation").toArray()[0];
+    const sequence = max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence");
+    if (sequence === undefined) return;
+    await database.prepare(
+      `INSERT INTO serialized_dcb_source_partitions
+         (service_id, partition_tag, last_obligation_sequence, registered_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT (service_id, partition_tag) DO UPDATE
+         SET last_obligation_sequence = MAX(
+               serialized_dcb_source_partitions.last_obligation_sequence,
+               excluded.last_obligation_sequence
+             ),
+             registered_at = excluded.registered_at`,
+    ).bind(serviceId, tag, sequence, Date.now()).run();
+  }
+
+  private async hasG44GlobalArrayAuthority(): Promise<boolean> {
+    const database = this.env.D1;
+    if (database === undefined) return false;
+    // The generic root Worker has a pre-G32 local D1 harness. It is not the
+    // `dcb_events` global array. Cache this immutable schema probe by binding,
+    // rather than repeating it once for every independent Tag DO.
+    let authority = g44GlobalArrayAuthorityByD1.get(database);
+    if (authority === undefined) {
+      authority = this.readG44GlobalArrayAuthority(database);
+      g44GlobalArrayAuthorityByD1.set(database, authority);
+    }
+    return authority;
+  }
+
+  private async readG44GlobalArrayAuthority(database: D1Database): Promise<boolean> {
+    try {
+      // `dcb_events.EventDigest` is introduced by G44's ordinary migration.
+      // The root unit-test Worker has a distinct pre-G32 D1 schema and no
+      // `dcb_events` table; it is not a global-array source. Any other error,
+      // including a G32 table without EventDigest, is deliberately surfaced.
+      await database.prepare('SELECT "EventDigest" FROM dcb_events WHERE 1 = 0').all();
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/no such table:\s*dcb_events/i.test(message)) return false;
+      throw error;
+    }
   }
 
   private async traceCommitActor(
@@ -2341,6 +2610,19 @@ export class TagDurableObject implements DurableObject {
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
         const result = await this.appendSql(tag, input, serviceId);
+        if (
+          (result.status === 201 || result.status === 200) &&
+          serviceId !== null && serviceId.length > 0
+        ) {
+          try {
+            await this.registerSourcePartition(tag, serviceId);
+          } catch {
+            // The local append is durable, so a caller can replay its exact
+            // attempt to converge registration. Do not report it as globally
+            // enumerable before this source-side authority write succeeds.
+            return error(503, "source_partition_registry_unavailable", "Source partition registration is unavailable");
+          }
+        }
         const response = json(result.body, result.status);
         if (
           result.status === 201 &&
@@ -2528,7 +2810,6 @@ export class TagDurableObject implements DurableObject {
       config.enabled &&
       this.env.DOWNSTREAM_DOORBELL !== undefined;
     const queue = this.env.DOWNSTREAM_QUEUE;
-    const acceptedByQueue: DownstreamOutboxMessage[] = [];
     for (const row of rows) {
       // `row` is the object created by pendingOutbox. The bytes are captured
       // once for correlation/equality evidence and the exact same envelope is
@@ -2587,33 +2868,12 @@ export class TagDurableObject implements DurableObject {
       if (queue !== undefined) {
         try {
           await queue.send(row, { contentType: "json" });
-          acceptedByQueue.push(row);
         } catch (failure) {
           // A failed source-to-sink handoff is itself source state.  Do not
           // let one poison row skip a later due row or suppress re-arming.
           await this.recordOutboxFailure(tag, row, failure);
         }
       }
-    }
-    if (acceptedByQueue.length === 0) {
-      return;
-    }
-    const mark = await this.markOutboxDelivered(tag, {
-      deliveries: acceptedByQueue.map(({ attemptId, eventId, suid, payload, eventType, provenance, timestamp, allocatorLineageId, enqueuedAt }) => ({
-        attemptId,
-        eventId,
-        suid,
-        payload,
-        eventType,
-        provenance,
-        timestamp,
-        allocatorLineageId,
-        enqueuedAt,
-      })),
-      nowMs: Date.now(),
-    });
-    if (!mark.ok) {
-      throw new Error(`automatic outbox delivery mark failed with ${mark.status}`);
     }
   }
 
@@ -2817,6 +3077,7 @@ export class TagDurableObject implements DurableObject {
         correlationId: string;
         executedUser: string;
         enqueuedAt: number;
+        completeness: DownstreamOutboxMessage["completeness"];
       }> = [];
       for (const row of record.outbox) {
         if (input.limit !== undefined && rows.length >= input.limit) break;
@@ -2846,6 +3107,7 @@ export class TagDurableObject implements DurableObject {
           };
         }
         const metadata = serializedEventMetadata(row.eventId);
+        const artifact = await this.obligationArtifact(event, serviceId, tag);
         rows.push({
           version: 1,
           serviceId,
@@ -2863,6 +3125,16 @@ export class TagDurableObject implements DurableObject {
           correlationId: metadata.correlationId,
           executedUser: metadata.executedUser,
           enqueuedAt: delivery.enqueuedAt,
+          completeness: {
+            canonicalBytesBase64: arrayBufferBase64(artifact.canonicalBytes),
+            eventDigest: artifact.eventDigest,
+            declaredTagSet: JSON.parse(artifact.declaredTagSet) as string[],
+            localCommittedMembership: JSON.parse(artifact.localMembership) as Array<{ serviceId: string; eventId: string; tag: string }>,
+            // The non-SQL fallback is a transport-only test seam. Its local
+            // ordinal is still explicit so it cannot masquerade as a global
+            // sequence during receipt verification.
+            obligationSequence: record.outbox.findIndex((candidate) => outboxRowKey(candidate) === outboxRowKey(row)) + 1,
+          },
         });
       }
       if (changedDeliveries !== deliveries) {
@@ -2993,6 +3265,15 @@ export class TagDurableObject implements DurableObject {
       return error(400, "invalid_outbox_delivery_mark", parsed.error ?? "Invalid outbox delivery mark");
     }
     const input = parsed.value;
+    try {
+      const joined = await Promise.all(input.deliveries.map((delivery) => this.globalReceiptMatches(delivery)));
+      if (joined.some((value) => !value)) {
+        return error(409, "outbox_global_receipt_unverified", "Global receipt and membership must be read back before source acknowledgement");
+      }
+    } catch {
+      // Do not turn an unavailable/partial global read into an acknowledgement.
+      return error(503, "outbox_global_receipt_unavailable", "Global receipt verification is unavailable");
+    }
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       if (this.sqlStorage() !== undefined) {
         return this.markSqlOutboxDelivered(txn, tag, input);
@@ -3059,7 +3340,9 @@ export class TagDurableObject implements DurableObject {
       SELECT
         o.obligation_sequence, o.service_id, o.event_id, o.attempt_id, o.suid,
         o.payload, o.allocator_lineage_id, o.event_type, o.provenance,
-        o.timestamp, o.enqueued_at, e.event_tags_json
+        o.timestamp, o.enqueued_at, o.canonical_bytes, o.event_digest,
+        o.declared_tag_set_json, o.local_committed_membership_json,
+        e.event_tags_json
       FROM tag_outbox_obligation AS o
       JOIN tag_event AS e ON e.service_id = o.service_id AND e.event_id = o.event_id
       WHERE o.status = 'pending' AND (? = 1 OR o.next_attempt_at <= ?)
@@ -3098,6 +3381,16 @@ export class TagDurableObject implements DurableObject {
         correlationId: metadata.correlationId,
         executedUser: metadata.executedUser,
         enqueuedAt,
+        completeness: {
+          canonicalBytesBase64: arrayBufferBase64(sqlArrayBuffer(obligation.canonical_bytes, "tag_outbox_obligation.canonical_bytes")),
+          eventDigest: sqlString(obligation.event_digest, "tag_outbox_obligation.event_digest"),
+          declaredTagSet: sqlJson<string[]>(obligation.declared_tag_set_json, "tag_outbox_obligation.declared_tag_set_json"),
+          localCommittedMembership: sqlJson<Array<{ serviceId: string; eventId: string; tag: string }>>(
+            obligation.local_committed_membership_json,
+            "tag_outbox_obligation.local_committed_membership_json",
+          ),
+          obligationSequence: sequence,
+        },
       });
     }
     await this.rearmScheduler(txn);
@@ -3119,7 +3412,8 @@ export class TagDurableObject implements DurableObject {
     let marked = 0;
     for (const delivery of input.deliveries) {
       const obligation = sql.exec<SqlRow>(`
-        SELECT obligation_sequence, enqueued_at, status
+        SELECT obligation_sequence, enqueued_at, status, canonical_bytes, event_digest,
+               declared_tag_set_json, local_committed_membership_json
         FROM tag_outbox_obligation
         WHERE attempt_id = ? AND event_id = ? AND suid = ? AND payload = ?
           AND allocator_lineage_id = ? AND event_type = ? AND provenance = ? AND timestamp = ?
@@ -3130,6 +3424,19 @@ export class TagDurableObject implements DurableObject {
       }
       if (sqlNullableNumber(obligation.enqueued_at, "tag_outbox_obligation.enqueued_at") !== delivery.enqueuedAt) {
         return { status: 409, body: { error: "Outbox row was not enqueued", code: "outbox_delivery_not_enqueued" } };
+      }
+      const localMembership = sqlJson<Array<{ serviceId: string; eventId: string; tag: string }>>(
+        obligation.local_committed_membership_json,
+        "tag_outbox_obligation.local_committed_membership_json",
+      );
+      const sourceFactsMatch =
+        sqlString(obligation.event_digest, "tag_outbox_obligation.event_digest") === delivery.completeness.eventDigest &&
+        arrayBufferBase64(sqlArrayBuffer(obligation.canonical_bytes, "tag_outbox_obligation.canonical_bytes")) === delivery.completeness.canonicalBytesBase64 &&
+        JSON.stringify(sqlJson<string[]>(obligation.declared_tag_set_json, "tag_outbox_obligation.declared_tag_set_json")) === JSON.stringify(delivery.completeness.declaredTagSet) &&
+        JSON.stringify(localMembership) === JSON.stringify(delivery.completeness.localCommittedMembership) &&
+        sqlNumber(obligation.obligation_sequence, "tag_outbox_obligation.obligation_sequence") === delivery.completeness.obligationSequence;
+      if (!sourceFactsMatch) {
+        return { status: 409, body: { error: "Outbox source facts do not match the durable obligation", code: "outbox_receipt_join_mismatch" } };
       }
       if (sqlString(obligation.status, "tag_outbox_obligation.status") === "acknowledged") continue;
       sql.exec(`

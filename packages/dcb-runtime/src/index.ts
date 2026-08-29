@@ -101,6 +101,20 @@ export {
   MAX_SERVICE_BINDING_INVOCATIONS_PER_REQUEST,
 } from "./downstream/Doorbell";
 export { deliveryCorrelationId } from "./downstream/DeliveryCore";
+export { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
+export {
+  G44_HEALTH_STALE_AFTER_MS,
+  G44_SCANNER_VERSION,
+  GLOBAL_COMPLETENESS_INTERIM_DISPOSITION,
+} from "./completeness/types";
+export type {
+  GlobalCompletenessHealth,
+  GlobalCompletenessHealthRecord,
+  GlobalCompletenessScanResult,
+  SourceObligationFact,
+  SourceObligationPage,
+  SourcePartitionSnapshot,
+} from "./completeness/types";
 export {
   assertCanonicalEventType,
   canonicalEventType,

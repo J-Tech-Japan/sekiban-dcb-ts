@@ -1,4 +1,4 @@
-import { outboxIdentity, systemPipelineClock, type DownstreamOutboxMessage, type OutboxDelivery, type PipelineClock } from "./types";
+import { outboxIdentity, systemPipelineClock, type DownstreamOutboxMessage, type PipelineClock } from "./types";
 
 interface OutboxPendingResponse {
   rows: DownstreamOutboxMessage[];
@@ -16,6 +16,16 @@ export interface OutboxDrainEnv {
 export interface DrainTagInput {
   serviceId: string;
   tag: string;
+}
+
+/**
+ * The ordinary runtime predates the G44 D1 global-array authority and keeps
+ * its historical transport acknowledgement for its private operational
+ * endpoint.  The Cloudflare-only runtime opts into `global-receipt` below;
+ * that branch is deliberately not selected by a rollout flag.
+ */
+export interface OutboxDrainOptions {
+  readonly acknowledgement?: "transport" | "global-receipt";
 }
 
 export interface DrainResult {
@@ -44,7 +54,7 @@ function isDrainRequest(value: unknown): value is { serviceId: string; tags: str
     value.tags.length > 0 && value.tags.every(isNonEmptyString) && new Set(value.tags).size === value.tags.length;
 }
 
-function identity(message: DownstreamOutboxMessage): OutboxDelivery {
+function identity(message: DownstreamOutboxMessage) {
   return {
     attemptId: message.attemptId,
     eventId: message.eventId,
@@ -57,6 +67,9 @@ function identity(message: DownstreamOutboxMessage): OutboxDelivery {
     causationId: message.causationId,
     correlationId: message.correlationId,
     executedUser: message.executedUser,
+    // Legacy transport acknowledgement still has to present the full G43
+    // source fact because TagDurableObject rejects a lossy identity.
+    completeness: message.completeness,
     enqueuedAt: message.enqueuedAt,
     deliveredAt: null,
   };
@@ -80,14 +93,16 @@ async function tagPost(
 }
 
 /**
- * A row gains its durable enqueuedAt fact before the first send. Only a
- * successful Queue send is followed by the idempotent delivered mark; an
- * interruption in between intentionally replays the same message later.
+ * A row gains its durable enqueuedAt fact before the first send. Queue send
+ * is only transport acceptance: G44 deliberately leaves the source pending
+ * until the receiver has atomically written and read back the global receipt
+ * plus committed-membership join. An interruption therefore replays safely.
  */
 export async function drainTagOutbox(
   input: DrainTagInput,
   env: OutboxDrainEnv,
   clock: PipelineClock = systemPipelineClock,
+  options: OutboxDrainOptions = {},
 ): Promise<DrainResult> {
   // Queue-triggered draining is an explicit retry attempt. The source's
   // `next_attempt_at` controls automatic alarm wakes, but must not suppress a
@@ -100,6 +115,13 @@ export async function drainTagOutbox(
   let delivered = 0;
   for (const row of body.rows) {
     await env.DOWNSTREAM_QUEUE.send(row, { contentType: "json" });
+    if (options.acknowledgement === "global-receipt") {
+      // G44 Queue handoff is only transport acceptance.  The D1 receiver
+      // performs the source acknowledgement after its atomic event,
+      // membership, and receipt join has been read back.
+      delivered += 1;
+      continue;
+    }
     const mark = await tagPost(env, input, "/outbox/mark-delivered", {
       deliveries: [identity(row)],
       nowMs: clock.now(),
@@ -114,7 +136,11 @@ export async function drainTagOutbox(
 }
 
 /** Internal operational trigger; it does not alter any V1 public endpoint. */
-export async function handleOutboxDrainRequest(request: Request, env: OutboxDrainEnv): Promise<Response> {
+export async function handleOutboxDrainRequest(
+  request: Request,
+  env: OutboxDrainEnv,
+  options: OutboxDrainOptions = {},
+): Promise<Response> {
   let body: unknown;
   try {
     body = await request.json<unknown>();
@@ -127,7 +153,7 @@ export async function handleOutboxDrainRequest(request: Request, env: OutboxDrai
   try {
     const results: DrainResult[] = [];
     for (const tag of body.tags) {
-      results.push(await drainTagOutbox({ serviceId: body.serviceId, tag }, env));
+      results.push(await drainTagOutbox({ serviceId: body.serviceId, tag }, env, systemPipelineClock, options));
     }
     return json({ results });
   } catch (error) {

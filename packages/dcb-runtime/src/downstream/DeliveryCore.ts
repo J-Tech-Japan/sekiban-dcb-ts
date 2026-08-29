@@ -5,7 +5,7 @@ import type { DeliverySource, DownstreamOutboxMessage, PipelineClock } from "./t
 import { systemPipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { StoreProviderEnvironment } from "../store/provider";
-import type { PipelineStore, StoredEvent } from "../store/types";
+import type { GlobalReceiptJoin, PipelineStore, StoredEvent } from "../store/types";
 
 export type DeliveryViewFailureClass =
   | "retryable-transient"
@@ -42,7 +42,7 @@ export interface DeliveryViewResult {
 }
 
 export interface DeliveryCoreFailure {
-  readonly phase: "recordDelivery" | "detector" | "view" | "drain";
+  readonly phase: "recordDelivery" | "detector" | "completeness" | "view" | "drain";
   readonly class: DeliveryViewFailureClass | "retryable-transient";
   readonly viewId?: string;
   readonly error: string;
@@ -83,6 +83,38 @@ export interface DeliveryCoreOptions {
     readonly arrivedAt: number;
     readonly source: DeliverySource;
     readonly result: DeliveryCoreResult;
+  }) => Promise<void>;
+  /**
+   * Source acknowledgement is allowed only after D1 has read back an exact
+   * event + committed-membership + receipt join. Queue/doorbell handoff is
+   * intentionally not an acknowledgement authority.
+   */
+  readonly afterGlobalReceipt?: (input: {
+    readonly message: DownstreamOutboxMessage;
+    readonly receipt: GlobalReceiptJoin;
+    readonly arrivedAt: number;
+    readonly source: DeliverySource;
+  }) => Promise<void>;
+  /**
+   * G44's one internal coverage gate.  The receipt remains durable, but a
+   * materialized/live view cannot advance while global completeness is not
+   * proven by a FULL source scan.
+   */
+  readonly beforeViews?: (input: {
+    readonly message: DownstreamOutboxMessage;
+    readonly event: StoredEvent;
+    readonly arrivedAt: number;
+    readonly source: DeliverySource;
+  }) => Promise<void>;
+  /**
+   * G44 records a detector fault before returning. The core still fails
+   * closed even when this observation authority itself is unavailable.
+   */
+  readonly onDetectorFailure?: (input: {
+    readonly message: DownstreamOutboxMessage;
+    readonly arrivedAt: number;
+    readonly source: DeliverySource;
+    readonly error: unknown;
   }) => Promise<void>;
   readonly correlationId?: string;
 }
@@ -208,6 +240,33 @@ export async function processDeliveryCore(
       provenance: outcome.event.provenance ?? resolvedIdentity.provenance,
     };
   const failures: DeliveryCoreFailure[] = [];
+  // G44: D1's atomic batch is followed by an independent join read-back
+  // before a source Tag DO can mark its obligation acknowledged.
+  if (store.readGlobalReceiptJoin !== undefined) {
+    let receipt: GlobalReceiptJoin | undefined;
+    try {
+      receipt = await store.readGlobalReceiptJoin(message);
+      if (receipt === undefined) throw new Error("global receipt/membership join is absent");
+    } catch (error) {
+      failures.push({ phase: "recordDelivery", class: "retryable-transient", error: errorText(error) });
+      return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId, startedAt);
+    }
+    if (options.afterGlobalReceipt !== undefined) {
+      try {
+        await options.afterGlobalReceipt({ message, receipt, arrivedAt, source });
+      } catch (error) {
+        failures.push({ phase: "drain", class: "retryable-transient", error: errorText(error) });
+      }
+    }
+  }
+  if (options.beforeViews !== undefined) {
+    try {
+      await options.beforeViews({ message, event: storedEvent, arrivedAt, source });
+    } catch (error) {
+      failures.push({ phase: "completeness", class: "retryable-transient", error: errorText(error) });
+      return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId, startedAt);
+    }
+  }
   // Normative step 3: detector only for a stored event.
   let detectorApplied = false;
   try {
@@ -216,7 +275,20 @@ export async function processDeliveryCore(
     await detector.observe(message, arrivedAt, lagBound);
     detectorApplied = true;
   } catch (error) {
+    try {
+      await options.onDetectorFailure?.({ message, arrivedAt, source, error });
+    } catch (healthError) {
+      failures.push({
+        phase: "detector",
+        class: "retryable-transient",
+        error: `detector_health_record_failed:${errorText(healthError)}`,
+      });
+    }
     failures.push({ phase: "detector", class: "retryable-transient", error: errorText(error) });
+    // A detector failure makes global completeness unknown. Do not apply a
+    // view after that failure; an earlier version accumulated the error and
+    // then silently continued into views.apply.
+    return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId, startedAt);
   }
 
   const views = options.views ?? [];

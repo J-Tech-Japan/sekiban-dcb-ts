@@ -23,6 +23,8 @@ import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/Serializ
 import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw asset import
 import goldenSource from "../fixtures/suid-allocator-golden.json?raw";
+import { applyG44D1Migration } from "./helpers/g44-d1-migration";
+import { withG44FixtureFacts } from "./helpers/g32-fixtures";
 
 type GoldenFixture = {
   readonly requiredRowIds: readonly string[];
@@ -96,11 +98,12 @@ async function d1(): Promise<D1Database> {
     .map((statement) => statement.trim())
     .filter(Boolean);
   await database.batch(statements.map((statement) => database.prepare(statement)));
+  await applyG44D1Migration(database);
   return database;
 }
 
 function message(overrides: Partial<DownstreamOutboxMessage> = {}): DownstreamOutboxMessage {
-  return {
+  const base: DownstreamOutboxMessage = {
     version: 1,
     serviceId: "g32-parity-service",
     tag: "room:parity",
@@ -117,8 +120,15 @@ function message(overrides: Partial<DownstreamOutboxMessage> = {}): DownstreamOu
     attemptId: "g32-attempt",
     allocatorLineageId: "g32-lineage",
     enqueuedAt: 1_000,
-    ...overrides,
+    completeness: {
+      canonicalBytesBase64: "ZzMyLXBhcml0eQ==",
+      eventDigest: "d".repeat(64),
+      declaredTagSet: ["reservation:parity", "room:parity"],
+      localCommittedMembership: [{ serviceId: "g32-parity-service", eventId, tag: "room:parity" }],
+      obligationSequence: 1,
+    },
   };
+  return { ...base, ...overrides, completeness: overrides.completeness ?? base.completeness };
 }
 
 describe("SDT-G32 C# parity", () => {
@@ -397,7 +407,7 @@ describe("SDT-G32 C# parity", () => {
     });
     await expect(store.recordDelivery(message({ executedUser: "wrong" }), 1_300, "queue")).rejects.toThrow(/metadata/);
 
-    const imported = message({
+    const importedCandidate = message({
       serviceId: "g32-import",
       eventId: "550e8400-e29b-41d4-a716-446655440000",
       suid: formatSortableUniqueId(tick + 1n, 2n),
@@ -405,6 +415,8 @@ describe("SDT-G32 C# parity", () => {
       correlationId: null,
       executedUser: null,
     });
+    const { completeness: importedFacts, ...importedWithoutFacts } = importedCandidate;
+    const imported = withG44FixtureFacts(importedWithoutFacts, importedFacts.obligationSequence);
     await expect(store.recordDelivery(imported, 1_400, "import")).resolves.toMatchObject({ kind: "stored" });
     const importedRow = await database.prepare(
       'SELECT "CausationId" AS causationId, "CorrelationId" AS correlationId, "ExecutedUser" AS executedUser FROM dcb_events WHERE "ServiceId" = ? AND "Id" = ?',
@@ -415,7 +427,7 @@ describe("SDT-G32 C# parity", () => {
     // legitimate six-digit C# UTC fraction. The real D1 import boundary must
     // retain that source spelling rather than accepting only TS milliseconds
     // or an artificial seven-digit representation.
-    const csharpPrecision = message({
+    const csharpPrecisionCandidate = message({
       serviceId: "g32-csharp-six-digit-import",
       suid: formatSortableUniqueId(tick + 2n, 3n),
       timestamp: "2026-08-22T17:00:00.123456Z",
@@ -423,6 +435,8 @@ describe("SDT-G32 C# parity", () => {
       correlationId: null,
       executedUser: null,
     });
+    const { completeness: csharpPrecisionFacts, ...csharpPrecisionWithoutFacts } = csharpPrecisionCandidate;
+    const csharpPrecision = withG44FixtureFacts(csharpPrecisionWithoutFacts, csharpPrecisionFacts.obligationSequence);
     await expect(store.recordDelivery(csharpPrecision, 1_500, "import")).resolves.toMatchObject({ kind: "stored" });
     expect((await database.prepare(
       'SELECT "Timestamp" AS timestamp FROM dcb_events WHERE "ServiceId" = ? AND "Id" = ?',

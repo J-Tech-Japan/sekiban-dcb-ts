@@ -14,6 +14,7 @@ import {
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 import { requireConfiguredServiceId } from "../http/testServiceId";
+import { GlobalCompletenessReconciler, globalReceiptAcknowledgement } from "../completeness/GlobalCompletenessReconciler";
 
 export interface DownstreamAdapterEnv {
   POSTGRES_URL?: string;
@@ -22,12 +23,56 @@ export interface DownstreamAdapterEnv {
   D1?: D1Database;
   REPAIR_EXCLUSION_LOOKUP?: Fetcher;
   BOOTSTRAP?: DurableObjectNamespace;
+  /** Present on the primary/receiver runtime so G44 can acknowledge source. */
+  TAG?: DurableObjectNamespace;
   /** A receiver service-binding entrypoint must never silently skip admission. */
   G38_DOORBELL_DELIVERY_ROLE?: string;
   SDT_SERVICE_ID?: string;
 }
 
 export type AdapterOptions = DeliveryCoreOptions;
+
+function sourceAcknowledgementOptions(env: DownstreamAdapterEnv, options: AdapterOptions): AdapterOptions {
+  // D1 itself is the G44 global-array authority. Do not add a rollout flag:
+  // this is an in-place development schema, not a mixed-version protocol.
+  const hasG44Authority = env.D1 !== undefined && env.TAG !== undefined;
+  const sourceAcknowledgement = options.afterGlobalReceipt !== undefined || !hasG44Authority
+    ? options.afterGlobalReceipt
+    : async ({ message, receipt, arrivedAt }: Parameters<NonNullable<AdapterOptions["afterGlobalReceipt"]>>[0]) => {
+      const tag = env.TAG!.get(env.TAG!.idFromName(`${message.serviceId}|${message.tag}`));
+      const url = new URL("https://downstream.internal/outbox/mark-delivered");
+      url.searchParams.set("__tag", message.tag);
+      url.searchParams.set("__serviceId", message.serviceId);
+      const response = await tag.fetch(new Request(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(globalReceiptAcknowledgement(message, receipt.receivedAt || arrivedAt)),
+      }));
+      if (!response.ok) throw new Error(`source_outbox_receipt_ack_failed:${response.status}`);
+    };
+  const coverage = hasG44Authority
+    ? async ({ message, event, arrivedAt, source }: Parameters<NonNullable<AdapterOptions["beforeViews"]>>[0]) => {
+      await options.beforeViews?.({ message, event, arrivedAt, source });
+      const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt);
+      if (decision.kind !== "SETTLED") {
+        throw new Error(`global_completeness_${decision.kind}:${decision.health.status}`);
+      }
+    }
+    : options.beforeViews;
+  const detectorFailure = hasG44Authority
+    ? async ({ message, arrivedAt, error, source }: Parameters<NonNullable<AdapterOptions["onDetectorFailure"]>>[0]) => {
+      await options.onDetectorFailure?.({ message, arrivedAt, error, source });
+      await new GlobalCompletenessReconciler(env.D1!, env.TAG!).recordDetectorFailure(message.serviceId, error, arrivedAt);
+    }
+    : options.onDetectorFailure;
+  if (sourceAcknowledgement === options.afterGlobalReceipt && coverage === options.beforeViews && detectorFailure === options.onDetectorFailure) return options;
+  return {
+    ...options,
+    ...(sourceAcknowledgement === undefined ? {} : { afterGlobalReceipt: sourceAcknowledgement }),
+    ...(coverage === undefined ? {} : { beforeViews: coverage }),
+    ...(detectorFailure === undefined ? {} : { onDetectorFailure: detectorFailure }),
+  };
+}
 
 function sharedStore(env: DownstreamAdapterEnv, provider: StoreProvider): PipelineStore {
   // The provider creates a request-scoped client. Never retain a client across
@@ -82,7 +127,7 @@ export async function processDownstreamDoorbell(
     throw new Error("Doorbell contained an invalid outbox message");
   }
   await admitBootstrapRoute(env, message.serviceId, "fast");
-  return processDeliveryCore(message, "fast", env, options);
+  return processDeliveryCore(message, "fast", env, sourceAcknowledgementOptions(env, options));
 }
 
 /** Processes one Queue delivery without exposing Queue state to the core. */
@@ -95,7 +140,7 @@ export async function processDownstreamDelivery(
     throw new Error("Downstream Queue contained an invalid outbox message");
   }
   await admitBootstrapRoute(env, message.serviceId, "queue");
-  const outcome = await processDeliveryCore(message, "queue", env, options);
+  const outcome = await processDeliveryCore(message, "queue", env, sourceAcknowledgementOptions(env, options));
   if (outcome.queueDisposition !== "ack") {
     throw new Error(`downstream_delivery_retry:${outcome.correlationId}`);
   }
@@ -128,7 +173,7 @@ export async function handleDownstreamQueue(
       try {
         await admitBootstrapRoute(env, queued.body.serviceId, "queue");
         const outcome = await processDeliveryCore(queued.body, "queue", env, {
-          ...options,
+          ...sourceAcknowledgementOptions(env, options),
           store,
           clock,
         });

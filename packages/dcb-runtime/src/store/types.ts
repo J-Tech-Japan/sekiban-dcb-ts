@@ -43,6 +43,8 @@ export interface StoredEvent {
   executedUser: string | null;
   /** G32 internal provenance; it is never persisted in dcb_events. */
   provenance: EventProvenance;
+  /** G43 source digest retained by the global receipt authority when present. */
+  eventDigest?: string;
   firstArrivedAt: number;
   lastArrivedAt: number;
   maxDeliveryLagMs: number;
@@ -75,6 +77,17 @@ export type DeliveryOutcome =
   | { outcome: "stored"; kind: "stored"; event: StoredEvent }
   | { outcome: "suid-collision"; kind: "suid-collision"; incident: DeliveryIncident }
   | { outcome: "lineage-mismatch"; kind: "lineage-mismatch"; incident: DeliveryIncident };
+
+/** A receipt is useful only when this complete event/membership join matches. */
+export interface GlobalReceiptJoin {
+  readonly serviceId: string;
+  readonly eventId: string;
+  readonly partitionTag: string;
+  readonly obligationSequence: number;
+  readonly eventDigest: string;
+  readonly membershipTag: string;
+  readonly receivedAt: number;
+}
 
 /**
  * A projection checkpoint stores both its opaque projector state and its
@@ -150,6 +163,11 @@ export interface EventStore {
   }>;
   /** Cosmos uses this optional retryable async landing projection. */
   projectDeliveryIncidents?(serviceId?: string): Promise<number>;
+  /**
+   * G44 source acknowledgement must be based on this read-back join, never
+   * on a transport acknowledgement or a receipt row by itself.
+   */
+  readGlobalReceiptJoin?(message: DownstreamOutboxMessage): Promise<GlobalReceiptJoin | undefined>;
 }
 
 /** Detector-only persistence port. It cannot write event rows by construction. */

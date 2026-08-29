@@ -668,6 +668,34 @@ jobs:
             exit 1
           fi
 
+  ci-g44:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - id: node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node-24-${{ hashFiles('package-lock.json', 'package.json') }}
+      - run: npm ci
+        if: steps.node-modules.outputs.cache-hit != 'true'
+      - name: Run SDT-G44 global receipt and source reconciliation lane
+        run: npm run test:g44
+      - name: Prove SDT-G44 forced-red CI reachability
+        run: |
+          if SDT_G44_FORCE_FAILURE=1 npm run test:g44:forced-red; then
+            echo "SDT-G44 forced-red probe unexpectedly passed"
+            exit 1
+          fi
+
   ci-local-e2e:
     runs-on: ubuntu-latest
     env:
@@ -909,7 +937,7 @@ jobs:
   # result into a red required `verify` status.
   verify:
     if: ${{ always() }}
-    needs: [ci-foundation, ci-g28, ci-g21-g25, ci-g26-g27, ci-g29, ci-g31, ci-g32-parity, ci-g30-core, ci-g30-forced-red, ci-g38, ci-g42, ci-g43, ci-local-e2e, cosmos-emulator, ci-coverage]
+    needs: [ci-foundation, ci-g28, ci-g21-g25, ci-g26-g27, ci-g29, ci-g31, ci-g32-parity, ci-g30-core, ci-g30-forced-red, ci-g38, ci-g42, ci-g43, ci-g44, ci-local-e2e, cosmos-emulator, ci-coverage]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
