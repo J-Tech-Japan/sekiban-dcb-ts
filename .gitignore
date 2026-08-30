@@ -1,4 +1,5 @@
 node_modules/
+.intent-cli/
 dist/
 packages/*/dist/
 tools/**/bin/
