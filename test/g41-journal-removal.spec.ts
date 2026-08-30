@@ -1,7 +1,7 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { allocatorNameForService } from "../packages/dcb-runtime/src/allocator/types";
+import { allocatorNameForService, type AllocationVector } from "../packages/dcb-runtime/src/allocator/types";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
 import type { SourceObligationPage } from "../packages/dcb-runtime/src/completeness/types";
@@ -196,7 +196,14 @@ async function tagPost(serviceId: string, tag: string, path: string, body: unkno
 
 async function readTagState(serviceId: string, tag: string): Promise<{
   events: Array<{ eventId: string }>;
-  activeReservation: { attemptId: string; epoch: number; expiresAt: number } | null;
+  activeReservation: {
+    attemptId: string;
+    epoch: number;
+    token: string;
+    expectedHead: string;
+    expiresAt: number;
+  } | null;
+  fences: Array<{ reason: string; attemptId: string; epoch: number }>;
   alarmDueAt: number | null;
 }> {
   const response = await SELF.fetch(tagUrl(serviceId, tag, "/state"));
@@ -225,12 +232,52 @@ async function seedObservedTag(serviceId: string, tag: string, seed: string): Pr
   return (await facts.json<{ head: string }>()).head;
 }
 
+/**
+ * Establishes a pre-existing observed head without fabricating an event,
+ * membership, or obligation.  The actual boundary begins with the two normal
+ * /acquire calls below; this setup only gives both of them a real, matching
+ * durable head to compare against without contaminating the G44 source
+ * partition whose sole row must be the first post-boundary append.
+ */
+async function seedObservedTagHead(
+  serviceId: string,
+  tag: string,
+  seed: string,
+): Promise<string> {
+  // This invokes ensureSqlTag through the real route but deliberately omits
+  // the consistency entry, so it cannot acquire a reservation.
+  const initialized = await tagPost(serviceId, tag, "/acquire", {
+    attemptId: `g41-seed:${seed}`,
+    epoch: 0,
+    eventTags: [tag],
+    consistencyTags: [],
+  });
+  expect(initialized.status).toBe(200);
+  const head = g32Suid(`g41-seed-head:${seed}`);
+  await runInDurableObject(tagStub(serviceId, tag), async (_instance, state) => {
+    const updatedAt = new Date().toISOString();
+    state.storage.sql.exec(
+      "UPDATE tag_control SET head_suid = ?, version = version + 1, updated_at = ? WHERE singleton = 1",
+      head,
+      updatedAt,
+    );
+    state.storage.sql.exec(
+      "UPDATE tag_head SET service_id = ?, head_suid = ? WHERE singleton = 1",
+      serviceId,
+      head,
+    );
+  });
+  const facts = await SELF.fetch(tagUrl(serviceId, tag, "/head-facts"));
+  expect(facts.status).toBe(200);
+  return (await facts.json<{ head: string }>()).head;
+}
+
 async function reserveObservedTag(
   serviceId: string,
   tag: string,
   attemptId: string,
   expectedHead: string,
-): Promise<{ attemptId: string; epoch: number; expiresAt: number }> {
+): Promise<{ attemptId: string; epoch: number; token: string; expectedHead: string; expiresAt: number }> {
   const acquired = await tagPost(serviceId, tag, "/acquire", {
     attemptId,
     epoch: 0,
@@ -238,8 +285,33 @@ async function reserveObservedTag(
     consistencyTags: [{ tag, lastSortableUniqueId: expectedHead }],
   });
   expect(acquired.status).toBe(201);
-  const body = await acquired.json<{ reservation: { attemptId: string; epoch: number; expiresAt: number } }>();
+  const body = await acquired.json<{
+    reservation: { attemptId: string; epoch: number; token: string; expectedHead: string; expiresAt: number };
+  }>();
   return body.reservation;
+}
+
+async function allocateObservedVector(
+  serviceId: string,
+  attemptId: string,
+  eventId: string,
+): Promise<AllocationVector> {
+  const allocated = await allocatorStub(serviceId).fetch(new Request("https://allocator.test/allocate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      attemptId,
+      candidates: [{ candidateIndex: 0, eventId }],
+    }),
+  }));
+  expect(allocated.status).toBe(201);
+  const vector = await allocated.json<AllocationVector>();
+  expect(vector).toMatchObject({
+    attemptId,
+    allocatorLineageId: expect.any(String),
+    candidates: [{ candidateIndex: 0, eventId, suid: expect.any(String) }],
+  });
+  return vector;
 }
 
 async function expireByRealTagAlarm(serviceId: string, tag: string, expiresAt: number): Promise<void> {
@@ -522,31 +594,68 @@ describe("SDT-G41 Journal-free commit path", () => {
     const serviceId = `g41-source-${crypto.randomUUID()}`;
     const writtenTag = "room:g41:source:written";
     const missingTag = "room:g41:source:missing";
+    const attemptId = `g41-boundary-3:${crypto.randomUUID()}`;
+    const eventId = g32EventId(`g41-boundary-3:${attemptId}`);
+    const [writtenHead, missingHead] = await Promise.all([
+      seedObservedTagHead(serviceId, writtenTag, "three-written"),
+      seedObservedTagHead(serviceId, missingTag, "three-missing"),
+    ]);
+    const [writtenReservation, missingReservation] = await Promise.all([
+      reserveObservedTag(serviceId, writtenTag, attemptId, writtenHead),
+      reserveObservedTag(serviceId, missingTag, attemptId, missingHead),
+    ]);
+    expect(writtenReservation).toMatchObject({ attemptId, epoch: 0, expectedHead: writtenHead });
+    expect(missingReservation).toMatchObject({ attemptId, epoch: 0, expectedHead: missingHead });
+    expect(writtenReservation.token).not.toBe(missingReservation.token);
+    const allocated = await allocateObservedVector(serviceId, attemptId, eventId);
+    const allocatedCandidate = allocated.candidates[0]!;
+    const allocationBeforeFirstAppend = await readAllocation(serviceId, attemptId);
+    expect(allocationBeforeFirstAppend.status).toBe(200);
+    expect(await allocationBeforeFirstAppend.json<AllocationVector>()).toEqual(allocated);
     const restoreWritten = await configureD1BackedTag(serviceId, writtenTag);
     const restoreMissing = await configureD1BackedTag(serviceId, missingTag);
     try {
-      const attemptId = `g41-boundary-3:${crypto.randomUUID()}`;
-      const eventId = g32EventId(`g41-boundary-3:${attemptId}`);
-      // Directly seed the exact first-append durable fact: event, local
-      // membership, obligation, and local receipt share appendSql's one
-      // transaction.  The missing partition has no state and no fence; no
-      // CommitWorker remains alive to compensate after this interruption.
+      // This is the exact durable boundary after real reservations and a
+      // durable vector but immediately after only the first real local append.
+      // A matching reservation token makes appendSql atomically confirm the
+      // written reservation; no CommitWorker is left alive to compensate the
+      // missing reservation or to install a post-boundary partial-write fence.
       const response = await tagPost(serviceId, writtenTag, "/append", {
         attemptId,
         epoch: 0,
+        reservationToken: writtenReservation.token,
         candidates: [{
           eventId,
-          suid: g32Suid(`g41-boundary-3:${attemptId}`),
+          suid: allocatedCandidate.suid,
           payload: JSON.stringify({ fixture: "g41-boundary-3" }),
           eventTags: [writtenTag, missingTag],
           eventType: "G41BoundaryThree",
           provenance: "g32",
-          allocatorLineageId: "g41-boundary-3-lineage",
+          allocatorLineageId: allocated.allocatorLineageId,
           timestamp: G32_FIXTURE_TIMESTAMP,
         }],
       });
       expect(response.status).toBe(201);
       await deferDisabledDeliveryRetry(serviceId, writtenTag);
+
+      const [writtenAfterFirstAppend, missingBeforeAlarm] = await Promise.all([
+        readTagState(serviceId, writtenTag),
+        readTagState(serviceId, missingTag),
+      ]);
+      expect(writtenAfterFirstAppend.events.map((event) => event.eventId)).toContain(eventId);
+      expect(writtenAfterFirstAppend.activeReservation).toBeNull();
+      expect(missingBeforeAlarm).toMatchObject({
+        activeReservation: {
+          attemptId,
+          epoch: 0,
+          token: missingReservation.token,
+          expectedHead: missingHead,
+          expiresAt: missingReservation.expiresAt,
+        },
+      });
+      expect(missingBeforeAlarm.alarmDueAt).not.toBeNull();
+      expect(missingBeforeAlarm.events.map((event) => event.eventId)).not.toContain(eventId);
+      expect(missingBeforeAlarm.fences).toEqual([]);
 
       const rows = await sourceRows(serviceId, writtenTag);
       expect(rows).toHaveLength(1);
@@ -557,10 +666,6 @@ describe("SDT-G41 Journal-free commit path", () => {
       });
       expect(rows[0]?.declaredTagSet).toHaveLength(2);
       expect(rows[0]?.localCommittedMembership).toHaveLength(1);
-      const missingState = await SELF.fetch(
-        tagUrl(serviceId, missingTag, "/state"),
-      );
-      expect(missingState.status).toBe(404);
       const delivered = await database().prepare(
         'SELECT COUNT(*) AS count FROM dcb_events WHERE "ServiceId" = ?',
       ).bind(serviceId).first<{ count: number }>();
@@ -569,6 +674,22 @@ describe("SDT-G41 Journal-free commit path", () => {
       ).bind(serviceId).first<{ count: number }>();
       expect(delivered?.count ?? 0).toBe(0);
       expect(receipts?.count ?? 0).toBe(0);
+
+      // This is the real Tag DO alarm body, reached after the interruption;
+      // it clears only the missing reservation without Worker compensation.
+      await expireByRealTagAlarm(serviceId, missingTag, missingReservation.expiresAt);
+      const missingAfterAlarm = await readTagState(serviceId, missingTag);
+      expect(missingAfterAlarm.activeReservation).toBeNull();
+      expect(missingAfterAlarm.alarmDueAt).toBeNull();
+      expect(missingAfterAlarm.events.map((event) => event.eventId)).not.toContain(eventId);
+      expect(missingAfterAlarm.fences).toEqual([]);
+
+      // The allocator's orphan vector is an explicit durable disposition: it
+      // survives the interruption and alarm convergence for allocator-side
+      // reconciliation; neither the test nor CommitWorker deletes it.
+      const orphanVector = await readAllocation(serviceId, attemptId);
+      expect(orphanVector.status).toBe(200);
+      expect(await orphanVector.json<AllocationVector>()).toEqual(allocated);
 
       const reconciler = new GlobalCompletenessReconciler(database(), tags());
       await expect(reconciler.reconcile(serviceId, 41_000)).resolves.toMatchObject({ kind: "BLOCK", findingCount: 1 });
