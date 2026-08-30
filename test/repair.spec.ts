@@ -121,6 +121,76 @@ async function journalPost(attemptId: string, path: string, body: unknown): Prom
   });
 }
 
+/**
+ * G41 deliberately removes Journal creation from a normal CommitWorker
+ * attempt.  RepairWorker still owns the retained Journal workset surface for
+ * already-durable historical records, so this fixture creates one through
+ * that named Journal API after it has observed the real Tag-owned partial
+ * outcome.  It is not a compatibility path or a production migration.
+ */
+async function seedLegacyRepairWorkset(
+  attemptId: string,
+  writtenTag: string,
+  missingTag: string,
+): Promise<void> {
+  const written = await tagState(writtenTag);
+  const events = written.events.filter((event) => event.attemptId === attemptId);
+  expect(events.length).toBeGreaterThan(0);
+  const candidates = events.map((event) => ({
+    eventId: event.eventId,
+    payload: event.payload,
+    eventType: event.eventType,
+    timestamp: event.timestamp,
+    tags: [writtenTag, missingTag],
+  }));
+  const admitted = await journalPost(attemptId, "/admit", {
+    candidates,
+    consistencyTags: [],
+    commitContext: {
+      attemptId,
+      serviceId: SERVICE_ID,
+      allocatorLineageId: events[0]!.allocatorLineageId,
+    },
+  });
+  expect(admitted.status).toBe(201);
+
+  let record = await journalState(attemptId);
+  for (const nextState of ["ALLOCATED", "WRITING"] as const) {
+    const transitioned = await journalPost(attemptId, "/transition", {
+      expectedState: record.state,
+      expectedVersion: record.version,
+      expectedOwnerEpoch: record.ownerEpoch,
+      nextState,
+      allocatorLineageId: events[0]!.allocatorLineageId,
+    });
+    expect(transitioned.status).toBe(200);
+    record = await responseJson<JournalRecord>(transitioned);
+  }
+  const sealing = await journalPost(attemptId, "/reconcile", {
+    expectedState: record.state,
+    expectedVersion: record.version,
+    expectedOwnerEpoch: record.ownerEpoch,
+    reconciliation: {
+      allocatorVector: events.map((event) => event.suid),
+      records: [],
+      failureCause: "write-failure",
+    },
+  });
+  expect(sealing.status).toBe(200);
+  expect((await responseJson<JournalRecord>(sealing)).state).toBe("SEALING");
+  // The retained legacy Journal alarm may have begun its recovery between
+  // the explicit reconcile and this fixture's first debug wake. Retry the
+  // idempotent named recovery surface exactly as its historical caller did.
+  let recoveredRecord: JournalRecord | undefined;
+  for (let wake = 0; wake < 3; wake += 1) {
+    const recovered = await journalPost(attemptId, "/debug/alarm", {});
+    expect(recovered.status).toBe(200);
+    recoveredRecord = await responseJson<JournalRecord>(recovered);
+    if (recoveredRecord.state === "PARTIAL") return;
+  }
+  throw new Error(`legacy repair workset did not converge: ${JSON.stringify(recoveredRecord)}`);
+}
+
 async function operator(
   body: unknown,
   options: { fault?: string; envOverride?: OperatorRepairEnv } = {},
@@ -186,6 +256,7 @@ async function partialAttempt(prefix: string, options: { headAhead?: boolean; ca
   const body = await responseJson<{ code: string; partial: { missingTags: string[] } }>(response);
   expect(body.code).toBe("partial_write");
   expect(body.partial.missingTags).toEqual([missingTag]);
+  await seedLegacyRepairWorkset(attemptId, writtenTag, missingTag);
   return { attemptId, missingTag, writtenTag };
 }
 

@@ -1,8 +1,7 @@
 import { allocatorNameForService, type AllocationVector } from "../allocator/types";
-import type { ConsistencyTag, JournalRecord, ReconciliationFailureCause } from "../journal/types";
+import type { ConsistencyTag, ReconciliationFailureCause } from "../journal/types";
 import {
   durationSince,
-  mapTerminalCommitOutcome,
   type CompleteCommitResponse,
   type TagWriteResultResponse,
 } from "../http/commitResponse";
@@ -17,7 +16,7 @@ import type { DeliveryClass } from "../downstream/Doorbell";
 import { canonicalEventType } from "../eventIdentity";
 import { createUuidV7, serializedEventMetadata, writeTimestampUtc } from "../eventRecord";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
-import type { TagHeadFacts } from "../tag/types";
+import { PARTIAL_WRITE_FENCE_REASON, type TagHeadFacts } from "../tag/types";
 import {
   beginWorkerInvocationObservation,
   CommitTrace,
@@ -35,20 +34,15 @@ const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
 const OUTCOME_UNDETERMINED_ERROR =
   "Commit outcome is undetermined; reread tag heads and event/query state before retrying because blind retry may create duplicate events.";
-const JOURNAL_TRANSITION_TRACE: Readonly<Partial<Record<JournalRecord["state"], { readonly rowId: "S05a" | "S05b" | "S05c" | "S05d" | "S05e"; readonly phaseOrdinal: number }>>> = {
-  RESERVED: { rowId: "S05a", phaseOrdinal: 0 },
-  ALLOCATED: { rowId: "S05b", phaseOrdinal: 1 },
-  WRITING: { rowId: "S05c", phaseOrdinal: 2 },
-  COMPLETE: { rowId: "S05d", phaseOrdinal: 3 },
-  REFUSED: { rowId: "S05e", phaseOrdinal: 4 },
-  FAILED: { rowId: "S05e", phaseOrdinal: 4 },
-};
-
 type JsonObject = Record<string, unknown>;
 
 export interface CommitWorkerEnv {
   ALLOCATOR: DurableObjectNamespace;
-  JOURNAL: DurableObjectNamespace;
+  /**
+   * Retained for the G42 probe and RepairWorker routes.  CommitWorker must
+   * never resolve this namespace after G41: tags own prepare/commit facts.
+   */
+  JOURNAL?: DurableObjectNamespace;
   TAG: DurableObjectNamespace;
   /** Service-scoped bootstrap authority. Optional keeps pre-G21 unit harnesses compatible. */
   BOOTSTRAP?: DurableObjectNamespace;
@@ -95,6 +89,11 @@ interface ReservationFailure {
 interface ReservationAttempt {
   successes: Map<string, ReservationSuccess>;
   failure?: ReservationFailure;
+}
+
+interface AppendAttempt {
+  readonly committedTags: ReadonlySet<string>;
+  readonly pendingTags: readonly string[];
 }
 
 interface CommitTraceRequestState {
@@ -501,52 +500,17 @@ export class CommitWorker {
     if ((await this.bootstrapCommand("release", attemptId, bootstrapEpoch, traceState?.scope, "S03")) === undefined) {
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap admission could not be released"), attemptId, fault !== undefined);
     }
-    try {
-    const journal = this.journalFor(attemptId);
-    // Journal admission and tag reservation are independent rounds. Start
-    // both before waiting for either response so the successful path overlaps
-    // S04 with S06/S07. No allocation or append can start until a durable
-    // RESERVED transition and every acquire have both settled. A crash before
-    // Journal durability leaves only the Tag's bounded reservation lease; a
-    // rejected admission actively tombstones every observed lease below.
-    const admission = this.postJson<JournalRecord>(journal, "/admit", {
-      candidates: candidates.map(({ eventId, payload, eventType, tags, timestamp }) => ({ eventId, payload, eventType, tags, timestamp })),
-      consistencyTags: input.consistencyTags,
-      commitContext: {
-        attemptId,
-        serviceId: this.serviceId,
-        ...(fault === "fence-not-durable" ? { testFenceNotDurable: true } : {}),
-        ...(fault === "fence-install-partial" ? { testFenceInstallFaultOnce: true } : {}),
-      },
-    }, traceState?.scope, "S04");
-    const reservationAttempt = this.acquireReservations(input, attemptId, fault, traceState?.scope);
-    const admitted = await admission;
-    if (admitted.response.status !== 201 || admitted.body === undefined) {
-      const reservations = await reservationAttempt;
-      if (reservations.successes.size > 0 && !await this.cancelReservations(
-        input.consistencyTags,
-        attemptId,
-        fault,
-        traceState?.scope,
-      )) {
-        return this.noApplicationOutcome(attemptId, fault !== undefined);
-      }
-      return responseWithAttempt(error(500, "internal_error", "Commit Journal admission failed"), attemptId, fault !== undefined);
-    }
-
-    // RESERVED means that the reservation phase is now durable. It permits a
-    // pre-allocation REFUSED/FAILED only after the cancel barrier completes.
-    const reserved = await this.transition(journal, admitted.body, "RESERVED", undefined, undefined, traceState?.scope);
-    if (reserved === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-
-    const reservations = await reservationAttempt;
+    // G41: there is no attempt-level Journal admission or state machine on
+    // this path.  A tag reservation is the durable prepare fact and every
+    // tag's local append transaction is the commit fact.  The retained S04 /
+    // S05 trace identities are compatibility observations only; they cannot
+    // resolve JOURNAL and are removed from the actual dependency path.
+    await this.retiredJournalMilestone("S04", traceState?.scope);
+    const reservations = await this.acquireReservations(input, attemptId, fault, traceState?.scope);
+    await this.retiredJournalMilestone("S05a", traceState?.scope, 0);
     if (reservations.failure !== undefined) {
       return this.finishReservationFailure(
-        journal,
-        reserved,
-        input.consistencyTags,
+        [...reservations.successes.keys()],
         attemptId,
         reservations.failure,
         fault,
@@ -554,13 +518,19 @@ export class CommitWorker {
       );
     }
 
+    if (fault === "after-reservations-before-allocation") {
+      // Boundary 1: every durable prepare fact is force-tombstoned before
+      // returning the intentionally undetermined outcome.  There is no
+      // attempt-level Journal recovery record to make this safe later.
+      await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
+      return this.noApplicationOutcome(attemptId, true);
+    }
+
     await this.hooks.beforeBootstrapAllocation?.();
     const allocation = await this.allocate(candidates, attemptId, fault, bootstrapEpoch, traceState?.scope);
     if (allocation === undefined) {
       return this.finishReservationFailure(
-        journal,
-        reserved,
-        input.consistencyTags,
+        [...reservations.successes.keys()],
         attemptId,
         {
           outcome: "FAILED",
@@ -573,30 +543,29 @@ export class CommitWorker {
     }
     const allocatedCandidates = this.withAllocatedSuids(candidates, allocation);
     if (allocatedCandidates === undefined) {
+      await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
+    await this.retiredJournalMilestone("S05b", traceState?.scope, 1);
     if (fault === "journal-cas-after-allocator") {
+      // This retained fault marks the allocation-to-first-append crash
+      // boundary.  With no Journal alarm, tags receive the same best-effort
+      // tombstone barrier immediately and retain their own expiry alarm.
+      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
       return this.noApplicationOutcome(attemptId, true);
     }
 
-    const allocated = await this.transition(journal, reserved, "ALLOCATED", undefined, allocation.allocatorLineageId, traceState?.scope);
-    if (allocated === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-    const writing = await this.transition(journal, allocated, "WRITING", undefined, undefined, traceState?.scope);
-    if (writing === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-
+    await this.retiredJournalMilestone("S05c", traceState?.scope, 2);
     await this.hooks.beforeBootstrapFinalization?.();
 
     // This is immediately before the first final authoritative tag mutation.
     // The same service epoch obtained at admission must still be current.
     if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch, traceState?.scope, "S10")) === undefined) {
+      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap fencing epoch changed before commit write"), attemptId, fault !== undefined);
     }
 
-    const writesSucceeded = await this.appendAllTags(
+    const writes = await this.appendAllTags(
       input,
       allocatedCandidates,
       attemptId,
@@ -605,13 +574,25 @@ export class CommitWorker {
       fault,
       traceState?.scope,
     );
-    if (!writesSucceeded) {
-      return this.handoffToAlarm(journal, writing, allocation, attemptId, fault, traceState?.scope);
+    if (writes.pendingTags.length > 0) {
+      // Cancel is deliberately best effort: a cancellation error cannot
+      // replace the primary partial-write outcome or delete a committed row.
+      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      // A missing participant must retain a tag-local, durable partial fact.
+      // This is the direct replacement for Journal reconciliation's
+      // /fence/install loop: G44 can discover the incomplete source universe
+      // without a delivery, and G45/G46 retain a readable fenced frontier.
+      if (!await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope)) {
+        return this.noApplicationOutcome(attemptId, true);
+      }
+      return this.partialWriteOutcome(input, allocatedCandidates, writes, attemptId, fault !== undefined);
     }
-
-    const complete = await this.transition(journal, writing, "COMPLETE", undefined, undefined, traceState?.scope);
-    if (complete === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+    await this.retiredJournalMilestone("S05d", traceState?.scope, 3);
+    if (fault === "sealing-after-cas") {
+      // The all-tags-written/response-lost boundary has no single terminal
+      // Journal response.  Durable tag receipts and G44 reconciliation are
+      // now the detection authority.
+      return this.noApplicationOutcome(attemptId, true);
     }
     try {
       const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault, traceState?.scope);
@@ -623,15 +604,26 @@ export class CommitWorker {
         fault !== undefined,
       );
     }
-    } finally { /* the entry admission was deliberately released above */ }
-  }
-
-  private journalFor(attemptId: string): DurableObjectStub {
-    return this.env.JOURNAL.get(this.env.JOURNAL.idFromName(attemptId));
   }
 
   private tagFor(tag: string): DurableObjectStub {
     return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
+  }
+
+  /**
+   * `sdt.commit/v1` still has the historical S04/S05 row identities in its
+   * separately-owned G30 manifest.  G41 keeps those observations zero-work
+   * until that trace schema is revised by its owner, while proving that they
+   * cannot perform a JOURNAL namespace operation.  These spans are not a
+   * substitute for a Journal record or terminal-outcome authority.
+   */
+  private async retiredJournalMilestone(
+    rowId: "S04" | "S05a" | "S05b" | "S05c" | "S05d" | "S05e",
+    traceScope?: CommitTraceScope,
+    phaseOrdinal?: number,
+  ): Promise<void> {
+    if (traceScope === undefined) return;
+    await traceScope.span(rowId, phaseOrdinal === undefined ? {} : { phaseOrdinal }, async () => undefined);
   }
 
   private async bootstrapCommand(
@@ -710,26 +702,6 @@ export class CommitWorker {
     return traceScope === undefined || rowId === undefined
       ? invoke()
       : traceScope.span(rowId, { tag, ...traceOptions }, invoke);
-  }
-
-  private async transition(
-    journal: DurableObjectStub,
-    record: JournalRecord,
-    nextState: JournalRecord["state"],
-    terminalReason?: string,
-    allocatorLineageId?: string,
-    traceScope?: CommitTraceScope,
-  ): Promise<JournalRecord | undefined> {
-    const trace = JOURNAL_TRANSITION_TRACE[nextState];
-    const result = await this.postJson<JournalRecord>(journal, "/transition", {
-      expectedState: record.state,
-      expectedVersion: record.version,
-      expectedOwnerEpoch: record.ownerEpoch,
-      nextState,
-      terminalReason,
-      ...(allocatorLineageId === undefined ? {} : { allocatorLineageId }),
-    }, traceScope, trace?.rowId, trace === undefined ? {} : { phaseOrdinal: trace.phaseOrdinal });
-    return result.response.status === 200 ? result.body : undefined;
   }
 
   private async acquireReservations(
@@ -872,8 +844,9 @@ export class CommitWorker {
     reservations: Map<string, ReservationSuccess>,
     fault: CommitTestFault | undefined,
     traceScope?: CommitTraceScope,
-  ): Promise<boolean> {
+  ): Promise<AppendAttempt> {
     let pending = [...input.allTags];
+    const committedTags = new Set<string>();
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS && pending.length > 0; attempt += 1) {
       const append = (stageScope?: CommitTraceScope) => Promise.allSettled(
         pending.map(async (tag) => {
@@ -912,51 +885,18 @@ export class CommitWorker {
       const results = traceScope === undefined
         ? await append()
         : await traceScope.span("S11", { retryIndex: attempt }, async (stage) => append(stage));
-      pending = results.flatMap((result, index) =>
-        result.status === "fulfilled" && result.value.success ? [] : [pending[index]!],
-      );
-    }
-    return pending.length === 0;
-  }
-
-  private async handoffToAlarm(
-    journal: DurableObjectStub,
-    writing: JournalRecord,
-    allocation: AllocationVector,
-    attemptId: string,
-    fault: CommitTestFault | undefined,
-    traceScope?: CommitTraceScope,
-  ): Promise<Response> {
-    const sealing = await this.postJson<JournalRecord>(journal, "/reconcile", {
-      expectedState: writing.state,
-      expectedVersion: writing.version,
-      expectedOwnerEpoch: writing.ownerEpoch,
-      reconciliation: {
-        allocatorVector: allocation.candidates.map((candidate) => candidate.suid),
-        records: [],
-        failureCause: "write-failure",
-      },
-    }, traceScope, "S20");
-    if (sealing.response.status !== 200 || sealing.body?.state !== "SEALING") {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-    if (fault === "sealing-after-cas") {
-      return this.noApplicationOutcome(attemptId, true);
-    }
-
-    // The state transition itself sets an immediate durable alarm. Triggering
-    // the same handler here only allows a still-live HTTP request to return a
-    // terminal §7 report; it never lets the worker choose that outcome.
-    for (let wake = 0; wake < 3; wake += 1) {
-      const recovered = await this.postJson<JournalRecord>(journal, "/debug/alarm", {});
-      if (recovered.response.status === 200 && recovered.body !== undefined) {
-        const mapped = mapTerminalCommitOutcome(recovered.body);
-        if (mapped !== undefined) {
-          return responseWithAttempt(json(mapped.body, mapped.status), attemptId, fault !== undefined);
+      const nextPending: string[] = [];
+      for (const [index, result] of results.entries()) {
+        const tag = pending[index]!;
+        if (result.status === "fulfilled" && result.value.success) {
+          committedTags.add(tag);
+        } else {
+          nextPending.push(tag);
         }
       }
+      pending = nextPending;
     }
-    return this.noApplicationOutcome(attemptId, fault !== undefined);
+    return { committedTags, pendingTags: pending };
   }
 
   /**
@@ -966,13 +906,13 @@ export class CommitWorker {
    * Journal record to perform this cleanup on the caller's behalf.
    */
   private async cancelReservations(
-    consistencyTags: ConsistencyTag[],
+    tags: readonly string[],
     attemptId: string,
     fault: CommitTestFault | undefined,
     traceScope?: CommitTraceScope,
-  ): Promise<boolean> {
+  ): Promise<Readonly<{ readonly attemptedTags: readonly string[]; readonly failedTags: readonly string[] }>> {
     const cancel = (stageScope?: CommitTraceScope) => Promise.allSettled(
-      consistencyTags.map(async ({ tag }, memberIndex) => {
+      tags.map(async (tag, memberIndex) => {
         const response = await this.tagRequest(tag, "/cancel", {
           attemptId,
           epoch: INITIAL_OWNER_EPOCH,
@@ -984,43 +924,91 @@ export class CommitWorker {
     const cancelled = traceScope === undefined
       ? await cancel()
       : await traceScope.span("S18", {}, async (stage) => cancel(stage));
-    if (!cancelled.every((result) => result.status === "fulfilled" && result.value)) {
-      return false;
+    const failedTags = cancelled.flatMap((result, index) =>
+      result.status === "fulfilled" && result.value ? [] : [tags[index]!],
+    );
+    // A test-only fault models an acknowledgement loss after the target
+    // performed its durable tombstone write.  Either way, cancellation is
+    // never allowed to replace the primary prepare/commit result.
+    if (fault === "tombstone-after-durable" && tags.length > 0 && !failedTags.includes(tags[0]!)) {
+      failedTags.push(tags[0]!);
     }
-    return fault !== "tombstone-after-durable";
+    return Object.freeze({ attemptedTags: [...tags], failedTags });
   }
 
   private async finishReservationFailure(
-    journal: DurableObjectStub,
-    reserved: JournalRecord,
-    consistencyTags: ConsistencyTag[],
+    tags: readonly string[],
     attemptId: string,
     failure: ReservationFailure,
     fault: CommitTestFault | undefined,
     traceScope?: CommitTraceScope,
   ): Promise<Response> {
-    const classified = await this.postJson<JournalRecord>(journal, "/reservation-failure", {
-      expectedState: reserved.state,
-      expectedVersion: reserved.version,
-      expectedOwnerEpoch: reserved.ownerEpoch,
-      outcome: failure.outcome,
-      failureCause: failure.failureCause,
-      reason: failure.reason,
-    }, traceScope, "S17");
-    if (classified.response.status !== 200 || classified.body === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
+    if (traceScope !== undefined) {
+      await traceScope.span("S17", {}, async () => undefined);
     }
-    if (!await this.cancelReservations(consistencyTags, attemptId, fault, traceScope)) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-    const terminal = await this.transition(journal, classified.body, failure.outcome, failure.reason, undefined, traceScope);
-    if (terminal === undefined) {
-      return this.noApplicationOutcome(attemptId, fault !== undefined);
-    }
-    const mapped = mapTerminalCommitOutcome(terminal);
-    return mapped === undefined
-      ? this.noApplicationOutcome(attemptId, fault !== undefined)
-      : responseWithAttempt(json(mapped.body, mapped.status), attemptId, fault !== undefined);
+    await this.cancelReservations(tags, attemptId, fault, traceScope);
+    await this.retiredJournalMilestone("S05e", traceScope, 4);
+    const response = failure.outcome === "REFUSED"
+      ? error(400, "consistency_conflict", "serialized commit was refused by a consistency reservation")
+      : failure.failureCause === "reservation-timeout"
+        ? error(504, "timeout", "serialized commit timed out")
+        : error(500, "internal_error", "serialized commit failed before writing requested records");
+    return responseWithAttempt(response, attemptId, fault !== undefined);
+  }
+
+  /**
+   * Persist the local partial-write fact for each tag whose append did not
+   * commit.  This is not a response decoration: the Tag DO's fence is the
+   * source-side authority used by read and repair/reconciliation seams.
+   */
+  private async installPartialWriteFences(
+    tags: readonly string[],
+    attemptId: string,
+    traceScope?: CommitTraceScope,
+  ): Promise<boolean> {
+    const install = (stageScope?: CommitTraceScope) => Promise.allSettled(
+      tags.map(async (tag) => {
+        const response = await this.tagRequest(tag, "/fence/install", {
+          attemptId,
+          epoch: INITIAL_OWNER_EPOCH,
+          reason: PARTIAL_WRITE_FENCE_REASON,
+        }, stageScope?.fork());
+        return response.status >= 200 && response.status < 300;
+      }),
+    );
+    // S20 remains the frozen G30 observation boundary, but now covers the
+    // actual tag-owned partial-fact transition rather than a Journal handoff.
+    const installed = traceScope === undefined
+      ? await install()
+      : await traceScope.span("S20", {}, async (stage) => install(stage));
+    return installed.every((result) => result.status === "fulfilled" && result.value);
+  }
+
+  private async partialWriteOutcome(
+    input: ValidatedCommitEnvelope,
+    candidates: readonly AllocatedCommitCandidate[],
+    writes: AppendAttempt,
+    attemptId: string,
+    exposeAttempt: boolean,
+  ): Promise<Response> {
+    const writtenEventIds = candidates
+      .filter((candidate) => candidate.tags.some((tag) => writes.committedTags.has(tag)))
+      .map((candidate) => candidate.eventId);
+    const failedEventIds = candidates
+      .filter((candidate) => !writtenEventIds.includes(candidate.eventId))
+      .map((candidate) => candidate.eventId);
+    return responseWithAttempt(json({
+      error: "serialized commit partially failed",
+      code: "partial_write",
+      partial: {
+        writtenEventIds,
+        failedEventIds,
+        writtenTags: input.allTags.filter((tag) => writes.committedTags.has(tag)),
+        missingTags: [...writes.pendingTags],
+        eventsDeleted: false,
+        retryable: false,
+      },
+    }, 500), attemptId, exposeAttempt);
   }
 
   private async successResponse(
@@ -1062,7 +1050,7 @@ export class CommitWorker {
     };
   }
 
-  /** The request lifetime ended before the Journal made an authoritative outcome durable. */
+  /** The response was lost after tag-local facts may already be authoritative. */
   private noApplicationOutcome(attemptId: string, exposeAttempt: boolean): Response {
     return responseWithAttempt(error(504, "timeout", OUTCOME_UNDETERMINED_ERROR), attemptId, exposeAttempt);
   }

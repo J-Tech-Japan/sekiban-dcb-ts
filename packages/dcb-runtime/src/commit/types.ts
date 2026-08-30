@@ -27,6 +27,7 @@ export interface AllocatedCommitCandidate extends SerializedCommitCandidate {
  */
 export type CommitTestFault =
   | "reservation-delayed-success"
+  | "after-reservations-before-allocation"
   | "allocator-commit"
   | "journal-cas-after-allocator"
   | "tag-append-always"
@@ -39,6 +40,7 @@ export type CommitTestFault =
 
 export const COMMIT_TEST_FAULTS: readonly CommitTestFault[] = [
   "reservation-delayed-success",
+  "after-reservations-before-allocation",
   "allocator-commit",
   "journal-cas-after-allocator",
   "tag-append-always",

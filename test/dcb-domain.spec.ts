@@ -679,7 +679,9 @@ describe("SDT-G28 authoring surface", () => {
     );
 
     expect(outcome).toMatchObject({ kind: "committed" });
-    expect(paths).toContain("/admit");
+    // G41 keeps the authored command on the real CommitWorker path while
+    // proving that the command no longer resolves the retired JOURNAL saga.
+    expect(paths).not.toContain("/admit");
     // The first write has no observed tag head. G32 omits that claim instead
     // of sending an empty-SUID reservation, so acquire is intentionally not
     // invoked before the initial append.

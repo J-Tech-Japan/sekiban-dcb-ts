@@ -79,7 +79,7 @@ async function expectAdmissionReject(payload: string, code: string): Promise<voi
   expect(calls).toEqual({ allocator: 0, journal: 0, tag: 0 });
 }
 
-async function captureActualCommitAdmissionPayload(payload: string): Promise<{ readonly payload: string; readonly calls: Calls }> {
+async function captureActualCommitTagPayload(payload: string): Promise<{ readonly payload: string; readonly calls: Calls }> {
   const calls: Calls = { allocator: 0, journal: 0, tag: 0 };
   let captured: string | undefined;
   const namespace = (kind: keyof Calls): DurableObjectNamespace => ({
@@ -87,13 +87,31 @@ async function captureActualCommitAdmissionPayload(payload: string): Promise<{ r
     get: () => ({
       fetch: async (request: Request) => {
         calls[kind] += 1;
-        if (kind === "journal" && new URL(request.url).pathname === "/admit") {
+        const path = new URL(request.url).pathname;
+        if (kind === "allocator" && path === "/allocate") {
+          const body = await request.json() as { readonly candidates?: readonly { readonly candidateIndex?: number; readonly eventId?: string }[] };
+          return new Response(JSON.stringify({
+            attemptId: "g32-payload-attempt",
+            allocatorLineageId: "g32-payload-lineage",
+            candidates: body.candidates?.map((candidate, index) => ({
+              candidateIndex: candidate.candidateIndex ?? index,
+              eventId: candidate.eventId,
+              suid: `0638915000000000000000000000${String(index).padStart(2, "0")}`,
+            })),
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        }
+        if (kind === "tag" && path === "/append") {
           const body = await request.json() as { readonly candidates?: readonly { readonly payload?: unknown }[] };
           captured = body.candidates?.[0]?.payload as string | undefined;
+          // A partial outcome stops before any event can be reported as
+          // committed. The following fence call is the real tag-owned
+          // failure transition and must succeed for the worker to return its
+          // typed partial outcome.
+          return new Response(JSON.stringify({ code: "fixture_append_failure" }), { status: 500, headers: { "content-type": "application/json" } });
         }
-        // The fake deliberately stops immediately after the real CommitWorker
-        // has assembled its journal admission. No allocator/tag/outbox work
-        // can occur before this first authoritative payload hand-off.
+        if (kind === "tag" && path === "/fence/install") {
+          return new Response(JSON.stringify({ status: "fence-installed" }), { status: 201, headers: { "content-type": "application/json" } });
+        }
         return new Response(JSON.stringify({ code: "fixture_stop" }), { status: 500, headers: { "content-type": "application/json" } });
       },
     }) as unknown as DurableObjectStub,
@@ -113,7 +131,7 @@ async function captureActualCommitAdmissionPayload(payload: string): Promise<{ r
     }),
   }));
   expect(response.status).toBe(500);
-  if (captured === undefined) throw new Error("actual CommitWorker did not reach Journal admission payload hand-off");
+  if (captured === undefined) throw new Error("actual CommitWorker did not reach Tag append payload hand-off");
   return { payload: captured, calls };
 }
 
@@ -165,8 +183,11 @@ describe("SDT-G32 commit payload admission", () => {
     }, { RoomReserved: permissiveRegisteredShape });
     expect("value" in validated).toBe(true);
     expect("value" in rawValidated && rawValidated.value.eventCandidates[0]?.payload).toBe(payload);
-    const actual = await captureActualCommitAdmissionPayload(btoa(rawBinary));
+    const actual = await captureActualCommitTagPayload(btoa(rawBinary));
     expect(actual.payload).toBe(payload);
-    expect(actual.calls).toEqual({ allocator: 0, journal: 1, tag: 0 });
+    // The tag append has the established two-attempt retry budget, followed
+    // by one local partial-fence attempt per failed write; no Journal path is
+    // involved in either stage.
+    expect(actual.calls).toEqual({ allocator: 1, journal: 0, tag: 4 });
   });
 });
