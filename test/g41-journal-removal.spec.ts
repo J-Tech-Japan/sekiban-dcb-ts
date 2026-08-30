@@ -168,12 +168,26 @@ function tagStub(serviceId: string, tag: string): DurableObjectStub {
   return tags().get(tags().idFromName(`${serviceId}|${tag}`));
 }
 
-async function configureD1BackedTag(serviceId: string, tag: string): Promise<void> {
+async function configureD1BackedTag(serviceId: string, tag: string): Promise<() => Promise<void>> {
+  let previousD1: D1Database | undefined;
+  let previousAutoDrain: string | undefined;
   await runInDurableObject(tagStub(serviceId, tag), (instance) => {
     const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+    previousD1 = runtime.env.D1;
+    previousAutoDrain = runtime.env.AUTO_DRAIN_OUTBOX;
     runtime.env.D1 = database();
     runtime.env.AUTO_DRAIN_OUTBOX = "false";
   });
+  // Miniflare may share a binding object between DO instances in a worker
+  // isolate. Restore this fixture-only override so a zero-delivery G41 case
+  // cannot alter another file's independent scheduler test.
+  return async () => {
+    await runInDurableObject(tagStub(serviceId, tag), (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = previousD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = previousAutoDrain;
+    });
+  };
 }
 
 /**
@@ -388,56 +402,60 @@ describe("SDT-G41 Journal-free commit path", () => {
     const serviceId = `g41-source-${crypto.randomUUID()}`;
     const writtenTag = "room:g41:source:written";
     const missingTag = "room:g41:source:missing";
-    await configureD1BackedTag(serviceId, writtenTag);
-    await configureD1BackedTag(serviceId, missingTag);
+    const restoreWritten = await configureD1BackedTag(serviceId, writtenTag);
+    const restoreMissing = await configureD1BackedTag(serviceId, missingTag);
+    try {
+      const worker = new CommitWorker(env as unknown as CommitWorkerEnv, serviceId);
+      const response = await worker.handle(request([writtenTag, missingTag], [], "tag-append-last"));
+      expect(response.status).toBe(500);
+      await deferDisabledDeliveryRetry(serviceId, writtenTag);
+      const attemptId = response.headers.get("x-sdt-g4-attempt-id");
+      expect(attemptId).not.toBeNull();
+      expect(await response.json()).toMatchObject({
+        code: "partial_write",
+        partial: { writtenTags: [writtenTag], missingTags: [missingTag], eventsDeleted: false },
+      });
 
-    const worker = new CommitWorker(env as unknown as CommitWorkerEnv, serviceId);
-    const response = await worker.handle(request([writtenTag, missingTag], [], "tag-append-last"));
-    expect(response.status).toBe(500);
-    await deferDisabledDeliveryRetry(serviceId, writtenTag);
-    const attemptId = response.headers.get("x-sdt-g4-attempt-id");
-    expect(attemptId).not.toBeNull();
-    expect(await response.json()).toMatchObject({
-      code: "partial_write",
-      partial: { writtenTags: [writtenTag], missingTags: [missingTag], eventsDeleted: false },
-    });
+      const rows = await sourceRows(serviceId, writtenTag);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        declaredTagSet: [missingTag, writtenTag].sort(),
+        localCommittedMembership: [{ serviceId, tag: writtenTag }],
+        status: "pending",
+      });
+      expect(rows[0]?.declaredTagSet).toHaveLength(2);
+      expect(rows[0]?.localCommittedMembership).toHaveLength(1);
+      // `appendSql` only reports its committed source obligation after its
+      // single scheduler re-arm succeeds. Its first retry is immediately due,
+      // so Miniflare is allowed to consume the alarm before this assertion can
+      // observe it; the durable pending obligation is the non-racy scheduler
+      // authority. G43 separately proves the one-alarm min/re-arm behavior.
+      const missingState = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(missingTag)}/state`,
+      );
+      expect(missingState.status).toBe(200);
+      expect(await missingState.json<{ events: unknown[]; fences: Array<{ reason: string; attemptId: string; epoch: number }> }>()).toMatchObject({
+        events: [],
+        fences: [{ reason: "partial_write", attemptId: attemptId!, epoch: 0 }],
+      });
+      const delivered = await database().prepare(
+        'SELECT COUNT(*) AS count FROM dcb_events WHERE "ServiceId" = ?',
+      ).bind(serviceId).first<{ count: number }>();
+      const receipts = await database().prepare(
+        "SELECT COUNT(*) AS count FROM serialized_dcb_global_receipts WHERE service_id = ?",
+      ).bind(serviceId).first<{ count: number }>();
+      expect(delivered?.count ?? 0).toBe(0);
+      expect(receipts?.count ?? 0).toBe(0);
 
-    const rows = await sourceRows(serviceId, writtenTag);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      declaredTagSet: [missingTag, writtenTag].sort(),
-      localCommittedMembership: [{ serviceId, tag: writtenTag }],
-      status: "pending",
-    });
-    expect(rows[0]?.declaredTagSet).toHaveLength(2);
-    expect(rows[0]?.localCommittedMembership).toHaveLength(1);
-    // `appendSql` only reports its committed source obligation after its
-    // single scheduler re-arm succeeds. Its first retry is immediately due,
-    // so Miniflare is allowed to consume the alarm before this assertion can
-    // observe it; the durable pending obligation is the non-racy scheduler
-    // authority. G43 separately proves the one-alarm min/re-arm behavior.
-    const missingState = await SELF.fetch(
-      `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(missingTag)}/state`,
-    );
-    expect(missingState.status).toBe(200);
-    expect(await missingState.json<{ events: unknown[]; fences: Array<{ reason: string; attemptId: string; epoch: number }> }>()).toMatchObject({
-      events: [],
-      fences: [{ reason: "partial_write", attemptId: attemptId!, epoch: 0 }],
-    });
-    const delivered = await database().prepare(
-      'SELECT COUNT(*) AS count FROM dcb_events WHERE "ServiceId" = ?',
-    ).bind(serviceId).first<{ count: number }>();
-    const receipts = await database().prepare(
-      "SELECT COUNT(*) AS count FROM serialized_dcb_global_receipts WHERE service_id = ?",
-    ).bind(serviceId).first<{ count: number }>();
-    expect(delivered?.count ?? 0).toBe(0);
-    expect(receipts?.count ?? 0).toBe(0);
-
-    const reconciler = new GlobalCompletenessReconciler(database(), tags());
-    await expect(reconciler.reconcile(serviceId, 41_000)).resolves.toMatchObject({ kind: "BLOCK", findingCount: 1 });
-    const finding = await database().prepare(
-      "SELECT incident_type, state FROM serialized_dcb_completeness_findings WHERE service_id = ?",
-    ).bind(serviceId).first<{ incident_type: string; state: string }>();
-    expect(finding).toEqual({ incident_type: "GLOBAL_ARRAY_RECEIPT_ABSENT", state: "OPEN" });
+      const reconciler = new GlobalCompletenessReconciler(database(), tags());
+      await expect(reconciler.reconcile(serviceId, 41_000)).resolves.toMatchObject({ kind: "BLOCK", findingCount: 1 });
+      const finding = await database().prepare(
+        "SELECT incident_type, state FROM serialized_dcb_completeness_findings WHERE service_id = ?",
+      ).bind(serviceId).first<{ incident_type: string; state: string }>();
+      expect(finding).toEqual({ incident_type: "GLOBAL_ARRAY_RECEIPT_ABSENT", state: "OPEN" });
+    } finally {
+      await restoreMissing();
+      await restoreWritten();
+    }
   });
 });
