@@ -25,6 +25,66 @@ const ROUTES = Object.freeze([
   "POST /repair/observation",
   "POST /debug/alarm",
 ]);
+// These are sealed independently from the JSON inventory.  The route table
+// has a runtime source of truth; durable field and caller universes do not, so
+// the pre-change inventory is their deliberately explicit authority.
+const DURABLE_FIELD_UNIVERSE = Object.freeze([
+  "__sdt_g42_p1_alarm",
+  "__sdt_g42_p1_index",
+  "__sdt_g42_p1_record__:*",
+  "journal",
+  "journal.alarm",
+  "journal.allocatorVector",
+  "journal.attemptId",
+  "journal.candidates",
+  "journal.consistencyTags",
+  "journal.failureCause",
+  "journal.missingTags",
+  "journal.ownerEpoch",
+  "journal.repairObservations",
+  "journal.state",
+  "journal.terminalResponse",
+  "journal.testFaults",
+]);
+const CALLER_UNIVERSE = Object.freeze([
+  "CommitWorker.handleUntraced (pre-G41 only)",
+  "JournalDurableObject.alarm (inert after commit removal)",
+  "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker",
+  "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/result",
+  "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state",
+  "packages/dcb-runtime/src/index.ts:/journals/:attemptId/result",
+  "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state",
+  "packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate",
+  "packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations",
+  "samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe",
+  "test/journal.spec.ts direct Journal-only fault fixture",
+]);
+const DUTY_DURABLE_FIELDS = Object.freeze({
+  "J01-g42-private-probe": ["__sdt_g42_p1_record__:*", "__sdt_g42_p1_index", "__sdt_g42_p1_alarm"],
+  "J02-direct-state": ["journal"],
+  "J03-direct-terminal-result": ["journal.terminalResponse"],
+  "J04-repair-workset": ["journal.candidates", "journal.missingTags"],
+  "J05-repair-observations": ["journal.repairObservations"],
+  "J06-admit-and-attempt-idempotency": ["journal.attemptId", "journal.candidates", "journal.consistencyTags"],
+  "J07-reserved-allocated-writing-complete": ["journal.state", "journal.allocatorVector", "journal.terminalResponse"],
+  "J08-reservation-failure-and-cancel": ["journal.failureCause", "journal.missingTags"],
+  "J09-reconcile": ["journal.state", "journal.failureCause"],
+  "J10-alarm-and-takeover": ["journal.ownerEpoch", "journal.alarm"],
+  "J11-debug-fault": ["journal.testFaults"],
+});
+const DUTY_CALLERS = Object.freeze({
+  "J01-g42-private-probe": ["samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe"],
+  "J02-direct-state": ["packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state", "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state"],
+  "J03-direct-terminal-result": ["packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/result", "packages/dcb-runtime/src/index.ts:/journals/:attemptId/result"],
+  "J04-repair-workset": ["packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate", "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker"],
+  "J05-repair-observations": ["packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations", "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker"],
+  "J06-admit-and-attempt-idempotency": ["CommitWorker.handleUntraced (pre-G41 only)"],
+  "J07-reserved-allocated-writing-complete": ["CommitWorker.handleUntraced (pre-G41 only)"],
+  "J08-reservation-failure-and-cancel": ["CommitWorker.handleUntraced (pre-G41 only)"],
+  "J09-reconcile": ["CommitWorker.handleUntraced (pre-G41 only)"],
+  "J10-alarm-and-takeover": ["JournalDurableObject.alarm (inert after commit removal)"],
+  "J11-debug-fault": ["test/journal.spec.ts direct Journal-only fault fixture"],
+});
 const VERDICTS = new Set(["MOVED", "NO_LONGER_REQUIRED", "STILL_REQUIRED"]);
 const POST_G41_SURFACES = new Set([
   "LIVE_NON_COMMIT",
@@ -62,6 +122,25 @@ function parseInventory(text) {
   } catch (caught) {
     fail(`duty inventory is not valid JSON: ${caught instanceof Error ? caught.message : String(caught)}`);
   }
+}
+
+function asExactStringSet(value, context) {
+  if (!Array.isArray(value) || value.length === 0 || !value.every((item) => typeof item === "string" && item.length > 0)) {
+    fail(`${context} must be a non-empty string array`);
+  }
+  const result = new Set(value);
+  if (result.size !== value.length) fail(`${context} contains duplicate members`);
+  return result;
+}
+
+function assertSameSet(actual, expected, context) {
+  if (actual.size !== expected.size || [...expected].some((member) => !actual.has(member))) {
+    fail(`${context} is not an exact count/set match: ${JSON.stringify([...actual])}`);
+  }
+}
+
+function assertExactStringSet(value, expectedValues, context) {
+  assertSameSet(asExactStringSet(value, context), new Set(expectedValues), context);
 }
 
 /**
@@ -116,25 +195,28 @@ function assertInventory(inventory, journal) {
   if (typeof inventory.publicCommitWire?.note !== "string" || !inventory.publicCommitWire.note.includes("V1")) {
     fail("inventory public wire declaration needs the V1 rationale");
   }
-  if (!Array.isArray(inventory.routeSet) || !Array.isArray(inventory.duties)) fail("inventory routeSet/duties are not arrays");
+  if (!Array.isArray(inventory.duties)) fail("inventory duties is not an array");
+  assertExactStringSet(inventory.routeSet, ROUTES, "inventory routeSet");
+  assertExactStringSet(inventory.durableFieldSet, DURABLE_FIELD_UNIVERSE, "inventory durableFieldSet");
+  assertExactStringSet(inventory.callerSet, CALLER_UNIVERSE, "inventory callerSet");
   const declaredRoutes = new Set(inventory.routeSet);
-  if (declaredRoutes.size !== ROUTES.length || ROUTES.some((route) => !declaredRoutes.has(route))) {
-    fail(`inventory routeSet is not the exact Journal route universe: ${JSON.stringify(inventory.routeSet)}`);
-  }
   const runtimeRoutes = journalRouteSetFromRuntime(journal);
   if (runtimeRoutes.size !== declaredRoutes.size || [...runtimeRoutes].some((route) => !declaredRoutes.has(route))) {
     fail(`inventory routeSet diverges from JournalDurableObject.fetch: ${JSON.stringify([...runtimeRoutes])}`);
   }
   const classifiedRoutes = [];
+  const classifiedDurableFields = [];
+  const classifiedCallers = [];
   const ids = new Set();
   for (const duty of inventory.duties) {
     if (typeof duty?.id !== "string" || !ids.add(duty.id)) fail("every duty needs a unique id");
     if (!VERDICTS.has(duty.verdict)) fail(`${duty.id} has an invalid verdict`);
-    for (const field of ["routes", "durableFields", "callers"]) {
-      if (!Array.isArray(duty[field]) || duty[field].length === 0 || !duty[field].every((value) => typeof value === "string" && value.length > 0)) {
-        fail(`${duty.id} has no enumerable ${field}`);
-      }
-    }
+    asExactStringSet(duty.routes, `${duty.id} routes`);
+    const expectedFields = DUTY_DURABLE_FIELDS[duty.id];
+    const expectedCallers = DUTY_CALLERS[duty.id];
+    if (expectedFields === undefined || expectedCallers === undefined) fail(`${duty.id} is outside the sealed duty universe`);
+    assertExactStringSet(duty.durableFields, expectedFields, `${duty.id} durableFields`);
+    assertExactStringSet(duty.callers, expectedCallers, `${duty.id} callers`);
     if (typeof duty.reason !== "string" || duty.reason.length === 0 || typeof duty.fixture !== "string" || duty.fixture.length === 0) {
       fail(`${duty.id} lacks a reason or fixture`);
     }
@@ -145,12 +227,17 @@ function assertInventory(inventory, journal) {
       fail(`${duty.id} must name its dead-code follow-up`);
     }
     classifiedRoutes.push(...duty.routes);
+    classifiedDurableFields.push(...duty.durableFields);
+    classifiedCallers.push(...duty.callers);
   }
+  assertSameSet(ids, new Set(Object.keys(DUTY_DURABLE_FIELDS)), "inventory duty ids");
   const routeCounts = new Map(classifiedRoutes.map((route) => [route, classifiedRoutes.filter((candidate) => candidate === route).length]));
   for (const route of ROUTES) {
     if (routeCounts.get(route) !== 1) fail(`${route} must be classified by exactly one duty`);
   }
   if (classifiedRoutes.some((route) => !declaredRoutes.has(route))) fail("a duty classified a route outside the exact route universe");
+  assertSameSet(new Set(classifiedDurableFields), new Set(inventory.durableFieldSet), "duty durable-field union");
+  assertSameSet(new Set(classifiedCallers), new Set(inventory.callerSet), "duty caller union");
   if (inventory.retiredCommitAuthority?.singleJournalTerminalOutcome !== "RETIRED") fail("the old single terminal Journal outcome is not explicitly retired");
 }
 
@@ -214,10 +301,12 @@ export function assertG41JournalRemovalContract(value) {
     "AC2: performs zero JOURNAL namespace calls while the Tag positive control is live",
     "AC3: prepare failure cancels every already-reserved tag",
     "AC3: commit failure cancels every tag",
-    "AC4 boundary 1:",
-    "AC4 boundary 2:",
-    "AC4 boundary 3:",
+    "AC4 genuine interruption boundary 1:",
+    "AC4 genuine interruption boundary 2:",
+    "AC4 genuine interruption boundary 3:",
     "AC4 boundary 4:",
+    "no CommitWorker cleanup",
+    "without CommitWorker compensation",
     "superseded attempt epoch",
   ]) requireContains(test, token, "G41 fixture inventory");
 
@@ -252,9 +341,24 @@ function selfTest() {
   expectRed((value) => { value.commit = value.commit.replace("this.acquireReservations", "this.g41MutantReservations"); }, "tag prepare removal");
   expectRed((value) => { value.commit = value.commit.replace("eventsDeleted: false", "eventsDeleted: true"); }, "partial write deletion claim");
   expectRed((value) => { value.repair = value.repair.replace('this.journalGet(attemptId, "/repair/workset")', 'this.g41NoJournal(attemptId, "/repair/workset")'); }, "repair caller disappearance");
+  expectRed((value) => {
+    value.inventory = value.inventory.replace(
+      '"durableFields": ["journal.candidates", "journal.missingTags"]',
+      '"durableFields": ["journal.missingTags"]',
+    );
+  }, "AC1 durable-field omission");
+  expectRed((value) => {
+    value.inventory = value.inventory.replace(
+      '"callers": ["packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate", "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker"]',
+      '"callers": ["packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker"]',
+    );
+  }, "AC1 caller omission");
   expectRed((value) => { value.inventory = value.inventory.replace('"postG41Surface": "LIVE_NON_COMMIT"', '"postG41Surface": "UNCLASSIFIED"'); }, "surviving surface disposition omission");
   expectRed((value) => { value.test = value.test.replace("superseded attempt epoch", "g41 stale mutation"); }, "stale epoch fixture disappearance");
-  process.stdout.write(`${JSON.stringify({ selfTest: "g41-journal-duty-and-path-mutations-red" })}\n`);
+  process.stdout.write(`${JSON.stringify({
+    selfTest: "g41-journal-duty-and-path-mutations-red",
+    forcedRed: ["AC1 durable-field omission", "AC1 caller omission"],
+  })}\n`);
 }
 
 function main() {

@@ -1,6 +1,7 @@
 import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { allocatorNameForService } from "../packages/dcb-runtime/src/allocator/types";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
 import type { SourceObligationPage } from "../packages/dcb-runtime/src/completeness/types";
@@ -81,9 +82,16 @@ function namespace(
   } as unknown as DurableObjectNamespace;
 }
 
-function request(tags: readonly string[], consistency = tags, fault?: string): Request {
+function request(
+  tags: readonly string[],
+  consistency = tags,
+  fault?: string,
+  attemptId?: string,
+  consistencyHeads = consistency.map((_, index) => g32Suid(`g41-head-${index}`)),
+): Request {
   const headers = new Headers({ "content-type": "application/json" });
   if (fault !== undefined) headers.set("x-sdt-g4-test-fault", fault);
+  if (attemptId !== undefined) headers.set("x-sdt-g4-test-attempt-id", attemptId);
   return new Request("https://commit.test/api/sekiban/serialized/commit", {
     method: "POST",
     headers,
@@ -94,7 +102,7 @@ function request(tags: readonly string[], consistency = tags, fault?: string): R
         eventPayloadName: "G41Fixture",
         tags,
       }],
-      consistencyTags: consistency.map((tag, index) => ({ tag, lastSortableUniqueId: g32Suid(`g41-head-${index}`) })),
+      consistencyTags: consistency.map((tag, index) => ({ tag, lastSortableUniqueId: consistencyHeads[index]! })),
     }),
   });
 }
@@ -166,6 +174,85 @@ function tags(): DurableObjectNamespace {
 
 function tagStub(serviceId: string, tag: string): DurableObjectStub {
   return tags().get(tags().idFromName(`${serviceId}|${tag}`));
+}
+
+function allocatorStub(serviceId: string): DurableObjectStub {
+  const allocator = (env as unknown as { readonly ALLOCATOR?: DurableObjectNamespace }).ALLOCATOR;
+  if (allocator === undefined) throw new Error("G41 needs the Allocator Durable Object namespace");
+  return allocator.get(allocator.idFromName(allocatorNameForService(serviceId)));
+}
+
+function tagUrl(serviceId: string, tag: string, path: string): string {
+  return `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}${path}`;
+}
+
+async function tagPost(serviceId: string, tag: string, path: string, body: unknown): Promise<Response> {
+  return SELF.fetch(tagUrl(serviceId, tag, path), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readTagState(serviceId: string, tag: string): Promise<{
+  events: Array<{ eventId: string }>;
+  activeReservation: { attemptId: string; epoch: number; expiresAt: number } | null;
+  alarmDueAt: number | null;
+}> {
+  const response = await SELF.fetch(tagUrl(serviceId, tag, "/state"));
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
+async function seedObservedTag(serviceId: string, tag: string, seed: string): Promise<string> {
+  const seeded = await tagPost(serviceId, tag, "/append", {
+    attemptId: `g41-seed:${seed}`,
+    epoch: 0,
+    candidates: [{
+      eventId: g32EventId(`g41-seed:${seed}`),
+      suid: g32Suid(`g41-seed:${seed}`),
+      payload: JSON.stringify({ fixture: "g41-boundary-seed", seed }),
+      eventTags: [tag],
+      eventType: "G41BoundarySeed",
+      provenance: "g32",
+      allocatorLineageId: "g41-boundary-seed-lineage",
+      timestamp: G32_FIXTURE_TIMESTAMP,
+    }],
+  });
+  expect(seeded.status).toBe(201);
+  const facts = await SELF.fetch(tagUrl(serviceId, tag, "/head-facts"));
+  expect(facts.status).toBe(200);
+  return (await facts.json<{ head: string }>()).head;
+}
+
+async function reserveObservedTag(
+  serviceId: string,
+  tag: string,
+  attemptId: string,
+  expectedHead: string,
+): Promise<{ attemptId: string; epoch: number; expiresAt: number }> {
+  const acquired = await tagPost(serviceId, tag, "/acquire", {
+    attemptId,
+    epoch: 0,
+    eventTags: [tag],
+    consistencyTags: [{ tag, lastSortableUniqueId: expectedHead }],
+  });
+  expect(acquired.status).toBe(201);
+  const body = await acquired.json<{ reservation: { attemptId: string; epoch: number; expiresAt: number } }>();
+  return body.reservation;
+}
+
+async function expireByRealTagAlarm(serviceId: string, tag: string, expiresAt: number): Promise<void> {
+  expect((await tagPost(serviceId, tag, "/debug/clock", { nowMs: expiresAt + 1 })).status).toBe(200);
+  // The test-only route invokes the same private runAlarm implementation as
+  // DurableObject.alarm without waiting thirty real-time seconds.
+  expect((await tagPost(serviceId, tag, "/debug/alarm", {})).status).toBe(200);
+}
+
+async function readAllocation(serviceId: string, attemptId: string): Promise<Response> {
+  return allocatorStub(serviceId).fetch(new Request(
+    `https://allocator.test/attempts/${encodeURIComponent(attemptId)}`,
+  ));
 }
 
 async function configureD1BackedTag(serviceId: string, tag: string): Promise<() => Promise<void>> {
@@ -301,36 +388,69 @@ describe("SDT-G41 Journal-free commit path", () => {
     expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
   });
 
-  it("AC4 boundary 1: a post-reservation/pre-allocation crash tombstones every prepared tag without allocating", async () => {
-    const first = "room:g41:boundary:a";
-    const second = "room:g41:boundary:b";
-    const run = fakeRun();
+  it("AC4 genuine interruption boundary 1: surviving reservations converge through Tag alarms with no CommitWorker cleanup", async () => {
+    const serviceId = `g41-boundary-1-${crypto.randomUUID()}`;
+    const preparedTags = ["room:g41:boundary:one:a", "room:g41:boundary:one:b"];
+    const attemptId = `g41-boundary-1:${crypto.randomUUID()}`;
+    const heads = await Promise.all(preparedTags.map((tag, index) => seedObservedTag(serviceId, tag, `one-${index}`)));
+    const reservations = await Promise.all(preparedTags.map((tag, index) =>
+      reserveObservedTag(serviceId, tag, attemptId, heads[index]!)));
 
-    const response = await run.worker.handle(request([first, second], [first, second], "after-reservations-before-allocation"));
-    const body = await response.json<{ code: string }>();
-
-    expect(response.status).toBe(504);
-    expect(body.code).toBe("timeout");
-    expect(run.allocatorCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
-    expect(run.appends).toEqual([]);
-    expect(run.cancels.map((entry) => entry.tag).sort()).toEqual([first, second]);
-    expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+    // This directly seeds the durable post-reservation/pre-allocation state
+    // and deliberately invokes no CommitWorker cancellation or fence path.
+    for (const [index, tag] of preparedTags.entries()) {
+      const before = await readTagState(serviceId, tag);
+      expect(before.activeReservation).toMatchObject({ attemptId, epoch: 0 });
+      expect(before.alarmDueAt).not.toBeNull();
+      await expireByRealTagAlarm(serviceId, tag, reservations[index]!.expiresAt);
+      const after = await readTagState(serviceId, tag);
+      expect(after.activeReservation).toBeNull();
+      expect(after.alarmDueAt).toBeNull();
+    }
+    expect((await readAllocation(serviceId, attemptId)).status).toBe(404);
   });
 
-  it("AC4 boundary 2: a durable allocation before first append leaves an orphan vector plus tag tombstones", async () => {
-    const first = "room:g41:allocation:a";
-    const second = "room:g41:allocation:b";
-    const run = fakeRun();
+  it("AC4 genuine interruption boundary 2: a surviving orphan allocation vector is dispositioned after Tag alarm convergence without Worker cleanup", async () => {
+    const serviceId = `g41-boundary-2-${crypto.randomUUID()}`;
+    const preparedTags = ["room:g41:boundary:two:a", "room:g41:boundary:two:b"];
+    const attemptId = `g41-boundary-2:${crypto.randomUUID()}`;
+    const heads = await Promise.all(preparedTags.map((tag, index) => seedObservedTag(serviceId, tag, `two-${index}`)));
+    const worker = new CommitWorker(env as unknown as CommitWorkerEnv, serviceId, {
+      // This is a genuine interruption at the allocator-to-first-append
+      // boundary. The exception escapes handle(), so no post-boundary Worker
+      // cancellation or partial-write fence code can execute.
+      beforeBootstrapFinalization: () => {
+        throw new Error("g41 genuine interruption after allocator commit");
+      },
+    });
+    await expect(worker.handle(request(
+      preparedTags,
+      preparedTags,
+      "tag-append-last",
+      attemptId,
+      heads,
+    ))).rejects.toThrow("g41 genuine interruption after allocator commit");
 
-    const response = await run.worker.handle(request([first, second], [first, second], "journal-cas-after-allocator"));
-    const body = await response.json<{ code: string }>();
+    const vector = await readAllocation(serviceId, attemptId);
+    expect(vector.status).toBe(200);
+    const allocated = await vector.json<{ attemptId: string; candidates: Array<{ eventId: string }> }>();
+    expect(allocated).toMatchObject({ attemptId, candidates: [{ eventId: expect.any(String) }] });
+    const candidateEventId = allocated.candidates[0]!.eventId;
+    const reservations = await Promise.all(preparedTags.map(async (tag) => {
+      const state = await readTagState(serviceId, tag);
+      expect(state.activeReservation).toMatchObject({ attemptId, epoch: 0 });
+      return state.activeReservation!;
+    }));
 
-    expect(response.status).toBe(504);
-    expect(body.code).toBe("timeout");
-    expect(run.allocatorCalls.fetch).toBe(1);
-    expect(run.appends).toEqual([]);
-    expect(run.cancels.map((entry) => entry.tag).sort()).toEqual([first, second]);
-    expect(run.journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+    for (const [index, tag] of preparedTags.entries()) {
+      await expireByRealTagAlarm(serviceId, tag, reservations[index]!.expiresAt);
+      const state = await readTagState(serviceId, tag);
+      expect(state.activeReservation).toBeNull();
+      expect(state.events.map((event) => event.eventId)).not.toContain(candidateEventId);
+    }
+    const survivingVector = await readAllocation(serviceId, attemptId);
+    expect(survivingVector.status).toBe(200);
+    expect(await survivingVector.json()).toMatchObject({ attemptId, candidates: [{ eventId: candidateEventId }] });
   });
 
   it("AC4 boundary 4: all tag writes can survive a lost response without fabricating a Journal terminal outcome", async () => {
@@ -398,23 +518,35 @@ describe("SDT-G41 Journal-free commit path", () => {
     expect(await delayed.json()).toMatchObject({ reason: "tombstoned_epoch" });
   });
 
-  it("AC4 boundary 3: a partial tag commit is source-enumerable by G44 with zero delivery", async () => {
+  it("AC4 genuine interruption boundary 3: surviving source facts discover zero-delivery G44 incompleteness without CommitWorker compensation", async () => {
     const serviceId = `g41-source-${crypto.randomUUID()}`;
     const writtenTag = "room:g41:source:written";
     const missingTag = "room:g41:source:missing";
     const restoreWritten = await configureD1BackedTag(serviceId, writtenTag);
     const restoreMissing = await configureD1BackedTag(serviceId, missingTag);
     try {
-      const worker = new CommitWorker(env as unknown as CommitWorkerEnv, serviceId);
-      const response = await worker.handle(request([writtenTag, missingTag], [], "tag-append-last"));
-      expect(response.status).toBe(500);
-      await deferDisabledDeliveryRetry(serviceId, writtenTag);
-      const attemptId = response.headers.get("x-sdt-g4-attempt-id");
-      expect(attemptId).not.toBeNull();
-      expect(await response.json()).toMatchObject({
-        code: "partial_write",
-        partial: { writtenTags: [writtenTag], missingTags: [missingTag], eventsDeleted: false },
+      const attemptId = `g41-boundary-3:${crypto.randomUUID()}`;
+      const eventId = g32EventId(`g41-boundary-3:${attemptId}`);
+      // Directly seed the exact first-append durable fact: event, local
+      // membership, obligation, and local receipt share appendSql's one
+      // transaction.  The missing partition has no state and no fence; no
+      // CommitWorker remains alive to compensate after this interruption.
+      const response = await tagPost(serviceId, writtenTag, "/append", {
+        attemptId,
+        epoch: 0,
+        candidates: [{
+          eventId,
+          suid: g32Suid(`g41-boundary-3:${attemptId}`),
+          payload: JSON.stringify({ fixture: "g41-boundary-3" }),
+          eventTags: [writtenTag, missingTag],
+          eventType: "G41BoundaryThree",
+          provenance: "g32",
+          allocatorLineageId: "g41-boundary-3-lineage",
+          timestamp: G32_FIXTURE_TIMESTAMP,
+        }],
       });
+      expect(response.status).toBe(201);
+      await deferDisabledDeliveryRetry(serviceId, writtenTag);
 
       const rows = await sourceRows(serviceId, writtenTag);
       expect(rows).toHaveLength(1);
@@ -425,19 +557,10 @@ describe("SDT-G41 Journal-free commit path", () => {
       });
       expect(rows[0]?.declaredTagSet).toHaveLength(2);
       expect(rows[0]?.localCommittedMembership).toHaveLength(1);
-      // `appendSql` only reports its committed source obligation after its
-      // single scheduler re-arm succeeds. Its first retry is immediately due,
-      // so Miniflare is allowed to consume the alarm before this assertion can
-      // observe it; the durable pending obligation is the non-racy scheduler
-      // authority. G43 separately proves the one-alarm min/re-arm behavior.
       const missingState = await SELF.fetch(
-        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(missingTag)}/state`,
+        tagUrl(serviceId, missingTag, "/state"),
       );
-      expect(missingState.status).toBe(200);
-      expect(await missingState.json<{ events: unknown[]; fences: Array<{ reason: string; attemptId: string; epoch: number }> }>()).toMatchObject({
-        events: [],
-        fences: [{ reason: "partial_write", attemptId: attemptId!, epoch: 0 }],
-      });
+      expect(missingState.status).toBe(404);
       const delivered = await database().prepare(
         'SELECT COUNT(*) AS count FROM dcb_events WHERE "ServiceId" = ?',
       ).bind(serviceId).first<{ count: number }>();

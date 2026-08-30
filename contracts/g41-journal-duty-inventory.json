@@ -22,6 +22,37 @@
     "POST /repair/observation",
     "POST /debug/alarm"
   ],
+  "durableFieldSet": [
+    "__sdt_g42_p1_alarm",
+    "__sdt_g42_p1_index",
+    "__sdt_g42_p1_record__:*",
+    "journal",
+    "journal.alarm",
+    "journal.allocatorVector",
+    "journal.attemptId",
+    "journal.candidates",
+    "journal.consistencyTags",
+    "journal.failureCause",
+    "journal.missingTags",
+    "journal.ownerEpoch",
+    "journal.repairObservations",
+    "journal.state",
+    "journal.terminalResponse",
+    "journal.testFaults"
+  ],
+  "callerSet": [
+    "CommitWorker.handleUntraced (pre-G41 only)",
+    "JournalDurableObject.alarm (inert after commit removal)",
+    "packages/dcb-runtime/src/cli/OperatorRepairCli.ts:handleOperatorRepair -> RepairWorker",
+    "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/result",
+    "packages/dcb-runtime/src/cloudflare.ts:/journals/:attemptId/state",
+    "packages/dcb-runtime/src/index.ts:/journals/:attemptId/result",
+    "packages/dcb-runtime/src/index.ts:/journals/:attemptId/state",
+    "packages/dcb-runtime/src/repair/RepairWorker.ts:enumerate",
+    "packages/dcb-runtime/src/repair/RepairWorker.ts:recordClearedObservations",
+    "samples/meeting-room/src/worker.cloudflare-only.ts:handleG42JournalProbe",
+    "test/journal.spec.ts direct Journal-only fault fixture"
+  ],
   "duties": [
     {
       "id": "J01-g42-private-probe",
