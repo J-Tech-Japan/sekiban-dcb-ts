@@ -275,7 +275,9 @@ describe("Serialized V1 reads", () => {
     expect(durableMissing.fences).toContainEqual({
       reason: "partial_write",
       attemptId,
-      epoch: 1,
+      // G41 has no Journal owner epoch: the tag's local prepare/commit epoch
+      // is the authority for the durable partial frontier.
+      epoch: 0,
     });
 
     const latest = await read("tag-latest-sortable", { tag: report.partial.missingTags[0] });

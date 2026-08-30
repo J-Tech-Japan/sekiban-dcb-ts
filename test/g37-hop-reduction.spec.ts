@@ -12,14 +12,29 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function namespace(fetch: (request: Request) => Promise<Response>): DurableObjectNamespace {
+interface NamespaceCalls {
+  idFromName: number;
+  get: number;
+  fetch: number;
+}
+
+function namespace(fetch: (request: Request) => Promise<Response>, calls?: NamespaceCalls): DurableObjectNamespace {
   return {
-    idFromName: () => ({ toString: () => "g37-fixture" }) as DurableObjectId,
-    get: () => ({ fetch }) as unknown as DurableObjectStub,
+    idFromName: () => {
+      if (calls !== undefined) calls.idFromName += 1;
+      return ({ toString: () => "g37-fixture" }) as DurableObjectId;
+    },
+    get: () => {
+      if (calls !== undefined) calls.get += 1;
+      return ({ fetch: async (request: Request) => {
+        if (calls !== undefined) calls.fetch += 1;
+        return fetch(request);
+      } }) as unknown as DurableObjectStub;
+    },
   } as unknown as DurableObjectNamespace;
 }
 
-function request(): Request {
+function request(tags = ["room:g37-a5"]): Request {
   return new Request("https://commit.test/api/sekiban/serialized/commit", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -28,48 +43,28 @@ function request(): Request {
       eventCandidates: [{
         payload: "e30=",
         eventPayloadName: "G37Candidate",
-        tags: ["room:g37-a5"],
+        tags,
       }],
-      consistencyTags: [{ tag: "room:g37-a5", lastSortableUniqueId: EXPECTED_HEAD }],
+      consistencyTags: tags.map((tag) => ({ tag, lastSortableUniqueId: EXPECTED_HEAD })),
     }),
   });
 }
 
-function responseForTransition(request: Request): Promise<Response> {
-  return request.json<{ nextState: string; expectedVersion: number; expectedOwnerEpoch: number }>()
-    .then((body) => json({
-      state: body.nextState,
-      version: body.expectedVersion + 1,
-      ownerEpoch: body.expectedOwnerEpoch,
-    }));
-}
-
-describe("SDT-G37 A5 reservation/admission concurrency", () => {
-  it("starts the reservation fan-out while Journal admission is still in flight", async () => {
-    let admissionPending = false;
-    let acquireWhileAdmissionPending = false;
-    const journal = namespace(async (incoming) => {
-      const path = new URL(incoming.url).pathname;
-      if (path === "/admit") {
-        admissionPending = true;
-        await new Promise<void>((resolve) => setTimeout(resolve, 25));
-        admissionPending = false;
-        return json({ state: "ADMITTED", version: 0, ownerEpoch: 0 }, 201);
-      }
-      if (path === "/transition") return responseForTransition(incoming);
-      return json({ code: "unexpected_journal_path" }, 500);
-    });
+describe("SDT-G37 A5 reservation behavior after G41 Journal removal", () => {
+  it("uses the tag reservation fan-out without resolving JOURNAL", async () => {
+    const journalCalls: NamespaceCalls = { idFromName: 0, get: 0, fetch: 0 };
+    const tagCalls: NamespaceCalls = { idFromName: 0, get: 0, fetch: 0 };
+    const journal = namespace(async () => json({ code: "journal_must_not_run" }, 500), journalCalls);
     const tag = namespace(async (incoming) => {
       const path = new URL(incoming.url).pathname;
       if (path === "/acquire") {
-        acquireWhileAdmissionPending ||= admissionPending;
         return json({ reservation: { token: "g37-reservation" } }, 201);
       }
       if (path === "/append") return json({ appended: true }, 201);
       if (path === "/state") return json({ version: 1, updatedAt: "2026-08-27T00:00:00.000Z" });
       if (path === "/head-facts") return json({ head: EXPECTED_HEAD, version: 1, updatedAt: "2026-08-27T00:00:00.000Z" });
       return json({ code: "unexpected_tag_path" }, 500);
-    });
+    }, tagCalls);
     const allocator = namespace(async (incoming) => {
       if (new URL(incoming.url).pathname !== "/allocate") return json({ code: "unexpected_allocator_path" }, 500);
       const body = await incoming.json<{ candidates: Array<{ candidateIndex: number; eventId: string }> }>();
@@ -85,26 +80,31 @@ describe("SDT-G37 A5 reservation/admission concurrency", () => {
     const response = await worker.handle(request());
 
     expect(response.status).toBe(200);
-    expect(acquireWhileAdmissionPending).toBe(true);
+    expect(journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
+    expect(tagCalls.idFromName).toBeGreaterThan(0);
+    expect(tagCalls.get).toBeGreaterThan(0);
+    expect(tagCalls.fetch).toBeGreaterThan(0);
   });
 
-  it("tombstones acquired reservations if the concurrently-issued Journal admission rejects", async () => {
+  it("tombstones reservations without allowing a cancellation result to replace the primary refusal", async () => {
+    const first = "room:g37-a5:reserved";
+    const refused = "room:g37-a5:refused";
     let acquireCount = 0;
     let allocatorCalls = 0;
     const cancelled: Array<Record<string, unknown>> = [];
-    const journal = namespace(async (incoming) => {
-      if (new URL(incoming.url).pathname === "/admit") return json({ code: "journal_unavailable" }, 503);
-      return json({ code: "unexpected_journal_path" }, 500);
-    });
+    const journalCalls: NamespaceCalls = { idFromName: 0, get: 0, fetch: 0 };
+    const journal = namespace(async () => json({ code: "journal_must_not_run" }, 500), journalCalls);
     const tag = namespace(async (incoming) => {
       const path = new URL(incoming.url).pathname;
       if (path === "/acquire") {
         acquireCount += 1;
-        return json({ reservation: { token: "g37-reservation" } }, 201);
+        return new URL(incoming.url).searchParams.get("__tag") === first
+          ? json({ reservation: { token: "g37-reservation" } }, 201)
+          : json({ reason: "consistency_head_mismatch" }, 409);
       }
       if (path === "/cancel") {
         cancelled.push(await incoming.json<Record<string, unknown>>());
-        return json({ status: "cancelled" });
+        return json({ code: "cancel_ack_lost" }, 503);
       }
       return json({ code: "unexpected_tag_path" }, 500);
     });
@@ -115,15 +115,16 @@ describe("SDT-G37 A5 reservation/admission concurrency", () => {
     const bootstrap = namespace(async () => json({ leaseEpoch: 1 }));
     const worker = new CommitWorker({ ALLOCATOR: allocator, JOURNAL: journal, TAG: tag, BOOTSTRAP: bootstrap }, SERVICE_ID);
 
-    const response = await worker.handle(request());
+    const response = await worker.handle(request([first, refused]));
     const body = await response.json<{ code: string }>();
 
-    expect(response.status).toBe(500);
-    expect(body.code).toBe("internal_error");
-    expect(acquireCount).toBe(1);
+    expect(response.status).toBe(400);
+    expect(body.code).toBe("consistency_conflict");
+    expect(acquireCount).toBe(2);
     expect(allocatorCalls).toBe(0);
     expect(cancelled).toHaveLength(1);
     expect(cancelled[0]).toMatchObject({ epoch: 0, forceTombstone: true });
     expect(typeof cancelled[0]?.attemptId).toBe("string");
+    expect(journalCalls).toEqual({ idFromName: 0, get: 0, fetch: 0 });
   });
 });

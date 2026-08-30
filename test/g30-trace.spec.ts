@@ -330,6 +330,7 @@ function nonSuccessWorker(
         if (url.pathname === "/append") return scenario === "partial-handoff"
           ? response({ code: "append_failed" }, 500)
           : response({ appended: true }, 201);
+        if (url.pathname === "/fence/install") return response({ status: "fence-installed" }, 201);
         if (url.pathname === "/state") {
           return response({ version: 5, updatedAt: "2026-08-23T00:00:00.000Z" });
         }
@@ -796,16 +797,15 @@ describe("SDT-G30 runtime trace verifier", () => {
 
     expect(emittedRows(captured)).toEqual([
       "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S07", "S05a",
-      "S17", "S18", "S19", "S19", "S05e", "S15",
+      "S17", "S18", "S05e", "S15",
     ]);
     expect(captured.spans.filter((entry) => entry.rowId === "S07").map((entry) => entry.attributes)).toEqual([
       expect.objectContaining({ "member.index": 0, "tag.key_hash": stableTraceHash(tags[0]!) }),
       expect.objectContaining({ "member.index": 1, "tag.key_hash": stableTraceHash(tags[1]!) }),
     ]);
-    expect(captured.spans.filter((entry) => entry.rowId === "S19").map((entry) => entry.attributes)).toEqual([
-      expect.objectContaining({ "member.index": 0, "tag.key_hash": stableTraceHash(tags[0]!) }),
-      expect.objectContaining({ "member.index": 1, "tag.key_hash": stableTraceHash(tags[1]!) }),
-    ]);
+    // Both prepare calls refused before a durable lease existed, so the
+    // G41 tag-owned cleanup has no reserved tag to tombstone.
+    expect(captured.spans.some((entry) => entry.rowId === "S19")).toBe(false);
     expect(captured.spans.some((entry) => entry.rowId === "S08")).toBe(false);
     expect(captured.runtimeVerification).toEqual({ passed: true });
   });
@@ -840,7 +840,7 @@ describe("SDT-G30 runtime trace verifier", () => {
 
     expect(rows).toEqual([
       "S00", "S01", "S02", "S03", "S04", "S06", "S07", "S05a", "S08",
-      "S05b", "S05c", "S10", "S11", "S12", "S11", "S12", "S20", "S15",
+      "S05b", "S05c", "S10", "S11", "S12", "S11", "S12", "S18", "S19", "S20", "S15",
     ]);
     expect(captured.spans.filter((entry) => entry.rowId === "S11").map((entry) => entry.attributes["retry.index"])).toEqual([0, 1]);
     expect(captured.spans.filter((entry) => entry.rowId === "S12").map((entry) => entry.attributes["retry.index"])).toEqual([0, 1]);
