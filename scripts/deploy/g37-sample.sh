@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One lightweight SDT-G37 before/after sample.  This deliberately has no
-# G30-style A/B/A-prime phases, cohort deadline, or delivery-budget gate.
-# It rotates only the conformance secret through a file and records loss as a
-# descriptive telemetry outcome.
+# One lightweight SDT-G37 sample. This deliberately has no G30-style
+# A/B/A-prime phases, cohort deadline, or delivery-budget gate. The optional
+# observability token enables the exact provider-side trace join; without it,
+# the client window still runs and records AC4 per-hop as UNKNOWN.
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -18,10 +18,10 @@ readonly CANDIDATE="${G37_CANDIDATE:?G37_CANDIDATE is required}"
 readonly ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:?CLOUDFLARE_ACCOUNT_ID is required}"
 readonly OBSERVABILITY_TOKEN_FILE="${G37_OBSERVABILITY_TOKEN_FILE:-${G30_OBSERVABILITY_TOKEN_FILE:-}}"
 readonly SAMPLES="${G37_SAMPLES:-50}"
+readonly PROFILE="${G37_PROFILE:-single}"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
-test -f "${OBSERVABILITY_TOKEN_FILE}"
 [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
 [[ -z "$(git status --porcelain --untracked-files=no)" ]]
 
@@ -53,6 +53,7 @@ node "${SCRIPT_DIR}/g37-sample.mjs" \
   --token-file "${TOKEN_FILE}" \
   --account-id "${ACCOUNT_ID}" \
   --observability-token-file "${OBSERVABILITY_TOKEN_FILE}" \
+  --profile "${PROFILE}" \
   --candidate "${CANDIDATE}" \
   --source-commit "${SOURCE_COMMIT}" \
   --samples "${SAMPLES}" \
