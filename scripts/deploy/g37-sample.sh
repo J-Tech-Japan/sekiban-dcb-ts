@@ -11,7 +11,7 @@ readonly REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 readonly WRANGLER_BIN="${WRANGLER_BIN:-${REPO_ROOT}/node_modules/.bin/wrangler}"
 readonly CONFIG="samples/meeting-room/wrangler.g37-primary.jsonc"
 readonly WORKER="sekiban-dcb-meeting-room-cloudflare-only"
-readonly SERVICE_ID="g32-9043d626fe1149cb"
+readonly SERVICE_ID="${SDT_SERVICE_ID:?SDT_SERVICE_ID is required}"
 readonly BASE_URL="${G37_BASE_URL:-https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev}"
 readonly SOURCE_COMMIT="${G37_SOURCE_COMMIT:-$(git -C "${REPO_ROOT}" rev-parse HEAD)}"
 readonly CANDIDATE="${G37_CANDIDATE:?G37_CANDIDATE is required}"
@@ -52,6 +52,7 @@ node "${SCRIPT_DIR}/g37-sample.mjs" \
   --base-url "${BASE_URL}" \
   --token-file "${TOKEN_FILE}" \
   --account-id "${ACCOUNT_ID}" \
+  --service-id "${SERVICE_ID}" \
   --observability-token-file "${OBSERVABILITY_TOKEN_FILE}" \
   --profile "${PROFILE}" \
   --candidate "${CANDIDATE}" \

@@ -26,7 +26,6 @@ const HISTORY_LENGTH_PROFILE = "history-length";
 const SHORT_HISTORY_LENGTH = 1;
 const LONG_HISTORY_LENGTH = 5_000;
 const SEED_BATCH_SIZE = 500;
-const SERVICE_ID = "g32-9043d626fe1149cb";
 const FIXTURE_TAG = "room:g37-speedup";
 const FIXTURE_PAYLOAD = JSON.stringify({ roomId: "g37-speedup", name: "SDT-G37 hop-reduction sample" });
 const SUID = /^\d{30}$/;
@@ -312,11 +311,13 @@ export async function captureG37Sample({
   template,
   candidate,
   sourceCommit,
+  serviceId,
   sampleCount = DEFAULT_SAMPLE_COUNT,
   settleMs = DEFAULT_SETTLE_MS,
   readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS,
   deployment,
 }) {
+  const runServiceId = required("serviceId", serviceId);
   const readiness = await waitForReadyHead(baseUrl, token, readyTimeoutMs);
   const establishedHead = readiness.head;
   let head = establishedHead;
@@ -358,7 +359,7 @@ export async function captureG37Sample({
     candidate,
     sourceCommit,
     capturedAt: new Date().toISOString(),
-    serviceId: SERVICE_ID,
+    serviceId: runServiceId,
     sampleCount: ledger.length,
     fixture: Object.freeze({ tagDigest: sha(FIXTURE_TAG), payloadDigest: sha(FIXTURE_PAYLOAD), rawValues: "redacted" }),
     readiness,
@@ -370,15 +371,17 @@ export async function captureG37Sample({
   });
 }
 
-function profileTag(candidate, label) {
+function profileTag(candidate, serviceId, label) {
   const safeCandidate = candidate.replace(/[^a-z0-9._-]/gi, "-").slice(0, 48);
-  return `room:sdt-g47-${safeCandidate}-${label}`;
+  const safeServiceId = serviceId.replace(/[^a-z0-9._-]/gi, "-").slice(0, 48);
+  return `room:sdt-g47-${safeServiceId}-${safeCandidate}-${label}`;
 }
 
-function profilePayload(candidate, label, ordinal) {
+function profilePayload(candidate, serviceId, label, ordinal) {
   const safeCandidate = candidate.replace(/[^a-z0-9._-]/gi, "-").slice(0, 48);
+  const safeServiceId = serviceId.replace(/[^a-z0-9._-]/gi, "-").slice(0, 48);
   return JSON.stringify({
-    roomId: `sdt-g47-${safeCandidate}-${label}`,
+    roomId: `sdt-g47-${safeServiceId}-${safeCandidate}-${label}`,
     name: `SDT-G47 ${label} history sample ${ordinal}`,
   });
 }
@@ -605,14 +608,16 @@ export async function captureG47HistoryLengthSample({
   template,
   candidate,
   sourceCommit,
+  serviceId,
   sampleCount = DEFAULT_SAMPLE_COUNT,
   settleMs = DEFAULT_SETTLE_MS,
   deployment,
 }) {
-  const shortTag = profileTag(candidate, "short");
-  const longTag = profileTag(candidate, "long");
-  const shortPayload = profilePayload(candidate, "short", 1);
-  const longPayload = profilePayload(candidate, "long", 1);
+  const runServiceId = required("serviceId", serviceId);
+  const shortTag = profileTag(candidate, runServiceId, "short");
+  const longTag = profileTag(candidate, runServiceId, "long");
+  const shortPayload = profilePayload(candidate, runServiceId, "short", 1);
+  const longPayload = profilePayload(candidate, runServiceId, "long", 1);
   const shortWindow = await captureHistoryLengthWindow({
     baseUrl,
     token,
@@ -655,7 +660,7 @@ export async function captureG47HistoryLengthSample({
     candidate,
     sourceCommit,
     capturedAt: new Date().toISOString(),
-    serviceId: SERVICE_ID,
+    serviceId: runServiceId,
     sampleCount,
     deployment,
     protocol: Object.freeze({
@@ -684,6 +689,7 @@ async function main() {
   const baseUrl = required("--base-url", argument("--base-url", process.env.G37_BASE_URL));
   const token = readFileSync(required("--token-file", argument("--token-file", process.env.G37_CONFORMANCE_TOKEN_FILE)), "utf8").trim();
   const accountId = required("--account-id", argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID));
+  const serviceId = required("--service-id", argument("--service-id", process.env.SDT_SERVICE_ID));
   const profile = argument("--profile", process.env.G37_PROFILE ?? "single");
   const observabilityTokenFile = argument(
     "--observability-token-file",
@@ -741,6 +747,7 @@ async function main() {
       template,
       candidate,
       sourceCommit,
+      serviceId,
       sampleCount,
       settleMs,
       deployment,
@@ -754,6 +761,7 @@ async function main() {
       template,
       candidate,
       sourceCommit,
+      serviceId,
       sampleCount,
       settleMs,
       readyTimeoutMs,
