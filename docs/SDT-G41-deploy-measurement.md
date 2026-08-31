@@ -2,6 +2,9 @@
 
 Status: **BLOCKED**
 
+The resumed wake (`wake31-g47-impl-20260831T164200Z`) remains blocked by
+`BLOCKER-CLOUDFLARE-OAUTH-EXPIRED-WAKE31`.
+
 This wake did not perform the authorized repair or the post-G41 measurement.
 The required Cloudflare authentication expired before any remote operation:
 
@@ -26,4 +29,5 @@ The repository head after recording the stop evidence is
 `git diff --name-only -- 'packages/*/src/**'` was empty; no
 `packages/*/src` file was changed.
 
-Machine-readable blocker evidence: `.artifacts/sdt-g47-repair-blocker-wake30.json`.
+Machine-readable blocker evidence:
+`.artifacts/sdt-g47-repair-blocker-wake31.json`.

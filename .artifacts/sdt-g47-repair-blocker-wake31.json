@@ -1,8 +1,21 @@
 {
   "schema": "sdt-g47-repair-blocker/v1",
   "taskId": "SDT-G47-IMPL",
+  "resultNonce": "wake31-g47-impl-20260831T164200Z",
   "status": "blocked",
-  "blocker": "BLOCKER-CLOUDFLARE-OAUTH-EXPIRED-WAKE30",
+  "blocker": "BLOCKER-CLOUDFLARE-OAUTH-EXPIRED-WAKE31",
+  "selector": {
+    "action": "issue-to-pr",
+    "issue": 93,
+    "sourceClassification": "ready-to-implement",
+    "githubApiStatus": "healthy",
+    "degraded": false
+  },
+  "preflight": {
+    "gitFetchOriginMainExitCode": 0,
+    "issueActionable": true,
+    "claimStatus": "not-configured"
+  },
   "observed": {
     "command": "WRANGLER_WRITE_LOGS=false node_modules/.bin/wrangler whoami --json",
     "exitCode": 1,
@@ -15,12 +28,13 @@
       "migrations/d1/g32/0002_g44_global_completeness.sql"
     ],
     "targets": ["D1", "D1_MV"],
+    "schemaConfirmed": false,
     "applied": false
   },
   "deployment": { "attempted": false },
   "measurement": { "attempted": false, "deployedEvidence": false },
   "pr": { "created": false },
-  "headShaAtRemoteOperationStop": "58269a620a6f00997502b1103aea39d358eb62be",
+  "headShaBeforeBlockerRecord": "636e469d5854acf9e3a6839903d90a38554093fe",
   "packagesSourceChanged": false,
-  "reason": "The required Cloudflare OAuth session expired before any remote repair or deployment. No local run was substituted and no deployed evidence was fabricated."
+  "reason": "Cloudflare OAuth expired again before remote schema confirmation. No migration, Worker deployment, sampler run, local substitute, or fabricated deployed evidence was performed."
 }
