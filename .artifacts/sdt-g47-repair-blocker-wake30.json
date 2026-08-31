@@ -20,7 +20,8 @@
   "deployment": { "attempted": false },
   "measurement": { "attempted": false, "deployedEvidence": false },
   "pr": { "created": false },
-  "headSha": "58269a620a6f00997502b1103aea39d358eb62be",
+  "headSha": "4ab891f727bdd72e1821fd59b100cce772aef61d",
+  "preBlockerHeadSha": "58269a620a6f00997502b1103aea39d358eb62be",
   "packagesSourceChanged": false,
   "reason": "The required Cloudflare OAuth session expired before any remote repair or deployment. No local run was substituted and no deployed evidence was fabricated."
 }

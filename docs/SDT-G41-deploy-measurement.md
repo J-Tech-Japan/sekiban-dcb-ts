@@ -20,8 +20,9 @@ measurement or PR was claimed. No local run substitutes for deployed
 evidence. AC2, AC3, AC4, AC6, and AC7 therefore have no new claim verdict in
 this record.
 
-The repository head at the stop was
-`58269a620a6f00997502b1103aea39d358eb62be`.
+The repository head after recording the stop evidence is
+`4ab891f727bdd72e1821fd59b100cce772aef61d` (the pre-recording head was
+`58269a620a6f00997502b1103aea39d358eb62be`).
 `git diff --name-only -- 'packages/*/src/**'` was empty; no
 `packages/*/src` file was changed.
 
