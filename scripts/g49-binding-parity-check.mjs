@@ -20,6 +20,18 @@ const runtimePath = "packages/dcb-runtime/src/cloudflare.ts";
 const defaultConfigPath = "samples/meeting-room/wrangler.cloudflare-only.jsonc";
 const runtimeModule = "@sekiban/dcb-runtime/cloudflare";
 const checkerPath = fileURLToPath(import.meta.url);
+const expectedDatabaseLineages = Object.freeze([
+  Object.freeze({
+    binding: "D1",
+    databaseName: "sekiban-dcb-meeting-room-cloudflare-pipeline",
+    migrationsDir: "../../migrations/d1/g32",
+  }),
+  Object.freeze({
+    binding: "D1_MV",
+    databaseName: "sekiban-dcb-meeting-room-cloudflare-mv",
+    migrationsDir: "../../migrations/mv",
+  }),
+]);
 
 function fail(message) {
   throw new Error("G49 binding parity check failed: " + message);
@@ -277,6 +289,43 @@ function migrationClasses(document) {
   return entries;
 }
 
+function databaseLineages(document) {
+  if (!Array.isArray(document.d1_databases)) fail("d1_databases must be an array");
+  const configured = document.d1_databases.map((entry, index) => {
+    const database = object(entry, "d1_databases[" + index + "]");
+    for (const key of ["binding", "database_name", "database_id", "migrations_dir"]) {
+      if (typeof database[key] !== "string" || database[key].length === 0) {
+        fail("d1_databases[" + index + "]." + key + " must be a non-empty string");
+      }
+    }
+    return {
+      binding: database.binding,
+      databaseName: database.database_name,
+      databaseId: database.database_id,
+      migrationsDir: database.migrations_dir,
+    };
+  });
+  unique(configured.map((entry) => entry.binding), "configured D1 bindings");
+  const expectedBindings = new Set(expectedDatabaseLineages.map((entry) => entry.binding));
+  const configuredBindings = new Set(configured.map((entry) => entry.binding));
+  if (!sameSet(expectedBindings, configuredBindings)) {
+    const missing = [...expectedBindings].filter((binding) => !configuredBindings.has(binding));
+    const extra = [...configuredBindings].filter((binding) => !expectedBindings.has(binding));
+    fail("normal config D1 binding set differs from the normal lineage contract; missing=[" + missing.join(", ") + "], extra=[" + extra.join(", ") + "]");
+  }
+  for (const expected of expectedDatabaseLineages) {
+    const actual = configured.find((entry) => entry.binding === expected.binding);
+    if (actual === undefined) fail("normal config lacks D1 binding " + expected.binding);
+    if (actual.databaseName !== expected.databaseName) {
+      fail("normal config D1 binding " + expected.binding + " names " + actual.databaseName + ", expected " + expected.databaseName);
+    }
+    if (actual.migrationsDir !== expected.migrationsDir) {
+      fail("normal config D1 binding " + expected.binding + " uses migrations_dir " + actual.migrationsDir + ", expected " + expected.migrationsDir);
+    }
+  }
+  return configured;
+}
+
 function sameSet(left, right) {
   return left.size === right.size && [...left].every((entry) => right.has(entry));
 }
@@ -286,6 +335,7 @@ export function inspectBindingParity(configPath = resolve(root, defaultConfigPat
   const derived = deriveBindingPairs();
   const declared = configBindings(document);
   const migrations = migrationClasses(document);
+  const databaseMigrations = databaseLineages(document);
   const derivedNames = new Set(derived.map((pair) => pair.binding));
   const declaredNames = new Set(declared.map((pair) => pair.binding));
   if (!sameSet(derivedNames, declaredNames)) {
@@ -307,7 +357,7 @@ export function inspectBindingParity(configPath = resolve(root, defaultConfigPat
     const extra = [...migratedClasses].filter((className) => !declaredClasses.has(className));
     fail("normal config new_sqlite_classes differs from declared Durable Object classes; missing=[" + missing.join(", ") + "], extra=[" + extra.join(", ") + "]");
   }
-  return { document, derived, declared, migrations };
+  return { document, derived, declared, migrations, databaseMigrations };
 }
 
 function parseArguments(argv) {
@@ -345,6 +395,7 @@ function selfTest(configPath) {
   const temporary = mkdtempSync(resolve(tmpdir(), "sdt-g49-binding-parity-"));
   const bindingOmissions = [];
   const migrationOmissions = [];
+  const databaseLineageMutations = [];
   try {
     for (const pair of inspection.derived) {
       const bindingCopy = clone(inspection.document);
@@ -366,6 +417,34 @@ function selfTest(configPath) {
       requireRed(migrationPath, "migration omission for " + pair.binding);
       migrationOmissions.push({ binding: pair.binding, className: pair.className, removedMigrationTags: removedTags, result: "red" });
     }
+
+    const rootLineageCopy = clone(inspection.document);
+    const pipeline = rootLineageCopy.d1_databases.find((entry) => entry.binding === "D1");
+    if (pipeline === undefined) fail("self-test could not find the D1 pipeline binding");
+    pipeline.migrations_dir = "../../migrations/d1";
+    const rootLineagePath = resolve(temporary, "pipeline-root-lineage.jsonc");
+    writeFileSync(rootLineagePath, JSON.stringify(rootLineageCopy, null, 2) + "\n");
+    requireRed(rootLineagePath, "root-lineage drift for D1");
+    databaseLineageMutations.push({
+      binding: "D1",
+      from: "../../migrations/d1/g32",
+      to: "../../migrations/d1",
+      result: "red",
+    });
+
+    const mvLineageCopy = clone(inspection.document);
+    const materializedView = mvLineageCopy.d1_databases.find((entry) => entry.binding === "D1_MV");
+    if (materializedView === undefined) fail("self-test could not find the D1_MV binding");
+    materializedView.migrations_dir = "../../migrations/d1/g32";
+    const mvLineagePath = resolve(temporary, "mv-lineage-drift.jsonc");
+    writeFileSync(mvLineagePath, JSON.stringify(mvLineageCopy, null, 2) + "\n");
+    requireRed(mvLineagePath, "MV-lineage drift for D1_MV");
+    databaseLineageMutations.push({
+      binding: "D1_MV",
+      from: "../../migrations/mv",
+      to: "../../migrations/d1/g32",
+      result: "red",
+    });
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
@@ -373,6 +452,7 @@ function selfTest(configPath) {
     result: "g49-binding-parity-mutants-red",
     bindingOmissionMutants: bindingOmissions,
     migrationOmissionMutants: migrationOmissions,
+    databaseLineageMutations,
   }, null, 2) + "\n");
 }
 
@@ -391,6 +471,7 @@ function main() {
       implementationPath: pair.implementationPath,
     })),
     migrations: inspection.migrations,
+    databaseMigrations: inspection.databaseMigrations,
   }, null, 2) + "\n");
 }
 
