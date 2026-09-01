@@ -4,7 +4,7 @@
 
 - PR: `J-Tech-Japan/sekiban-dcb-ts#100` (closes issue #99)
 - Starting PR head verified from GitHub: `6cb7e8ed0b30fb369062edfd4806071e657a5ecd`
-- Repair source commit: `930febb0e08c3e7d2be4261d83f71d3395f66b07`
+- Repair source commits: `930febb0e08c3e7d2be4261d83f71d3395f66b07` and `72090a9238f1bbfdb3cbf83408cf5fe6d001d584`
 - Authoritative AC2 packet amendment: host commit `61f7f414e`
 - Actionability: `worker pr-comment-preflight` returned `classification=repair-required` and `actionable=true` for blocker comment `5501816945`.
 
@@ -19,10 +19,12 @@ deployed-entrypoint environment:
 - token: `g32-final-fence-fixture`
 - SHA-256 fingerprint: `62cd8d0ecb2c2f5f6fc14f4cd11e76dbf7e4893e42db37789f2b7df8688b4c36`
 
-This lets the fixture's existing final phase and release enter the genuine
-matching-token path. It does not change the checked-in four normal-config
-variables or production fail-closed phase, release, token, and fingerprint
-validation.
+The test fixture explicitly supplies `G32_COMPONENT=primary`,
+`G32_CUTOVER_PHASE=final-g32`, `G32_FREEZE_RELEASE=after-new-bindings`, and
+the matching fingerprint above, so both the focused G25 config and the broad
+CI config enter the genuine matching-token path. It does not change the
+checked-in four normal-config variables or production fail-closed phase,
+release, token, and fingerprint validation.
 
 ## Finding 2 — executable honest zero-trace validation
 
@@ -63,6 +65,7 @@ Local checks passed before push:
 | G50 sampler guards | pass; 51 app requests, 50 accepted samples, zero-trace defect recorded |
 | G50 W57 checker/self-test | pass; percentile, active-row, and app-route mutants red |
 | `npm run test:g25` | pass; 3 tests |
+| broad-config `vitest ... test/g25-composition.spec.ts` | pass; 3 tests |
 | `npm run test:g37:evidence` | pass |
 | `npm run lint` | pass |
 | `npm run typecheck` | pass |
