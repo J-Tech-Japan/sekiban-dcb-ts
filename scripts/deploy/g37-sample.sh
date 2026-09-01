@@ -22,11 +22,20 @@ readonly CANDIDATE="${G37_CANDIDATE:?G37_CANDIDATE is required}"
 readonly OBSERVABILITY_TOKEN_FILE="${G37_OBSERVABILITY_TOKEN_FILE:-${G30_OBSERVABILITY_TOKEN_FILE:-}}"
 readonly SAMPLES="${G37_SAMPLES:-50}"
 readonly PROFILE="${G37_PROFILE:-single}"
+readonly DEPLOY_SETTLE_SECONDS="${G37_DEPLOY_SETTLE_SECONDS:-5}"
 
 cd "${REPO_ROOT}"
 test -x "${WRANGLER_BIN}"
 [[ "${SOURCE_COMMIT}" =~ ^[0-9a-f]{40}$ ]]
 [[ -z "$(git status --porcelain --untracked-files=no)" ]]
+if [[ "${PROFILE}" != "single" && "${PROFILE}" != "history-length" ]]; then
+  printf 'G37_PROFILE must be single or history-length\n' >&2
+  exit 2
+fi
+if [[ ! "${DEPLOY_SETTLE_SECONDS}" =~ ^[0-9]+$ ]]; then
+  printf 'G37_DEPLOY_SETTLE_SECONDS must be a non-negative integer\n' >&2
+  exit 2
+fi
 
 # Keep the account selection tied to the authenticated Wrangler session. Do not
 # accept a stale hand-set account ID when whoami reports a different account.
@@ -79,6 +88,7 @@ openssl rand -base64 48 | tr -d '\n' > "${TOKEN_FILE}"
 node -e 'const fs=require("fs");const token=fs.readFileSync(process.argv[1],"utf8").trim();if(!token)throw new Error("empty G37 conformance token");fs.writeFileSync(process.argv[2],JSON.stringify({CONFORMANCE_TOKEN:token})+"\n",{mode:0o600});' "${TOKEN_FILE}" "${SECRETS_FILE}"
 
 "${WRANGLER_BIN}" deploy --config "${CONFIG}" --keep-vars --strict --secrets-file "${SECRETS_FILE}" --var "SDT_SERVICE_ID:${SERVICE_ID}" --message "${MESSAGE}"
+sleep "${DEPLOY_SETTLE_SECONDS}"
 "${WRANGLER_BIN}" versions list --name "${WORKER}" --json > "${AFTER_VERSIONS}"
 
 node "${SCRIPT_DIR}/g37-sample.mjs" \
