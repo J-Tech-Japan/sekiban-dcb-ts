@@ -12,7 +12,8 @@
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
     "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
     "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
-    "G26_VIEW_COUNT": "2"
+    "G26_VIEW_COUNT": "2",
+    "SDT_SERVICE_ID": "sekiban-dcb-meeting-room-cloudflare-only"
   },
   "assets": { "directory": "public" },
   "triggers": { "crons": ["* * * * *"] },
