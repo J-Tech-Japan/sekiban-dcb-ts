@@ -1,0 +1,1417 @@
+{
+  "task": "SDT-G47",
+  "profile": "history-length",
+  "candidate": "sdt-g47-repair-post-migration-wake32c-20260831",
+  "sourceCommit": "e7317fc3f74c6d34e2f200c6212595935b5f3b48",
+  "capturedAt": "2026-09-01T00:30:49.862Z",
+  "serviceId": "sdt-g47-repair-wake32c-20260831",
+  "sampleCount": 50,
+  "deployment": {
+    "id": "8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e",
+    "number": 169,
+    "createdOn": "2026-09-01T00:27:50.26765Z",
+    "message": "SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48"
+  },
+  "protocol": {
+    "deploymentCount": 1,
+    "session": "one sequential g37-sample.mjs process",
+    "windows": [
+      "short",
+      "long"
+    ],
+    "discardedWarmupsPerWindow": 1,
+    "measurement": "client latency of authenticated TagStateDO reads",
+    "warmCondition": "the bounded cold replay reached READY, then exactly one TagStateDO read was discarded before the sampled window",
+    "historyLengths": {
+      "short": 1,
+      "long": 5000
+    },
+    "clientColos": [
+      "EWR",
+      "PDX"
+    ]
+  },
+  "windows": [
+    {
+      "label": "short",
+      "tagDigest": "1acc4bdec85a9fa8a3cf002f1670406383893a8f415198c1aff63b3cbbfaaeec",
+      "payloadDigest": "c3d1b0895a03b1675ed74e70b77edf2796810fdc01fbb2bace53452fdb54e079",
+      "rawValues": "redacted",
+      "historyLengthBeforeWindow": 1,
+      "historyLengthAfterWindow": 1,
+      "sampleCount": 50,
+      "seed": {
+        "requestedHistoryLength": 1,
+        "committedHistoryLength": 1,
+        "seedBatchSize": 500,
+        "seedBatchCount": 1,
+        "initialHeadRead": {
+          "exists": false,
+          "status": 200,
+          "requestId": "a340270d186253d9-PDX",
+          "colo": "PDX",
+          "clientLatencyMs": 908,
+          "excludedFromSample": true
+        },
+        "batches": [
+          {
+            "ordinal": 1,
+            "firstHistoryOrdinal": 1,
+            "lastHistoryOrdinal": 1,
+            "writtenEventCount": 1,
+            "status": 200,
+            "requestId": "a3402712c8da5ec6-PDX",
+            "colo": "PDX",
+            "startedAtMs": 1788222481935,
+            "completedAtMs": 1788222483697,
+            "clientLatencyMs": 1762
+          }
+        ],
+        "candidate": "sdt-g47-repair-post-migration-wake32c-20260831"
+      },
+      "coldReplay": {
+        "informational": true,
+        "historyLength": 1,
+        "sourcePageLimit": 64,
+        "requestCount": 1,
+        "rebuildInProgressResponseCount": 0,
+        "firstResponseStatus": 200,
+        "finalResponseStatus": 200,
+        "startedAtMs": 1788222483697,
+        "completedAtMs": 1788222484364,
+        "durationMs": 667,
+        "clientColoDistribution": {
+          "PDX": 1
+        }
+      },
+      "warmup": {
+        "endpoint": "/conformance/v1/api/sekiban/serialized/tag-state",
+        "kind": "single discarded READY warm-up read",
+        "stateRead": "TagStateDO",
+        "discardedResponse": true,
+        "status": 200,
+        "requestId": "a340272139aa53d9-PDX",
+        "colo": "PDX",
+        "startedAtMs": 1788222484366,
+        "completedAtMs": 1788222484455,
+        "clientLatencyMs": 89,
+        "historyLengthBeforeWindow": 1
+      },
+      "client": {
+        "count": 50,
+        "p50": 84,
+        "p95": 95
+      },
+      "clientColoDistribution": {
+        "PDX": 50
+      },
+      "telemetry": {
+        "status": "unavailable",
+        "ac4PerHopStatus": "UNKNOWN",
+        "reason": "G37 observability token file was not supplied; per-hop telemetry was not queried, so AC4 per-hop values are UNKNOWN.",
+        "descriptiveLossCount": null,
+        "perHopDescriptiveMedians": []
+      },
+      "ledger": [
+        {
+          "ordinal": 1,
+          "requestId": "a3402721db5353d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484456,
+          "completedAtMs": 1788222484545,
+          "clientLatencyMs": 89,
+          "status": 200,
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
+        },
+        {
+          "ordinal": 2,
+          "requestId": "a34027226d0653d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484545,
+          "completedAtMs": 1788222484632,
+          "clientLatencyMs": 87,
+          "status": 200,
+          "historyLengthBefore": 2,
+          "historyLengthAfter": 2
+        },
+        {
+          "ordinal": 3,
+          "requestId": "a3402722feb153d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484633,
+          "completedAtMs": 1788222484721,
+          "clientLatencyMs": 88,
+          "status": 200,
+          "historyLengthBefore": 3,
+          "historyLengthAfter": 3
+        },
+        {
+          "ordinal": 4,
+          "requestId": "a3402723787353d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484721,
+          "completedAtMs": 1788222484806,
+          "clientLatencyMs": 85,
+          "status": 200,
+          "historyLengthBefore": 4,
+          "historyLengthAfter": 4
+        },
+        {
+          "ordinal": 5,
+          "requestId": "a3402723f9ba53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484806,
+          "completedAtMs": 1788222484893,
+          "clientLatencyMs": 87,
+          "status": 200,
+          "historyLengthBefore": 5,
+          "historyLengthAfter": 5
+        },
+        {
+          "ordinal": 6,
+          "requestId": "a34027248ae953d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484893,
+          "completedAtMs": 1788222484968,
+          "clientLatencyMs": 75,
+          "status": 200,
+          "historyLengthBefore": 6,
+          "historyLengthAfter": 6
+        },
+        {
+          "ordinal": 7,
+          "requestId": "a34027250c6153d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222484968,
+          "completedAtMs": 1788222485062,
+          "clientLatencyMs": 94,
+          "status": 200,
+          "historyLengthBefore": 7,
+          "historyLengthAfter": 7
+        },
+        {
+          "ordinal": 8,
+          "requestId": "a34027259e0253d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485062,
+          "completedAtMs": 1788222485146,
+          "clientLatencyMs": 84,
+          "status": 200,
+          "historyLengthBefore": 8,
+          "historyLengthAfter": 8
+        },
+        {
+          "ordinal": 9,
+          "requestId": "a34027261f8a53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485146,
+          "completedAtMs": 1788222485228,
+          "clientLatencyMs": 82,
+          "status": 200,
+          "historyLengthBefore": 9,
+          "historyLengthAfter": 9
+        },
+        {
+          "ordinal": 10,
+          "requestId": "a3402726997753d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485228,
+          "completedAtMs": 1788222485317,
+          "clientLatencyMs": 89,
+          "status": 200,
+          "historyLengthBefore": 10,
+          "historyLengthAfter": 10
+        },
+        {
+          "ordinal": 11,
+          "requestId": "a34027272aef53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485317,
+          "completedAtMs": 1788222485403,
+          "clientLatencyMs": 86,
+          "status": 200,
+          "historyLengthBefore": 11,
+          "historyLengthAfter": 11
+        },
+        {
+          "ordinal": 12,
+          "requestId": "a3402727bc8c53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485404,
+          "completedAtMs": 1788222485501,
+          "clientLatencyMs": 97,
+          "status": 200,
+          "historyLengthBefore": 12,
+          "historyLengthAfter": 12
+        },
+        {
+          "ordinal": 13,
+          "requestId": "a34027285e9a53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485503,
+          "completedAtMs": 1788222485591,
+          "clientLatencyMs": 88,
+          "status": 200,
+          "historyLengthBefore": 13,
+          "historyLengthAfter": 13
+        },
+        {
+          "ordinal": 14,
+          "requestId": "a3402728f81653d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485592,
+          "completedAtMs": 1788222485681,
+          "clientLatencyMs": 89,
+          "status": 200,
+          "historyLengthBefore": 14,
+          "historyLengthAfter": 14
+        },
+        {
+          "ordinal": 15,
+          "requestId": "a3402729799753d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485682,
+          "completedAtMs": 1788222485769,
+          "clientLatencyMs": 87,
+          "status": 200,
+          "historyLengthBefore": 15,
+          "historyLengthAfter": 15
+        },
+        {
+          "ordinal": 16,
+          "requestId": "a340272a0afe53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485770,
+          "completedAtMs": 1788222485854,
+          "clientLatencyMs": 84,
+          "status": 200,
+          "historyLengthBefore": 16,
+          "historyLengthAfter": 16
+        },
+        {
+          "ordinal": 17,
+          "requestId": "a340272a8c7e53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485855,
+          "completedAtMs": 1788222485934,
+          "clientLatencyMs": 79,
+          "status": 200,
+          "historyLengthBefore": 17,
+          "historyLengthAfter": 17
+        },
+        {
+          "ordinal": 18,
+          "requestId": "a340272b0e0d53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222485935,
+          "completedAtMs": 1788222486026,
+          "clientLatencyMs": 91,
+          "status": 200,
+          "historyLengthBefore": 18,
+          "historyLengthAfter": 18
+        },
+        {
+          "ordinal": 19,
+          "requestId": "a340272bafe053d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486028,
+          "completedAtMs": 1788222486120,
+          "clientLatencyMs": 92,
+          "status": 200,
+          "historyLengthBefore": 19,
+          "historyLengthAfter": 19
+        },
+        {
+          "ordinal": 20,
+          "requestId": "a340272c395853d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486122,
+          "completedAtMs": 1788222486205,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 20,
+          "historyLengthAfter": 20
+        },
+        {
+          "ordinal": 21,
+          "requestId": "a340272cbaca53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486206,
+          "completedAtMs": 1788222486288,
+          "clientLatencyMs": 82,
+          "status": 200,
+          "historyLengthBefore": 21,
+          "historyLengthAfter": 21
+        },
+        {
+          "ordinal": 22,
+          "requestId": "a340272d4c2153d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486289,
+          "completedAtMs": 1788222486381,
+          "clientLatencyMs": 92,
+          "status": 200,
+          "historyLengthBefore": 22,
+          "historyLengthAfter": 22
+        },
+        {
+          "ordinal": 23,
+          "requestId": "a340272dddb353d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486382,
+          "completedAtMs": 1788222486462,
+          "clientLatencyMs": 80,
+          "status": 200,
+          "historyLengthBefore": 23,
+          "historyLengthAfter": 23
+        },
+        {
+          "ordinal": 24,
+          "requestId": "a340272e5f4f53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486462,
+          "completedAtMs": 1788222486546,
+          "clientLatencyMs": 84,
+          "status": 200,
+          "historyLengthBefore": 24,
+          "historyLengthAfter": 24
+        },
+        {
+          "ordinal": 25,
+          "requestId": "a340272ed8bd53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486546,
+          "completedAtMs": 1788222486623,
+          "clientLatencyMs": 77,
+          "status": 200,
+          "historyLengthBefore": 25,
+          "historyLengthAfter": 25
+        },
+        {
+          "ordinal": 26,
+          "requestId": "a340272f5a2353d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486624,
+          "completedAtMs": 1788222486707,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 26,
+          "historyLengthAfter": 26
+        },
+        {
+          "ordinal": 27,
+          "requestId": "a340272feba453d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486708,
+          "completedAtMs": 1788222486793,
+          "clientLatencyMs": 85,
+          "status": 200,
+          "historyLengthBefore": 27,
+          "historyLengthAfter": 27
+        },
+        {
+          "ordinal": 28,
+          "requestId": "a34027306ca853d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486794,
+          "completedAtMs": 1788222486878,
+          "clientLatencyMs": 84,
+          "status": 200,
+          "historyLengthBefore": 28,
+          "historyLengthAfter": 28
+        },
+        {
+          "ordinal": 29,
+          "requestId": "a3402730edf553d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486879,
+          "completedAtMs": 1788222486959,
+          "clientLatencyMs": 80,
+          "status": 200,
+          "historyLengthBefore": 29,
+          "historyLengthAfter": 29
+        },
+        {
+          "ordinal": 30,
+          "requestId": "a34027317f3553d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222486961,
+          "completedAtMs": 1788222487044,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 30,
+          "historyLengthAfter": 30
+        },
+        {
+          "ordinal": 31,
+          "requestId": "a3402731f88c53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487047,
+          "completedAtMs": 1788222487128,
+          "clientLatencyMs": 81,
+          "status": 200,
+          "historyLengthBefore": 31,
+          "historyLengthAfter": 31
+        },
+        {
+          "ordinal": 32,
+          "requestId": "a340273289cb53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487129,
+          "completedAtMs": 1788222487217,
+          "clientLatencyMs": 88,
+          "status": 200,
+          "historyLengthBefore": 32,
+          "historyLengthAfter": 32
+        },
+        {
+          "ordinal": 33,
+          "requestId": "a34027331b2753d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487218,
+          "completedAtMs": 1788222487319,
+          "clientLatencyMs": 101,
+          "status": 200,
+          "historyLengthBefore": 33,
+          "historyLengthAfter": 33
+        },
+        {
+          "ordinal": 34,
+          "requestId": "a3402733bce253d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487320,
+          "completedAtMs": 1788222487404,
+          "clientLatencyMs": 84,
+          "status": 200,
+          "historyLengthBefore": 34,
+          "historyLengthAfter": 34
+        },
+        {
+          "ordinal": 35,
+          "requestId": "a34027343e0c53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487405,
+          "completedAtMs": 1788222487500,
+          "clientLatencyMs": 95,
+          "status": 200,
+          "historyLengthBefore": 35,
+          "historyLengthAfter": 35
+        },
+        {
+          "ordinal": 36,
+          "requestId": "a3402734dfbf53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487501,
+          "completedAtMs": 1788222487577,
+          "clientLatencyMs": 76,
+          "status": 200,
+          "historyLengthBefore": 36,
+          "historyLengthAfter": 36
+        },
+        {
+          "ordinal": 37,
+          "requestId": "a3402735591753d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487578,
+          "completedAtMs": 1788222487672,
+          "clientLatencyMs": 94,
+          "status": 200,
+          "historyLengthBefore": 37,
+          "historyLengthAfter": 37
+        },
+        {
+          "ordinal": 38,
+          "requestId": "a3402735fb1253d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487674,
+          "completedAtMs": 1788222487758,
+          "clientLatencyMs": 84,
+          "status": 200,
+          "historyLengthBefore": 38,
+          "historyLengthAfter": 38
+        },
+        {
+          "ordinal": 39,
+          "requestId": "a34027367c7253d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487759,
+          "completedAtMs": 1788222487849,
+          "clientLatencyMs": 90,
+          "status": 200,
+          "historyLengthBefore": 39,
+          "historyLengthAfter": 39
+        },
+        {
+          "ordinal": 40,
+          "requestId": "a34027370dfe53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487850,
+          "completedAtMs": 1788222487933,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 40,
+          "historyLengthAfter": 40
+        },
+        {
+          "ordinal": 41,
+          "requestId": "a34027378f8153d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222487934,
+          "completedAtMs": 1788222488017,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 41,
+          "historyLengthAfter": 41
+        },
+        {
+          "ordinal": 42,
+          "requestId": "a340273818ec53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488018,
+          "completedAtMs": 1788222488101,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 42,
+          "historyLengthAfter": 42
+        },
+        {
+          "ordinal": 43,
+          "requestId": "a34027389a4053d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488102,
+          "completedAtMs": 1788222488181,
+          "clientLatencyMs": 79,
+          "status": 200,
+          "historyLengthBefore": 43,
+          "historyLengthAfter": 43
+        },
+        {
+          "ordinal": 44,
+          "requestId": "a34027391bf053d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488182,
+          "completedAtMs": 1788222488262,
+          "clientLatencyMs": 80,
+          "status": 200,
+          "historyLengthBefore": 44,
+          "historyLengthAfter": 44
+        },
+        {
+          "ordinal": 45,
+          "requestId": "a34027399d0d53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488263,
+          "completedAtMs": 1788222488354,
+          "clientLatencyMs": 91,
+          "status": 200,
+          "historyLengthBefore": 45,
+          "historyLengthAfter": 45
+        },
+        {
+          "ordinal": 46,
+          "requestId": "a340273a2e7b53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488355,
+          "completedAtMs": 1788222488438,
+          "clientLatencyMs": 83,
+          "status": 200,
+          "historyLengthBefore": 46,
+          "historyLengthAfter": 46
+        },
+        {
+          "ordinal": 47,
+          "requestId": "a340273ab80e53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488439,
+          "completedAtMs": 1788222488528,
+          "clientLatencyMs": 89,
+          "status": 200,
+          "historyLengthBefore": 47,
+          "historyLengthAfter": 47
+        },
+        {
+          "ordinal": 48,
+          "requestId": "a340273b498953d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488529,
+          "completedAtMs": 1788222488615,
+          "clientLatencyMs": 86,
+          "status": 200,
+          "historyLengthBefore": 48,
+          "historyLengthAfter": 48
+        },
+        {
+          "ordinal": 49,
+          "requestId": "a340273bcafc53d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488615,
+          "completedAtMs": 1788222488695,
+          "clientLatencyMs": 80,
+          "status": 200,
+          "historyLengthBefore": 49,
+          "historyLengthAfter": 49
+        },
+        {
+          "ordinal": 50,
+          "requestId": "a340273c4c4753d9-PDX",
+          "colo": "PDX",
+          "startedAtMs": 1788222488696,
+          "completedAtMs": 1788222488772,
+          "clientLatencyMs": 76,
+          "status": 200,
+          "historyLengthBefore": 50,
+          "historyLengthAfter": 50
+        }
+      ]
+    },
+    {
+      "label": "long",
+      "tagDigest": "700fc82d0787c581f800da24d372eee686df4683a560eb5d1d5cccab19a2081c",
+      "payloadDigest": "0ac44ff76d1957cfd429eaea8c800b5e512c4504ed6ac3e0e7d465f9e492529c",
+      "rawValues": "redacted",
+      "historyLengthBeforeWindow": 5000,
+      "historyLengthAfterWindow": 5000,
+      "sampleCount": 50,
+      "seed": {
+        "requestedHistoryLength": 5000,
+        "committedHistoryLength": 5000,
+        "seedBatchSize": 500,
+        "seedBatchCount": 10,
+        "initialHeadRead": {
+          "exists": false,
+          "status": 200,
+          "requestId": "a34028b5195d4370-EWR",
+          "colo": "EWR",
+          "clientLatencyMs": 1053,
+          "excludedFromSample": true
+        },
+        "batches": [
+          {
+            "ordinal": 1,
+            "firstHistoryOrdinal": 1,
+            "lastHistoryOrdinal": 500,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a34028bb3fb9eedd-PDX",
+            "colo": "PDX",
+            "startedAtMs": 1788222549829,
+            "completedAtMs": 1788222551587,
+            "clientLatencyMs": 1758
+          },
+          {
+            "ordinal": 2,
+            "firstHistoryOrdinal": 501,
+            "lastHistoryOrdinal": 1000,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a34028c61ebe4370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222551600,
+            "completedAtMs": 1788222553390,
+            "clientLatencyMs": 1790
+          },
+          {
+            "ordinal": 3,
+            "firstHistoryOrdinal": 1001,
+            "lastHistoryOrdinal": 1500,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a34028d1480e4370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222553401,
+            "completedAtMs": 1788222554955,
+            "clientLatencyMs": 1554
+          },
+          {
+            "ordinal": 4,
+            "firstHistoryOrdinal": 1501,
+            "lastHistoryOrdinal": 2000,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a34028dabfda4370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222554961,
+            "completedAtMs": 1788222558306,
+            "clientLatencyMs": 3345
+          },
+          {
+            "ordinal": 5,
+            "firstHistoryOrdinal": 2001,
+            "lastHistoryOrdinal": 2500,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a34028f00a364370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222558311,
+            "completedAtMs": 1788222560088,
+            "clientLatencyMs": 1777
+          },
+          {
+            "ordinal": 6,
+            "firstHistoryOrdinal": 2501,
+            "lastHistoryOrdinal": 3000,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a34028fb2d184370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222560095,
+            "completedAtMs": 1788222563140,
+            "clientLatencyMs": 3045
+          },
+          {
+            "ordinal": 7,
+            "firstHistoryOrdinal": 3001,
+            "lastHistoryOrdinal": 3500,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a340290dfd694370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222563146,
+            "completedAtMs": 1788222565575,
+            "clientLatencyMs": 2429
+          },
+          {
+            "ordinal": 8,
+            "firstHistoryOrdinal": 3501,
+            "lastHistoryOrdinal": 4000,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a340291d7b814370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222565582,
+            "completedAtMs": 1788222567710,
+            "clientLatencyMs": 2128
+          },
+          {
+            "ordinal": 9,
+            "firstHistoryOrdinal": 4001,
+            "lastHistoryOrdinal": 4500,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a340292a7ed54370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222567718,
+            "completedAtMs": 1788222569814,
+            "clientLatencyMs": 2096
+          },
+          {
+            "ordinal": 10,
+            "firstHistoryOrdinal": 4501,
+            "lastHistoryOrdinal": 5000,
+            "writtenEventCount": 500,
+            "status": 200,
+            "requestId": "a3402937faed4370-EWR",
+            "colo": "EWR",
+            "startedAtMs": 1788222569821,
+            "completedAtMs": 1788222572144,
+            "clientLatencyMs": 2323
+          }
+        ],
+        "candidate": "sdt-g47-repair-post-migration-wake32c-20260831"
+      },
+      "coldReplay": {
+        "informational": true,
+        "historyLength": 5000,
+        "sourcePageLimit": 64,
+        "requestCount": 79,
+        "rebuildInProgressResponseCount": 78,
+        "firstResponseStatus": 503,
+        "finalResponseStatus": 200,
+        "startedAtMs": 1788222572150,
+        "completedAtMs": 1788222584103,
+        "durationMs": 11953,
+        "clientColoDistribution": {
+          "ATL": 39,
+          "EWR": 40
+        }
+      },
+      "warmup": {
+        "endpoint": "/conformance/v1/api/sekiban/serialized/tag-state",
+        "kind": "single discarded READY warm-up read",
+        "stateRead": "TagStateDO",
+        "discardedResponse": true,
+        "status": 200,
+        "requestId": "a3402990d8604370-EWR",
+        "colo": "EWR",
+        "startedAtMs": 1788222584114,
+        "completedAtMs": 1788222584228,
+        "clientLatencyMs": 114,
+        "historyLengthBeforeWindow": 5000
+      },
+      "client": {
+        "count": 50,
+        "p50": 110,
+        "p95": 139
+      },
+      "clientColoDistribution": {
+        "EWR": 50
+      },
+      "telemetry": {
+        "status": "unavailable",
+        "ac4PerHopStatus": "UNKNOWN",
+        "reason": "G37 observability token file was not supplied; per-hop telemetry was not queried, so AC4 per-hop values are UNKNOWN.",
+        "descriptiveLossCount": null,
+        "perHopDescriptiveMedians": []
+      },
+      "ledger": [
+        {
+          "ordinal": 1,
+          "requestId": "a340299188f04370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584228,
+          "completedAtMs": 1788222584325,
+          "clientLatencyMs": 97,
+          "status": 200,
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
+        },
+        {
+          "ordinal": 2,
+          "requestId": "a340299229694370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584326,
+          "completedAtMs": 1788222584435,
+          "clientLatencyMs": 109,
+          "status": 200,
+          "historyLengthBefore": 5001,
+          "historyLengthAfter": 5001
+        },
+        {
+          "ordinal": 3,
+          "requestId": "a3402992da024370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584436,
+          "completedAtMs": 1788222584550,
+          "clientLatencyMs": 114,
+          "status": 200,
+          "historyLengthBefore": 5002,
+          "historyLengthAfter": 5002
+        },
+        {
+          "ordinal": 4,
+          "requestId": "a34029938a9e4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584551,
+          "completedAtMs": 1788222584656,
+          "clientLatencyMs": 105,
+          "status": 200,
+          "historyLengthBefore": 5003,
+          "historyLengthAfter": 5003
+        },
+        {
+          "ordinal": 5,
+          "requestId": "a34029943b284370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584657,
+          "completedAtMs": 1788222584765,
+          "clientLatencyMs": 108,
+          "status": 200,
+          "historyLengthBefore": 5004,
+          "historyLengthAfter": 5004
+        },
+        {
+          "ordinal": 6,
+          "requestId": "a3402994ebe74370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584766,
+          "completedAtMs": 1788222584867,
+          "clientLatencyMs": 101,
+          "status": 200,
+          "historyLengthBefore": 5005,
+          "historyLengthAfter": 5005
+        },
+        {
+          "ordinal": 7,
+          "requestId": "a34029958c704370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584867,
+          "completedAtMs": 1788222584969,
+          "clientLatencyMs": 102,
+          "status": 200,
+          "historyLengthBefore": 5006,
+          "historyLengthAfter": 5006
+        },
+        {
+          "ordinal": 8,
+          "requestId": "a34029962d064370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222584969,
+          "completedAtMs": 1788222585070,
+          "clientLatencyMs": 101,
+          "status": 200,
+          "historyLengthBefore": 5007,
+          "historyLengthAfter": 5007
+        },
+        {
+          "ordinal": 9,
+          "requestId": "a3402996cd7e4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585071,
+          "completedAtMs": 1788222585190,
+          "clientLatencyMs": 119,
+          "status": 200,
+          "historyLengthBefore": 5008,
+          "historyLengthAfter": 5008
+        },
+        {
+          "ordinal": 10,
+          "requestId": "a34029978e044370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585190,
+          "completedAtMs": 1788222585293,
+          "clientLatencyMs": 103,
+          "status": 200,
+          "historyLengthBefore": 5009,
+          "historyLengthAfter": 5009
+        },
+        {
+          "ordinal": 11,
+          "requestId": "a34029982e814370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585293,
+          "completedAtMs": 1788222585407,
+          "clientLatencyMs": 114,
+          "status": 200,
+          "historyLengthBefore": 5010,
+          "historyLengthAfter": 5010
+        },
+        {
+          "ordinal": 12,
+          "requestId": "a3402998ef354370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585408,
+          "completedAtMs": 1788222585518,
+          "clientLatencyMs": 110,
+          "status": 200,
+          "historyLengthBefore": 5011,
+          "historyLengthAfter": 5011
+        },
+        {
+          "ordinal": 13,
+          "requestId": "a3402999afd24370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585519,
+          "completedAtMs": 1788222585625,
+          "clientLatencyMs": 106,
+          "status": 200,
+          "historyLengthBefore": 5012,
+          "historyLengthAfter": 5012
+        },
+        {
+          "ordinal": 14,
+          "requestId": "a340299a48544370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585626,
+          "completedAtMs": 1788222585765,
+          "clientLatencyMs": 139,
+          "status": 200,
+          "historyLengthBefore": 5013,
+          "historyLengthAfter": 5013
+        },
+        {
+          "ordinal": 15,
+          "requestId": "a340299b49304370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585766,
+          "completedAtMs": 1788222585918,
+          "clientLatencyMs": 152,
+          "status": 200,
+          "historyLengthBefore": 5014,
+          "historyLengthAfter": 5014
+        },
+        {
+          "ordinal": 16,
+          "requestId": "a340299c19d14370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222585919,
+          "completedAtMs": 1788222586028,
+          "clientLatencyMs": 109,
+          "status": 200,
+          "historyLengthBefore": 5015,
+          "historyLengthAfter": 5015
+        },
+        {
+          "ordinal": 17,
+          "requestId": "a340299cca664370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586030,
+          "completedAtMs": 1788222586133,
+          "clientLatencyMs": 103,
+          "status": 200,
+          "historyLengthBefore": 5016,
+          "historyLengthAfter": 5016
+        },
+        {
+          "ordinal": 18,
+          "requestId": "a340299d7aec4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586134,
+          "completedAtMs": 1788222586243,
+          "clientLatencyMs": 109,
+          "status": 200,
+          "historyLengthBefore": 5017,
+          "historyLengthAfter": 5017
+        },
+        {
+          "ordinal": 19,
+          "requestId": "a340299e2b824370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586244,
+          "completedAtMs": 1788222586353,
+          "clientLatencyMs": 109,
+          "status": 200,
+          "historyLengthBefore": 5018,
+          "historyLengthAfter": 5018
+        },
+        {
+          "ordinal": 20,
+          "requestId": "a340299edc054370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586354,
+          "completedAtMs": 1788222586457,
+          "clientLatencyMs": 103,
+          "status": 200,
+          "historyLengthBefore": 5019,
+          "historyLengthAfter": 5019
+        },
+        {
+          "ordinal": 21,
+          "requestId": "a340299f7c734370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586458,
+          "completedAtMs": 1788222586592,
+          "clientLatencyMs": 134,
+          "status": 200,
+          "historyLengthBefore": 5020,
+          "historyLengthAfter": 5020
+        },
+        {
+          "ordinal": 22,
+          "requestId": "a34029a05d1f4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586593,
+          "completedAtMs": 1788222586705,
+          "clientLatencyMs": 112,
+          "status": 200,
+          "historyLengthBefore": 5021,
+          "historyLengthAfter": 5021
+        },
+        {
+          "ordinal": 23,
+          "requestId": "a34029a10db24370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586706,
+          "completedAtMs": 1788222586816,
+          "clientLatencyMs": 110,
+          "status": 200,
+          "historyLengthBefore": 5022,
+          "historyLengthAfter": 5022
+        },
+        {
+          "ordinal": 24,
+          "requestId": "a34029a1be4f4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586816,
+          "completedAtMs": 1788222586944,
+          "clientLatencyMs": 128,
+          "status": 200,
+          "historyLengthBefore": 5023,
+          "historyLengthAfter": 5023
+        },
+        {
+          "ordinal": 25,
+          "requestId": "a34029a28eec4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222586944,
+          "completedAtMs": 1788222587044,
+          "clientLatencyMs": 100,
+          "status": 200,
+          "historyLengthBefore": 5024,
+          "historyLengthAfter": 5024
+        },
+        {
+          "ordinal": 26,
+          "requestId": "a34029a32f724370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587045,
+          "completedAtMs": 1788222587161,
+          "clientLatencyMs": 116,
+          "status": 200,
+          "historyLengthBefore": 5025,
+          "historyLengthAfter": 5025
+        },
+        {
+          "ordinal": 27,
+          "requestId": "a34029a3e80a4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587163,
+          "completedAtMs": 1788222587279,
+          "clientLatencyMs": 116,
+          "status": 200,
+          "historyLengthBefore": 5026,
+          "historyLengthAfter": 5026
+        },
+        {
+          "ordinal": 28,
+          "requestId": "a34029a498ae4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587280,
+          "completedAtMs": 1788222587392,
+          "clientLatencyMs": 112,
+          "status": 200,
+          "historyLengthBefore": 5027,
+          "historyLengthAfter": 5027
+        },
+        {
+          "ordinal": 29,
+          "requestId": "a34029a559714370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587393,
+          "completedAtMs": 1788222587506,
+          "clientLatencyMs": 113,
+          "status": 200,
+          "historyLengthBefore": 5028,
+          "historyLengthAfter": 5028
+        },
+        {
+          "ordinal": 30,
+          "requestId": "a34029a60a064370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587507,
+          "completedAtMs": 1788222587617,
+          "clientLatencyMs": 110,
+          "status": 200,
+          "historyLengthBefore": 5029,
+          "historyLengthAfter": 5029
+        },
+        {
+          "ordinal": 31,
+          "requestId": "a34029a6ba9e4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587618,
+          "completedAtMs": 1788222587723,
+          "clientLatencyMs": 105,
+          "status": 200,
+          "historyLengthBefore": 5030,
+          "historyLengthAfter": 5030
+        },
+        {
+          "ordinal": 32,
+          "requestId": "a34029a76b224370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587725,
+          "completedAtMs": 1788222587836,
+          "clientLatencyMs": 111,
+          "status": 200,
+          "historyLengthBefore": 5031,
+          "historyLengthAfter": 5031
+        },
+        {
+          "ordinal": 33,
+          "requestId": "a34029a81bb44370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587837,
+          "completedAtMs": 1788222587970,
+          "clientLatencyMs": 133,
+          "status": 200,
+          "historyLengthBefore": 5032,
+          "historyLengthAfter": 5032
+        },
+        {
+          "ordinal": 34,
+          "requestId": "a34029a8ec5e4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222587971,
+          "completedAtMs": 1788222588082,
+          "clientLatencyMs": 111,
+          "status": 200,
+          "historyLengthBefore": 5033,
+          "historyLengthAfter": 5033
+        },
+        {
+          "ordinal": 35,
+          "requestId": "a34029a9ad2e4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588083,
+          "completedAtMs": 1788222588194,
+          "clientLatencyMs": 111,
+          "status": 200,
+          "historyLengthBefore": 5034,
+          "historyLengthAfter": 5034
+        },
+        {
+          "ordinal": 36,
+          "requestId": "a34029aa5dd54370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588195,
+          "completedAtMs": 1788222588301,
+          "clientLatencyMs": 106,
+          "status": 200,
+          "historyLengthBefore": 5035,
+          "historyLengthAfter": 5035
+        },
+        {
+          "ordinal": 37,
+          "requestId": "a34029ab0e494370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588302,
+          "completedAtMs": 1788222588411,
+          "clientLatencyMs": 109,
+          "status": 200,
+          "historyLengthBefore": 5036,
+          "historyLengthAfter": 5036
+        },
+        {
+          "ordinal": 38,
+          "requestId": "a34029abaeff4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588412,
+          "completedAtMs": 1788222588522,
+          "clientLatencyMs": 110,
+          "status": 200,
+          "historyLengthBefore": 5037,
+          "historyLengthAfter": 5037
+        },
+        {
+          "ordinal": 39,
+          "requestId": "a34029ac5fae4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588523,
+          "completedAtMs": 1788222588627,
+          "clientLatencyMs": 104,
+          "status": 200,
+          "historyLengthBefore": 5038,
+          "historyLengthAfter": 5038
+        },
+        {
+          "ordinal": 40,
+          "requestId": "a34029ad08454370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588628,
+          "completedAtMs": 1788222588729,
+          "clientLatencyMs": 101,
+          "status": 200,
+          "historyLengthBefore": 5039,
+          "historyLengthAfter": 5039
+        },
+        {
+          "ordinal": 41,
+          "requestId": "a34029ada8f44370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588730,
+          "completedAtMs": 1788222588831,
+          "clientLatencyMs": 101,
+          "status": 200,
+          "historyLengthBefore": 5040,
+          "historyLengthAfter": 5040
+        },
+        {
+          "ordinal": 42,
+          "requestId": "a34029ae498a4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588831,
+          "completedAtMs": 1788222588936,
+          "clientLatencyMs": 105,
+          "status": 200,
+          "historyLengthBefore": 5041,
+          "historyLengthAfter": 5041
+        },
+        {
+          "ordinal": 43,
+          "requestId": "a34029aefa094370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222588937,
+          "completedAtMs": 1788222589042,
+          "clientLatencyMs": 105,
+          "status": 200,
+          "historyLengthBefore": 5042,
+          "historyLengthAfter": 5042
+        },
+        {
+          "ordinal": 44,
+          "requestId": "a34029afaaa04370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589042,
+          "completedAtMs": 1788222589142,
+          "clientLatencyMs": 100,
+          "status": 200,
+          "historyLengthBefore": 5043,
+          "historyLengthAfter": 5043
+        },
+        {
+          "ordinal": 45,
+          "requestId": "a34029b04b274370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589143,
+          "completedAtMs": 1788222589258,
+          "clientLatencyMs": 115,
+          "status": 200,
+          "historyLengthBefore": 5044,
+          "historyLengthAfter": 5044
+        },
+        {
+          "ordinal": 46,
+          "requestId": "a34029b10c044370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589260,
+          "completedAtMs": 1788222589371,
+          "clientLatencyMs": 111,
+          "status": 200,
+          "historyLengthBefore": 5045,
+          "historyLengthAfter": 5045
+        },
+        {
+          "ordinal": 47,
+          "requestId": "a34029b1bc8b4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589373,
+          "completedAtMs": 1788222589483,
+          "clientLatencyMs": 110,
+          "status": 200,
+          "historyLengthBefore": 5046,
+          "historyLengthAfter": 5046
+        },
+        {
+          "ordinal": 48,
+          "requestId": "a34029b26d124370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589484,
+          "completedAtMs": 1788222589594,
+          "clientLatencyMs": 110,
+          "status": 200,
+          "historyLengthBefore": 5047,
+          "historyLengthAfter": 5047
+        },
+        {
+          "ordinal": 49,
+          "requestId": "a34029b31dad4370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589596,
+          "completedAtMs": 1788222589707,
+          "clientLatencyMs": 111,
+          "status": 200,
+          "historyLengthBefore": 5048,
+          "historyLengthAfter": 5048
+        },
+        {
+          "ordinal": 50,
+          "requestId": "a34029b3ce614370-EWR",
+          "colo": "EWR",
+          "startedAtMs": 1788222589709,
+          "completedAtMs": 1788222589863,
+          "clientLatencyMs": 154,
+          "status": 200,
+          "historyLengthBefore": 5049,
+          "historyLengthAfter": 5049
+        }
+      ]
+    }
+  ],
+  "comparison": {
+    "p50DifferenceMs": 26,
+    "p95DifferenceMs": 44,
+    "claim": "Same-colo claim withdrawn because the client windows did not share one colo.",
+    "sameColo": false
+  }
+}
