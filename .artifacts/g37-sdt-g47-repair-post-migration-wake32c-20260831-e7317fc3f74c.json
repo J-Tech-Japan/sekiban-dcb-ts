@@ -132,8 +132,8 @@
           "completedAtMs": 1788222484632,
           "clientLatencyMs": 87,
           "status": 200,
-          "historyLengthBefore": 2,
-          "historyLengthAfter": 2
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 3,
@@ -143,8 +143,8 @@
           "completedAtMs": 1788222484721,
           "clientLatencyMs": 88,
           "status": 200,
-          "historyLengthBefore": 3,
-          "historyLengthAfter": 3
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 4,
@@ -154,8 +154,8 @@
           "completedAtMs": 1788222484806,
           "clientLatencyMs": 85,
           "status": 200,
-          "historyLengthBefore": 4,
-          "historyLengthAfter": 4
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 5,
@@ -165,8 +165,8 @@
           "completedAtMs": 1788222484893,
           "clientLatencyMs": 87,
           "status": 200,
-          "historyLengthBefore": 5,
-          "historyLengthAfter": 5
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 6,
@@ -176,8 +176,8 @@
           "completedAtMs": 1788222484968,
           "clientLatencyMs": 75,
           "status": 200,
-          "historyLengthBefore": 6,
-          "historyLengthAfter": 6
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 7,
@@ -187,8 +187,8 @@
           "completedAtMs": 1788222485062,
           "clientLatencyMs": 94,
           "status": 200,
-          "historyLengthBefore": 7,
-          "historyLengthAfter": 7
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 8,
@@ -198,8 +198,8 @@
           "completedAtMs": 1788222485146,
           "clientLatencyMs": 84,
           "status": 200,
-          "historyLengthBefore": 8,
-          "historyLengthAfter": 8
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 9,
@@ -209,8 +209,8 @@
           "completedAtMs": 1788222485228,
           "clientLatencyMs": 82,
           "status": 200,
-          "historyLengthBefore": 9,
-          "historyLengthAfter": 9
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 10,
@@ -220,8 +220,8 @@
           "completedAtMs": 1788222485317,
           "clientLatencyMs": 89,
           "status": 200,
-          "historyLengthBefore": 10,
-          "historyLengthAfter": 10
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 11,
@@ -231,8 +231,8 @@
           "completedAtMs": 1788222485403,
           "clientLatencyMs": 86,
           "status": 200,
-          "historyLengthBefore": 11,
-          "historyLengthAfter": 11
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 12,
@@ -242,8 +242,8 @@
           "completedAtMs": 1788222485501,
           "clientLatencyMs": 97,
           "status": 200,
-          "historyLengthBefore": 12,
-          "historyLengthAfter": 12
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 13,
@@ -253,8 +253,8 @@
           "completedAtMs": 1788222485591,
           "clientLatencyMs": 88,
           "status": 200,
-          "historyLengthBefore": 13,
-          "historyLengthAfter": 13
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 14,
@@ -264,8 +264,8 @@
           "completedAtMs": 1788222485681,
           "clientLatencyMs": 89,
           "status": 200,
-          "historyLengthBefore": 14,
-          "historyLengthAfter": 14
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 15,
@@ -275,8 +275,8 @@
           "completedAtMs": 1788222485769,
           "clientLatencyMs": 87,
           "status": 200,
-          "historyLengthBefore": 15,
-          "historyLengthAfter": 15
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 16,
@@ -286,8 +286,8 @@
           "completedAtMs": 1788222485854,
           "clientLatencyMs": 84,
           "status": 200,
-          "historyLengthBefore": 16,
-          "historyLengthAfter": 16
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 17,
@@ -297,8 +297,8 @@
           "completedAtMs": 1788222485934,
           "clientLatencyMs": 79,
           "status": 200,
-          "historyLengthBefore": 17,
-          "historyLengthAfter": 17
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 18,
@@ -308,8 +308,8 @@
           "completedAtMs": 1788222486026,
           "clientLatencyMs": 91,
           "status": 200,
-          "historyLengthBefore": 18,
-          "historyLengthAfter": 18
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 19,
@@ -319,8 +319,8 @@
           "completedAtMs": 1788222486120,
           "clientLatencyMs": 92,
           "status": 200,
-          "historyLengthBefore": 19,
-          "historyLengthAfter": 19
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 20,
@@ -330,8 +330,8 @@
           "completedAtMs": 1788222486205,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 20,
-          "historyLengthAfter": 20
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 21,
@@ -341,8 +341,8 @@
           "completedAtMs": 1788222486288,
           "clientLatencyMs": 82,
           "status": 200,
-          "historyLengthBefore": 21,
-          "historyLengthAfter": 21
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 22,
@@ -352,8 +352,8 @@
           "completedAtMs": 1788222486381,
           "clientLatencyMs": 92,
           "status": 200,
-          "historyLengthBefore": 22,
-          "historyLengthAfter": 22
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 23,
@@ -363,8 +363,8 @@
           "completedAtMs": 1788222486462,
           "clientLatencyMs": 80,
           "status": 200,
-          "historyLengthBefore": 23,
-          "historyLengthAfter": 23
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 24,
@@ -374,8 +374,8 @@
           "completedAtMs": 1788222486546,
           "clientLatencyMs": 84,
           "status": 200,
-          "historyLengthBefore": 24,
-          "historyLengthAfter": 24
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 25,
@@ -385,8 +385,8 @@
           "completedAtMs": 1788222486623,
           "clientLatencyMs": 77,
           "status": 200,
-          "historyLengthBefore": 25,
-          "historyLengthAfter": 25
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 26,
@@ -396,8 +396,8 @@
           "completedAtMs": 1788222486707,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 26,
-          "historyLengthAfter": 26
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 27,
@@ -407,8 +407,8 @@
           "completedAtMs": 1788222486793,
           "clientLatencyMs": 85,
           "status": 200,
-          "historyLengthBefore": 27,
-          "historyLengthAfter": 27
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 28,
@@ -418,8 +418,8 @@
           "completedAtMs": 1788222486878,
           "clientLatencyMs": 84,
           "status": 200,
-          "historyLengthBefore": 28,
-          "historyLengthAfter": 28
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 29,
@@ -429,8 +429,8 @@
           "completedAtMs": 1788222486959,
           "clientLatencyMs": 80,
           "status": 200,
-          "historyLengthBefore": 29,
-          "historyLengthAfter": 29
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 30,
@@ -440,8 +440,8 @@
           "completedAtMs": 1788222487044,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 30,
-          "historyLengthAfter": 30
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 31,
@@ -451,8 +451,8 @@
           "completedAtMs": 1788222487128,
           "clientLatencyMs": 81,
           "status": 200,
-          "historyLengthBefore": 31,
-          "historyLengthAfter": 31
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 32,
@@ -462,8 +462,8 @@
           "completedAtMs": 1788222487217,
           "clientLatencyMs": 88,
           "status": 200,
-          "historyLengthBefore": 32,
-          "historyLengthAfter": 32
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 33,
@@ -473,8 +473,8 @@
           "completedAtMs": 1788222487319,
           "clientLatencyMs": 101,
           "status": 200,
-          "historyLengthBefore": 33,
-          "historyLengthAfter": 33
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 34,
@@ -484,8 +484,8 @@
           "completedAtMs": 1788222487404,
           "clientLatencyMs": 84,
           "status": 200,
-          "historyLengthBefore": 34,
-          "historyLengthAfter": 34
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 35,
@@ -495,8 +495,8 @@
           "completedAtMs": 1788222487500,
           "clientLatencyMs": 95,
           "status": 200,
-          "historyLengthBefore": 35,
-          "historyLengthAfter": 35
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 36,
@@ -506,8 +506,8 @@
           "completedAtMs": 1788222487577,
           "clientLatencyMs": 76,
           "status": 200,
-          "historyLengthBefore": 36,
-          "historyLengthAfter": 36
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 37,
@@ -517,8 +517,8 @@
           "completedAtMs": 1788222487672,
           "clientLatencyMs": 94,
           "status": 200,
-          "historyLengthBefore": 37,
-          "historyLengthAfter": 37
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 38,
@@ -528,8 +528,8 @@
           "completedAtMs": 1788222487758,
           "clientLatencyMs": 84,
           "status": 200,
-          "historyLengthBefore": 38,
-          "historyLengthAfter": 38
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 39,
@@ -539,8 +539,8 @@
           "completedAtMs": 1788222487849,
           "clientLatencyMs": 90,
           "status": 200,
-          "historyLengthBefore": 39,
-          "historyLengthAfter": 39
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 40,
@@ -550,8 +550,8 @@
           "completedAtMs": 1788222487933,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 40,
-          "historyLengthAfter": 40
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 41,
@@ -561,8 +561,8 @@
           "completedAtMs": 1788222488017,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 41,
-          "historyLengthAfter": 41
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 42,
@@ -572,8 +572,8 @@
           "completedAtMs": 1788222488101,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 42,
-          "historyLengthAfter": 42
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 43,
@@ -583,8 +583,8 @@
           "completedAtMs": 1788222488181,
           "clientLatencyMs": 79,
           "status": 200,
-          "historyLengthBefore": 43,
-          "historyLengthAfter": 43
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 44,
@@ -594,8 +594,8 @@
           "completedAtMs": 1788222488262,
           "clientLatencyMs": 80,
           "status": 200,
-          "historyLengthBefore": 44,
-          "historyLengthAfter": 44
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 45,
@@ -605,8 +605,8 @@
           "completedAtMs": 1788222488354,
           "clientLatencyMs": 91,
           "status": 200,
-          "historyLengthBefore": 45,
-          "historyLengthAfter": 45
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 46,
@@ -616,8 +616,8 @@
           "completedAtMs": 1788222488438,
           "clientLatencyMs": 83,
           "status": 200,
-          "historyLengthBefore": 46,
-          "historyLengthAfter": 46
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 47,
@@ -627,8 +627,8 @@
           "completedAtMs": 1788222488528,
           "clientLatencyMs": 89,
           "status": 200,
-          "historyLengthBefore": 47,
-          "historyLengthAfter": 47
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 48,
@@ -638,8 +638,8 @@
           "completedAtMs": 1788222488615,
           "clientLatencyMs": 86,
           "status": 200,
-          "historyLengthBefore": 48,
-          "historyLengthAfter": 48
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 49,
@@ -649,8 +649,8 @@
           "completedAtMs": 1788222488695,
           "clientLatencyMs": 80,
           "status": 200,
-          "historyLengthBefore": 49,
-          "historyLengthAfter": 49
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         },
         {
           "ordinal": 50,
@@ -660,8 +660,8 @@
           "completedAtMs": 1788222488772,
           "clientLatencyMs": 76,
           "status": 200,
-          "historyLengthBefore": 50,
-          "historyLengthAfter": 50
+          "historyLengthBefore": 1,
+          "historyLengthAfter": 1
         }
       ]
     },
@@ -874,8 +874,8 @@
           "completedAtMs": 1788222584435,
           "clientLatencyMs": 109,
           "status": 200,
-          "historyLengthBefore": 5001,
-          "historyLengthAfter": 5001
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 3,
@@ -885,8 +885,8 @@
           "completedAtMs": 1788222584550,
           "clientLatencyMs": 114,
           "status": 200,
-          "historyLengthBefore": 5002,
-          "historyLengthAfter": 5002
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 4,
@@ -896,8 +896,8 @@
           "completedAtMs": 1788222584656,
           "clientLatencyMs": 105,
           "status": 200,
-          "historyLengthBefore": 5003,
-          "historyLengthAfter": 5003
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 5,
@@ -907,8 +907,8 @@
           "completedAtMs": 1788222584765,
           "clientLatencyMs": 108,
           "status": 200,
-          "historyLengthBefore": 5004,
-          "historyLengthAfter": 5004
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 6,
@@ -918,8 +918,8 @@
           "completedAtMs": 1788222584867,
           "clientLatencyMs": 101,
           "status": 200,
-          "historyLengthBefore": 5005,
-          "historyLengthAfter": 5005
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 7,
@@ -929,8 +929,8 @@
           "completedAtMs": 1788222584969,
           "clientLatencyMs": 102,
           "status": 200,
-          "historyLengthBefore": 5006,
-          "historyLengthAfter": 5006
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 8,
@@ -940,8 +940,8 @@
           "completedAtMs": 1788222585070,
           "clientLatencyMs": 101,
           "status": 200,
-          "historyLengthBefore": 5007,
-          "historyLengthAfter": 5007
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 9,
@@ -951,8 +951,8 @@
           "completedAtMs": 1788222585190,
           "clientLatencyMs": 119,
           "status": 200,
-          "historyLengthBefore": 5008,
-          "historyLengthAfter": 5008
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 10,
@@ -962,8 +962,8 @@
           "completedAtMs": 1788222585293,
           "clientLatencyMs": 103,
           "status": 200,
-          "historyLengthBefore": 5009,
-          "historyLengthAfter": 5009
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 11,
@@ -973,8 +973,8 @@
           "completedAtMs": 1788222585407,
           "clientLatencyMs": 114,
           "status": 200,
-          "historyLengthBefore": 5010,
-          "historyLengthAfter": 5010
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 12,
@@ -984,8 +984,8 @@
           "completedAtMs": 1788222585518,
           "clientLatencyMs": 110,
           "status": 200,
-          "historyLengthBefore": 5011,
-          "historyLengthAfter": 5011
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 13,
@@ -995,8 +995,8 @@
           "completedAtMs": 1788222585625,
           "clientLatencyMs": 106,
           "status": 200,
-          "historyLengthBefore": 5012,
-          "historyLengthAfter": 5012
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 14,
@@ -1006,8 +1006,8 @@
           "completedAtMs": 1788222585765,
           "clientLatencyMs": 139,
           "status": 200,
-          "historyLengthBefore": 5013,
-          "historyLengthAfter": 5013
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 15,
@@ -1017,8 +1017,8 @@
           "completedAtMs": 1788222585918,
           "clientLatencyMs": 152,
           "status": 200,
-          "historyLengthBefore": 5014,
-          "historyLengthAfter": 5014
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 16,
@@ -1028,8 +1028,8 @@
           "completedAtMs": 1788222586028,
           "clientLatencyMs": 109,
           "status": 200,
-          "historyLengthBefore": 5015,
-          "historyLengthAfter": 5015
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 17,
@@ -1039,8 +1039,8 @@
           "completedAtMs": 1788222586133,
           "clientLatencyMs": 103,
           "status": 200,
-          "historyLengthBefore": 5016,
-          "historyLengthAfter": 5016
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 18,
@@ -1050,8 +1050,8 @@
           "completedAtMs": 1788222586243,
           "clientLatencyMs": 109,
           "status": 200,
-          "historyLengthBefore": 5017,
-          "historyLengthAfter": 5017
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 19,
@@ -1061,8 +1061,8 @@
           "completedAtMs": 1788222586353,
           "clientLatencyMs": 109,
           "status": 200,
-          "historyLengthBefore": 5018,
-          "historyLengthAfter": 5018
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 20,
@@ -1072,8 +1072,8 @@
           "completedAtMs": 1788222586457,
           "clientLatencyMs": 103,
           "status": 200,
-          "historyLengthBefore": 5019,
-          "historyLengthAfter": 5019
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 21,
@@ -1083,8 +1083,8 @@
           "completedAtMs": 1788222586592,
           "clientLatencyMs": 134,
           "status": 200,
-          "historyLengthBefore": 5020,
-          "historyLengthAfter": 5020
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 22,
@@ -1094,8 +1094,8 @@
           "completedAtMs": 1788222586705,
           "clientLatencyMs": 112,
           "status": 200,
-          "historyLengthBefore": 5021,
-          "historyLengthAfter": 5021
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 23,
@@ -1105,8 +1105,8 @@
           "completedAtMs": 1788222586816,
           "clientLatencyMs": 110,
           "status": 200,
-          "historyLengthBefore": 5022,
-          "historyLengthAfter": 5022
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 24,
@@ -1116,8 +1116,8 @@
           "completedAtMs": 1788222586944,
           "clientLatencyMs": 128,
           "status": 200,
-          "historyLengthBefore": 5023,
-          "historyLengthAfter": 5023
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 25,
@@ -1127,8 +1127,8 @@
           "completedAtMs": 1788222587044,
           "clientLatencyMs": 100,
           "status": 200,
-          "historyLengthBefore": 5024,
-          "historyLengthAfter": 5024
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 26,
@@ -1138,8 +1138,8 @@
           "completedAtMs": 1788222587161,
           "clientLatencyMs": 116,
           "status": 200,
-          "historyLengthBefore": 5025,
-          "historyLengthAfter": 5025
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 27,
@@ -1149,8 +1149,8 @@
           "completedAtMs": 1788222587279,
           "clientLatencyMs": 116,
           "status": 200,
-          "historyLengthBefore": 5026,
-          "historyLengthAfter": 5026
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 28,
@@ -1160,8 +1160,8 @@
           "completedAtMs": 1788222587392,
           "clientLatencyMs": 112,
           "status": 200,
-          "historyLengthBefore": 5027,
-          "historyLengthAfter": 5027
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 29,
@@ -1171,8 +1171,8 @@
           "completedAtMs": 1788222587506,
           "clientLatencyMs": 113,
           "status": 200,
-          "historyLengthBefore": 5028,
-          "historyLengthAfter": 5028
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 30,
@@ -1182,8 +1182,8 @@
           "completedAtMs": 1788222587617,
           "clientLatencyMs": 110,
           "status": 200,
-          "historyLengthBefore": 5029,
-          "historyLengthAfter": 5029
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 31,
@@ -1193,8 +1193,8 @@
           "completedAtMs": 1788222587723,
           "clientLatencyMs": 105,
           "status": 200,
-          "historyLengthBefore": 5030,
-          "historyLengthAfter": 5030
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 32,
@@ -1204,8 +1204,8 @@
           "completedAtMs": 1788222587836,
           "clientLatencyMs": 111,
           "status": 200,
-          "historyLengthBefore": 5031,
-          "historyLengthAfter": 5031
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 33,
@@ -1215,8 +1215,8 @@
           "completedAtMs": 1788222587970,
           "clientLatencyMs": 133,
           "status": 200,
-          "historyLengthBefore": 5032,
-          "historyLengthAfter": 5032
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 34,
@@ -1226,8 +1226,8 @@
           "completedAtMs": 1788222588082,
           "clientLatencyMs": 111,
           "status": 200,
-          "historyLengthBefore": 5033,
-          "historyLengthAfter": 5033
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 35,
@@ -1237,8 +1237,8 @@
           "completedAtMs": 1788222588194,
           "clientLatencyMs": 111,
           "status": 200,
-          "historyLengthBefore": 5034,
-          "historyLengthAfter": 5034
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 36,
@@ -1248,8 +1248,8 @@
           "completedAtMs": 1788222588301,
           "clientLatencyMs": 106,
           "status": 200,
-          "historyLengthBefore": 5035,
-          "historyLengthAfter": 5035
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 37,
@@ -1259,8 +1259,8 @@
           "completedAtMs": 1788222588411,
           "clientLatencyMs": 109,
           "status": 200,
-          "historyLengthBefore": 5036,
-          "historyLengthAfter": 5036
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 38,
@@ -1270,8 +1270,8 @@
           "completedAtMs": 1788222588522,
           "clientLatencyMs": 110,
           "status": 200,
-          "historyLengthBefore": 5037,
-          "historyLengthAfter": 5037
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 39,
@@ -1281,8 +1281,8 @@
           "completedAtMs": 1788222588627,
           "clientLatencyMs": 104,
           "status": 200,
-          "historyLengthBefore": 5038,
-          "historyLengthAfter": 5038
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 40,
@@ -1292,8 +1292,8 @@
           "completedAtMs": 1788222588729,
           "clientLatencyMs": 101,
           "status": 200,
-          "historyLengthBefore": 5039,
-          "historyLengthAfter": 5039
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 41,
@@ -1303,8 +1303,8 @@
           "completedAtMs": 1788222588831,
           "clientLatencyMs": 101,
           "status": 200,
-          "historyLengthBefore": 5040,
-          "historyLengthAfter": 5040
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 42,
@@ -1314,8 +1314,8 @@
           "completedAtMs": 1788222588936,
           "clientLatencyMs": 105,
           "status": 200,
-          "historyLengthBefore": 5041,
-          "historyLengthAfter": 5041
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 43,
@@ -1325,8 +1325,8 @@
           "completedAtMs": 1788222589042,
           "clientLatencyMs": 105,
           "status": 200,
-          "historyLengthBefore": 5042,
-          "historyLengthAfter": 5042
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 44,
@@ -1336,8 +1336,8 @@
           "completedAtMs": 1788222589142,
           "clientLatencyMs": 100,
           "status": 200,
-          "historyLengthBefore": 5043,
-          "historyLengthAfter": 5043
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 45,
@@ -1347,8 +1347,8 @@
           "completedAtMs": 1788222589258,
           "clientLatencyMs": 115,
           "status": 200,
-          "historyLengthBefore": 5044,
-          "historyLengthAfter": 5044
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 46,
@@ -1358,8 +1358,8 @@
           "completedAtMs": 1788222589371,
           "clientLatencyMs": 111,
           "status": 200,
-          "historyLengthBefore": 5045,
-          "historyLengthAfter": 5045
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 47,
@@ -1369,8 +1369,8 @@
           "completedAtMs": 1788222589483,
           "clientLatencyMs": 110,
           "status": 200,
-          "historyLengthBefore": 5046,
-          "historyLengthAfter": 5046
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 48,
@@ -1380,8 +1380,8 @@
           "completedAtMs": 1788222589594,
           "clientLatencyMs": 110,
           "status": 200,
-          "historyLengthBefore": 5047,
-          "historyLengthAfter": 5047
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 49,
@@ -1391,8 +1391,8 @@
           "completedAtMs": 1788222589707,
           "clientLatencyMs": 111,
           "status": 200,
-          "historyLengthBefore": 5048,
-          "historyLengthAfter": 5048
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         },
         {
           "ordinal": 50,
@@ -1402,8 +1402,8 @@
           "completedAtMs": 1788222589863,
           "clientLatencyMs": 154,
           "status": 200,
-          "historyLengthBefore": 5049,
-          "historyLengthAfter": 5049
+          "historyLengthBefore": 5000,
+          "historyLengthAfter": 5000
         }
       ]
     }
@@ -1413,5 +1413,29 @@
     "p95DifferenceMs": 44,
     "claim": "Same-colo claim withdrawn because the client windows did not share one colo.",
     "sameColo": false
+  },
+  "evidenceCorrection": {
+    "schema": "sdt-g47-derived-evidence-correction/v1",
+    "repairTask": "SDT-G47-FIX-1",
+    "reason": "captureHistoryLengthWindow performs read-only TagStateDO reads; the prior derived historyLength + index values falsely implied per-read history growth",
+    "priorFormula": "historyLength + index",
+    "correctedFormula": "window.historyLengthBeforeWindow and window.historyLengthAfterWindow",
+    "rowsChecked": 100,
+    "rowsCorrected": 98,
+    "fieldValuesCorrected": 196,
+    "measurementRerun": false,
+    "latencyObservationsChanged": false,
+    "requestSequenceChanged": false,
+    "coloObservationsChanged": false,
+    "windowHistories": {
+      "short": {
+        "before": 1,
+        "after": 1
+      },
+      "long": {
+        "before": 5000,
+        "after": 5000
+      }
+    }
   }
 }

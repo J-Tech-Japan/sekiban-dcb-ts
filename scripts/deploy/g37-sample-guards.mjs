@@ -23,6 +23,30 @@ function assert(condition, message) {
   if (!condition) fail(message);
 }
 
+function assertLedgerHistoryMatchesWindow(window, context) {
+  assert(Array.isArray(window.ledger), `${context} has no ledger`);
+  window.ledger.forEach((entry, index) => {
+    const row = index + 1;
+    assert(entry.historyLengthBefore === window.historyLengthBeforeWindow,
+      `${context} ledger row ${row} before-history disagrees with window`);
+    assert(entry.historyLengthAfter === window.historyLengthAfterWindow,
+      `${context} ledger row ${row} after-history disagrees with window`);
+  });
+}
+
+function assertLedgerHistoryMutationIsRejected(window) {
+  const mutated = structuredClone(window);
+  mutated.ledger[0].historyLengthAfter += 1;
+  let rejected = false;
+  try {
+    assertLedgerHistoryMatchesWindow(mutated, "negative ledger mutation");
+  } catch {
+    rejected = true;
+  }
+  assert(rejected, "negative ledger history mutation was accepted");
+  return true;
+}
+
 function response(status, body, requestNumber) {
   return new Response(JSON.stringify(body), {
     status,
@@ -108,6 +132,8 @@ async function fullHistoryLengthProfileGuard() {
     assert(sample.windows.every((window) => window.warmup.discardedResponse === true), "warm-up was not discarded");
     assert(sample.windows.every((window) => window.warmup.kind === "single discarded READY warm-up read"), "warm-up protocol changed");
     assert(sample.comparison.claim.includes("for a WARM TagStateDO"), "warm condition was dropped from claim");
+    sample.windows.forEach((window) => assertLedgerHistoryMatchesWindow(window, `${window.label} history`));
+    const negativeLedgerMutationRejected = assertLedgerHistoryMutationIsRejected(sample.windows[0]);
     assert(tagLatestCount === 2, "full profile performed an unexpected tag-latest read");
     assert(commitCount === 11, "full profile seed commit count changed");
     assert(tagStateCalls.get("short") === 52, "short TagState call count did not equal cold + warm-up + 50");
@@ -122,6 +148,8 @@ async function fullHistoryLengthProfileGuard() {
         warmupReads: 1,
         sampledReads: window.sampleCount,
       })),
+      ledgerRowsChecked: sample.windows.reduce((total, window) => total + window.ledger.length, 0),
+      negativeLedgerMutationRejected,
     };
   } finally {
     globalThis.fetch = originalFetch;

@@ -568,8 +568,11 @@ async function captureHistoryLengthWindow({
       completedAtMs: result.completedAtMs,
       clientLatencyMs: result.clientLatencyMs,
       status: result.status,
-      historyLengthBefore: historyLength + index,
-      historyLengthAfter: historyLength + index,
+      // This loop performs read-only TagStateDO reads. It does not append
+      // history, so every sampled row has the same independently established
+      // window history as the seed/window summary.
+      historyLengthBefore: historyLength,
+      historyLengthAfter: historyLength,
     }));
   }
 

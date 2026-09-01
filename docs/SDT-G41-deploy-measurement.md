@@ -128,6 +128,31 @@ is the only successful, artifact-bearing sample.
 The attempt ledger, including the raw version receipt names, is
 [sdt-g47-repair-wake32-attempts.json](../.artifacts/sdt-g47-repair-wake32-attempts.json).
 
+## Review repair — derived ledger correction
+
+The PR review at pinned head `90b83653c554936e1b40fce157e297117e23c2b8`
+found that the original `captureHistoryLengthWindow` ledger formula used
+`historyLength + index`. The sampled operation is a read-only TagStateDO read,
+so that formula falsely implied that history grew on every read. The source now
+records the constant window history for every row.
+
+The existing raw artifact was corrected as derived evidence, without a deploy
+or sampling rerun:
+
+- all 100 ledger rows now agree with their window's before/after history;
+- 98 rows and 196 derived history fields were corrected (the first row of each
+  window already matched);
+- short is constant `1 → 1` and long is constant `5000 → 5000`;
+- request IDs, timestamps, status, colo, latency values, client summaries,
+  seed receipts, cold replay, warm-up, and the withdrawn same-colo verdict were
+  not changed;
+- the raw artifact records `measurementRerun=false` and the prior/corrected
+  formulas under `evidenceCorrection`.
+
+The repair guard checks every row in both windows and deliberately mutates one
+copy of a row to prove the guard rejects the false history. It is non-live and
+does not call Cloudflare.
+
 ## AC2 — warm history-length observation
 
 The sampler discarded exactly one warm-up read for each window. The warm
