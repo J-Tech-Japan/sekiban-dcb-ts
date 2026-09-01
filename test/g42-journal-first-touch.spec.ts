@@ -10,6 +10,7 @@ import {
   runG42JournalProbeTrial,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { JournalDurableObject } from "../packages/dcb-runtime/src/journal/JournalDurableObject";
+import { G42_JOURNAL_PROBE_ALARM_KEY } from "../packages/dcb-runtime/src/journal/JournalFirstTouchProbe";
 import primaryWorker from "../samples/meeting-room/src/worker.cloudflare-only";
 import type { MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-env";
 
@@ -137,7 +138,11 @@ function internalBody(action: string, extra: Record<string, unknown> = {}): Reco
   };
 }
 
-function directStorage(): { readonly storage: DurableObjectStorage; readonly alarm: () => number | null } {
+function directStorage(): {
+  readonly storage: DurableObjectStorage;
+  readonly alarm: () => number | null;
+  readonly value: (key: string) => unknown;
+} {
   const values = new Map<string, unknown>();
   let alarmAt: number | null = null;
   const direct = {
@@ -154,6 +159,7 @@ function directStorage(): { readonly storage: DurableObjectStorage; readonly ala
       transaction: async <T>(callback: (transaction: DurableObjectTransaction) => Promise<T>) => callback(direct as unknown as DurableObjectTransaction),
     } as unknown as DurableObjectStorage,
     alarm: () => alarmAt,
+    value: (key) => values.get(key),
   };
 }
 
@@ -307,5 +313,6 @@ describe("SDT-G42 Journal first-touch conformance probe", () => {
     await journal.alarm();
     expect(recoveryPortCalls).toBe(0);
     expect(storage.alarm()).toBeNull();
+    expect(storage.value(G42_JOURNAL_PROBE_ALARM_KEY)).toBeUndefined();
   });
 });

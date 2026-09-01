@@ -222,20 +222,26 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     unrelated: "emits the reservation-failure boundary from the real cancel-barrier path",
   },
   {
-    id: "terminal-alarm-clear-boundary",
+    // SDT-G48 deletes the terminal Journal recovery handler but retains alarm
+    // cleanup for the live G42 probe. Mutate that production cleanup path so
+    // the matrix remains an executable, independently-red guard rather than
+    // retaining a dead R00/R08 implementation solely for a test fixture.
+    id: "g42-alarm-marker-clear",
     file: source.journal,
-    from: '            return tracedReconcile(trace, "R08", () => this.clearTerminalAlarm(trace), {\n              before: "terminal",\n              after: "terminal",\n            });',
-    to: "            return this.clearTerminalAlarm(trace);",
-    target: "emits terminal-at-entry R00/R08 from the real Journal alarm handler",
-    unrelated: "adds the late full-write recovery fact only to the still-open R00 native span",
+    from: "      await txn.delete(G42_JOURNAL_PROBE_ALARM_KEY);\n      await txn.deleteAlarm();\n      return true;",
+    to: "      await txn.delete(G42_JOURNAL_PROBE_ALARM_KEY);\n      return true;",
+    target: "makes an uncleaned probe alarm inert before any production recovery binding",
+    unrelated: "requires the D warmup record before a post-idle measurement can write",
+    testFile: "test/g42-journal-first-touch.spec.ts",
   },
   {
-    id: "terminal-alarm-recovery-kind",
+    id: "g42-alarm-marker-guard",
     file: source.journal,
-    from: '            if (trace !== undefined) trace.recoveryKind = "terminal-at-entry";',
-    to: '            if (trace !== undefined) trace.recoveryKind = "post-allocation-full-write";',
-    target: "emits terminal-at-entry R00/R08 from the real Journal alarm handler",
-    unrelated: "adds the late full-write recovery fact only to the still-open R00 native span",
+    from: "    if (await this.clearG42ProbeAlarmIfPresent()) return;\n    await this.ctx.storage.deleteAlarm();",
+    to: "    if (false && await this.clearG42ProbeAlarmIfPresent()) return;\n    await this.ctx.storage.deleteAlarm();",
+    target: "makes an uncleaned probe alarm inert before any production recovery binding",
+    unrelated: "requires the D warmup record before a post-idle measurement can write",
+    testFile: "test/g42-journal-first-touch.spec.ts",
   },
   {
     id: "repair-dry-run-boundary",

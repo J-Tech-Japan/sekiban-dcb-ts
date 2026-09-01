@@ -1,4 +1,4 @@
-import { env, SELF } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import { handleOperatorRepair, type OperatorRepairEnv } from "../packages/dcb-runtime/src/cli/OperatorRepairCli";
@@ -121,12 +121,18 @@ async function journalPost(attemptId: string, path: string, body: unknown): Prom
   });
 }
 
+function journalStub(attemptId: string): DurableObjectStub {
+  const namespace = (env as unknown as { readonly JOURNAL: DurableObjectNamespace }).JOURNAL;
+  return namespace.get(namespace.idFromName(attemptId));
+}
+
 /**
  * G41 deliberately removes Journal creation from a normal CommitWorker
- * attempt.  RepairWorker still owns the retained Journal workset surface for
- * already-durable historical records, so this fixture creates one through
- * that named Journal API after it has observed the real Tag-owned partial
- * outcome.  It is not a compatibility path or a production migration.
+ * attempt. RepairWorker still owns the retained Journal workset surface for
+ * already-durable historical records, so this fixture seeds that legacy
+ * record directly after it observes the real Tag-owned partial outcome. It
+ * is test-only setup, not a compatibility path, production migration, or a
+ * reintroduction of a removed Journal control route.
  */
 async function seedLegacyRepairWorkset(
   attemptId: string,
@@ -143,52 +149,41 @@ async function seedLegacyRepairWorkset(
     timestamp: event.timestamp,
     tags: [writtenTag, missingTag],
   }));
-  const admitted = await journalPost(attemptId, "/admit", {
+  const timestamp = new Date().toISOString();
+  const record: JournalRecord = {
+    schemaVersion: 1,
     candidates,
     consistencyTags: [],
+    allTags: [writtenTag, missingTag],
     commitContext: {
       attemptId,
       serviceId: SERVICE_ID,
       allocatorLineageId: events[0]!.allocatorLineageId,
     },
-  });
-  expect(admitted.status).toBe(201);
-
-  let record = await journalState(attemptId);
-  for (const nextState of ["ALLOCATED", "WRITING"] as const) {
-    const transitioned = await journalPost(attemptId, "/transition", {
-      expectedState: record.state,
-      expectedVersion: record.version,
-      expectedOwnerEpoch: record.ownerEpoch,
-      nextState,
-      allocatorLineageId: events[0]!.allocatorLineageId,
-    });
-    expect(transitioned.status).toBe(200);
-    record = await responseJson<JournalRecord>(transitioned);
-  }
-  const sealing = await journalPost(attemptId, "/reconcile", {
-    expectedState: record.state,
-    expectedVersion: record.version,
-    expectedOwnerEpoch: record.ownerEpoch,
+    ownerEpoch: 0,
+    state: "PARTIAL",
+    version: 0,
+    alarm: null,
     reconciliation: {
       allocatorVector: events.map((event) => event.suid),
       records: [],
       failureCause: "write-failure",
+      missingTags: [missingTag],
     },
+    reservationFailure: null,
+    takeover: null,
+    faultsRemaining: 0,
+    alarmFaults: [],
+    terminalResponse: null,
+    repairObservations: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  await runInDurableObject(journalStub(attemptId), async (_instance, state) => {
+    await state.storage.put("journal", record);
+    await state.storage.deleteAlarm();
   });
-  expect(sealing.status).toBe(200);
-  expect((await responseJson<JournalRecord>(sealing)).state).toBe("SEALING");
-  // The retained legacy Journal alarm may have begun its recovery between
-  // the explicit reconcile and this fixture's first debug wake. Retry the
-  // idempotent named recovery surface exactly as its historical caller did.
-  let recoveredRecord: JournalRecord | undefined;
-  for (let wake = 0; wake < 3; wake += 1) {
-    const recovered = await journalPost(attemptId, "/debug/alarm", {});
-    expect(recovered.status).toBe(200);
-    recoveredRecord = await responseJson<JournalRecord>(recovered);
-    if (recoveredRecord.state === "PARTIAL") return;
-  }
-  throw new Error(`legacy repair workset did not converge: ${JSON.stringify(recoveredRecord)}`);
+  expect((await journalState(attemptId)).state).toBe("PARTIAL");
 }
 
 async function operator(

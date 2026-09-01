@@ -17,7 +17,6 @@ import {
   type CommitTraceSchema,
   type CommitTraceSnapshot,
   type CommitTraceSpan,
-  type DurableObjectActivationObservation,
   type NativeTraceSpan,
   type NativeTracing,
 } from "../packages/dcb-runtime/src/trace/CommitTrace";
@@ -28,8 +27,6 @@ import {
   type ObservationEvent,
 } from "../packages/dcb-runtime/src/trace/ObservationStream";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
-import { JournalDurableObject } from "../packages/dcb-runtime/src/journal/JournalDurableObject";
-import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import { RepairWorker, type RepairWorkerEnv } from "../packages/dcb-runtime/src/repair/RepairWorker";
 import type { ExclusionLookupPort } from "../packages/dcb-runtime/src/downstream/ExclusionLookup";
 import {
@@ -214,64 +211,12 @@ function recordingNativeTracing(): {
   return { tracing, spans };
 }
 
-/**
- * Exercise the real alarm handler with a minimal terminal Journal record.
- * The injected tracer is a test-only callback adapter; durable state remains
- * exactly the same shape consumed by the production handler.
- */
-function terminalJournalAlarmFixture(nativeTracing: NativeTracing): {
-  readonly journal: JournalDurableObject;
-  readonly alarmDeletes: () => number;
-} {
-  let record: JournalRecord = {
-    schemaVersion: 1,
-    candidates: [],
-    consistencyTags: [],
-    allTags: [],
-    commitContext: { attemptId: ATTEMPT, serviceId: SERVICE },
-    ownerEpoch: 3,
-    state: "COMPLETE",
-    version: 8,
-    alarm: { attempt: 2, dueAt: 1_000, delayMs: 250, scheduledGenerationId: "g30-terminal-generation" },
-    reconciliation: null,
-    reservationFailure: null,
-    takeover: null,
-    faultsRemaining: 0,
-    alarmFaults: [],
-    terminalResponse: { outcome: "COMPLETE", ownerEpoch: 3, stateVersion: 8, reason: "complete" },
-    repairObservations: [],
-    createdAt: "2026-08-23T00:00:00.000Z",
-    updatedAt: "2026-08-23T00:00:00.000Z",
-  };
-  let deletes = 0;
-  const storage = {
-    get: async <T>() => record as unknown as T,
-    transaction: async <T>(callback: (transaction: {
-      get: <V>() => Promise<V>;
-      put: (key: string, value: unknown) => Promise<void>;
-      deleteAlarm: () => Promise<void>;
-    }) => Promise<T>) => callback({
-      get: async <V>() => record as unknown as V,
-      put: async (_key, value) => { record = value as JournalRecord; },
-      deleteAlarm: async () => { deletes += 1; },
-    }),
-  };
-  return {
-    journal: new JournalDurableObject(
-      { storage } as unknown as DurableObjectState,
-      {} as never,
-      nativeTracing,
-    ),
-    alarmDeletes: () => deletes,
-  };
-}
 
 type CommitTraceScenario = "success" | "reservation-failure" | "allocator-failure" | "partial-handoff";
 
 function nonSuccessWorker(
   scenario: CommitTraceScenario,
   snapshots: CommitTraceSnapshot[],
-  tags: readonly string[] = ["room:g30-non-success"],
   options: Readonly<{
     nativeTracing?: NativeTracing;
     workerObservationSink?: { emit(event: ObservationEvent): void };
@@ -285,25 +230,6 @@ function nonSuccessWorker(
     fetch: async (request: Request): Promise<Response> => {
       const url = new URL(request.url);
       if (kind === "bootstrap") return response({ leaseEpoch: 1 });
-      if (kind === "journal") {
-        if (url.pathname === "/admit") return response({ state: "ADMITTED", version: 0, ownerEpoch: 0 }, 201);
-        if (url.pathname === "/transition") {
-          const body = await request.json() as { nextState: string; expectedVersion: number; expectedOwnerEpoch: number };
-          return response({ state: body.nextState, version: body.expectedVersion + 1, ownerEpoch: body.expectedOwnerEpoch });
-        }
-        if (url.pathname === "/reservation-failure") {
-          const body = await request.json() as { outcome: "REFUSED" | "FAILED" };
-          return response({ state: body.outcome, version: 2, ownerEpoch: 0 });
-        }
-        if (url.pathname === "/reconcile") return response({ state: "SEALING", version: 4, ownerEpoch: 0 });
-        if (url.pathname === "/debug/alarm") {
-          return response({
-            state: "PARTIAL",
-            allTags: tags,
-            reconciliation: { records: [], missingTags: tags },
-          });
-        }
-      }
       if (kind === "allocator") {
         if (url.pathname === "/allocate") {
           if (scenario === "allocator-failure") return response({ code: "allocator_failed" }, 500);
@@ -366,7 +292,7 @@ async function nonSuccessTrace(
   tags: readonly string[] = ["room:g30-non-success"],
 ): Promise<CommitTraceSnapshot> {
   const snapshots: CommitTraceSnapshot[] = [];
-  const response = await nonSuccessWorker(scenario, snapshots, tags).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+  const response = await nonSuccessWorker(scenario, snapshots).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -403,7 +329,7 @@ async function nonSuccessTrace(
 async function successTrace(): Promise<CommitTraceSnapshot> {
   const snapshots: CommitTraceSnapshot[] = [];
   const tags = ["room:g30-success"];
-  const response = await nonSuccessWorker("success", snapshots, tags).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+  const response = await nonSuccessWorker("success", snapshots).handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -756,7 +682,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const observations: ObservationEvent[] = [];
     const capture = recordingNativeTracing();
     const tags = ["room:g30-emitted-row-inventory"];
-    const worker = nonSuccessWorker("success", snapshots, tags, {
+    const worker = nonSuccessWorker("success", snapshots, {
       nativeTracing: capture.tracing,
       workerObservationSink: { emit: (event) => observations.push(event) },
     });
@@ -958,39 +884,6 @@ describe("SDT-G30 runtime trace verifier", () => {
     expectCode(() => verifyCommitTrace(snapshot("sdt.commit/v1", noMemberIndex)), "fanout-member-index");
   });
 
-  it("emits terminal-at-entry R00/R08 from the real Journal alarm handler", async () => {
-    const capture = recordingNativeTracing();
-    const fixture = terminalJournalAlarmFixture(capture.tracing);
-    const runner = fixture.journal as unknown as {
-      runAlarm(activation: DurableObjectActivationObservation): Promise<JournalRecord | undefined>;
-    };
-
-    const result = await runner.runAlarm({ activationId: ATTEMPT, first: true, handlerStartedAtMs: 0, constructorToHandlerMs: 0 });
-
-    expect(result).toMatchObject({ state: "COMPLETE", alarm: null });
-    expect(fixture.alarmDeletes()).toBe(1);
-    expect(capture.spans.map((span) => span.name)).toEqual([
-      "sdt.commit.reconcile",
-      "journal.alarm_clear",
-    ]);
-    const root = capture.spans[0]!;
-    const clear = capture.spans[1]!;
-    expect(root.attributes).toMatchObject({
-      "schema.version": "sdt.commit.reconcile/v1",
-      "span.kind": "root",
-      "recovery.kind": "terminal-at-entry",
-      "durable.prefix.at_entry": "terminal",
-      "alarm.event.id": "g30-terminal-generation",
-    });
-    expect(clear.attributes).toMatchObject({
-      operation: "journal.alarm_clear",
-      "span.kind": "direct",
-      "prefix.before": "terminal",
-      "prefix.after": "terminal",
-    });
-    expect(clear.attributes).not.toHaveProperty("recovery.kind");
-    expect(clear.attributes).not.toHaveProperty("alarm.event.id");
-  });
 
   it("adds the late full-write recovery fact only to the still-open R00 native span", async () => {
     const capture = recordingNativeTracing();
