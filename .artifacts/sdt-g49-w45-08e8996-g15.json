@@ -1,0 +1,82 @@
+{
+  "probe": "SDT-G15",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "runId": "30293e5a9da742e59641fa8ddea2f613",
+  "roomId": "g15-room-30293e5a9da742e5",
+  "reservationId": "g15-reservation-30293e5a9da742e5",
+  "uiSafeWindowBoundMs": 120000,
+  "safeWindowBoundSources": {
+    "runtimeSource": "packages/dcb-runtime/src/safeWindow.ts",
+    "runtimeBoundMs": 120000,
+    "servedUiSource": "samples/meeting-room/public/ui-model.js",
+    "servedUiBoundMs": 120000,
+    "harnessBoundMs": 120000,
+    "absoluteProtocolBoundMs": 120000,
+    "deployedUiAsset": "/ui-model.js",
+    "deployedUiBoundMs": 120000
+  },
+  "harnessGraceMs": 5000,
+  "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
+  "serviceIdentity": {
+    "configuredServiceId": "sekiban-dcb-meeting-room-cloudflare-only",
+    "source": "G15_EXPECTED_SERVICE_ID",
+    "clientHeaderForwarded": false
+  },
+  "visibilityOracle": {
+    "executed": true,
+    "pendingAtBoundMinusOne": "pending",
+    "timeoutAtBound": "timeout",
+    "visibleAtBoundWithEqualHead": "visible",
+    "timeoutAfterBound": "timeout",
+    "boundMs": 120000
+  },
+  "rawV1Unauthenticated": {
+    "commit": 404,
+    "tag-latest-sortable": 404,
+    "tag-state": 404,
+    "query": 404,
+    "list-query": 404
+  },
+  "commands": {
+    "create": {
+      "status": 200,
+      "requestMs": 2553.728,
+      "suid": "063923872354752000000491745875"
+    },
+    "reserve": {
+      "status": 200,
+      "requestMs": 4625.892,
+      "suid": "063923872359973000001263571888"
+    },
+    "cancel": {
+      "status": 200,
+      "requestMs": 3335.461,
+      "suid": "063923872364531000001981422321"
+    },
+    "rejected": {
+      "status": 400,
+      "kind": "invalid",
+      "code": "invalid_command_input"
+    }
+  },
+  "projection": {
+    "createVisible": true,
+    "createCommitToVisibleMs": 1112.824,
+    "createObservations": [
+      {
+        "head": "063923872354752000000491745875",
+        "requestMs": 1112.721,
+        "elapsedMs": 1112.809,
+        "state": "visible"
+      }
+    ],
+    "reservationVisible": true,
+    "reservationCommitToVisibleMs": 813.285,
+    "cancelVisible": true,
+    "cancelCommitToVisibleMs": 522.58
+  },
+  "queryViews": null,
+  "freshRunIds": true,
+  "secret": "no bearer token or credential used by app-layer E2E",
+  "recordedAt": "2026-09-01T15:12:46Z"
+}
