@@ -1,0 +1,163 @@
+{
+  "schema": "sdt-g49-pr98-w46-ac5-trace/v1",
+  "mode": "external-app-layer-trace",
+  "recordedAt": "2026-09-01T16:33:19Z",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "runId": "9e4c606567df43e1b25c5365886eeea7",
+  "room": {
+    "roomId": "g49-w46-trace-room-9e4c606567df43e1",
+    "create": {
+      "status": 200,
+      "requestMs": 5072.57,
+      "suid": "063923877189200000000803268585",
+      "response": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJnNDktdzQ2LXRyYWNlLXJvb20tOWU0YzYwNjU2N2RmNDNlMSIsIm5hbWUiOiJTRFQtRzQ5IFc0NiB0cmFjZSJ9",
+              "sortableUniqueIdValue": "063923877189200000000803268585",
+              "id": "01a05dd1-3982-7228-9182-84f9aba6ab36",
+              "eventMetadata": {
+                "causationId": "01a05dd1-3982-7228-9182-84f9aba6ab36",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:g49-w46-trace-room-9e4c606567df43e1"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:g49-w46-trace-room-9e4c606567df43e1",
+              "version": 1,
+              "writtenAt": "2026-09-01T16:33:09.709Z"
+            }
+          ],
+          "duration": "PT3.37S"
+        }
+      }
+    },
+    "readState": {
+      "status": "created",
+      "version": 1,
+      "roomId": "g49-w46-trace-room-9e4c606567df43e1",
+      "name": "SDT-G49 W46 trace"
+    },
+    "readHead": "063923877189200000000803268585",
+    "readResponse": {
+      "projection": "room",
+      "roomId": "g49-w46-trace-room-9e4c606567df43e1",
+      "tagStateId": "room:g49-w46-trace-room-9e4c606567df43e1:RoomProjector",
+      "state": {
+        "status": "created",
+        "version": 1,
+        "roomId": "g49-w46-trace-room-9e4c606567df43e1",
+        "name": "SDT-G49 W46 trace"
+      },
+      "version": 1,
+      "lastSortedUniqueId": "063923877189200000000803268585"
+    },
+    "observations": [
+      {
+        "status": 200,
+        "head": "063923877189200000000803268585",
+        "requestMs": 761.275,
+        "elapsedMs": 761.306,
+        "state": {
+          "status": "created",
+          "version": 1,
+          "roomId": "g49-w46-trace-room-9e4c606567df43e1",
+          "name": "SDT-G49 W46 trace"
+        },
+        "visible": true
+      }
+    ]
+  },
+  "reservation": {
+    "reservationId": "g49-w46-trace-reservation-9e4c606567df43e1",
+    "reserve": {
+      "status": 200,
+      "requestMs": 5736.74,
+      "suid": "063923877194860000000345597074",
+      "response": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJnNDktdzQ2LXRyYWNlLXJvb20tOWU0YzYwNjU2N2RmNDNlMSIsInJlc2VydmF0aW9uSWQiOiJnNDktdzQ2LXRyYWNlLXJlc2VydmF0aW9uLTllNGM2MDY1NjdkZjQzZTEiLCJ1c2VySWQiOiJnNDktdzQ2In0=",
+              "sortableUniqueIdValue": "063923877194860000000345597074",
+              "id": "01a05dd1-517a-7884-97f9-77b4de642e84",
+              "eventMetadata": {
+                "causationId": "01a05dd1-517a-7884-97f9-77b4de642e84",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:g49-w46-trace-room-9e4c606567df43e1",
+                "reservation:g49-w46-trace-reservation-9e4c606567df43e1"
+              ],
+              "eventPayloadName": "RoomReserved"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:g49-w46-trace-room-9e4c606567df43e1",
+              "version": 3,
+              "writtenAt": "2026-09-01T16:33:15.144Z"
+            },
+            {
+              "tag": "reservation:g49-w46-trace-reservation-9e4c606567df43e1",
+              "version": 1,
+              "writtenAt": "2026-09-01T16:33:15.382Z"
+            }
+          ],
+          "duration": "PT3.744S"
+        }
+      }
+    },
+    "readState": {
+      "status": "reserved",
+      "version": 1,
+      "reservationId": "g49-w46-trace-reservation-9e4c606567df43e1",
+      "roomId": "g49-w46-trace-room-9e4c606567df43e1"
+    },
+    "readHead": "063923877194860000000345597074",
+    "readResponse": {
+      "projection": "reservation",
+      "reservationId": "g49-w46-trace-reservation-9e4c606567df43e1",
+      "tagStateId": "reservation:g49-w46-trace-reservation-9e4c606567df43e1:ReservationProjector",
+      "state": {
+        "status": "reserved",
+        "version": 1,
+        "reservationId": "g49-w46-trace-reservation-9e4c606567df43e1",
+        "roomId": "g49-w46-trace-room-9e4c606567df43e1"
+      },
+      "version": 1,
+      "lastSortedUniqueId": "063923877194860000000345597074"
+    },
+    "observations": [
+      {
+        "status": 200,
+        "head": "063923877194860000000345597074",
+        "requestMs": 1492.204,
+        "elapsedMs": 1492.318,
+        "state": {
+          "status": "reserved",
+          "version": 1,
+          "reservationId": "g49-w46-trace-reservation-9e4c606567df43e1",
+          "roomId": "g49-w46-trace-room-9e4c606567df43e1"
+        },
+        "visible": true
+      }
+    ]
+  },
+  "harnessModified": false,
+  "safeWindowBoundMs": 120000
+}

@@ -196,11 +196,13 @@ function assertSanity(receipt) {
     "pipeline-lag-after-purge",
     "two-cron-wait-start",
     "two-cron-wait-end",
+    "pipeline-target-lag-before-sanity",
     "sanity-create-room",
     "sanity-wake-wait-start",
     "sanity-wake-wait-end",
     "mv-instances-after-sanity",
     "mv-rows-after-sanity",
+    "pipeline-target-lag-after-sanity",
   ];
   for (const name of requiredOperations) operation(receipt, name);
   assertConfig(receipt);
@@ -221,7 +223,12 @@ function assertSanity(receipt) {
   assertPipelineCatalog(receipt, "pipeline-g32-catalog-pre-purge");
   assertMvLedger(receipt, "mv-ledger-pre-purge");
   if (d1Rows(receipt, "pipeline-lag-before-purge").length === 0) fail("lag-before receipt does not prove pollution was present");
-  if (d1Rows(receipt, "pipeline-lag-after-purge").length !== 0) fail("lag-after receipt still has lag estimates");
+  if (d1Rows(receipt, "pipeline-lag-after-purge").some((row) => row.service_id === normalWorker)) {
+    fail("lag-after receipt still has the normal worker's polluted estimate");
+  }
+  if (d1Rows(receipt, "pipeline-target-lag-before-sanity").length !== 0) {
+    fail("normal worker still had a lag estimate before the sanity commit");
+  }
   const purgeArguments = command(receipt, "pipeline-lag-purge");
   const purgeSql = purgeArguments[purgeArguments.indexOf("--command") + 1];
   if (purgeSql !== "DELETE FROM serialized_dcb_lag_estimates") fail("receipt does not prove the exact all-row lag purge");
@@ -230,6 +237,11 @@ function assertSanity(receipt) {
     fail("sanity receipt is not one successful normal-url create-room commit");
   }
   if (d1Count(receipt, "mv-rows-after-sanity", "mvRows") <= 0) fail("safe projector did not produce mv_rows after sanity commit");
+  const recoveredLagRows = d1Rows(receipt, "pipeline-target-lag-after-sanity");
+  if (recoveredLagRows.length !== 1 || recoveredLagRows[0].service_id !== normalWorker
+      || !Number.isFinite(recoveredLagRows[0].estimate_ms) || recoveredLagRows[0].estimate_ms > 120_000) {
+    fail("sanity commit did not retain a determinate normal-worker lag estimate");
+  }
   const instances = d1Rows(receipt, "mv-instances-after-sanity");
   if (instances.length < 2) fail("sanity receipt does not retain both mv_instances");
   assertNoQueueMutation(receipt);
@@ -241,7 +253,8 @@ function assertSanity(receipt) {
     ["pipeline-lag-purge", "pipeline-lag-after-purge"],
     ["pipeline-lag-after-purge", "two-cron-wait-start"],
     ["two-cron-wait-start", "two-cron-wait-end"],
-    ["two-cron-wait-end", "sanity-create-room"],
+    ["two-cron-wait-end", "pipeline-target-lag-before-sanity"],
+    ["pipeline-target-lag-before-sanity", "sanity-create-room"],
     ["sanity-create-room", "mv-rows-after-sanity"],
   ]) precedes(receipt, earlier, later);
   return { configHead: head.commit, mvRowsAfterSanity: d1Count(receipt, "mv-rows-after-sanity", "mvRows") };
