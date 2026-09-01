@@ -68,6 +68,9 @@ function deployedEnvironment(serviceId: string): Record<string, unknown> {
     ...(env as unknown as Record<string, unknown>),
     SDT_SERVICE_ID: serviceId,
     TAG: undefined,
+    G32_COMPONENT: "primary",
+    G32_CUTOVER_PHASE: "final-g32",
+    G32_FREEZE_RELEASE: "after-new-bindings",
     G32_CUTOVER_FENCE_TOKEN: G32_FINAL_FENCE_FIXTURE_TOKEN,
     G32_CUTOVER_FENCE_FINGERPRINT: G32_FINAL_FENCE_FIXTURE_FINGERPRINT,
   };
