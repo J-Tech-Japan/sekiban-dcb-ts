@@ -12,7 +12,8 @@
     "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
     "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
     "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
-    "G26_VIEW_COUNT": "2"
+    "G26_VIEW_COUNT": "2",
+    "SDT_SERVICE_ID": "sekiban-dcb-meeting-room-cloudflare-only"
   },
   "assets": { "directory": "public" },
   "triggers": { "crons": ["* * * * *"] },
@@ -20,13 +21,13 @@
     {
       "binding": "D1",
       "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
-      "database_id": "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
-      "migrations_dir": "../../migrations/d1"
+      "database_id": "f26d1299-82d9-4a64-8647-bc2ec86326ac",
+      "migrations_dir": "../../migrations/d1/g32"
     },
     {
       "binding": "D1_MV",
       "database_name": "sekiban-dcb-meeting-room-cloudflare-mv",
-      "database_id": "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
+      "database_id": "b416b212-4d09-413c-9b8d-7660e475772f",
       "migrations_dir": "../../migrations/mv"
     }
   ],
@@ -44,8 +45,9 @@
       { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
       { "name": "JOURNAL", "class_name": "JournalDurableObject" },
       { "name": "TAG", "class_name": "TagDurableObject" },
+      { "name": "TAG_STATE", "class_name": "TagStateDurableObject" },
       { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
     ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] }, { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }]
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] }, { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }, { "tag": "v3", "new_sqlite_classes": ["TagStateDurableObject"] }]
 }

@@ -767,6 +767,14 @@ jobs:
             echo "SDT-G46 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G49 normal-config Durable Object binding parity lane
+        run: npm run test:g49
+      - name: Prove SDT-G49 forced-red CI reachability
+        run: |
+          if SDT_G49_FORCE_FAILURE=1 npm run test:g49:forced-red; then
+            echo "SDT-G49 forced-red probe unexpectedly passed"
+            exit 1
+          fi
 
   ci-g41:
     runs-on: ubuntu-latest

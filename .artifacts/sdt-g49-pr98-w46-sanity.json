@@ -1,0 +1,44 @@
+{
+  "schema": "sdt-g49-pr98-w46-sanity/v1",
+  "mode": "sanity-create-room",
+  "recordedAt": "2026-09-01T16:31:43Z",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "roomId": "g49-w46-sanity-room-4c86d46c76e74db3",
+  "create": {
+    "status": 200,
+    "requestMs": 4783.6,
+    "suid": "063923877100679000001875051640",
+    "response": {
+      "kind": "committed",
+      "attempts": 1,
+      "status": 200,
+      "response": {
+        "writtenEvents": [
+          {
+            "payload": "eyJyb29tSWQiOiJnNDktdzQ2LXNhbml0eS1yb29tLTRjODZkNDZjNzZlNzRkYjMiLCJuYW1lIjoiU0RULUc0OSBXNDYgc2FuaXR5In0=",
+            "sortableUniqueIdValue": "063923877100679000001875051640",
+            "id": "01a05dcf-e1b0-7ee3-88cd-e16185924c80",
+            "eventMetadata": {
+              "causationId": "01a05dcf-e1b0-7ee3-88cd-e16185924c80",
+              "correlationId": "SerializedCommit",
+              "executedUser": "SerializedSekibanExecutor"
+            },
+            "tags": [
+              "room:g49-w46-sanity-room-4c86d46c76e74db3"
+            ],
+            "eventPayloadName": "RoomCreated"
+          }
+        ],
+        "tagWriteResults": [
+          {
+            "tag": "room:g49-w46-sanity-room-4c86d46c76e74db3",
+            "version": 1,
+            "writtenAt": "2026-09-01T16:31:41.281Z"
+          }
+        ],
+        "duration": "PT2.976S"
+      }
+    }
+  },
+  "exactlyOneCreateRoomCommand": true
+}

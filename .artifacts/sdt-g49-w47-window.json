@@ -1,0 +1,300 @@
+{
+  "schema": "sdt-g49-pr98-w46-window-receipt/v1",
+  "startedAt": "2026-09-01T16:59:04.282Z",
+  "operations": [
+    {
+      "sequence": 1,
+      "recordedAt": "2026-09-01T16:59:05.658Z",
+      "kind": "wrangler",
+      "operation": "whoami",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "whoami"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.127.1)\n───────────────────────────────────────────────\nGetting User settings...\n👋 You are logged in with an OAuth Token, associated with the email ttakaoka@jtechs.com.\n🔐 Credentials are stored in: /Users/tomohisa/Library/Preferences/.wrangler/config/default.toml\n┌───────────────────────────────┬──────────────────────────────────┐\n│ Account Name                  │ Account ID                       │\n├───────────────────────────────┼──────────────────────────────────┤\n│ Ttakaoka@jtechs.com's Account │ 3ede2188f4cf39a28e0aa3722d3d02c5 │\n└───────────────────────────────┴──────────────────────────────────┘\n🔓 Token Permissions:\nScope (Access)\n- user (read)\n- offline_access \n- account (read)\n- workers (write)\n- workers_kv (write)\n- workers_routes (write)\n- workers_scripts (write)\n- workers_tail (read)\n- d1 (write)\n- pages (write)\n- zone (read)\n- ssl_certs (write)\n- ai (write)\n- ai-search (write)\n- ai-search (run)\n- websearch.run \n- agent-memory (write)\n- queues (write)\n- pipelines (write)\n- secrets_store (write)\n- artifacts (write)\n- flagship (write)\n- containers (write)\n- cloudchamber (write)\n- connectivity (admin)\n- email_routing (write)\n- email_sending (write)\n- browser (write)\n- challenge-widgets.write \n",
+        "stderr": ""
+      }
+    },
+    {
+      "sequence": 2,
+      "recordedAt": "2026-09-01T16:59:12.710Z",
+      "kind": "file",
+      "operation": "normal-config",
+      "file": {
+        "path": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+        "sha256": "0ae3bf5ec67547e707ea091da472d09cb681b532407264e15339400f8dd08862",
+        "content": "{\n  \"$schema\": \"../../node_modules/wrangler/config-schema.json\",\n  \"name\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n  \"main\": \"src/worker.cloudflare-only.ts\",\n  \"compatibility_date\": \"2026-08-18\",\n  \"compatibility_flags\": [\"nodejs_compat\"],\n  \"vars\": {\n    \"AUTO_DRAIN_OUTBOX\": \"true\",\n    \"DOMAIN_DELIVERY_CLASS\": \"immediate-preferred\",\n    \"DIRECT_DOORBELL\": \"false\",\n    \"DIRECT_DOORBELL_ALLOWED_VIEWS\": \"RoomProjector,ReservationProjector\",\n    \"DIRECT_DOORBELL_MAX_INVOCATIONS\": \"32\",\n    \"DIRECT_DOORBELL_DEGRADATION\": \"queued-degraded\",\n    \"DIRECT_DOORBELL_RECEIVER_MODE\": \"separate\",\n    \"G26_VIEW_COUNT\": \"2\",\n    \"SDT_SERVICE_ID\": \"sekiban-dcb-meeting-room-cloudflare-only\"\n  },\n  \"assets\": { \"directory\": \"public\" },\n  \"triggers\": { \"crons\": [\"* * * * *\"] },\n  \"d1_databases\": [\n    {\n      \"binding\": \"D1\",\n      \"database_name\": \"sekiban-dcb-meeting-room-cloudflare-pipeline\",\n      \"database_id\": \"f26d1299-82d9-4a64-8647-bc2ec86326ac\",\n      \"migrations_dir\": \"../../migrations/d1/g32\"\n    },\n    {\n      \"binding\": \"D1_MV\",\n      \"database_name\": \"sekiban-dcb-meeting-room-cloudflare-mv\",\n      \"database_id\": \"b416b212-4d09-413c-9b8d-7660e475772f\",\n      \"migrations_dir\": \"../../migrations/mv\"\n    }\n  ],\n  \"queues\": {\n    \"producers\": [{ \"binding\": \"DOWNSTREAM_QUEUE\", \"queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox\" }],\n    \"consumers\": [{\n      \"queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox\",\n      \"max_batch_timeout\": 1,\n      \"max_retries\": 3,\n      \"dead_letter_queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox-dlq\"\n    }]\n  },\n  \"durable_objects\": {\n    \"bindings\": [\n      { \"name\": \"ALLOCATOR\", \"class_name\": \"AllocatorDurableObject\" },\n      { \"name\": \"JOURNAL\", \"class_name\": \"JournalDurableObject\" },\n      { \"name\": \"TAG\", \"class_name\": \"TagDurableObject\" },\n      { \"name\": \"TAG_STATE\", \"class_name\": \"TagStateDurableObject\" },\n      { \"name\": \"BOOTSTRAP\", \"class_name\": \"BootstrapCoordinatorDurableObject\" }\n    ]\n  },\n  \"migrations\": [{ \"tag\": \"v1\", \"new_sqlite_classes\": [\"AllocatorDurableObject\", \"JournalDurableObject\", \"TagDurableObject\"] }, { \"tag\": \"v2\", \"new_sqlite_classes\": [\"BootstrapCoordinatorDurableObject\"] }, { \"tag\": \"v3\", \"new_sqlite_classes\": [\"TagStateDurableObject\"] }]\n}\n"
+      }
+    },
+    {
+      "sequence": 3,
+      "recordedAt": "2026-09-01T16:59:12.755Z",
+      "kind": "git",
+      "operation": "branch-config-head",
+      "head": {
+        "commit": "7fcd2dbeb18d9841823c101badf8bcc28d3d99bf",
+        "subject": "SDT-G49 seal normal D1 G32 lineage",
+        "committedAt": "2026-09-01T09:27:47-07:00"
+      }
+    },
+    {
+      "sequence": 4,
+      "recordedAt": "2026-09-01T16:59:12.782Z",
+      "kind": "file",
+      "operation": "g15-harness-source",
+      "file": {
+        "path": "scripts/deploy/g15-e2e.py",
+        "sha256": "6aab70170d36b659d3bc3e7e84c3c3bdd63dcd2bcbde54623f18451a563e4661",
+        "content": "#!/usr/bin/env python3\n\"\"\"SDT-G15 app-layer E2E harness.\n\nThe same command runs against a local Miniflare/Workers dev URL and a deployed\nworkers.dev URL. It never sends a raw V1 request with credentials: browser-like\ncommands and reads use only the sample app API, while the raw-path probes verify\nthe G14 404 boundary. ``harnessGraceMs`` is measurement metadata only; it never\nextends the UI's 120,000ms visibility decision.\n\"\"\"\n\nfrom __future__ import annotations\n\nimport argparse\nimport json\nimport os\nimport re\nimport time\nimport urllib.error\nimport urllib.parse\nimport urllib.request\nimport uuid\nfrom pathlib import Path\nfrom typing import Any\n\n\n# This absolute protocol anchor is deliberately load-bearing.  The source\n# check below ties the harness and served UI copies to the runtime's published\n# constant, while this assertion prevents a coordinated drift from making a\n# new bound look valid without an intentional protocol change.\nEXPECTED_PUBLISHED_SAFE_WINDOW_MS = 120_000\nHARNESS_SAFE_WINDOW_BOUND_MS = 120_000\n\n\nREPO_ROOT = Path(__file__).resolve().parents[2]\n\n\ndef exported_number(source: str, export_name: str, source_name: str) -> int:\n    match = re.search(rf\"export\\s+const\\s+{re.escape(export_name)}\\s*=\\s*([0-9][0-9_]*)\", source)\n    require(match is not None, f\"{export_name} was not found in {source_name}\")\n    return int(match.group(1).replace(\"_\", \"\"))\n\n\ndef source_exported_number(path: Path, export_name: str) -> int:\n    return exported_number(path.read_text(encoding=\"utf-8\"), export_name, str(path))\n\n\ndef published_safe_window_bound() -> tuple[int, dict[str, int | str]]:\n    runtime_path = REPO_ROOT / \"packages/dcb-runtime/src/safeWindow.ts\"\n    ui_path = REPO_ROOT / \"samples/meeting-room/public/ui-model.js\"\n    runtime_bound = source_exported_number(runtime_path, \"MAX_PUBLISHED_SAFE_WINDOW_MS\")\n    served_ui_bound = source_exported_number(ui_path, \"UI_SAFE_WINDOW_BOUND_MS\")\n    require(runtime_bound == EXPECTED_PUBLISHED_SAFE_WINDOW_MS,\n            f\"runtime SafeWindow ceiling drifted: {runtime_bound}\")\n    require(served_ui_bound == runtime_bound,\n            f\"served UI SafeWindow ceiling drifted: {served_ui_bound} != {runtime_bound}\")\n    require(HARNESS_SAFE_WINDOW_BOUND_MS == runtime_bound,\n            f\"harness SafeWindow ceiling drifted: {HARNESS_SAFE_WINDOW_BOUND_MS} != {runtime_bound}\")\n    return runtime_bound, {\n        \"runtimeSource\": \"packages/dcb-runtime/src/safeWindow.ts\",\n        \"runtimeBoundMs\": runtime_bound,\n        \"servedUiSource\": \"samples/meeting-room/public/ui-model.js\",\n        \"servedUiBoundMs\": served_ui_bound,\n        \"harnessBoundMs\": HARNESS_SAFE_WINDOW_BOUND_MS,\n        \"absoluteProtocolBoundMs\": EXPECTED_PUBLISHED_SAFE_WINDOW_MS,\n    }\n\n\ndef compare_v1_ordinal(left: str, right: str) -> int:\n    left_bytes = left.encode(\"utf-8\")\n    right_bytes = right.encode(\"utf-8\")\n    for left_byte, right_byte in zip(left_bytes, right_bytes):\n        if left_byte != right_byte:\n            return left_byte - right_byte\n    return len(left_bytes) - len(right_bytes)\n\n\ndef request(base_url: str, path: str, method: str = \"GET\", body: object | None = None) -> tuple[int, Any, float]:\n    payload = None if body is None else json.dumps(body, separators=(\",\", \":\")).encode(\"utf-8\")\n    headers = {\"Accept\": \"application/json\", \"User-Agent\": \"SDT-G15-E2E/1.0\"}\n    if payload is not None:\n        headers[\"Content-Type\"] = \"application/json\"\n    req = urllib.request.Request(f\"{base_url.rstrip('/')}{path}\", data=payload, headers=headers, method=method)\n    started = time.perf_counter()\n    try:\n        with urllib.request.urlopen(req, timeout=15) as response:\n            raw = response.read()\n            status = response.status\n    except urllib.error.HTTPError as error:\n        raw = error.read()\n        status = error.code\n    elapsed_ms = (time.perf_counter() - started) * 1000\n    content_type = response.headers.get(\"Content-Type\", \"\") if \"response\" in locals() else \"\"\n    if \"json\" in content_type or (raw and raw[:1] in (b\"{\", b\"[\")):\n        decoded = json.loads(raw.decode(\"utf-8\")) if raw else {}\n    else:\n        decoded = raw.decode(\"utf-8\")\n    return status, decoded, elapsed_ms\n\n\ndef require(condition: bool, message: str) -> None:\n    if not condition:\n        raise RuntimeError(message)\n\n\ndef visibility_state(commit_id: str, head: str, elapsed_ms: float, bound_ms: int) -> str:\n    \"\"\"The deployed-lane equivalent of public/ui-model.js visibilityState.\"\"\"\n    if elapsed_ms > bound_ms:\n        return \"timeout\"\n    if compare_v1_ordinal(head, commit_id) >= 0:\n        return \"visible\"\n    if elapsed_ms >= bound_ms:\n        return \"timeout\"\n    return \"pending\"\n\n\ndef visibility_bound_oracle(bound_ms: int) -> dict[str, object]:\n    \"\"\"Execute the timeout transition on every local and deployed harness run.\"\"\"\n    pending = visibility_state(\"suid-02\", \"suid-01\", bound_ms - 1, bound_ms)\n    timeout = visibility_state(\"suid-02\", \"suid-01\", bound_ms, bound_ms)\n    visible = visibility_state(\"suid-02\", \"suid-02\", bound_ms, bound_ms)\n    after_bound = visibility_state(\"suid-02\", \"suid-03\", bound_ms + 1, bound_ms)\n    require(pending == \"pending\", f\"visibility before SafeWindow bound was {pending}\")\n    require(timeout == \"timeout\", f\"visibility at SafeWindow bound was {timeout}\")\n    require(visible == \"visible\", f\"equal-head visibility at bound was {visible}\")\n    require(after_bound == \"timeout\", f\"visibility after SafeWindow bound was {after_bound}\")\n    return {\n        \"executed\": True,\n        \"pendingAtBoundMinusOne\": pending,\n        \"timeoutAtBound\": timeout,\n        \"visibleAtBoundWithEqualHead\": visible,\n        \"timeoutAfterBound\": after_bound,\n        \"boundMs\": bound_ms,\n    }\n\n\ndef served_ui_bound(base_url: str, expected_bound_ms: int) -> int:\n    status, body, _ = request(base_url, \"/ui-model.js\", method=\"GET\")\n    require(status == 200 and isinstance(body, str), f\"served ui-model.js returned HTTP {status}\")\n    bound = exported_number(body, \"UI_SAFE_WINDOW_BOUND_MS\", f\"{base_url}/ui-model.js\")\n    require(bound == expected_bound_ms,\n            f\"deployed UI SafeWindow ceiling drifted: {bound} != {expected_bound_ms}\")\n    return bound\n\n\ndef commit_suid(body: dict[str, Any]) -> str:\n    response = body.get(\"response\") if isinstance(body.get(\"response\"), dict) else body\n    events = response.get(\"writtenEvents\") if isinstance(response, dict) else None\n    require(isinstance(events, list) and events, f\"commit did not return writtenEvents: {body}\")\n    first = events[0]\n    require(isinstance(first, dict) and isinstance(first.get(\"sortableUniqueIdValue\"), str), f\"commit SUID missing: {body}\")\n    return first[\"sortableUniqueIdValue\"]\n\n\ndef read_until_visible(base_url: str, kind: str, parameter: str, value: str, commit_id: str, bound_ms: int) -> tuple[dict[str, Any], float]:\n    started = time.perf_counter()\n    deadline = started + bound_ms / 1000\n    observations: list[dict[str, Any]] = []\n    while True:\n        elapsed_before_request_ms = (time.perf_counter() - started) * 1000\n        if elapsed_before_request_ms > bound_ms:\n            raise RuntimeError(f\"projection visibility timeout after {bound_ms}ms: {observations[-3:]}\")\n        status, body, elapsed_ms = request(\n            base_url,\n            f\"/api/read/{kind}?{parameter}={urllib.parse.quote(value)}\",\n            method=\"GET\",\n        )\n        require(status == 200 and isinstance(body, dict), f\"room read returned HTTP {status}: {body}\")\n        head = body.get(\"lastSortedUniqueId\")\n        require(isinstance(head, str), f\"room read omitted lastSortedUniqueId: {body}\")\n        elapsed_ms_total = (time.perf_counter() - started) * 1000\n        state = visibility_state(commit_id, head, elapsed_ms_total, bound_ms)\n        observations.append({\"head\": head, \"requestMs\": round(elapsed_ms, 3), \"elapsedMs\": round(elapsed_ms_total, 3), \"state\": state})\n        if state == \"visible\":\n            return {\n                \"status\": status,\n                \"head\": head,\n                \"state\": body.get(\"state\"),\n                \"observations\": observations,\n            }, (time.perf_counter() - started) * 1000\n        if state == \"timeout\":\n            raise RuntimeError(f\"projection visibility timeout after {bound_ms}ms: {observations[-3:]}\")\n        # This is only a bounded event-loop yield. It is not the semantic\n        # threshold and cannot clear pending; the ordinal comparison decides.\n        remaining = max(0.0, deadline - time.perf_counter())\n        time.sleep(min(0.25, remaining))\n    raise RuntimeError(f\"projection did not become visible within {bound_ms}ms: {observations[-3:]}\")\n\n\ndef list_items(body: dict[str, Any]) -> list[dict[str, Any]]:\n    raw_items = body.get(\"itemsJson\", body.get(\"items\"))\n    if isinstance(raw_items, str):\n        raw_items = json.loads(raw_items)\n    require(isinstance(raw_items, list) and all(isinstance(item, dict) for item in raw_items), f\"reservation list omitted itemsJson: {body}\")\n    return raw_items\n\n\ndef read_until_reservation_listed(base_url: str, reservation_id: str, bound_ms: int) -> tuple[dict[str, Any], float]:\n    \"\"\"Use the list-query result as the app-level visibility oracle.\n\n    The current V1 list-query wire has no read-head field, so item presence is\n    the only authoritative observation for this endpoint. The deadline remains\n    the published SafeWindow bound and is never replaced by a retry count.\n    \"\"\"\n    started = time.perf_counter()\n    deadline = started + bound_ms / 1000\n    observations: list[dict[str, Any]] = []\n    while True:\n        elapsed_before_request_ms = (time.perf_counter() - started) * 1000\n        if elapsed_before_request_ms > bound_ms:\n            raise RuntimeError(f\"reservation list visibility timeout after {bound_ms}ms: {observations[-3:]}\")\n        if os.environ.get(\"G15_TRIGGER_SCHEDULED\") == \"true\":\n            scheduled_status, _, _ = request(base_url, \"/__scheduled\", method=\"GET\")\n            require(scheduled_status == 200, f\"local scheduled projection poll returned HTTP {scheduled_status}\")\n        status, body, elapsed_ms = request(base_url, \"/api/read/reservations?pageNumber=1&pageSize=20\", method=\"GET\")\n        require(status == 200 and isinstance(body, dict), f\"reservation list returned HTTP {status}: {body}\")\n        items = list_items(body)\n        found = next((item for item in items if item.get(\"reservationId\") == reservation_id), None)\n        head = next((body.get(key) for key in (\"lastSortedUniqueId\", \"lastSortableUniqueId\", \"readHead\") if isinstance(body.get(key), str)), None)\n        elapsed_ms_total = (time.perf_counter() - started) * 1000\n        observations.append({\"itemCount\": len(items), \"containsReservation\": found is not None, \"readHead\": head, \"requestMs\": round(elapsed_ms, 3), \"elapsedMs\": round(elapsed_ms_total, 3)})\n        if found is not None:\n            return {\"status\": status, \"item\": found, \"readHead\": head, \"observations\": observations}, elapsed_ms_total\n        if elapsed_ms_total >= bound_ms:\n            raise RuntimeError(f\"reservation list visibility timeout after {bound_ms}ms: {observations[-3:]}\")\n        time.sleep(min(0.25, max(0.0, deadline - time.perf_counter())))\n\n\ndef main() -> None:\n    parser = argparse.ArgumentParser()\n    parser.add_argument(\"--base-url\", required=True)\n    parser.add_argument(\"--report\", required=True)\n    parser.add_argument(\"--harness-grace-ms\", type=int, default=5_000)\n    parser.add_argument(\"--include-query-views\", action=\"store_true\")\n    args = parser.parse_args()\n    require(args.harness_grace_ms >= 0, \"harnessGraceMs must be non-negative\")\n    configured_service_id = os.environ.get(\"G15_EXPECTED_SERVICE_ID\", \"\")\n    require(re.fullmatch(r\"[A-Za-z0-9][A-Za-z0-9._-]{0,95}\", configured_service_id) is not None,\n            \"G15_EXPECTED_SERVICE_ID must be a non-secret deployment service identity\")\n    safe_window_bound_ms, bound_sources = published_safe_window_bound()\n\n    run_id = uuid.uuid4().hex\n    room_id = f\"g15-room-{run_id[:16]}\"\n    reservation_id = f\"g15-reservation-{run_id[:16]}\"\n    measurements: dict[str, Any] = {}\n\n    # This is the browser visibility oracle exercised with deterministic facts;\n    # the live loop below uses the same ordinal relation and deadline.  Unlike\n    # the old metadata-only record, this executes the timeout transition in\n    # both local and deployed lanes without waiting 120 seconds.\n    require(compare_v1_ordinal(\"suid-01\", \"suid-02\") < 0, \"ordinal pending fixture malformed\")\n    require(compare_v1_ordinal(\"suid-02\", \"suid-02\") >= 0, \"ordinal equal fixture malformed\")\n    require(compare_v1_ordinal(\"suid-03\", \"suid-02\") >= 0, \"ordinal visible fixture malformed\")\n    measurements[\"visibilityOracle\"] = visibility_bound_oracle(safe_window_bound_ms)\n\n    status, html, _ = request(args.base_url, \"/\", method=\"GET\")\n    require(status == 200 and isinstance(html, str), f\"frontend root returned HTTP {status}\")\n    require(\"/app.js\" in html and \"<form\" in html, \"frontend root is not the static meeting-room UI\")\n    bound_sources[\"deployedUiAsset\"] = \"/ui-model.js\"\n    bound_sources[\"deployedUiBoundMs\"] = served_ui_bound(args.base_url, safe_window_bound_ms)\n\n    raw_checks: dict[str, int] = {}\n    for endpoint in (\"commit\", \"tag-latest-sortable\", \"tag-state\", \"query\", \"list-query\"):\n        raw_status, _, _ = request(\n            args.base_url,\n            f\"/api/sekiban/serialized/{endpoint}\",\n            method=\"POST\",\n            body={\"version\": 1, \"eventCandidates\": [], \"consistencyTags\": []} if endpoint == \"commit\" else {},\n        )\n        require(raw_status in (403, 404), f\"raw V1 {endpoint} was reachable with HTTP {raw_status}\")\n        raw_checks[endpoint] = raw_status\n\n    create_status, create_body, create_ms = request(\n        args.base_url,\n        \"/api/commands/create-room\",\n        method=\"POST\",\n        body={\"roomId\": room_id, \"name\": \"SDT-G15\"},\n    )\n    require(create_status == 200 and isinstance(create_body, dict) and create_body.get(\"kind\") == \"committed\", f\"create-room failed HTTP {create_status}: {create_body}\")\n    create_suid = commit_suid(create_body)\n    created_read, created_visible_ms = read_until_visible(args.base_url, \"room\", \"roomId\", room_id, create_suid, safe_window_bound_ms)\n    require(isinstance(created_read.get(\"state\"), dict) and created_read[\"state\"].get(\"status\") == \"created\", f\"room projection did not update: {created_read}\")\n\n    reserve_status, reserve_body, reserve_ms = request(\n        args.base_url,\n        \"/api/commands/reserve-room\",\n        method=\"POST\",\n        body={\"roomId\": room_id, \"reservationId\": reservation_id, \"userId\": \"g15\"},\n    )\n    require(reserve_status == 200 and isinstance(reserve_body, dict) and reserve_body.get(\"kind\") == \"committed\", f\"reserve-room failed HTTP {reserve_status}: {reserve_body}\")\n    reserve_suid = commit_suid(reserve_body)\n    reservation_read, reservation_visible_ms = read_until_visible(\n        args.base_url, \"reservation\", \"reservationId\", reservation_id, reserve_suid, safe_window_bound_ms,\n    )\n    require(isinstance(reservation_read.get(\"state\"), dict) and reservation_read[\"state\"].get(\"status\") == \"reserved\", f\"reservation projection did not update: {reservation_read}\")\n\n    query_views: dict[str, Any] | None = None\n    if args.include_query_views:\n        reservations_list, reservation_list_visible_ms = read_until_reservation_listed(args.base_url, reservation_id, safe_window_bound_ms)\n        require(reservations_list[\"item\"].get(\"status\") == \"reserved\", f\"reservation list returned unexpected state: {reservations_list}\")\n        room_query_status, room_query_body, room_query_ms = request(\n            args.base_url,\n            f\"/api/read/room-query?roomId={urllib.parse.quote(room_id)}\",\n            method=\"GET\",\n        )\n        require(room_query_status == 200 and isinstance(room_query_body, dict), f\"room query returned HTTP {room_query_status}: {room_query_body}\")\n        result_json = room_query_body.get(\"resultJson\")\n        require(isinstance(result_json, str), f\"room query omitted resultJson: {room_query_body}\")\n        room_result = json.loads(result_json)\n        require(isinstance(room_result, dict), f\"room query result was not an object: {room_result}\")\n        query_views = {\n            \"reservationList\": {\n                \"status\": 200,\n                \"reservationId\": reservation_id,\n                \"commitToVisibleMs\": round(reservation_list_visible_ms, 3),\n                \"readHead\": reservations_list[\"readHead\"],\n                \"observations\": reservations_list[\"observations\"],\n            },\n            \"roomQuery\": {\"status\": room_query_status, \"requestMs\": round(room_query_ms, 3), \"result\": room_result},\n        }\n\n    cancel_status, cancel_body, cancel_ms = request(\n        args.base_url,\n        \"/api/commands/cancel-reservation\",\n        method=\"POST\",\n        body={\"reservationId\": reservation_id},\n    )\n    require(cancel_status == 200 and isinstance(cancel_body, dict) and cancel_body.get(\"kind\") == \"committed\", f\"cancel-reservation failed HTTP {cancel_status}: {cancel_body}\")\n    cancel_suid = commit_suid(cancel_body)\n    cancelled_read, cancelled_visible_ms = read_until_visible(\n        args.base_url, \"reservation\", \"reservationId\", reservation_id, cancel_suid, safe_window_bound_ms,\n    )\n    require(isinstance(cancelled_read.get(\"state\"), dict) and cancelled_read[\"state\"].get(\"status\") == \"cancelled\", f\"cancel projection did not update: {cancelled_read}\")\n\n    rejected_status, rejected_body, _ = request(\n        args.base_url,\n        \"/api/commands/create-room\",\n        method=\"POST\",\n        body={\"name\": \"invalid\"},\n    )\n    require(rejected_status == 400 and isinstance(rejected_body, dict) and rejected_body.get(\"kind\") == \"invalid\" and rejected_body.get(\"code\") == \"invalid_command_input\", f\"rejection was not distinct: {rejected_status} {rejected_body}\")\n\n    report = {\n        \"probe\": \"SDT-G16\" if args.include_query_views else \"SDT-G15\",\n        \"baseUrl\": args.base_url,\n        \"runId\": run_id,\n        \"roomId\": room_id,\n        \"reservationId\": reservation_id,\n        \"uiSafeWindowBoundMs\": safe_window_bound_ms,\n        \"safeWindowBoundSources\": bound_sources,\n        \"harnessGraceMs\": args.harness_grace_ms,\n        \"harnessGraceSemanticRole\": \"measurement-only; never widens UI visibility threshold\",\n        \"serviceIdentity\": {\n            \"configuredServiceId\": configured_service_id,\n            \"source\": \"G15_EXPECTED_SERVICE_ID\" if \"G15_EXPECTED_SERVICE_ID\" in os.environ else \"local compatibility default\",\n            \"clientHeaderForwarded\": False,\n        },\n        \"visibilityOracle\": measurements[\"visibilityOracle\"],\n        \"rawV1Unauthenticated\": raw_checks,\n        \"commands\": {\n            \"create\": {\"status\": create_status, \"requestMs\": round(create_ms, 3), \"suid\": create_suid},\n            \"reserve\": {\"status\": reserve_status, \"requestMs\": round(reserve_ms, 3), \"suid\": reserve_suid},\n            \"cancel\": {\"status\": cancel_status, \"requestMs\": round(cancel_ms, 3), \"suid\": cancel_suid},\n            \"rejected\": {\"status\": rejected_status, \"kind\": rejected_body.get(\"kind\"), \"code\": rejected_body.get(\"code\")},\n        },\n        \"projection\": {\n            \"createVisible\": True,\n            \"createCommitToVisibleMs\": round(created_visible_ms, 3),\n            \"createObservations\": created_read[\"observations\"],\n            \"reservationVisible\": True,\n            \"reservationCommitToVisibleMs\": round(reservation_visible_ms, 3),\n            \"cancelVisible\": True,\n            \"cancelCommitToVisibleMs\": round(cancelled_visible_ms, 3),\n        },\n        \"queryViews\": query_views,\n        \"freshRunIds\": True,\n        \"secret\": \"no bearer token or credential used by app-layer E2E\",\n        \"recordedAt\": time.strftime(\"%Y-%m-%dT%H:%M:%SZ\", time.gmtime()),\n    }\n    report_path = Path(args.report)\n    report_path.parent.mkdir(parents=True, exist_ok=True)\n    report_path.write_text(json.dumps(report, indent=2) + \"\\n\", encoding=\"utf-8\")\n    print(json.dumps(report, indent=2))\n\n\nif __name__ == \"__main__\":\n    main()\n"
+      }
+    },
+    {
+      "sequence": 5,
+      "recordedAt": "2026-09-01T16:59:13.682Z",
+      "kind": "wrangler",
+      "operation": "deployed-version-check",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "versions",
+          "list",
+          "--name",
+          "sekiban-dcb-meeting-room-cloudflare-only",
+          "--json"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"id\": \"0fdf765b-ceea-4abf-851d-db17a98e278c\",\n    \"number\": 166,\n    \"metadata\": {\n      \"created_on\": \"2026-08-31T07:26:31.414558Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    }\n  },\n  {\n    \"id\": \"b7b3f2be-c48f-4619-8abd-a7681403ab3c\",\n    \"number\": 167,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:24:14.092351Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"f5ee416a-0360-429a-9ae2-a73788a3d74c\",\n    \"number\": 168,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:25:29.951116Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e\",\n    \"number\": 169,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:27:50.26765Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"b048adc0-39e7-4ebf-b2d3-bf77c531404f\",\n    \"number\": 170,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T07:52:01.47971Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config 726ff828\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"a1dd3f04-2788-4a68-b183-366c54c11b84\",\n    \"number\": 171,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:05:10.022849Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6fb93eee-89fc-48de-a183-2258bf0b8350\",\n    \"number\": 172,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:19:44.799475Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"1113c51f-37fa-4f5f-9837-bab790b65b90\",\n    \"number\": 173,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:20:20.564296Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"52350239-bd50-4b51-997f-f9eb88e9dfd9\",\n    \"number\": 174,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T15:12:12.551839Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 G32 baseline 08e8996\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6dd811dd-8b3d-450b-b884-55e6b9095b1d\",\n    \"number\": 175,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T16:29:19.236391Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "id": "0fdf765b-ceea-4abf-851d-db17a98e278c",
+            "number": 166,
+            "metadata": {
+              "created_on": "2026-08-31T07:26:31.414558Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/triggered_by": "secret"
+            }
+          },
+          {
+            "id": "b7b3f2be-c48f-4619-8abd-a7681403ab3c",
+            "number": 167,
+            "metadata": {
+              "created_on": "2026-09-01T00:24:14.092351Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "f5ee416a-0360-429a-9ae2-a73788a3d74c",
+            "number": 168,
+            "metadata": {
+              "created_on": "2026-09-01T00:25:29.951116Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e",
+            "number": 169,
+            "metadata": {
+              "created_on": "2026-09-01T00:27:50.26765Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "b048adc0-39e7-4ebf-b2d3-bf77c531404f",
+            "number": 170,
+            "metadata": {
+              "created_on": "2026-09-01T07:52:01.47971Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 normal config 726ff828",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "a1dd3f04-2788-4a68-b183-366c54c11b84",
+            "number": 171,
+            "metadata": {
+              "created_on": "2026-09-01T08:05:10.022849Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 normal config f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "6fb93eee-89fc-48de-a183-2258bf0b8350",
+            "number": 172,
+            "metadata": {
+              "created_on": "2026-09-01T08:19:44.799475Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 complete normal D1 schema f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "1113c51f-37fa-4f5f-9837-bab790b65b90",
+            "number": 173,
+            "metadata": {
+              "created_on": "2026-09-01T08:20:20.564296Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 complete normal D1 schema f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "52350239-bd50-4b51-997f-f9eb88e9dfd9",
+            "number": 174,
+            "metadata": {
+              "created_on": "2026-09-01T15:12:12.551839Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 G32 baseline 08e8996",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "6dd811dd-8b3d-450b-b884-55e6b9095b1d",
+            "number": 175,
+            "metadata": {
+              "created_on": "2026-09-01T16:29:19.236391Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf",
+              "workers/triggered_by": "version_upload"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 6,
+      "recordedAt": "2026-09-01T16:59:43.297Z",
+      "kind": "file",
+      "operation": "g15-report",
+      "file": {
+        "path": ".artifacts/sdt-g49-w47-g15.json",
+        "sha256": "c044f0235165f93f083fb875fd0d15c7318e446b39e55641d22b8961ec31657e",
+        "content": "{\n  \"probe\": \"SDT-G15\",\n  \"baseUrl\": \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n  \"runId\": \"8577e1fd1f24463fab7469a8c7da9b8b\",\n  \"roomId\": \"g15-room-8577e1fd1f24463f\",\n  \"reservationId\": \"g15-reservation-8577e1fd1f24463f\",\n  \"uiSafeWindowBoundMs\": 120000,\n  \"safeWindowBoundSources\": {\n    \"runtimeSource\": \"packages/dcb-runtime/src/safeWindow.ts\",\n    \"runtimeBoundMs\": 120000,\n    \"servedUiSource\": \"samples/meeting-room/public/ui-model.js\",\n    \"servedUiBoundMs\": 120000,\n    \"harnessBoundMs\": 120000,\n    \"absoluteProtocolBoundMs\": 120000,\n    \"deployedUiAsset\": \"/ui-model.js\",\n    \"deployedUiBoundMs\": 120000\n  },\n  \"harnessGraceMs\": 5000,\n  \"harnessGraceSemanticRole\": \"measurement-only; never widens UI visibility threshold\",\n  \"serviceIdentity\": {\n    \"configuredServiceId\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n    \"source\": \"G15_EXPECTED_SERVICE_ID\",\n    \"clientHeaderForwarded\": false\n  },\n  \"visibilityOracle\": {\n    \"executed\": true,\n    \"pendingAtBoundMinusOne\": \"pending\",\n    \"timeoutAtBound\": \"timeout\",\n    \"visibleAtBoundWithEqualHead\": \"visible\",\n    \"timeoutAfterBound\": \"timeout\",\n    \"boundMs\": 120000\n  },\n  \"rawV1Unauthenticated\": {\n    \"commit\": 404,\n    \"tag-latest-sortable\": 404,\n    \"tag-state\": 404,\n    \"query\": 404,\n    \"list-query\": 404\n  },\n  \"commands\": {\n    \"create\": {\n      \"status\": 200,\n      \"requestMs\": 2868.681,\n      \"suid\": \"063923878766328000000195556096\"\n    },\n    \"reserve\": {\n      \"status\": 200,\n      \"requestMs\": 3375.139,\n      \"suid\": \"063923878770241000000120824354\"\n    },\n    \"cancel\": {\n      \"status\": 200,\n      \"requestMs\": 1882.961,\n      \"suid\": \"063923878773293000001809716637\"\n    },\n    \"rejected\": {\n      \"status\": 400,\n      \"kind\": \"invalid\",\n      \"code\": \"invalid_command_input\"\n    }\n  },\n  \"projection\": {\n    \"createVisible\": true,\n    \"createCommitToVisibleMs\": 990.488,\n    \"createObservations\": [\n      {\n        \"head\": \"063923878766328000000195556096\",\n        \"requestMs\": 990.417,\n        \"elapsedMs\": 990.481,\n        \"state\": \"visible\"\n      }\n    ],\n    \"reservationVisible\": true,\n    \"reservationCommitToVisibleMs\": 407.987,\n    \"cancelVisible\": true,\n    \"cancelCommitToVisibleMs\": 420.965\n  },\n  \"queryViews\": null,\n  \"freshRunIds\": true,\n  \"secret\": \"no bearer token or credential used by app-layer E2E\",\n  \"recordedAt\": \"2026-09-01T16:59:35Z\"\n}\n"
+      }
+    },
+    {
+      "sequence": 7,
+      "recordedAt": "2026-09-01T16:59:43.352Z",
+      "kind": "file",
+      "operation": "g16-launch-status",
+      "file": {
+        "path": ".artifacts/sdt-g49-w47-g16-process.json",
+        "sha256": "3e5e0640312c91fe1310680e1163fb84e76421c308cf1e53ebff26b05752eaf8",
+        "content": "{\n  \"schema\": \"sdt-g49-pr98-w47-g16-process/v1\",\n  \"state\": \"running\",\n  \"launchedAt\": \"2026-09-01T16:59:43.324Z\",\n  \"launcherPid\": 24496,\n  \"command\": [\n    \"npm\",\n    \"run\",\n    \"e2e:g16\",\n    \"--\",\n    \"--base-url\",\n    \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n    \"--report\",\n    \".artifacts/sdt-g49-w47-g16.json\"\n  ],\n  \"serviceId\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n  \"report\": \".artifacts/sdt-g49-w47-g16.json\",\n  \"log\": \".artifacts/sdt-g49-w47-g16.log\",\n  \"harness\": \"scripts/deploy/g15-e2e.py\",\n  \"detached\": true,\n  \"runnerPid\": 24499,\n  \"runnerLaunchedAt\": \"2026-09-01T16:59:43.326Z\",\n  \"runnerStartedAt\": \"2026-09-01T16:59:43.350Z\"\n}\n"
+      }
+    },
+    {
+      "sequence": 8,
+      "recordedAt": "2026-09-01T17:01:14.832Z",
+      "kind": "file",
+      "operation": "g16-completion-status",
+      "file": {
+        "path": ".artifacts/sdt-g49-w47-g16-process.json",
+        "sha256": "5cbfd9b96e3f26b8d6dbff6158ee8f4b24edbfaa5384755bb7ec5e8ce67b7733",
+        "content": "{\n  \"schema\": \"sdt-g49-pr98-w47-g16-process/v1\",\n  \"state\": \"completed\",\n  \"launchedAt\": \"2026-09-01T16:59:43.324Z\",\n  \"launcherPid\": 24496,\n  \"command\": [\n    \"npm\",\n    \"run\",\n    \"e2e:g16\",\n    \"--\",\n    \"--base-url\",\n    \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n    \"--report\",\n    \".artifacts/sdt-g49-w47-g16.json\"\n  ],\n  \"serviceId\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n  \"report\": \".artifacts/sdt-g49-w47-g16.json\",\n  \"log\": \".artifacts/sdt-g49-w47-g16.log\",\n  \"harness\": \"scripts/deploy/g15-e2e.py\",\n  \"detached\": true,\n  \"runnerPid\": 24499,\n  \"runnerLaunchedAt\": \"2026-09-01T16:59:43.326Z\",\n  \"runnerStartedAt\": \"2026-09-01T16:59:43.350Z\",\n  \"finishedAt\": \"2026-09-01T17:00:32.649Z\",\n  \"npmPid\": 24509,\n  \"exitCode\": 0,\n  \"signal\": null,\n  \"reportExists\": true,\n  \"reportBytes\": 5596\n}\n"
+      }
+    },
+    {
+      "sequence": 9,
+      "recordedAt": "2026-09-01T17:01:14.859Z",
+      "kind": "file",
+      "operation": "g16-log",
+      "file": {
+        "path": ".artifacts/sdt-g49-w47-g16.log",
+        "sha256": "a845f231542fca45ff276244121e4670296d0634534d0837d681b9e4bd988998",
+        "content": "\n> serialized-dcb-v1-runtime@0.1.0 e2e:g16\n> python3 scripts/deploy/g15-e2e.py --include-query-views --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --report .artifacts/sdt-g49-w47-g16.json\n\n{\n  \"probe\": \"SDT-G16\",\n  \"baseUrl\": \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n  \"runId\": \"9ab0c66c09e2470a92d8863853249213\",\n  \"roomId\": \"g15-room-9ab0c66c09e2470a\",\n  \"reservationId\": \"g15-reservation-9ab0c66c09e2470a\",\n  \"uiSafeWindowBoundMs\": 120000,\n  \"safeWindowBoundSources\": {\n    \"runtimeSource\": \"packages/dcb-runtime/src/safeWindow.ts\",\n    \"runtimeBoundMs\": 120000,\n    \"servedUiSource\": \"samples/meeting-room/public/ui-model.js\",\n    \"servedUiBoundMs\": 120000,\n    \"harnessBoundMs\": 120000,\n    \"absoluteProtocolBoundMs\": 120000,\n    \"deployedUiAsset\": \"/ui-model.js\",\n    \"deployedUiBoundMs\": 120000\n  },\n  \"harnessGraceMs\": 5000,\n  \"harnessGraceSemanticRole\": \"measurement-only; never widens UI visibility threshold\",\n  \"serviceIdentity\": {\n    \"configuredServiceId\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n    \"source\": \"G15_EXPECTED_SERVICE_ID\",\n    \"clientHeaderForwarded\": false\n  },\n  \"visibilityOracle\": {\n    \"executed\": true,\n    \"pendingAtBoundMinusOne\": \"pending\",\n    \"timeoutAtBound\": \"timeout\",\n    \"visibleAtBoundWithEqualHead\": \"visible\",\n    \"timeoutAfterBound\": \"timeout\",\n    \"boundMs\": 120000\n  },\n  \"rawV1Unauthenticated\": {\n    \"commit\": 404,\n    \"tag-latest-sortable\": 404,\n    \"tag-state\": 404,\n    \"query\": 404,\n    \"list-query\": 404\n  },\n  \"commands\": {\n    \"create\": {\n      \"status\": 200,\n      \"requestMs\": 5115.103,\n      \"suid\": \"063923878789406000001307699466\"\n    },\n    \"reserve\": {\n      \"status\": 200,\n      \"requestMs\": 8119.452,\n      \"suid\": \"063923878796795000000074280444\"\n    },\n    \"cancel\": {\n      \"status\": 200,\n      \"requestMs\": 4076.513,\n      \"suid\": \"063923878828754000000690755719\"\n    },\n    \"rejected\": {\n      \"status\": 400,\n      \"kind\": \"invalid\",\n      \"code\": \"invalid_command_input\"\n    }\n  },\n  \"projection\": {\n    \"createVisible\": true,\n    \"createCommitToVisibleMs\": 527.151,\n    \"createObservations\": [\n      {\n        \"head\": \"063923878789406000001307699466\",\n        \"requestMs\": 527.018,\n        \"elapsedMs\": 527.134,\n        \"state\": \"visible\"\n      }\n    ],\n    \"reservationVisible\": true,\n    \"reservationCommitToVisibleMs\": 1045.303,\n    \"cancelVisible\": true,\n    \"cancelCommitToVisibleMs\": 1093.454\n  },\n  \"queryViews\": {\n    \"reservationList\": {\n      \"status\": 200,\n      \"reservationId\": \"g15-reservation-9ab0c66c09e2470a\",\n      \"commitToVisibleMs\": 24044.696,\n      \"readHead\": null,\n      \"observations\": [\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1126.729,\n          \"elapsedMs\": 1126.821\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 2006.781,\n          \"elapsedMs\": 3386.453\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1040.541,\n          \"elapsedMs\": 4677.933\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1005.053,\n          \"elapsedMs\": 5938.185\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1012.757,\n          \"elapsedMs\": 7211.081\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 2000.541,\n          \"elapsedMs\": 9468.556\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1944.377,\n          \"elapsedMs\": 11669.503\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1066.216,\n          \"elapsedMs\": 12992.742\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1010.873,\n          \"elapsedMs\": 14263.732\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1093.284,\n          \"elapsedMs\": 15615.357\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 624.745,\n          \"elapsedMs\": 16500.237\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1034.516,\n          \"elapsedMs\": 17794.882\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1989.441,\n          \"elapsedMs\": 20037.856\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1033.951,\n          \"elapsedMs\": 21332.066\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1057.612,\n          \"elapsedMs\": 22648.512\n        },\n        {\n          \"itemCount\": 11,\n          \"containsReservation\": true,\n          \"readHead\": null,\n          \"requestMs\": 1139.036,\n          \"elapsedMs\": 24044.696\n        }\n      ]\n    },\n    \"roomQuery\": {\n      \"status\": 200,\n      \"requestMs\": 1047.093,\n      \"result\": {\n        \"count\": 13\n      }\n    }\n  },\n  \"freshRunIds\": true,\n  \"secret\": \"no bearer token or credential used by app-layer E2E\",\n  \"recordedAt\": \"2026-09-01T17:00:32Z\"\n}\nnpm warn Unknown user config \"python\". This will stop working in the next major version of npm. See `npm help npmrc` for supported config options.\n"
+      }
+    },
+    {
+      "sequence": 10,
+      "recordedAt": "2026-09-01T17:01:14.889Z",
+      "kind": "file",
+      "operation": "g16-report",
+      "file": {
+        "path": ".artifacts/sdt-g49-w47-g16.json",
+        "sha256": "aea3099d5b165ee999961b3c1b0ceb0ce640778b3ce75e42de868ee2fa864580",
+        "content": "{\n  \"probe\": \"SDT-G16\",\n  \"baseUrl\": \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n  \"runId\": \"9ab0c66c09e2470a92d8863853249213\",\n  \"roomId\": \"g15-room-9ab0c66c09e2470a\",\n  \"reservationId\": \"g15-reservation-9ab0c66c09e2470a\",\n  \"uiSafeWindowBoundMs\": 120000,\n  \"safeWindowBoundSources\": {\n    \"runtimeSource\": \"packages/dcb-runtime/src/safeWindow.ts\",\n    \"runtimeBoundMs\": 120000,\n    \"servedUiSource\": \"samples/meeting-room/public/ui-model.js\",\n    \"servedUiBoundMs\": 120000,\n    \"harnessBoundMs\": 120000,\n    \"absoluteProtocolBoundMs\": 120000,\n    \"deployedUiAsset\": \"/ui-model.js\",\n    \"deployedUiBoundMs\": 120000\n  },\n  \"harnessGraceMs\": 5000,\n  \"harnessGraceSemanticRole\": \"measurement-only; never widens UI visibility threshold\",\n  \"serviceIdentity\": {\n    \"configuredServiceId\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n    \"source\": \"G15_EXPECTED_SERVICE_ID\",\n    \"clientHeaderForwarded\": false\n  },\n  \"visibilityOracle\": {\n    \"executed\": true,\n    \"pendingAtBoundMinusOne\": \"pending\",\n    \"timeoutAtBound\": \"timeout\",\n    \"visibleAtBoundWithEqualHead\": \"visible\",\n    \"timeoutAfterBound\": \"timeout\",\n    \"boundMs\": 120000\n  },\n  \"rawV1Unauthenticated\": {\n    \"commit\": 404,\n    \"tag-latest-sortable\": 404,\n    \"tag-state\": 404,\n    \"query\": 404,\n    \"list-query\": 404\n  },\n  \"commands\": {\n    \"create\": {\n      \"status\": 200,\n      \"requestMs\": 5115.103,\n      \"suid\": \"063923878789406000001307699466\"\n    },\n    \"reserve\": {\n      \"status\": 200,\n      \"requestMs\": 8119.452,\n      \"suid\": \"063923878796795000000074280444\"\n    },\n    \"cancel\": {\n      \"status\": 200,\n      \"requestMs\": 4076.513,\n      \"suid\": \"063923878828754000000690755719\"\n    },\n    \"rejected\": {\n      \"status\": 400,\n      \"kind\": \"invalid\",\n      \"code\": \"invalid_command_input\"\n    }\n  },\n  \"projection\": {\n    \"createVisible\": true,\n    \"createCommitToVisibleMs\": 527.151,\n    \"createObservations\": [\n      {\n        \"head\": \"063923878789406000001307699466\",\n        \"requestMs\": 527.018,\n        \"elapsedMs\": 527.134,\n        \"state\": \"visible\"\n      }\n    ],\n    \"reservationVisible\": true,\n    \"reservationCommitToVisibleMs\": 1045.303,\n    \"cancelVisible\": true,\n    \"cancelCommitToVisibleMs\": 1093.454\n  },\n  \"queryViews\": {\n    \"reservationList\": {\n      \"status\": 200,\n      \"reservationId\": \"g15-reservation-9ab0c66c09e2470a\",\n      \"commitToVisibleMs\": 24044.696,\n      \"readHead\": null,\n      \"observations\": [\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1126.729,\n          \"elapsedMs\": 1126.821\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 2006.781,\n          \"elapsedMs\": 3386.453\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1040.541,\n          \"elapsedMs\": 4677.933\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1005.053,\n          \"elapsedMs\": 5938.185\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1012.757,\n          \"elapsedMs\": 7211.081\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 2000.541,\n          \"elapsedMs\": 9468.556\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1944.377,\n          \"elapsedMs\": 11669.503\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1066.216,\n          \"elapsedMs\": 12992.742\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1010.873,\n          \"elapsedMs\": 14263.732\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1093.284,\n          \"elapsedMs\": 15615.357\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 624.745,\n          \"elapsedMs\": 16500.237\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1034.516,\n          \"elapsedMs\": 17794.882\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1989.441,\n          \"elapsedMs\": 20037.856\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1033.951,\n          \"elapsedMs\": 21332.066\n        },\n        {\n          \"itemCount\": 9,\n          \"containsReservation\": false,\n          \"readHead\": null,\n          \"requestMs\": 1057.612,\n          \"elapsedMs\": 22648.512\n        },\n        {\n          \"itemCount\": 11,\n          \"containsReservation\": true,\n          \"readHead\": null,\n          \"requestMs\": 1139.036,\n          \"elapsedMs\": 24044.696\n        }\n      ]\n    },\n    \"roomQuery\": {\n      \"status\": 200,\n      \"requestMs\": 1047.093,\n      \"result\": {\n        \"count\": 13\n      }\n    }\n  },\n  \"freshRunIds\": true,\n  \"secret\": \"no bearer token or credential used by app-layer E2E\",\n  \"recordedAt\": \"2026-09-01T17:00:32Z\"\n}\n"
+      }
+    }
+  ],
+  "updatedAt": "2026-09-01T17:01:14.889Z"
+}

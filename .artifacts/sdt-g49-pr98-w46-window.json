@@ -1,0 +1,1537 @@
+{
+  "schema": "sdt-g49-pr98-w46-window-receipt/v1",
+  "startedAt": "2026-09-01T16:28:05.261Z",
+  "operations": [
+    {
+      "sequence": 1,
+      "recordedAt": "2026-09-01T16:28:06.443Z",
+      "kind": "wrangler",
+      "operation": "whoami",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "whoami"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.127.1)\n───────────────────────────────────────────────\nGetting User settings...\n👋 You are logged in with an OAuth Token, associated with the email ttakaoka@jtechs.com.\n🔐 Credentials are stored in: /Users/tomohisa/Library/Preferences/.wrangler/config/default.toml\n┌───────────────────────────────┬──────────────────────────────────┐\n│ Account Name                  │ Account ID                       │\n├───────────────────────────────┼──────────────────────────────────┤\n│ Ttakaoka@jtechs.com's Account │ 3ede2188f4cf39a28e0aa3722d3d02c5 │\n└───────────────────────────────┴──────────────────────────────────┘\n🔓 Token Permissions:\nScope (Access)\n- user (read)\n- offline_access \n- account (read)\n- workers (write)\n- workers_kv (write)\n- workers_routes (write)\n- workers_scripts (write)\n- workers_tail (read)\n- d1 (write)\n- pages (write)\n- zone (read)\n- ssl_certs (write)\n- ai (write)\n- ai-search (write)\n- ai-search (run)\n- websearch.run \n- agent-memory (write)\n- queues (write)\n- pipelines (write)\n- secrets_store (write)\n- artifacts (write)\n- flagship (write)\n- containers (write)\n- cloudchamber (write)\n- connectivity (admin)\n- email_routing (write)\n- email_sending (write)\n- browser (write)\n- challenge-widgets.write \n",
+        "stderr": ""
+      }
+    },
+    {
+      "sequence": 2,
+      "recordedAt": "2026-09-01T16:28:43.640Z",
+      "kind": "file",
+      "operation": "normal-config",
+      "file": {
+        "path": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+        "sha256": "0ae3bf5ec67547e707ea091da472d09cb681b532407264e15339400f8dd08862",
+        "content": "{\n  \"$schema\": \"../../node_modules/wrangler/config-schema.json\",\n  \"name\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n  \"main\": \"src/worker.cloudflare-only.ts\",\n  \"compatibility_date\": \"2026-08-18\",\n  \"compatibility_flags\": [\"nodejs_compat\"],\n  \"vars\": {\n    \"AUTO_DRAIN_OUTBOX\": \"true\",\n    \"DOMAIN_DELIVERY_CLASS\": \"immediate-preferred\",\n    \"DIRECT_DOORBELL\": \"false\",\n    \"DIRECT_DOORBELL_ALLOWED_VIEWS\": \"RoomProjector,ReservationProjector\",\n    \"DIRECT_DOORBELL_MAX_INVOCATIONS\": \"32\",\n    \"DIRECT_DOORBELL_DEGRADATION\": \"queued-degraded\",\n    \"DIRECT_DOORBELL_RECEIVER_MODE\": \"separate\",\n    \"G26_VIEW_COUNT\": \"2\",\n    \"SDT_SERVICE_ID\": \"sekiban-dcb-meeting-room-cloudflare-only\"\n  },\n  \"assets\": { \"directory\": \"public\" },\n  \"triggers\": { \"crons\": [\"* * * * *\"] },\n  \"d1_databases\": [\n    {\n      \"binding\": \"D1\",\n      \"database_name\": \"sekiban-dcb-meeting-room-cloudflare-pipeline\",\n      \"database_id\": \"f26d1299-82d9-4a64-8647-bc2ec86326ac\",\n      \"migrations_dir\": \"../../migrations/d1/g32\"\n    },\n    {\n      \"binding\": \"D1_MV\",\n      \"database_name\": \"sekiban-dcb-meeting-room-cloudflare-mv\",\n      \"database_id\": \"b416b212-4d09-413c-9b8d-7660e475772f\",\n      \"migrations_dir\": \"../../migrations/mv\"\n    }\n  ],\n  \"queues\": {\n    \"producers\": [{ \"binding\": \"DOWNSTREAM_QUEUE\", \"queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox\" }],\n    \"consumers\": [{\n      \"queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox\",\n      \"max_batch_timeout\": 1,\n      \"max_retries\": 3,\n      \"dead_letter_queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox-dlq\"\n    }]\n  },\n  \"durable_objects\": {\n    \"bindings\": [\n      { \"name\": \"ALLOCATOR\", \"class_name\": \"AllocatorDurableObject\" },\n      { \"name\": \"JOURNAL\", \"class_name\": \"JournalDurableObject\" },\n      { \"name\": \"TAG\", \"class_name\": \"TagDurableObject\" },\n      { \"name\": \"TAG_STATE\", \"class_name\": \"TagStateDurableObject\" },\n      { \"name\": \"BOOTSTRAP\", \"class_name\": \"BootstrapCoordinatorDurableObject\" }\n    ]\n  },\n  \"migrations\": [{ \"tag\": \"v1\", \"new_sqlite_classes\": [\"AllocatorDurableObject\", \"JournalDurableObject\", \"TagDurableObject\"] }, { \"tag\": \"v2\", \"new_sqlite_classes\": [\"BootstrapCoordinatorDurableObject\"] }, { \"tag\": \"v3\", \"new_sqlite_classes\": [\"TagStateDurableObject\"] }]\n}\n"
+      }
+    },
+    {
+      "sequence": 3,
+      "recordedAt": "2026-09-01T16:28:43.682Z",
+      "kind": "git",
+      "operation": "branch-config-head",
+      "head": {
+        "commit": "7fcd2dbeb18d9841823c101badf8bcc28d3d99bf",
+        "subject": "SDT-G49 seal normal D1 G32 lineage",
+        "committedAt": "2026-09-01T09:27:47-07:00"
+      }
+    },
+    {
+      "sequence": 4,
+      "recordedAt": "2026-09-01T16:28:44.495Z",
+      "kind": "wrangler",
+      "operation": "d1-list-pre-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "list",
+          "--json"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"uuid\": \"f26d1299-82d9-4a64-8647-bc2ec86326ac\",\n    \"name\": \"sekiban-dcb-meeting-room-cloudflare-pipeline\",\n    \"created_at\": \"2026-09-01T15:10:30.814Z\",\n    \"version\": \"production\",\n    \"num_tables\": 0,\n    \"file_size\": 11677696,\n    \"jurisdiction\": null\n  },\n  {\n    \"uuid\": \"b416b212-4d09-413c-9b8d-7660e475772f\",\n    \"name\": \"sekiban-dcb-meeting-room-cloudflare-mv\",\n    \"created_at\": \"2026-09-01T07:50:21.934Z\",\n    \"version\": \"production\",\n    \"num_tables\": 0,\n    \"file_size\": 233472,\n    \"jurisdiction\": null\n  },\n  {\n    \"uuid\": \"c733dfb2-013a-4a5d-a72c-47931a63bac4\",\n    \"name\": \"sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv\",\n    \"created_at\": \"2026-08-22T22:36:07.946Z\",\n    \"version\": \"production\",\n    \"num_tables\": 0,\n    \"file_size\": 6537216,\n    \"jurisdiction\": null\n  },\n  {\n    \"uuid\": \"eccf6048-7fc8-4412-a157-9fa180353f6d\",\n    \"name\": \"sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline\",\n    \"created_at\": \"2026-08-22T22:36:03.482Z\",\n    \"version\": \"production\",\n    \"num_tables\": 0,\n    \"file_size\": 8990720,\n    \"jurisdiction\": null\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "uuid": "f26d1299-82d9-4a64-8647-bc2ec86326ac",
+            "name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+            "created_at": "2026-09-01T15:10:30.814Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 11677696,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "b416b212-4d09-413c-9b8d-7660e475772f",
+            "name": "sekiban-dcb-meeting-room-cloudflare-mv",
+            "created_at": "2026-09-01T07:50:21.934Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 233472,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "c733dfb2-013a-4a5d-a72c-47931a63bac4",
+            "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
+            "created_at": "2026-08-22T22:36:07.946Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 6537216,
+            "jurisdiction": null
+          },
+          {
+            "uuid": "eccf6048-7fc8-4412-a157-9fa180353f6d",
+            "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
+            "created_at": "2026-08-22T22:36:03.482Z",
+            "version": "production",
+            "num_tables": 0,
+            "file_size": 8990720,
+            "jurisdiction": null
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 5,
+      "recordedAt": "2026-09-01T16:28:46.385Z",
+      "kind": "wrangler",
+      "operation": "pipeline-g32-catalog-pre-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT type, name, tbl_name FROM sqlite_master WHERE type = 'table' AND (name IN ('dcb_events', 'dcb_event_ops') OR name LIKE 'serialized_dcb_%') ORDER BY name"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"type\": \"table\",\n        \"name\": \"dcb_event_ops\",\n        \"tbl_name\": \"dcb_event_ops\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"dcb_events\",\n        \"tbl_name\": \"dcb_events\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_allocator_bindings\",\n        \"tbl_name\": \"serialized_dcb_allocator_bindings\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_completeness_findings\",\n        \"tbl_name\": \"serialized_dcb_completeness_findings\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_completeness_scanner_health\",\n        \"tbl_name\": \"serialized_dcb_completeness_scanner_health\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_delivery_incidents\",\n        \"tbl_name\": \"serialized_dcb_delivery_incidents\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_event_arrivals\",\n        \"tbl_name\": \"serialized_dcb_event_arrivals\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_global_memberships\",\n        \"tbl_name\": \"serialized_dcb_global_memberships\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_global_receipts\",\n        \"tbl_name\": \"serialized_dcb_global_receipts\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_inconsistency_findings\",\n        \"tbl_name\": \"serialized_dcb_inconsistency_findings\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_lag_estimates\",\n        \"tbl_name\": \"serialized_dcb_lag_estimates\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_pending_arrivals\",\n        \"tbl_name\": \"serialized_dcb_pending_arrivals\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_projection_checkpoints\",\n        \"tbl_name\": \"serialized_dcb_projection_checkpoints\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_source_partitions\",\n        \"tbl_name\": \"serialized_dcb_source_partitions\"\n      },\n      {\n        \"type\": \"table\",\n        \"name\": \"serialized_dcb_wait_target_incidents\",\n        \"tbl_name\": \"serialized_dcb_wait_target_incidents\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.5077\n      },\n      \"duration\": 0.5077,\n      \"changes\": 0,\n      \"last_row_id\": 3506,\n      \"changed_db\": false,\n      \"size_after\": 12124160,\n      \"rows_read\": 59,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "type": "table",
+                "name": "dcb_event_ops",
+                "tbl_name": "dcb_event_ops"
+              },
+              {
+                "type": "table",
+                "name": "dcb_events",
+                "tbl_name": "dcb_events"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_allocator_bindings",
+                "tbl_name": "serialized_dcb_allocator_bindings"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_completeness_findings",
+                "tbl_name": "serialized_dcb_completeness_findings"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_completeness_scanner_health",
+                "tbl_name": "serialized_dcb_completeness_scanner_health"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_delivery_incidents",
+                "tbl_name": "serialized_dcb_delivery_incidents"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_event_arrivals",
+                "tbl_name": "serialized_dcb_event_arrivals"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_global_memberships",
+                "tbl_name": "serialized_dcb_global_memberships"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_global_receipts",
+                "tbl_name": "serialized_dcb_global_receipts"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_inconsistency_findings",
+                "tbl_name": "serialized_dcb_inconsistency_findings"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_lag_estimates",
+                "tbl_name": "serialized_dcb_lag_estimates"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_pending_arrivals",
+                "tbl_name": "serialized_dcb_pending_arrivals"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_projection_checkpoints",
+                "tbl_name": "serialized_dcb_projection_checkpoints"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_source_partitions",
+                "tbl_name": "serialized_dcb_source_partitions"
+              },
+              {
+                "type": "table",
+                "name": "serialized_dcb_wait_target_incidents",
+                "tbl_name": "serialized_dcb_wait_target_incidents"
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.5077
+              },
+              "duration": 0.5077,
+              "changes": 0,
+              "last_row_id": 3506,
+              "changed_db": false,
+              "size_after": 12124160,
+              "rows_read": 59,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 6,
+      "recordedAt": "2026-09-01T16:28:48.023Z",
+      "kind": "wrangler",
+      "operation": "pipeline-lag-before-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, estimate_ms, observed_at FROM serialized_dcb_lag_estimates ORDER BY service_id"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"g32-9043d626fe1149cb\",\n        \"estimate_ms\": 134910039,\n        \"observed_at\": 1788275638117\n      },\n      {\n        \"service_id\": \"sdt-g47-fresh-wake25-20260831\",\n        \"estimate_ms\": 131785187,\n        \"observed_at\": 1788275793097\n      },\n      {\n        \"service_id\": \"sdt-g47-repair-wake32c-20260831\",\n        \"estimate_ms\": 57546547,\n        \"observed_at\": 1788280113544\n      },\n      {\n        \"service_id\": \"sdt-g47-tail-wake26-20260831T065020Z\",\n        \"estimate_ms\": 114485109,\n        \"observed_at\": 1788275691858\n      },\n      {\n        \"service_id\": \"sdt-g49-726ff828-w41\",\n        \"estimate_ms\": 26623300,\n        \"observed_at\": 1788275767917\n      },\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"estimate_ms\": 25312356,\n        \"observed_at\": 1788275832345\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.3186\n      },\n      \"duration\": 0.3186,\n      \"changes\": 0,\n      \"last_row_id\": 3506,\n      \"changed_db\": false,\n      \"size_after\": 12124160,\n      \"rows_read\": 6,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "service_id": "g32-9043d626fe1149cb",
+                "estimate_ms": 134910039,
+                "observed_at": 1788275638117
+              },
+              {
+                "service_id": "sdt-g47-fresh-wake25-20260831",
+                "estimate_ms": 131785187,
+                "observed_at": 1788275793097
+              },
+              {
+                "service_id": "sdt-g47-repair-wake32c-20260831",
+                "estimate_ms": 57546547,
+                "observed_at": 1788280113544
+              },
+              {
+                "service_id": "sdt-g47-tail-wake26-20260831T065020Z",
+                "estimate_ms": 114485109,
+                "observed_at": 1788275691858
+              },
+              {
+                "service_id": "sdt-g49-726ff828-w41",
+                "estimate_ms": 26623300,
+                "observed_at": 1788275767917
+              },
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "estimate_ms": 25312356,
+                "observed_at": 1788275832345
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.3186
+              },
+              "duration": 0.3186,
+              "changes": 0,
+              "last_row_id": 3506,
+              "changed_db": false,
+              "size_after": 12124160,
+              "rows_read": 6,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 7,
+      "recordedAt": "2026-09-01T16:28:49.394Z",
+      "kind": "wrangler",
+      "operation": "pipeline-completeness-pre-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, status, last_full_scan_at, last_error, updated_at, (SELECT COUNT(*) FROM serialized_dcb_completeness_findings) AS findingCount FROM serialized_dcb_completeness_scanner_health ORDER BY service_id"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"status\": \"HEALTHY\",\n        \"last_full_scan_at\": 1788280112812,\n        \"last_error\": null,\n        \"updated_at\": 1788280112812,\n        \"findingCount\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.477\n      },\n      \"duration\": 0.477,\n      \"changes\": 0,\n      \"last_row_id\": 3507,\n      \"changed_db\": false,\n      \"size_after\": 12128256,\n      \"rows_read\": 1,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "status": "HEALTHY",
+                "last_full_scan_at": 1788280112812,
+                "last_error": null,
+                "updated_at": 1788280112812,
+                "findingCount": 0
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.477
+              },
+              "duration": 0.477,
+              "changes": 0,
+              "last_row_id": 3507,
+              "changed_db": false,
+              "size_after": 12128256,
+              "rows_read": 1,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 8,
+      "recordedAt": "2026-09-01T16:28:50.394Z",
+      "kind": "wrangler",
+      "operation": "mv-instances-pre-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1_MV",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, view_id, generation, status, last_suid, definition_version, updated_at FROM mv_instances ORDER BY service_id, view_id, generation"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"view_id\": \"ReservationProjector\",\n        \"generation\": 0,\n        \"status\": \"active\",\n        \"last_suid\": \"\",\n        \"definition_version\": 1,\n        \"updated_at\": 1788275635133\n      },\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"view_id\": \"RoomProjector\",\n        \"generation\": 0,\n        \"status\": \"active\",\n        \"last_suid\": \"\",\n        \"definition_version\": 1,\n        \"updated_at\": 1788275635133\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.198\n      },\n      \"duration\": 0.198,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 233472,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "view_id": "ReservationProjector",
+                "generation": 0,
+                "status": "active",
+                "last_suid": "",
+                "definition_version": 1,
+                "updated_at": 1788275635133
+              },
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "view_id": "RoomProjector",
+                "generation": 0,
+                "status": "active",
+                "last_suid": "",
+                "definition_version": 1,
+                "updated_at": 1788275635133
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.198
+              },
+              "duration": 0.198,
+              "changes": 0,
+              "last_row_id": 0,
+              "changed_db": false,
+              "size_after": 233472,
+              "rows_read": 2,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 9,
+      "recordedAt": "2026-09-01T16:28:51.299Z",
+      "kind": "wrangler",
+      "operation": "mv-ledger-pre-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1_MV",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT * FROM d1_migrations ORDER BY id"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"id\": 1,\n        \"name\": \"0001_materialized_views.sql\",\n        \"applied_at\": \"2026-09-01 07:52:11\"\n      },\n      {\n        \"id\": 2,\n        \"name\": \"0002_unsafe_window_materialized_views.sql\",\n        \"applied_at\": \"2026-09-01 07:52:12\"\n      },\n      {\n        \"id\": 3,\n        \"name\": \"0003_checkpoint_ahead_hardening.sql\",\n        \"applied_at\": \"2026-09-01 07:52:12\"\n      },\n      {\n        \"id\": 4,\n        \"name\": \"0004_unsafe_window_failure_findings.sql\",\n        \"applied_at\": \"2026-09-01 07:52:12\"\n      },\n      {\n        \"id\": 5,\n        \"name\": \"0005_g31_wait_receipts.sql\",\n        \"applied_at\": \"2026-09-01 07:52:12\"\n      },\n      {\n        \"id\": 6,\n        \"name\": \"0006_g31_wait_target_poison.sql\",\n        \"applied_at\": \"2026-09-01 07:52:12\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.5829\n      },\n      \"duration\": 0.5829,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 233472,\n      \"rows_read\": 6,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "id": 1,
+                "name": "0001_materialized_views.sql",
+                "applied_at": "2026-09-01 07:52:11"
+              },
+              {
+                "id": 2,
+                "name": "0002_unsafe_window_materialized_views.sql",
+                "applied_at": "2026-09-01 07:52:12"
+              },
+              {
+                "id": 3,
+                "name": "0003_checkpoint_ahead_hardening.sql",
+                "applied_at": "2026-09-01 07:52:12"
+              },
+              {
+                "id": 4,
+                "name": "0004_unsafe_window_failure_findings.sql",
+                "applied_at": "2026-09-01 07:52:12"
+              },
+              {
+                "id": 5,
+                "name": "0005_g31_wait_receipts.sql",
+                "applied_at": "2026-09-01 07:52:12"
+              },
+              {
+                "id": 6,
+                "name": "0006_g31_wait_target_poison.sql",
+                "applied_at": "2026-09-01 07:52:12"
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.5829
+              },
+              "duration": 0.5829,
+              "changes": 0,
+              "last_row_id": 0,
+              "changed_db": false,
+              "size_after": 233472,
+              "rows_read": 6,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 10,
+      "recordedAt": "2026-09-01T16:28:52.054Z",
+      "kind": "wrangler",
+      "operation": "mv-rows-before-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1_MV",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT COUNT(*) AS mvRows FROM mv_rows"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"mvRows\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.33\n      },\n      \"duration\": 0.33,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 233472,\n      \"rows_read\": 0,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "mvRows": 0
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.33
+              },
+              "duration": 0.33,
+              "changes": 0,
+              "last_row_id": 0,
+              "changed_db": false,
+              "size_after": 233472,
+              "rows_read": 0,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 11,
+      "recordedAt": "2026-09-01T16:28:53.739Z",
+      "kind": "wrangler",
+      "operation": "queue-before",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "queues",
+          "list"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.127.1)\n───────────────────────────────────────────────\n┌──────────────────────────────────┬──────────────────────────────────────────────────────────┬─────────────────────────────┬─────────────────────────────┬───────────┬───────────┐\n│ id                               │ name                                                     │ created_on                  │ modified_on                 │ producers │ consumers │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ e8c48f826758437ca4df10f61a9145ad │ sekiban-dcb-meeting-room-cloudflare-outbox               │ 2026-09-01T07:41:48.28724Z  │ 2026-09-01T07:41:48.28724Z  │ 1         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 495f566c63c64b1a9d7d49d275801438 │ sekiban-dcb-meeting-room-cloudflare-outbox-dlq           │ 2026-09-01T07:52:06.513398Z │ 2026-09-01T07:52:06.513398Z │ 0         │ 0         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ a8f591e7053743e79e2e9ade49e52ba4 │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox     │ 2026-08-22T22:36:17.163684Z │ 2026-08-22T22:36:17.163684Z │ 0         │ 1         │\n├──────────────────────────────────┼──────────────────────────────────────────────────────────┼─────────────────────────────┼─────────────────────────────┼───────────┼───────────┤\n│ 6e67ddcde0dd48faac784548ad3e185d │ sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq │ 2026-08-22T22:36:11.87905Z  │ 2026-08-22T22:36:11.87905Z  │ 0         │ 0         │\n└──────────────────────────────────┴──────────────────────────────────────────────────────────┴─────────────────────────────┴─────────────────────────────┴───────────┴───────────┘\n",
+        "stderr": ""
+      }
+    },
+    {
+      "sequence": 12,
+      "recordedAt": "2026-09-01T16:28:55.830Z",
+      "kind": "wrangler",
+      "operation": "queue-consumers-before",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "queues",
+          "consumer",
+          "worker",
+          "list",
+          "sekiban-dcb-meeting-room-cloudflare-outbox",
+          "--json"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"script\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n    \"dead_letter_queue\": \"sekiban-dcb-meeting-room-cloudflare-outbox-dlq\",\n    \"settings\": {\n      \"batch_size\": 10,\n      \"max_retries\": 3,\n      \"max_wait_time_ms\": 1000,\n      \"retry_delay\": 0\n    },\n    \"consumer_id\": \"900fe0a6f4ff49a6a4518473dea4d230\",\n    \"type\": \"worker\"\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "script": "sekiban-dcb-meeting-room-cloudflare-only",
+            "dead_letter_queue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq",
+            "settings": {
+              "batch_size": 10,
+              "max_retries": 3,
+              "max_wait_time_ms": 1000,
+              "retry_delay": 0
+            },
+            "consumer_id": "900fe0a6f4ff49a6a4518473dea4d230",
+            "type": "worker"
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 13,
+      "recordedAt": "2026-09-01T16:28:56.642Z",
+      "kind": "wrangler",
+      "operation": "versions-before-deploy",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "versions",
+          "list",
+          "--name",
+          "sekiban-dcb-meeting-room-cloudflare-only",
+          "--json"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"id\": \"9c6f14dd-756d-4971-9edc-22a9ac6c02a8\",\n    \"number\": 165,\n    \"metadata\": {\n      \"created_on\": \"2026-08-31T06:50:25.320936Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G47 wake26 tail-attribution sdt-g47-tail-wake26-20260831T065020Z sdt-g47-tail-wake26-20260831T065020Z 58269a620a6f00997502b1103aea39d358eb62be\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"0fdf765b-ceea-4abf-851d-db17a98e278c\",\n    \"number\": 166,\n    \"metadata\": {\n      \"created_on\": \"2026-08-31T07:26:31.414558Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    }\n  },\n  {\n    \"id\": \"b7b3f2be-c48f-4619-8abd-a7681403ab3c\",\n    \"number\": 167,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:24:14.092351Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"f5ee416a-0360-429a-9ae2-a73788a3d74c\",\n    \"number\": 168,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:25:29.951116Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e\",\n    \"number\": 169,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:27:50.26765Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"b048adc0-39e7-4ebf-b2d3-bf77c531404f\",\n    \"number\": 170,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T07:52:01.47971Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config 726ff828\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"a1dd3f04-2788-4a68-b183-366c54c11b84\",\n    \"number\": 171,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:05:10.022849Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6fb93eee-89fc-48de-a183-2258bf0b8350\",\n    \"number\": 172,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:19:44.799475Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"1113c51f-37fa-4f5f-9837-bab790b65b90\",\n    \"number\": 173,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:20:20.564296Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"52350239-bd50-4b51-997f-f9eb88e9dfd9\",\n    \"number\": 174,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T15:12:12.551839Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 G32 baseline 08e8996\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "id": "9c6f14dd-756d-4971-9edc-22a9ac6c02a8",
+            "number": 165,
+            "metadata": {
+              "created_on": "2026-08-31T06:50:25.320936Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G47 wake26 tail-attribution sdt-g47-tail-wake26-20260831T065020Z sdt-g47-tail-wake26-20260831T065020Z 58269a620a6f00997502b1103aea39d358eb62be",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "0fdf765b-ceea-4abf-851d-db17a98e278c",
+            "number": 166,
+            "metadata": {
+              "created_on": "2026-08-31T07:26:31.414558Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/triggered_by": "secret"
+            }
+          },
+          {
+            "id": "b7b3f2be-c48f-4619-8abd-a7681403ab3c",
+            "number": 167,
+            "metadata": {
+              "created_on": "2026-09-01T00:24:14.092351Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "f5ee416a-0360-429a-9ae2-a73788a3d74c",
+            "number": 168,
+            "metadata": {
+              "created_on": "2026-09-01T00:25:29.951116Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e",
+            "number": 169,
+            "metadata": {
+              "created_on": "2026-09-01T00:27:50.26765Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "b048adc0-39e7-4ebf-b2d3-bf77c531404f",
+            "number": 170,
+            "metadata": {
+              "created_on": "2026-09-01T07:52:01.47971Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 normal config 726ff828",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "a1dd3f04-2788-4a68-b183-366c54c11b84",
+            "number": 171,
+            "metadata": {
+              "created_on": "2026-09-01T08:05:10.022849Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 normal config f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "6fb93eee-89fc-48de-a183-2258bf0b8350",
+            "number": 172,
+            "metadata": {
+              "created_on": "2026-09-01T08:19:44.799475Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 complete normal D1 schema f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "1113c51f-37fa-4f5f-9837-bab790b65b90",
+            "number": 173,
+            "metadata": {
+              "created_on": "2026-09-01T08:20:20.564296Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 complete normal D1 schema f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "52350239-bd50-4b51-997f-f9eb88e9dfd9",
+            "number": 174,
+            "metadata": {
+              "created_on": "2026-09-01T15:12:12.551839Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 G32 baseline 08e8996",
+              "workers/triggered_by": "version_upload"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 14,
+      "recordedAt": "2026-09-01T16:29:24.312Z",
+      "kind": "wrangler",
+      "operation": "deploy-normal-config",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "deploy",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--keep-vars",
+          "--strict",
+          "--message",
+          "SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.127.1)\n───────────────────────────────────────────────\n🌀 Building list of assets...\n✨ Read 7 files from the assets directory /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/samples/meeting-room/public\n🌀 Starting asset upload...\nNo updated asset files to upload. Proceeding with deployment...\nTotal Upload: 2135.93 KiB / gzip: 354.31 KiB\nWorker Startup Time: 45 ms\nYour Worker has access to the following bindings:\nBinding                                                                                 Resource                  \nenv.ALLOCATOR (AllocatorDurableObject)                                                  Durable Object            \nenv.JOURNAL (JournalDurableObject)                                                      Durable Object            \nenv.TAG (TagDurableObject)                                                              Durable Object            \nenv.TAG_STATE (TagStateDurableObject)                                                   Durable Object            \nenv.BOOTSTRAP (BootstrapCoordinatorDurableObject)                                       Durable Object            \nenv.DOWNSTREAM_QUEUE (inherited)                                                        Queue                     \nenv.D1 (sekiban-dcb-meeting-room-cloudflare-pipeline)                                   D1 Database               \nenv.D1_MV (sekiban-dcb-meeting-room-cloudflare-mv)                                      D1 Database               \nenv.AUTO_DRAIN_OUTBOX (\"true\")                                                          Environment Variable      \nenv.DOMAIN_DELIVERY_CLASS (\"immediate-preferred\")                                       Environment Variable      \nenv.DIRECT_DOORBELL (\"false\")                                                           Environment Variable      \nenv.DIRECT_DOORBELL_ALLOWED_VIEWS (\"RoomProjector,ReservationProjector\")                Environment Variable      \nenv.DIRECT_DOORBELL_MAX_INVOCATIONS (\"32\")                                              Environment Variable      \nenv.DIRECT_DOORBELL_DEGRADATION (\"queued-degraded\")                                     Environment Variable      \nenv.DIRECT_DOORBELL_RECEIVER_MODE (\"separate\")                                          Environment Variable      \nenv.G26_VIEW_COUNT (\"2\")                                                                Environment Variable      \nenv.SDT_SERVICE_ID (\"sekiban-dcb-meeting-room-cloudflare-o...\")                         Environment Variable      \n\nUploaded sekiban-dcb-meeting-room-cloudflare-only (4.17 sec)\nDeployed sekiban-dcb-meeting-room-cloudflare-only triggers (3.18 sec)\n  https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\n  schedule: * * * * *\n  Producer for sekiban-dcb-meeting-room-cloudflare-outbox\n  Consumer for sekiban-dcb-meeting-room-cloudflare-outbox\nCurrent Version ID: 6dd811dd-8b3d-450b-b884-55e6b9095b1d\n",
+        "stderr": ""
+      }
+    },
+    {
+      "sequence": 15,
+      "recordedAt": "2026-09-01T16:29:25.395Z",
+      "kind": "wrangler",
+      "operation": "versions-after-deploy",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "versions",
+          "list",
+          "--name",
+          "sekiban-dcb-meeting-room-cloudflare-only",
+          "--json"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"id\": \"0fdf765b-ceea-4abf-851d-db17a98e278c\",\n    \"number\": 166,\n    \"metadata\": {\n      \"created_on\": \"2026-08-31T07:26:31.414558Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    }\n  },\n  {\n    \"id\": \"b7b3f2be-c48f-4619-8abd-a7681403ab3c\",\n    \"number\": 167,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:24:14.092351Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"f5ee416a-0360-429a-9ae2-a73788a3d74c\",\n    \"number\": 168,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:25:29.951116Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e\",\n    \"number\": 169,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:27:50.26765Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"b048adc0-39e7-4ebf-b2d3-bf77c531404f\",\n    \"number\": 170,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T07:52:01.47971Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config 726ff828\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"a1dd3f04-2788-4a68-b183-366c54c11b84\",\n    \"number\": 171,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:05:10.022849Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6fb93eee-89fc-48de-a183-2258bf0b8350\",\n    \"number\": 172,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:19:44.799475Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"1113c51f-37fa-4f5f-9837-bab790b65b90\",\n    \"number\": 173,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:20:20.564296Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"52350239-bd50-4b51-997f-f9eb88e9dfd9\",\n    \"number\": 174,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T15:12:12.551839Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 G32 baseline 08e8996\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6dd811dd-8b3d-450b-b884-55e6b9095b1d\",\n    \"number\": 175,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T16:29:19.236391Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "id": "0fdf765b-ceea-4abf-851d-db17a98e278c",
+            "number": 166,
+            "metadata": {
+              "created_on": "2026-08-31T07:26:31.414558Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/triggered_by": "secret"
+            }
+          },
+          {
+            "id": "b7b3f2be-c48f-4619-8abd-a7681403ab3c",
+            "number": 167,
+            "metadata": {
+              "created_on": "2026-09-01T00:24:14.092351Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "f5ee416a-0360-429a-9ae2-a73788a3d74c",
+            "number": 168,
+            "metadata": {
+              "created_on": "2026-09-01T00:25:29.951116Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e",
+            "number": 169,
+            "metadata": {
+              "created_on": "2026-09-01T00:27:50.26765Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "b048adc0-39e7-4ebf-b2d3-bf77c531404f",
+            "number": 170,
+            "metadata": {
+              "created_on": "2026-09-01T07:52:01.47971Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 normal config 726ff828",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "a1dd3f04-2788-4a68-b183-366c54c11b84",
+            "number": 171,
+            "metadata": {
+              "created_on": "2026-09-01T08:05:10.022849Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 normal config f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "6fb93eee-89fc-48de-a183-2258bf0b8350",
+            "number": 172,
+            "metadata": {
+              "created_on": "2026-09-01T08:19:44.799475Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 complete normal D1 schema f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "1113c51f-37fa-4f5f-9837-bab790b65b90",
+            "number": 173,
+            "metadata": {
+              "created_on": "2026-09-01T08:20:20.564296Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 complete normal D1 schema f81e24b",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "52350239-bd50-4b51-997f-f9eb88e9dfd9",
+            "number": 174,
+            "metadata": {
+              "created_on": "2026-09-01T15:12:12.551839Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 G32 baseline 08e8996",
+              "workers/triggered_by": "version_upload"
+            }
+          },
+          {
+            "id": "6dd811dd-8b3d-450b-b884-55e6b9095b1d",
+            "number": 175,
+            "metadata": {
+              "created_on": "2026-09-01T16:29:19.236391Z",
+              "source": "wrangler",
+              "author_id": "63b0568d4591a207cb1df473d0abd97c",
+              "author_email": "ttakaoka@jtechs.com",
+              "has_preview": false
+            },
+            "annotations": {
+              "workers/message": "SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf",
+              "workers/triggered_by": "version_upload"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 16,
+      "recordedAt": "2026-09-01T16:29:37.108Z",
+      "kind": "wrangler",
+      "operation": "pipeline-lag-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "DELETE FROM serialized_dcb_lag_estimates"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.4743\n      },\n      \"duration\": 0.4743,\n      \"changes\": 6,\n      \"last_row_id\": 3515,\n      \"changed_db\": true,\n      \"size_after\": 12156928,\n      \"rows_read\": 0,\n      \"rows_written\": 6,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.4743
+              },
+              "duration": 0.4743,
+              "changes": 6,
+              "last_row_id": 3515,
+              "changed_db": true,
+              "size_after": 12156928,
+              "rows_read": 0,
+              "rows_written": 6,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 17,
+      "recordedAt": "2026-09-01T16:29:38.774Z",
+      "kind": "wrangler",
+      "operation": "pipeline-lag-after-purge",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, estimate_ms, observed_at FROM serialized_dcb_lag_estimates ORDER BY service_id"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"sdt-g47-repair-wake32c-20260831\",\n        \"estimate_ms\": 57609883,\n        \"observed_at\": 1788280176880\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2144\n      },\n      \"duration\": 0.2144,\n      \"changes\": 0,\n      \"last_row_id\": 1,\n      \"changed_db\": false,\n      \"size_after\": 12169216,\n      \"rows_read\": 1,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "service_id": "sdt-g47-repair-wake32c-20260831",
+                "estimate_ms": 57609883,
+                "observed_at": 1788280176880
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.2144
+              },
+              "duration": 0.2144,
+              "changes": 0,
+              "last_row_id": 1,
+              "changed_db": false,
+              "size_after": 12169216,
+              "rows_read": 1,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 18,
+      "recordedAt": "2026-09-01T16:29:38.803Z",
+      "kind": "event",
+      "operation": "two-cron-wait-start",
+      "event": "after-purge-two-cron-wait-begins"
+    },
+    {
+      "sequence": 19,
+      "recordedAt": "2026-09-01T16:31:27.273Z",
+      "kind": "event",
+      "operation": "two-cron-wait-end",
+      "event": "after-purge-two-cron-wait-complete"
+    },
+    {
+      "sequence": 20,
+      "recordedAt": "2026-09-01T16:31:28.784Z",
+      "kind": "wrangler",
+      "operation": "pipeline-target-lag-before-sanity",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = 'sekiban-dcb-meeting-room-cloudflare-only'"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1599\n      },\n      \"duration\": 0.1599,\n      \"changes\": 0,\n      \"last_row_id\": 4,\n      \"changed_db\": false,\n      \"size_after\": 12263424,\n      \"rows_read\": 0,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.1599
+              },
+              "duration": 0.1599,
+              "changes": 0,
+              "last_row_id": 4,
+              "changed_db": false,
+              "size_after": 12263424,
+              "rows_read": 0,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 21,
+      "recordedAt": "2026-09-01T16:31:43.042Z",
+      "kind": "file",
+      "operation": "sanity-create-room",
+      "file": {
+        "path": ".artifacts/sdt-g49-pr98-w46-sanity.json",
+        "sha256": "a4741c8869ca19a6f4a6616ffbd92fba0242368dda7553ec941870beb2e029fb",
+        "content": "{\n  \"schema\": \"sdt-g49-pr98-w46-sanity/v1\",\n  \"mode\": \"sanity-create-room\",\n  \"recordedAt\": \"2026-09-01T16:31:43Z\",\n  \"baseUrl\": \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n  \"roomId\": \"g49-w46-sanity-room-4c86d46c76e74db3\",\n  \"create\": {\n    \"status\": 200,\n    \"requestMs\": 4783.6,\n    \"suid\": \"063923877100679000001875051640\",\n    \"response\": {\n      \"kind\": \"committed\",\n      \"attempts\": 1,\n      \"status\": 200,\n      \"response\": {\n        \"writtenEvents\": [\n          {\n            \"payload\": \"eyJyb29tSWQiOiJnNDktdzQ2LXNhbml0eS1yb29tLTRjODZkNDZjNzZlNzRkYjMiLCJuYW1lIjoiU0RULUc0OSBXNDYgc2FuaXR5In0=\",\n            \"sortableUniqueIdValue\": \"063923877100679000001875051640\",\n            \"id\": \"01a05dcf-e1b0-7ee3-88cd-e16185924c80\",\n            \"eventMetadata\": {\n              \"causationId\": \"01a05dcf-e1b0-7ee3-88cd-e16185924c80\",\n              \"correlationId\": \"SerializedCommit\",\n              \"executedUser\": \"SerializedSekibanExecutor\"\n            },\n            \"tags\": [\n              \"room:g49-w46-sanity-room-4c86d46c76e74db3\"\n            ],\n            \"eventPayloadName\": \"RoomCreated\"\n          }\n        ],\n        \"tagWriteResults\": [\n          {\n            \"tag\": \"room:g49-w46-sanity-room-4c86d46c76e74db3\",\n            \"version\": 1,\n            \"writtenAt\": \"2026-09-01T16:31:41.281Z\"\n          }\n        ],\n        \"duration\": \"PT2.976S\"\n      }\n    }\n  },\n  \"exactlyOneCreateRoomCommand\": true\n}\n"
+      }
+    },
+    {
+      "sequence": 22,
+      "recordedAt": "2026-09-01T16:31:43.068Z",
+      "kind": "event",
+      "operation": "sanity-wake-wait-start",
+      "event": "one-cron-wait-after-the-single-sanity-create"
+    },
+    {
+      "sequence": 23,
+      "recordedAt": "2026-09-01T16:32:30.437Z",
+      "kind": "event",
+      "operation": "sanity-wake-wait-end",
+      "event": "one-cron-wait-after-the-single-sanity-create-complete"
+    },
+    {
+      "sequence": 24,
+      "recordedAt": "2026-09-01T16:32:31.298Z",
+      "kind": "wrangler",
+      "operation": "mv-instances-after-sanity",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1_MV",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, view_id, generation, status, last_suid, definition_version, updated_at FROM mv_instances ORDER BY service_id, view_id, generation"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"view_id\": \"ReservationProjector\",\n        \"generation\": 0,\n        \"status\": \"active\",\n        \"last_suid\": \"063923872440789000000196782566\",\n        \"definition_version\": 1,\n        \"updated_at\": 1788280229196\n      },\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"view_id\": \"RoomProjector\",\n        \"generation\": 0,\n        \"status\": \"active\",\n        \"last_suid\": \"063923872440789000000196782566\",\n        \"definition_version\": 1,\n        \"updated_at\": 1788280206703\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2197\n      },\n      \"duration\": 0.2197,\n      \"changes\": 0,\n      \"last_row_id\": 1,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "view_id": "ReservationProjector",
+                "generation": 0,
+                "status": "active",
+                "last_suid": "063923872440789000000196782566",
+                "definition_version": 1,
+                "updated_at": 1788280229196
+              },
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "view_id": "RoomProjector",
+                "generation": 0,
+                "status": "active",
+                "last_suid": "063923872440789000000196782566",
+                "definition_version": 1,
+                "updated_at": 1788280206703
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.2197
+              },
+              "duration": 0.2197,
+              "changes": 0,
+              "last_row_id": 1,
+              "changed_db": false,
+              "size_after": 192512,
+              "rows_read": 2,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 25,
+      "recordedAt": "2026-09-01T16:32:32.016Z",
+      "kind": "wrangler",
+      "operation": "mv-rows-after-sanity",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1_MV",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT COUNT(*) AS mvRows FROM mv_rows"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"mvRows\": 14\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2341\n      },\n      \"duration\": 0.2341,\n      \"changes\": 0,\n      \"last_row_id\": 1,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 14,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "mvRows": 14
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.2341
+              },
+              "duration": 0.2341,
+              "changes": 0,
+              "last_row_id": 1,
+              "changed_db": false,
+              "size_after": 192512,
+              "rows_read": 14,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 26,
+      "recordedAt": "2026-09-01T16:32:33.514Z",
+      "kind": "wrangler",
+      "operation": "pipeline-target-lag-after-sanity",
+      "command": {
+        "executable": "./node_modules/.bin/wrangler",
+        "arguments": [
+          "d1",
+          "execute",
+          "D1",
+          "--remote",
+          "--json",
+          "--yes",
+          "--config",
+          "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+          "--command",
+          "SELECT service_id, estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = 'sekiban-dcb-meeting-room-cloudflare-only'"
+        ],
+        "apiTokenFallbackVariablesUnset": [
+          "CLOUDFLARE_API_TOKEN",
+          "CF_API_TOKEN",
+          "CLOUDFLARE_API_KEY",
+          "CF_API_KEY",
+          "WRANGLER_API_TOKEN"
+        ]
+      },
+      "result": {
+        "status": 0,
+        "signal": null,
+        "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n        \"estimate_ms\": 42803,\n        \"observed_at\": 1788280343936\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.3863\n      },\n      \"duration\": 0.3863,\n      \"changes\": 0,\n      \"last_row_id\": 7,\n      \"changed_db\": false,\n      \"size_after\": 12312576,\n      \"rows_read\": 1,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+        "stderr": "",
+        "json": [
+          {
+            "results": [
+              {
+                "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "estimate_ms": 42803,
+                "observed_at": 1788280343936
+              }
+            ],
+            "success": true,
+            "meta": {
+              "served_by": "v3-prod",
+              "served_by_region": "WNAM",
+              "served_by_colo": "SJC",
+              "served_by_primary": true,
+              "timings": {
+                "sql_duration_ms": 0.3863
+              },
+              "duration": 0.3863,
+              "changes": 0,
+              "last_row_id": 7,
+              "changed_db": false,
+              "size_after": 12312576,
+              "rows_read": 1,
+              "rows_written": 0,
+              "total_attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "sequence": 27,
+      "recordedAt": "2026-09-01T16:33:19.473Z",
+      "kind": "file",
+      "operation": "ac5-external-trace",
+      "file": {
+        "path": ".artifacts/sdt-g49-pr98-w46-ac5-trace.json",
+        "sha256": "3935bf504ebc48216d12ef110d4e3a85fefa9f8fdd7caa15ee739dfe9eaa4654",
+        "content": "{\n  \"schema\": \"sdt-g49-pr98-w46-ac5-trace/v1\",\n  \"mode\": \"external-app-layer-trace\",\n  \"recordedAt\": \"2026-09-01T16:33:19Z\",\n  \"baseUrl\": \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n  \"runId\": \"9e4c606567df43e1b25c5365886eeea7\",\n  \"room\": {\n    \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\",\n    \"create\": {\n      \"status\": 200,\n      \"requestMs\": 5072.57,\n      \"suid\": \"063923877189200000000803268585\",\n      \"response\": {\n        \"kind\": \"committed\",\n        \"attempts\": 1,\n        \"status\": 200,\n        \"response\": {\n          \"writtenEvents\": [\n            {\n              \"payload\": \"eyJyb29tSWQiOiJnNDktdzQ2LXRyYWNlLXJvb20tOWU0YzYwNjU2N2RmNDNlMSIsIm5hbWUiOiJTRFQtRzQ5IFc0NiB0cmFjZSJ9\",\n              \"sortableUniqueIdValue\": \"063923877189200000000803268585\",\n              \"id\": \"01a05dd1-3982-7228-9182-84f9aba6ab36\",\n              \"eventMetadata\": {\n                \"causationId\": \"01a05dd1-3982-7228-9182-84f9aba6ab36\",\n                \"correlationId\": \"SerializedCommit\",\n                \"executedUser\": \"SerializedSekibanExecutor\"\n              },\n              \"tags\": [\n                \"room:g49-w46-trace-room-9e4c606567df43e1\"\n              ],\n              \"eventPayloadName\": \"RoomCreated\"\n            }\n          ],\n          \"tagWriteResults\": [\n            {\n              \"tag\": \"room:g49-w46-trace-room-9e4c606567df43e1\",\n              \"version\": 1,\n              \"writtenAt\": \"2026-09-01T16:33:09.709Z\"\n            }\n          ],\n          \"duration\": \"PT3.37S\"\n        }\n      }\n    },\n    \"readState\": {\n      \"status\": \"created\",\n      \"version\": 1,\n      \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\",\n      \"name\": \"SDT-G49 W46 trace\"\n    },\n    \"readHead\": \"063923877189200000000803268585\",\n    \"readResponse\": {\n      \"projection\": \"room\",\n      \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\",\n      \"tagStateId\": \"room:g49-w46-trace-room-9e4c606567df43e1:RoomProjector\",\n      \"state\": {\n        \"status\": \"created\",\n        \"version\": 1,\n        \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\",\n        \"name\": \"SDT-G49 W46 trace\"\n      },\n      \"version\": 1,\n      \"lastSortedUniqueId\": \"063923877189200000000803268585\"\n    },\n    \"observations\": [\n      {\n        \"status\": 200,\n        \"head\": \"063923877189200000000803268585\",\n        \"requestMs\": 761.275,\n        \"elapsedMs\": 761.306,\n        \"state\": {\n          \"status\": \"created\",\n          \"version\": 1,\n          \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\",\n          \"name\": \"SDT-G49 W46 trace\"\n        },\n        \"visible\": true\n      }\n    ]\n  },\n  \"reservation\": {\n    \"reservationId\": \"g49-w46-trace-reservation-9e4c606567df43e1\",\n    \"reserve\": {\n      \"status\": 200,\n      \"requestMs\": 5736.74,\n      \"suid\": \"063923877194860000000345597074\",\n      \"response\": {\n        \"kind\": \"committed\",\n        \"attempts\": 1,\n        \"status\": 200,\n        \"response\": {\n          \"writtenEvents\": [\n            {\n              \"payload\": \"eyJyb29tSWQiOiJnNDktdzQ2LXRyYWNlLXJvb20tOWU0YzYwNjU2N2RmNDNlMSIsInJlc2VydmF0aW9uSWQiOiJnNDktdzQ2LXRyYWNlLXJlc2VydmF0aW9uLTllNGM2MDY1NjdkZjQzZTEiLCJ1c2VySWQiOiJnNDktdzQ2In0=\",\n              \"sortableUniqueIdValue\": \"063923877194860000000345597074\",\n              \"id\": \"01a05dd1-517a-7884-97f9-77b4de642e84\",\n              \"eventMetadata\": {\n                \"causationId\": \"01a05dd1-517a-7884-97f9-77b4de642e84\",\n                \"correlationId\": \"SerializedCommit\",\n                \"executedUser\": \"SerializedSekibanExecutor\"\n              },\n              \"tags\": [\n                \"room:g49-w46-trace-room-9e4c606567df43e1\",\n                \"reservation:g49-w46-trace-reservation-9e4c606567df43e1\"\n              ],\n              \"eventPayloadName\": \"RoomReserved\"\n            }\n          ],\n          \"tagWriteResults\": [\n            {\n              \"tag\": \"room:g49-w46-trace-room-9e4c606567df43e1\",\n              \"version\": 3,\n              \"writtenAt\": \"2026-09-01T16:33:15.144Z\"\n            },\n            {\n              \"tag\": \"reservation:g49-w46-trace-reservation-9e4c606567df43e1\",\n              \"version\": 1,\n              \"writtenAt\": \"2026-09-01T16:33:15.382Z\"\n            }\n          ],\n          \"duration\": \"PT3.744S\"\n        }\n      }\n    },\n    \"readState\": {\n      \"status\": \"reserved\",\n      \"version\": 1,\n      \"reservationId\": \"g49-w46-trace-reservation-9e4c606567df43e1\",\n      \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\"\n    },\n    \"readHead\": \"063923877194860000000345597074\",\n    \"readResponse\": {\n      \"projection\": \"reservation\",\n      \"reservationId\": \"g49-w46-trace-reservation-9e4c606567df43e1\",\n      \"tagStateId\": \"reservation:g49-w46-trace-reservation-9e4c606567df43e1:ReservationProjector\",\n      \"state\": {\n        \"status\": \"reserved\",\n        \"version\": 1,\n        \"reservationId\": \"g49-w46-trace-reservation-9e4c606567df43e1\",\n        \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\"\n      },\n      \"version\": 1,\n      \"lastSortedUniqueId\": \"063923877194860000000345597074\"\n    },\n    \"observations\": [\n      {\n        \"status\": 200,\n        \"head\": \"063923877194860000000345597074\",\n        \"requestMs\": 1492.204,\n        \"elapsedMs\": 1492.318,\n        \"state\": {\n          \"status\": \"reserved\",\n          \"version\": 1,\n          \"reservationId\": \"g49-w46-trace-reservation-9e4c606567df43e1\",\n          \"roomId\": \"g49-w46-trace-room-9e4c606567df43e1\"\n        },\n        \"visible\": true\n      }\n    ]\n  },\n  \"harnessModified\": false,\n  \"safeWindowBoundMs\": 120000\n}\n"
+      }
+    },
+    {
+      "sequence": 28,
+      "recordedAt": "2026-09-01T16:33:42.070Z",
+      "kind": "file",
+      "operation": "g15-report",
+      "file": {
+        "path": ".artifacts/sdt-g49-pr98-w46-g15.json",
+        "sha256": "6710f7ce066ac03a3143b406497e838862df0ed50615155ee8f6608313d2effd",
+        "content": "{\n  \"probe\": \"SDT-G15\",\n  \"baseUrl\": \"https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\",\n  \"runId\": \"ae22ba63ca644e42b326551168fb1d6c\",\n  \"roomId\": \"g15-room-ae22ba63ca644e42\",\n  \"reservationId\": \"g15-reservation-ae22ba63ca644e42\",\n  \"uiSafeWindowBoundMs\": 120000,\n  \"safeWindowBoundSources\": {\n    \"runtimeSource\": \"packages/dcb-runtime/src/safeWindow.ts\",\n    \"runtimeBoundMs\": 120000,\n    \"servedUiSource\": \"samples/meeting-room/public/ui-model.js\",\n    \"servedUiBoundMs\": 120000,\n    \"harnessBoundMs\": 120000,\n    \"absoluteProtocolBoundMs\": 120000,\n    \"deployedUiAsset\": \"/ui-model.js\",\n    \"deployedUiBoundMs\": 120000\n  },\n  \"harnessGraceMs\": 5000,\n  \"harnessGraceSemanticRole\": \"measurement-only; never widens UI visibility threshold\",\n  \"serviceIdentity\": {\n    \"configuredServiceId\": \"sekiban-dcb-meeting-room-cloudflare-only\",\n    \"source\": \"G15_EXPECTED_SERVICE_ID\",\n    \"clientHeaderForwarded\": false\n  },\n  \"visibilityOracle\": {\n    \"executed\": true,\n    \"pendingAtBoundMinusOne\": \"pending\",\n    \"timeoutAtBound\": \"timeout\",\n    \"visibleAtBoundWithEqualHead\": \"visible\",\n    \"timeoutAfterBound\": \"timeout\",\n    \"boundMs\": 120000\n  },\n  \"rawV1Unauthenticated\": {\n    \"commit\": 404,\n    \"tag-latest-sortable\": 404,\n    \"tag-state\": 404,\n    \"query\": 404,\n    \"list-query\": 404\n  },\n  \"commands\": {\n    \"create\": {\n      \"status\": 200,\n      \"requestMs\": 3069.248,\n      \"suid\": \"063923877209086000001485597050\"\n    },\n    \"reserve\": {\n      \"status\": 200,\n      \"requestMs\": 4384.426,\n      \"suid\": \"063923877212648000000178982946\"\n    },\n    \"cancel\": {\n      \"status\": 200,\n      \"requestMs\": 4316.463,\n      \"suid\": \"063923877219194000000172701231\"\n    },\n    \"rejected\": {\n      \"status\": 400,\n      \"kind\": \"invalid\",\n      \"code\": \"invalid_command_input\"\n    }\n  },\n  \"projection\": {\n    \"createVisible\": true,\n    \"createCommitToVisibleMs\": 493.434,\n    \"createObservations\": [\n      {\n        \"head\": \"063923877209086000001485597050\",\n        \"requestMs\": 493.176,\n        \"elapsedMs\": 493.407,\n        \"state\": \"visible\"\n      }\n    ],\n    \"reservationVisible\": true,\n    \"reservationCommitToVisibleMs\": 1073.727,\n    \"cancelVisible\": true,\n    \"cancelCommitToVisibleMs\": 488.748\n  },\n  \"queryViews\": null,\n  \"freshRunIds\": true,\n  \"secret\": \"no bearer token or credential used by app-layer E2E\",\n  \"recordedAt\": \"2026-09-01T16:33:42Z\"\n}\n"
+      }
+    },
+    {
+      "sequence": 29,
+      "recordedAt": "2026-09-01T16:37:50.204Z",
+      "kind": "event",
+      "operation": "g16-original-run-interrupted",
+      "event": "the original unmodified npm run e2e:g16 session ended without its report; no replacement run was started"
+    }
+  ],
+  "updatedAt": "2026-09-01T16:37:50.205Z"
+}
