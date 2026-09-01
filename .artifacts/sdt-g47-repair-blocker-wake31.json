@@ -1,0 +1,40 @@
+{
+  "schema": "sdt-g47-repair-blocker/v1",
+  "taskId": "SDT-G47-IMPL",
+  "resultNonce": "wake31-g47-impl-20260831T164200Z",
+  "status": "blocked",
+  "blocker": "BLOCKER-CLOUDFLARE-OAUTH-EXPIRED-WAKE31",
+  "selector": {
+    "action": "issue-to-pr",
+    "issue": 93,
+    "sourceClassification": "ready-to-implement",
+    "githubApiStatus": "healthy",
+    "degraded": false
+  },
+  "preflight": {
+    "gitFetchOriginMainExitCode": 0,
+    "issueActionable": true,
+    "claimStatus": "not-configured"
+  },
+  "observed": {
+    "command": "WRANGLER_WRITE_LOGS=false node_modules/.bin/wrangler whoami --json",
+    "exitCode": 1,
+    "error": "Not logged in. Your auth token has expired and could not be refreshed, and the environment is non-interactive. Run wrangler login in an interactive terminal or set a CLOUDFLARE_API_TOKEN."
+  },
+  "lastKnownAccountId": "3ede2188f4cf39a28e0aa3722d3d02c5",
+  "repair": {
+    "migrationFiles": [
+      "migrations/d1/g32/0001_dcb_events.sql",
+      "migrations/d1/g32/0002_g44_global_completeness.sql"
+    ],
+    "targets": ["D1", "D1_MV"],
+    "schemaConfirmed": false,
+    "applied": false
+  },
+  "deployment": { "attempted": false },
+  "measurement": { "attempted": false, "deployedEvidence": false },
+  "pr": { "created": false },
+  "headShaBeforeBlockerRecord": "636e469d5854acf9e3a6839903d90a38554093fe",
+  "packagesSourceChanged": false,
+  "reason": "Cloudflare OAuth expired again before remote schema confirmation. No migration, Worker deployment, sampler run, local substitute, or fabricated deployed evidence was performed."
+}

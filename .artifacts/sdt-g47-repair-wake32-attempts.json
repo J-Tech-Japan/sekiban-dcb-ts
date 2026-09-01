@@ -1,0 +1,55 @@
+{
+  "schema": "sdt-g47-repair-attempts/v1",
+  "taskId": "SDT-G47-IMPL",
+  "successfulMeasurementIsOnlyMeasuredRun": true,
+  "dataResetPerformed": false,
+  "attempts": [
+    {
+      "attempt": 1,
+      "sourceCommit": "0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+      "serviceId": "sdt-g47-repair-wake32-20260831",
+      "candidate": "sdt-g47-repair-post-migration-wake32-20260831",
+      "profile": "history",
+      "deployment": {
+        "number": 167,
+        "id": "b7b3f2be-c48f-4619-8abd-a7681403ab3c"
+      },
+      "result": "discarded-before-http",
+      "error": "Unknown G37 sampler profile: history",
+      "measurementArtifact": null
+    },
+    {
+      "attempt": 2,
+      "sourceCommit": "0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2",
+      "serviceId": "sdt-g47-repair-wake32b-20260831",
+      "candidate": "sdt-g47-repair-post-migration-wake32b-20260831",
+      "profile": "history-length",
+      "deployment": {
+        "number": 168,
+        "id": "f5ee416a-0360-429a-9ae2-a73788a3d74c"
+      },
+      "result": "discarded-first-seed-auth",
+      "error": {
+        "httpStatus": 403,
+        "code": "unauthorized",
+        "message": "Conformance authentication required",
+        "cfRay": "a34023876c7e45c2-ATL"
+      },
+      "measurementArtifact": null
+    },
+    {
+      "attempt": 3,
+      "sourceCommit": "e7317fc3f74c6d34e2f200c6212595935b5f3b48",
+      "serviceId": "sdt-g47-repair-wake32c-20260831",
+      "candidate": "sdt-g47-repair-post-migration-wake32c-20260831",
+      "profile": "history-length",
+      "deployment": {
+        "number": 169,
+        "id": "8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e",
+        "createdOn": "2026-09-01T00:27:50.26765Z"
+      },
+      "result": "completed",
+      "measurementArtifact": ".artifacts/g37-sdt-g47-repair-post-migration-wake32c-20260831-e7317fc3f74c.json"
+    }
+  ]
+}

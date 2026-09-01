@@ -63,11 +63,13 @@
       { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
       { "name": "JOURNAL", "class_name": "JournalDurableObject" },
       { "name": "TAG", "class_name": "TagDurableObject" },
+      { "name": "TAG_STATE", "class_name": "TagStateDurableObject" },
       { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
-    { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] }
+    { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] },
+    { "tag": "v3", "new_sqlite_classes": ["TagStateDurableObject"] }
   ]
 }
