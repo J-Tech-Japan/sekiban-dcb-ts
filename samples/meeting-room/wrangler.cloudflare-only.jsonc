@@ -13,6 +13,10 @@
     "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
     "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
     "G26_VIEW_COUNT": "2",
+    "G32_COMPONENT": "primary",
+    "G32_CUTOVER_PHASE": "final-g32",
+    "G32_FREEZE_RELEASE": "after-new-bindings",
+    "G32_CUTOVER_FENCE_FINGERPRINT": "fab7cd0045f5e568c0d72cfadc9dfe6f5bc2236903773e3ea2ede81cfaf1cf19",
     "SDT_SERVICE_ID": "sekiban-dcb-meeting-room-cloudflare-only"
   },
   "observability": {
