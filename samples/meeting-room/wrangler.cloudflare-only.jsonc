@@ -21,7 +21,7 @@
     {
       "binding": "D1",
       "database_name": "sekiban-dcb-meeting-room-cloudflare-pipeline",
-      "database_id": "23d8696c-92ae-4753-bb37-86583b1f2923",
+      "database_id": "f26d1299-82d9-4a64-8647-bc2ec86326ac",
       "migrations_dir": "../../migrations/d1"
     },
     {
