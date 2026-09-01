@@ -76,12 +76,36 @@ export function validateG50Sample(sample) {
   assertEqual(JSON.stringify(sample?.protocol?.structurallyRemovedG41Rows), JSON.stringify(STRUCTURALLY_REMOVED_G41_ROWS), "removed Journal rows");
   assertEqual(JSON.stringify(sample?.protocol?.activePerHopRows), JSON.stringify(ACTIVE_PER_HOP_ROWS), "active per-hop row contract");
 
-  const traces = sample?.telemetry?.retainedTraceTelemetry?.traces;
-  if (!Array.isArray(traces) || traces.length === 0) fail("retained trace telemetry is absent");
+  const telemetry = sample?.telemetry;
+  const traces = telemetry?.retainedTraceTelemetry?.traces;
+  if (!Array.isArray(traces)) fail("retained trace telemetry is absent");
+  if (!Number.isFinite(telemetry?.queryWindow?.from) || !Number.isFinite(telemetry?.queryWindow?.to)
+      || telemetry.queryWindow.to < telemetry.queryWindow.from) {
+    fail("retained trace query window is invalid");
+  }
+  if (telemetry?.perHopStatus === "blocked-by-defect") {
+    assertEqual(traces.length, 0, "blocked retained trace count");
+    assertEqual(telemetry?.retainedTraceCount, 0, "blocked retained trace receipt");
+    assertEqual(telemetry?.observedTraceCount, 0, "blocked observed trace count");
+    assertEqual(telemetry?.schemaCompleteTraceCount, 0, "blocked schema-complete trace count");
+    assertEqual(telemetry?.descriptiveLossCount, ledger.length, "blocked descriptive loss count");
+    assertEqual(JSON.stringify(telemetry?.perHopDescriptiveMedians), JSON.stringify([]), "blocked per-hop medians");
+    assertEqual(JSON.stringify(telemetry?.activePerHopRowsMissing), JSON.stringify(ACTIVE_PER_HOP_ROWS), "blocked active per-hop rows");
+    return Object.freeze({
+      sampleCount: ledger.length,
+      client: sample.client,
+      callerColoDistribution: sample.callerColoDistribution,
+      activeRows: 0,
+      perHopStatus: telemetry.perHopStatus,
+    });
+  }
+  if (telemetry?.perHopStatus !== "available") fail("per-hop status is neither available nor blocked-by-defect");
+  if (traces.length === 0) fail("retained trace telemetry is absent");
+  assertEqual(telemetry?.retainedTraceCount, traces.length, "retained trace receipt");
   const ledgerRequestIds = new Set(ledger.map((row) => row.requestId));
   if (!traces.every((trace) => ledgerRequestIds.has(trace?.requestId))) fail("retained trace telemetry contains a non-window request");
   const actual = perHop(traces);
-  const reported = new Map((sample?.telemetry?.perHopDescriptiveMedians ?? []).map((row) => [row?.rowId, row]));
+  const reported = new Map((telemetry?.perHopDescriptiveMedians ?? []).map((row) => [row?.rowId, row]));
   for (const rowId of ACTIVE_PER_HOP_ROWS) {
     const expected = actual.get(rowId);
     const row = reported.get(rowId);
@@ -94,6 +118,7 @@ export function validateG50Sample(sample) {
     client: sample.client,
     callerColoDistribution: sample.callerColoDistribution,
     activeRows: ACTIVE_PER_HOP_ROWS.length,
+    perHopStatus: telemetry.perHopStatus,
   });
 }
 
@@ -118,7 +143,13 @@ try {
   const selfTest = process.argv.includes("--self-test")
     ? {
       clientPercentileMutation: assertMutantRejected(sample, (mutant) => { mutant.client.p95 += 1; }, "client percentile"),
-      activeHopMutation: assertMutantRejected(sample, (mutant) => { mutant.telemetry.perHopDescriptiveMedians.find((row) => row.rowId === "S14").medianMs += 1; }, "active per-hop"),
+      activeHopMutation: assertMutantRejected(sample, (mutant) => {
+        if (mutant.telemetry.perHopStatus === "blocked-by-defect") {
+          mutant.telemetry.activePerHopRowsMissing = mutant.telemetry.activePerHopRowsMissing.filter((rowId) => rowId !== "S14");
+          return;
+        }
+        mutant.telemetry.perHopDescriptiveMedians.find((row) => row.rowId === "S14").medianMs += 1;
+      }, "active per-hop"),
       appRouteMutation: assertMutantRejected(sample, (mutant) => { mutant.ledger[0].endpoint = "POST /conformance/v1/api/sekiban/serialized/commit"; }, "app route"),
     }
     : undefined;

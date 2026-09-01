@@ -94,32 +94,34 @@ async function appSurfaceAndWarmupGuard() {
   }
 }
 
-async function missingHopMutantIsRed() {
-  let rejected = false;
-  try {
-    await captureG50AppCommitLatency({
-      baseUrl: "https://guard.invalid",
-      accountId: "guard-account",
-      observabilityToken: "guard-observability-token",
-      serviceId: "guard-service",
-      versionId: "guard-version",
-      sourceCommit: "b".repeat(40),
-      sampleCount: 50,
-      settleMs: 0,
-      runId: "guard-run-0002",
-      queryTemplate: {},
-      fetchImpl: async () => committedResponse(1),
-      captureTelemetry: async () => {
-        const telemetry = retainedTelemetry();
-        telemetry.perHopDescriptiveMedians = telemetry.perHopDescriptiveMedians.filter((row) => row.rowId !== "S14");
-        return telemetry;
-      },
-    });
-  } catch (error) {
-    rejected = error instanceof Error && error.message.includes("S14");
-  }
-  assert(rejected, "missing active per-hop row mutant was accepted");
-  return { result: "red", removedRow: "S14" };
+async function blockedByDefectGuard() {
+  const sample = await captureG50AppCommitLatency({
+    baseUrl: "https://guard.invalid",
+    accountId: "guard-account",
+    observabilityToken: "guard-observability-token",
+    serviceId: "guard-service",
+    versionId: "guard-version",
+    sourceCommit: "b".repeat(40),
+    sampleCount: 50,
+    settleMs: 0,
+    runId: "guard-run-0002",
+    queryTemplate: {},
+    fetchImpl: async () => committedResponse(1),
+    captureTelemetry: async () => ({
+      queryWindow: { from: 1, to: 2 },
+      observedTraceCount: 0,
+      schemaCompleteTraceCount: 0,
+      descriptiveLossCount: 50,
+      workerColoDistribution: {},
+      perHopDescriptiveMedians: [],
+      retainedTraceTelemetry: { traces: [], observations: [] },
+    }),
+  });
+  assert(sample.telemetry.perHopStatus === "blocked-by-defect", "zero-trace telemetry was not named as blocked-by-defect");
+  assert(sample.telemetry.retainedTraceCount === 0, "zero-trace telemetry reported retained traces");
+  assert(sample.telemetry.perHopDescriptiveMedians.length === 0, "zero-trace telemetry invented per-hop medians");
+  assert(JSON.stringify(sample.telemetry.activePerHopRowsMissing) === JSON.stringify(ACTIVE_PER_HOP_ROWS), "zero-trace telemetry did not retain every missing active row");
+  return { result: "blocked-by-defect", missingActiveRows: sample.telemetry.activePerHopRowsMissing.length };
 }
 
 async function rejectedCommandStopsGuard() {
@@ -153,7 +155,7 @@ async function rejectedCommandStopsGuard() {
 
 const results = {
   appSurfaceAndWarmup: await appSurfaceAndWarmupGuard(),
-  missingHopMutant: await missingHopMutantIsRed(),
+  blockedByDefect: await blockedByDefectGuard(),
   rejectedCommandStops: await rejectedCommandStopsGuard(),
 };
 process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
