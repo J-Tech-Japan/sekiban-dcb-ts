@@ -1,0 +1,37 @@
+{
+  "schema": "sdt-g50-prewindow-failures/v1",
+  "task": "SDT-G50",
+  "run": "W55",
+  "service": "sekiban-dcb-meeting-room-cloudflare-only",
+  "deployment": {
+    "versionId": "94e3ceb1-eb5d-45bd-99a4-16bbb04cef02",
+    "sourceCommit": "be7969d57e723f2e8e1a70ccefb54b70252a40b8"
+  },
+  "attempts": [
+    {
+      "phase": "pre-window-warmup",
+      "runId": "sdtg50w55-20260901-2153",
+      "startedAt": "2026-09-01T21:54:12.733Z",
+      "completedAt": "2026-09-01T21:54:13.102Z",
+      "endpoint": "POST /api/commands/create-room",
+      "status": 503,
+      "cfRay": "a347831e49d22519-SJC",
+      "acceptedCommit": false,
+      "error": "app create-room was not an accepted commit (HTTP 503)"
+    },
+    {
+      "phase": "pre-window-warmup-after-60-second-settlement-and-root-readiness-200",
+      "runId": "sdtg50w55-20260901-2156",
+      "startedAt": "2026-09-01T21:55:58.395Z",
+      "completedAt": "2026-09-01T21:55:58.613Z",
+      "endpoint": "POST /api/commands/create-room",
+      "status": 503,
+      "cfRay": "a34785b28d2e2712-SJC",
+      "acceptedCommit": false,
+      "error": "app create-room was not an accepted commit (HTTP 503)"
+    }
+  ],
+  "measurementWindowCreated": false,
+  "retainedTraceQuerySent": false,
+  "reason": "Both required warm-up commands were rejected before any accepted app-surface commit, so no coherent 50-request window exists."
+}

@@ -1,0 +1,26 @@
+{
+  "schema": "sdt-g50-deployed-identity/v1",
+  "task": "SDT-G50",
+  "recordedAt": "2026-09-01T18:16:43.649Z",
+  "service": "sekiban-dcb-meeting-room-cloudflare-only",
+  "apiTokenFallbackVariablesUnset": [
+    "CLOUDFLARE_API_TOKEN",
+    "CF_API_TOKEN",
+    "CLOUDFLARE_API_KEY",
+    "CF_API_KEY",
+    "WRANGLER_API_TOKEN"
+  ],
+  "whoami": {
+    "executable": "./node_modules/.bin/wrangler",
+    "arguments": [
+      "whoami",
+      "--json"
+    ],
+    "status": 1,
+    "signal": null,
+    "stdout": "\n",
+    "stderr": "\u001b[31m✘ \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mNot logged in. Your auth token has expired and could not be refreshed, and the environment is non-interactive. Run `wrangler login` in an interactive terminal or set a CLOUDFLARE_API_TOKEN.\u001b[0m\n\n  Run `wrangler whoami` to check your current authentication status.\n\n\n"
+  },
+  "error": "g50-deployed-identity:wrangler whoami --json exited 1: \u001b[31m✘ \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mNot logged in. Your auth token has expired and could not be refreshed, and the environment is non-interactive. Run `wrangler login` in an interactive terminal or set a CLOUDFLARE_API_TOKEN.\u001b[0m\n\n  Run `wrangler whoami` to check your current authentication status.",
+  "decision": "identity-check-failed-no-deploy"
+}

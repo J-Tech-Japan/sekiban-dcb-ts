@@ -1,0 +1,28 @@
+{
+  "schema": "sdt-g50-trace-schema-failure/v1",
+  "task": "SDT-G50",
+  "run": "W56",
+  "deployment": {
+    "service": "sekiban-dcb-meeting-room-cloudflare-only",
+    "versionId": "5610dd9d-2dfa-497b-99e9-9d6903deceab",
+    "sourceCommit": "2cfe5c5284caadc836b2b608820b1396dd8da67e"
+  },
+  "preflight": {
+    "endpoint": "POST /api/commands/create-room",
+    "roomId": "sdt-g50-w56-preflight-1788301365949",
+    "status": 200,
+    "kind": "committed",
+    "cfRay": "a347acf33b3bb7b9-PDX",
+    "committedSuid": "063923898167640000000601610025",
+    "accepted": true
+  },
+  "cohort": {
+    "runId": "sdtg50w56-20260901-2224",
+    "requestedDiscardedWarmups": 1,
+    "requestedAcceptedSamples": 50,
+    "retainedTraceQueryAttempted": true,
+    "rawSampleOutput": null,
+    "error": "g50-commit-latency:retained telemetry is missing active per-hop rows: S00, S01, S02, S03, S06, S07, S08, S09, S10, S11, S12, S13, S14, S15, S16"
+  },
+  "outcome": "blocked-no-retry-no-stitched-cohort"
+}

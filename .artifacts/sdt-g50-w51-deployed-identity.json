@@ -1,0 +1,65 @@
+{
+  "schema": "sdt-g50-deployed-identity/v1",
+  "task": "SDT-G50",
+  "recordedAt": "2026-09-01T20:02:19.660Z",
+  "service": "sekiban-dcb-meeting-room-cloudflare-only",
+  "apiTokenFallbackVariablesUnset": [
+    "CLOUDFLARE_API_TOKEN",
+    "CF_API_TOKEN",
+    "CLOUDFLARE_API_KEY",
+    "CF_API_KEY",
+    "WRANGLER_API_TOKEN"
+  ],
+  "whoami": {
+    "executable": "./node_modules/.bin/wrangler",
+    "arguments": [
+      "whoami",
+      "--json"
+    ],
+    "status": 0,
+    "signal": null,
+    "stdout": "{\n    \"loggedIn\": true,\n    \"authType\": \"OAuth Token\",\n    \"email\": \"ttakaoka@jtechs.com\",\n    \"accounts\": [\n        {\n            \"id\": \"3ede2188f4cf39a28e0aa3722d3d02c5\",\n            \"name\": \"Ttakaoka@jtechs.com's Account\",\n            \"type\": \"standard\",\n            \"settings\": {\n                \"enforce_twofactor\": false,\n                \"api_access_enabled\": null,\n                \"access_approval_expiry\": null,\n                \"abuse_contact_email\": null,\n                \"oauth_app_access_enabled\": true\n            },\n            \"legacy_flags\": {\n                \"enterprise_zone_quota\": {\n                    \"maximum\": 0,\n                    \"current\": 0,\n                    \"available\": 0\n                }\n            },\n            \"created_on\": \"2026-08-18T06:21:16.865070Z\"\n        }\n    ],\n    \"tokenPermissions\": [\n        \"user:read\",\n        \"offline_access\",\n        \"account:read\",\n        \"workers:write\",\n        \"workers_kv:write\",\n        \"workers_routes:write\",\n        \"workers_scripts:write\",\n        \"workers_tail:read\",\n        \"d1:write\",\n        \"pages:write\",\n        \"zone:read\",\n        \"ssl_certs:write\",\n        \"ai:write\",\n        \"ai-search:write\",\n        \"ai-search:run\",\n        \"websearch.run\",\n        \"agent-memory:write\",\n        \"queues:write\",\n        \"pipelines:write\",\n        \"secrets_store:write\",\n        \"artifacts:write\",\n        \"flagship:write\",\n        \"containers:write\",\n        \"cloudchamber:write\",\n        \"connectivity:admin\",\n        \"email_routing:write\",\n        \"email_sending:write\",\n        \"browser:write\",\n        \"challenge-widgets.write\"\n    ]\n}\n",
+    "stderr": ""
+  },
+  "versions": {
+    "executable": "./node_modules/.bin/wrangler",
+    "arguments": [
+      "versions",
+      "list",
+      "--name",
+      "sekiban-dcb-meeting-room-cloudflare-only",
+      "--json"
+    ],
+    "status": 0,
+    "signal": null,
+    "stdout": "[\n  {\n    \"id\": \"0fdf765b-ceea-4abf-851d-db17a98e278c\",\n    \"number\": 166,\n    \"metadata\": {\n      \"created_on\": \"2026-08-31T07:26:31.414558Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    }\n  },\n  {\n    \"id\": \"b7b3f2be-c48f-4619-8abd-a7681403ab3c\",\n    \"number\": 167,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:24:14.092351Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32-20260831 sdt-g47-repair-wake32-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"f5ee416a-0360-429a-9ae2-a73788a3d74c\",\n    \"number\": 168,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:25:29.951116Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32b-20260831 sdt-g47-repair-wake32b-20260831 0d1eb3ab4bd44601cfd6525b104db663f8a9d7e2\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"8f7fd0b3-0a64-4afe-af5a-c3869e79cd2e\",\n    \"number\": 169,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T00:27:50.26765Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G37 sdt-g47-repair-post-migration-wake32c-20260831 sdt-g47-repair-wake32c-20260831 e7317fc3f74c6d34e2f200c6212595935b5f3b48\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"b048adc0-39e7-4ebf-b2d3-bf77c531404f\",\n    \"number\": 170,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T07:52:01.47971Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config 726ff828\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"a1dd3f04-2788-4a68-b183-366c54c11b84\",\n    \"number\": 171,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:05:10.022849Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 normal config f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6fb93eee-89fc-48de-a183-2258bf0b8350\",\n    \"number\": 172,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:19:44.799475Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"1113c51f-37fa-4f5f-9837-bab790b65b90\",\n    \"number\": 173,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T08:20:20.564296Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 complete normal D1 schema f81e24b\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"52350239-bd50-4b51-997f-f9eb88e9dfd9\",\n    \"number\": 174,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T15:12:12.551839Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 G32 baseline 08e8996\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"6dd811dd-8b3d-450b-b884-55e6b9095b1d\",\n    \"number\": 175,\n    \"metadata\": {\n      \"created_on\": \"2026-09-01T16:29:19.236391Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  }\n]\n",
+    "stderr": ""
+  },
+  "identity": {
+    "versionMatches": true,
+    "mainMatches": true,
+    "configMatches": true,
+    "runtimeMatches": true,
+    "reuseExistingDeployment": true,
+    "deployedVersion": {
+      "id": "6dd811dd-8b3d-450b-b884-55e6b9095b1d",
+      "number": 175,
+      "metadata": {
+        "created_on": "2026-09-01T16:29:19.236391Z",
+        "source": "wrangler",
+        "author_id": "63b0568d4591a207cb1df473d0abd97c",
+        "author_email": "ttakaoka@jtechs.com",
+        "has_preview": false
+      },
+      "annotations": {
+        "workers/message": "SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf",
+        "workers/triggered_by": "version_upload"
+      }
+    },
+    "versionMessage": "SDT-G49 PR98 W46 7fcd2dbeb18d9841823c101badf8bcc28d3d99bf",
+    "expectedConfigSha256": "0ae3bf5ec67547e707ea091da472d09cb681b532407264e15339400f8dd08862",
+    "mainConfigSha256": "0ae3bf5ec67547e707ea091da472d09cb681b532407264e15339400f8dd08862",
+    "runtimeDiffPaths": []
+  },
+  "decision": "reuse-existing-deployment-no-redeploy"
+}
