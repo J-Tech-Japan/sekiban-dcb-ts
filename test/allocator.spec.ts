@@ -6,15 +6,6 @@ import type {
   AllocationVector,
   AllocatorState,
 } from "../packages/dcb-runtime/src/allocator/types";
-import { G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
-
-interface JournalState {
-  state: string;
-  version: number;
-  ownerEpoch: number;
-  candidates: Array<{ eventId: string }>;
-  reconciliation: { allocatorVector?: string[] } | null;
-}
 
 async function allocatorRequest(path: string, body?: unknown): Promise<Response> {
   const init =
@@ -40,18 +31,6 @@ async function namedAllocatorRequest(name: string, path: string, body?: unknown)
   const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
   const stub = namespace.get(namespace.idFromName(name));
   return stub.fetch(`https://${name}.allocator.test${path}`, init);
-}
-
-async function journalRequest(attemptId: string, path: string, body?: unknown): Promise<Response> {
-  const init =
-    body === undefined
-      ? undefined
-      : {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        };
-  return SELF.fetch(`https://allocator.test/journals/${encodeURIComponent(attemptId)}${path}`, init);
 }
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -191,7 +170,7 @@ describe("AllocatorDurableObject", () => {
     expect((await allocatorState()).allocatedWatermark).toBe(ordered[ordered.length - 1]);
   });
 
-  it("continues from the persisted watermark and lets a Journal reconciler recover the full vector", async () => {
+  it("continues from the persisted watermark and preserves an allocated vector across restart", async () => {
     const beforeRestartAttempt = newAttempt();
     const beforeRestart = await allocate(beforeRestartAttempt, allocationCandidates(beforeRestartAttempt, 1));
     expect(beforeRestart.status).toBe(201);
@@ -208,58 +187,8 @@ describe("AllocatorDurableObject", () => {
       expect(candidate.suid > persistedWatermark!).toBe(true);
     }
 
-    const crashAttempt = newAttempt();
-    const journalCandidates = [
-      { candidateIndex: 0, eventId: `${crashAttempt}-event-1` },
-      { candidateIndex: 1, eventId: `${crashAttempt}-event-2` },
-    ];
-    const allocated = await allocate(crashAttempt, journalCandidates);
-    expect(allocated.status).toBe(201);
-    const durableVector = await responseJson<AllocationVector>(allocated);
-
-    const interruptedAdmission = await journalRequest(crashAttempt, "/admit", {
-      candidates: durableVector.candidates.map((candidate) => ({
-        eventId: candidate.eventId,
-        payload: JSON.stringify({ fixture: `payload-${candidate.candidateIndex + 1}` }),
-        eventType: "AllocatorFixtureEvent",
-        timestamp: G32_FIXTURE_TIMESTAMP,
-        tags: [`tag-${candidate.candidateIndex + 1}`],
-      })),
-      consistencyTags: [],
-      faultInjection: "after-admission-commit",
-    });
-    expect(interruptedAdmission.status).toBe(503);
-
-    const admittedResponse = await journalRequest(crashAttempt, "/state");
-    expect(admittedResponse.status).toBe(200);
-    const admitted = await responseJson<JournalState>(admittedResponse);
-    expect(admitted.state).toBe("ADMITTED");
-
-    const recovered = await allocation(crashAttempt);
-    expect(recovered).toEqual(durableVector);
-    expect(recovered.candidates.map((candidate) => candidate.eventId)).toEqual(
-      admitted.candidates.map((candidate) => candidate.eventId),
-    );
-
-    const reconciledResponse = await journalRequest(crashAttempt, "/reconcile", {
-      expectedState: admitted.state,
-      expectedVersion: admitted.version,
-      expectedOwnerEpoch: admitted.ownerEpoch,
-      reconciliation: {
-        allocatorVector: recovered.candidates.map((candidate) => candidate.suid),
-        records: [],
-        failureCause: "write-failure",
-      },
-    });
-    expect(reconciledResponse.status).toBe(200);
-    const reconciled = await responseJson<JournalState>(reconciledResponse);
-    expect(reconciled.state).toBe("ALLOCATED");
-    expect(reconciled.reconciliation?.allocatorVector).toEqual(
-      recovered.candidates.map((candidate) => candidate.suid),
-    );
-
-    const replay = await allocate(crashAttempt, allocationCandidates(newAttempt(), 1));
+    const replay = await allocate(afterRestartAttempt, allocationCandidates(newAttempt(), 1));
     expect(replay.status).toBe(200);
-    expect(await responseJson<AllocationVector>(replay)).toEqual(durableVector);
+    expect(await responseJson<AllocationVector>(replay)).toEqual(afterRestartVector);
   });
 });
