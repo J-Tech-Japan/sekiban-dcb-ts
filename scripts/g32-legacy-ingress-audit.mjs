@@ -116,7 +116,6 @@ export function auditG32LegacyIngress() {
     LEGACY_INPUT,
   );
   const expectedLegacyFixtureReferences = [
-    "test/commit.spec.ts",
     "test/d1-mv.spec.ts",
     "test/dcb-domain.spec.ts",
     "test/downstream.spec.ts",

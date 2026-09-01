@@ -133,6 +133,16 @@ migration or compatibility behavior.
 No unrelated test was skipped, timeout-inflated, or assertion-reduced to
 compensate for this cleanup.
 
+## G32 historical ingress inventory
+
+The G32 audit's sealed legacy-fixture inventory no longer includes
+`test/commit.spec.ts`. That file formerly matched `LEGACY_INPUT` solely through
+the direct Journal alarm/recovery fixture retired by this cleanup; its remaining
+G41 serialized-commit coverage contains no legacy-ingress marker. This advances
+only the expected historical reference set to the filesystem-derived result.
+`LEGACY_INPUT`, the recursive filesystem inventory, exact ordered set equality,
+and the audit self-test/mutation checks remain unchanged.
+
 ## Verification
 
 The issue-relevant verification passed:
