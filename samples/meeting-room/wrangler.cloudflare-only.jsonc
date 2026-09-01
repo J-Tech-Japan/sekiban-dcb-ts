@@ -15,6 +15,11 @@
     "G26_VIEW_COUNT": "2",
     "SDT_SERVICE_ID": "sekiban-dcb-meeting-room-cloudflare-only"
   },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "persist": true, "invocation_logs": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1, "persist": true }
+  },
   "assets": { "directory": "public" },
   "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
