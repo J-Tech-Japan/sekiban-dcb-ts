@@ -48,3 +48,6 @@ checked with a no-row fixture before the live run.
 issue-side transition. Its child-cwd `linked_pr_synced=false` warning is the
 host/review-runtime linkage follow-up, not an implementation-side recovery
 action.
+
+Focused verification: `npm run test:g49` passed, including its binding and
+migration-parity mutation checks.
