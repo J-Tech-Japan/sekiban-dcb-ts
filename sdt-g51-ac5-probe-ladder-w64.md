@@ -12,6 +12,10 @@ This lands the accepted AC1–AC4 work as a ready-for-review issue #101 PR while
 narrowing R-1 to the current public-Worker custom-span retention limitation;
 it does not claim a fabricated live S00/S-row proof.
 
+## Ready-for-review PR
+
+https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/102
+
 ## P1 deployment and evidence
 
 | Field | Value |
