@@ -61,5 +61,7 @@ configuration change occurred.
 - Implementation commit: `a1eaa2f41c6a32698ac5a8f8660638beab3ed8c1`.
 - Branch push: `origin/claude/sdt-g54-envelope-interop-w77` succeeded.
 - Ready-for-review non-draft PR: [#108](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/108), with `Closes #105` in its body.
-- The next action is the canonical GitHub-only `worker result-summary` then
-  `worker complete --outcome pr-created` for issue #105.
+- Canonical GitHub-only `worker result-summary --outcome pr-created` completed,
+  followed by `worker complete --outcome pr-created --pr 108 --write` with
+  `applied=true`; it removed `intent-issue-in-progress` and added
+  `intent-pr-created` on issue #105.
