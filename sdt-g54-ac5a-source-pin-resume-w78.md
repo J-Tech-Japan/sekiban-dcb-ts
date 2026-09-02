@@ -2,7 +2,7 @@
 
 Task: `SDT-G54-AC5A-SOURCE-PIN-RESUME-W78`
 Issue: [#105](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/105)
-Status: completed pending PR creation
+Status: completed; PR created
 
 ## Amendment consumed
 
@@ -58,5 +58,8 @@ configuration change occurred.
 
 ## PR handoff
 
-The commit SHA, PR URL, canonical worker completion outcome, and push result
-are appended after the branch is pushed and the non-draft PR is created.
+- Implementation commit: `a1eaa2f41c6a32698ac5a8f8660638beab3ed8c1`.
+- Branch push: `origin/claude/sdt-g54-envelope-interop-w77` succeeded.
+- Ready-for-review non-draft PR: [#108](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/108), with `Closes #105` in its body.
+- The next action is the canonical GitHub-only `worker result-summary` then
+  `worker complete --outcome pr-created` for issue #105.
