@@ -209,6 +209,7 @@ const DEFAULT_CLOCK: CommitTraceClock = { now: () => Date.now() };
 const RAW_TAG_KEY = /(^|[._])tag($|[._])/i;
 const HEX64 = /^[0-9a-f]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const NATIVE_ROW_ID_ATTRIBUTE = "sdt.row.id";
 
 function hasOwn(value: object, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -654,7 +655,7 @@ export class CommitTrace {
       return callback(disabledChild());
     }
     const execute = async (native: NativeTraceSpan | undefined): Promise<T> => {
-      this.setNativeAttributes(native, attributes);
+      this.setNativeAttributes(native, nativeAttributesWithRowId(this.options.schema, rowId, attributes));
       this.recordEmittedWorkerRow(row, native);
       const startMs = this.now();
       const record: CommitTraceSpan = {
@@ -1164,6 +1165,22 @@ function setNativeAttributes(
 }
 
 /**
+ * `sdt.row.id` is an exporter-facing native-span discriminator, not a
+ * commit-snapshot attribute. Keep it outside the frozen authority matrix so
+ * it cannot alter validation, reservation, fence, response, or the in-memory
+ * evidence contract; add it only after that matrix has accepted the normal
+ * attributes for a real sdt.commit/v1 S-row.
+ */
+function nativeAttributesWithRowId(
+  schema: CommitTraceSchema,
+  rowId: string,
+  attributes: Readonly<Record<string, TraceAttributeValue>>,
+): Record<string, TraceAttributeValue> {
+  if (schema !== "sdt.commit/v1" || !/^S\d/.test(rowId)) return { ...attributes };
+  return { ...attributes, [NATIVE_ROW_ID_ATTRIBUTE]: rowId };
+}
+
+/**
  * A tracer that fails before callback invocation simply loses this span.  A
  * callback that did begin is never run a second time: its normal result or
  * error remains the protocol authority.
@@ -1217,7 +1234,7 @@ export async function enterNativeCommitSpan<T>(
     return callback();
   }
   return enterNativeSpanFailOpen(nativeTracing, name, async (span) => {
-    setNativeAttributes(span, attributes);
+    setNativeAttributes(span, nativeAttributesWithRowId(input.schema, input.rowId, attributes));
     try {
       const result = await callback();
       const response = result instanceof Response
@@ -1278,7 +1295,7 @@ export async function enterNativeActorHandleSpan<T>(
         outcome: "in-progress",
       };
       if (nativeAttributesAreValid("sdt.commit/v1", "accepted", "S16", attributes)) {
-        setNativeAttributes(span, attributes);
+        setNativeAttributes(span, nativeAttributesWithRowId("sdt.commit/v1", "S16", attributes));
       }
     }
     try {

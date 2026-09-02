@@ -520,6 +520,8 @@ jobs:
         if: steps.node-modules.outputs.cache-hit != 'true'
       - name: Run SDT-G30 trace schema, B0 cohort, and manifest closure lane
         run: npm run test:g30
+      - name: Run SDT-G51 native-span and bounded-ingestion guards
+        run: npm run test:g51
       - name: Verify SDT-G30 candidate/evidence protocol
         run: npm run test:g30:candidate
       - name: Prove SDT-G30 candidate retention gate forced failure

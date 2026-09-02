@@ -717,6 +717,48 @@ describe("SDT-G30 runtime trace verifier", () => {
     expect(capture.spans.map((span) => span.name)).toContain("sdt.commit");
   });
 
+  it("G51 guard: enters every mapped Worker S-row with its native row id on one successful serialized commit", async () => {
+    const snapshots: CommitTraceSnapshot[] = [];
+    const capture = recordingNativeTracing();
+    const tags = ["room:g51-native-span-guard"];
+    const worker = nonSuccessWorker("success", snapshots, { nativeTracing: capture.tracing });
+
+    const response = await worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-ray": "f00df00df00df00d-SJC" },
+      body: JSON.stringify({
+        version: 1,
+        eventCandidates: [{
+          payload: btoa(JSON.stringify({ roomId: "g51-native-span-guard" })),
+          eventPayloadName: "Trace",
+          tags,
+        }],
+        consistencyTags: tags.map((tag) => ({
+          tag,
+          lastSortableUniqueId: "063891500000000000000000000000",
+        })),
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(snapshots).toHaveLength(1);
+    const expectedRowIds = emittedRows(snapshots[0]!);
+    const nativeRows = capture.spans.map((span) => ({
+      name: span.name,
+      rowId: span.attributes["sdt.row.id"],
+    }));
+
+    expect(nativeRows).toEqual(expectedRowIds.map((rowId) => ({
+      name: row("sdt.commit/v1", rowId).span,
+      rowId,
+    })));
+    expect(nativeRows.find((span) => span.rowId === "S00")?.name).toBe("sdt.commit");
+    for (const rowId of expectedRowIds) {
+      expect(capture.spans.find((span) => span.attributes["sdt.row.id"] === rowId)?.attributes)
+        .toMatchObject({ "sdt.row.id": rowId });
+    }
+  });
+
   it("emits the reservation-failure boundary from the real cancel-barrier path", async () => {
     const tags = ["room:g30-non-success:a", "room:g30-non-success:b"];
     const captured = await nonSuccessTrace("reservation-failure", tags);
@@ -968,6 +1010,7 @@ describe("SDT-G30 runtime trace verifier", () => {
     const finalize = capture.spans.find((entry) => entry.name === "allocator.bootstrap.finalize")!;
     const actor = capture.spans.find((entry) => entry.name === "actor.handle")!;
     expect(finalize.attributes).toMatchObject({
+      "sdt.row.id": "S09",
       "schema.version": "sdt.commit/v1",
       "correlation.id": CORRELATION,
       "attempt.id": ATTEMPT,
@@ -980,6 +1023,7 @@ describe("SDT-G30 runtime trace verifier", () => {
       "http.status": 204,
     });
     expect(actor.attributes).toMatchObject({
+      "sdt.row.id": "S16",
       "schema.version": "sdt.commit/v1",
       "correlation.id": expect.any(String),
       "attempt.id": ATTEMPT,

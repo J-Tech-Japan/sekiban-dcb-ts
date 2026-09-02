@@ -59,7 +59,6 @@ async function appSurfaceAndWarmupGuard() {
       versionId: "guard-version",
       sourceCommit: "a".repeat(40),
       sampleCount: 50,
-      settleMs: 0,
       runId: "guard-run-0001",
       queryTemplate: {},
       fetchImpl: async (url, init) => {
@@ -103,7 +102,6 @@ async function blockedByDefectGuard() {
     versionId: "guard-version",
     sourceCommit: "b".repeat(40),
     sampleCount: 50,
-    settleMs: 0,
     runId: "guard-run-0002",
     queryTemplate: {},
     fetchImpl: async () => committedResponse(1),
@@ -136,7 +134,6 @@ async function rejectedCommandStopsGuard() {
       versionId: "guard-version",
       sourceCommit: "c".repeat(40),
       sampleCount: 50,
-      settleMs: 0,
       runId: "guard-run-0003",
       queryTemplate: {},
       fetchImpl: async () => {

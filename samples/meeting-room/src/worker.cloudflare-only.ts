@@ -24,6 +24,7 @@ import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meeti
 import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
+import { runtimeRequestWithIngressRay } from "./ingress-observation";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
@@ -44,6 +45,12 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
+
+// P1 is deliberately the smallest possible custom-span control: one span,
+// one application attribute, at the public Worker fetch boundary. It is not a
+// commit trace row and does not participate in any request or response data.
+const G51_P1_PROBE_SPAN = "sdt.g51.probe.p1";
+const G51_PROBE_ATTRIBUTE = "sdt.g51.probe";
 
 /**
  * Safe MV convergence is the first scheduled duty.  Generic downstream and
@@ -232,7 +239,17 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
   let input: unknown;
   try { input = await request.json(); } catch { return json({ error: "Command request must be JSON", code: "validation_error" }, 400); }
-  const commandRuntime = { fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => runtimeFetch(inputValue instanceof Request ? inputValue : new Request(inputValue, init), env, ctx) };
+  // `runtimeFetch` is an in-isolate call, so its synthetic Request does not
+  // inherit the public ingress CF-Ray.  Preserve that provider-owned identity
+  // only for observation: CommitWorker uses it to emit the existing
+  // post-admission worker observation, which is the exact join from a public
+  // command response to its custom-span root.  It is neither a protocol input
+  // nor a response/header mutation.
+  const ingressRay = request.headers.get("cf-ray");
+  const commandRuntime = {
+    fetch: (inputValue: RequestInfo | URL, init?: RequestInit) =>
+      runtimeFetch(runtimeRequestWithIngressRay(inputValue, init, ingressRay), env, ctx),
+  };
   const result = await executeMeetingRoomCommand(commandId, input, { RUNTIME: commandRuntime, localRuntime: commandRuntime });
   return resultResponse(result);
 }
@@ -458,7 +475,14 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
     if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
     if (path === "/operator/repair") return repairOperator(request, env, ctx);
-    if (path.startsWith("/api/commands/")) return command(request, env, ctx);
+    if (path.startsWith("/api/commands/")) {
+      const componentReject = rejectUnlessPrimaryComponent(env, "command");
+      if (componentReject !== undefined) return componentReject;
+      return ctx.tracing.enterSpan(G51_P1_PROBE_SPAN, (span) => {
+        span.setAttribute(G51_PROBE_ATTRIBUTE, "p1");
+        return command(request, env, ctx);
+      });
+    }
     try {
       await assertFinalCutoverFenceIfConfigured(env);
     } catch {

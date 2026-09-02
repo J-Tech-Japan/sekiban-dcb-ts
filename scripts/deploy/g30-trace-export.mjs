@@ -208,6 +208,11 @@ function normalizedSpan(event, traceId) {
     present: true,
     zeroDurationPlatformLimited: startMs === endMs,
     attributes: normalizableAttributes(attributes),
+    // This native-only discriminator is intentionally retained outside the
+    // frozen snapshot attribute matrix. It lets G51 prove a provider span was
+    // explicitly row-labelled rather than merely mapped by an operation-name
+    // fallback in this exporter.
+    ...(typeof attributes["sdt.row.id"] === "string" ? { nativeRowId: attributes["sdt.row.id"] } : {}),
   };
 }
 
@@ -237,6 +242,7 @@ function providerSpanName(event) {
     attributes["span.name"],
     attributes.spanName,
     attributes.operation,
+    metadata.spanName,
     metadata.name,
     metadata.operationName,
     event?.name,
@@ -516,6 +522,9 @@ export const TELEMETRY_QUERY_VALUE_BATCH = 10;
 // discarding a valid cohort behind a provider result cap.
 export const TELEMETRY_TRACE_ID_BATCH = 1;
 export const TELEMETRY_RETRY_DELAY_MS = 15_000;
+/** G51's exporter callers wait for ingestion, but never without an upper bound. */
+export const DEFAULT_COHORT_INGESTION_TIMEOUT_MS = 10 * 60 * 1_000;
+export const COHORT_INGESTION_POLL_INTERVAL_MS = 15_000;
 
 /**
  * The client records the literal cf-ray header (ray plus colo suffix), while
@@ -646,13 +655,110 @@ function recordRootTraceId(traceIdsByCorrelation, correlationId, traceId) {
   traceIdsByCorrelation.set(correlationId, existing);
 }
 
-async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = TELEMETRY_QUERY_VALUE_BATCH }) {
+async function queryByValues({
+  accountId,
+  token,
+  template,
+  key,
+  values,
+  fixedFilters = [],
+  batchSize = TELEMETRY_QUERY_VALUE_BATCH,
+  requestTelemetry = queryTelemetry,
+}) {
   const result = [];
   for (const batch of chunks(nonEmptyTelemetryStrings(values, key), batchSize)) {
     const payload = buildBoundedTelemetryQuery(template, [...fixedFilters, cohortValuesFilter(key, batch)]);
-    result.push(await queryTelemetry({ accountId, token, payload }));
+    result.push(await requestTelemetry({ accountId, token, payload }));
   }
   return result;
+}
+
+/**
+ * Read a deliberately tiny custom-span probe through the same bounded,
+ * exact-CF-Ray query discipline as the commit exporter.  This is diagnostic
+ * evidence for G51's deployed probe ladder: it never turns a probe into a
+ * commit trace, and it deliberately returns no raw provider event or client
+ * request identity for persistence.
+ */
+export async function queryNamedSpanCohort({
+  accountId,
+  token,
+  template,
+  ledger,
+  spanName,
+  attributeKey,
+  attributeValue,
+  requestTelemetry = queryTelemetry,
+}) {
+  if (typeof spanName !== "string" || spanName.length === 0) fail("probe-span", "spanName must be non-empty");
+  if (typeof attributeKey !== "string" || attributeKey.length === 0) fail("probe-span", "attributeKey must be non-empty");
+  if (typeof attributeValue !== "string" || attributeValue.length === 0) fail("probe-span", "attributeValue must be non-empty");
+
+  const clientRequestIdsByRayId = clientRequestIdByPlatformRayId(ledger);
+  const raws = await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "$metadata.rayId",
+    values: [...clientRequestIdsByRayId.keys()],
+    fixedFilters: [queryFilter("$metadata.spanName", spanName)],
+    requestTelemetry,
+  });
+
+  const retainedRequestIds = new Set();
+  const attributeMatchedRequestIds = new Set();
+  let retainedSpanCount = 0;
+  let attributeMatchedSpanCount = 0;
+  let unjoinableRetainedSpanCount = 0;
+
+  for (const raw of raws) {
+    for (const event of rawEvents(raw)) {
+      // Verify the returned event rather than trusting a remote filter shape.
+      // A probe query must never classify an unrelated auto-instrumentation
+      // span as the deliberate application probe.
+      if (providerSpanName(event) !== spanName) continue;
+      retainedSpanCount += 1;
+      const attributes = attributesFor(event);
+      const attributeMatches = attributes[attributeKey] === attributeValue;
+      if (attributeMatches) attributeMatchedSpanCount += 1;
+
+      const providerRay = metadataField(metadataFor(event), event, ["rayId", "ray_id"]);
+      if (typeof providerRay !== "string" || providerRay.length === 0) {
+        unjoinableRetainedSpanCount += 1;
+        continue;
+      }
+      let platformRayId;
+      try {
+        platformRayId = cloudflareRayId(providerRay, "probe provider ray");
+      } catch {
+        // The query itself is exact-ray bounded.  A provider record without a
+        // usable ray is retained evidence, but cannot be attributed to one
+        // client sample; record that limitation without exposing its value.
+        unjoinableRetainedSpanCount += 1;
+        continue;
+      }
+      const requestId = clientRequestIdsByRayId.get(platformRayId);
+      if (requestId === undefined) {
+        fail("probe-ray", "exact probe query returned a span outside the fixed client cohort");
+      }
+      retainedRequestIds.add(requestId);
+      if (attributeMatches) attributeMatchedRequestIds.add(requestId);
+    }
+  }
+
+  return Object.freeze({
+    spanName,
+    attribute: Object.freeze({ key: attributeKey, value: attributeValue }),
+    retainedSpanCount,
+    retainedRequestCount: retainedRequestIds.size,
+    attributeMatchedSpanCount,
+    attributeMatchedRequestCount: attributeMatchedRequestIds.size,
+    unjoinableRetainedSpanCount,
+    // The poll needs exact request identities in memory, but callers must
+    // redact them before persisting evidence.
+    retainedRequestIds: Object.freeze([...retainedRequestIds]),
+    attributeMatchedRequestIds: Object.freeze([...attributeMatchedRequestIds]),
+  });
 }
 
 /**
@@ -930,6 +1036,103 @@ export async function acquireCohortTelemetry({
       lastPendingError = error;
       await sleepFor(TELEMETRY_RETRY_DELAY_MS);
     }
+  }
+}
+
+/**
+ * Poll a fixed client cohort until every recorded CF-Ray has a normalized
+ * retained trace, or record the bounded shortfall. This is deliberately less
+ * strict than G30's complete-schema acquisition: G37/G50 must retain an
+ * honest incomplete or missing custom-span result rather than turn it into a
+ * fabricated per-hop table.
+ */
+export async function pollCohortTelemetry({
+  ledger,
+  fetchCohort,
+  normalize,
+  timeoutMs = DEFAULT_COHORT_INGESTION_TIMEOUT_MS,
+  intervalMs = COHORT_INGESTION_POLL_INTERVAL_MS,
+  now = Date.now,
+  sleepFor = sleep,
+}) {
+  if (!Array.isArray(ledger) || ledger.length === 0) fail("cohort-poll", "ledger must contain one or more client requests");
+  if (typeof fetchCohort !== "function" || typeof normalize !== "function") fail("cohort-poll", "fetchCohort and normalize must be functions");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) fail("cohort-poll", "timeoutMs must be a positive integer");
+  if (!Number.isSafeInteger(intervalMs) || intervalMs < 1) fail("cohort-poll", "intervalMs must be a positive integer");
+
+  const expectedRequestIds = Object.freeze([...clientRequestIdByPlatformRayId(ledger).values()]);
+  const expected = new Set(expectedRequestIds);
+  const startedAtMs = now();
+  const deadlineMs = startedAtMs + timeoutMs;
+  const attempts = [];
+  let lastBundle;
+  let lastErrorClass;
+
+  for (;;) {
+    const queriedAtMs = now();
+    try {
+      const raw = await fetchCohort();
+      const bundle = await normalize(raw);
+      const observed = new Set((Array.isArray(bundle?.traces) ? bundle.traces : [])
+        .map((trace) => trace?.requestId)
+        .filter((requestId) => typeof requestId === "string" && expected.has(requestId)));
+      const missingRequestIds = expectedRequestIds.filter((requestId) => !observed.has(requestId));
+      lastBundle = bundle;
+      attempts.push(Object.freeze({
+        attempt: attempts.length + 1,
+        queriedAtMs,
+        observedRequestCount: observed.size,
+        missingRequestCount: missingRequestIds.length,
+      }));
+      if (missingRequestIds.length === 0) {
+        return Object.freeze({
+          bundle,
+          ingestion: Object.freeze({
+            status: "settled",
+            expectedRequestCount: expectedRequestIds.length,
+            observedRequestCount: observed.size,
+            missingRequestIds: Object.freeze([]),
+            startedAtMs,
+            deadlineMs,
+            completedAtMs: now(),
+            attempts: Object.freeze(attempts),
+          }),
+        });
+      }
+    } catch (error) {
+      // Never preserve a provider error verbatim here: callers may write this
+      // receipt into a tracked evidence artifact. Its class is enough to
+      // distinguish an unavailable query from a ray shortfall.
+      lastErrorClass = safeFailureClass(error);
+      attempts.push(Object.freeze({
+        attempt: attempts.length + 1,
+        queriedAtMs,
+        observedRequestCount: 0,
+        missingRequestCount: expectedRequestIds.length,
+        errorClass: lastErrorClass,
+      }));
+    }
+
+    if (now() >= deadlineMs) {
+      const observed = new Set((Array.isArray(lastBundle?.traces) ? lastBundle.traces : [])
+        .map((trace) => trace?.requestId)
+        .filter((requestId) => typeof requestId === "string" && expected.has(requestId)));
+      return Object.freeze({
+        ...(lastBundle === undefined ? {} : { bundle: lastBundle }),
+        ingestion: Object.freeze({
+          status: lastBundle === undefined ? "unavailable" : "shortfall",
+          expectedRequestCount: expectedRequestIds.length,
+          observedRequestCount: observed.size,
+          missingRequestIds: Object.freeze(expectedRequestIds.filter((requestId) => !observed.has(requestId))),
+          startedAtMs,
+          deadlineMs,
+          completedAtMs: now(),
+          attempts: Object.freeze(attempts),
+          ...(lastErrorClass === undefined ? {} : { lastErrorClass }),
+        }),
+      });
+    }
+    await sleepFor(Math.min(intervalMs, Math.max(1, deadlineMs - now())));
   }
 }
 

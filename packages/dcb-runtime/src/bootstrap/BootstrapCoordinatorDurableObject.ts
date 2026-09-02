@@ -75,20 +75,21 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     observation: DurableObjectHandlerObservation,
     action: "admit" | "finalize" | "release",
   ): Promise<Response> {
+    // Identity attribution and command execution must share one consumed
+    // request body. A tracing-only clone can remain readable after a DO
+    // response has completed when several workerd isolates are active.
+    let body: unknown | undefined;
     return enterNativeActorHandleSpan(
       this.nativeTracing,
       { actorClass: "BOOTSTRAP", actorKey: `bootstrap:${serviceId}`, activation, observation },
       async () => {
-        let body: unknown;
-        try { body = await request.clone().json(); } catch { return undefined; }
+        try { body = await request.json(); } catch { return undefined; }
         const commandId = object(body) && string(body.commandId) ? body.commandId : undefined;
         return commandId === undefined ? undefined : { attemptId: commandId, serviceId };
       },
-      async () => {
-        let body: unknown;
-        try { body = await request.json(); } catch { return reject("bootstrap_body_invalid", "JSON body is required", 400); }
-        return this.command(serviceId, body, action, observation);
-      },
+      async () => body === undefined
+        ? reject("bootstrap_body_invalid", "JSON body is required", 400)
+        : this.command(serviceId, body, action, observation),
     );
   }
 
