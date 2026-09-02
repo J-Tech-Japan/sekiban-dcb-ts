@@ -149,7 +149,13 @@ export function createCloudflareOnlyRuntimeWorker(
         return handleSerializedCommit(request, env, {
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
-          nativeTracing: cloudflareTracing(ctx),
+          // The meeting-room app reaches this handler through an in-isolate
+          // runtime call. Bind the documented module-form tracer at this
+          // active CommitWorker callback, matching the Durable Object entry
+          // points, rather than retaining the outer handler's context object.
+          // This is observation-only: it cannot affect the commit request,
+          // ordering, reservations, fences, or response.
+          nativeTracing: cloudflareTracing(),
           commitTraceProvider: cloudflareCommitTraceProvider(request, env),
         });
       }
