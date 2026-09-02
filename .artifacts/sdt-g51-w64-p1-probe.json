@@ -1,0 +1,376 @@
+{
+  "schema": "sdt-g51-ac5-probe-ladder/v1",
+  "task": "SDT-G51",
+  "capturedAt": "2026-09-02T03:38:58.622Z",
+  "deployed": {
+    "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+    "versionId": "0e801aeb-086e-4c18-bc79-b61bf5e9e304",
+    "sourceCommit": "9f3348a7d4ca693a54bb119c8d230f1015a663fc",
+    "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev"
+  },
+  "probe": {
+    "rung": "P1",
+    "spanName": "sdt.g51.probe.p1",
+    "attributeKey": "sdt.g51.probe",
+    "attributeValue": "p1",
+    "location": "sample Worker fetch handler before command dispatch"
+  },
+  "protocol": {
+    "appSurface": "POST /api/commands/create-room",
+    "requestMode": "one discarded warm-up then exactly ten sequential accepted commits; no retries or replacement requests",
+    "discardedWarmupRequests": 1,
+    "acceptedSampleRequests": 10,
+    "clientRequestIdentities": "used only in the bounded live query; omitted from this artifact"
+  },
+  "warmup": {
+    "status": 200,
+    "colo": "PDX",
+    "clientLatencyMs": 2169,
+    "accepted": true
+  },
+  "client": {
+    "count": 10,
+    "p50": 1590,
+    "p95": 1960
+  },
+  "callerColoDistribution": {
+    "PDX": 10
+  },
+  "telemetry": {
+    "queryWindow": {
+      "from": 1788319661239,
+      "to": 1788320398234
+    },
+    "ingestion": {
+      "status": "shortfall",
+      "expectedRequestCount": 10,
+      "observedRequestCount": 0,
+      "missingRequestCount": 10,
+      "startedAtMs": 1788319738232,
+      "deadlineMs": 1788320338232,
+      "completedAtMs": 1788320338622,
+      "attempts": [
+        {
+          "attempt": 1,
+          "queriedAtMs": 1788319738232,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 2,
+          "queriedAtMs": 1788319753898,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 3,
+          "queriedAtMs": 1788319769339,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 4,
+          "queriedAtMs": 1788319784806,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 5,
+          "queriedAtMs": 1788319800288,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 6,
+          "queriedAtMs": 1788319816362,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 7,
+          "queriedAtMs": 1788319831847,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 8,
+          "queriedAtMs": 1788319847383,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 9,
+          "queriedAtMs": 1788319862938,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 10,
+          "queriedAtMs": 1788319878446,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 11,
+          "queriedAtMs": 1788319894048,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 12,
+          "queriedAtMs": 1788319909579,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 13,
+          "queriedAtMs": 1788319924987,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 14,
+          "queriedAtMs": 1788319940512,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 15,
+          "queriedAtMs": 1788319955907,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 16,
+          "queriedAtMs": 1788319971500,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 17,
+          "queriedAtMs": 1788319986897,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 18,
+          "queriedAtMs": 1788320002534,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 19,
+          "queriedAtMs": 1788320018003,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 20,
+          "queriedAtMs": 1788320033524,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 21,
+          "queriedAtMs": 1788320049033,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 22,
+          "queriedAtMs": 1788320064852,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 23,
+          "queriedAtMs": 1788320080612,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 24,
+          "queriedAtMs": 1788320096242,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 25,
+          "queriedAtMs": 1788320111656,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 26,
+          "queriedAtMs": 1788320127221,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 27,
+          "queriedAtMs": 1788320142907,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 28,
+          "queriedAtMs": 1788320158418,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 29,
+          "queriedAtMs": 1788320173992,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 30,
+          "queriedAtMs": 1788320189429,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 31,
+          "queriedAtMs": 1788320204923,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 32,
+          "queriedAtMs": 1788320220305,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 33,
+          "queriedAtMs": 1788320235753,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 34,
+          "queriedAtMs": 1788320251229,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 35,
+          "queriedAtMs": 1788320266596,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 36,
+          "queriedAtMs": 1788320282221,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 37,
+          "queriedAtMs": 1788320297577,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 38,
+          "queriedAtMs": 1788320313038,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 39,
+          "queriedAtMs": 1788320328461,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        },
+        {
+          "attempt": 40,
+          "queriedAtMs": 1788320338233,
+          "observedRequestCount": 0,
+          "missingRequestCount": 10
+        }
+      ]
+    },
+    "observedIngestionLagMs": 600398,
+    "retainedSpanCount": 0,
+    "retainedRequestCount": 0,
+    "attributeMatchedSpanCount": 0,
+    "attributeMatchedRequestCount": 0,
+    "unjoinableRetainedSpanCount": 0,
+    "missingAttributeMatchedRequestCount": 10,
+    "verdict": "no-retained-probe-span-for-exact-cohort"
+  },
+  "ledger": [
+    {
+      "ordinal": 1,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1574,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 2,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1770,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 3,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1903,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 4,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1576,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 5,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1553,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 6,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1570,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 7,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1590,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 8,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1786,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 9,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1960,
+      "requestIdentity": "retained-in-memory-only"
+    },
+    {
+      "ordinal": 10,
+      "colo": "PDX",
+      "status": 200,
+      "clientLatencyMs": 1678,
+      "requestIdentity": "retained-in-memory-only"
+    }
+  ]
+}
