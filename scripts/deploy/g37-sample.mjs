@@ -252,6 +252,17 @@ function workerColos(observations) {
   return Object.freeze(Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right))));
 }
 
+function rootSourceCounts(traces) {
+  const counts = new Map();
+  for (const trace of traces) {
+    const source = typeof trace?.rootSource === "string" && trace.rootSource.length > 0
+      ? trace.rootSource
+      : "native-span";
+    counts.set(source, (counts.get(source) ?? 0) + 1);
+  }
+  return Object.freeze(Object.fromEntries([...counts.entries()].sort(([left], [right]) => left.localeCompare(right))));
+}
+
 function deploymentWitness(priorVersions, versions, message) {
   const priorIds = new Set(priorVersions.map((version) => version?.id).filter((id) => typeof id === "string"));
   const matches = versions.filter((version) =>
@@ -341,6 +352,7 @@ export async function telemetryForLedger({
       schemaCompleteTraceCount: completeTraceCount,
       descriptiveLossCount: ledger.length - observedRequestIds.size,
       workerColoDistribution: workerColos(bundle.observations),
+      rootSourceCounts: rootSourceCounts(bundle.traces),
       perHopDescriptiveMedians: perHopMedians(bundle.traces),
       ingestion: acquisition.ingestion,
       observedIngestionLagMs: Math.max(0, acquisition.ingestion.completedAtMs - latest),

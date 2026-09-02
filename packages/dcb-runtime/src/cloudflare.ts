@@ -37,6 +37,7 @@ import {
 import { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
+import { createCommitTraceConsoleSink } from "./trace/CommitTraceConsoleSink";
 
 export interface CloudflareOnlyEnv {
   ALLOCATOR: DurableObjectNamespace;
@@ -157,6 +158,12 @@ export function createCloudflareOnlyRuntimeWorker(
           // ordering, reservations, fences, or response.
           nativeTracing: cloudflareTracing(),
           commitTraceProvider: cloudflareCommitTraceProvider(request, env),
+          // The sink receives the immutable in-process snapshot only after
+          // the commit handler settles. CF-Ray is ingress identity for the
+          // retained-log -> client-ledger join; it is not a protocol input.
+          commitTraceSink: createCommitTraceConsoleSink({
+            platformRequestId: request.headers.get("cf-ray") ?? undefined,
+          }),
         });
       }
       if (
