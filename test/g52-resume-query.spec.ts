@@ -52,6 +52,7 @@ describe("SDT-G52 resume-only retained-log state", () => {
         },
         sleepFor: async (milliseconds) => { clock += milliseconds; },
       });
+      const capturedWindow = captured.cohortWindow as { from: number; to: number };
 
       expect(requests).toBe(COHORT_REQUEST_COUNT);
       expect(captured.ledger).toHaveLength(SAMPLE_COUNT);
@@ -63,23 +64,52 @@ describe("SDT-G52 resume-only retained-log state", () => {
       }
 
       let queriedLedger: readonly unknown[] | undefined;
+      let queriedWindow: { fromMs?: number; toMs?: number } = {};
       const resumed = await resumeExactRayQuery({
         state: captured,
         accountId: "g52-resume-account",
         token: "test-only-observability-token",
         template: {},
-        queryCohort: async ({ ledger }: { ledger: readonly unknown[] }) => {
+        queryCohort: async ({ ledger, fromMs, toMs }: { ledger: readonly unknown[]; fromMs?: number; toMs?: number }) => {
           queriedLedger = ledger;
-          return { events: [] };
+          queriedWindow = { fromMs, toMs };
+          return {
+            events: [],
+            resumeQuery: {
+              shape: "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+              window: { from: capturedWindow.from, to: capturedWindow.to },
+            },
+            cohortDoHandlerObservations: [{
+              event: "do.handler",
+              actorClass: "ALLOCATOR",
+              requestId: captured.ledger[0]!.requestId,
+              constructorToHandlerMs: 4,
+              firstStorageReadMs: 2,
+              subrequestWallMs: 7,
+            }],
+          };
         },
         normalizeBundle: () => ({ traces: [], observations: [] }),
       });
       expect(queriedLedger).toHaveLength(COHORT_REQUEST_COUNT);
+      expect(queriedWindow).toEqual({ fromMs: capturedWindow.from, toMs: capturedWindow.to });
       expect(resumed.resume.queries).toHaveLength(1);
       expect(resumed.resume.queries[0]).toMatchObject({
-        queryScope: "exact-persisted-cf-rays",
+        queryScope: "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
         expectedSampleRequests: SAMPLE_COUNT,
         schemaCompleteSampleRoots: 0,
+      });
+      expect(resumed.resume.latest).toMatchObject({
+        queryWindow: capturedWindow,
+        doObservationSource: "sdt.observe/v1 do.handler from persisted cohort window with client-side exact-CF-Ray intersection",
+        doObservationCohortRequestCount: 1,
+        doObservationMedians: [{
+          actorClass: "ALLOCATOR",
+          observationCount: 1,
+          constructorToHandlerMs: 4,
+          firstStorageReadMs: 2,
+          subrequestWallMs: 7,
+        }],
       });
       expect(resumed.resume.lifecycle).toBe("awaiting-resume-query");
       expect(resumed.resume.threshold).toBe(RESUME_THRESHOLD);

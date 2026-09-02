@@ -811,6 +811,125 @@ function queryFilter(key, value) {
   return { key, operation: "eq", type: "string", value };
 }
 
+function persistedCohortWindow(fromMs, toMs) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs < 0 || toMs <= fromMs) {
+    fail("cohort-window", "fromMs/toMs must describe a non-empty persisted cohort window");
+  }
+  return Object.freeze({ from: fromMs, to: toMs });
+}
+
+function queryWithPersistedWindow(template, filters, window) {
+  const payload = buildBoundedTelemetryQuery(template, filters);
+  payload.timeframe = { from: window.from, to: window.to };
+  return payload;
+}
+
+function cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId) {
+  const metadata = metadataFor(event);
+  const candidates = [
+    metadataField(metadata, event, ["rayId", "ray_id"]),
+    payload?.platformRequestId,
+    payload?.requestId,
+  ];
+  for (const value of candidates) {
+    if (typeof value !== "string" || value.length === 0) continue;
+    try {
+      const requestId = clientRequestIdsByRayId.get(cloudflareRayId(value, "window cohort provider ray"));
+      if (requestId !== undefined) return requestId;
+    } catch {
+      // The time window intentionally contains unrelated service records.
+      // An unparseable identity is not a cohort join and must not be coerced.
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The paced W71 ledger is the identity authority, but the direct `in`-filter
+ * chain can be rejected by the provider before it returns a result.  This
+ * alternate read uses only the normal script/type filters over the immutable
+ * persisted window and intersects results client-side with that exact ledger.
+ * It can never issue an application request or pull a time-nearest substitute
+ * into the cohort.
+ */
+export async function exportCohortWindowTelemetry({
+  accountId,
+  token,
+  template,
+  ledger,
+  fromMs,
+  toMs,
+  requestTelemetry = queryTelemetry,
+}) {
+  if (typeof requestTelemetry !== "function") fail("cohort-window", "requestTelemetry must be a function");
+  const clientRequestIdsByRayId = clientRequestIdByPlatformRayId(ledger);
+  const window = persistedCohortWindow(fromMs, toMs);
+  const snapshotQueryPayload = queryWithPersistedWindow(template, [
+    queryFilter("schema", "sdt.commit-snapshot/v1"),
+    queryFilter("event", "commit.snapshot"),
+  ], window);
+  const observationQueryPayload = queryWithPersistedWindow(template, [
+    queryFilter("schema", "sdt.observe/v1"),
+  ], window);
+  const snapshotRaw = await requestTelemetry({ accountId, token, payload: snapshotQueryPayload });
+  const observationRaw = await requestTelemetry({ accountId, token, payload: observationQueryPayload });
+
+  const retainedSnapshotEvents = [];
+  const retainedCorrelations = new Set();
+  for (const event of rawEvents(snapshotRaw)) {
+    const payload = snapshotPayload(event);
+    if (payload === undefined) continue;
+    const requestId = cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId);
+    if (requestId === undefined) continue;
+    const correlationId = observationCorrelation(payload);
+    if (correlationId === undefined) fail("snapshot-log", "windowed snapshot has no correlationId");
+    retainedCorrelations.add(correlationId);
+    retainedSnapshotEvents.push(event);
+  }
+
+  const retainedObservationEvents = [];
+  const cohortDoHandlerObservations = [];
+  for (const event of rawEvents(observationRaw)) {
+    const payload = observationPayload(event);
+    if (payload === undefined) continue;
+    const requestId = cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId);
+    const correlationId = observationCorrelation(payload);
+    if (requestId === undefined && (correlationId === undefined || !retainedCorrelations.has(correlationId))) continue;
+    retainedObservationEvents.push(event);
+    if (payload.event !== "do.handler" || requestId === undefined) continue;
+    cohortDoHandlerObservations.push(Object.freeze({
+      schema: payload.schema,
+      event: payload.event,
+      emittedAtMs: payload.emittedAtMs,
+      requestId,
+      correlationId,
+      actorClass: payload.actorClass,
+      constructorToHandlerMs: payload.constructorToHandlerMs,
+      firstStorageReadMs: payload.firstStorageReadMs,
+      subrequestWallMs: payload.subrequestWallMs,
+    }));
+  }
+
+  const events = mergeTelemetryEvents([
+    { events: retainedSnapshotEvents },
+    { events: retainedObservationEvents },
+  ]).events;
+  return Object.freeze({
+    events,
+    resumeQuery: Object.freeze({
+      shape: "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+      window,
+      exactRayCount: clientRequestIdsByRayId.size,
+      snapshotWindowEventCount: rawEvents(snapshotRaw).length,
+      observationWindowEventCount: rawEvents(observationRaw).length,
+      retainedSnapshotLogRootCount: retainedSnapshotEvents.length,
+      retainedObservationEventCount: retainedObservationEvents.length,
+      retainedDoHandlerObservationCount: cohortDoHandlerObservations.length,
+    }),
+    cohortDoHandlerObservations: Object.freeze(cohortDoHandlerObservations),
+  });
+}
+
 /**
  * A one-off recovery read for a known historical Worker request window.  It
  * is deliberately schema/event constrained and refuses a missing or inverted

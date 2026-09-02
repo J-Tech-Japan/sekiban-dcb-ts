@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import manifest from "../contracts/commit-trace-manifest.json";
-import { normalizeTelemetryBundle, querySnapshotLogsInFixedWindow } from "../scripts/deploy/g30-trace-export.mjs";
+import { exportCohortWindowTelemetry, normalizeTelemetryBundle, querySnapshotLogsInFixedWindow } from "../scripts/deploy/g30-trace-export.mjs";
 
 const SERVICE = "g52-export-fixture";
 const REQUEST_ID = "0000000000000052-SJC";
@@ -176,6 +176,56 @@ describe("SDT-G52 log-root telemetry export", () => {
     });
     expect(result.window).toEqual({ from: 1_000, to: 2_000 });
     expect(result.receipts).toEqual([expect.objectContaining({ requestId: REQUEST_ID, logTruncated: false })]);
+  });
+
+  it("uses only standard script/type filters over a persisted cohort window before client-side ray intersection", async () => {
+    const telemetry = snapshotTelemetry();
+    const unrelated = structuredClone(observation("do.handler", "JOURNAL"));
+    unrelated.$metadata.rayId = "0000000000000999-SJC";
+    unrelated.source.correlationId = "unrelated-correlation";
+    const calls: Array<Record<string, unknown>> = [];
+    const result = await exportCohortWindowTelemetry({
+      accountId: "g52-export-account",
+      token: "test-only-token",
+      template: {
+        view: "events",
+        limit: 2000,
+        parameters: {
+          filterCombination: "or",
+          filters: [
+            { key: "$workers.scriptName", operation: "eq", type: "string", value: "primary" },
+            { key: "$workers.scriptName", operation: "eq", type: "string", value: "receiver" },
+          ],
+        },
+      },
+      ledger: [{ requestId: REQUEST_ID }],
+      fromMs: START,
+      toMs: END,
+      requestTelemetry: async ({ payload }) => {
+        calls.push(payload);
+        const serialized = JSON.stringify(payload.parameters);
+        return serialized.includes("sdt.commit-snapshot/v1")
+          ? { events: [telemetry.events[0]] }
+          : { events: [...telemetry.events.slice(1), unrelated] };
+      },
+    });
+
+    expect(calls).toHaveLength(2);
+    for (const payload of calls) {
+      expect(payload.timeframe).toEqual({ from: START, to: END });
+      expect(JSON.stringify(payload.parameters)).not.toContain("$metadata.rayId");
+    }
+    expect(result.resumeQuery).toMatchObject({
+      shape: "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+      window: { from: START, to: END },
+      exactRayCount: 1,
+      retainedSnapshotLogRootCount: 1,
+      retainedDoHandlerObservationCount: 2,
+    });
+    expect(result.events).toHaveLength(4);
+    expect(result.cohortDoHandlerObservations).toHaveLength(2);
+    expect(normalizeTelemetryBundle(result, END + 10, new Map([["0000000000000052", REQUEST_ID]])).traces)
+      .toMatchObject([{ requestId: REQUEST_ID, rootSource: "snapshot-log", complete: true }]);
   });
 
   it("reconstructs the same per-hop rows from a retained snapshot log as from native spans", () => {

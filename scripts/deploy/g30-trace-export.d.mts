@@ -145,6 +145,29 @@ export function querySnapshotLogsInFixedWindow(input: Readonly<{
   window: Readonly<{ from: number; to: number }>;
   receipts: readonly RetainedSnapshotLogReceipt[];
 }>>;
+export interface G52WindowedCohortTelemetry {
+  events: unknown[];
+  resumeQuery: Readonly<{
+    shape: "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection";
+    window: Readonly<{ from: number; to: number }>;
+    exactRayCount: number;
+    snapshotWindowEventCount: number;
+    observationWindowEventCount: number;
+    retainedSnapshotLogRootCount: number;
+    retainedObservationEventCount: number;
+    retainedDoHandlerObservationCount: number;
+  }>;
+  cohortDoHandlerObservations: readonly Record<string, unknown>[];
+}
+export function exportCohortWindowTelemetry(input: Readonly<{
+  accountId: string;
+  token: string;
+  template: Record<string, unknown>;
+  ledger: readonly Record<string, unknown>[];
+  fromMs: number;
+  toMs: number;
+  requestTelemetry?: (input: { accountId: string; token: string; payload: Record<string, unknown> }) => Promise<unknown> | unknown;
+}>): Promise<G52WindowedCohortTelemetry>;
 export function exportCohortTelemetry(input: Readonly<{
   accountId: string;
   token: string;

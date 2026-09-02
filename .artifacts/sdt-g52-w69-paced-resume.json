@@ -747,13 +747,19 @@
     "lifecycle": "resume-query-error",
     "threshold": 40,
     "deadlineAtMs": 1788430740000,
-    "nextQueryAtMs": 1788350261115,
+    "nextQueryAtMs": 1788350110936,
     "queries": [
       {
         "attempt": 1,
         "queriedAtMs": 1788346661115,
         "queryScope": "exact-persisted-cf-rays",
         "errorClass": "telemetry-query-failed"
+      },
+      {
+        "attempt": 2,
+        "queriedAtMs": 1788349210936,
+        "queryScope": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+        "errorClass": "resume-query-failed"
       }
     ],
     "firstSeenAtMsByRequestId": {},

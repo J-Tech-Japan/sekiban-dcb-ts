@@ -19,7 +19,7 @@ import {
 } from "./g50-commit-latency.mjs";
 import {
   clientRequestIdByPlatformRayId,
-  exportCohortTelemetry,
+  exportCohortWindowTelemetry,
   normalizeTelemetryBundle,
   querySnapshotLogsInFixedWindow,
 } from "./g30-trace-export.mjs";
@@ -35,6 +35,7 @@ export const RESUME_INTERVAL_MS = 15 * 60 * 1_000;
 export const PACED_SAMPLE_INTERVAL_MS = 10 * 1_000;
 export const PACED_FALLBACK_DELAY_MS = 2 * 60 * 60 * 1_000;
 export const SNAPSHOT_PER_HOP_ROWS = Object.freeze(ACTIVE_PER_HOP_ROWS.filter((rowId) => rowId !== "S09" && rowId !== "S16"));
+export const WINDOWED_RESUME_QUERY_SCOPE = "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection";
 export const W68_FIXED_WINDOW = Object.freeze({
   from: Date.parse("2026-09-02T07:55:00.000Z"),
   to: Date.parse("2026-09-02T08:35:00.000Z"),
@@ -350,9 +351,10 @@ function queryWindowForLedger(ledger, nowMs) {
   return Object.freeze({ from: Math.max(0, from), to });
 }
 
-function latestFromBundle(state, bundle, queriedAtMs) {
+function latestFromBundle(state, bundle, queriedAtMs, resumeQuery, cohortDoHandlerObservations) {
   const { all, sampleRequestIds } = expectedPacedState(state);
   const requestById = new Map(all.map((entry) => [entry.requestId, entry]));
+  const cohortRequestIds = new Set(all.map((entry) => entry.requestId));
   const sampleTraces = (bundle?.traces ?? []).filter((trace) => sampleRequestIds.has(trace?.requestId));
   const sampleSnapshotRoots = sampleTraces.filter((trace) => trace?.rootSource === "snapshot-log" && trace?.snapshotLogTruncated === false);
   const schemaComplete = sampleTraces.filter(isSchemaCompleteSnapshot);
@@ -375,10 +377,15 @@ function latestFromBundle(state, bundle, queriedAtMs) {
   }));
   const perHop = perHopMedians(schemaComplete);
   const observations = (bundle?.observations ?? []).filter((observation) => sampleRequestIds.has(observation?.requestId));
+  const wholeCohortDoHandlers = Array.isArray(cohortDoHandlerObservations)
+    ? cohortDoHandlerObservations
+    : observations;
   const allRoots = (bundle?.traces ?? []).filter((trace) => trace?.rootSource === "snapshot-log" && trace?.snapshotLogTruncated === false);
   return Object.freeze({
     queriedAtMs,
-    queryWindow: queryWindowForLedger(all, queriedAtMs),
+    queryWindow: resumeQuery?.window ?? queryWindowForLedger(all, queriedAtMs),
+    queryShape: resumeQuery?.shape ?? WINDOWED_RESUME_QUERY_SCOPE,
+    telemetryQuery: resumeQuery ?? null,
     retainedInvocationRoots: allRoots.length,
     retainedSampleRoots: sampleSnapshotRoots.length,
     schemaCompleteSampleRoots: schemaComplete.length,
@@ -387,7 +394,15 @@ function latestFromBundle(state, bundle, queriedAtMs) {
     client: clientSummary(state.ledger),
     callerColoDistribution: callerColoDistribution(state.ledger),
     perHopDescriptiveMedians: perHop,
-    doObservationMedians: doObservationMedians(observations, sampleRequestIds),
+    doObservationSource: Array.isArray(cohortDoHandlerObservations)
+      ? "sdt.observe/v1 do.handler from persisted cohort window with client-side exact-CF-Ray intersection"
+      : "joined trace observations",
+    doObservationCohortRequestCount: new Set(wholeCohortDoHandlers
+      .filter((observation) => cohortRequestIds.has(observation?.requestId))
+      .map((observation) => observation.requestId)).size,
+    cohortDoHandlerObservations: Object.freeze(wholeCohortDoHandlers
+      .filter((observation) => cohortRequestIds.has(observation?.requestId))),
+    doObservationMedians: doObservationMedians(wholeCohortDoHandlers, cohortRequestIds),
     residualRanking: residualRanking(perHop),
     traces: Object.freeze(schemaComplete),
     observations: Object.freeze(observations),
@@ -410,25 +425,31 @@ export async function resumeExactRayQuery({
   token,
   template,
   now = Date.now,
-  queryCohort = exportCohortTelemetry,
+  queryCohort = exportCohortWindowTelemetry,
   normalizeBundle = normalizeTelemetryBundle,
 }) {
   if (typeof queryCohort !== "function" || typeof normalizeBundle !== "function") fail("resume query dependencies must be functions");
   const state = mutableCopy(originalState);
   const { all } = expectedPacedState(state);
   const queriedAtMs = finiteTimestamp("now", now());
+  const window = state?.cohortWindow;
+  if (!Number.isFinite(window?.from) || !Number.isFinite(window?.to) || window.to <= window.from) {
+    fail("paced state has no valid persisted cohort window");
+  }
   const raw = await queryCohort({
     accountId: required("accountId", accountId),
     token: required("observability token", token),
     template: structuredClone(template),
     ledger: all,
+    fromMs: window.from,
+    toMs: window.to,
   });
   const bundle = normalizeBundle(raw, queriedAtMs, clientRequestIdByPlatformRayId(all));
-  const latest = latestFromBundle(state, bundle, queriedAtMs);
+  const latest = latestFromBundle(state, bundle, queriedAtMs, raw?.resumeQuery, raw?.cohortDoHandlerObservations);
   const queryAttempt = Object.freeze({
     attempt: state.resume.queries.length + 1,
     queriedAtMs,
-    queryScope: "exact-persisted-cf-rays",
+    queryScope: latest.queryShape,
     expectedSampleRequests: SAMPLE_COUNT,
     retainedSampleRoots: latest.retainedSampleRoots,
     schemaCompleteSampleRoots: latest.schemaCompleteSampleRoots,
@@ -631,7 +652,7 @@ async function main() {
       state.resume.queries.push(Object.freeze({
         attempt: state.resume.queries.length + 1,
         queriedAtMs: Date.now(),
-        queryScope: "exact-persisted-cf-rays",
+        queryScope: WINDOWED_RESUME_QUERY_SCOPE,
         errorClass: publicFailureClass(error),
       }));
       state.resume.lifecycle = "resume-query-error";
