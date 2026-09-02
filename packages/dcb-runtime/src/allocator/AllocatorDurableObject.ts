@@ -175,16 +175,28 @@ export class AllocatorDurableObject implements DurableObject {
     const observation = beginDurableObjectHandlerObservation("ALLOCATOR", activation);
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/allocate") {
+      // The native actor wrapper needs the same request identity as the
+      // allocation handler. Decode it once: teeing a DO request for tracing
+      // and then reading the original leaves a second stream alive past the
+      // response boundary under concurrent workerd test isolates.
+      let body: unknown | undefined;
       return enterNativeActorHandleSpan(
         this.nativeTracing,
         { actorClass: "ALLOCATOR", actorKey: "allocator", activation, observation },
         async () => {
-          const parsed = allocateFrom(await request.clone().json<unknown>());
+          try {
+            body = await request.json<unknown>();
+          } catch {
+            return undefined;
+          }
+          const parsed = allocateFrom(body);
           return parsed.value?.serviceId === undefined
             ? undefined
             : { attemptId: parsed.value.attemptId, serviceId: parsed.value.serviceId };
         },
-        () => this.allocate(request, activation, observation),
+        () => body === undefined
+          ? error(400, "invalid_allocation", "Request body must be JSON")
+          : this.allocate(body, activation, observation),
       );
     }
     if (request.method === "GET" && url.pathname === "/state") {
@@ -233,16 +245,10 @@ export class AllocatorDurableObject implements DurableObject {
   }
 
   private async allocate(
-    request: Request,
+    body: unknown,
     activation: DurableObjectActivationObservation,
     observation?: DurableObjectHandlerObservation,
   ): Promise<Response> {
-    let body: unknown;
-    try {
-      body = await request.json<unknown>();
-    } catch {
-      return error(400, "invalid_allocation", "Request body must be JSON");
-    }
     const parsed = allocateFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_allocation", parsed.error ?? "Invalid allocation request");

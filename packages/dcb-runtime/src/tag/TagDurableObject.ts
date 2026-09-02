@@ -1531,22 +1531,23 @@ export class TagDurableObject implements DurableObject {
     observation: DurableObjectHandlerObservation,
     callback: (body: unknown) => Promise<Response>,
   ): Promise<Response> {
+    // S16 identity and the mutation use one parsed body. Reading a clone for
+    // attribution and the original for behavior creates a second DO request
+    // stream that can race response teardown in a parallel workerd pool.
+    let body: unknown | undefined;
     return enterNativeActorHandleSpan(
       this.nativeTracing,
       { actorClass: "TAG", actorKey: `tag:${serviceId}:${tag}`, activation, observation },
       async () => {
-        const body = await this.jsonBody(request.clone());
+        body = await this.jsonBody(request);
         const attemptId = isObject(body) && isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
         return attemptId === undefined || !isNonEmptyString(serviceId)
           ? undefined
           : { attemptId, serviceId };
       },
-      async () => {
-        const body = await this.jsonBody(request);
-        return body === undefined
-          ? error(400, "malformed_tag_request", "Request body must be JSON")
-          : callback(body);
-      },
+      async () => body === undefined
+        ? error(400, "malformed_tag_request", "Request body must be JSON")
+        : callback(body),
     );
   }
 
