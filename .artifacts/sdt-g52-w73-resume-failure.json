@@ -1,0 +1,49 @@
+{
+  "schema": "sdt-g52-w73-resume-failure/v1",
+  "task": "SDT-G52-CORRELATION-PREFIX-INTERIM-W73",
+  "statePath": ".artifacts/sdt-g52-w69-paced-resume.json",
+  "cohort": {
+    "kind": "paced",
+    "deployedVersion": "38921aad-9faf-4ac5-bdfd-1348d7214422",
+    "sourceCommit": "6db728122fefc410e7d9639d62302bb107df13be",
+    "acceptedWarmupAndSamples": 51,
+    "acceptedMeasuredSamples": 50,
+    "exactRayCount": 51,
+    "window": {
+      "fromMs": 1788344833077,
+      "toMs": 1788345393731
+    }
+  },
+  "resume": {
+    "attempt": 3,
+    "queriedAtMs": 1788352989513,
+    "queryScope": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+    "applicationRequestsSent": 0,
+    "deploymentsPerformed": 0,
+    "result": "blocked",
+    "stderr": "g30-trace-export:snapshot-log:snapshot S00 correlation.id must be a non-empty string",
+    "stateErrorClass": "resume-query-failed",
+    "noRetry": true
+  },
+  "localRepair": {
+    "platformRequestId": "primary client-ledger join key",
+    "retainedCorrelationId": "accepted only if equal to the full S00 correlation.id or a prefix of at least 32 characters",
+    "rowAttributeRepresentation": "flat, nested, or serialized retained row object normalized before the frozen manifest allow-list",
+    "liveValidation": "not claimed; the representation adapter was added after the one permitted W73 resume"
+  },
+  "clientS00": {
+    "source": "W71 immutable client ledger",
+    "n": 50,
+    "nearestRankP50Ms": 1308,
+    "nearestRankP95Ms": 2113,
+    "coloDistribution": {
+      "LAX": 50
+    }
+  },
+  "r3": {
+    "burstSnapshotRoots": "2/51",
+    "pacedSnapshotRoots": "1/51",
+    "waitUntilFreePublicGetRoots": "0/10",
+    "finding": "Public Worker fetch invocations for this script are not retained regardless of waitUntil while scanner invocations are retained."
+  }
+}

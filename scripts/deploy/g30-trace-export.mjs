@@ -294,7 +294,12 @@ function normalizedSnapshotLog(payload, event) {
   }
   if (payload.snapshotSchema !== "sdt.commit/v1") fail("snapshot-log", "snapshot log must retain sdt.commit/v1 rows");
   if (cloudflareLogWasTruncated(event)) fail("snapshot-log", "snapshot log has $cloudflare.truncated: true");
-  const correlationId = snapshotString(payload.correlationId, "snapshot correlationId");
+  // Workers Logs can retain a bounded top-level field while the immutable S00
+  // row retains the full post-admission correlation.  The row is therefore
+  // the canonical correlation used for trace/observation joins; a retained
+  // top-level prefix is accepted only under the explicit bounded-prefix
+  // contract below.
+  const retainedCorrelationId = snapshotString(payload.correlationId, "snapshot correlationId");
   const serviceId = snapshotString(payload.serviceId, "snapshot serviceId");
   const platformRequestId = snapshotString(payload.platformRequestId, "snapshot platformRequestId");
   const rootId = snapshotString(payload.rootId, "snapshot rootId");
@@ -321,7 +326,12 @@ function normalizedSnapshotLog(payload, event) {
     if (typeof row.face !== "string" || typeof row.clockDomain !== "string" || typeof row.zeroDurationPlatformLimited !== "boolean") {
       fail("snapshot-log", `snapshot ${rowId} omits face, clockDomain, or zero-duration evidence`);
     }
-    const attributes = normalizableAttributes(object(row.attributes) ?? {});
+    // Structured Workers Logs can return dotted snapshot attributes as nested
+    // object paths (or a serialized object) even though the sink emitted a
+    // flat record. Flatten only that retained row payload before applying the
+    // frozen manifest allow-list; this is a representation adapter, not a
+    // reconstructed identity.
+    const attributes = normalizableAttributes(flattenAttributes(parseObject(row.attributes) ?? {}));
     return {
       rowId,
       schema: "sdt.commit/v1",
@@ -345,7 +355,10 @@ function normalizedSnapshotLog(payload, event) {
   if (root.startMs !== rootStartedAtMs || root.endMs !== rootEndedAtMs || root.logicalParent !== null) {
     fail("snapshot-log", "snapshot S00 does not agree with the retained root bounds");
   }
-  if (root.attributes["correlation.id"] !== correlationId || root.attributes["service.id"] !== serviceId) {
+  const correlationId = snapshotString(root.attributes["correlation.id"], "snapshot S00 correlation.id");
+  const retainedCorrelationMatchesRoot = retainedCorrelationId === correlationId
+    || (retainedCorrelationId.length >= 32 && correlationId.startsWith(retainedCorrelationId));
+  if (!retainedCorrelationMatchesRoot || root.attributes["service.id"] !== serviceId) {
     fail("snapshot-log", "snapshot S00 does not agree with its top-level identity");
   }
   const retainedRows = new Set(spans.map((span) => span.rowId));
@@ -360,6 +373,7 @@ function normalizedSnapshotLog(payload, event) {
   const metadataTraceId = metadataField(metadataFor(event), event, ["traceId", "trace_id"]);
   return Object.freeze({
     correlationId,
+    retainedCorrelationId,
     serviceId,
     platformRequestId,
     traceId: typeof metadataTraceId === "string" && metadataTraceId.length > 0 ? metadataTraceId : `snapshot:${correlationId}`,
@@ -845,6 +859,32 @@ function cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId) {
 }
 
 /**
+ * A retained CommitTrace snapshot belongs to a client cohort by its explicit
+ * platformRequestId.  Provider metadata is an integrity cross-check only;
+ * it must never become a competing primary key for the snapshot log.
+ */
+function snapshotCohortRequestId(event, payload, clientRequestIdsByRayId) {
+  const platformRequestId = payload?.platformRequestId;
+  if (typeof platformRequestId !== "string" || platformRequestId.length === 0) return undefined;
+  let platformRayId;
+  try {
+    platformRayId = cloudflareRayId(platformRequestId, "snapshot platformRequestId");
+  } catch {
+    // This window legitimately contains unrelated records. An invalid or
+    // out-of-cohort snapshot identity is not coerced into cohort evidence.
+    return undefined;
+  }
+  const requestId = clientRequestIdsByRayId.get(platformRayId);
+  if (requestId === undefined) return undefined;
+  const providerRay = metadataField(metadataFor(event), event, ["rayId", "ray_id"]);
+  if (providerRay !== undefined
+      && cloudflareRayId(providerRay, "snapshot provider ray") !== platformRayId) {
+    fail("snapshot-log", "snapshot platformRequestId conflicts with the provider ray");
+  }
+  return requestId;
+}
+
+/**
  * The paced W71 ledger is the identity authority, but the direct `in`-filter
  * chain can be rejected by the provider before it returns a result.  This
  * alternate read uses only the normal script/type filters over the immutable
@@ -876,14 +916,19 @@ export async function exportCohortWindowTelemetry({
 
   const retainedSnapshotEvents = [];
   const retainedCorrelations = new Set();
+  const retainedRequestIdByCorrelation = new Map();
   for (const event of rawEvents(snapshotRaw)) {
     const payload = snapshotPayload(event);
     if (payload === undefined) continue;
-    const requestId = cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId);
+    const requestId = snapshotCohortRequestId(event, payload, clientRequestIdsByRayId);
     if (requestId === undefined) continue;
-    const correlationId = observationCorrelation(payload);
-    if (correlationId === undefined) fail("snapshot-log", "windowed snapshot has no correlationId");
-    retainedCorrelations.add(correlationId);
+    const snapshot = normalizedSnapshotLog(payload, event);
+    const existingRequestId = retainedRequestIdByCorrelation.get(snapshot.correlationId);
+    if (existingRequestId !== undefined && existingRequestId !== requestId) {
+      fail("snapshot-log", `snapshot correlation ${snapshot.correlationId} maps to more than one client request`);
+    }
+    retainedCorrelations.add(snapshot.correlationId);
+    retainedRequestIdByCorrelation.set(snapshot.correlationId, requestId);
     retainedSnapshotEvents.push(event);
   }
 
@@ -892,9 +937,14 @@ export async function exportCohortWindowTelemetry({
   for (const event of rawEvents(observationRaw)) {
     const payload = observationPayload(event);
     if (payload === undefined) continue;
-    const requestId = cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId);
+    const directRequestId = cohortRequestIdForEvent(event, payload, clientRequestIdsByRayId);
     const correlationId = observationCorrelation(payload);
-    if (requestId === undefined && (correlationId === undefined || !retainedCorrelations.has(correlationId))) continue;
+    const snapshotRequestId = correlationId === undefined ? undefined : retainedRequestIdByCorrelation.get(correlationId);
+    if (directRequestId !== undefined && snapshotRequestId !== undefined && directRequestId !== snapshotRequestId) {
+      fail("snapshot-observation", `observation correlation ${correlationId} conflicts with its snapshot platformRequestId join`);
+    }
+    const requestId = snapshotRequestId ?? directRequestId;
+    if (requestId === undefined || (correlationId !== undefined && !retainedCorrelations.has(correlationId) && directRequestId === undefined)) continue;
     retainedObservationEvents.push(event);
     if (payload.event !== "do.handler" || requestId === undefined) continue;
     cohortDoHandlerObservations.push(Object.freeze({

@@ -147,6 +147,30 @@ function snapshotTelemetry(omitRowId?: string | readonly string[]) {
   };
 }
 
+function applyPermittedRetainedCorrelationPrefix(telemetry: ReturnType<typeof snapshotTelemetry>) {
+  const fullCorrelation = "0123456789abcdef0123456789abcdef-full-s00-correlation";
+  const retainedPrefix = fullCorrelation.slice(0, 32);
+  const snapshot = telemetry.events[0]!.source as {
+    correlationId: string;
+    rows: Array<{ "sdt.row.id": string; attributes: Record<string, string | number | boolean> }>;
+  };
+  snapshot.correlationId = retainedPrefix;
+  for (const row of snapshot.rows) row.attributes["correlation.id"] = fullCorrelation;
+  const root = snapshot.rows.find((row) => row["sdt.row.id"] === "S00")!;
+  const rootAttributes = root.attributes as Record<string, unknown>;
+  const rootCorrelation = rootAttributes["correlation.id"];
+  const rootService = rootAttributes["service.id"];
+  delete rootAttributes["correlation.id"];
+  delete rootAttributes["service.id"];
+  rootAttributes.correlation = { id: rootCorrelation };
+  rootAttributes.service = { id: rootService };
+  for (const event of telemetry.events.slice(1)) event.source.correlationId = fullCorrelation;
+  // A retained snapshot can join the client ledger through its explicit
+  // platformRequestId even when the provider envelope does not repeat a ray.
+  delete (telemetry.events[0]!.$metadata as { rayId?: string }).rayId;
+  return { fullCorrelation, retainedPrefix };
+}
+
 function selectedRows(bundle: ReturnType<typeof normalizeTelemetryBundle>) {
   return bundle.traces[0]!.spans.map((span) => ({ rowId: span.rowId, startMs: span.startMs, endMs: span.endMs }));
 }
@@ -180,6 +204,7 @@ describe("SDT-G52 log-root telemetry export", () => {
 
   it("uses only standard script/type filters over a persisted cohort window before client-side ray intersection", async () => {
     const telemetry = snapshotTelemetry();
+    applyPermittedRetainedCorrelationPrefix(telemetry);
     const unrelated = structuredClone(observation("do.handler", "JOURNAL"));
     unrelated.$metadata.rayId = "0000000000000999-SJC";
     unrelated.source.correlationId = "unrelated-correlation";
@@ -239,6 +264,29 @@ describe("SDT-G52 log-root telemetry export", () => {
     expect(snapshot.traces[0]).toMatchObject({ rootSource: "snapshot-log", snapshotLogTruncated: false, complete: true, runtimeVerified: true });
     expect(selectedRows(snapshot)).toEqual(selectedRows(native));
     expect(snapshot.observations.filter((entry) => entry.event === "do.handler")).toHaveLength(2);
+  });
+
+  it("uses platformRequestId as the client join while accepting a permitted retained correlation prefix", () => {
+    const telemetry = snapshotTelemetry();
+    const { fullCorrelation, retainedPrefix } = applyPermittedRetainedCorrelationPrefix(telemetry);
+    const bundle = normalizeTelemetryBundle(telemetry, END + 10, new Map([["0000000000000052", REQUEST_ID]]));
+
+    expect(retainedPrefix).toHaveLength(32);
+    expect(bundle.traces).toMatchObject([{ requestId: REQUEST_ID, rootSource: "snapshot-log", complete: true }]);
+    const root = bundle.traces[0]?.spans.find((span) => span.rowId === "S00");
+    expect((root?.attributes as Record<string, unknown> | undefined)?.["correlation.id"])
+      .toBe(fullCorrelation);
+    expect(bundle.observations).toHaveLength(3);
+  });
+
+  it("fails closed for a short or nonmatching retained correlation prefix", () => {
+    for (const invalidTopLevelCorrelationId of ["0123456789abcdef0123456789abcde", "fedcba9876543210fedcba9876543210"]) {
+      const telemetry = snapshotTelemetry();
+      applyPermittedRetainedCorrelationPrefix(telemetry);
+      telemetry.events[0]!.source.correlationId = invalidTopLevelCorrelationId;
+
+      expect(() => normalizeTelemetryBundle(telemetry, END + 10)).toThrow(/top-level identity/);
+    }
   });
 
   it("keeps the native-root path authoritative when both root sources are retained", () => {
