@@ -1,0 +1,41 @@
+{
+  "schema": "sdt-g52-paced-first-resume/v1",
+  "task": "SDT-G52",
+  "continuation": "SDT-G52-PACED-COHORT-W71",
+  "statePath": ".artifacts/sdt-g52-w69-paced-resume.json",
+  "deployed": {
+    "versionId": "38921aad-9faf-4ac5-bdfd-1348d7214422",
+    "sourceCommit": "6db728122fefc410e7d9639d62302bb107df13be"
+  },
+  "cohort": {
+    "runId": "g52-w71-paced-20260902-01",
+    "discardedWarmup": {
+      "accepted": true,
+      "requestId": "a34bd227bab8d829-LAX"
+    },
+    "acceptedSampleRequests": 50,
+    "exactRayCount": 51,
+    "minimumCompletedToNextStartedMs": 10001
+  },
+  "initialQueryWithinStartPaced": {
+    "result": "error",
+    "stderr": "g30-trace-export:api:Cloudflare telemetry query failed: HTTP 400",
+    "note": "The start-paced command had already atomically persisted all 51 accepted CF-Ray values before this read-only query failed."
+  },
+  "explicitResume": {
+    "mode": "resume",
+    "attempt": 1,
+    "queriedAtMs": 1788346661115,
+    "queryScope": "exact-persisted-cf-rays",
+    "result": "error",
+    "errorClass": "telemetry-query-failed",
+    "stderr": "g30-trace-export:api:Cloudflare telemetry query failed: HTTP 400"
+  },
+  "measurementResult": {
+    "retainedRootsOf51": null,
+    "schemaCompleteRootsOf50": null,
+    "firstSeenAtMsByRequestId": {},
+    "firstSeenLagPerRay": "unavailable for every one of the 51 exact persisted CF-Ray values: neither allowed query returned a telemetry result set. This is not a zero-retention inference."
+  },
+  "authoritativeW71BoundAtMs": 1788430740000
+}
