@@ -20,6 +20,7 @@ import { TagStateDurableObject, configureTagStateProjectorRegistry } from "./tag
 import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
 import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
 import { nativeTracingFromContext } from "./trace/CommitTrace";
+import { createCommitTraceConsoleSink } from "./trace/CommitTraceConsoleSink";
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
@@ -64,6 +65,16 @@ export {
   stableTraceHash,
   traceManifest,
 } from "./trace/CommitTrace";
+export {
+  COMMIT_SNAPSHOT_LOG_BYTE_BUDGET,
+  COMMIT_SNAPSHOT_LOG_EVENT,
+  COMMIT_SNAPSHOT_LOG_SCHEMA,
+  assertCommitSnapshotLogSize,
+  commitSnapshotLogRecord,
+  createCommitTraceConsoleSink,
+  encodedCommitSnapshotLogBytes,
+} from "./trace/CommitTraceConsoleSink";
+export type { CommitSnapshotLogRecord, CommitSnapshotLogRow, CommitTraceConsoleSinkOptions } from "./trace/CommitTraceConsoleSink";
 export type {
   CommitTraceActorClass,
   CommitTraceClock,
@@ -286,6 +297,9 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           domainDeliveryClass: options.config?.deliveryClass,
           registeredEventParsers: registeredEventParsers(options.domain),
           nativeTracing: nativeTracingFromContext(ctx),
+          commitTraceSink: createCommitTraceConsoleSink({
+            platformRequestId: request.headers.get("cf-ray") ?? undefined,
+          }),
         });
       }
       if (

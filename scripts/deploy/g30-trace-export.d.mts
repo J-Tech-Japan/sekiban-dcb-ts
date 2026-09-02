@@ -81,6 +81,10 @@ export interface G30TraceExportFailureEvidence {
 }
 
 export function verifyExportedSuccessTrace(trace: unknown): Readonly<{ rows: number; complete: true }>;
+/** Rows owned by a Durable Object and therefore excluded from a Worker-local snapshot root when applicable. */
+export const SNAPSHOT_LOG_DO_OWNED_ROWS: readonly string[];
+/** Worker-owned success rows required in each retained Worker snapshot root. */
+export const SNAPSHOT_LOG_REQUIRED_ROWS: readonly string[];
 export function normalizeTelemetryExport(raw: unknown, exportedAtMs?: number): readonly G30NormalizedTrace[];
 export function normalizeTelemetryBundle(raw: unknown, exportedAtMs?: number, clientRequestIdsByRayId?: ReadonlyMap<string, string>): Readonly<{
   traces: readonly G30NormalizedTrace[];
@@ -124,6 +128,50 @@ export function queryTelemetry(input: Readonly<{
   token: string;
   payload: Record<string, unknown>;
 }>): Promise<unknown>;
+export interface RetainedSnapshotLogReceipt {
+  requestId: string;
+  platformRayId: string;
+  correlationId: string;
+  rootId: string;
+  rootStartedAtMs: number;
+  rootEndedAtMs: number;
+  logTruncated: boolean;
+}
+export function retainedSnapshotLogReceipts(raw: unknown): readonly RetainedSnapshotLogReceipt[];
+export function querySnapshotLogsInFixedWindow(input: Readonly<{
+  accountId: string;
+  token: string;
+  template: Record<string, unknown>;
+  fromMs: number;
+  toMs: number;
+  requestTelemetry?: (input: { accountId: string; token: string; payload: Record<string, unknown> }) => Promise<unknown> | unknown;
+}>): Promise<Readonly<{
+  window: Readonly<{ from: number; to: number }>;
+  receipts: readonly RetainedSnapshotLogReceipt[];
+}>>;
+export interface G52WindowedCohortTelemetry {
+  events: unknown[];
+  resumeQuery: Readonly<{
+    shape: "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection";
+    window: Readonly<{ from: number; to: number }>;
+    exactRayCount: number;
+    snapshotWindowEventCount: number;
+    observationWindowEventCount: number;
+    retainedSnapshotLogRootCount: number;
+    retainedObservationEventCount: number;
+    retainedDoHandlerObservationCount: number;
+  }>;
+  cohortDoHandlerObservations: readonly Record<string, unknown>[];
+}
+export function exportCohortWindowTelemetry(input: Readonly<{
+  accountId: string;
+  token: string;
+  template: Record<string, unknown>;
+  ledger: readonly Record<string, unknown>[];
+  fromMs: number;
+  toMs: number;
+  requestTelemetry?: (input: { accountId: string; token: string; payload: Record<string, unknown> }) => Promise<unknown> | unknown;
+}>): Promise<G52WindowedCohortTelemetry>;
 export function exportCohortTelemetry(input: Readonly<{
   accountId: string;
   token: string;

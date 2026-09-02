@@ -51,6 +51,8 @@ jobs:
         run: |
           node scripts/deploy/g50-commit-latency-guards.mjs
           node scripts/deploy/g50-commit-latency-check.mjs --sample .artifacts/sdt-g50-w57-commit-latency.json --self-test
+      - name: Run SDT-G52 retained-snapshot sink and log-root exporter guards
+        run: npm run test:g52
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:g17

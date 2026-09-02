@@ -109,6 +109,7 @@
     "test:g30:candidate": "node scripts/g30-candidate-check.mjs --self-test && node scripts/g30-candidate-check.mjs",
     "test:g30:candidate:forced-red": "npm run test:g30:candidate",
     "test:g51": "vitest run --config vitest.config.ts test/g30-trace.spec.ts test/g51-app-surface-ray-relay.spec.ts --testNamePattern 'G51 guard: enters every mapped Worker S-row|emits manifest-attributed native spans at allocator and callee callback boundaries|SDT-G51 app-surface trace identity relay' && node scripts/g51-journal-native-regression-check.mjs --self-test && node scripts/g51-journal-native-regression-check.mjs --ref c2dd342 && node scripts/g51-journal-native-regression-check.mjs --ref origin/main --expect-absent && node scripts/g51-journal-native-regression-check.mjs --bisect && node scripts/g51-native-span-mutation-runner.mjs && node scripts/deploy/g51-ingestion-poll-guards.mjs && node scripts/deploy/g51-probe-ladder-guards.mjs && node scripts/deploy/g37-sample-guards.mjs && node scripts/deploy/g50-commit-latency-guards.mjs",
+    "test:g52": "npm run typecheck && vitest run --config vitest.config.ts test/g52-commit-snapshot.spec.ts test/g52-trace-export.spec.ts test/g52-commit-breakdown.spec.ts test/g52-resume-query.spec.ts && node scripts/g52-commit-snapshot-guard.mjs --self-test && node scripts/g52-commit-snapshot-guard.mjs",
     "deploy:g30:b0": "bash scripts/deploy/g30-b0-deploy.sh",
   "test:g32:candidate:forced-red": "npm run test:g32:candidate",
   "deploy:g32:forward": "bash scripts/deploy/g32-forward-redeploy.sh",

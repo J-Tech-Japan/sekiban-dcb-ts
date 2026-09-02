@@ -65,6 +65,16 @@ function boundedPositiveInteger(name, value, maximum) {
   return parsed;
 }
 
+function nonNegativeInteger(name, value) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) fail(`${name} must be a non-negative integer`);
+  return parsed;
+}
+
+function sleepForInterval(milliseconds) {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds));
+}
+
 function safeRunId(value) {
   if (!/^[A-Za-z0-9-]{8,64}$/.test(value)) fail("--run-id must be 8..64 URL-safe characters");
   return value;
@@ -72,6 +82,11 @@ function safeRunId(value) {
 
 function sourceCommit(value) {
   if (!/^[0-9a-f]{40}$/.test(value)) fail("--source-commit must be a 40-character lowercase SHA");
+  return value;
+}
+
+function measurementTask(value) {
+  if (typeof value !== "string" || !/^SDT-G\d+$/.test(value)) fail("task must be an SDT-G task identifier");
   return value;
 }
 
@@ -121,12 +136,13 @@ function committedEvent(result, roomId) {
   return event.sortableUniqueIdValue;
 }
 
-async function createRoomCommit({ fetchImpl, baseUrl, runId, ordinal, phase }) {
-  const roomId = `sdt-g50-${runId.slice(0, 24)}-${String(ordinal).padStart(3, "0")}`;
+async function createRoomCommit({ fetchImpl, baseUrl, runId, ordinal, phase, task = TASK }) {
+  const taskName = measurementTask(task);
+  const roomId = `${taskName.toLowerCase()}-${runId.slice(0, 24)}-${String(ordinal).padStart(3, "0")}`;
   const result = await request(fetchImpl, baseUrl, "/api/commands/create-room", {
     method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json", "user-agent": "SDT-G50-commit-latency/1.0" },
-    body: JSON.stringify({ roomId, name: `SDT-G50 ${phase} ${ordinal}` }),
+    headers: { "content-type": "application/json", accept: "application/json", "user-agent": `${taskName}-commit-latency/1.0` },
+    body: JSON.stringify({ roomId, name: `${taskName} ${phase} ${ordinal}` }),
   });
   const suid = committedEvent(result, roomId);
   const identity = responseIdentity(result.response);
@@ -189,17 +205,27 @@ export async function captureG50AppCommitLatency({
   ingestionTimeoutMs = DEFAULT_INGESTION_TIMEOUT_MS,
   ingestionPollIntervalMs,
   runId = randomUUID().replaceAll("-", ""),
+  task = TASK,
   queryTemplate,
   fetchImpl = globalThis.fetch,
   captureTelemetry = defaultCaptureTelemetry,
+  sampleIntervalMs = 0,
+  sleepFor = sleepForInterval,
+  onWarmupAccepted,
+  onSampleAccepted,
 }) {
   const acceptedSampleCount = positiveInteger("sampleCount", String(sampleCount));
   const measurementRunId = safeRunId(runId);
   const targetServiceId = required("serviceId", serviceId);
   const targetVersionId = required("versionId", versionId);
   const targetSourceCommit = sourceCommit(required("sourceCommit", deployedSourceCommit));
+  const measurementTaskName = measurementTask(task);
+  const intervalMs = nonNegativeInteger("sampleIntervalMs", sampleIntervalMs);
   if (typeof fetchImpl !== "function") fail("fetchImpl must be a function");
   if (typeof captureTelemetry !== "function") fail("captureTelemetry must be a function");
+  if (typeof sleepFor !== "function") fail("sleepFor must be a function");
+  if (onWarmupAccepted !== undefined && typeof onWarmupAccepted !== "function") fail("onWarmupAccepted must be a function when supplied");
+  if (onSampleAccepted !== undefined && typeof onSampleAccepted !== "function") fail("onSampleAccepted must be a function when supplied");
 
   const warmup = await createRoomCommit({
     fetchImpl,
@@ -207,16 +233,30 @@ export async function captureG50AppCommitLatency({
     runId: measurementRunId,
     ordinal: 0,
     phase: "discarded-warmup",
+    task: measurementTaskName,
   });
+  if (onWarmupAccepted !== undefined) await onWarmupAccepted(warmup);
   const ledger = [];
   for (let index = 0; index < acceptedSampleCount; index += 1) {
-    ledger.push(await createRoomCommit({
+    // This starts every paced sample only after the preceding accepted sample
+    // has been durably recorded and its configured interval elapsed.  Default
+    // G50 callers retain their original immediately-sequential behavior.
+    if (index > 0 && intervalMs > 0) await sleepFor(intervalMs);
+    const accepted = await createRoomCommit({
       fetchImpl,
       baseUrl,
       runId: measurementRunId,
       ordinal: index + 1,
       phase: "sample",
-    }));
+      task: measurementTaskName,
+    });
+    ledger.push(accepted);
+    if (onSampleAccepted !== undefined) {
+      await onSampleAccepted(accepted, Object.freeze({
+        warmup,
+        acceptedSampleRequests: ledger.length,
+      }));
+    }
   }
 
   const telemetry = await captureTelemetry({
@@ -235,7 +275,7 @@ export async function captureG50AppCommitLatency({
 
   return Object.freeze({
     schema: "sdt-g50-commit-latency/v1",
-    task: TASK,
+    task: measurementTaskName,
     capturedAt: new Date().toISOString(),
     runId: measurementRunId,
     deployed: Object.freeze({
