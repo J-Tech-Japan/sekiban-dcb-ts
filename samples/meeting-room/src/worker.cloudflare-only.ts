@@ -46,6 +46,12 @@ const runtime = createCloudflareOnlyRuntimeWorker({
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
+// P1 is deliberately the smallest possible custom-span control: one span,
+// one application attribute, at the public Worker fetch boundary. It is not a
+// commit trace row and does not participate in any request or response data.
+const G51_P1_PROBE_SPAN = "sdt.g51.probe.p1";
+const G51_PROBE_ATTRIBUTE = "sdt.g51.probe";
+
 /**
  * Safe MV convergence is the first scheduled duty.  Generic downstream and
  * tag-state polling may be expensive on a historical service, but must never
@@ -469,7 +475,12 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     if (path === "/conformance/v1" || path.startsWith("/conformance/v1/")) return conformance(request, env, ctx);
     if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
     if (path === "/operator/repair") return repairOperator(request, env, ctx);
-    if (path.startsWith("/api/commands/")) return command(request, env, ctx);
+    if (path.startsWith("/api/commands/")) {
+      return ctx.tracing.enterSpan(G51_P1_PROBE_SPAN, (span) => {
+        span.setAttribute(G51_PROBE_ATTRIBUTE, "p1");
+        return command(request, env, ctx);
+      });
+    }
     try {
       await assertFinalCutoverFenceIfConfigured(env);
     } catch {

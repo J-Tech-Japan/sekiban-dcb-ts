@@ -242,6 +242,7 @@ function providerSpanName(event) {
     attributes["span.name"],
     attributes.spanName,
     attributes.operation,
+    metadata.spanName,
     metadata.name,
     metadata.operationName,
     event?.name,
@@ -654,13 +655,110 @@ function recordRootTraceId(traceIdsByCorrelation, correlationId, traceId) {
   traceIdsByCorrelation.set(correlationId, existing);
 }
 
-async function queryByValues({ accountId, token, template, key, values, fixedFilters = [], batchSize = TELEMETRY_QUERY_VALUE_BATCH }) {
+async function queryByValues({
+  accountId,
+  token,
+  template,
+  key,
+  values,
+  fixedFilters = [],
+  batchSize = TELEMETRY_QUERY_VALUE_BATCH,
+  requestTelemetry = queryTelemetry,
+}) {
   const result = [];
   for (const batch of chunks(nonEmptyTelemetryStrings(values, key), batchSize)) {
     const payload = buildBoundedTelemetryQuery(template, [...fixedFilters, cohortValuesFilter(key, batch)]);
-    result.push(await queryTelemetry({ accountId, token, payload }));
+    result.push(await requestTelemetry({ accountId, token, payload }));
   }
   return result;
+}
+
+/**
+ * Read a deliberately tiny custom-span probe through the same bounded,
+ * exact-CF-Ray query discipline as the commit exporter.  This is diagnostic
+ * evidence for G51's deployed probe ladder: it never turns a probe into a
+ * commit trace, and it deliberately returns no raw provider event or client
+ * request identity for persistence.
+ */
+export async function queryNamedSpanCohort({
+  accountId,
+  token,
+  template,
+  ledger,
+  spanName,
+  attributeKey,
+  attributeValue,
+  requestTelemetry = queryTelemetry,
+}) {
+  if (typeof spanName !== "string" || spanName.length === 0) fail("probe-span", "spanName must be non-empty");
+  if (typeof attributeKey !== "string" || attributeKey.length === 0) fail("probe-span", "attributeKey must be non-empty");
+  if (typeof attributeValue !== "string" || attributeValue.length === 0) fail("probe-span", "attributeValue must be non-empty");
+
+  const clientRequestIdsByRayId = clientRequestIdByPlatformRayId(ledger);
+  const raws = await queryByValues({
+    accountId,
+    token,
+    template,
+    key: "$metadata.rayId",
+    values: [...clientRequestIdsByRayId.keys()],
+    fixedFilters: [queryFilter("$metadata.spanName", spanName)],
+    requestTelemetry,
+  });
+
+  const retainedRequestIds = new Set();
+  const attributeMatchedRequestIds = new Set();
+  let retainedSpanCount = 0;
+  let attributeMatchedSpanCount = 0;
+  let unjoinableRetainedSpanCount = 0;
+
+  for (const raw of raws) {
+    for (const event of rawEvents(raw)) {
+      // Verify the returned event rather than trusting a remote filter shape.
+      // A probe query must never classify an unrelated auto-instrumentation
+      // span as the deliberate application probe.
+      if (providerSpanName(event) !== spanName) continue;
+      retainedSpanCount += 1;
+      const attributes = attributesFor(event);
+      const attributeMatches = attributes[attributeKey] === attributeValue;
+      if (attributeMatches) attributeMatchedSpanCount += 1;
+
+      const providerRay = metadataField(metadataFor(event), event, ["rayId", "ray_id"]);
+      if (typeof providerRay !== "string" || providerRay.length === 0) {
+        unjoinableRetainedSpanCount += 1;
+        continue;
+      }
+      let platformRayId;
+      try {
+        platformRayId = cloudflareRayId(providerRay, "probe provider ray");
+      } catch {
+        // The query itself is exact-ray bounded.  A provider record without a
+        // usable ray is retained evidence, but cannot be attributed to one
+        // client sample; record that limitation without exposing its value.
+        unjoinableRetainedSpanCount += 1;
+        continue;
+      }
+      const requestId = clientRequestIdsByRayId.get(platformRayId);
+      if (requestId === undefined) {
+        fail("probe-ray", "exact probe query returned a span outside the fixed client cohort");
+      }
+      retainedRequestIds.add(requestId);
+      if (attributeMatches) attributeMatchedRequestIds.add(requestId);
+    }
+  }
+
+  return Object.freeze({
+    spanName,
+    attribute: Object.freeze({ key: attributeKey, value: attributeValue }),
+    retainedSpanCount,
+    retainedRequestCount: retainedRequestIds.size,
+    attributeMatchedSpanCount,
+    attributeMatchedRequestCount: attributeMatchedRequestIds.size,
+    unjoinableRetainedSpanCount,
+    // The poll needs exact request identities in memory, but callers must
+    // redact them before persisting evidence.
+    retainedRequestIds: Object.freeze([...retainedRequestIds]),
+    attributeMatchedRequestIds: Object.freeze([...attributeMatchedRequestIds]),
+  });
 }
 
 /**
