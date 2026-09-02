@@ -124,6 +124,27 @@ export function queryTelemetry(input: Readonly<{
   token: string;
   payload: Record<string, unknown>;
 }>): Promise<unknown>;
+export interface RetainedSnapshotLogReceipt {
+  requestId: string;
+  platformRayId: string;
+  correlationId: string;
+  rootId: string;
+  rootStartedAtMs: number;
+  rootEndedAtMs: number;
+  logTruncated: boolean;
+}
+export function retainedSnapshotLogReceipts(raw: unknown): readonly RetainedSnapshotLogReceipt[];
+export function querySnapshotLogsInFixedWindow(input: Readonly<{
+  accountId: string;
+  token: string;
+  template: Record<string, unknown>;
+  fromMs: number;
+  toMs: number;
+  requestTelemetry?: (input: { accountId: string; token: string; payload: Record<string, unknown> }) => Promise<unknown> | unknown;
+}>): Promise<Readonly<{
+  window: Readonly<{ from: number; to: number }>;
+  receipts: readonly RetainedSnapshotLogReceipt[];
+}>>;
 export function exportCohortTelemetry(input: Readonly<{
   accountId: string;
   token: string;

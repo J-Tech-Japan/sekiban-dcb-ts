@@ -65,6 +65,16 @@ function boundedPositiveInteger(name, value, maximum) {
   return parsed;
 }
 
+function nonNegativeInteger(name, value) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) fail(`${name} must be a non-negative integer`);
+  return parsed;
+}
+
+function sleepForInterval(milliseconds) {
+  return new Promise((resolveSleep) => setTimeout(resolveSleep, milliseconds));
+}
+
 function safeRunId(value) {
   if (!/^[A-Za-z0-9-]{8,64}$/.test(value)) fail("--run-id must be 8..64 URL-safe characters");
   return value;
@@ -199,6 +209,10 @@ export async function captureG50AppCommitLatency({
   queryTemplate,
   fetchImpl = globalThis.fetch,
   captureTelemetry = defaultCaptureTelemetry,
+  sampleIntervalMs = 0,
+  sleepFor = sleepForInterval,
+  onWarmupAccepted,
+  onSampleAccepted,
 }) {
   const acceptedSampleCount = positiveInteger("sampleCount", String(sampleCount));
   const measurementRunId = safeRunId(runId);
@@ -206,8 +220,12 @@ export async function captureG50AppCommitLatency({
   const targetVersionId = required("versionId", versionId);
   const targetSourceCommit = sourceCommit(required("sourceCommit", deployedSourceCommit));
   const measurementTaskName = measurementTask(task);
+  const intervalMs = nonNegativeInteger("sampleIntervalMs", sampleIntervalMs);
   if (typeof fetchImpl !== "function") fail("fetchImpl must be a function");
   if (typeof captureTelemetry !== "function") fail("captureTelemetry must be a function");
+  if (typeof sleepFor !== "function") fail("sleepFor must be a function");
+  if (onWarmupAccepted !== undefined && typeof onWarmupAccepted !== "function") fail("onWarmupAccepted must be a function when supplied");
+  if (onSampleAccepted !== undefined && typeof onSampleAccepted !== "function") fail("onSampleAccepted must be a function when supplied");
 
   const warmup = await createRoomCommit({
     fetchImpl,
@@ -217,16 +235,28 @@ export async function captureG50AppCommitLatency({
     phase: "discarded-warmup",
     task: measurementTaskName,
   });
+  if (onWarmupAccepted !== undefined) await onWarmupAccepted(warmup);
   const ledger = [];
   for (let index = 0; index < acceptedSampleCount; index += 1) {
-    ledger.push(await createRoomCommit({
+    // This starts every paced sample only after the preceding accepted sample
+    // has been durably recorded and its configured interval elapsed.  Default
+    // G50 callers retain their original immediately-sequential behavior.
+    if (index > 0 && intervalMs > 0) await sleepFor(intervalMs);
+    const accepted = await createRoomCommit({
       fetchImpl,
       baseUrl,
       runId: measurementRunId,
       ordinal: index + 1,
       phase: "sample",
       task: measurementTaskName,
-    }));
+    });
+    ledger.push(accepted);
+    if (onSampleAccepted !== undefined) {
+      await onSampleAccepted(accepted, Object.freeze({
+        warmup,
+        acceptedSampleRequests: ledger.length,
+      }));
+    }
   }
 
   const telemetry = await captureTelemetry({

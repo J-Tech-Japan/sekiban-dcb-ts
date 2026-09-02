@@ -111,6 +111,35 @@ function snapshotPayload(event) {
   return payload?.event === "commit.snapshot" ? payload : undefined;
 }
 
+/**
+ * Return only the provider-backed identity needed to resume an already sent
+ * snapshot cohort.  This is intentionally narrower than a normalized trace:
+ * callers can persist the exact CF-Ray values that the provider retained
+ * without copying the structured snapshot payload into a schedule receipt.
+ */
+export function retainedSnapshotLogReceipts(raw) {
+  const seen = new Set();
+  const receipts = [];
+  for (const event of rawEvents(raw)) {
+    const payload = snapshotPayload(event);
+    if (payload === undefined) continue;
+    const requestId = snapshotString(payload.platformRequestId, "snapshot platformRequestId");
+    const platformRayId = cloudflareRayId(requestId, "snapshot payload ray");
+    if (seen.has(platformRayId)) continue;
+    seen.add(platformRayId);
+    receipts.push(Object.freeze({
+      requestId,
+      platformRayId,
+      correlationId: snapshotString(payload.correlationId, "snapshot correlationId"),
+      rootId: snapshotString(payload.rootId, "snapshot rootId"),
+      rootStartedAtMs: numberFrom(payload.rootStartedAtMs, "snapshot rootStartedAtMs"),
+      rootEndedAtMs: numberFrom(payload.rootEndedAtMs, "snapshot rootEndedAtMs"),
+      logTruncated: cloudflareLogWasTruncated(event),
+    }));
+  }
+  return Object.freeze(receipts.sort((left, right) => left.requestId.localeCompare(right.requestId)));
+}
+
 function numberFrom(value, label) {
   const result = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(result)) fail("time", `${label} is not numeric`);
@@ -780,6 +809,37 @@ function chunks(values, size = TELEMETRY_QUERY_VALUE_BATCH) {
 
 function queryFilter(key, value) {
   return { key, operation: "eq", type: "string", value };
+}
+
+/**
+ * A one-off recovery read for a known historical Worker request window.  It
+ * is deliberately schema/event constrained and refuses a missing or inverted
+ * window.  Follow-up reads must use the exact persisted CF-Ray set instead;
+ * this function exists only to recover the provider identities that a legacy
+ * sampler failed to persist before its first bounded poll.
+ */
+export async function querySnapshotLogsInFixedWindow({
+  accountId,
+  token,
+  template,
+  fromMs,
+  toMs,
+  requestTelemetry = queryTelemetry,
+}) {
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs < 0 || toMs <= fromMs) {
+    fail("snapshot-window", "fromMs/toMs must describe a non-empty fixed window");
+  }
+  if (typeof requestTelemetry !== "function") fail("snapshot-window", "requestTelemetry must be a function");
+  const payload = buildBoundedTelemetryQuery(template, [
+    queryFilter("schema", "sdt.commit-snapshot/v1"),
+    queryFilter("event", "commit.snapshot"),
+  ]);
+  payload.timeframe = Object.freeze({ from: fromMs, to: toMs });
+  const raw = await requestTelemetry({ accountId, token, payload });
+  return Object.freeze({
+    window: Object.freeze({ from: fromMs, to: toMs }),
+    receipts: retainedSnapshotLogReceipts(raw),
+  });
 }
 
 /**

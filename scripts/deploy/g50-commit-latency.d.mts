@@ -65,4 +65,8 @@ export function captureG50AppCommitLatency(input: {
   queryTemplate: Record<string, unknown>;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
   captureTelemetry?: (input: { ledger: readonly G50LedgerEntry[]; [key: string]: unknown }) => Promise<G50Telemetry> | G50Telemetry;
+  sampleIntervalMs?: number;
+  sleepFor?: (milliseconds: number) => Promise<void> | void;
+  onWarmupAccepted?: (entry: G50LedgerEntry) => Promise<void> | void;
+  onSampleAccepted?: (entry: G50LedgerEntry, progress: { warmup: G50LedgerEntry; acceptedSampleRequests: number }) => Promise<void> | void;
 }): Promise<G50Sample>;

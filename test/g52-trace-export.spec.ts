@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import manifest from "../contracts/commit-trace-manifest.json";
-import { normalizeTelemetryBundle } from "../scripts/deploy/g30-trace-export.mjs";
+import { normalizeTelemetryBundle, querySnapshotLogsInFixedWindow } from "../scripts/deploy/g30-trace-export.mjs";
 
 const SERVICE = "g52-export-fixture";
 const REQUEST_ID = "0000000000000052-SJC";
@@ -152,6 +152,32 @@ function selectedRows(bundle: ReturnType<typeof normalizeTelemetryBundle>) {
 }
 
 describe("SDT-G52 log-root telemetry export", () => {
+  it("uses the explicit fixed recovery window only for historical snapshot identity discovery", async () => {
+    const result = await querySnapshotLogsInFixedWindow({
+      accountId: "g52-export-account",
+      token: "test-only-token",
+      template: {
+        parameters: {
+          filterCombination: "or",
+          filters: [
+            { key: "$workers.scriptName", operation: "eq", type: "string", value: "primary" },
+            { key: "$workers.scriptName", operation: "eq", type: "string", value: "receiver" },
+          ],
+        },
+      },
+      fromMs: 1_000,
+      toMs: 2_000,
+      requestTelemetry: async ({ payload }) => {
+        const query = payload as { timeframe: { from: number; to: number }; parameters: { filters: unknown[] } };
+        expect(query.timeframe).toEqual({ from: 1_000, to: 2_000 });
+        expect(query.parameters.filters).toHaveLength(3);
+        return snapshotTelemetry();
+      },
+    });
+    expect(result.window).toEqual({ from: 1_000, to: 2_000 });
+    expect(result.receipts).toEqual([expect.objectContaining({ requestId: REQUEST_ID, logTruncated: false })]);
+  });
+
   it("reconstructs the same per-hop rows from a retained snapshot log as from native spans", () => {
     const clientRequestIdsByRayId = new Map([["0000000000000052", REQUEST_ID]]);
     const native = normalizeTelemetryBundle(nativeTelemetry(), END + 10, clientRequestIdsByRayId);
