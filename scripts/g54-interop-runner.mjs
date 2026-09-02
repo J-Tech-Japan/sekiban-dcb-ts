@@ -276,6 +276,12 @@ function runtimeValidate(value) {
     if (typeof entry !== "object" || entry === null || Array.isArray(entry) || typeof entry.tag !== "string" || !Object.hasOwn(entry, "lastSortableUniqueId")) {
       throw new InteropError("malformed_commit_envelope", "consistency tag must have V1 shape");
     }
+    if (entry.lastSortableUniqueId === null || typeof entry.lastSortableUniqueId !== "string") {
+      throw new InteropError("malformed_commit_envelope", "lastSortableUniqueId must be a non-null string");
+    }
+    if (!/^[0-9]{30}$/.test(entry.lastSortableUniqueId)) {
+      throw new InteropError("invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId");
+    }
     if (consistency.has(entry.tag)) throw new InteropError("validation_error", "consistency tags must be unique");
     if (!tags.has(entry.tag)) throw new InteropError("validation_error", "consistency tag must occur in an event candidate");
     consistency.add(entry.tag);
@@ -330,7 +336,7 @@ function verifyOutcomes() {
   expectedError(() => runtimeValidate(JSON.parse(text("interop_legacy_explicit_empty.json"))), "malformed_commit_envelope", "interop_legacy_explicit_empty.json");
 
   const official = JSON.parse(text("interop_official_v1_populated.json"));
-  runtimeValidate(official);
+  expectedError(() => runtimeValidate(official), "invalid_sortable_unique_id", "interop_official_v1_populated.json");
   for (const candidate of official.eventCandidates) {
     const admitted = decodePayload(candidate.payload);
     expect(Buffer.from(admitted, "utf8").toString("base64") === candidate.payload, "R1 payload round trip changed bytes");
@@ -338,7 +344,9 @@ function verifyOutcomes() {
 
   const tsClient = text("interop_ts_client_model.json");
   expectedError(() => runtimeValidate(JSON.parse(tsClient)), "malformed_commit_envelope", "interop_ts_client_model.json runtime");
-  expect(JSON.stringify(clientToV1(tsClient)) === text("interop_official_v1_populated.json"), "R2 adapter did not produce official V1 bytes");
+  const officialWire = clientToV1(tsClient);
+  expect(JSON.stringify(officialWire) === text("interop_official_v1_populated.json"), "R2 adapter did not produce official V1 bytes");
+  expectedError(() => runtimeValidate(officialWire), "invalid_sortable_unique_id", "interop_ts_client_model.json adapted runtime");
   expect(
     JSON.stringify(clientToV1(text("interop_r2_canonical_positive.json"))) === text("interop_r2_canonical_positive_v1.json"),
     "R2 canonical adapter did not produce expected V1 bytes",
@@ -350,7 +358,7 @@ function verifyOutcomes() {
   expectedError(() => runtimeValidate(JSON.parse(text("interop_r3_non_json_payload.json"))), "invalid_payload_json", "interop_r3_non_json_payload.json");
   expectedError(() => runtimeValidate(JSON.parse(text("interop_r3_invalid_utf8_payload.json"))), "invalid_payload_utf8", "interop_r3_invalid_utf8_payload.json");
   expectedError(() => runtimeValidate(clientToV1(text("interop_client_empty_tag.json"))), "validation_error", "interop_client_empty_tag.json");
-  expectedError(() => runtimeValidate(clientToV1(text("interop_client_duplicate_consistency.json"))), "validation_error", "interop_client_duplicate_consistency.json");
+  expectedError(() => runtimeValidate(clientToV1(text("interop_client_duplicate_consistency.json"))), "invalid_sortable_unique_id", "interop_client_duplicate_consistency.json");
 
   const vocabulary = JSON.parse(text("interop_response_member_vocabulary.json"));
   expect(typeof vocabulary.projectorVersion === "string", "response vocabulary requires string projectorVersion");
@@ -358,8 +366,8 @@ function verifyOutcomes() {
   expect(Array.isArray(vocabulary.writtenEvents) && Array.isArray(vocabulary.tagWriteResults), "response vocabulary requires commit response members");
   return Object.freeze({
     legacy: "catalogued-as-typed-unversioned-rejects",
-    r1: "payload-bytes-preserved",
-    r2: "adapter-positive-and-losses-typed",
+    r1: "payload-bytes-preserved-empty-head-typed",
+    r2: "adapter-byte-identical-empty-head-typed-and-losses-typed",
     r3: "payload-errors-typed",
     response: "projector-version-string-and-last-sorted-unique-id",
   });

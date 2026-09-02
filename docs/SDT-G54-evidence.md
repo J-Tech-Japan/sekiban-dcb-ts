@@ -64,6 +64,21 @@ shape counts `idFromName`, `get`, and `fetch` as zero for fake `ALLOCATOR`,
 `{"version":1,"eventCandidates":[],"consistencyTags":[]}` remains accepted
 with the unchanged empty-commit response above.
 
+### PR #108 repair — retained pre-DO entry ordering
+
+The existing `test/commit.spec.ts` bare-envelope assertion now requires the
+same typed `400 malformed_commit_envelope` as the focused boundary suite, and
+asserts that its reason names both `eventCandidates` and `consistencyTags`.
+It keeps a distinct HTTP 200 assertion for explicit empty V1 arrays.
+
+The consistency-entry validation once again invokes the 30-digit
+`lastSortableUniqueId` validator unconditionally before membership, admission,
+or any Durable Object lookup. An empty string therefore receives typed
+`400 invalid_sortable_unique_id`, with the fake-namespace boundary fixture
+proving zero `idFromName`, `get`, and `fetch` calls across every carried
+namespace. The existing G32 fixture normalization omits an asserted-empty
+consistency entry rather than sending an invalid empty head.
+
 `scripts/g54-envelope-mutation-runner.mjs` replaces only the required-member
 and present-but-undefined guard branches with `if (false)` against the shipped
 `CommitWorker`, rebuilds it, and requires the zero-DO-call fixture to fail.
@@ -94,17 +109,20 @@ result reports all seventeen source pins and all fifteen manifest fixtures.
 | Witness group | Result |
 | --- | --- |
 | Legacy upstream catalogues | Pinned and classified as typed unversioned rejects by this V1-only runtime; no client-dialect translation is introduced. |
-| R1 official V1 | Accepted by `validateCommitEnvelope`; every base64 payload decodes and re-encodes byte-identically. |
-| R2 positive | Raw client model rejected at runtime; real adapter produces the expected official V1 bytes. |
+| R1 official V1 | Every base64 payload decodes and re-encodes byte-identically; its explicit empty consistency head receives the retained typed `invalid_sortable_unique_id` rejection before any Durable Object call. |
+| R2 positive | Raw client model is rejected at runtime; the real adapter produces the expected official V1 bytes without translation, and that source-preserved empty head receives the same typed rejection. |
 | R2 loss/error | Integer-key ordering and numeric lexical loss receive distinct runner typed errors; duplicate raw key receives `client_payload_duplicate_key`. |
 | R3 payload | BOM and invalid UTF-8 receive `invalid_payload_utf8`; non-JSON receives `invalid_payload_json`. |
-| Tag validation | Empty tag and duplicate consistency adapters reach the runtime's existing typed `validation_error` paths. |
+| Tag validation | Empty tag reaches `validation_error`; the duplicate-consistency source carries an empty head and therefore first reaches the retained ordered `invalid_sortable_unique_id` rejection. |
 | Response vocabulary | `projectorVersion` is a string and tag-state includes `lastSortedUniqueId`; commit response members remain present. |
 
-No amended-AC5a comparison mismatch was found, so no interop finding was
-filed against Sekiban#1172. The old legacy compatibility labels in the copied
-upstream manifest are recorded as upstream catalogue metadata, not a request
-to make this V1-only runtime silently accept unversioned input.
+The W79 repair records, rather than masks, the copied witnesses' explicit
+empty consistency heads: the retained runtime contract rejects them before a
+Durable Object call. The source bytes and adapter output remain unchanged, so
+no source fixture is altered and no second client dialect is introduced. The
+old legacy compatibility labels in the copied upstream manifest are recorded
+as upstream catalogue metadata, not a request to make this V1-only runtime
+silently accept unversioned input.
 
 TypeScript receives a parsed `Request.json()` object, so duplicate raw JSON
 members are inherently undetectable at the runtime boundary. The frozen

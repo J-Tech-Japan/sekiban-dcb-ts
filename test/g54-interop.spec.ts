@@ -82,19 +82,21 @@ async function wireFromClientFixture(name: string): Promise<string> {
 }
 
 describe("SDT-G54 copied Sekiban interop goldens", () => {
-  it("R1 admits official V1 and preserves each payload's exact UTF-8 bytes", () => {
+  it("R1 preserves official V1 payload bytes while retaining the empty-head runtime rejection", async () => {
     const official = parseFixture("interop_official_v1_populated.json");
-    const result = validateCommitEnvelope(official);
-    expect("value" in result).toBe(true);
-    if (!("value" in result)) throw new Error("Official V1 fixture must be accepted");
+    await expect(runtimeError(official)).resolves.toMatchObject({
+      code: "invalid_sortable_unique_id",
+      error: expect.stringContaining("lastSortableUniqueId"),
+    });
 
     const sourceCandidates = official.eventCandidates as Array<{ readonly payload: string }>;
-    expect(result.value.eventCandidates.map((candidate) => candidate.payload)).toEqual(
-      sourceCandidates.map((candidate) => Buffer.from(candidate.payload, "base64").toString("utf8")),
-    );
+    for (const candidate of sourceCandidates) {
+      const bytes = Buffer.from(candidate.payload, "base64");
+      expect(bytes.toString("base64")).toBe(candidate.payload);
+    }
   });
 
-  it("R2 rejects the raw client model at the runtime, then the unchanged transport adapter creates official V1 bytes", async () => {
+  it("R2 rejects the raw client model while the unchanged transport adapter preserves official V1 bytes", async () => {
     const rejection = await runtimeError(parseFixture("interop_ts_client_model.json"));
     expect(rejection).toMatchObject({ code: "malformed_commit_envelope" });
     expect(rejection.error).toContain("eventCandidates");
@@ -102,7 +104,9 @@ describe("SDT-G54 copied Sekiban interop goldens", () => {
     expect(rejection.error).toContain("candidates");
     expect(rejection.error).toContain("consistency");
 
-    expect(await wireFromClientFixture("interop_ts_client_model.json")).toBe(fixture("interop_official_v1_populated.json"));
+    const officialWire = await wireFromClientFixture("interop_ts_client_model.json");
+    expect(officialWire).toBe(fixture("interop_official_v1_populated.json"));
+    await expect(runtimeError(JSON.parse(officialWire))).resolves.toMatchObject({ code: "invalid_sortable_unique_id" });
     expect(await wireFromClientFixture("interop_r2_canonical_positive.json")).toBe(fixture("interop_r2_canonical_positive_v1.json"));
   });
 
@@ -119,12 +123,15 @@ describe("SDT-G54 copied Sekiban interop goldens", () => {
     });
   });
 
-  it("routes empty-tag and duplicate-consistency client fixtures to the existing typed runtime validation failures", async () => {
+  it("routes empty-tag and duplicate-consistency client fixtures to their ordered typed runtime validation failures", async () => {
     const emptyTagWire = JSON.parse(await wireFromClientFixture("interop_client_empty_tag.json"));
     const duplicateConsistencyWire = JSON.parse(await wireFromClientFixture("interop_client_duplicate_consistency.json"));
 
     await expect(runtimeError(emptyTagWire)).resolves.toMatchObject({ code: "validation_error", error: expect.stringContaining("tags") });
-    await expect(runtimeError(duplicateConsistencyWire)).resolves.toMatchObject({ code: "validation_error", error: expect.stringContaining("Consistency") });
+    await expect(runtimeError(duplicateConsistencyWire)).resolves.toMatchObject({
+      code: "invalid_sortable_unique_id",
+      error: expect.stringContaining("lastSortableUniqueId"),
+    });
   });
 
   it("keeps the copied response vocabulary aligned to runtime tag-state and query DTOs", () => {

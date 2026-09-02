@@ -138,6 +138,21 @@ describe("SDT-G54 serialized V1 envelope boundary", () => {
     expect(validateCommitEnvelope({ version: 1, eventCandidates: [], consistencyTags: [] })).toHaveProperty("value");
   });
 
+  it("rejects an empty consistency lastSortableUniqueId before every Durable Object call", async () => {
+    const fixture = environment();
+    const response = await handleSerializedCommit(commitRequest({
+      version: 1,
+      eventCandidates: [{ payload: "e30=", eventPayloadName: "OrderPlaced", tags: ["Order:42"] }],
+      consistencyTags: [{ tag: "Order:42", lastSortableUniqueId: "" }],
+    }), fixture.env);
+    const responseBody = await response.json<{ readonly code?: string; readonly error?: string }>();
+
+    expect(response.status).toBe(400);
+    expect(responseBody.code).toBe("invalid_sortable_unique_id");
+    expect(responseBody.error).toContain("lastSortableUniqueId");
+    expectNoDurableObjectCalls(fixture.calls);
+  });
+
   it("rejects programmatic undefined V1 members instead of coalescing them", async () => {
     const candidates = await validateError({ version: 1, eventCandidates: undefined, consistencyTags: [] });
     const consistency = await validateError({ version: 1, eventCandidates: [], consistencyTags: undefined });

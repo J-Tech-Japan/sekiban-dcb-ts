@@ -398,12 +398,10 @@ export function validateCommitEnvelope(
         ),
       };
     }
-    if (rawTag.lastSortableUniqueId.length > 0) {
-      try {
-        assertSortableUniqueId(rawTag.lastSortableUniqueId);
-      } catch {
-        return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
-      }
+    try {
+      assertSortableUniqueId(rawTag.lastSortableUniqueId);
+    } catch {
+      return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
     }
     if (!allTags.includes(rawTag.tag)) {
       return { error: error(400, "validation_error", "Each consistency tag must occur in an event candidate") };

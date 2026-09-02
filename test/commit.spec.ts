@@ -301,9 +301,18 @@ describe("Serialized V1 commit worker", () => {
     expect(unobservedState.confirmations).toHaveLength(0);
     expect(unobservedState.activeReservation).toBeNull();
 
-    const empty = await commit({ version: 1 });
-    expect(empty.status).toBe(200);
-    expect(await responseJson<CommitResponse>(empty)).toMatchObject({ writtenEvents: [], tagWriteResults: [] });
+    const bareEnvelope = await commit({ version: 1 });
+    const bareEnvelopeError = await expectSection6Error<{ error: string; code: string }>(
+      bareEnvelope,
+      400,
+      "malformed_commit_envelope",
+    );
+    expect(bareEnvelopeError.error).toContain("eventCandidates");
+    expect(bareEnvelopeError.error).toContain("consistencyTags");
+
+    const explicitEmptyArrays = await commit({ version: 1, eventCandidates: [], consistencyTags: [] });
+    expect(explicitEmptyArrays.status).toBe(200);
+    expect(await responseJson<CommitResponse>(explicitEmptyArrays)).toMatchObject({ writtenEvents: [], tagWriteResults: [] });
   });
 
   it("AC2: settles the whole reservation fan-out and tombstones every observed tag without creating a Journal record", async () => {
@@ -388,7 +397,7 @@ describe("Serialized V1 commit worker", () => {
     const exactHead = (await responseJson<CommitResponse>(exact)).writtenEvents[0]!.sortableUniqueIdValue;
     expect(exactHead > firstHead).toBe(true);
     expect((await write(exactTag, firstHead)).status).toBe(400);
-    expect((await write(exactTag, "")).status).toBe(400);
+    await expectSection6Error(await write(exactTag, ""), 400, "invalid_sortable_unique_id");
 
     const multiConflict = await commit({
       version: 1,
