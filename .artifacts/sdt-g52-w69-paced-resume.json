@@ -747,7 +747,7 @@
     "lifecycle": "resume-query-error",
     "threshold": 40,
     "deadlineAtMs": 1788430740000,
-    "nextQueryAtMs": 1788353889513,
+    "nextQueryAtMs": 1788358269512,
     "queries": [
       {
         "attempt": 1,
@@ -764,6 +764,12 @@
       {
         "attempt": 3,
         "queriedAtMs": 1788352989513,
+        "queryScope": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+        "errorClass": "resume-query-failed"
+      },
+      {
+        "attempt": 4,
+        "queriedAtMs": 1788357369512,
         "queryScope": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
         "errorClass": "resume-query-failed"
       }

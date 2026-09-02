@@ -160,10 +160,13 @@ function applyPermittedRetainedCorrelationPrefix(telemetry: ReturnType<typeof sn
   const rootAttributes = root.attributes as Record<string, unknown>;
   const rootCorrelation = rootAttributes["correlation.id"];
   const rootService = rootAttributes["service.id"];
+  const rootSchema = rootAttributes["schema.version"];
   delete rootAttributes["correlation.id"];
   delete rootAttributes["service.id"];
+  delete rootAttributes["schema.version"];
   rootAttributes.correlation = { id: rootCorrelation };
   rootAttributes.service = { id: rootService };
+  rootAttributes.schema = { version: rootSchema };
   for (const event of telemetry.events.slice(1)) event.source.correlationId = fullCorrelation;
   // A retained snapshot can join the client ledger through its explicit
   // platformRequestId even when the provider envelope does not repeat a ray.

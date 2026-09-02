@@ -441,11 +441,22 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
   {
     id: "platform-ray-client-join-gate",
     file: source.traceExport,
-    from: "      requestId = clientRequestIdsByRayId.get(platformRayId);",
-    to: "      requestId = platformRayId;",
+    from: "        platformRayId = cloudflareRayId(rootRayValue, `S00 trace ${group.traceId} root provider ray`);\n        requestId = clientRequestIdsByRayId.get(platformRayId);",
+    to: "        platformRayId = cloudflareRayId(rootRayValue, `S00 trace ${group.traceId} root provider ray`);\n        requestId = platformRayId;",
     target: "preserves the POP-suffixed client CF-Ray across the platform ray-id join",
     unrelated: "normalizes a structured observation without a platform trace id",
     testFile: "test/g30-b0.spec.ts",
+  },
+  {
+    // Snapshot logs select their client ledger row through the sink's
+    // platformRequestId, independently of the provider envelope ray.
+    id: "snapshot-platform-ray-client-join-gate",
+    file: source.traceExport,
+    from: "  const requestId = clientRequestIdsByRayId.get(platformRayId);\n  if (requestId === undefined) return undefined;",
+    to: "  const requestId = platformRayId;\n  if (requestId === undefined) return undefined;",
+    target: "uses only standard script/type filters over a persisted cohort window before client-side ray intersection",
+    unrelated: "reconstructs the same per-hop rows from a retained snapshot log as from native spans",
+    testFile: "test/g52-trace-export.spec.ts",
   },
   {
     // Rayless custom-span roots exist in live Workers telemetry. Reverting to
