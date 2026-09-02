@@ -24,6 +24,7 @@ import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meeti
 import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
+import { runtimeRequestWithIngressRay } from "./ingress-observation";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
@@ -232,7 +233,17 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
   let input: unknown;
   try { input = await request.json(); } catch { return json({ error: "Command request must be JSON", code: "validation_error" }, 400); }
-  const commandRuntime = { fetch: (inputValue: RequestInfo | URL, init?: RequestInit) => runtimeFetch(inputValue instanceof Request ? inputValue : new Request(inputValue, init), env, ctx) };
+  // `runtimeFetch` is an in-isolate call, so its synthetic Request does not
+  // inherit the public ingress CF-Ray.  Preserve that provider-owned identity
+  // only for observation: CommitWorker uses it to emit the existing
+  // post-admission worker observation, which is the exact join from a public
+  // command response to its custom-span root.  It is neither a protocol input
+  // nor a response/header mutation.
+  const ingressRay = request.headers.get("cf-ray");
+  const commandRuntime = {
+    fetch: (inputValue: RequestInfo | URL, init?: RequestInit) =>
+      runtimeFetch(runtimeRequestWithIngressRay(inputValue, init, ingressRay), env, ctx),
+  };
   const result = await executeMeetingRoomCommand(commandId, input, { RUNTIME: commandRuntime, localRuntime: commandRuntime });
   return resultResponse(result);
 }
