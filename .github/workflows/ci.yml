@@ -47,6 +47,10 @@ jobs:
       - run: npm run lint
       - name: Verify SDT-G37 sanitized recorded-sample evidence
         run: npm run test:g37:evidence
+      - name: Validate SDT-G50 exact-head client and blocked-trace evidence
+        run: |
+          node scripts/deploy/g50-commit-latency-guards.mjs
+          node scripts/deploy/g50-commit-latency-check.mjs --sample .artifacts/sdt-g50-w57-commit-latency.json --self-test
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:g17

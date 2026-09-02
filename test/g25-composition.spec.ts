@@ -22,6 +22,13 @@ import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import workerConfig from "../samples/meeting-room/wrangler.cloudflare-only.jsonc?raw";
 import worker from "../samples/meeting-room/src/worker.cloudflare-only";
 
+// This is intentionally a public test fixture value, not a deployed secret.
+// Its SHA-256 is the paired test fingerprint injected below, so the deployed
+// entrypoints exercise the final-fence success path without weakening the
+// production phase/release/token/fingerprint validation.
+const G32_FINAL_FENCE_FIXTURE_TOKEN = "g32-final-fence-fixture";
+const G32_FINAL_FENCE_FIXTURE_FINGERPRINT = "62cd8d0ecb2c2f5f6fc14f4cd11e76dbf7e4893e42db37789f2b7df8688b4c36";
+
 function statements(sql: string, database: D1Database): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim()).filter(Boolean).map((value) => database.prepare(value));
 }
@@ -57,7 +64,16 @@ function deployedEnvironment(serviceId: string): Record<string, unknown> {
   // a source Tag obligation. Removing this test-only binding keeps it from
   // pretending that its handcrafted envelope is a registered G44 source;
   // G44's actual Tag/D1 acknowledgement path is covered separately.
-  return { ...(env as unknown as Record<string, unknown>), SDT_SERVICE_ID: serviceId, TAG: undefined };
+  return {
+    ...(env as unknown as Record<string, unknown>),
+    SDT_SERVICE_ID: serviceId,
+    TAG: undefined,
+    G32_COMPONENT: "primary",
+    G32_CUTOVER_PHASE: "final-g32",
+    G32_FREEZE_RELEASE: "after-new-bindings",
+    G32_CUTOVER_FENCE_TOKEN: G32_FINAL_FENCE_FIXTURE_TOKEN,
+    G32_CUTOVER_FENCE_FINGERPRINT: G32_FINAL_FENCE_FIXTURE_FINGERPRINT,
+  };
 }
 
 async function invokeDeployedQueue(body: DownstreamOutboxMessage, serviceId: string, attempts = 1): Promise<QueueResult> {

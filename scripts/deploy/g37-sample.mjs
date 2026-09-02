@@ -83,7 +83,7 @@ function percentile(values, fraction) {
   return ordered[Math.min(ordered.length - 1, Math.ceil(ordered.length * fraction) - 1)] ?? null;
 }
 
-function summary(values) {
+export function summary(values) {
   return Object.freeze({
     count: values.length,
     p50: percentile(values, 0.50),
@@ -225,7 +225,7 @@ async function waitForReadyHead(baseUrl, token, timeoutMs, tag = FIXTURE_TAG) {
   }
 }
 
-function perHopMedians(traces) {
+export function perHopMedians(traces) {
   const durationsByRow = new Map();
   for (const trace of traces) {
     for (const span of trace.spans ?? []) {
@@ -264,8 +264,19 @@ function deploymentWitness(priorVersions, versions, message) {
   });
 }
 
-async function telemetryForLedger({ accountId, observabilityToken, observabilityTokenReason, template, ledger }) {
+export async function telemetryForLedger({
+  accountId,
+  observabilityToken,
+  observabilityTokenReason,
+  template,
+  ledger,
+  required = false,
+  retainTelemetry = false,
+}) {
   if (typeof observabilityToken !== "string" || observabilityToken.length === 0) {
+    if (required) {
+      throw new Error(`${observabilityTokenReason ?? "G37 observability token file is unavailable"}; retained per-hop telemetry is required`);
+    }
     return Object.freeze({
       status: "unavailable",
       ac4PerHopStatus: "UNKNOWN",
@@ -290,8 +301,15 @@ async function telemetryForLedger({ accountId, observabilityToken, observability
       descriptiveLossCount: ledger.length - observedRequestIds.size,
       workerColoDistribution: workerColos(bundle.observations),
       perHopDescriptiveMedians: perHopMedians(bundle.traces),
+      ...(retainTelemetry ? {
+        retainedTraceTelemetry: Object.freeze({
+          traces: bundle.traces,
+          observations: bundle.observations,
+        }),
+      } : {}),
     });
   } catch (error) {
+    if (required) throw error;
     return Object.freeze({
       status: "unavailable",
       ac4PerHopStatus: "UNKNOWN",
