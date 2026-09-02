@@ -1,0 +1,57 @@
+{
+  "schema": "sdt-g51-live-shortfall/v1",
+  "task": "SDT-G51-ISSUE101-W63",
+  "status": "blocked",
+  "normalConfig": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "tokenHandling": "retained-trace reads used G50_OBSERVABILITY_TOKEN_FILE by path only; no token value is retained",
+  "cohorts": [
+    {
+      "versionId": "112c77f5-027d-4965-a5bb-4724a91b0858",
+      "sourceCommit": "e5123188d046f8e6e286e2aa6e521b47208d4c74",
+      "discardedWarmupRequests": 1,
+      "acceptedSampleRequests": 10,
+      "ingestionTimeoutMs": 600000,
+      "terminalStatus": "shortfall",
+      "observedTraceCount": 0,
+      "expectedTraceCount": 10,
+      "terminalMessage": "retained trace proof is incomplete (status shortfall, traces 0/10, all native rows present)"
+    },
+    {
+      "versionId": "4b50f525-4230-4cdc-a411-7ea3737800f1",
+      "sourceCommit": "a5c9fee75263e900e2d9f3759ef8cf9b7fc32da5",
+      "discardedWarmupRequests": 1,
+      "acceptedSampleRequests": 10,
+      "ingestionTimeoutMs": 600000,
+      "terminalStatus": "shortfall",
+      "observedTraceCount": 0,
+      "expectedTraceCount": 10,
+      "terminalMessage": "retained trace proof is incomplete (status shortfall, traces 0/10, all native rows present)"
+    },
+    {
+      "versionId": "8ef93194-ad94-4a3e-8a5f-545b7845647e",
+      "sourceCommit": "69ccc19654c078c3e856c17c1c827fdd6959c630",
+      "discardedWarmupRequests": 1,
+      "acceptedSampleRequests": 10,
+      "ingestionTimeoutMs": 600000,
+      "terminalStatus": "shortfall",
+      "observedTraceCount": 0,
+      "expectedTraceCount": 10,
+      "terminalMessage": "retained trace proof is incomplete (status shortfall, traces 0/10, all native rows present)"
+    }
+  ],
+  "finalRedactedTelemetryTally": {
+    "queryWindow": {
+      "from": 1788312534332,
+      "to": 1788315294332
+    },
+    "totalEvents": 969,
+    "commitSchemaEvents": 3,
+    "operationTally": {
+      "actor.handle": 3
+    },
+    "nativeRowTally": {
+      "S16": 3
+    }
+  },
+  "rawDataHandling": "No client ray IDs, trace IDs, correlation IDs, request bodies, tags, token values, or raw telemetry are retained."
+}
