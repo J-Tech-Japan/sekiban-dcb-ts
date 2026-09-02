@@ -163,6 +163,9 @@ function decodeBase64Utf8Json(value: string): { readonly text: string; readonly 
   } catch {
     throw new CommitPayloadAdmissionError("invalid_payload_utf8", "Payload base64 could not be decoded");
   }
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    throw new CommitPayloadAdmissionError("invalid_payload_utf8", "Payload must not start with a UTF-8 BOM");
+  }
   let text: string;
   try {
     // The fatal decoder is deliberate: replacement characters would destroy
@@ -263,7 +266,22 @@ export function validateCommitEnvelope(
 ):
   | { value: ValidatedCommitEnvelope }
   | { error: Response } {
-  if (!isObject(value) || typeof value.version !== "number") {
+  if (!isObject(value)) {
+    return { error: error(400, "malformed_commit_envelope", "Commit envelope must contain numeric version 1") };
+  }
+  const clientModelAliasMembers = ["candidates", "consistency"].filter(
+    (member) => Object.prototype.hasOwnProperty.call(value, member),
+  );
+  if (typeof value.version !== "number") {
+    if (clientModelAliasMembers.length > 0) {
+      return {
+        error: error(
+          400,
+          "malformed_commit_envelope",
+          `Client-model member(s) ${clientModelAliasMembers.join(", ")} require the transport adapter; use version 1 with eventCandidates and consistencyTags on the V1 wire.`,
+        ),
+      };
+    }
     return { error: error(400, "malformed_commit_envelope", "Commit envelope must contain numeric version 1") };
   }
   if (value.version !== 1) {
@@ -272,10 +290,37 @@ export function validateCommitEnvelope(
     };
   }
 
+  const missingV1ArrayMembers = ["eventCandidates", "consistencyTags"].filter(
+    (member) => !Object.prototype.hasOwnProperty.call(value, member),
+  );
+  if (missingV1ArrayMembers.length > 0 || clientModelAliasMembers.length > 0) {
+    const missing = missingV1ArrayMembers.length === 0
+      ? ""
+      : `Missing required V1 member(s): ${missingV1ArrayMembers.join(", ")}. `;
+    const aliases = clientModelAliasMembers.length === 0
+      ? ""
+      : `Client-model member(s) ${clientModelAliasMembers.join(", ")} require the transport adapter; use eventCandidates and consistencyTags on the V1 wire. `;
+    return { error: error(400, "malformed_commit_envelope", `${missing}${aliases}`.trim()) };
+  }
+
+  if (value.eventCandidates === undefined) {
+    return { error: error(400, "malformed_commit_envelope", "eventCandidates must be an array") };
+  }
+  if (value.consistencyTags === undefined) {
+    return { error: error(400, "malformed_commit_envelope", "consistencyTags must be an array") };
+  }
+
+  // The explicit required-member check above intentionally stays separate
+  // from these historical defaults. Its omission mutant restores the former
+  // fail-open behavior, while the shipped path still permits explicit []
+  // members exactly as the V1 contract does.
   const rawCandidates = value.eventCandidates ?? [];
   const rawConsistencyTags = value.consistencyTags ?? [];
-  if (!Array.isArray(rawCandidates) || !Array.isArray(rawConsistencyTags)) {
-    return { error: error(400, "malformed_commit_envelope", "eventCandidates and consistencyTags must be arrays") };
+  if (!Array.isArray(rawCandidates)) {
+    return { error: error(400, "malformed_commit_envelope", "eventCandidates must be an array") };
+  }
+  if (!Array.isArray(rawConsistencyTags)) {
+    return { error: error(400, "malformed_commit_envelope", "consistencyTags must be an array") };
   }
 
   const eventCandidates: ValidatedCommitEnvelope["eventCandidates"] = [];
@@ -353,10 +398,12 @@ export function validateCommitEnvelope(
         ),
       };
     }
-    try {
-      assertSortableUniqueId(rawTag.lastSortableUniqueId);
-    } catch {
-      return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
+    if (rawTag.lastSortableUniqueId.length > 0) {
+      try {
+        assertSortableUniqueId(rawTag.lastSortableUniqueId);
+      } catch {
+        return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
+      }
     }
     if (!allTags.includes(rawTag.tag)) {
       return { error: error(400, "validation_error", "Each consistency tag must occur in an event candidate") };

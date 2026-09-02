@@ -215,6 +215,14 @@ jobs:
             echo "forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G54 serialized-envelope interop conformance lane
+        run: npm run test:g54
+      - name: Prove SDT-G54 forced-red CI reachability
+        run: |
+          if SDT_G54_FORCE_FAILURE=1 npm run test:g54:forced-red; then
+            echo "SDT-G54 forced-red probe unexpectedly passed"
+            exit 1
+          fi
 
   ci-g26-g27:
     runs-on: ubuntu-latest

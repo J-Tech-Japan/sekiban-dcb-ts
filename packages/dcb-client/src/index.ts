@@ -17,7 +17,8 @@ export interface ReadonlyTagStateResponse {
   readonly tagContent: string;
   readonly tagProjector: string;
   readonly tagPayloadName?: string;
-  readonly projectorVersion?: number;
+  /** Runtime tag-state responses serialize projectorVersion as a string. */
+  readonly projectorVersion?: string;
 }
 
 export type TagStateSnapshot = ReadonlyTagStateResponse & {
