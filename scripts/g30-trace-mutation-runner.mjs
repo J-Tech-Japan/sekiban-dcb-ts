@@ -459,6 +459,18 @@ export const G30_TRACE_MUTATIONS = Object.freeze([
     testFile: "test/g52-trace-export.spec.ts",
   },
   {
+    // The Worker snapshot must not claim the Tag/allocator/actor work that
+    // runs in Durable Objects. Requiring S07 again would recreate W74's
+    // false missing-row failure rather than preserving the Worker gate.
+    id: "snapshot-do-ownership-split-gate",
+    file: source.traceExport,
+    from: '  "S07", "S09", "S12", "S14", "S16",',
+    to: '  "S09", "S16",',
+    target: "accepts a Worker snapshot without any DO-owned member or callback row",
+    unrelated: "fails closed when a retained snapshot omits a Worker-owned mapped success row",
+    testFile: "test/g52-trace-export.spec.ts",
+  },
+  {
     // Rayless custom-span roots exist in live Workers telemetry. Reverting to
     // the former CF-Ray-only discovery path must leave this exact cohort
     // root-absent rather than allowing a time-nearest substitute.

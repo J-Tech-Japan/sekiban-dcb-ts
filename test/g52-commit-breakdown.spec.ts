@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTIVE_PER_HOP_ROWS } from "../scripts/deploy/g50-commit-latency.mjs";
 import { SAMPLE_COUNT, SNAPSHOT_PER_HOP_ROWS, captureG52CommitBreakdown } from "../scripts/deploy/g52-commit-breakdown.mjs";
 import { validateG52Sample } from "../scripts/deploy/g52-commit-breakdown-check.mjs";
 
@@ -15,7 +14,9 @@ function committedResponse(requestNumber: number) {
 }
 
 function retainedSnapshotTelemetry(rootSource: "snapshot-log" | "native-span" = "snapshot-log") {
-  const spans = ACTIVE_PER_HOP_ROWS.map((rowId, index) => ({ rowId, startMs: 0, endMs: index + 1 }));
+  // The retained root is Worker-local: DO-owned member/callback rows are
+  // supplied by do.handler observations instead of being asserted here.
+  const spans = SNAPSHOT_PER_HOP_ROWS.map((rowId, index) => ({ rowId, startMs: 0, endMs: index + 1 }));
   return {
     status: "available",
     queryWindow: { from: 1, to: 2 },
@@ -25,7 +26,7 @@ function retainedSnapshotTelemetry(rootSource: "snapshot-log" | "native-span" = 
     descriptiveLossCount: 0,
     rootSourceCounts: { [rootSource]: SAMPLE_COUNT },
     workerColoDistribution: { SJC: SAMPLE_COUNT },
-    perHopDescriptiveMedians: ACTIVE_PER_HOP_ROWS.map((rowId, index) => ({ rowId, observedSpanCount: SAMPLE_COUNT, medianMs: index + 1 })),
+    perHopDescriptiveMedians: SNAPSHOT_PER_HOP_ROWS.map((rowId, index) => ({ rowId, observedSpanCount: SAMPLE_COUNT, medianMs: index + 1 })),
     retainedTraceTelemetry: {
       traces: Array.from({ length: SAMPLE_COUNT }, (_unused, index) => ({ requestId: `${index}`, rootSource, snapshotLogTruncated: false, spans })),
       observations: [
@@ -79,7 +80,7 @@ describe("SDT-G52 deployed snapshot-breakdown sampler", () => {
         { actorClass: "ALLOCATOR", observationCount: 2, constructorToHandlerMs: 4, firstStorageReadMs: 2, subrequestWallMs: 7 },
         { actorClass: "TAG", observationCount: 1, constructorToHandlerMs: 1, firstStorageReadMs: 3, subrequestWallMs: null },
       ]);
-      expect(sample.telemetry.residualRanking[0]).toMatchObject({ rowId: "S15", medianMs: ACTIVE_PER_HOP_ROWS.length - 1 });
+      expect(sample.telemetry.residualRanking[0]).toMatchObject({ rowId: "S15", medianMs: SNAPSHOT_PER_HOP_ROWS.length });
       expect(sample.telemetry.perHopDescriptiveMedians.map((row) => row.rowId)).toEqual(SNAPSHOT_PER_HOP_ROWS);
       expect(() => validateG52Sample(sample)).not.toThrow();
     } finally {

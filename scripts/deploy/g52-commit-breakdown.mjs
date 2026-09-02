@@ -16,14 +16,16 @@ import {
   STRUCTURALLY_REMOVED_G41_ROWS,
   captureG50AppCommitLatency,
 } from "./g50-commit-latency.mjs";
+import { SNAPSHOT_LOG_DO_OWNED_ROWS } from "./g30-trace-export.mjs";
 
 export const TASK = "SDT-G52";
 export const SAMPLE_COUNT = 50;
-// S09 and S16 are DO-owned native callback rows, not Worker-local snapshot
-// rows. Their bounded handler observations are reported in the adjacent DO
-// table; this table remains a truthful log-root breakdown.
+// The Worker snapshot never claims DO-owned member work: S07/S12/S14 are
+// TagDurableObject work, S09 allocator work, and S16 a remote actor callback.
+// Their bounded handler observations are reported in the adjacent DO table;
+// this table remains a truthful Worker-log-root breakdown.
 export const SNAPSHOT_PER_HOP_ROWS = Object.freeze(ACTIVE_PER_HOP_ROWS.filter(
-  (rowId) => rowId !== "S09" && rowId !== "S16",
+  (rowId) => !SNAPSHOT_LOG_DO_OWNED_ROWS.includes(rowId),
 ));
 
 const HOP_WAIT = Object.freeze({

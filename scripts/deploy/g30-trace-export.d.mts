@@ -81,6 +81,10 @@ export interface G30TraceExportFailureEvidence {
 }
 
 export function verifyExportedSuccessTrace(trace: unknown): Readonly<{ rows: number; complete: true }>;
+/** Rows owned by a Durable Object and therefore excluded from a Worker-local snapshot root when applicable. */
+export const SNAPSHOT_LOG_DO_OWNED_ROWS: readonly string[];
+/** Worker-owned success rows required in each retained Worker snapshot root. */
+export const SNAPSHOT_LOG_REQUIRED_ROWS: readonly string[];
 export function normalizeTelemetryExport(raw: unknown, exportedAtMs?: number): readonly G30NormalizedTrace[];
 export function normalizeTelemetryBundle(raw: unknown, exportedAtMs?: number, clientRequestIdsByRayId?: ReadonlyMap<string, string>): Readonly<{
   traces: readonly G30NormalizedTrace[];

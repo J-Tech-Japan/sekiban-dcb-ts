@@ -22,6 +22,7 @@ import {
   exportCohortWindowTelemetry,
   normalizeTelemetryBundle,
   querySnapshotLogsInFixedWindow,
+  SNAPSHOT_LOG_DO_OWNED_ROWS,
 } from "./g30-trace-export.mjs";
 
 export const TASK = "SDT-G52";
@@ -34,7 +35,12 @@ export const RESUME_BOUND_MS = 24 * 60 * 60 * 1_000;
 export const RESUME_INTERVAL_MS = 15 * 60 * 1_000;
 export const PACED_SAMPLE_INTERVAL_MS = 10 * 1_000;
 export const PACED_FALLBACK_DELAY_MS = 2 * 60 * 60 * 1_000;
-export const SNAPSHOT_PER_HOP_ROWS = Object.freeze(ACTIVE_PER_HOP_ROWS.filter((rowId) => rowId !== "S09" && rowId !== "S16"));
+// Per-hop snapshot timing is Worker-owned only. Tag member rows S07/S12/S14,
+// allocator S09, and remote callback S16 are represented only by retained
+// do.handler observations grouped by actorClass.
+export const SNAPSHOT_PER_HOP_ROWS = Object.freeze(ACTIVE_PER_HOP_ROWS.filter(
+  (rowId) => !SNAPSHOT_LOG_DO_OWNED_ROWS.includes(rowId),
+));
 export const WINDOWED_RESUME_QUERY_SCOPE = "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection";
 export const W68_FIXED_WINDOW = Object.freeze({
   from: Date.parse("2026-09-02T07:55:00.000Z"),

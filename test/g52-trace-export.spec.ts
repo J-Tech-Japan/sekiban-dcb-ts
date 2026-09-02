@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import manifest from "../contracts/commit-trace-manifest.json";
-import { exportCohortWindowTelemetry, normalizeTelemetryBundle, querySnapshotLogsInFixedWindow } from "../scripts/deploy/g30-trace-export.mjs";
+import {
+  exportCohortWindowTelemetry,
+  normalizeTelemetryBundle,
+  querySnapshotLogsInFixedWindow,
+  SNAPSHOT_LOG_DO_OWNED_ROWS,
+  SNAPSHOT_LOG_REQUIRED_ROWS,
+} from "../scripts/deploy/g30-trace-export.mjs";
 
 const SERVICE = "g52-export-fixture";
 const REQUEST_ID = "0000000000000052-SJC";
@@ -302,15 +308,21 @@ describe("SDT-G52 log-root telemetry export", () => {
     expect(bundle.traces[0]).toMatchObject({ rootSource: "native-span" });
   });
 
-  it("fails closed when a retained snapshot omits a mapped success row", () => {
-    expect(() => normalizeTelemetryBundle(snapshotTelemetry("S14"), END + 10)).toThrow(/missing mapped success row/);
+  it("fails closed when a retained snapshot omits a Worker-owned mapped success row", () => {
+    expect(SNAPSHOT_LOG_REQUIRED_ROWS).toContain("S10");
+    expect(() => normalizeTelemetryBundle(snapshotTelemetry("S10"), END + 10)).toThrow(/missing mapped success row/);
   });
 
-  it("accepts a complete Worker snapshot without DO-owned callback rows", () => {
-    const bundle = normalizeTelemetryBundle(snapshotTelemetry(["S09", "S16"]), END + 10);
+  it("accepts a Worker snapshot without any DO-owned member or callback row", () => {
+    expect(SNAPSHOT_LOG_DO_OWNED_ROWS).toEqual(["S07", "S09", "S12", "S14", "S16"]);
+    for (const rowId of SNAPSHOT_LOG_DO_OWNED_ROWS) {
+      expect(SNAPSHOT_LOG_REQUIRED_ROWS).not.toContain(rowId);
+    }
+    const bundle = normalizeTelemetryBundle(snapshotTelemetry(SNAPSHOT_LOG_DO_OWNED_ROWS), END + 10);
     expect(bundle.traces[0]).toMatchObject({ rootSource: "snapshot-log", complete: true, runtimeVerified: true });
-    expect(bundle.traces[0]?.spans.map((span) => span.rowId)).not.toContain("S09");
-    expect(bundle.traces[0]?.spans.map((span) => span.rowId)).not.toContain("S16");
+    for (const rowId of SNAPSHOT_LOG_DO_OWNED_ROWS) {
+      expect(bundle.traces[0]?.spans.map((span) => span.rowId)).not.toContain(rowId);
+    }
   });
 
   it("fails closed when Workers marks a retained snapshot log as truncated", () => {

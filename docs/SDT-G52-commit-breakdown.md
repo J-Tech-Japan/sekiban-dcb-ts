@@ -1,63 +1,68 @@
-# SDT-G52 post-G41 commit breakdown — interim W74
+# SDT-G52 post-G41 commit breakdown — interim W75
 
-Status: **partial interim evidence; PR is not blocked on snapshot-log rows alone**. This is the same coherent W71 paced cohort. W74 sent no application request and did not deploy. It records the one authorized W74 resume read and does not turn an unvalidated retained log into a latency conclusion.
+Status: **source-separated partial evidence**. This is the same coherent W71 paced cohort, not a new cohort. W75 made no deployment and sent no application request. It records exactly one further read-only resume of its immutable 51-ray ledger.
 
-## Cohort and identity discipline
+## Cohort and ownership calibration
 
-The paced cohort remains one discarded accepted warm-up plus 50 accepted sequential `POST /api/commands/create-room` samples on Cloudflare version `38921aad-9faf-4ac5-bdfd-1348d7214422`, source `6db728122fefc410e7d9639d62302bb107df13be`. Its immutable state at `.artifacts/sdt-g52-w69-paced-resume.json` has 51 exact CF-Ray values and the persisted window `2026-09-02T10:27:13.077Z`–`2026-09-02T10:36:33.731Z`.
+The paced cohort remains one discarded accepted warm-up plus 50 accepted sequential `POST /api/commands/create-room` samples on Cloudflare version `38921aad-9faf-4ac5-bdfd-1348d7214422`, source `6db728122fefc410e7d9639d62302bb107df13be`. The persisted state at `.artifacts/sdt-g52-w69-paced-resume.json` retains the exact 51-ray ledger and cohort window `2026-09-02T10:27:13.077Z`–`2026-09-02T10:36:33.731Z`.
 
-W74 made exactly one `--mode resume` invocation at `2026-09-02T13:56:09.512Z`. It used the normal script/type filters over that persisted window and intersected results client-side with the saved rays. It made no deployment and no app-surface request. Its persisted state records attempt 4, `resume-query-error`, and the next scheduled eligibility at `2026-09-02T14:11:09.512Z`; the cohort bound remains `2026-09-03T10:19:00.000Z`.
+The Worker snapshot is a Worker-owned root, not a reconstructed whole-system trace. Its strict required-row set now excludes the Durable Object-owned rows `S07`, `S09`, `S12`, `S14`, and `S16`. `S07`, `S12`, and `S14` are TagDurableObject member operations; `S09` is allocator work; `S16` is a remote actor callback. This is a G52 snapshot-ownership calibration only: the authority manifest and native-trace gates remain unchanged. Every remaining Worker-owned success row remains fail-closed.
 
-The exporter makes the retained snapshot's `platformRequestId` the primary client-ledger join. A retained top-level `correlationId` is accepted only when it equals the full S00 `correlation.id`, or is a prefix of at least 32 characters of that full value. Root bounds, root cardinality, service identity, provider-ray agreement, manifest-row checks, and all other identity checks remain fail-closed. The focused fixture covers the retained row shape `correlation:{id}`, `service:{id}`, and `schema:{version}`, together with the permitted 32-character prefix and an envelope-ray-free `platformRequestId` join. It also retains the rejection cases for short and nonmatching prefixes.
+The active latency table continues to mark S04/S05 structurally absent under G41/G47. That reporting rule is distinct from the snapshot's raw success-inventory validation and does not convert either source into a latency claim.
 
-## W74 read result
+DO-owned rows are sourced only from retained `sdt.observe/v1` `do.handler` observations grouped by `actorClass`. The W75 response retained none for this exact cohort, so those rows are stated as `n=0`, not inferred from the Worker snapshot.
 
-The one W74 read reached the repaired windowed query and then stopped at this exact integrity error:
+## W75 read result
 
-```
-g30-trace-export:snapshot-log:snapshot log is missing mapped success row(s) S07
-```
+The one W75 `--mode resume` invocation ran at `2026-09-02T15:02:18.190Z`, using normal script/type filters over the persisted window and client-side intersection with the immutable rays. It made no deployment or app request and was not retried.
 
-No retry was made. This is live evidence that the returned candidate progressed past the prior S00 `correlation.id` rejection and reached the strict required-row check. It does not establish that every retained candidate has all three nested fields, nor does it relax the required `S07` allocator row. The raw provider response is intentionally not persisted after a failed normalizer pass, so `S07` is the exact rejecting field available for this W74 artifact.
+- Retained snapshot invocation roots: **1 / 51**.
+- Retained schema-complete accepted sample roots: **1 / 50**; 49 measured requests remain absent.
+- First observed schema-complete-root lag: **16,241,210 ms**.
+- Retained `do.handler` observations for the full 51-request cohort: **0**.
+
+The state remains `awaiting-resume-query` for a later separately authorized same-cohort read; W75 itself performed exactly this one read.
 
 ## Interim timing and per-hop table
 
-Every row names its source and sample count. `unavailable` is deliberately not zero: the query returned a candidate root, but its full S00 identity did not pass the required validator, so no valid snapshot-root count or median can be reported.
+Every row identifies its source and its sample count. The Worker medians are descriptive singleton values (`n=1`), not a population estimate. `unavailable` is not zero.
 
 | Hop / measurement | Source | n | Descriptive result |
 | --- | --- | ---: | --- |
 | S00 client timing | W71 immutable client ledger, LAX | 50 | nearest-rank p50 1,308 ms; p95 2,113 ms |
-| S00 snapshot row | retained snapshot-log root | unavailable | candidate reached the strict `S07` completeness check; no validated root was emitted |
-| S01 bootstrap admit | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S02 bootstrap release | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S03 reservation stage | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S04 / S05 | G41/G47 structural rule | n/a | structurally absent, not an unobserved retained row |
-| S06 reservation member | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S07 allocator | retained snapshot-log root | unavailable | exact W74 rejecting field: required mapped success row absent |
-| S08 final fence | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S10 tag append stage | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S11 tag append member | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S12 result-state stage | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S13 result-state member | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S14 response build | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
-| S15 response completion | retained snapshot-log root | unavailable | candidate rejected before a complete validated root was emitted |
+| S00 | retained Worker snapshot-log root | 1 | median 520 ms |
+| S01 | retained Worker snapshot-log root | 1 | median 0 ms |
+| S02 | retained Worker snapshot-log root | 1 | median 45 ms |
+| S03 | retained Worker snapshot-log root | 1 | median 46 ms |
+| S04 / S05 | G41/G47 structural rule | n/a | structurally absent from the active latency table |
+| S06 | retained Worker snapshot-log root | 1 | median 0 ms |
+| S07 reservation member | retained `sdt.observe/v1 do.handler`, expected `TAG` actorClass | 0 | unavailable; not claimed by the Worker snapshot |
+| S08 | retained Worker snapshot-log root | 1 | median 64 ms |
+| S09 allocator finalize | retained `sdt.observe/v1 do.handler`, expected `ALLOCATOR` actorClass | 0 | unavailable; not claimed by the Worker snapshot |
+| S10 | retained Worker snapshot-log root | 1 | median 17 ms |
+| S11 | retained Worker snapshot-log root | 1 | median 326 ms |
+| S12 append member | retained `sdt.observe/v1 do.handler`, expected `TAG` actorClass | 0 | unavailable; not claimed by the Worker snapshot |
+| S13 | retained Worker snapshot-log root | 1 | median 22 ms |
+| S14 result-state member | retained `sdt.observe/v1 do.handler`, expected `TAG` actorClass | 0 | unavailable; not claimed by the Worker snapshot |
+| S15 | retained Worker snapshot-log root | 1 | median 0 ms |
+| S16 remote actor callback | retained `sdt.observe/v1 do.handler`, retained actorClass determines source | 0 | unavailable; not claimed by the Worker snapshot |
 
-| DO actorClass | Source | n | constructor-to-handler median | first-storage-read median | subrequest-wall median |
+| DO actorClass grouping | Source | n | constructor-to-handler median | first-storage-read median | subrequest-wall median |
 | --- | --- | ---: | ---: | ---: |
-| no validated actor-class row | whole-cohort `sdt.observe/v1` `do.handler` window result | unavailable | unavailable | unavailable | unavailable |
+| TAG (S07/S12/S14 source) | retained `sdt.observe/v1 do.handler`, exact cohort intersection | 0 | unavailable | unavailable | unavailable |
+| ALLOCATOR (S09 source) | retained `sdt.observe/v1 do.handler`, exact cohort intersection | 0 | unavailable | unavailable | unavailable |
+| remote actor class (S16 source) | retained `sdt.observe/v1 do.handler`, exact cohort intersection | 0 | unavailable | unavailable | unavailable |
 
-The one allowed W74 resume did not persist a valid provider response after its snapshot-normalizer error. Therefore no whole-cohort `do.handler` actor-class population or median is available to copy honestly into this checkpoint. The PR carries the valid client S00 result and this explicitly unavailable DO observation, rather than blocking on unavailable snapshot rows or fabricating a median.
+## Client-data-only residual ranking
 
-## Residual ranking
-
-No residual ranking is derived from this interim table. The only valid timing population is the client S00 ledger; assigning it to an individual commit hop, or ranking a snapshot row rejected for missing `S07`, would fabricate AC5 evidence. A future authorized same-cohort read may update this table and ranking on the same branch/PR only after a complete retained snapshot validates.
+The ranking uses only the retained Worker snapshot singleton; it does not rank absent DO work. In descending descriptive median order: S00 520 ms, S11 326 ms, S08 64 ms, S03 46 ms, S02 45 ms, S13 22 ms, S10 17 ms, then S01/S06/S15 at 0 ms (all `n=1`). It is an interim source-labelled ordering, not an attribution of the client p95 or a complete commit-path conclusion.
 
 ## R-3 — public Worker fetch retention limitation
 
-The authoritative direct Observability observations are retained here as platform evidence: the burst cohort retained **2 / 51** snapshot roots (870 retained spans), the paced cohort retained **1 / 51** snapshot root (451 retained spans), and the waitUntil-free public GET probe retained **0 / 10**. The broadened finding is that public Worker fetch invocations for this script are not retained regardless of `waitUntil`, while scanner invocations are retained. Thus the 40-root threshold is unreachable under the observed platform behaviour; this is an R-3 log-retention follow-up, not a hop-latency conclusion.
+The authoritative retention evidence remains: burst snapshot roots **2 / 51** (870 retained spans), paced snapshot roots **1 / 51** (451 retained spans), and waitUntil-free public GET roots **0 / 10**. W75 independently re-observed the paced cohort at **1 / 51** retained snapshot roots and **1 / 50** schema-complete measured roots. Public Worker fetch invocations for this script are not retained at a useful cohort rate regardless of `waitUntil`, while scanner traffic is retained. The 40-root target remains unreachable under this platform behaviour; this is R-3 retention evidence, not a reason to fabricate absent per-hop or DO data.
 
-## Verification recorded with this checkpoint
+## Verification and CI record
 
-`npm run test:g52` passed: typecheck, 17 focused G52 tests, and the existing sink/mapped-row omission mutants both red in their self-test. The new fixture proves the permitted 32-character prefix, `platformRequestId` client join without an envelope ray, nested `correlation`/`service`/`schema` row attributes, and rejection of shorter or nonmatching prefixes. The full `node scripts/g30-trace-mutation-runner.mjs` suite also passed, including the original and snapshot-specific platform-ray/client-join gates.
+`npm run test:g52` passed: typecheck, 18 focused tests, snapshot sink/mapped-row omission mutants red, the new Worker-only snapshot fixture, and the resume ownership fixture that still rejects a missing Worker row. `node scripts/g30-trace-mutation-runner.mjs --self-test` recognizes the new `snapshot-do-ownership-split-gate` alongside the existing mutation matrix.
 
-The pre-repair `ci-g30-core` failure was deterministic: its mutation runner found two instances of the old platform-ray join anchor after the snapshot join was introduced. The repaired runner distinguishes the native-root and snapshot anchors and passed locally. The contemporaneous `ci-g43` failure is an unrelated existing 5,000 ms timeout in `test/g43-tag-sql.spec.ts`; no G43 test, timeout, or gate was changed here.
+The prior `ci-foundation` failure on `7271e28` contained pre-existing unrelated full-suite failures, including the G43 5,000 ms timeout in `test/g43-tag-sql.spec.ts`. W75 triggers exactly one replacement `ci-foundation` execution on the repaired head; its final status is recorded in the W75 report without changing G43.

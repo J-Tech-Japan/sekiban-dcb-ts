@@ -11,6 +11,7 @@ import {
   RESUME_THRESHOLD,
   resumeExactRayQuery,
   SAMPLE_COUNT,
+  SNAPSHOT_PER_HOP_ROWS,
   W68_FIXED_WINDOW,
 } from "../scripts/deploy/g52-resume-query.mjs";
 
@@ -154,5 +155,70 @@ describe("SDT-G52 resume-only retained-log state", () => {
       now: () => W68_FIXED_WINDOW.cohortStartedAtMs + (2 * 60 * 60 * 1_000),
     });
     expect(ready.pacedFallback.decision).toBe("start-paced-now");
+  });
+
+  it("accepts a Worker-only snapshot root while retaining the Worker-row completeness gate", async () => {
+    let requests = 0;
+    const initial = createPacedResumeState({
+      baseUrl: "https://g52-resume.invalid",
+      accountId: "g52-resume-account",
+      serviceId: "g52-resume-service",
+      versionId: "g52-resume-version",
+      sourceCommit: "c".repeat(40),
+      runId: "g52-resume-ownership-0001",
+    });
+    const captured = await capturePacedCohort({
+      state: initial,
+      persist: async () => {},
+      fetchImpl: async () => committedResponse(++requests),
+      sleepFor: async () => {},
+    });
+    const workerOnlyTrace = {
+      requestId: captured.ledger[0]!.requestId,
+      traceId: "g52-worker-only-snapshot",
+      rootSource: "snapshot-log" as const,
+      snapshotLogTruncated: false,
+      schema: "sdt.commit/v1" as const,
+      boundary: "success" as const,
+      complete: true,
+      runtimeVerified: true,
+      exportedAtMs: 1,
+      callerCoverageIntervals: [],
+      providerSpanNames: [],
+      spans: SNAPSHOT_PER_HOP_ROWS.map((rowId, index) => ({ rowId, startMs: index, endMs: index + 1 })),
+    };
+    const queryCohort = async () => ({
+      events: [],
+      resumeQuery: { shape: "fixture", window: captured.cohortWindow },
+      cohortDoHandlerObservations: [],
+    });
+    const complete = await resumeExactRayQuery({
+      state: captured,
+      accountId: "g52-resume-account",
+      token: "test-only-observability-token",
+      template: {},
+      queryCohort,
+      normalizeBundle: () => ({ traces: [workerOnlyTrace], observations: [] }),
+    });
+    const completeLatest = complete.resume.latest as unknown as {
+      schemaCompleteSampleRoots: number;
+      perHopDescriptiveMedians: Array<{ rowId: string }>;
+    };
+    expect(completeLatest).toMatchObject({ schemaCompleteSampleRoots: 1 });
+    expect(completeLatest.perHopDescriptiveMedians.map((row) => row.rowId)).toEqual(SNAPSHOT_PER_HOP_ROWS);
+    expect(completeLatest.perHopDescriptiveMedians.map((row) => row.rowId)).not.toContain("S07");
+
+    const missingWorker = await resumeExactRayQuery({
+      state: captured,
+      accountId: "g52-resume-account",
+      token: "test-only-observability-token",
+      template: {},
+      queryCohort,
+      normalizeBundle: () => ({
+        traces: [{ ...workerOnlyTrace, spans: workerOnlyTrace.spans.filter((span) => span.rowId !== "S10") }],
+        observations: [],
+      }),
+    });
+    expect(missingWorker.resume.latest).toMatchObject({ schemaCompleteSampleRoots: 0 });
   });
 });

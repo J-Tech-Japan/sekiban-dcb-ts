@@ -744,10 +744,10 @@
     "a34bdfcedde51ae2-LAX"
   ],
   "resume": {
-    "lifecycle": "resume-query-error",
+    "lifecycle": "awaiting-resume-query",
     "threshold": 40,
     "deadlineAtMs": 1788430740000,
-    "nextQueryAtMs": 1788358269512,
+    "nextQueryAtMs": 1788362238190,
     "queries": [
       {
         "attempt": 1,
@@ -772,10 +772,823 @@
         "queriedAtMs": 1788357369512,
         "queryScope": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
         "errorClass": "resume-query-failed"
+      },
+      {
+        "attempt": 5,
+        "queriedAtMs": 1788361338190,
+        "queryScope": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+        "expectedSampleRequests": 50,
+        "retainedSampleRoots": 1,
+        "schemaCompleteSampleRoots": 1,
+        "missingSampleRequestIds": [
+          "a34bd2314cc0d829-LAX",
+          "a34bd276ff0d1360-LAX",
+          "a34bd2c4d940b152-LAX",
+          "a34bd30d3d312f32-LAX",
+          "a34bd3556e7d83d9-LAX",
+          "a34bd39afeaec321-LAX",
+          "a34bd3e2cb157b5d-LAX",
+          "a34bd428cc0c88bd-LAX",
+          "a34bd471297a7db7-LAX",
+          "a34bd4b7fdf8b589-LAX",
+          "a34bd4ff7fbd2360-LAX",
+          "a34bd5470ad908fa-LAX",
+          "a34bd58f6ef301d9-LAX",
+          "a34bd5d79c0e3dc4-LAX",
+          "a34bd61c999cb786-LAX",
+          "a34bd6633b61cb96-LAX",
+          "a34bd6a8fcf0453c-LAX",
+          "a34bd6ee0ae61418-LAX",
+          "a34bd7336a285bf3-LAX",
+          "a34bd77aee85e9df-LAX",
+          "a34bd7bf6c4acc9f-LAX",
+          "a34bd8056eea142d-LAX",
+          "a34bd851afd8a0c6-LAX",
+          "a34bd8e019552ef0-LAX",
+          "a34bd926afb52bab-LAX",
+          "a34bd9754aa7afef-LAX",
+          "a34bd9bc197ffb84-LAX",
+          "a34bda021f5c2ea8-LAX",
+          "a34bda488e985c0d-LAX",
+          "a34bda9169c7e1ee-LAX",
+          "a34bdad79bd612ad-LAX",
+          "a34bdb1c7a996a9f-LAX",
+          "a34bdb65883013aa-LAX",
+          "a34bdbac4f7808e0-LAX",
+          "a34bdbf498c3cb9c-LAX",
+          "a34bdc3ad96303c4-LAX",
+          "a34bdc7ffc92dcf7-LAX",
+          "a34bdcc70dec4fd6-LAX",
+          "a34bdd0bebbed7a4-LAX",
+          "a34bdd522a3ce538-LAX",
+          "a34bdd999da11e0f-LAX",
+          "a34bdde229dcff4b-LAX",
+          "a34bde297b73196e-LAX",
+          "a34bde7008399898-LAX",
+          "a34bdeb528b790fe-LAX",
+          "a34bdefb0d9df7e5-LAX",
+          "a34bdf418f181557-LAX",
+          "a34bdf883d832ad5-LAX",
+          "a34bdfcedde51ae2-LAX"
+        ]
       }
     ],
-    "firstSeenAtMsByRequestId": {},
-    "latest": null
+    "firstSeenAtMsByRequestId": {
+      "a34bd8985b9dfda5-LAX": 1788361338190
+    },
+    "latest": {
+      "queriedAtMs": 1788361338190,
+      "queryWindow": {
+        "from": 1788344833077,
+        "to": 1788345393731
+      },
+      "queryShape": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+      "telemetryQuery": {
+        "shape": "persisted-cohort-window-standard-script-type-filters-client-side-exact-ray-intersection",
+        "window": {
+          "from": 1788344833077,
+          "to": 1788345393731
+        },
+        "exactRayCount": 51,
+        "snapshotWindowEventCount": 1,
+        "observationWindowEventCount": 1,
+        "retainedSnapshotLogRootCount": 1,
+        "retainedObservationEventCount": 1,
+        "retainedDoHandlerObservationCount": 0
+      },
+      "retainedInvocationRoots": 1,
+      "retainedSampleRoots": 1,
+      "schemaCompleteSampleRoots": 1,
+      "missingSampleRequestIds": [
+        "a34bd2314cc0d829-LAX",
+        "a34bd276ff0d1360-LAX",
+        "a34bd2c4d940b152-LAX",
+        "a34bd30d3d312f32-LAX",
+        "a34bd3556e7d83d9-LAX",
+        "a34bd39afeaec321-LAX",
+        "a34bd3e2cb157b5d-LAX",
+        "a34bd428cc0c88bd-LAX",
+        "a34bd471297a7db7-LAX",
+        "a34bd4b7fdf8b589-LAX",
+        "a34bd4ff7fbd2360-LAX",
+        "a34bd5470ad908fa-LAX",
+        "a34bd58f6ef301d9-LAX",
+        "a34bd5d79c0e3dc4-LAX",
+        "a34bd61c999cb786-LAX",
+        "a34bd6633b61cb96-LAX",
+        "a34bd6a8fcf0453c-LAX",
+        "a34bd6ee0ae61418-LAX",
+        "a34bd7336a285bf3-LAX",
+        "a34bd77aee85e9df-LAX",
+        "a34bd7bf6c4acc9f-LAX",
+        "a34bd8056eea142d-LAX",
+        "a34bd851afd8a0c6-LAX",
+        "a34bd8e019552ef0-LAX",
+        "a34bd926afb52bab-LAX",
+        "a34bd9754aa7afef-LAX",
+        "a34bd9bc197ffb84-LAX",
+        "a34bda021f5c2ea8-LAX",
+        "a34bda488e985c0d-LAX",
+        "a34bda9169c7e1ee-LAX",
+        "a34bdad79bd612ad-LAX",
+        "a34bdb1c7a996a9f-LAX",
+        "a34bdb65883013aa-LAX",
+        "a34bdbac4f7808e0-LAX",
+        "a34bdbf498c3cb9c-LAX",
+        "a34bdc3ad96303c4-LAX",
+        "a34bdc7ffc92dcf7-LAX",
+        "a34bdcc70dec4fd6-LAX",
+        "a34bdd0bebbed7a4-LAX",
+        "a34bdd522a3ce538-LAX",
+        "a34bdd999da11e0f-LAX",
+        "a34bdde229dcff4b-LAX",
+        "a34bde297b73196e-LAX",
+        "a34bde7008399898-LAX",
+        "a34bdeb528b790fe-LAX",
+        "a34bdefb0d9df7e5-LAX",
+        "a34bdf418f181557-LAX",
+        "a34bdf883d832ad5-LAX",
+        "a34bdfcedde51ae2-LAX"
+      ],
+      "firstSeenLagDistribution": [
+        {
+          "requestId": "a34bd8985b9dfda5-LAX",
+          "requestStartedAtMs": 1788345096980,
+          "firstSeenAtMs": 1788361338190,
+          "firstSeenLagMs": 16241210,
+          "firstSeenDefinition": "first exact-CF-Ray resume query that observed a schema-complete snapshot root"
+        }
+      ],
+      "client": {
+        "count": 50,
+        "p50": 1308,
+        "p95": 2113
+      },
+      "callerColoDistribution": {
+        "LAX": 50
+      },
+      "perHopDescriptiveMedians": [
+        {
+          "rowId": "S00",
+          "observedSpanCount": 1,
+          "medianMs": 520
+        },
+        {
+          "rowId": "S01",
+          "observedSpanCount": 1,
+          "medianMs": 0
+        },
+        {
+          "rowId": "S02",
+          "observedSpanCount": 1,
+          "medianMs": 45
+        },
+        {
+          "rowId": "S03",
+          "observedSpanCount": 1,
+          "medianMs": 46
+        },
+        {
+          "rowId": "S06",
+          "observedSpanCount": 1,
+          "medianMs": 0
+        },
+        {
+          "rowId": "S08",
+          "observedSpanCount": 1,
+          "medianMs": 64
+        },
+        {
+          "rowId": "S10",
+          "observedSpanCount": 1,
+          "medianMs": 17
+        },
+        {
+          "rowId": "S11",
+          "observedSpanCount": 1,
+          "medianMs": 326
+        },
+        {
+          "rowId": "S13",
+          "observedSpanCount": 1,
+          "medianMs": 22
+        },
+        {
+          "rowId": "S15",
+          "observedSpanCount": 1,
+          "medianMs": 0
+        }
+      ],
+      "doObservationSource": "sdt.observe/v1 do.handler from persisted cohort window with client-side exact-CF-Ray intersection",
+      "doObservationCohortRequestCount": 0,
+      "cohortDoHandlerObservations": [],
+      "doObservationMedians": [],
+      "residualRanking": [
+        {
+          "rowId": "S00",
+          "medianMs": 520,
+          "observedSpanCount": 1,
+          "waitsOn": "the complete app-command commit window"
+        },
+        {
+          "rowId": "S11",
+          "medianMs": 326,
+          "observedSpanCount": 1,
+          "waitsOn": "tag append fan-out settlement"
+        },
+        {
+          "rowId": "S08",
+          "medianMs": 64,
+          "observedSpanCount": 1,
+          "waitsOn": "allocator vector allocation"
+        },
+        {
+          "rowId": "S03",
+          "medianMs": 46,
+          "observedSpanCount": 1,
+          "waitsOn": "BOOTSTRAP release"
+        },
+        {
+          "rowId": "S02",
+          "medianMs": 45,
+          "observedSpanCount": 1,
+          "waitsOn": "BOOTSTRAP admission"
+        },
+        {
+          "rowId": "S13",
+          "medianMs": 22,
+          "observedSpanCount": 1,
+          "waitsOn": "result-state fan-out settlement"
+        },
+        {
+          "rowId": "S10",
+          "medianMs": 17,
+          "observedSpanCount": 1,
+          "waitsOn": "final BOOTSTRAP fence before append"
+        },
+        {
+          "rowId": "S01",
+          "medianMs": 0,
+          "observedSpanCount": 1,
+          "waitsOn": "request decoding and exact payload admission"
+        },
+        {
+          "rowId": "S06",
+          "medianMs": 0,
+          "observedSpanCount": 1,
+          "waitsOn": "reservation fan-out settlement"
+        },
+        {
+          "rowId": "S15",
+          "medianMs": 0,
+          "observedSpanCount": 1,
+          "waitsOn": "response assembly after durable reads"
+        }
+      ],
+      "traces": [
+        {
+          "requestId": "a34bd8985b9dfda5-LAX",
+          "traceId": "2e6dc5589ce3c59b3d9276bfb1f6dc13",
+          "rootSource": "snapshot-log",
+          "snapshotLogTruncated": false,
+          "schema": "sdt.commit/v1",
+          "boundary": "success",
+          "complete": true,
+          "exportedAtMs": 1788361338190,
+          "callerCoverageIntervals": [
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S05e",
+            "S06",
+            "S08",
+            "S10",
+            "S11",
+            "S13",
+            "S15"
+          ],
+          "providerSpanNames": [],
+          "spans": [
+            {
+              "rowId": "S00",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "sdt.commit",
+              "startMs": 1788345097884,
+              "endMs": 1788345098404,
+              "emitter": "root-worker",
+              "kind": "root",
+              "logicalParent": null,
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "activation.first": false,
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "sdt.commit",
+                "span.kind": "root",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "http.status": 200
+              }
+            },
+            {
+              "rowId": "S01",
+              "schema": "sdt.commit/v1",
+              "face": "pre-admission",
+              "span": "request.decode_validate",
+              "startMs": 1788345097884,
+              "endMs": 1788345097884,
+              "emitter": "root-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "e8e72add-b134-47e3-b068-17f02714dfa6",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "request.decode_validate",
+                "span.kind": "direct",
+                "outcome": "success"
+              }
+            },
+            {
+              "rowId": "S02",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "bootstrap.admit",
+              "startMs": 1788345097884,
+              "endMs": 1788345097929,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "bootstrap.admit",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "http.status": 200
+              }
+            },
+            {
+              "rowId": "S03",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "bootstrap.release",
+              "startMs": 1788345097929,
+              "endMs": 1788345097975,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "bootstrap.release",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "http.status": 200
+              }
+            },
+            {
+              "rowId": "S04",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "journal.admit",
+              "startMs": 1788345097975,
+              "endMs": 1788345097975,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "journal.admit",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2"
+              }
+            },
+            {
+              "rowId": "S06",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "tag.acquire.stage",
+              "startMs": 1788345097975,
+              "endMs": 1788345097975,
+              "emitter": "caller-worker",
+              "kind": "fanout-stage",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "tag.acquire.stage",
+                "span.kind": "fanout-stage",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2"
+              }
+            },
+            {
+              "rowId": "S05a",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "journal.transition",
+              "startMs": 1788345097975,
+              "endMs": 1788345097975,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "journal.transition",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "phase.ordinal": 0
+              }
+            },
+            {
+              "rowId": "S08",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "allocator.allocate",
+              "startMs": 1788345097975,
+              "endMs": 1788345098039,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "allocator.allocate",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "http.status": 201
+              }
+            },
+            {
+              "rowId": "S05b",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "journal.transition",
+              "startMs": 1788345098039,
+              "endMs": 1788345098039,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "journal.transition",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "phase.ordinal": 1
+              }
+            },
+            {
+              "rowId": "S05c",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "journal.transition",
+              "startMs": 1788345098039,
+              "endMs": 1788345098039,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "journal.transition",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "phase.ordinal": 2
+              }
+            },
+            {
+              "rowId": "S10",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "bootstrap.append_finalize",
+              "startMs": 1788345098039,
+              "endMs": 1788345098056,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "bootstrap.append_finalize",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "http.status": 200
+              }
+            },
+            {
+              "rowId": "S11",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "tag.append.stage",
+              "startMs": 1788345098056,
+              "endMs": 1788345098382,
+              "emitter": "caller-worker",
+              "kind": "fanout-stage",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "tag.append.stage",
+                "span.kind": "fanout-stage",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "retry.index": 0
+              }
+            },
+            {
+              "rowId": "S12",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "tag.append.member",
+              "startMs": 1788345098056,
+              "endMs": 1788345098382,
+              "emitter": "caller-worker",
+              "kind": "fanout-member",
+              "logicalParent": "S11",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "tag.append.member",
+                "span.kind": "fanout-member",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "tag.key_hash": "b23b6cb2b53dbfe1ef8c39cd6653cad08ce91e5c4bf91d80436e54617a7c2926",
+                "retry.index": 0,
+                "member.index": 0,
+                "http.status": 201
+              }
+            },
+            {
+              "rowId": "S05d",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "journal.transition",
+              "startMs": 1788345098382,
+              "endMs": 1788345098382,
+              "emitter": "caller-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "journal.transition",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "phase.ordinal": 3
+              }
+            },
+            {
+              "rowId": "S13",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "tag.state.stage",
+              "startMs": 1788345098382,
+              "endMs": 1788345098404,
+              "emitter": "caller-worker",
+              "kind": "fanout-stage",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "tag.state.stage",
+                "span.kind": "fanout-stage",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2"
+              }
+            },
+            {
+              "rowId": "S14",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "tag.state.member",
+              "startMs": 1788345098382,
+              "endMs": 1788345098404,
+              "emitter": "caller-worker",
+              "kind": "fanout-member",
+              "logicalParent": "S13",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": false,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "tag.state.member",
+                "span.kind": "fanout-member",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "tag.key_hash": "b23b6cb2b53dbfe1ef8c39cd6653cad08ce91e5c4bf91d80436e54617a7c2926",
+                "member.index": 0,
+                "http.status": 200
+              }
+            },
+            {
+              "rowId": "S15",
+              "schema": "sdt.commit/v1",
+              "face": "accepted",
+              "span": "response.build",
+              "startMs": 1788345098404,
+              "endMs": 1788345098404,
+              "emitter": "root-worker",
+              "kind": "direct",
+              "logicalParent": "S00",
+              "rootId": "e8e72add-b134-47e3-b068-17f02714dfa6:0",
+              "clockDomain": "caller",
+              "present": true,
+              "zeroDurationPlatformLimited": true,
+              "attributes": {
+                "schema.version": "sdt.commit/v1",
+                "correlation.id": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+                "service.id": "sekiban-dcb-meeting-room-cloudflare-only",
+                "actor.class": "ROOT",
+                "actor.key_hash": "385544d8171dedd756ba04888915029a75099c81aa006b1ad5b86b646f2c2258",
+                "operation": "response.build",
+                "span.kind": "direct",
+                "outcome": "success",
+                "attempt.id": "d2382bfe-a882-497b-abeb-7dfec5b53ed2",
+                "http.status": 200
+              }
+            }
+          ],
+          "runtimeVerified": true
+        }
+      ],
+      "observations": [
+        {
+          "activationFirst": false,
+          "usedForControl": false,
+          "exposedInPublicResponse": false,
+          "schema": "sdt.observe/v1",
+          "event": "worker.invocation",
+          "requestId": "a34bd8985b9dfda5-LAX",
+          "correlationId": "corr-5a0606799f1b93ada3eb3ac3a7398119e8b8786a402d8ff00eadc7796991e815",
+          "actorClass": "WORKER",
+          "emittedWorkerRowIds": [
+            "S00",
+            "S01",
+            "S02",
+            "S03",
+            "S04",
+            "S05a",
+            "S05b",
+            "S05c",
+            "S05d",
+            "S06",
+            "S08",
+            "S10",
+            "S11",
+            "S12",
+            "S13",
+            "S14",
+            "S15"
+          ],
+          "isolateInstanceId": "9f4f6af1-fb45-4696-a2ef-af69f278ca22",
+          "emittedAtMs": 1788345098404,
+          "storageWrites": 0,
+          "traceId": "2e6dc5589ce3c59b3d9276bfb1f6dc13",
+          "platformRequestId": "a34bd8985b9dfda5"
+        }
+      ],
+      "retentionRatio": {
+        "invocationRoots": {
+          "retained": 1,
+          "sent": 51
+        },
+        "snapshotRoots": {
+          "retained": 1,
+          "sent": 51
+        },
+        "acceptedSampleSchemaCompleteRoots": {
+          "retained": 1,
+          "sent": 50
+        }
+      }
+    }
   },
   "client": {
     "count": 50,

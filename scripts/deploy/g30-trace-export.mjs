@@ -166,13 +166,26 @@ function telemetryField(metadata, event, attributes, names) {
 
 const ROWS = manifest.schemas["sdt.commit/v1"].rows;
 const ROW_BY_ID = new Map(ROWS.map((row) => [row.rowId, row]));
-// A CommitTraceSnapshot is produced by the public Worker. Remote Durable
-// Object rows (S09 and S16 today) are deliberately not invented there: their
-// handler evidence arrives as sdt.observe/v1 and is reported separately.
-// The log-root guard therefore requires every *Worker-owned* success row,
-// rather than claiming a remote native callback was retained in the log.
+// A CommitTraceSnapshot is produced by the public Worker. Its required-row
+// universe is an execution-ownership boundary, not the manifest's logical
+// emitter label: S07/S12/S14 are TagDurableObject member operations even
+// though their caller-side trace labels are declared on CommitWorker. S09 is
+// allocator-owned and S16 is a remote actor callback. None can be claimed as
+// a Worker-local snapshot row; their bounded evidence is sdt.observe/v1
+// do.handler, grouped by actorClass. Keep this list explicit so a later
+// member operation cannot silently become a Worker snapshot requirement.
+export const SNAPSHOT_LOG_DO_OWNED_ROWS = Object.freeze([
+  "S07", "S09", "S12", "S14", "S16",
+]);
+const SNAPSHOT_LOG_DO_OWNED_ROW_SET = new Set(SNAPSHOT_LOG_DO_OWNED_ROWS);
+if (SNAPSHOT_LOG_DO_OWNED_ROWS.some((rowId) => !ROW_BY_ID.has(rowId))) {
+  throw new Error("g30-trace-export:snapshot-log:DO-owned snapshot row is not in the authority manifest");
+}
+// Every remaining success row is Worker-owned and remains fail-closed in the
+// retained snapshot. DO-owned rows are intentionally excluded rather than
+// fabricated into the Worker root.
 export const SNAPSHOT_LOG_REQUIRED_ROWS = Object.freeze(SUCCESS_REQUIRED.filter(
-  (rowId) => ROW_BY_ID.get(rowId)?.emitter.endsWith("worker") === true,
+  (rowId) => !SNAPSHOT_LOG_DO_OWNED_ROW_SET.has(rowId),
 ));
 const WORKER_ROW_IDS = new Set(ROWS
   .filter((row) => row.emitter === "root-worker" || row.emitter === "caller-worker")
