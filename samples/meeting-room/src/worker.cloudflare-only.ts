@@ -476,6 +476,8 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
     if (path.startsWith("/operator/bootstrap/")) return bootstrapOperator(request, env, ctx);
     if (path === "/operator/repair") return repairOperator(request, env, ctx);
     if (path.startsWith("/api/commands/")) {
+      const componentReject = rejectUnlessPrimaryComponent(env, "command");
+      if (componentReject !== undefined) return componentReject;
       return ctx.tracing.enterSpan(G51_P1_PROBE_SPAN, (span) => {
         span.setAttribute(G51_PROBE_ATTRIBUTE, "p1");
         return command(request, env, ctx);

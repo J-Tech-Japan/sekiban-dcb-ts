@@ -114,9 +114,10 @@ describe("SDT-G38 receiver-only surface preparation", () => {
     expect(storeInitializations).toBe(0);
   });
 
-  it.each(["receiver", undefined, "unknown"] as const)("rejects the four primary-only entries for component %s before any port call", async (component) => {
+  it.each(["receiver", undefined, "unknown"] as const)("rejects the four primary-only entries for component %s before any port or tracing call", async (component) => {
     const portNames = new Set(["BOOTSTRAP", "ALLOCATOR", "JOURNAL", "TAG", "D1", "D1_MV", "DOWNSTREAM_QUEUE"]);
     let portCalls = 0;
+    let tracingCalls = 0;
     const env = new Proxy({ G32_COMPONENT: component, CONFORMANCE_TOKEN: "fixture" }, {
       get(target, property, receiver) {
         if (typeof property === "string" && portNames.has(property)) {
@@ -126,7 +127,15 @@ describe("SDT-G38 receiver-only surface preparation", () => {
         return Reflect.get(target, property, receiver);
       },
     }) as unknown as MeetingRoomCloudflareEnv;
-    const ctx = createExecutionContext();
+    const ctx = new Proxy(createExecutionContext(), {
+      get(target, property, receiver) {
+        if (property === "tracing") {
+          tracingCalls += 1;
+          throw new Error("unexpected tracing access");
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
     const requests = [
       new Request("https://g38.test/api/commands/create-room", { method: "POST", body: "{}" }),
       new Request("https://g38.test/operator/bootstrap/g38-receiver-fixture/status"),
@@ -142,10 +151,34 @@ describe("SDT-G38 receiver-only surface preparation", () => {
       });
     }
     expect(portCalls).toBe(0);
+    expect(tracingCalls).toBe(0);
   });
 
   it("keeps primary as the only component admitted by the guard", () => {
     expect(rejectUnlessPrimaryComponent({ G32_COMPONENT: "primary" }, "command")).toBeUndefined();
+  });
+
+  it("keeps the public P1 probe active for an admitted primary command", async () => {
+    const enteredSpans: string[] = [];
+    const attributes: Array<readonly [string, string]> = [];
+    const ctx = Object.assign(createExecutionContext(), {
+      tracing: {
+        enterSpan<T>(name: string, callback: (span: { setAttribute: (key: string, value: string) => void }) => T): T {
+          enteredSpans.push(name);
+          return callback({ setAttribute: (key, value) => { attributes.push([key, value]); } });
+        },
+      },
+    }) as unknown as ExecutionContext;
+    const response = await primaryWorker.fetch!(new Request("https://g38.test/api/commands/create-room", {
+      method: "GET",
+    }) as never, { G32_COMPONENT: "primary" } as MeetingRoomCloudflareEnv, ctx);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Command route requires POST",
+      code: "validation_error",
+    });
+    expect(enteredSpans).toEqual(["sdt.g51.probe.p1"]);
+    expect(attributes).toEqual([["sdt.g51.probe", "p1"]]);
   });
 
   it("rejects a conformance runtime-control suffix before it reaches a runtime or port", async () => {
