@@ -208,6 +208,11 @@ function normalizedSpan(event, traceId) {
     present: true,
     zeroDurationPlatformLimited: startMs === endMs,
     attributes: normalizableAttributes(attributes),
+    // This native-only discriminator is intentionally retained outside the
+    // frozen snapshot attribute matrix. It lets G51 prove a provider span was
+    // explicitly row-labelled rather than merely mapped by an operation-name
+    // fallback in this exporter.
+    ...(typeof attributes["sdt.row.id"] === "string" ? { nativeRowId: attributes["sdt.row.id"] } : {}),
   };
 }
 
@@ -516,6 +521,9 @@ export const TELEMETRY_QUERY_VALUE_BATCH = 10;
 // discarding a valid cohort behind a provider result cap.
 export const TELEMETRY_TRACE_ID_BATCH = 1;
 export const TELEMETRY_RETRY_DELAY_MS = 15_000;
+/** G51's exporter callers wait for ingestion, but never without an upper bound. */
+export const DEFAULT_COHORT_INGESTION_TIMEOUT_MS = 10 * 60 * 1_000;
+export const COHORT_INGESTION_POLL_INTERVAL_MS = 15_000;
 
 /**
  * The client records the literal cf-ray header (ray plus colo suffix), while
@@ -930,6 +938,103 @@ export async function acquireCohortTelemetry({
       lastPendingError = error;
       await sleepFor(TELEMETRY_RETRY_DELAY_MS);
     }
+  }
+}
+
+/**
+ * Poll a fixed client cohort until every recorded CF-Ray has a normalized
+ * retained trace, or record the bounded shortfall. This is deliberately less
+ * strict than G30's complete-schema acquisition: G37/G50 must retain an
+ * honest incomplete or missing custom-span result rather than turn it into a
+ * fabricated per-hop table.
+ */
+export async function pollCohortTelemetry({
+  ledger,
+  fetchCohort,
+  normalize,
+  timeoutMs = DEFAULT_COHORT_INGESTION_TIMEOUT_MS,
+  intervalMs = COHORT_INGESTION_POLL_INTERVAL_MS,
+  now = Date.now,
+  sleepFor = sleep,
+}) {
+  if (!Array.isArray(ledger) || ledger.length === 0) fail("cohort-poll", "ledger must contain one or more client requests");
+  if (typeof fetchCohort !== "function" || typeof normalize !== "function") fail("cohort-poll", "fetchCohort and normalize must be functions");
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) fail("cohort-poll", "timeoutMs must be a positive integer");
+  if (!Number.isSafeInteger(intervalMs) || intervalMs < 1) fail("cohort-poll", "intervalMs must be a positive integer");
+
+  const expectedRequestIds = Object.freeze([...clientRequestIdByPlatformRayId(ledger).values()]);
+  const expected = new Set(expectedRequestIds);
+  const startedAtMs = now();
+  const deadlineMs = startedAtMs + timeoutMs;
+  const attempts = [];
+  let lastBundle;
+  let lastErrorClass;
+
+  for (;;) {
+    const queriedAtMs = now();
+    try {
+      const raw = await fetchCohort();
+      const bundle = await normalize(raw);
+      const observed = new Set((Array.isArray(bundle?.traces) ? bundle.traces : [])
+        .map((trace) => trace?.requestId)
+        .filter((requestId) => typeof requestId === "string" && expected.has(requestId)));
+      const missingRequestIds = expectedRequestIds.filter((requestId) => !observed.has(requestId));
+      lastBundle = bundle;
+      attempts.push(Object.freeze({
+        attempt: attempts.length + 1,
+        queriedAtMs,
+        observedRequestCount: observed.size,
+        missingRequestCount: missingRequestIds.length,
+      }));
+      if (missingRequestIds.length === 0) {
+        return Object.freeze({
+          bundle,
+          ingestion: Object.freeze({
+            status: "settled",
+            expectedRequestCount: expectedRequestIds.length,
+            observedRequestCount: observed.size,
+            missingRequestIds: Object.freeze([]),
+            startedAtMs,
+            deadlineMs,
+            completedAtMs: now(),
+            attempts: Object.freeze(attempts),
+          }),
+        });
+      }
+    } catch (error) {
+      // Never preserve a provider error verbatim here: callers may write this
+      // receipt into a tracked evidence artifact. Its class is enough to
+      // distinguish an unavailable query from a ray shortfall.
+      lastErrorClass = safeFailureClass(error);
+      attempts.push(Object.freeze({
+        attempt: attempts.length + 1,
+        queriedAtMs,
+        observedRequestCount: 0,
+        missingRequestCount: expectedRequestIds.length,
+        errorClass: lastErrorClass,
+      }));
+    }
+
+    if (now() >= deadlineMs) {
+      const observed = new Set((Array.isArray(lastBundle?.traces) ? lastBundle.traces : [])
+        .map((trace) => trace?.requestId)
+        .filter((requestId) => typeof requestId === "string" && expected.has(requestId)));
+      return Object.freeze({
+        ...(lastBundle === undefined ? {} : { bundle: lastBundle }),
+        ingestion: Object.freeze({
+          status: lastBundle === undefined ? "unavailable" : "shortfall",
+          expectedRequestCount: expectedRequestIds.length,
+          observedRequestCount: observed.size,
+          missingRequestIds: Object.freeze(expectedRequestIds.filter((requestId) => !observed.has(requestId))),
+          startedAtMs,
+          deadlineMs,
+          completedAtMs: now(),
+          attempts: Object.freeze(attempts),
+          ...(lastErrorClass === undefined ? {} : { lastErrorClass }),
+        }),
+      });
+    }
+    await sleepFor(Math.min(intervalMs, Math.max(1, deadlineMs - now())));
   }
 }
 

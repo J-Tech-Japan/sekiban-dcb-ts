@@ -119,7 +119,6 @@ async function fullHistoryLengthProfileGuard() {
       sourceCommit: SOURCE_COMMIT,
       serviceId: "guard-service-full",
       sampleCount: 50,
-      settleMs: 0,
       deployment: { id: "guard-version", number: 1, message: "guard" },
     });
     assert(sample.serviceId === "guard-service-full", "full profile omitted service identity");
@@ -229,7 +228,6 @@ async function firstSeedPartialWriteGuard() {
       "--source-commit", "b".repeat(40),
       "--profile", "history-length",
       "--samples", "50",
-      "--settle-ms", "0",
       "--output", output,
     ]);
     assert(result.code !== 0, "partial-write guard subprocess unexpectedly succeeded");
@@ -282,7 +280,6 @@ async function defaultSingleProfileGuard() {
       "--candidate", "guard-default-single",
       "--source-commit", "c".repeat(40),
       "--samples", "3",
-      "--settle-ms", "0",
       "--output", output,
     ]);
     assert(result.code === 0, `default single guard failed: ${result.stderr}`);

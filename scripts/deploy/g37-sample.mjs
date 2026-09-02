@@ -4,8 +4,8 @@
  * profile.
  *
  * This intentionally does not reuse the SDT-G30 B0 ceremony: it sends one
- * bounded sequential client window(s), waits a short fixed telemetry settlement,
- * and reports trace loss descriptively.  The G30 exporter is reused only for
+ * bounded sequential client window(s), polls boundedly for telemetry ingestion,
+ * and reports trace loss descriptively. The G30 exporter is reused only for
  * its exact CF-Ray -> correlation -> traceId join and schema normalization.
  */
 import { createHash } from "node:crypto";
@@ -13,13 +13,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   clientRequestIdByPlatformRayId,
+  COHORT_INGESTION_POLL_INTERVAL_MS,
+  DEFAULT_COHORT_INGESTION_TIMEOUT_MS,
   exportCohortTelemetry,
   normalizeTelemetryBundle,
+  pollCohortTelemetry,
 } from "./g30-trace-export.mjs";
 
 const DEFAULT_SAMPLE_COUNT = 50;
 const MAX_SAMPLE_COUNT = 100;
-const DEFAULT_SETTLE_MS = 60_000;
+const MAX_INGESTION_TIMEOUT_MS = 15 * 60 * 1_000;
 const DEFAULT_READY_TIMEOUT_MS = 30_000;
 const READY_RETRY_MS = 2_000;
 const HISTORY_LENGTH_PROFILE = "history-length";
@@ -272,6 +275,12 @@ export async function telemetryForLedger({
   ledger,
   required = false,
   retainTelemetry = false,
+  ingestionTimeoutMs = DEFAULT_COHORT_INGESTION_TIMEOUT_MS,
+  ingestionPollIntervalMs = COHORT_INGESTION_POLL_INTERVAL_MS,
+  now = Date.now,
+  sleepFor = sleep,
+  queryCohort = exportCohortTelemetry,
+  normalizeBundle = normalizeTelemetryBundle,
 }) {
   if (typeof observabilityToken !== "string" || observabilityToken.length === 0) {
     if (required) {
@@ -288,19 +297,53 @@ export async function telemetryForLedger({
   try {
     const earliest = Math.min(...ledger.map((entry) => entry.startedAtMs));
     const latest = Math.max(...ledger.map((entry) => entry.completedAtMs));
-    const query = structuredClone(template);
-    query.timeframe = { from: Math.max(0, earliest - 60_000), to: latest + 5 * 60_000 };
-    const raw = await exportCohortTelemetry({ accountId, token: observabilityToken, template: query, ledger });
-    const bundle = normalizeTelemetryBundle(raw, Date.now(), clientRequestIdByPlatformRayId(ledger));
+    let query;
+    const acquisition = await pollCohortTelemetry({
+      ledger,
+      timeoutMs: ingestionTimeoutMs,
+      intervalMs: ingestionPollIntervalMs,
+      now,
+      sleepFor,
+      fetchCohort: async () => {
+        query = structuredClone(template);
+        // Query through the current observed point on every bounded attempt;
+        // the immutable client window keeps the filter cohort exact while
+        // avoiding the former blind fixed settlement delay.
+        query.timeframe = {
+          from: Math.max(0, earliest - 60_000),
+          to: Math.max(latest + 60_000, now() + 60_000),
+        };
+        return queryCohort({ accountId, token: observabilityToken, template: query, ledger });
+      },
+      normalize: (raw) => normalizeBundle(raw, now(), clientRequestIdByPlatformRayId(ledger)),
+    });
+    if (acquisition.bundle === undefined) {
+      const reason = `retained per-hop telemetry was unavailable after bounded ingestion polling (${acquisition.ingestion.lastErrorClass ?? "unknown"})`;
+      if (required) throw new Error(reason);
+      return Object.freeze({
+        status: "unavailable",
+        ac4PerHopStatus: "UNKNOWN",
+        reason,
+        descriptiveLossCount: null,
+        perHopDescriptiveMedians: [],
+        ...(query === undefined ? {} : { queryWindow: query.timeframe }),
+        ingestion: acquisition.ingestion,
+        observedIngestionLagMs: Math.max(0, acquisition.ingestion.completedAtMs - latest),
+      });
+    }
+    const bundle = acquisition.bundle;
     const observedRequestIds = new Set(bundle.traces.map((trace) => trace.requestId));
     const completeTraceCount = bundle.traces.filter((trace) => trace.complete === true && trace.runtimeVerified === true).length;
     return Object.freeze({
-      queryWindow: query.timeframe,
+      status: acquisition.ingestion.status === "settled" ? "available" : "shortfall",
+      queryWindow: query?.timeframe,
       observedTraceCount: observedRequestIds.size,
       schemaCompleteTraceCount: completeTraceCount,
       descriptiveLossCount: ledger.length - observedRequestIds.size,
       workerColoDistribution: workerColos(bundle.observations),
       perHopDescriptiveMedians: perHopMedians(bundle.traces),
+      ingestion: acquisition.ingestion,
+      observedIngestionLagMs: Math.max(0, acquisition.ingestion.completedAtMs - latest),
       ...(retainTelemetry ? {
         retainedTraceTelemetry: Object.freeze({
           traces: bundle.traces,
@@ -331,7 +374,8 @@ export async function captureG37Sample({
   sourceCommit,
   serviceId,
   sampleCount = DEFAULT_SAMPLE_COUNT,
-  settleMs = DEFAULT_SETTLE_MS,
+  ingestionTimeoutMs = DEFAULT_COHORT_INGESTION_TIMEOUT_MS,
+  ingestionPollIntervalMs = COHORT_INGESTION_POLL_INTERVAL_MS,
   readyTimeoutMs = DEFAULT_READY_TIMEOUT_MS,
   deployment,
 }) {
@@ -369,8 +413,15 @@ export async function captureG37Sample({
     head = committedSuid;
   }
 
-  await sleep(settleMs);
-  const telemetry = await telemetryForLedger({ accountId, observabilityToken, observabilityTokenReason, template, ledger });
+  const telemetry = await telemetryForLedger({
+    accountId,
+    observabilityToken,
+    observabilityTokenReason,
+    template,
+    ledger,
+    ingestionTimeoutMs,
+    ingestionPollIntervalMs,
+  });
 
   return Object.freeze({
     task: "SDT-G37",
@@ -546,7 +597,8 @@ async function captureHistoryLengthWindow({
   template,
   candidate,
   sampleCount,
-  settleMs,
+  ingestionTimeoutMs,
+  ingestionPollIntervalMs,
   tag,
   payload,
   historyLength,
@@ -594,13 +646,14 @@ async function captureHistoryLengthWindow({
     }));
   }
 
-  await sleep(settleMs);
   const telemetry = await telemetryForLedger({
     accountId,
     observabilityToken,
     observabilityTokenReason,
     template,
     ledger,
+    ingestionTimeoutMs,
+    ingestionPollIntervalMs,
   });
   return Object.freeze({
     label,
@@ -631,7 +684,8 @@ export async function captureG47HistoryLengthSample({
   sourceCommit,
   serviceId,
   sampleCount = DEFAULT_SAMPLE_COUNT,
-  settleMs = DEFAULT_SETTLE_MS,
+  ingestionTimeoutMs = DEFAULT_COHORT_INGESTION_TIMEOUT_MS,
+  ingestionPollIntervalMs = COHORT_INGESTION_POLL_INTERVAL_MS,
   deployment,
 }) {
   const runServiceId = required("serviceId", serviceId);
@@ -648,7 +702,8 @@ export async function captureG47HistoryLengthSample({
     template,
     candidate,
     sampleCount,
-    settleMs,
+    ingestionTimeoutMs,
+    ingestionPollIntervalMs,
     tag: shortTag,
     payload: shortPayload,
     historyLength: SHORT_HISTORY_LENGTH,
@@ -663,7 +718,8 @@ export async function captureG47HistoryLengthSample({
     template,
     candidate,
     sampleCount,
-    settleMs,
+    ingestionTimeoutMs,
+    ingestionPollIntervalMs,
     tag: longTag,
     payload: longPayload,
     historyLength: LONG_HISTORY_LENGTH,
@@ -738,7 +794,11 @@ async function main() {
   const candidate = required("--candidate", argument("--candidate"));
   const sourceCommit = required("--source-commit", argument("--source-commit"));
   const sampleCount = positiveInteger("--samples", argument("--samples", String(DEFAULT_SAMPLE_COUNT)), MAX_SAMPLE_COUNT);
-  const settleMs = nonNegativeInteger("--settle-ms", argument("--settle-ms", String(DEFAULT_SETTLE_MS)));
+  const ingestionTimeoutMs = positiveInteger(
+    "--ingestion-timeout-ms",
+    argument("--ingestion-timeout-ms", String(DEFAULT_COHORT_INGESTION_TIMEOUT_MS)),
+    MAX_INGESTION_TIMEOUT_MS,
+  );
   const readyTimeoutMs = nonNegativeInteger("--ready-timeout-ms", argument("--ready-timeout-ms", String(DEFAULT_READY_TIMEOUT_MS)));
   const output = argument("--output", `.artifacts/g37-${candidate.replace(/[^a-z0-9._-]/gi, "-")}.json`);
   const priorVersionsPath = argument("--prior-versions");
@@ -770,7 +830,7 @@ async function main() {
       sourceCommit,
       serviceId,
       sampleCount,
-      settleMs,
+      ingestionTimeoutMs,
       deployment,
     })
     : await captureG37Sample({
@@ -784,7 +844,7 @@ async function main() {
       sourceCommit,
       serviceId,
       sampleCount,
-      settleMs,
+      ingestionTimeoutMs,
       readyTimeoutMs,
       deployment,
     });

@@ -12,10 +12,12 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { summary, telemetryForLedger } from "./g37-sample.mjs";
+import { DEFAULT_COHORT_INGESTION_TIMEOUT_MS } from "./g30-trace-export.mjs";
 
 export const TASK = "SDT-G50";
 export const DEFAULT_SAMPLE_COUNT = 50;
-export const DEFAULT_SETTLE_MS = 60_000;
+export const DEFAULT_INGESTION_TIMEOUT_MS = DEFAULT_COHORT_INGESTION_TIMEOUT_MS;
+export const MAX_INGESTION_TIMEOUT_MS = 15 * 60 * 1_000;
 export const ACTIVE_PER_HOP_ROWS = Object.freeze([
   "S00",
   "S01",
@@ -57,9 +59,9 @@ function positiveInteger(name, value) {
   return parsed;
 }
 
-function nonNegativeInteger(name, value) {
+function boundedPositiveInteger(name, value, maximum) {
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) fail(`${name} must be a non-negative integer`);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) fail(`${name} must be an integer in 1..${maximum}`);
   return parsed;
 }
 
@@ -172,10 +174,6 @@ async function defaultCaptureTelemetry(input) {
   return telemetryForLedger({ ...input, required: true, retainTelemetry: true });
 }
 
-function sleep(milliseconds) {
-  return new Promise((resolveSleep) => setTimeout(resolveSleep, Math.max(0, milliseconds)));
-}
-
 /**
  * Capture exactly one post-G41 app-command window. The optional dependencies
  * are only for non-live guards; production callers use the G37 telemetry path.
@@ -188,12 +186,12 @@ export async function captureG50AppCommitLatency({
   versionId,
   sourceCommit: deployedSourceCommit,
   sampleCount = DEFAULT_SAMPLE_COUNT,
-  settleMs = DEFAULT_SETTLE_MS,
+  ingestionTimeoutMs = DEFAULT_INGESTION_TIMEOUT_MS,
+  ingestionPollIntervalMs,
   runId = randomUUID().replaceAll("-", ""),
   queryTemplate,
   fetchImpl = globalThis.fetch,
   captureTelemetry = defaultCaptureTelemetry,
-  sleepFor = sleep,
 }) {
   const acceptedSampleCount = positiveInteger("sampleCount", String(sampleCount));
   const measurementRunId = safeRunId(runId);
@@ -221,13 +219,14 @@ export async function captureG50AppCommitLatency({
     }));
   }
 
-  await sleepFor(settleMs);
   const telemetry = await captureTelemetry({
     accountId: required("accountId", accountId),
     observabilityToken: required("observabilityToken", observabilityToken),
     observabilityTokenReason: "SDT-G50 supplied observability token file",
     template: queryTemplate,
     ledger,
+    ingestionTimeoutMs,
+    ...(ingestionPollIntervalMs === undefined ? {} : { ingestionPollIntervalMs }),
   });
   // A retained-query schema defect must not discard an otherwise coherent
   // client cohort. Preserve the raw telemetry and name missing S-rows for the
@@ -282,7 +281,11 @@ function main() {
   const queryTemplatePath = argument("--query-template", "scripts/deploy/g37-observability-query.json");
   const queryTemplate = JSON.parse(readFileSync(queryTemplatePath, "utf8"));
   const sampleCount = positiveInteger("--samples", argument("--samples", String(DEFAULT_SAMPLE_COUNT)));
-  const settleMs = nonNegativeInteger("--settle-ms", argument("--settle-ms", String(DEFAULT_SETTLE_MS)));
+  const ingestionTimeoutMs = boundedPositiveInteger(
+    "--ingestion-timeout-ms",
+    argument("--ingestion-timeout-ms", String(DEFAULT_INGESTION_TIMEOUT_MS)),
+    MAX_INGESTION_TIMEOUT_MS,
+  );
   const output = argument("--output", ".artifacts/sdt-g50-commit-latency.json");
   const runId = argument("--run-id", randomUUID().replaceAll("-", ""));
   return captureG50AppCommitLatency({
@@ -293,7 +296,7 @@ function main() {
     versionId,
     sourceCommit: deployedSourceCommit,
     sampleCount,
-    settleMs,
+    ingestionTimeoutMs,
     runId,
     queryTemplate,
   }).then((sample) => {

@@ -1031,6 +1031,17 @@ describe("SDT-G30 B0 trace/evidence gates", () => {
     expect(normalizeTelemetryBundle(raw).traces).toHaveLength(observationLedgerForPhase(evidence().phases.B).length);
   });
 
+  it("retains an explicit native row id outside the frozen snapshot attribute matrix", () => {
+    const raw = rawTelemetry(observationLedgerForPhase(evidence().phases.B));
+    const root = raw.events.find((event) => event.attributes?.operation === "sdt.commit");
+    if (root?.attributes === undefined) throw new Error("fixture lacks S00 raw span");
+    root.attributes["sdt.row.id"] = "S00";
+
+    const span = normalizeTelemetryBundle(raw).traces[0]?.spans.find((entry) => entry.rowId === "S00");
+    expect(span?.nativeRowId).toBe("S00");
+    expect(span?.attributes).not.toHaveProperty("sdt.row.id");
+  });
+
   it("keeps cohort telemetry filters inside the primary/receiver worker scope", () => {
     const query = buildBoundedTelemetryQuery({
       view: "events",
