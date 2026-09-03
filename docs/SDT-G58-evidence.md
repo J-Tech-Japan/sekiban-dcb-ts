@@ -915,3 +915,67 @@ No SafeWindow bound, timeout, gate, G44 correctness fixture, deployment,
 cohort, Wrangler operation, token, D1 reset, SDT-G56 state, or SDT-G60-owned
 path changed. This W104 checkpoint is **completed** for the focused G58 AC5
 BLOCK live-poll repair and is ready for a later deployed proof continuation.
+
+## W105 ReservationProjector safe-starvation diagnosis — 2026-09-03
+
+W105 is a read-only diagnosis continuation from the W104 checkpoint at
+`f07944f7c3a5a763087edf4669980b67cd6da7c7`. It performs no deployment,
+Wrangler operation, application request, replacement cohort, product repair,
+PR creation, or worker completion. The only cohort remains W102 run
+`acc68d23-6133-446d-9470-e54fb3c28284`; its raw receipt and exact failure log
+are unchanged. The W105 guard receipt is
+`.artifacts/sdt-g58-w105-reservation-safe-starvation.json`.
+
+### Four scheduled groups
+
+The W102 JSON has 91 HTTP health samples but four distinct scheduled coverage
+`observedAt` values. The 72 BLOCK responses are repeated reads of one decision,
+not 72 cron ticks:
+
+| observedAt | HTTP samples | coverage/reason | Room safe head / unsafe rows | Reservation safe head / unsafe rows |
+| --- | ---: | --- | --- | --- |
+| `1788428250004` (09:37:30.004Z) | 5 | SETTLED / null | pre-cohort / 0 → pre-cohort / 1 | pre-cohort / 0 → pre-cohort / 3 |
+| `1788428310641` (09:38:30.641Z) | 5 | SETTLED / null | row 2 / 1 → row 2 / 1 | row 2 / 4 → row 2 / 8 |
+| `1788428377716` (09:39:37.716Z) | 72 | BLOCK/UNSETTLED / `source_partition_set_changed_during_scan` | row 2 / 1 → row 3 / 0 | row 2 / 9 → row 3 / 6 |
+| `1788428437283` (09:40:37.283Z) | 9 | SETTLED / null | row 3 / 0 → row 10 / 0 | row 3 / 6 → row 3 / 6 |
+
+At the final health response, global and RoomProjector safe heads are row 10
+(`063924025191103000001618685662`), ReservationProjector is row 3
+(`063924025106891000001134410415`) with six unsafe rows, and both live
+projector aggregates still have `lastPollAt=1788426228497`. The W102 failure
+text is preserved verbatim in the W105 artifact and source log.
+
+### Exact in-scope seam
+
+W104's BLOCK live-poll repair remains present: the retained-frontier hook and
+G44 fence run before `pollLiveProjections`, and no BLOCK early return exists.
+The remaining divergence is per-view safe-lane behavior. The sample runs safe
+catch-up before unsafe-kick draining and iterates RoomProjector then
+ReservationProjector serially. `MaterializedViewCatchUpRuntime.follow` stops
+at the first event outside the SafeWindow, so a Reservation-local first unsafe
+row at row 4 leaves its checkpoint at row 3 and retains six unsafe rows while
+Room can follow the proven row-10 frontier.
+
+The deterministic W105 two-view model reproduces the four observed coverage
+groups, the BLOCK retained frontier at row 3, and the Room row-10 /
+Reservation row-3 + six-unsafe shape with a sufficient per-view budget. It
+also shows that swapping independent view order or drain/catch-up order does
+not remove the local barrier; a three-event budget would also prevent Room
+from reaching row 10. Thus the focused G58 AC3 seam for a later green repair is
+Reservation first-unsafe eligibility/re-entry under the per-view catch-up
+cadence, not a SafeWindow change, a global gap bypass, or an invented D1 CAS
+winner. No CAS/lease/claim error is present in the W102 artifacts; typed MV CAS
+conflicts remain bounded to eight retries.
+
+`scripts/g58-reservation-safe-starvation-guard.mjs` parses the immutable
+receipt, checks the current W104 source contracts, and rejects mutations that
+remove the first-unsafe barrier, serial materializer iteration, retained
+frontier, catch-up-before-drain order, or the W103 BLOCK red seam. The matching
+Vitest witness is in `test/g58-safe-lane-diagnosis.spec.ts`. The 5,289 ms W99
+unsafe observation and W102's 5,353 ms row-1 eventual observation remain
+misses against the unchanged 5,000 ms bound. SafeWindow stays 20,000/120,000
+ms; G44 correctness and SDT-G60-owned upstream paths are untouched.
+
+Checks passed: `node scripts/g58-reservation-safe-starvation-guard.mjs
+--self-test`, the normal guard, `npm run test:g58`, `npm run test:g44`,
+`npm run typecheck`, and `npm run lint`.

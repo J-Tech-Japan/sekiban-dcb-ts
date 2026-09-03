@@ -39,6 +39,57 @@ function settled(frontierSuid: string, observedAt: number): GlobalCompletenessCo
   };
 }
 
+type TwoViewScheduleOptions = {
+  readonly reservationBarrierAt?: number | null;
+  readonly perViewBudget?: number;
+  readonly viewOrder?: readonly ("RoomProjector" | "ReservationProjector")[];
+  readonly drainFirst?: boolean;
+};
+
+/**
+ * Minimal W105 model: both views receive the same retained source frontier,
+ * but ReservationProjector has a local first-unsafe row. This is intentionally
+ * a test-only model, not a second scheduler implementation.
+ */
+function simulateTwoViewSafeSchedule(options: TwoViewScheduleOptions = {}) {
+  const rowCount = 10;
+  const reservationBarrierAt = options.reservationBarrierAt === undefined ? 4 : options.reservationBarrierAt;
+  const perViewBudget = options.perViewBudget ?? rowCount;
+  const viewOrder = options.viewOrder ?? ["RoomProjector", "ReservationProjector"];
+  const ticks = [
+    { observedAt: 1788428250004, kind: "SETTLED", frontier: 0 },
+    { observedAt: 1788428310641, kind: "SETTLED", frontier: 2 },
+    { observedAt: 1788428377716, kind: "BLOCK/UNSETTLED", frontier: 3 },
+    { observedAt: 1788428437283, kind: "SETTLED", frontier: 10 },
+  ];
+  const heads = { RoomProjector: 0, ReservationProjector: 0 };
+  const stages = options.drainFirst === true
+    ? ["unsafe-drain", "safe-catch-up"] as const
+    : ["safe-catch-up", "unsafe-drain"] as const;
+  for (const tick of ticks) {
+    for (const stage of stages) {
+      for (const viewId of viewOrder) {
+        let applied = 0;
+        for (let row = heads[viewId] + 1; row <= tick.frontier; row += 1) {
+          if (applied >= perViewBudget) break;
+          if (viewId === "ReservationProjector" && reservationBarrierAt !== null && row >= reservationBarrierAt) break;
+          heads[viewId] = row;
+          applied += 1;
+        }
+      }
+      // Keep the stage in the model's execution trace even though both
+      // stages call the same barrier-only advancement function.
+      void stage;
+    }
+  }
+  return {
+    heads,
+    unsafeRows: reservationBarrierAt === null ? 0 : 6,
+    observedAt: ticks.map((tick) => tick.observedAt),
+    stages,
+  };
+}
+
 describe("SDT-G58 W97 same-tick frontier repair", () => {
   it("W97 GREEN: applies a freshly scanned FULL frontier in the same scheduled tick", async () => {
     const order: string[] = [];
@@ -158,5 +209,37 @@ describe("SDT-G58 W97 same-tick frontier repair", () => {
       `drain:${staleFrontier}`,
       "live-poll",
     ]);
+  });
+});
+
+describe("SDT-G58 W105 ReservationProjector safe starvation diagnosis", () => {
+  it("reproduces the four-tick Room-before-Reservation first-unsafe witness and rejects causal mutants", () => {
+    const baseline = simulateTwoViewSafeSchedule();
+    expect(baseline.observedAt).toEqual([
+      1788428250004,
+      1788428310641,
+      1788428377716,
+      1788428437283,
+    ]);
+    expect(baseline.heads).toEqual({ RoomProjector: 10, ReservationProjector: 3 });
+    expect(baseline.unsafeRows).toBe(6);
+
+    // Room-before-Reservation is the deployed execution shape, but swapping
+    // independent view order does not remove Reservation's local barrier.
+    expect(simulateTwoViewSafeSchedule({
+      viewOrder: ["ReservationProjector", "RoomProjector"],
+    }).heads).toEqual(baseline.heads);
+    expect(simulateTwoViewSafeSchedule({ drainFirst: true }).heads).toEqual(baseline.heads);
+
+    // A budget smaller than the ten-row Room frontier would also hold Room
+    // below row 10, so the observed Room head rules out budget starvation.
+    expect(simulateTwoViewSafeSchedule({ perViewBudget: 3 }).heads.RoomProjector).toBeLessThan(10);
+
+    // Removing the first-unsafe barrier is the focused green mutation; the
+    // guard must reject it until a product repair explicitly proves it safe.
+    const barrierMutant = simulateTwoViewSafeSchedule({ reservationBarrierAt: null });
+    expect(barrierMutant.heads).toEqual({ RoomProjector: 10, ReservationProjector: 10 });
+    expect(barrierMutant.unsafeRows).toBe(0);
+    expect(barrierMutant.heads).not.toEqual(baseline.heads);
   });
 });
