@@ -109,6 +109,7 @@ function guardedEnv(component: string | undefined, calls: { idFromName: number; 
   return {
     G32_COMPONENT: component,
     CONFORMANCE_TOKEN: TOKEN,
+    SDT_SERVICE_ID: "g42-service",
     JOURNAL: fakeNamespace(calls),
   } as unknown as MeetingRoomCloudflareEnv;
 }
@@ -275,8 +276,8 @@ describe("SDT-G42 Journal first-touch conformance probe", () => {
       logicalKey: logicalKey("f"),
       warmupLogicalKey: logicalKey("f0"),
     });
-    const aReceipt = await runG42JournalProbeTrial(fakeNamespace(calls), a as never, "SJC");
-    const dReceipt = await runG42JournalProbeTrial(fakeNamespace(calls), d as never, "SJC");
+    const aReceipt = await runG42JournalProbeTrial(fakeNamespace(calls), "g42-service", a as never, "SJC");
+    const dReceipt = await runG42JournalProbeTrial(fakeNamespace(calls), "g42-service", d as never, "SJC");
     expect(aReceipt.measured.requestBytes).toBe(dReceipt.measured.requestBytes);
     expect(dReceipt.treatmentCompliance.distinctLogicalKey).toBe(true);
   });

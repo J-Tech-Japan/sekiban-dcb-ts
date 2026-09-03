@@ -21,6 +21,7 @@ import {
   noOpNativeTracing,
   type NativeTracing,
 } from "../trace/CommitTrace";
+import { scopeIdFor } from "../scope/ScopeName";
 import { beginDurableObjectHandlerObservation, type DurableObjectHandlerObservation } from "../trace/ObservationStream";
 
 const STATE_KEY = "allocator-state";
@@ -274,7 +275,11 @@ export class AllocatorDurableObject implements DurableObject {
         async () => {
           const url = new URL("https://allocator.internal/command/finalize");
           url.searchParams.set("__serviceId", input.serviceId!);
-          const fetch = () => this.env!.BOOTSTRAP!.get(this.env!.BOOTSTRAP!.idFromName(input.serviceId!)).fetch(new Request(url, {
+          const fetch = () => this.env!.BOOTSTRAP!.get(scopeIdFor(this.env!.BOOTSTRAP!, {
+            serviceId: input.serviceId!,
+            doClass: "bootstrap",
+            identity: "coordinator",
+          })).fetch(new Request(url, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ commandId: input.bootstrapCommandId, leaseEpoch: input.bootstrapEpoch }),

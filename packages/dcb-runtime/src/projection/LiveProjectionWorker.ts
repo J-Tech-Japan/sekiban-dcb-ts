@@ -8,7 +8,8 @@ import {
   type ProjectorRegistry,
 } from "./ProjectorRegistry";
 import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
-import { requireConfiguredServiceId } from "../http/testServiceId";
+import { scopeIdFor } from "../scope/ScopeName";
+import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
 
 export interface LiveProjectionEnv {
   POSTGRES_URL?: string;
@@ -29,6 +30,7 @@ export interface ProjectionPollOptions {
   serviceId?: string;
   /** Optional single tag scope for queue/HTTP operator catch-up. */
   tag?: string;
+  serviceIdentityProvider?: ServiceIdentityProvider;
 }
 
 function sharedStore(env: LiveProjectionEnv, provider: StoreProvider): PipelineStore {
@@ -51,7 +53,11 @@ function error(status: number, code: string, message: string): Response {
 async function admitBootstrapRoute(env: LiveProjectionEnv, serviceId: string): Promise<void> {
   if (env.BOOTSTRAP === undefined) return;
   const url = new URL("https://projection.internal/route/check"); url.searchParams.set("__serviceId", serviceId);
-  const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route: "projection-rebuild" }) }));
+  const admitted = await env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+    serviceId,
+    doClass: "bootstrap",
+    identity: "coordinator",
+  })).fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ route: "projection-rebuild" }) }));
   if (!admitted.ok) throw new Error("bootstrap_route_rejected:projection-rebuild");
 }
 
@@ -66,7 +72,7 @@ export async function pollLiveProjections(
   if (options.store === undefined && options.storeProvider === undefined) {
     throw new Error("A projection store provider is not configured");
   }
-  const serviceId = options.serviceId ?? requireConfiguredServiceId(env.SDT_SERVICE_ID);
+  const serviceId = options.serviceId ?? requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
   await admitBootstrapRoute(env, serviceId);
   const store = options.store ?? sharedStore(env, options.storeProvider!);
   await store.initialize();
@@ -98,13 +104,14 @@ export async function handleProjectionLag(
   env: LiveProjectionEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
   storeProvider?: StoreProvider,
+  serviceIdentityProvider?: ServiceIdentityProvider,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return error(405, "validation_error", "Projection lag requires GET");
   }
   const query = new URL(request.url).searchParams;
   const tagStateId = query.get("tagStateId");
-  const serviceId = query.get("serviceId") || requireConfiguredServiceId(env.SDT_SERVICE_ID);
+  const serviceId = query.get("serviceId") || requireServiceIdentity(serviceIdentityProvider ?? envServiceIdentity(env));
   const pollRequested = query.get("poll") === "1";
   if (tagStateId === null || tagStateId.length === 0) {
     return error(400, "validation_error", "tagStateId is required");

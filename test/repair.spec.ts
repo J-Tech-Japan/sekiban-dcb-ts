@@ -5,6 +5,7 @@ import { handleOperatorRepair, type OperatorRepairEnv } from "../packages/dcb-ru
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import type { RepairScopeItem, TagRecord } from "../packages/dcb-runtime/src/tag/types";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 const SERVICE_ID = "local-test-runtime";
@@ -123,7 +124,7 @@ async function journalPost(attemptId: string, path: string, body: unknown): Prom
 
 function journalStub(attemptId: string): DurableObjectStub {
   const namespace = (env as unknown as { readonly JOURNAL: DurableObjectNamespace }).JOURNAL;
-  return namespace.get(namespace.idFromName(attemptId));
+  return namespace.get(scopeIdFor(namespace, { serviceId: SERVICE_ID, doClass: "journal", identity: attemptId }));
 }
 
 /**

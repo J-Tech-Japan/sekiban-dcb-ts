@@ -2,7 +2,8 @@ import { parseBootstrapDump } from "./manifest";
 import { createBootstrapStoreAdapter } from "./BootstrapStoreAdapter";
 import type { BootstrapManifest } from "./types";
 import type { StoreProvider, StoreProviderEnvironment } from "../store/provider";
-import { allocatorNameForService, type AllocatorState } from "../allocator/types";
+import type { AllocatorState } from "../allocator/types";
+import { scopeIdFor } from "../scope/ScopeName";
 
 type JsonObject = Record<string, unknown>;
 function json(body: unknown, status = 200): Response { return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8" } }); }
@@ -19,6 +20,7 @@ export interface OperatorBootstrapEnv extends StoreProviderEnvironment {
   readonly BOOTSTRAP: DurableObjectNamespace;
   readonly ALLOCATOR: DurableObjectNamespace;
   readonly REPAIR_OPERATOR_TOKEN: string;
+  readonly SDT_SERVICE_ID?: string;
 }
 
 /** Deployment composition may rebuild provider-specific read models after the
@@ -37,8 +39,11 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
   const denied = bearer(request, env.REPAIR_OPERATOR_TOKEN); if (denied !== undefined) return denied;
   const url = new URL(request.url); const match = url.pathname.match(/^\/operator\/bootstrap\/([^/]+)\/(plan|import|status|abort|export)$/);
   if (match === null) return json({ code: "not_found", error: "not found" }, 404);
-  const serviceId = decodeURIComponent(match[1]!); const operation = match[2]!;
-  const coordinator = env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId));
+  let serviceId: string;
+  try { serviceId = decodeURIComponent(match[1]!); } catch { return json({ code: "bootstrap_service_invalid", error: "Bootstrap serviceId must be URI encoded" }, 400); }
+  if (serviceId.length === 0) return json({ code: "bootstrap_service_invalid", error: "Bootstrap serviceId is required" }, 400);
+  const operation = match[2]!;
+  const coordinator = env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, { serviceId, doClass: "bootstrap", identity: "coordinator" }));
   let body: unknown = {};
   if (operation !== "status") try { body = await request.json(); } catch { return json({ code: "bootstrap_body_invalid", error: "JSON body required" }, 400); }
   const invoke = (path: string, value: unknown, method = "POST") => {
@@ -52,12 +57,12 @@ export async function handleOperatorBootstrap(request: Request, env: OperatorBoo
     // A caller must not nominate a synthetic lineage. Initializing the target
     // service allocator first gives bootstrap and future commits one durable,
     // authoritative lineage source.
-    const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(body.targetServiceId)));
+    const allocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, { serviceId: body.targetServiceId, doClass: "allocator", identity: "allocator" }));
     const allocatorState = await allocator.fetch(new Request("https://bootstrap.internal/state"));
     if (!allocatorState.ok) return json({ code: "bootstrap_allocator_unavailable", error: "target allocator state is unavailable" }, 503);
     const allocatorBody = await allocatorState.json<Partial<AllocatorState>>();
     if (typeof allocatorBody.allocatorLineageId !== "string" || allocatorBody.allocatorLineageId.length === 0) return json({ code: "bootstrap_allocator_invalid", error: "target allocator lineage is invalid" }, 500);
-    const sourceAllocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
+    const sourceAllocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, { serviceId, doClass: "allocator", identity: "allocator" }));
     const sourceAllocatorState = await sourceAllocator.fetch(new Request("https://bootstrap.internal/state"));
     if (!sourceAllocatorState.ok) return json({ code: "bootstrap_allocator_unavailable", error: "source allocator state is unavailable" }, 503);
     const sourceAllocatorBody = await sourceAllocatorState.json<Partial<AllocatorState>>();

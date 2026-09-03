@@ -28,8 +28,3 @@ export interface AllocatorState {
   /** Durable rate-limit key for rollback warnings; it is not allocation authority. */
   lastRollbackWarningFingerprint?: string | null;
 }
-
-/** The only allocator namespace that serves a particular service. */
-export function allocatorNameForService(serviceId: string): string {
-  return `service-allocator:${serviceId}`;
-}

@@ -1,4 +1,5 @@
 import type { DownstreamOutboxMessage } from "../downstream/types";
+import { scopeIdFor } from "../scope/ScopeName";
 import {
   G44_SCANNER_VERSION,
   G44_HEALTH_STALE_AFTER_MS,
@@ -146,7 +147,11 @@ export class GlobalCompletenessReconciler {
       let findings = 0;
       for (const snapshot of snapshots) {
         try {
-          const source = this.tags.get(this.tags.idFromName(`${snapshot.serviceId}|${snapshot.tag}`)) as unknown as TagSourceStub;
+          const source = this.tags.get(scopeIdFor(this.tags, {
+            serviceId: snapshot.serviceId,
+            doClass: "tag",
+            identity: snapshot.tag,
+          })) as unknown as TagSourceStub;
           let afterSequence = 0;
           let finished = false;
           while (!finished) {

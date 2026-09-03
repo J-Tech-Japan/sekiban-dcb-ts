@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { TAG_SQL_SCHEMA_DDL } from "../packages/dcb-runtime/src/tag/TagSqlSchema";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 interface Scope {
@@ -29,7 +31,7 @@ function scope(): Scope {
 
 function tagStub(value: Scope): DurableObjectStub {
   const namespace = (env as unknown as { readonly TAG: DurableObjectNamespace }).TAG;
-  return namespace.get(namespace.idFromName(`${value.serviceId}|${value.tag}`));
+  return namespace.get(scopeIdFor(namespace, { serviceId: value.serviceId, doClass: "tag", identity: value.tag }));
 }
 
 async function post(value: Scope, path: string, body: unknown = {}): Promise<Response> {
@@ -37,7 +39,7 @@ async function post(value: Scope, path: string, body: unknown = {}): Promise<Res
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}${path}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId },
       body: JSON.stringify(body),
     },
   );
@@ -372,6 +374,7 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
       })]));
       const current = await SELF.fetch(
         `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/state`,
+        { headers: { [TEST_SERVICE_ID_HEADER]: value.serviceId } },
       );
       expect((await current.json<{ activeReservation: unknown }>()).activeReservation).toBeNull();
       // The poison row is terminal, but the sibling remains source-pending

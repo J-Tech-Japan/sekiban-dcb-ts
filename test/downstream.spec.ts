@@ -11,6 +11,7 @@ import {
 import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
 import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import { createPostgresStoreProvider } from "../packages/dcb-runtime/src/store/provider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
@@ -58,7 +59,7 @@ async function appendOutboxCopy(
     `https://downstream.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
       body: JSON.stringify({
         attemptId: body.attemptId,
         epoch: 0,

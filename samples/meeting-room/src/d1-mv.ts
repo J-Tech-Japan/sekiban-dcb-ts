@@ -1,4 +1,5 @@
 import { defineRowMaterializer } from "@sekiban/dcb-core";
+import { envServiceIdentity, requireServiceIdentity } from "@sekiban/dcb-runtime";
 import {
   createD1StoreProvider,
 } from "@sekiban/dcb-runtime/d1";
@@ -15,9 +16,8 @@ interface MeetingRoomD1Env {
   readonly G26_VIEW_COUNT?: string;
 }
 
-function requiredServiceId(value: string | undefined): string {
-  if (value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/.test(value)) return value;
-  throw new Error("SDT_SERVICE_ID is required and must be a non-empty deployment service identity");
+function requiredServiceId(env: MeetingRoomD1Env): string {
+  return requireServiceIdentity(envServiceIdentity(env));
 }
 
 interface StoredEventLike {
@@ -221,7 +221,7 @@ async function ensureSafeInstances(
  * MV databases are intentionally separate bindings, while every source read
  * remains behind the existing SafeWindow/checkpoint rules.
  */
-export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = requiredServiceId(env.SDT_SERVICE_ID)): Promise<void> {
+export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = requiredServiceId(env)): Promise<void> {
   const { runtime, views } = await openMaterializedViews(env);
   for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const active = await views.readActive(serviceId, materializer.id);
@@ -312,7 +312,7 @@ export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly Delive
   }> | undefined;
   const context = async () => {
     opened ??= (async () => {
-      const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
+      const serviceId = requiredServiceId(env);
       const value = await openMaterializedViews(env);
       await ensureSafeInstances(value.runtime, value.views, serviceId, Date.now(), configured);
       return { ...value, serviceId };
@@ -344,7 +344,7 @@ export async function applyMeetingRoomUnsafeArrival(
   event: StoredEvent,
   nowMs = Date.now(),
 ): Promise<void> {
-  const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
+  const serviceId = requiredServiceId(env);
   if (event.serviceId !== serviceId) throw new Error("Stored event service identity did not match SDT_SERVICE_ID");
   const { runtime, views } = await openMaterializedViews(env);
   const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
@@ -356,7 +356,7 @@ export async function applyMeetingRoomUnsafeArrival(
 
 /** Coalesced safe drain. A held lease is ordinary coalescing, not a Queue success/failure decision. */
 export async function drainMeetingRoomUnsafeKicks(env: MeetingRoomD1Env, nowMs = Date.now()): Promise<void> {
-  const serviceId = requiredServiceId(env.SDT_SERVICE_ID);
+  const serviceId = requiredServiceId(env);
   const { runtime, views } = await openMaterializedViews(env);
   for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const unsafe = views.unsafeWindow();

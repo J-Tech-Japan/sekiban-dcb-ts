@@ -25,8 +25,12 @@ import {
 } from "../query/QueryRegistry";
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
-import { serviceIdForRequest } from "./testServiceId";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import {
+  envServiceIdentity,
+  requestServiceIdentity,
+  type ServiceIdentityProvider,
+} from "../service/ServiceIdentityProvider";
 
 export interface QueryWorkerEnv {
   POSTGRES_URL?: string;
@@ -54,6 +58,8 @@ export interface QueryExecutionOptions {
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   pollIntervalMs?: number;
+  /** Host/deployment identity seam; defaults to envServiceIdentity. */
+  serviceIdentityProvider?: ServiceIdentityProvider;
 }
 
 interface QueryRequest {
@@ -389,9 +395,8 @@ export async function handleSerializedQuery(
 ): Promise<Response> {
   const requestStartedAt = (options.now ?? Date.now)();
   const endpoint = endpointFromPath(new URL(request.url).pathname);
-  const serviceId = serviceIdForRequest(request, {
+  const serviceId = requestServiceIdentity(request, options.serviceIdentityProvider ?? envServiceIdentity(env), {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
-    configuredServiceId: env.SDT_SERVICE_ID,
   });
   if (endpoint === undefined || request.method !== "POST") {
     return error(404, "query_route_not_found", "Query routes require POST");

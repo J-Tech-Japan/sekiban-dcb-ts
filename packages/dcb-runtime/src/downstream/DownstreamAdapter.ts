@@ -13,8 +13,9 @@ import {
 } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
-import { requireConfiguredServiceId } from "../http/testServiceId";
 import { GlobalCompletenessReconciler, globalReceiptAcknowledgement } from "../completeness/GlobalCompletenessReconciler";
+import { scopeIdFor } from "../scope/ScopeName";
+import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
 
 export interface DownstreamAdapterEnv {
   POSTGRES_URL?: string;
@@ -39,7 +40,11 @@ function sourceAcknowledgementOptions(env: DownstreamAdapterEnv, options: Adapte
   const sourceAcknowledgement = options.afterGlobalReceipt !== undefined || !hasG44Authority
     ? options.afterGlobalReceipt
     : async ({ message, receipt, arrivedAt }: Parameters<NonNullable<AdapterOptions["afterGlobalReceipt"]>>[0]) => {
-      const tag = env.TAG!.get(env.TAG!.idFromName(`${message.serviceId}|${message.tag}`));
+      const tag = env.TAG!.get(scopeIdFor(env.TAG!, {
+        serviceId: message.serviceId,
+        doClass: "tag",
+        identity: message.tag,
+      }));
       const url = new URL("https://downstream.internal/outbox/mark-delivered");
       url.searchParams.set("__tag", message.tag);
       url.searchParams.set("__serviceId", message.serviceId);
@@ -92,7 +97,11 @@ async function admitBootstrapRoute(env: DownstreamAdapterEnv, serviceId: string,
   }
   const url = new URL("https://downstream.internal/route/check");
   url.searchParams.set("__serviceId", serviceId);
-  const admitted = await env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url, {
+  const admitted = await env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+    serviceId,
+    doClass: "bootstrap",
+    identity: "coordinator",
+  })).fetch(new Request(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ route }),
@@ -200,8 +209,9 @@ export async function stabilizeDownstream(
   env: DownstreamAdapterEnv,
   options: AdapterOptions = {},
   serviceId?: string,
+  serviceIdentityProvider?: ServiceIdentityProvider,
 ): Promise<void> {
-  await admitBootstrapRoute(env, serviceId ?? requireConfiguredServiceId(env.SDT_SERVICE_ID), "scheduled");
+  await admitBootstrapRoute(env, serviceId ?? requireServiceIdentity(serviceIdentityProvider ?? envServiceIdentity(env)), "scheduled");
   await withStore(env, options, async (store, clock) => {
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     await detector.stabilize(clock, serviceId);

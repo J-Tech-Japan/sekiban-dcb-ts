@@ -7,8 +7,13 @@ import {
 import { safeWindowCeilingExceeded } from "../projection/ProjectionRuntime";
 import type { StoreProvider } from "../store/provider";
 import type { TagRecord } from "../tag/types";
-import { serviceIdForRequest } from "../http/testServiceId";
-import { tagStateObjectName, type TagStateReadSuccess } from "../tagstate/TagStateDurableObject";
+import type { TagStateReadSuccess } from "../tagstate/TagStateDurableObject";
+import { scopeIdFor, tagStateScopeIdentity } from "../scope/ScopeName";
+import {
+  envServiceIdentity,
+  requestServiceIdentity,
+  type ServiceIdentityProvider,
+} from "../service/ServiceIdentityProvider";
 
 export { TEST_TAG_STATE_PROJECTOR } from "../projection/ProjectorRegistry";
 
@@ -152,11 +157,11 @@ export class SerializedReadWorker {
     if (this.env.TAG_STATE === undefined) {
       return error(503, "tag_state_source_frontier_failure", "Tag-state cache binding is unavailable");
     }
-    const stateObject = this.env.TAG_STATE.get(this.env.TAG_STATE.idFromName(tagStateObjectName({
+    const stateObject = this.env.TAG_STATE.get(scopeIdFor(this.env.TAG_STATE, {
       serviceId: this.serviceId,
-      tag: identity.tag,
-      projectorId: identity.tagProjector,
-    })));
+      doClass: "tag-state",
+      identity: tagStateScopeIdentity(identity.tag, identity.tagProjector),
+    }));
     let cached: Response;
     try {
       cached = await stateObject.fetch(new Request("https://tag-state.internal/read", {
@@ -222,7 +227,12 @@ export class SerializedReadWorker {
   private async readTag(tag: string): Promise<TagRecord | undefined> {
     const url = new URL("https://serialized-read.internal/state");
     url.searchParams.set("__tag", tag);
-    const tagObject = this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
+    url.searchParams.set("__serviceId", this.serviceId);
+    const tagObject = this.env.TAG.get(scopeIdFor(this.env.TAG, {
+      serviceId: this.serviceId,
+      doClass: "tag",
+      identity: tag,
+    }));
     try {
       const response = await tagObject.fetch(new Request(url));
       if (response.status === 404) return undefined;
@@ -241,9 +251,9 @@ export async function handleSerializedRead(
   env: ReadWorkerEnv,
   registry: ProjectorRegistry = DEPLOYED_PROJECTOR_REGISTRY,
   storeProvider?: StoreProvider,
+  serviceIdentityProvider?: ServiceIdentityProvider,
 ): Promise<Response> {
-  return new SerializedReadWorker(env, serviceIdForRequest(request, {
+  return new SerializedReadWorker(env, requestServiceIdentity(request, serviceIdentityProvider ?? envServiceIdentity(env), {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
-    configuredServiceId: env.SDT_SERVICE_ID,
   }), registry, storeProvider).handle(request);
 }

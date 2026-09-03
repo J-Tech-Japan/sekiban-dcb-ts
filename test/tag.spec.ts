@@ -7,6 +7,7 @@ import {
   type TagRecord,
   type TagReservation,
 } from "../packages/dcb-runtime/src/tag/types";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 interface Scope {
@@ -23,9 +24,16 @@ async function post(scope: Scope, path: string, body: unknown = {}): Promise<Res
     `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}${path}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: scope.serviceId },
       body: JSON.stringify(body),
     },
+  );
+}
+
+function get(scope: Scope, path: string): Promise<Response> {
+  return SELF.fetch(
+    `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}${path}`,
+    { headers: { [TEST_SERVICE_ID_HEADER]: scope.serviceId } },
   );
 }
 
@@ -53,17 +61,13 @@ function candidate(scope: Scope, eventId: string, suid: string, payload = "paylo
 }
 
 async function state(scope: Scope): Promise<TagRecord> {
-  const response = await SELF.fetch(
-    `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
-  );
+  const response = await get(scope, "/state");
   expect(response.status).toBe(200);
   return responseJson<TagRecord>(response);
 }
 
 async function observedHead(scope: Scope): Promise<string> {
-  const response = await SELF.fetch(
-    `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
-  );
+  const response = await get(scope, "/state");
   if (response.status === 404) {
     const seeded = await post(scope, "/append", {
       attemptId: `initial:${crypto.randomUUID()}`,
@@ -133,9 +137,7 @@ describe("TagDurableObject", () => {
     expect((await responseJson<{ error: string }>(wrongField)).error).toBe(
       "each consistency tag needs lastSortableUniqueId",
     );
-    const absentAfterWrongField = await SELF.fetch(
-      `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
-    );
+    const absentAfterWrongField = await get(scope, "/state");
     expect(absentAfterWrongField.status).toBe(404);
 
     const nullHead = await acquire(scope, "null-head", 1, "", {
@@ -145,9 +147,7 @@ describe("TagDurableObject", () => {
     expect((await responseJson<{ error: string }>(nullHead)).error).toBe(
       "lastSortableUniqueId must not be null",
     );
-    const absent = await SELF.fetch(
-      `https://tag.test/tags/${encodeURIComponent(scope.serviceId)}/${encodeURIComponent(scope.tag)}/state`,
-    );
+    const absent = await get(scope, "/state");
     expect(absent.status).toBe(404);
 
     const omitted = await acquire(scope, "omitted", 1, "", {

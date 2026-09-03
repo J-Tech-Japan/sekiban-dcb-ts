@@ -1,4 +1,4 @@
-import { allocatorNameForService, type AllocationVector } from "../allocator/types";
+import type { AllocationVector } from "../allocator/types";
 import type { ConsistencyTag, ReconciliationFailureCause } from "../journal/types";
 import {
   durationSince,
@@ -11,7 +11,6 @@ import {
   type CommitTestFault,
   type ValidatedCommitEnvelope,
 } from "./types";
-import { serviceIdForRequest } from "../http/testServiceId";
 import type { DeliveryClass } from "../downstream/Doorbell";
 import { canonicalEventType } from "../eventIdentity";
 import { createUuidV7, serializedEventMetadata, writeTimestampUtc } from "../eventRecord";
@@ -29,6 +28,12 @@ import {
 } from "../trace/CommitTrace";
 import { observeWorkerInvocation, type ObservationLogSink } from "../trace/ObservationStream";
 import { verifyCommitTrace } from "../trace/CommitTraceVerifier";
+import { scopeIdFor } from "../scope/ScopeName";
+import {
+  envServiceIdentity,
+  requestServiceIdentity,
+  type ServiceIdentityProvider,
+} from "../service/ServiceIdentityProvider";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -57,8 +62,8 @@ export interface CommitWorkerHooks {
   /** Test-only barrier after entry admission is released and before /allocate. */
   beforeBootstrapAllocation?(): Promise<void> | void;
   beforeBootstrapFinalization?(): Promise<void> | void;
-  /** Test-only allocator namespace; production uses the service-scoped allocator. */
-  allocatorName?: string;
+  /** Test-only allocator identity; production uses the canonical allocator identity. */
+  allocatorScopeIdentity?: string;
   /** Runtime composition value; never sourced from a caller-controlled V1 body. */
   domainDeliveryClass?: DeliveryClass;
   /** Registered schema/parser authority for exact-case payload admission. */
@@ -73,6 +78,8 @@ export interface CommitWorkerHooks {
   nativeTracing?: NativeTracing;
   /** Test-only sink injection; production emits the structured log normally. */
   workerObservationSink?: ObservationLogSink;
+  /** Host/deployment identity seam; absent callers receive the env-backed default. */
+  serviceIdentityProvider?: ServiceIdentityProvider;
 }
 
 interface ReservationSuccess {
@@ -652,7 +659,11 @@ export class CommitWorker {
   }
 
   private tagFor(tag: string): DurableObjectStub {
-    return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
+    return this.env.TAG.get(scopeIdFor(this.env.TAG, {
+      serviceId: this.serviceId,
+      doClass: "tag",
+      identity: tag,
+    }));
   }
 
   /**
@@ -682,7 +693,11 @@ export class CommitWorker {
     const invoke = async (): Promise<{ readonly response: Response; readonly leaseEpoch: number | undefined }> => {
       const url = new URL(`https://commit-worker.internal/command/${action}`);
       url.searchParams.set("__serviceId", this.serviceId);
-      const response = await this.env.BOOTSTRAP!.get(this.env.BOOTSTRAP!.idFromName(this.serviceId)).fetch(new Request(url, {
+      const response = await this.env.BOOTSTRAP!.get(scopeIdFor(this.env.BOOTSTRAP!, {
+        serviceId: this.serviceId,
+        doClass: "bootstrap",
+        identity: "coordinator",
+      })).fetch(new Request(url, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ commandId, ...(leaseEpoch === undefined ? {} : { leaseEpoch }) }),
       }));
       if (!response.ok) return { response, leaseEpoch: undefined };
@@ -827,7 +842,11 @@ export class CommitWorker {
     bootstrapEpoch: number,
     traceScope?: CommitTraceScope,
   ): Promise<AllocationVector | undefined> {
-    const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(this.hooks.allocatorName ?? allocatorNameForService(this.serviceId)));
+    const allocator = this.env.ALLOCATOR.get(scopeIdFor(this.env.ALLOCATOR, {
+      serviceId: this.serviceId,
+      doClass: "allocator",
+      identity: this.hooks.allocatorScopeIdentity ?? "allocator",
+    }));
     try {
       const result = await this.postJson<AllocationVector>(allocator, "/allocate", {
         attemptId,
@@ -1102,8 +1121,8 @@ export class CommitWorker {
 }
 
 export async function handleSerializedCommit(request: Request, env: CommitWorkerEnv, hooks: CommitWorkerHooks = {}): Promise<Response> {
-  return new CommitWorker(env, serviceIdForRequest(request, {
+  const serviceIdentity = hooks.serviceIdentityProvider ?? envServiceIdentity(env);
+  return new CommitWorker(env, requestServiceIdentity(request, serviceIdentity, {
     allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
-    configuredServiceId: env.SDT_SERVICE_ID,
   }), hooks).handle(request);
 }

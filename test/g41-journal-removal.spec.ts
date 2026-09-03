@@ -1,7 +1,8 @@
-import { env, runInDurableObject, SELF } from "cloudflare:test";
+import { env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { allocatorNameForService, type AllocationVector } from "../packages/dcb-runtime/src/allocator/types";
+import type { AllocationVector } from "../packages/dcb-runtime/src/allocator/types";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
 import type { SourceObligationPage } from "../packages/dcb-runtime/src/completeness/types";
@@ -117,7 +118,7 @@ function fakeRun(options: FakeRunOptions = {}): FakeRun {
   const fences: TagFact[] = [];
   const journal = namespace(journalCalls, async () => json({ code: "journal_must_not_run" }, 500));
   const tag = namespace(tagCalls, async (id, incoming) => {
-    const tagName = id.split("|").at(-1)!;
+    const tagName = id.split("/").at(-1)!;
     const path = new URL(incoming.url).pathname;
     if (path === "/acquire") return options.acquire?.(tagName) ?? json({ reservation: { token: `token:${tagName}` } }, 201);
     if (path === "/append") {
@@ -173,21 +174,24 @@ function tags(): DurableObjectNamespace {
 }
 
 function tagStub(serviceId: string, tag: string): DurableObjectStub {
-  return tags().get(tags().idFromName(`${serviceId}|${tag}`));
+  return tags().get(scopeIdFor(tags(), { serviceId, doClass: "tag", identity: tag }));
 }
 
 function allocatorStub(serviceId: string): DurableObjectStub {
   const allocator = (env as unknown as { readonly ALLOCATOR?: DurableObjectNamespace }).ALLOCATOR;
   if (allocator === undefined) throw new Error("G41 needs the Allocator Durable Object namespace");
-  return allocator.get(allocator.idFromName(allocatorNameForService(serviceId)));
+  return allocator.get(scopeIdFor(allocator, { serviceId, doClass: "allocator", identity: "allocator" }));
 }
 
-function tagUrl(serviceId: string, tag: string, path: string): string {
-  return `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}${path}`;
+function tagRequest(serviceId: string, tag: string, path: string, init?: RequestInit): Promise<Response> {
+  const url = new URL(`https://tag.test${path}`);
+  url.searchParams.set("__serviceId", serviceId);
+  url.searchParams.set("__tag", tag);
+  return tagStub(serviceId, tag).fetch(new Request(url.toString(), init));
 }
 
 async function tagPost(serviceId: string, tag: string, path: string, body: unknown): Promise<Response> {
-  return SELF.fetch(tagUrl(serviceId, tag, path), {
+  return tagRequest(serviceId, tag, path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -206,7 +210,7 @@ async function readTagState(serviceId: string, tag: string): Promise<{
   fences: Array<{ reason: string; attemptId: string; epoch: number }>;
   alarmDueAt: number | null;
 }> {
-  const response = await SELF.fetch(tagUrl(serviceId, tag, "/state"));
+  const response = await tagRequest(serviceId, tag, "/state");
   expect(response.status).toBe(200);
   return response.json();
 }
@@ -227,7 +231,7 @@ async function seedObservedTag(serviceId: string, tag: string, seed: string): Pr
     }],
   });
   expect(seeded.status).toBe(201);
-  const facts = await SELF.fetch(tagUrl(serviceId, tag, "/head-facts"));
+  const facts = await tagRequest(serviceId, tag, "/head-facts");
   expect(facts.status).toBe(200);
   return (await facts.json<{ head: string }>()).head;
 }
@@ -267,7 +271,7 @@ async function seedObservedTagHead(
       head,
     );
   });
-  const facts = await SELF.fetch(tagUrl(serviceId, tag, "/head-facts"));
+  const facts = await tagRequest(serviceId, tag, "/head-facts");
   expect(facts.status).toBe(200);
   return (await facts.json<{ head: string }>()).head;
 }
@@ -544,10 +548,7 @@ describe("SDT-G41 Journal-free commit path", () => {
     const serviceId = `g41-stale-${crypto.randomUUID()}`;
     const tag = "room:g41:stale";
     const eventId = g32EventId("g41-stale-seed");
-    const seed = await SELF.fetch(`https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const seed = await tagPost(serviceId, tag, "/append", {
         attemptId: "g41-stale-seed",
         epoch: 0,
         candidates: [{
@@ -560,28 +561,25 @@ describe("SDT-G41 Journal-free commit path", () => {
           allocatorLineageId: "g41-stale-lineage",
           timestamp: G32_FIXTURE_TIMESTAMP,
         }],
-      }),
     });
     expect(seed.status).toBe(201);
-    const head = (await SELF.fetch(
-      `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/head-facts`,
-    ));
+    const head = await tagRequest(serviceId, tag, "/head-facts");
     expect(head.status).toBe(200);
     const facts = await head.json<{ head: string }>();
     const attemptId = "g41-superseded-attempt";
-    const acquired = await SELF.fetch(`https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/acquire`, {
+    const acquired = await tagRequest(serviceId, tag, "/acquire", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ attemptId, epoch: 0, eventTags: [tag], consistencyTags: [{ tag, lastSortableUniqueId: facts.head }] }),
     });
     expect(acquired.status).toBe(201);
-    const cancelled = await SELF.fetch(`https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/cancel`, {
+    const cancelled = await tagRequest(serviceId, tag, "/cancel", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ attemptId, epoch: 0, forceTombstone: true }),
     });
     expect(cancelled.status).toBe(200);
-    const delayed = await SELF.fetch(`https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/acquire`, {
+    const delayed = await tagRequest(serviceId, tag, "/acquire", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ attemptId, epoch: 0, eventTags: [tag], consistencyTags: [{ tag, lastSortableUniqueId: facts.head }] }),

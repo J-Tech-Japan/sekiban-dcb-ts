@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { bootstrapDigest, parseBootstrapDump } from "../packages/dcb-runtime/src/bootstrap/manifest";
 import type { BootstrapDump, BootstrapManifest } from "../packages/dcb-runtime/src/bootstrap/types";
 import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/commit/CommitWorker";
-import { allocatorNameForService } from "../packages/dcb-runtime/src/allocator/types";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import { serializedEventMetadata } from "../packages/dcb-runtime/src/eventRecord";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
 
 const suid = (n: number) => g32Suid(`bootstrap-${n}`);
@@ -29,7 +30,7 @@ function dumpFor(serviceId: string, allocatorLineageId = "bootstrap-lineage"): B
   return { manifest: { ...draft, contentDigest: bootstrapDigest({ manifest: { ...draft, contentDigest: "" }, events }) }, events };
 }
 async function post(serviceId: string, path: string, body: unknown): Promise<Response> {
-  return SELF.fetch(`https://bootstrap.test/bootstrap/${encodeURIComponent(serviceId)}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return SELF.fetch(`https://bootstrap.test/bootstrap/${encodeURIComponent(serviceId)}${path}`, { method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId }, body: JSON.stringify(body) });
 }
 function workerEnv(): WorkerEnv { return env as unknown as WorkerEnv; }
 function store(): PostgresEventStore {
@@ -37,8 +38,12 @@ function store(): PostgresEventStore {
   if (url === undefined) throw new Error("POSTGRES_URL binding is required");
   return new PostgresEventStore(url);
 }
-async function allocatorPost(name: string, path: string, body: unknown): Promise<Response> {
-  return workerEnv().ALLOCATOR.get(workerEnv().ALLOCATOR.idFromName(name)).fetch(new Request(`https://bootstrap.test${path}`, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+async function allocatorPost(serviceId: string, path: string, body: unknown, identity = "allocator"): Promise<Response> {
+  return workerEnv().ALLOCATOR.get(scopeIdFor(workerEnv().ALLOCATOR, {
+    serviceId,
+    doClass: "allocator",
+    identity,
+  })).fetch(new Request(`https://bootstrap.test${path}`, body === undefined ? undefined : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
 }
 function queueMessage(serviceId: string): DownstreamOutboxMessage {
   return g32Message({ serviceId, allocatorLineageId: "bootstrap-test-lineage", tag: "orders", attemptId: `queue-${crypto.randomUUID()}`, eventId: `queue-event-${crypto.randomUUID()}`, suid: suid(7), payload: JSON.stringify({ fixture: "queue" }), eventTags: ["orders"], eventType: "BootstrapQueue", enqueuedAt: Date.now() });
@@ -51,7 +56,7 @@ describe("SDT-G21 bootstrap core", () => {
     expect(() => parseBootstrapDump({ ...valid, extra: true })).toThrow(/unknown/i);
     expect(() => parseBootstrapDump({ ...valid, events: [valid.events[0], valid.events[0]] })).toThrow();
     expect(() => parseBootstrapDump({ ...valid, manifest: { ...valid.manifest, contentDigest: "fnv1a32:00000000" } })).toThrow(/digest/i);
-    expect((await SELF.fetch("https://bootstrap.test/bootstrap/parser-target/state")).status).toBe(200);
+    expect((await SELF.fetch("https://bootstrap.test/bootstrap/parser-target/state", { headers: { [TEST_SERVICE_ID_HEADER]: "parser-target" } })).status).toBe(200);
   });
 
   it("uses the coordinator transaction as the plan/command gate and permanently closes tag admission at READY", async () => {
@@ -65,13 +70,13 @@ describe("SDT-G21 bootstrap core", () => {
     expect((await post(serviceId, "/import", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/verify", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/ready", { importId: "import-1", leaseEpoch: control.leaseEpoch })).status).toBe(200);
-    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/bootstrap/admit`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: "import-1", leaseEpoch: control.leaseEpoch, manifestDigest: dump.manifest.contentDigest, targetServiceId: serviceId, candidates: [{ ...dump.events[0], provenance: "g32", allocatorLineageId: "bootstrap-lineage" }] }) });
+    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/bootstrap/admit`, { method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId }, body: JSON.stringify({ importId: "import-1", leaseEpoch: control.leaseEpoch, manifestDigest: dump.manifest.contentDigest, targetServiceId: serviceId, candidates: [{ ...dump.events[0], provenance: "g32", allocatorLineageId: "bootstrap-lineage" }] }) });
     expect(tag.status).toBe(409);
   });
 
   it("uses the serving allocator lineage after READY so a real commit reaches the downstream store query", async () => {
     const serviceId = `ready-delivery-${crypto.randomUUID()}`;
-    const servingAllocator = await allocatorPost(allocatorNameForService(serviceId), "/state", undefined);
+    const servingAllocator = await allocatorPost(serviceId, "/state", undefined);
     const servingState = await servingAllocator.json<{ allocatorLineageId: string }>();
     const dump = dumpFor(serviceId, servingState.allocatorLineageId);
     const planned = await post(serviceId, "/plan", { importId: "ready-delivery", dump, targetEvidence: { bindingExists: false, eventsExist: false } });
@@ -88,7 +93,7 @@ describe("SDT-G21 bootstrap core", () => {
     expect(commit.status).toBe(200);
     const committed = await commit.json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>();
     const written = committed.writtenEvents[0]!;
-    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`);
+    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } });
     const tagState = await tag.json<{ events: Array<{ eventId: string; suid: string; payload: string; eventTags: string[]; allocatorLineageId: string; eventType: string; timestamp: string }> }>();
     const delivered = tagState.events.find((event) => event.eventId === written.id)!;
     expect(delivered.allocatorLineageId).toBe(servingState.allocatorLineageId);
@@ -131,37 +136,37 @@ describe("SDT-G21 bootstrap core", () => {
   });
 
   it("gates the real /allocate route during PLANNED bootstrap and leaves the allocator seedable", async () => {
-    const serviceId = `allocator-gate-${crypto.randomUUID()}`; const allocatorName = `allocator-gate-${crypto.randomUUID()}`;
+    const serviceId = `allocator-gate-${crypto.randomUUID()}`; const allocatorScopeIdentity = `allocator-gate-${crypto.randomUUID()}`;
     const admitted = await post(serviceId, "/command/admit", { commandId: "allocator-command" }); const { leaseEpoch } = await admitted.json<{ leaseEpoch: number }>();
     expect((await post(serviceId, "/command/release", { commandId: "allocator-command", leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/plan", { importId: "allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
-    const rejected = await allocatorPost(allocatorName, "/allocate", { attemptId: "planned-allocation", serviceId, bootstrapCommandId: "allocator-command", bootstrapEpoch: leaseEpoch, candidates: [{ candidateIndex: 0, eventId: g32EventId("planned-event") }] });
+    const rejected = await allocatorPost(serviceId, "/allocate", { attemptId: "planned-allocation", serviceId, bootstrapCommandId: "allocator-command", bootstrapEpoch: leaseEpoch, candidates: [{ candidateIndex: 0, eventId: g32EventId("planned-event") }] }, allocatorScopeIdentity);
     expect(rejected.status).toBe(409); expect(await rejected.json()).toMatchObject({ code: "bootstrap_command_rejected" });
-    expect(await (await allocatorPost(allocatorName, "/state", undefined)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
-    expect((await allocatorPost(allocatorName, "/seed-after", { importId: "allocator", leaseEpoch: 1, highWatermark: suid(2) })).status).toBe(201);
+    expect(await (await allocatorPost(serviceId, "/state", undefined, allocatorScopeIdentity)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
+    expect((await allocatorPost(serviceId, "/seed-after", { importId: "allocator", leaseEpoch: 1, highWatermark: suid(2) }, allocatorScopeIdentity)).status).toBe(201);
   });
 
   it("keeps normal allocation legal and blocks the real stalled CommitWorker allocation before watermark mutation", async () => {
     const normalAllocator = `normal-allocation-${crypto.randomUUID()}`;
     expect((await allocatorPost(normalAllocator, "/allocate", { attemptId: "normal", candidates: [{ candidateIndex: 0, eventId: g32EventId("normal-event") }] })).status).toBe(201);
-    const serviceId = `commit-allocator-gate-${crypto.randomUUID()}`; const allocatorName = `commit-allocator-gate-${crypto.randomUUID()}`;
+    const serviceId = `commit-allocator-gate-${crypto.randomUUID()}`; const allocatorScopeIdentity = `commit-allocator-gate-${crypto.randomUUID()}`;
     let entered!: () => void; const enteredAllocation = new Promise<void>((resolve) => { entered = resolve; });
     let resume!: () => void; const resumeAllocation = new Promise<void>((resolve) => { resume = resolve; });
-    const worker = new CommitWorker(workerEnv(), serviceId, { allocatorName, beforeBootstrapAllocation: async () => { entered(); await resumeAllocation; } });
+    const worker = new CommitWorker(workerEnv(), serviceId, { allocatorScopeIdentity, beforeBootstrapAllocation: async () => { entered(); await resumeAllocation; } });
     const pending = worker.handle(new Request("https://commit.test/api/sekiban/serialized/commit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ version: 1, eventCandidates: [{ payload: encodedPayload({ fixture: "allocator-race" }), eventPayloadName: "AllocatorRace", tags: ["orders"] }], consistencyTags: [] }) }));
     await enteredAllocation;
     expect((await post(serviceId, "/plan", { importId: "commit-allocator", dump: dumpFor(serviceId), targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
     resume(); const result = await pending;
     expect(result.status).toBe(500);
-    expect(await (await allocatorPost(allocatorName, "/state", undefined)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
-    expect((await allocatorPost(allocatorName, "/seed-after", { importId: "commit-allocator", leaseEpoch: 1, highWatermark: suid(2) })).status).toBe(201);
+    expect(await (await allocatorPost(serviceId, "/state", undefined, allocatorScopeIdentity)).json()).toMatchObject({ allocatedWatermark: null, bootstrapSeed: null });
+    expect((await allocatorPost(serviceId, "/seed-after", { importId: "commit-allocator", leaseEpoch: 1, highWatermark: suid(2) }, allocatorScopeIdentity)).status).toBe(201);
   });
 
   it("resumes all six durable fault boundaries without duplicate tag rows or early READY", async () => {
     const serviceId = `fault-${crypto.randomUUID()}`; const dump = dumpFor(serviceId);
     const crashedPlan = await post(serviceId, "/plan", { importId: "faults", dump, targetEvidence: { bindingExists: false, eventsExist: false }, faultAt: "mode-record" });
     expect(crashedPlan.status).toBe(503);
-    const state = await SELF.fetch(`https://bootstrap.test/bootstrap/${encodeURIComponent(serviceId)}/state`);
+    const state = await SELF.fetch(`https://bootstrap.test/bootstrap/${encodeURIComponent(serviceId)}/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } });
     const control = await state.json<{ leaseEpoch: number; status: string }>(); expect(control.status).toBe("PLANNED");
     expect((await post(serviceId, "/import", { importId: "faults", leaseEpoch: control.leaseEpoch, faultAt: "tag-chunk" })).status).toBe(503);
     expect((await post(serviceId, "/import", { importId: "faults", leaseEpoch: control.leaseEpoch, faultAt: "store-progress-gap" })).status).toBe(503);
@@ -172,7 +177,7 @@ describe("SDT-G21 bootstrap core", () => {
     expect((await post(serviceId, "/verify", { importId: "faults", leaseEpoch: control.leaseEpoch })).status).toBe(200);
     expect((await post(serviceId, "/ready", { importId: "faults", leaseEpoch: control.leaseEpoch, faultAt: "ready-cas" })).status).toBe(503);
     expect((await post(serviceId, "/ready", { importId: "faults", leaseEpoch: control.leaseEpoch })).status).toBe(200);
-    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`);
+    const tag = await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } });
     expect((await tag.json<{ events: unknown[] }>()).events).toHaveLength(2);
   });
 
@@ -207,6 +212,6 @@ describe("SDT-G21 bootstrap core", () => {
     expect((await post(serviceId, "/plan", { importId: "advanced", dump, targetEvidence: { bindingExists: false, eventsExist: false } })).status).toBe(201);
     resume(); const result = await pending;
     expect(result.status).toBe(409); expect((await result.json<{ code: string }>()).code).toBe("bootstrap_command_rejected");
-    expect((await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`)).status).toBe(404);
+    expect((await SELF.fetch(`https://bootstrap.test/tags/${encodeURIComponent(serviceId)}/orders/state`, { headers: { [TEST_SERVICE_ID_HEADER]: serviceId } })).status).toBe(404);
   });
 });

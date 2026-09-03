@@ -10,6 +10,7 @@ import { CommitWorker, type CommitWorkerEnv, validateCommitEnvelope } from "../p
 import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { PipelineStore } from "../packages/dcb-runtime/src/store/types";
 import { g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 
 describe("SDT-G29 cutover compatibility boundary", () => {
   it("exposes only the bridge-freeze and fresh-G32 lanes", () => {
@@ -62,7 +63,7 @@ describe("SDT-G29 cutover compatibility boundary", () => {
     expect(written.writtenEvents[0]).toMatchObject({ eventPayloadName: "G29Observed" });
 
     const tagNamespace = (env as unknown as { readonly TAG: DurableObjectNamespace }).TAG;
-    const tagStub = tagNamespace.get(tagNamespace.idFromName(`${serviceId}|${tag}`));
+    const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tag }));
     const stateResponse = await tagStub.fetch(new Request(`https://compat.test/state?__tag=${encodeURIComponent(tag)}`));
     expect(stateResponse.status).toBe(200);
     const state = await stateResponse.json<{ events: Array<{ eventId: string; eventType?: string; provenance?: string }> }>();

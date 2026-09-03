@@ -1,4 +1,5 @@
 import { WorkerEntrypoint } from "cloudflare:workers";
+import { envServiceIdentity, requireServiceIdentity, scopeIdFor } from "@sekiban/dcb-runtime";
 import {
   G32_BRIDGE_COMPONENTS,
   assertG32BridgeIdentity,
@@ -70,8 +71,11 @@ function bridgeAcknowledgement(env: G32BridgeEnv): Response {
 }
 
 function requiredBridgeServiceId(env: G32BridgeEnv): string {
-  if (typeof env.SDT_SERVICE_ID !== "string" || env.SDT_SERVICE_ID.length === 0) throw new Error("G32_BRIDGE_SERVICE_ID_INVALID");
-  return env.SDT_SERVICE_ID;
+  try {
+    return requireServiceIdentity(envServiceIdentity(env));
+  } catch {
+    throw new Error("G32_BRIDGE_SERVICE_ID_INVALID");
+  }
 }
 
 function parseTags(value: unknown): string[] {
@@ -97,13 +101,25 @@ async function settleBridgeDispositions(env: G32BridgeEnv): Promise<Response> {
   const rows = await env.D1.prepare("SELECT event_tags FROM serialized_dcb_events WHERE service_id = ?").bind(serviceId).all<{ event_tags: string }>();
   const tags = [...new Set((rows.results ?? []).flatMap((row) => parseTags(row.event_tags)))].sort();
   const discarded = await Promise.all(tags.map(async (tag) => {
-    const object = env.TAG!.get(env.TAG!.idFromName(`${serviceId}|${tag}`));
+    const object = env.TAG!.get(scopeIdFor(env.TAG!, {
+      serviceId,
+      doClass: "tag",
+      identity: tag,
+    }));
     const response = await object.fetch("https://g32-bridge.internal/g32-bridge/discard", { method: "POST" });
     if (!response.ok) throw new Error(`G32 bridge tag disposition failed for ${tag}`);
     return response.json<{ outboxDiscarded?: number }>();
   }));
-  const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(`service-allocator:${serviceId}`));
-  const bootstrap = env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId));
+  const allocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+    serviceId,
+    doClass: "allocator",
+    identity: "allocator",
+  }));
+  const bootstrap = env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+    serviceId,
+    doClass: "bootstrap",
+    identity: "coordinator",
+  }));
   const [allocatorResponse, bootstrapResponse] = await Promise.all([
     allocator.fetch("https://g32-bridge.internal/g32-bridge/discard", { method: "POST" }),
     bootstrap.fetch("https://g32-bridge.internal/g32-bridge/discard", { method: "POST" }),

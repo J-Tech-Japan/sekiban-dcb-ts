@@ -2,6 +2,8 @@ import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import {
   G44_HEALTH_STALE_AFTER_MS,
   GLOBAL_COMPLETENESS_INTERIM_DISPOSITION,
@@ -53,7 +55,7 @@ function scope(): Scope {
 }
 
 function tagStub(value: Scope): DurableObjectStub {
-  return tags().get(tags().idFromName(`${value.serviceId}|${value.tag}`));
+  return tags().get(scopeIdFor(tags(), { serviceId: value.serviceId, doClass: "tag", identity: value.tag }));
 }
 
 function candidate(value: Scope, suffix: string, eventTags = [value.tag]) {
@@ -117,7 +119,7 @@ async function append(value: Scope, suffix: string, eventTags = [value.tag]): Pr
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/append`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId },
       body: JSON.stringify({ attemptId: `g44-attempt-${suffix}`, epoch: 0, candidates: [candidate(value, suffix, eventTags)] }),
     },
   );
@@ -283,7 +285,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
 
     const beforeJoin = await SELF.fetch(
       `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/outbox/mark-delivered`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_010 }) },
+      { method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_010 }) },
     );
     expect(beforeJoin.status).toBe(409);
     expect((await sourceRows(value))[0]?.status).toBe("pending");
@@ -293,7 +295,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     await store.recordDelivery(handoffs[0]!, 4_020);
     const joined = await SELF.fetch(
       `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/outbox/mark-delivered`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_030 }) },
+      { method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_030 }) },
     );
     expect(joined.status).toBe(200);
     expect((await sourceRows(value))[0]?.status).toBe("acknowledged");

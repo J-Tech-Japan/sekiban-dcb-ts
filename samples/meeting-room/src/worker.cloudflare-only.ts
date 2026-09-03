@@ -4,6 +4,7 @@ import {
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
   cleanupG42JournalProbeTrial,
+  envServiceIdentity,
   GlobalCompletenessReconciler,
   G42_JOURNAL_PROBE_PATH,
   inventoryG42JournalProbeTrial,
@@ -12,6 +13,7 @@ import {
   parseG42JournalProbeRequest,
   prepareG42JournalProbeTrial,
   readDirectDoorbellConfig,
+  requireServiceIdentity,
   runG42JournalProbeTrial,
   TagDurableObject,
   TagStateDurableObject,
@@ -78,6 +80,19 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+}
+
+/** Every sample path resolves deployment identity through the runtime seam. */
+function serviceIdentity(env: MeetingRoomCloudflareEnv): string {
+  return requireServiceIdentity(envServiceIdentity(env));
+}
+
+function optionalServiceIdentity(env: MeetingRoomCloudflareEnv): string | null {
+  try {
+    return serviceIdentity(env);
+  } catch {
+    return null;
+  }
 }
 
 function resultBody(result: ExecuteResult): Record<string, unknown> {
@@ -269,19 +284,20 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
     }
     try {
+      const serviceId = serviceIdentity(env);
       if (g42.value.action === "trial") {
-        return json(await runG42JournalProbeTrial(env.JOURNAL, g42.value, callerColo(request)));
+        return json(await runG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value, callerColo(request)));
       }
       if (g42.value.action === "prepare") {
-        return json(await prepareG42JournalProbeTrial(env.JOURNAL, g42.value));
+        return json(await prepareG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value));
       }
       if (g42.value.action === "measure") {
-        return json(await measureG42JournalProbeTrial(env.JOURNAL, g42.value, callerColo(request)));
+        return json(await measureG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value, callerColo(request)));
       }
       if (g42.value.action === "cleanup") {
-        return json(await cleanupG42JournalProbeTrial(env.JOURNAL, g42.value));
+        return json(await cleanupG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value));
       }
-      return json(await inventoryG42JournalProbeTrial(env.JOURNAL, g42.value));
+      return json(await inventoryG42JournalProbeTrial(env.JOURNAL, serviceId, g42.value));
     } catch {
       // Conformance authentication grants diagnostic access but does not make
       // internal Journal error text part of a public/protocol response.
@@ -292,6 +308,11 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     await assertFinalCutoverFenceIfConfigured(env);
   } catch {
     return json({ error: "G32 cutover fence is unavailable", code: "g32_cutover_fence_invalid" }, 503);
+  }
+  if (url.pathname === "/conformance/v1/g53-scope-mismatch") {
+    const configured = serviceIdentity(env);
+    const mismatchedServiceId = configured === "g53-mismatch" ? "g53-other" : "g53-mismatch";
+    return runtimeFetch(new Request(`https://runtime.internal/bootstrap/${encodeURIComponent(mismatchedServiceId)}/state`), env, ctx);
   }
   if (url.pathname === "/conformance/v1/g26-config") {
     const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
@@ -314,7 +335,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       task: "SDT-G29",
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
       sourceCommit: env.G29_SOURCE_COMMIT ?? null,
-      serviceId: env.SDT_SERVICE_ID,
+      serviceId: optionalServiceIdentity(env),
       viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
       allowedViews: config.allowedViews,
       domainDeliveryClass: meetingRoomRuntimeConfig.deliveryClass,
@@ -336,7 +357,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       task: "SDT-G31",
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
       sourceCommit: env.G31_SOURCE_COMMIT ?? null,
-      serviceId: env.SDT_SERVICE_ID,
+      serviceId: optionalServiceIdentity(env),
       pipelineDatabaseId: "3c3b1641-7969-4d72-97a9-2ea65085c9bb",
       materializedViewDatabaseId: "5db45136-f1dd-4f4d-bfe3-b6328193a1ac",
       queue: "sekiban-dcb-meeting-room-cloudflare-outbox",
@@ -360,7 +381,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
       component: env.G32_COMPONENT ?? null,
       configDigest: env.G32_CONFIG_DIGEST ?? null,
-      serviceId: env.SDT_SERVICE_ID ?? null,
+      serviceId: optionalServiceIdentity(env),
       pipelineDatabaseId: env.G32_PIPELINE_DATABASE_ID ?? null,
       materializedViewDatabaseId: env.G32_MATERIALIZED_VIEW_DATABASE_ID ?? null,
       queue: env.G32_QUEUE_NAME ?? null,
@@ -374,10 +395,13 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     });
   }
   if (url.pathname === "/conformance/v1/g32-store-state") {
-    if (env.D1 === undefined || env.D1_MV === undefined || env.SDT_SERVICE_ID === undefined) {
+    if (env.D1 === undefined || env.D1_MV === undefined) {
       return json({ error: "G32 new-store bindings are unavailable", code: "g32_store_unavailable" }, 503);
     }
-    const serviceId = env.SDT_SERVICE_ID;
+    const serviceId = optionalServiceIdentity(env);
+    if (serviceId === null) {
+      return json({ error: "G32 new-store bindings are unavailable", code: "g32_store_unavailable" }, 503);
+    }
     const [events, ops, legacy, mvRows, mvReceipts] = await Promise.all([
       env.D1.prepare("SELECT COUNT(*) AS count FROM dcb_events WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
       env.D1.prepare("SELECT COUNT(*) AS count FROM dcb_event_ops WHERE \"ServiceId\" = ?").bind(serviceId).first<{ count: number }>(),
@@ -400,7 +424,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     if (suid === null || suid.length === 0) {
       return json({ error: "suid is required", code: "validation_error" }, 400);
     }
-    if (env.D1 === undefined || env.D1_MV === undefined || env.SDT_SERVICE_ID === undefined) {
+    if (env.D1 === undefined || env.D1_MV === undefined) {
       return json({ error: "G31 wait-state bindings are unavailable", code: "projection_unavailable" }, 503);
     }
     // This authenticated diagnostic reads the same two point-lookup ports as
@@ -409,14 +433,18 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     const source = new D1EventStore(env.D1);
     const views = new D1MaterializedViewStore(env.D1_MV);
     await Promise.all([source.initialize(), views.initialize()]);
-    const target = await source.readWaitForTarget(env.SDT_SERVICE_ID, suid);
-    const state = await views.readWaitForState(env.SDT_SERVICE_ID, "ReservationProjector", {
+    const serviceId = optionalServiceIdentity(env);
+    if (serviceId === null) {
+      return json({ error: "G31 wait-state bindings are unavailable", code: "projection_unavailable" }, 503);
+    }
+    const target = await source.readWaitForTarget(serviceId, suid);
+    const state = await views.readWaitForState(serviceId, "ReservationProjector", {
       ...(target.kind === "stored" ? { eventId: target.eventId } : {}),
       suid,
     });
     return json({
       task: "SDT-G31",
-      serviceId: env.SDT_SERVICE_ID,
+      serviceId,
       viewId: "ReservationProjector",
       target,
       state,
@@ -505,7 +533,12 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
       // mixed-version feature switch just to alter that invariant in tests.
       globalCoverage: env.TAG === undefined
         ? undefined
-        : async () => (await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(env.SDT_SERVICE_ID ?? "", Date.now())).kind,
+        : async () => {
+          const configured = optionalServiceIdentity(env);
+          return configured === null
+            ? "BLOCK/UNSETTLED"
+            : (await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(configured, Date.now())).kind;
+        },
       runGenericScheduledWork: async () => { await runtime.scheduled?.(controller, env, ctx); },
     });
   },

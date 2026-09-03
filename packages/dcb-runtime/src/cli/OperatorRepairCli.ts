@@ -1,6 +1,7 @@
 import { BindingExclusionLookupClient } from "../downstream/ExclusionLookup";
 import { RepairWorker, RepairWorkerFailure, type RepairExecutionInput, type RepairFault, type RepairMode } from "../repair/RepairWorker";
 import { noOpNativeTracing, type NativeTracing } from "../trace/CommitTrace";
+import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
 
 type JsonObject = Record<string, unknown>;
 
@@ -96,6 +97,7 @@ export async function handleOperatorRepair(
   request: Request,
   env: OperatorRepairEnv,
   nativeTracing: NativeTracing = noOpNativeTracing,
+  serviceIdentityProvider?: ServiceIdentityProvider,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return error(404, "operator_repair_route_not_found", "Operator repair requires POST");
@@ -118,7 +120,7 @@ export async function handleOperatorRepair(
     const worker = new RepairWorker(
       env,
       new BindingExclusionLookupClient(env.REPAIR_EXCLUSION_LOOKUP),
-      env.SDT_SERVICE_ID,
+      requireServiceIdentity(serviceIdentityProvider ?? envServiceIdentity(env)),
       { nativeTracing },
     );
     const result = await worker.execute(parsed.value);

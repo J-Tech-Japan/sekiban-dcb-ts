@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { G11_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
@@ -98,7 +99,11 @@ async function poisonTagIdentity(tag: string): Promise<void> {
   url.searchParams.set("__tag", poisonedTag);
   url.searchParams.set("__serviceId", SERVICE_ID);
   const tagNamespace = (env as unknown as Pick<WorkerEnv, "TAG">).TAG;
-  const tagObject = tagNamespace.get(tagNamespace.idFromName(`${SERVICE_ID}|${tag}`));
+  const tagObject = tagNamespace.get(scopeIdFor(tagNamespace, {
+    serviceId: SERVICE_ID,
+    doClass: "tag",
+    identity: tag,
+  }));
   const response = await tagObject.fetch(new Request(url.toString(), {
     method: "POST",
     headers: { "content-type": "application/json" },
