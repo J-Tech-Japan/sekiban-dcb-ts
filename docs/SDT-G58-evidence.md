@@ -628,3 +628,114 @@ green same-tick witness remain untouched.
   5,000 ms; no polling deadline or queue/outbox semantics changed.
 - No Wrangler, Cloudflare API, application request, replacement cohort, or
   SDT-G56 operation was performed.
+
+## W102 delegated unsafe proof — 2026-09-03 (blocked at safe/live proof)
+
+This continuation preserves the W99 deployed product and its failed unsafe
+receipt. The deployed identity remains Cloudflare version
+`2ec23a75-8365-484b-9c8f-1197d3499cec` (version 191), with source annotation
+`SDT-G58 W99 deployed proof a7da2589272842115fb7f8a0c0050f2c2e3494e9`.
+There was no deployment, Wrangler operation, D1 reset, lag purge, or
+replacement cohort in W102. The upstream 5,000 ms unsafe proof is explicitly
+delegated to SDT-G60; this unit retains the unchanged bound and records every
+pass/miss without turning a later observation into an unsafe pass.
+
+### Minimum delegated-proof harness change
+
+`scripts/deploy/g58-safe-lane-e2e.mjs` now accepts the explicit
+`--continue-after-unsafe` flag only with a paced run. The default path still
+throws at `UNSAFE_BOUND_MS = 5,000`; the continuation records
+`disposition=pass` only when visibility is observed at or before that bound,
+and records `disposition=miss`, the bound timestamp, and any eventual first
+visibility separately. The accepted command/SUID checkpoint remains written
+before health or unsafe polling. During the G58 safe/projector loop, missed
+rows are observed only for eventual evidence and are never reclassified. A
+failure prints the final health snapshot and persists the report. The cohort
+contract guard now has a red mutation for removing the delegated branch and a
+red mutation for moving the unsafe-pass check ahead of the 5,000 ms bound.
+
+### Fresh W102 cohort (one window, no stitching)
+
+The only application window was run ID
+`acc68d23-6133-446d-9470-e54fb3c28284`, UTC
+`2026-09-03T09:37:48.552Z`–`09:40:59.730Z`, against the identity above. It
+created one room and exactly ten reservations; each reservation was accepted
+and its response/SUID was checkpointed before its first list poll. The actual
+inter-commit gaps were 11,724–12,626 ms (required pace 10,000 ms). The raw
+receipt and complete 91-health-snapshot sequence are
+`.artifacts/sdt-g58-w102-safe-proof-cohort.json`; the failure/last-health
+stderr is `.artifacts/sdt-g58-w102-safe-proof-cohort.log`.
+
+| row | accepted (UTC) | SUID | unsafe disposition at 5,000 ms | eventual first unsafe | safe (commit→safe) |
+| ---: | --- | --- | --- | --- | ---: |
+| 1 | 09:38:02.926Z | `063924025082417000002050260075` | **miss** | 09:38:08.279Z (5,353 ms) | 114,733 ms |
+| 2 | 09:38:15.002Z | `063924025094541000000759003421` | pass (2,195 ms) | — | 102,657 ms |
+| 3 | 09:38:27.293Z | `063924025106891000001134410415` | **miss** | 09:39:57.159Z (89,866 ms) | 90,366 ms |
+| 4 | 09:38:39.342Z | `063924025118818000001227710475` | pass (3,931 ms) | — | not reached |
+| 5 | 09:38:51.968Z | `063924025130835000001712017963` | pass (1,923 ms) | — | not reached |
+| 6 | 09:39:03.956Z | `063924025143589000001583316047` | pass (2,585 ms) | — | not reached |
+| 7 | 09:39:15.794Z | `063924025155336000001551455796` | pass (3,265 ms) | — | not reached |
+| 8 | 09:39:27.777Z | `063924025167387000000157375013` | pass (2,812 ms) | — | not reached |
+| 9 | 09:39:39.835Z | `063924025179334000000956814733` | pass (2,289 ms) | — | not reached |
+| 10 | 09:39:51.559Z | `063924025191103000001618685662` | **miss** | none before stop | not reached |
+
+Rows 1, 3, and 10 are unsafe misses at the unchanged bound. Row 1's 5,353 ms
+visibility is eventual-only; it is not an unsafe pass. Row 3's eventual
+visibility at 89,866 ms is likewise observation-only. The raw receipt retains
+all list observations, read heads, page counts, total counts, and CF-Rays.
+
+### Health, safe-lane, and live-projection result
+
+Every intervening health response is retained in the raw receipt with
+coverage, reason, decayed lag, SafeWindow, MV heads, live heads, and global
+head. There were 91 snapshots: 19 `SETTLED`/`reason=null` and 72
+`BLOCK/UNSETTLED` with reason
+`source_partition_set_changed_during_scan`. `safeWindowMs` was 20,000 in
+every snapshot, `ceilingExceeded=false`, decayed lag ranged from 0 to 15,616
+ms, and the largest current estimate was 17,708 ms. No 20 s/120 s bound or
+polling deadline was changed.
+
+Only rows 1–3 reached a ReservationProjector safe head. Their partial
+nearest-rank safe values are p50 `102,657 ms` and p95 `114,733 ms` for n=3;
+a full n=10 safe percentile is intentionally **undefined** because rows 4–10
+did not reach a safe head. Each observed safe value is under the 180 s
+contract, but each is slower than `safeWindowMs + 60 s = 80,000 ms`; the raw
+intervals contain the `BLOCK/UNSETTLED` gate and are classified as
+`coverage_BLOCK` residuals. The exact runner failure was:
+
+```
+safe lane or live projections did not reach 063924025118818000001227710475 by safeWindowMs + 120000ms
+```
+
+At the final snapshot (`09:40:59.722Z`), the global head and RoomProjector
+safe head reached row 10, but ReservationProjector safe head stopped at row 3
+(`063924025106891000001134410415`) with six unsafe rows. The live
+RoomProjector head remained `063923933985284000000088451532` and the live
+ReservationProjector head remained `063924022962293000001512609674`, both
+behind the cohort. The safe/live failure occurred before projection-lag and
+tag-state reads could be claimed, so no live-projector or cohort tag-state
+success is asserted. This is a G58-owned blocked checkpoint for a focused
+safe-lane/live-projection repair; no G15/G16 run was started after the failed
+safe-proof window.
+
+The first health snapshot was `09:37:49.090Z` (`SETTLED`, null reason,
+`safeWindowMs=20,000`); the last health object is printed on the failure path
+and retained in both the report and log. No evidence was stitched with W99,
+and no additional application request was sent after this cohort failed.
+
+### Checks and scope
+
+- `npm run test:g58` — passed before the final unsafe-order correction; it
+  covered the existing G44/G58 fixtures, production omission mutant, lag
+  hygiene mutant, W100 receipt guard, and W97 witness.
+- `node scripts/g58-cohort-evidence-guard.mjs --self-test` — passed after the
+  correction, including red delegated-branch and red unsafe-order mutations.
+- `node scripts/deploy/g58-safe-lane-e2e.mjs --self-test` — passed after the
+  correction.
+- `npm run typecheck` and `npm run lint` — passed after the correction.
+- The W99 5,000 ms failed receipt remains unchanged; the W102 report's row-1
+  late visibility is explicitly corrected to an unsafe miss/eventual-only
+  observation.
+- No Tag outbox, Queue producer/consumer/configuration, global admission
+  batch, SDT-G53 naming, SDT-G55 semantics, SafeWindow bounds, G44 test, or
+  SDT-G56/G60 publication state was changed.

@@ -34,6 +34,15 @@ export function assertCohortEvidenceContract(source) {
   requireContains(source, "reportPath: undefined", "report path option");
   requireContains(source, "options.reportPath = output", "resolved report path");
   requireContains(source, "unsafe: null", "accepted-before-unsafe placeholder");
+  requireContains(source, "continueAfterUnsafe", "delegated unsafe continuation option");
+  requireContains(source, 'if (options.continueAfterUnsafe) {\n        return {\n          disposition: "miss"', "delegated unsafe miss branch");
+  requireContains(source, "eventualFirstVisibleAtMs", "eventual unsafe observation field");
+  requireContains(source, "delegated to SDT-G60", "unsafe proof ownership statement");
+  const unsafeBoundCheck = source.indexOf("if (result.elapsedMs >= UNSAFE_BOUND_MS)");
+  const unsafePassCheck = source.indexOf('if (result.visible) return { disposition: "pass"');
+  if (unsafeBoundCheck < 0 || unsafePassCheck < 0 || unsafeBoundCheck > unsafePassCheck) {
+    fail("unsafe visibility after the 5000ms bound could be reclassified as a pass");
+  }
 
   const setupAssignment = source.indexOf("report.setupRoom = {");
   const setupCheckpoint = source.indexOf("persistReport(options, report);", setupAssignment);
@@ -85,6 +94,20 @@ function selfTest() {
   let red = false;
   try { assertCohortEvidenceContract(mutated); } catch { red = true; }
   if (!red) fail("removing the pre-unsafe checkpoint did not turn the contract red");
+  const delegatedMutant = source.replace(
+    'if (options.continueAfterUnsafe) {',
+    'if (false) {',
+  );
+  let delegatedRed = false;
+  try { assertCohortEvidenceContract(delegatedMutant); } catch { delegatedRed = true; }
+  if (!delegatedRed) fail("removing delegated unsafe continuation did not turn the contract red");
+  const unsafeOrderMutant = source.replace(
+    'if (result.elapsedMs >= UNSAFE_BOUND_MS) {',
+    'if (result.visible) return { disposition: "pass", firstVisibleAtMs: result.receivedAtMs, elapsedMs: result.elapsedMs, observations };\n    if (result.elapsedMs >= UNSAFE_BOUND_MS) {',
+  );
+  let unsafeOrderRed = false;
+  try { assertCohortEvidenceContract(unsafeOrderMutant); } catch { unsafeOrderRed = true; }
+  if (!unsafeOrderRed) fail("moving the unsafe pass check before the bound did not turn the contract red");
   process.stdout.write(`${JSON.stringify({ selfTest: "g58-cohort-evidence-prepoll-mutation-red" })}\n`);
 }
 

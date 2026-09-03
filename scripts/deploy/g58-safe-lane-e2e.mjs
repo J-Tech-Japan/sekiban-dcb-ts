@@ -4,6 +4,9 @@
  *
  * `--mode paced` is one coherent setup-room plus >=10 paced reservation
  * cohort. `--mode single` is AC6's one-reservation smoke witness. The only
+ * delegated-proof continuation adds `--continue-after-unsafe`: the unchanged
+ * 5,000 ms unsafe disposition is recorded as pass/miss, while later list
+ * visibility is observation-only for the G58 safe/projector proof. The only
  * credential is read from the private conformance-token file in memory; no
  * bearer value is logged or persisted.
  */
@@ -214,39 +217,62 @@ async function tagState(options, tagStateId) {
   };
 }
 
+async function readUnsafeObservation(options, reservationId, startedAtMs, observations) {
+  const first = await requestJson(options.baseUrl, "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true", {
+    headers: { accept: "application/json" },
+  });
+  if (first.status !== 200) throw new Error(`unsafe list failed HTTP ${first.status}`);
+  const totalCount = Number(first.body?.totalCount);
+  if (!Number.isSafeInteger(totalCount) || totalCount < 0) throw new Error("unsafe list omitted totalCount");
+  const pages = Math.max(1, Math.ceil(totalCount / 100));
+  const results = [first];
+  for (let page = 2; page <= pages; page += 1) {
+    results.push(await requestJson(options.baseUrl, `/api/read/reservations?pageNumber=${page}&pageSize=100&newestFirst=true`, {
+      headers: { accept: "application/json" },
+    }));
+  }
+  const items = results.flatMap((entry) => entry.status === 200 ? listItems(entry.body) : []);
+  const visible = items.some((item) => item !== null && typeof item === "object" && item.reservationId === reservationId);
+  const receivedAtMs = results.at(-1).receivedAtMs;
+  const elapsedMs = receivedAtMs - startedAtMs;
+  const observation = {
+    atMs: receivedAtMs,
+    elapsedMs,
+    pageCount: pages,
+    totalCount,
+    itemCount: items.length,
+    visible,
+    readHead: typeof first.body?.readHead === "string" ? first.body.readHead : null,
+    cfRay: first.cfRay,
+  };
+  observations.push(observation);
+  return { visible, receivedAtMs, elapsedMs, observation };
+}
+
 async function waitForUnsafe(options, reservationId) {
   const startedAtMs = Date.now();
   const observations = [];
   for (;;) {
-    const first = await requestJson(options.baseUrl, "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true", {
-      headers: { accept: "application/json" },
-    });
-    if (first.status !== 200) throw new Error(`unsafe list failed HTTP ${first.status}`);
-    const totalCount = Number(first.body?.totalCount);
-    if (!Number.isSafeInteger(totalCount) || totalCount < 0) throw new Error("unsafe list omitted totalCount");
-    const pages = Math.max(1, Math.ceil(totalCount / 100));
-    const results = [first];
-    for (let page = 2; page <= pages; page += 1) {
-      results.push(await requestJson(options.baseUrl, `/api/read/reservations?pageNumber=${page}&pageSize=100&newestFirst=true`, {
-        headers: { accept: "application/json" },
-      }));
+    const result = await readUnsafeObservation(options, reservationId, startedAtMs, observations);
+    if (result.elapsedMs >= UNSAFE_BOUND_MS) {
+      if (result.visible && result.elapsedMs === UNSAFE_BOUND_MS) {
+        return { disposition: "pass", firstVisibleAtMs: result.receivedAtMs, elapsedMs: result.elapsedMs, observations };
+      }
+      if (options.continueAfterUnsafe) {
+        return {
+          disposition: "miss",
+          boundMs: UNSAFE_BOUND_MS,
+          boundExceededAtMs: result.receivedAtMs,
+          elapsedMs: result.elapsedMs,
+          firstVisibleAtMs: null,
+          eventualFirstVisibleAtMs: result.visible ? result.receivedAtMs : null,
+          observations,
+        };
+      }
+      throw new Error(`unsafe reservation ${reservationId} was not visible within ${UNSAFE_BOUND_MS}ms`);
     }
-    const items = results.flatMap((entry) => entry.status === 200 ? listItems(entry.body) : []);
-    const visible = items.some((item) => item !== null && typeof item === "object" && item.reservationId === reservationId);
-    const elapsedMs = results.at(-1).receivedAtMs - startedAtMs;
-    observations.push({
-      atMs: results.at(-1).receivedAtMs,
-      elapsedMs,
-      pageCount: pages,
-      totalCount,
-      itemCount: items.length,
-      visible,
-      readHead: typeof first.body?.readHead === "string" ? first.body.readHead : null,
-      cfRay: first.cfRay,
-    });
-    if (visible) return { firstVisibleAtMs: results.at(-1).receivedAtMs, elapsedMs, observations };
-    if (elapsedMs >= UNSAFE_BOUND_MS) throw new Error(`unsafe reservation ${reservationId} was not visible within ${UNSAFE_BOUND_MS}ms`);
-    await sleep(Math.min(options.pollMs, Math.max(1, UNSAFE_BOUND_MS - elapsedMs)));
+    if (result.visible) return { disposition: "pass", firstVisibleAtMs: result.receivedAtMs, elapsedMs: result.elapsedMs, observations };
+    await sleep(Math.min(options.pollMs, Math.max(1, UNSAFE_BOUND_MS - result.elapsedMs)));
   }
 }
 
@@ -279,9 +305,22 @@ async function waitForSafeAndLive(options, report, targets) {
   const finalDeadlineMs = report.reservations.at(-1).commit.receivedAtMs + report.reservations.at(-1).safeWindowAtCommitMs + SAFE_EXTRA_MS;
   let lastHealth = null;
   for (;;) {
+    if (options.continueAfterUnsafe) {
+      for (const reservation of report.reservations) {
+        const unsafe = reservation.unsafe;
+        if (unsafe?.disposition !== "miss" || unsafe.eventualFirstVisibleAtMs !== null) continue;
+        const eventual = await readUnsafeObservation(options, reservation.reservationId, reservation.commit.receivedAtMs, unsafe.observations);
+        if (eventual.visible) {
+          unsafe.eventualFirstVisibleAtMs = eventual.receivedAtMs;
+          unsafe.eventualCommitToUnsafeMs = eventual.receivedAtMs - reservation.commit.receivedAtMs;
+        }
+      }
+      persistReport(options, report);
+    }
     const health = await readHealth(options);
     lastHealth = health;
     report.healthSnapshots.push(health);
+    persistReport(options, report);
     const reservationSafeHead = safeHead(health, "ReservationProjector");
     for (const reservation of report.reservations) {
       if (!pending.has(reservation.reservationId) || !atLeast(reservationSafeHead, reservation.suid)) continue;
@@ -346,6 +385,9 @@ async function run(options) {
       pacedReservationCommits: pacedCount,
       paceMs: options.mode === "paced" ? options.paceMs : null,
       unsafeBoundMs: UNSAFE_BOUND_MS,
+      unsafeProof: options.continueAfterUnsafe
+        ? "delegated to SDT-G60: retain each 5000ms pass/miss and observe eventual visibility without reclassification"
+        : "asserted by the unchanged 5000ms bound",
       safeDeadline: "health.safeWindowMs + 120000ms",
       conformanceAuthorization: "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted",
     },
@@ -389,7 +431,26 @@ async function run(options) {
       reservation.safeWindowAtCommitMs = healthAtCommit.lag.safeWindowMs;
       persistReport(options, report);
       const unsafe = await waitForUnsafe(options, reservationId);
-      reservation.unsafe = { reachedAtMs: unsafe.firstVisibleAtMs, commitToUnsafeMs: unsafe.firstVisibleAtMs - commit.receivedAtMs, observations: unsafe.observations };
+      if (unsafe.disposition === "miss") {
+        reservation.unsafe = {
+          disposition: "miss",
+          boundMs: unsafe.boundMs,
+          boundExceededAtMs: unsafe.boundExceededAtMs,
+          firstVisibleAtMs: null,
+          eventualFirstVisibleAtMs: unsafe.eventualFirstVisibleAtMs ?? null,
+          eventualCommitToUnsafeMs: unsafe.eventualFirstVisibleAtMs === null || unsafe.eventualFirstVisibleAtMs === undefined
+            ? null
+            : unsafe.eventualFirstVisibleAtMs - commit.receivedAtMs,
+          observations: unsafe.observations,
+        };
+      } else {
+        reservation.unsafe = {
+          disposition: "pass",
+          firstVisibleAtMs: unsafe.firstVisibleAtMs,
+          commitToUnsafeMs: unsafe.firstVisibleAtMs - commit.receivedAtMs,
+          observations: unsafe.observations,
+        };
+      }
       persistReport(options, report);
       previousCommitAtMs = commit.receivedAtMs;
     }
@@ -397,9 +458,33 @@ async function run(options) {
     await waitForSafeAndLive(options, report, projectionTargets(roomId, report.reservations));
     for (const reservation of report.reservations) reservation.slowGateAttribution = slowAttribution(reservation, report.healthSnapshots);
     const safeSamples = report.reservations.map((reservation) => reservation.safe.commitToSafeMs);
-    const unsafeSamples = report.reservations.map((reservation) => reservation.unsafe.commitToUnsafeMs);
+    const unsafeSamples = report.reservations
+      .map((reservation) => reservation.unsafe)
+      .filter((unsafe) => unsafe?.disposition === "pass" && typeof unsafe.commitToUnsafeMs === "number")
+      .map((unsafe) => unsafe.commitToUnsafeMs);
+    report.unsafeDisposition = {
+      owner: options.continueAfterUnsafe ? "SDT-G60" : "SDT-G58",
+      boundMs: UNSAFE_BOUND_MS,
+      rule: "A visibility after the 5000ms bound remains a miss and is observation-only; it is never reclassified as an unsafe pass.",
+      rows: report.reservations.map((reservation) => ({
+        reservationId: reservation.reservationId,
+        suid: reservation.suid,
+        disposition: reservation.unsafe.disposition,
+        boundMs: reservation.unsafe.boundMs ?? UNSAFE_BOUND_MS,
+        boundExceededAtMs: reservation.unsafe.boundExceededAtMs ?? null,
+        firstVisibleAtMs: reservation.unsafe.firstVisibleAtMs ?? null,
+        eventualFirstVisibleAtMs: reservation.unsafe.eventualFirstVisibleAtMs ?? null,
+        eventualCommitToUnsafeMs: reservation.unsafe.eventualCommitToUnsafeMs ?? null,
+      })),
+    };
     report.timing = {
-      unsafe: { n: unsafeSamples.length, p50Ms: nearestRank(unsafeSamples, 0.5), p95Ms: nearestRank(unsafeSamples, 0.95) },
+      unsafe: {
+        n: report.reservations.length,
+        passN: unsafeSamples.length,
+        missN: report.reservations.length - unsafeSamples.length,
+        p50Ms: unsafeSamples.length > 0 ? nearestRank(unsafeSamples, 0.5) : null,
+        p95Ms: unsafeSamples.length > 0 ? nearestRank(unsafeSamples, 0.95) : null,
+      },
       safe: { n: safeSamples.length, p50Ms: nearestRank(safeSamples, 0.5), p95Ms: nearestRank(safeSamples, 0.95) },
     };
     report.healthAfter = await readHealth(options);
@@ -431,6 +516,8 @@ if (process.argv.includes("--self-test")) {
 } else {
   const mode = required("--mode", argument("--mode", "single"));
   if (mode !== "single" && mode !== "paced") throw new Error("--mode must be single or paced");
+  const continueAfterUnsafe = process.argv.includes("--continue-after-unsafe");
+  if (continueAfterUnsafe && mode !== "paced") throw new Error("--continue-after-unsafe requires --mode paced");
   const tokenFile = required("--token-file", argument("--token-file", process.env.G53_CONFORMANCE_TOKEN_FILE));
   const token = readFileSync(tokenFile, "utf8").trim();
   if (token.length === 0) throw new Error("protected conformance token file is empty");
@@ -443,6 +530,7 @@ if (process.argv.includes("--self-test")) {
     pacedCount: positiveInteger("--paced-count", argument("--paced-count", "10"), 10),
     paceMs: positiveInteger("--pace-ms", argument("--pace-ms", "10000"), 10_000),
     pollMs: positiveInteger("--poll-ms", argument("--poll-ms", "2000"), 100),
+    continueAfterUnsafe,
   };
   const output = resolve(required("--report", argument("--report", options.mode === "paced" ? ".artifacts/sdt-g58-paced-cohort.json" : ".artifacts/sdt-g58-e2e.json")));
   options.reportPath = output;
@@ -450,7 +538,11 @@ if (process.argv.includes("--self-test")) {
     writeReport(output, report);
     process.stdout.write(`${JSON.stringify({ task: report.task, mode: report.mode, status: report.status, runId: report.runId, output })}\n`);
   }).catch((error) => {
-    if (error?.report !== undefined) writeReport(output, error.report);
+    if (error?.report !== undefined) {
+      writeReport(output, error.report);
+      const lastSnapshot = error.report.lastHealth ?? error.report.healthSnapshots?.at(-1);
+      if (lastSnapshot !== undefined) process.stderr.write(`last health snapshot: ${JSON.stringify(lastSnapshot)}\n`);
+    }
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   });
