@@ -34,6 +34,17 @@ export interface MeetingRoomSafeLaneCoverage {
   readonly observedAt: number;
 }
 
+/** One immutable row for one scheduled safe-lane tick. */
+export interface MeetingRoomSafeLaneHistoryEntry {
+  readonly tickId: string;
+  readonly kind: "SETTLED" | "BLOCK/UNSETTLED";
+  readonly reason: string | null;
+  readonly partitionTag: string | null;
+  /** Null is an explicit persisted absence of a proven completeness frontier. */
+  readonly frontierSuid: string | null;
+  readonly observedAt: number;
+}
+
 export interface MeetingRoomReadHealth {
   readonly serviceId: string;
   readonly materializedViews: readonly Readonly<{
@@ -48,8 +59,10 @@ export interface MeetingRoomReadHealth {
     kind: "SETTLED" | "BLOCK/UNSETTLED";
     reason: string | null;
     partitionTag: string | null;
+    frontierSuid: string | null;
     observedAt: number | null;
   }>;
+  readonly coverageHistory: readonly MeetingRoomSafeLaneHistoryEntry[];
   readonly lag: Readonly<{
     estimateMs: number | null;
     observedAt: number | null;
@@ -80,6 +93,19 @@ function nonNegativeAge(nowMs: number, updatedAt: number): number {
 
 function requiredServiceId(env: MeetingRoomD1Env): string {
   return requireServiceIdentity(envServiceIdentity(env));
+}
+
+/**
+ * Scheduled maintenance supplies one stable observedAt for a coverage
+ * decision.  The tick identity deliberately contains no request UUID: a
+ * repeated observation of the same scheduled tick is idempotent and cannot
+ * mutate an already-recorded history row.
+ */
+export function meetingRoomSafeLaneTickId(observedAt: number): string {
+  if (!Number.isSafeInteger(observedAt) || observedAt < 0) {
+    throw new Error("Meeting-room safe-lane tick observedAt must be a non-negative integer");
+  }
+  return `scheduled:${String(observedAt)}`;
 }
 
 interface StoredEventLike {
@@ -289,6 +315,56 @@ export async function recordMeetingRoomSafeLaneCoverage(
   coverage: MeetingRoomSafeLaneCoverage,
 ): Promise<void> {
   if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  const tickId = meetingRoomSafeLaneTickId(coverage.observedAt);
+  const frontierSuid = coverage.frontierSuid ?? "";
+  const existing = await env.D1.prepare(
+    `SELECT service_id, tick_id, coverage_kind, coverage_reason,
+            coverage_partition_tag, settled_frontier_suid, observed_at
+       FROM serialized_dcb_safe_lane_history
+      WHERE service_id = ? AND tick_id = ?`,
+  ).bind(serviceId, tickId).first<Record<string, unknown>>();
+  const historyValues = [
+    serviceId,
+    tickId,
+    coverage.kind,
+    coverage.reason,
+    coverage.partitionTag,
+    frontierSuid,
+    coverage.observedAt,
+  ] as const;
+  const sameHistoryRow = (row: Record<string, unknown>): boolean => (
+    row.service_id === serviceId
+      && row.tick_id === tickId
+      && row.coverage_kind === coverage.kind
+      && (row.coverage_reason === null || row.coverage_reason === undefined ? null : String(row.coverage_reason)) === coverage.reason
+      && (row.coverage_partition_tag === null || row.coverage_partition_tag === undefined ? null : String(row.coverage_partition_tag)) === coverage.partitionTag
+      && (row.settled_frontier_suid === null || row.settled_frontier_suid === undefined ? "" : String(row.settled_frontier_suid)) === frontierSuid
+      && Number(row.observed_at) === coverage.observedAt
+  );
+  if (existing !== null && existing !== undefined && !sameHistoryRow(existing)) {
+    throw new Error(`safe_lane_history_tick_conflict:${tickId}`);
+  }
+  if (existing === null || existing === undefined) {
+    // DO NOTHING is intentional: scheduled history is append-only.  The
+    // read-back closes the concurrent same-tick race without allowing a
+    // second caller to rewrite the first caller's coverage decision.
+    await env.D1.prepare(
+      `INSERT INTO serialized_dcb_safe_lane_history
+         (service_id, tick_id, coverage_kind, coverage_reason,
+          coverage_partition_tag, settled_frontier_suid, observed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (service_id, tick_id) DO NOTHING`,
+    ).bind(...historyValues).run();
+    const persisted = await env.D1.prepare(
+      `SELECT service_id, tick_id, coverage_kind, coverage_reason,
+              coverage_partition_tag, settled_frontier_suid, observed_at
+         FROM serialized_dcb_safe_lane_history
+        WHERE service_id = ? AND tick_id = ?`,
+    ).bind(serviceId, tickId).first<Record<string, unknown>>();
+    if (persisted === null || persisted === undefined || !sameHistoryRow(persisted)) {
+      throw new Error(`safe_lane_history_tick_conflict:${tickId}`);
+    }
+  }
   await env.D1.prepare(
     `INSERT INTO serialized_dcb_safe_lane_health
        (service_id, coverage_kind, coverage_reason, coverage_partition_tag, settled_frontier_suid, observed_at)
@@ -304,7 +380,7 @@ export async function recordMeetingRoomSafeLaneCoverage(
     coverage.kind,
     coverage.reason,
     coverage.partitionTag,
-    coverage.frontierSuid ?? "",
+    frontierSuid,
     coverage.observedAt,
   ).run();
 }
@@ -417,12 +493,20 @@ export async function readMeetingRoomHealth(
   const source = new D1EventStore(env.D1);
   await source.initialize();
   const lag = await source.lagBoundDiagnostics(serviceId, nowMs);
-  const [coverageRow, globalHeadRow, projectionRows, livePollRows] = await Promise.all([
+  const [coverageRow, coverageHistoryRows, globalHeadRow, projectionRows, livePollRows] = await Promise.all([
     env.D1.prepare(
-      `SELECT coverage_kind, coverage_reason, coverage_partition_tag, observed_at
+      `SELECT coverage_kind, coverage_reason, coverage_partition_tag,
+              settled_frontier_suid, observed_at
          FROM serialized_dcb_safe_lane_health
         WHERE service_id = ?`,
     ).bind(serviceId).first<Record<string, unknown>>(),
+    env.D1.prepare(
+      `SELECT tick_id, coverage_kind, coverage_reason, coverage_partition_tag,
+              settled_frontier_suid, observed_at
+         FROM serialized_dcb_safe_lane_history
+        WHERE service_id = ?
+        ORDER BY observed_at COLLATE BINARY ASC, tick_id COLLATE BINARY ASC`,
+    ).bind(serviceId).all<Record<string, unknown>>(),
     env.D1.prepare(
       `SELECT COALESCE(MAX("SortableUniqueId" COLLATE BINARY), '') AS global_head
          FROM dcb_events
@@ -480,11 +564,31 @@ export async function readMeetingRoomHealth(
     };
   });
 
+  const coverageHistory = coverageHistoryRows.results.map((row) => {
+    const tickId = typeof row.tick_id === "string" ? row.tick_id : "";
+    if (tickId.length === 0) throw new Error("safe-lane history row omitted tick_id");
+    return {
+      tickId,
+      kind: row.coverage_kind === "SETTLED" ? "SETTLED" as const : "BLOCK/UNSETTLED" as const,
+      reason: row.coverage_reason === null || row.coverage_reason === undefined
+        ? null
+        : String(row.coverage_reason),
+      partitionTag: row.coverage_partition_tag === null || row.coverage_partition_tag === undefined
+        ? null
+        : String(row.coverage_partition_tag),
+      frontierSuid: typeof row.settled_frontier_suid === "string" && row.settled_frontier_suid.length > 0
+        ? row.settled_frontier_suid
+        : null,
+      observedAt: asCount(row.observed_at, "coverage_history.observed_at"),
+    } satisfies MeetingRoomSafeLaneHistoryEntry;
+  });
+
   const coverage = coverageRow === null || coverageRow === undefined
     ? {
       kind: "BLOCK/UNSETTLED" as const,
       reason: "scheduled_maintenance_has_not_run",
       partitionTag: null,
+      frontierSuid: null,
       observedAt: null,
     }
     : {
@@ -495,12 +599,16 @@ export async function readMeetingRoomHealth(
       partitionTag: coverageRow.coverage_partition_tag === null || coverageRow.coverage_partition_tag === undefined
         ? null
         : String(coverageRow.coverage_partition_tag),
+      frontierSuid: typeof coverageRow.settled_frontier_suid === "string" && coverageRow.settled_frontier_suid.length > 0
+        ? coverageRow.settled_frontier_suid
+        : null,
       observedAt: asCount(coverageRow.observed_at, "coverage.observed_at"),
     };
   return {
     serviceId,
     materializedViews,
     coverage,
+    coverageHistory,
     lag: {
       estimateMs: lag.rawEstimateMs,
       observedAt: lag.rawObservedAt,

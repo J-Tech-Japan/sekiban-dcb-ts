@@ -191,10 +191,23 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
     const direct = await readMeetingRoomHealth({ D1: pipeline(), D1_MV: materializedViews(), SDT_SERVICE_ID: serviceId }, serviceId, nowMs + 1);
     expect(direct).toMatchObject({
       serviceId,
-      coverage: { kind: "BLOCK/UNSETTLED", reason: "source present/global receipt absent", partitionTag: tag },
+      coverage: {
+        kind: "BLOCK/UNSETTLED",
+        reason: "source present/global receipt absent",
+        partitionTag: tag,
+        frontierSuid: sourceEvent.suid,
+      },
       lag: { estimateMs: 2_000, safeWindowMs: 20_000, ceilingExceeded: false },
       globalHead: sourceEvent.suid,
     });
+    expect(direct.coverageHistory).toEqual([{
+      tickId: `scheduled:${nowMs}`,
+      kind: "BLOCK/UNSETTLED",
+      reason: "source present/global receipt absent",
+      partitionTag: tag,
+      frontierSuid: sourceEvent.suid,
+      observedAt: nowMs,
+    }]);
     expect(direct.materializedViews).toEqual(expect.arrayContaining([
       expect.objectContaining({ viewId: "RoomProjector", safeHead: sourceEvent.suid, unsafeRows: 1, unsafeReceipts: 1 }),
       expect.objectContaining({ viewId: "ReservationProjector", safeHead: sourceEvent.suid }),
@@ -235,6 +248,76 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
       checkpointSuid: sourceEvent.suid,
       headSuid: sourceEvent.suid,
       behindEvents: 0,
+    });
+  });
+
+  it("keeps scheduled coverage history append-only and exposes a missing frontier as null", async () => {
+    const serviceId = `g58-history-${crypto.randomUUID()}`;
+    const firstObservedAt = Date.now();
+    const firstFrontier = g32Suid(20);
+    const secondObservedAt = firstObservedAt + 1;
+    const environment = { D1: pipeline(), D1_MV: materializedViews() };
+
+    await recordMeetingRoomSafeLaneCoverage(environment, serviceId, {
+      kind: "SETTLED",
+      reason: null,
+      partitionTag: null,
+      frontierSuid: firstFrontier,
+      observedAt: firstObservedAt,
+    });
+    await recordMeetingRoomSafeLaneCoverage(environment, serviceId, {
+      kind: "BLOCK/UNSETTLED",
+      reason: "source_partition_set_changed_during_scan",
+      partitionTag: "reservation:g58-history",
+      frontierSuid: null,
+      observedAt: secondObservedAt,
+    });
+
+    const health = await readMeetingRoomHealth({
+      D1: pipeline(),
+      D1_MV: materializedViews(),
+      SDT_SERVICE_ID: serviceId,
+    }, serviceId, secondObservedAt + 1);
+    expect(health.coverageHistory).toEqual([
+      {
+        tickId: `scheduled:${firstObservedAt}`,
+        kind: "SETTLED",
+        reason: null,
+        partitionTag: null,
+        frontierSuid: firstFrontier,
+        observedAt: firstObservedAt,
+      },
+      {
+        tickId: `scheduled:${secondObservedAt}`,
+        kind: "BLOCK/UNSETTLED",
+        reason: "source_partition_set_changed_during_scan",
+        partitionTag: "reservation:g58-history",
+        frontierSuid: null,
+        observedAt: secondObservedAt,
+      },
+    ]);
+    expect(health.coverage.frontierSuid).toBeNull();
+
+    await expect(recordMeetingRoomSafeLaneCoverage(environment, serviceId, {
+      kind: "SETTLED",
+      reason: "must not rewrite history",
+      partitionTag: null,
+      frontierSuid: firstFrontier,
+      observedAt: secondObservedAt,
+    })).rejects.toThrow(`safe_lane_history_tick_conflict:scheduled:${secondObservedAt}`);
+
+    const rows = await pipeline().prepare(
+      `SELECT tick_id, coverage_kind, settled_frontier_suid, observed_at
+         FROM serialized_dcb_safe_lane_history
+        WHERE service_id = ?
+        ORDER BY observed_at ASC`,
+    ).bind(serviceId).all<Record<string, unknown>>();
+    expect(rows.results).toHaveLength(2);
+    expect(rows.results[1]).toMatchObject({
+      tick_id: `scheduled:${secondObservedAt}`,
+      coverage_kind: "BLOCK/UNSETTLED",
+      settled_frontier_suid: "",
+      observed_at: secondObservedAt,
     });
   });
 

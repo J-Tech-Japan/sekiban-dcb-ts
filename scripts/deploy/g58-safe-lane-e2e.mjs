@@ -79,6 +79,7 @@ function writeReport(path, value) {
  */
 function persistReport(options, report) {
   if (typeof options.reportPath === "string" && options.reportPath.length > 0) {
+    report.persistedCoverageHistory = persistedCoverageHistory(report.healthSnapshots);
     writeReport(options.reportPath, report);
   }
 }
@@ -107,10 +108,12 @@ function listItems(body) {
 function healthSummary(body, receivedAtMs) {
   if (body === null || typeof body !== "object" || Array.isArray(body)) throw new Error("read-health returned a non-object response");
   const coverage = body.coverage;
+  const coverageHistory = body.coverageHistory;
   const lag = body.lag;
   const materializedViews = body.materializedViews;
   const liveProjections = body.liveProjections;
   if (coverage === null || typeof coverage !== "object" || Array.isArray(coverage)) throw new Error("read-health omitted coverage");
+  if (!Array.isArray(coverageHistory)) throw new Error("read-health omitted coverageHistory");
   if (lag === null || typeof lag !== "object" || Array.isArray(lag)) throw new Error("read-health omitted lag");
   if (!Array.isArray(materializedViews) || !Array.isArray(liveProjections)) throw new Error("read-health omitted MV or projection state");
   if (typeof lag.safeWindowMs !== "number" || !Number.isFinite(lag.safeWindowMs)) throw new Error("read-health omitted numeric safeWindowMs");
@@ -120,8 +123,17 @@ function healthSummary(body, receivedAtMs) {
       kind: typeof coverage.kind === "string" ? coverage.kind : "unknown",
       reason: coverage.reason === null || coverage.reason === undefined ? null : String(coverage.reason),
       partitionTag: coverage.partitionTag === null || coverage.partitionTag === undefined ? null : String(coverage.partitionTag),
+      frontierSuid: typeof coverage.frontierSuid === "string" && coverage.frontierSuid.length > 0 ? coverage.frontierSuid : null,
       observedAt: typeof coverage.observedAt === "number" ? coverage.observedAt : null,
     },
+    coverageHistory: coverageHistory.map((entry) => ({
+      tickId: typeof entry?.tickId === "string" ? entry.tickId : "",
+      kind: typeof entry?.kind === "string" ? entry.kind : "unknown",
+      reason: entry?.reason === null || entry?.reason === undefined ? null : String(entry.reason),
+      partitionTag: entry?.partitionTag === null || entry?.partitionTag === undefined ? null : String(entry.partitionTag),
+      frontierSuid: typeof entry?.frontierSuid === "string" && entry.frontierSuid.length > 0 ? entry.frontierSuid : null,
+      observedAt: typeof entry?.observedAt === "number" ? entry.observedAt : null,
+    })),
     lag: {
       estimateMs: typeof lag.estimateMs === "number" ? lag.estimateMs : null,
       observedAt: typeof lag.observedAt === "number" ? lag.observedAt : null,
@@ -306,6 +318,49 @@ function safeHead(health, viewId) {
   return health.materializedViews.find((view) => view.viewId === viewId)?.safeHead ?? "";
 }
 
+/**
+ * Keep the append-only rows returned by the deployed health surface alongside
+ * the safe heads observed at each read.  This is refreshed before every
+ * checkpoint write so a tick is durable in the raw receipt as soon as it is
+ * first observed.
+ */
+function persistedCoverageHistory(snapshots) {
+  const rows = new Map();
+  for (const snapshot of snapshots ?? []) {
+    for (const entry of snapshot?.coverageHistory ?? []) {
+      if (typeof entry?.tickId !== "string" || entry.tickId.length === 0) continue;
+      const safeHeadObservation = {
+        receivedAtMs: snapshot.receivedAtMs,
+        roomSafeHead: safeHead(snapshot, "RoomProjector"),
+        reservationSafeHead: safeHead(snapshot, "ReservationProjector"),
+      };
+      const current = rows.get(entry.tickId);
+      if (current === undefined) {
+        rows.set(entry.tickId, {
+          tickId: entry.tickId,
+          kind: entry.kind,
+          reason: entry.reason,
+          partitionTag: entry.partitionTag,
+          frontierSuid: entry.frontierSuid,
+          observedAt: entry.observedAt,
+          observedAtIso: Number.isSafeInteger(entry.observedAt) ? new Date(entry.observedAt).toISOString() : null,
+          safeHeadObservations: [safeHeadObservation],
+          roomSafeHead: safeHeadObservation.roomSafeHead,
+          reservationSafeHead: safeHeadObservation.reservationSafeHead,
+        });
+      } else {
+        current.safeHeadObservations.push(safeHeadObservation);
+        current.roomSafeHead = safeHeadObservation.roomSafeHead;
+        current.reservationSafeHead = safeHeadObservation.reservationSafeHead;
+      }
+    }
+  }
+  return [...rows.values()].sort((left, right) => {
+    if (left.observedAt !== right.observedAt) return (left.observedAt ?? 0) - (right.observedAt ?? 0);
+    return left.tickId.localeCompare(right.tickId);
+  });
+}
+
 function slowAttribution(sample, snapshots) {
   if (sample.safe.commitToSafeMs <= sample.safeWindowAtCommitMs + 60_000) return { kind: "within_safe_window_plus_60s" };
   const during = snapshots.filter((snapshot) => snapshot.receivedAtMs >= sample.commit.receivedAtMs && snapshot.receivedAtMs <= sample.safe.reachedAtMs);
@@ -339,15 +394,24 @@ function scheduledPollLifecycle(snapshots) {
       observedAt,
       observedAtIso: new Date(observedAt).toISOString(),
       httpSamples: rows.length,
-      coverage: { kind: latest?.coverage?.kind ?? "unknown", reason: latest?.coverage?.reason ?? null },
+      coverage: {
+        kind: latest?.coverage?.kind ?? "unknown",
+        reason: latest?.coverage?.reason ?? null,
+        partitionTag: latest?.coverage?.partitionTag ?? null,
+        frontierSuid: latest?.coverage?.frontierSuid ?? null,
+      },
+      persistedCoverageHistory: latest?.coverageHistory ?? [],
       snapshots: rows.map((snapshot) => ({
         receivedAtMs: snapshot.receivedAtMs,
         receivedAtIso: new Date(snapshot.receivedAtMs).toISOString(),
         coverage: {
           kind: snapshot.coverage.kind,
           reason: snapshot.coverage.reason,
+          partitionTag: snapshot.coverage.partitionTag,
+          frontierSuid: snapshot.coverage.frontierSuid,
           observedAt: snapshot.coverage.observedAt,
         },
+        coverageHistory: snapshot.coverageHistory,
         lag: {
           decayedMs: snapshot.lag.decayedMs,
           safeWindowMs: snapshot.lag.safeWindowMs,
