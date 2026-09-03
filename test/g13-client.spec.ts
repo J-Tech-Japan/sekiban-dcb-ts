@@ -20,7 +20,7 @@ const snapshot = (tagGroup: string, tagContent: string, tagProjector: string, he
   tagContent,
   tagProjector,
   tagPayloadName: "State",
-  projectorVersion: 1,
+  projectorVersion: "1",
 });
 
 const transportFor = (
