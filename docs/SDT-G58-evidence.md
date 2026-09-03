@@ -1452,7 +1452,7 @@ The W120 red-before-green receipt is
 `.artifacts/sdt-g58-w120-frontier-history-red-before-green.json`.
 
 The additive migration
-`.artifacts/../migrations/d1/g32/0005_g58_safe_lane_history.sql` creates the
+`migrations/d1/g32/0005_g58_safe_lane_history.sql` creates the
 append-only `serialized_dcb_safe_lane_history` table. Its stable tick identity
 is `scheduled:<observedAt>`, constrained by `(service_id, tick_id)` and
 `(service_id, observed_at)`. The health surface now exposes every recorded
