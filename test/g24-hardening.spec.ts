@@ -155,12 +155,26 @@ describe("SDT-G24 hardening guards", () => {
     }
   });
 
-  it("requires SDT_SERVICE_ID at fetch before the .test service-id override can return early", async () => {
+  it("allows the explicit .test service-id override to reach ordinary V1 validation", async () => {
     const worker = createRuntimeWorker();
-    await expect(worker.fetch!(new Request("https://g24.test/api/sekiban/serialized/query", {
+    const response = await worker.fetch!(new Request("https://g24.test/api/sekiban/serialized/query", {
       method: "POST",
-      headers: { [TEST_SERVICE_ID_HEADER]: "g24-fetch-test-identity" },
-    }) as never, {} as never, {} as ExecutionContext)).rejects.toThrow("SDT_SERVICE_ID is required");
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: "g24-fetch-test-identity" },
+      body: JSON.stringify({ queryType: "unknown", queryParamsJson: "{}" }),
+    }) as never, {} as never, {} as ExecutionContext);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "validation_error" });
+  });
+
+  it("returns typed scope.identity_missing when neither deployment nor explicit test identity resolves", async () => {
+    const worker = createRuntimeWorker();
+    const response = await worker.fetch!(new Request("https://g24.example/api/sekiban/serialized/query", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ queryType: "unknown", queryParamsJson: "{}" }),
+    }) as never, {} as never, {} as ExecutionContext);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: "scope.identity_missing" });
   });
 
   it("requires SDT_SERVICE_ID at queue before an empty batch can reach downstream handling", async () => {

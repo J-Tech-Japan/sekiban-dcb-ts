@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { JournalRecord } from "../packages/dcb-runtime/src/journal/types";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 
 const SERVICE_ID = "journal-cleanup-test";
 const TIMESTAMP = "2026-08-31T00:00:00.000Z";
@@ -55,16 +56,15 @@ async function journalRequest(
   path: string,
   method: "GET" | "POST" = "GET",
 ): Promise<Response> {
-  return SELF.fetch(
-    "https://journal.test/journals/" + encodeURIComponent(attemptId) + path,
-    method === "GET"
-      ? undefined
-      : {
-          method,
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({}),
-        },
-  );
+  const url = "https://journal.test/journals/" + encodeURIComponent(attemptId) + path;
+  if (method === "GET") {
+    return SELF.fetch(url, { headers: { [TEST_SERVICE_ID_HEADER]: SERVICE_ID } });
+  }
+  return SELF.fetch(url, {
+    method,
+    headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: SERVICE_ID },
+    body: JSON.stringify({}),
+  });
 }
 
 describe("JournalDurableObject retained diagnostics", () => {

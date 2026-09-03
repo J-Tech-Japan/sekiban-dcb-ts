@@ -1,5 +1,5 @@
 import { defineRowMaterializer } from "@sekiban/dcb-core";
-import { envServiceIdentity, requireServiceIdentity } from "@sekiban/dcb-runtime";
+import { envServiceIdentity, requireServiceIdentity } from "@sekiban/dcb-runtime/cloudflare";
 import {
   createD1StoreProvider,
 } from "@sekiban/dcb-runtime/d1";

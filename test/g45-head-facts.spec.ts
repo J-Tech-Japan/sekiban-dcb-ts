@@ -5,7 +5,7 @@ import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/
 import type { AllocatedCommitCandidate, ValidatedCommitEnvelope } from "../packages/dcb-runtime/src/commit/types";
 import type { G43SqlMeasurementSnapshot } from "../packages/dcb-runtime/src/tag/TagSqlMeasurement";
 import type { TagEvent, TagHeadFacts, TagRecord } from "../packages/dcb-runtime/src/tag/types";
-import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { parseScopeName, scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
@@ -164,12 +164,13 @@ function fakeTagNamespace(factsByTag: Readonly<Record<string, TagHeadFacts>>, pa
       return name as unknown as DurableObjectId;
     },
     get(id: DurableObjectId): DurableObjectStub {
-      const tag = String(id).split("|").at(-1)!;
+      const scope = parseScopeName(String(id));
+      const tag = scope.doClass === "tag" ? scope.identity : undefined;
       return {
         async fetch(request: Request): Promise<Response> {
           const url = new URL(request.url);
           paths.push(url.pathname);
-          const facts = factsByTag[tag];
+          const facts = tag === undefined ? undefined : factsByTag[tag];
           return facts === undefined
             ? new Response(JSON.stringify({ code: "tag_not_found" }), { status: 404 })
             : new Response(JSON.stringify(facts), { status: 200 });
