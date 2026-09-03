@@ -511,3 +511,117 @@ stitched cohort, and no SafeWindow bound change. This is a durable blocked
 deployed-proof checkpoint for a focused follow-up to diagnose the row-3
 unsafe-visibility/gate behavior; changing the published 20 s/120 s bounds is
 not proposed.
+
+## W100 unsafe-lane diagnosis and receipt checkpoint — 2026-09-03
+
+Status: **blocked for a separate upstream delivery unit**. This wake did not
+use Wrangler, deploy, reset remote data, send an application request, rerun
+the W99 cohort, or change the G58 runtime. The committed W99 raw receipt and
+its red outcome remain the baseline evidence.
+
+### Correlated W99 facts
+
+The W99 run was `97edc4cd-5910-410a-9de9-9f9cbc6fb969` and used 250 ms list
+polling with the unchanged 5,000 ms unsafe bound. Reservation 1 was accepted
+at `09:02:18.623Z`; its first visible response was received at `09:02:24.015Z`
+(`5,392 ms` from the command receipt; the first fine poll elapsed `5,116 ms`).
+Reservation 2 was accepted at `09:02:30.658Z` and became visible at
+`09:02:33.455Z` (`2,797 ms`). The nearest-rank values over those two completed
+rows are p50 `2,797 ms` and p95 `5,392 ms`; the cohort stopped before a full
+percentile could be claimed.
+
+The third command reached the accepted-command path, then the bounded unsafe
+wait failed without a visible row. The old W99 harness appended a reservation
+only after unsafe success, so its response SUID was not in the raw report; no
+SUID is inferred here. The exact failure remains:
+
+```
+unsafe reservation g58-reservation-97edc4cd-591-3 was not visible within 5000ms
+```
+
+The health snapshots line up with an upstream delivery gap:
+
+| UTC health read | coverage | decayed lag / safe window | global head | MV safe head | interpretation |
+| --- | --- | ---:|---|---|---|
+| `09:02:18.898Z` | `SETTLED` / `null` | `0 / 20,000 ms` | setup-room SUID `063924022926070000001564666749` | pre-cohort `063924019311336000000431147168` | reservation 1 not yet in global D1 |
+| `09:02:30.936Z` | `SETTLED` / `null` | `12,131 / 20,000 ms` | reservation 1 SUID `063924022938171000000990740165` | pre-cohort | reservation 2 not yet in global D1 |
+| `09:02:43.222Z` | `BLOCK/UNSETTLED` / `source_partition_set_changed_during_scan` | `6,279 / 20,000 ms` | reservation 2 SUID `063924022950280000000689507569` | pre-cohort | reservation 3 is not in global D1 at this read |
+
+Thus row 3 was absent from both the global head and the unsafe list, not merely
+held behind a SafeWindow-fenced MV. The `lastPollAt` values remained at the
+pre-cohort timestamp because live polling is correctly downstream of the
+global completeness gate; this is a consequence, not evidence that the G58
+hook caused the admission delay.
+
+### Code-path diagnosis
+
+The exact existing handoff is:
+
+1. `TagDurableObject.appendSql` durably writes the Tag event, outbox
+   obligation, and local receipt. `registerSourcePartition` runs after that
+   append and before the response.
+2. After the 201 response, `TagDurableObject.append` schedules
+   `autoDrainAfterResponse` through `ctx.waitUntil(...)`; the command response
+   does not await Queue-to-D1 delivery. `autoDrainOutbox` sends the complete
+   row to `DOWNSTREAM_QUEUE`.
+3. The Queue consumer calls `processDeliveryCore`, whose
+   `D1EventStore.recordDelivery` batch is the code that creates `dcb_events`,
+   global membership, receipt, arrival, and lag rows. A later read-back join
+   must succeed before the source obligation is acknowledged.
+4. Only after that global receipt can the G44 `beforeViews` gate and the MV
+   handlers run. The G58 scheduled path (`stabilizeDownstream`, G44 reconcile,
+   then the fresh-coverage hook and live poll) does not write `dcb_events` and
+   cannot make an absent global row appear.
+
+The row-3 global head stopping at row 2 is therefore direct evidence that the
+unchanged asynchronous outbox/Queue/global-D1 handoff had not completed by the
+5-second unsafe bound. There is no code or timestamp evidence that the G58
+same-tick reconciliation, MV catch-up, live-projection poll, or D1 health reads
+introduced execution contention: those stages occur after global admission and
+operate on separate health/MV state. The observed BLOCK reason is the
+reconciler's `assertSnapshotUniverseUnchanged` result: a source-partition set
+changed between the scanner's start and end snapshots. It is a concurrent
+expected scan symptom and correctly fences a frontier; it neither enqueues a
+row nor delays Queue delivery. Inferring causation from that reason alone would
+be incorrect.
+
+The first sample's 5,392 ms and row 3's absent global row support the same
+upstream queue/outbox delivery-latency classification. The available receipt
+does not distinguish a platform Queue delay from an auto-drain/receiver
+failure, and no replacement request or remote inspection was authorized in
+this wake. The failure is outside G58 AC3 catch-up cadence and AC5
+live-projection wiring, so this checkpoint is **blocked** for a separate held
+outbox/Queue/global-D1 diagnosis unit. No outbox, Queue, D1, G44, or G58
+product path was changed.
+
+### Durable accepted-receipt harness repair
+
+The old report-loss behavior is repaired locally in
+`scripts/deploy/g58-safe-lane-e2e.mjs` without changing any deadline:
+
+- setup-room receipt is checkpointed immediately after acceptance;
+- each accepted reservation is pushed with its SUID and `unsafe: null`, then
+  synchronously written before the health read or `waitForUnsafe` call;
+- the health-updated checkpoint and successful unsafe observation are written
+  again, while an unsafe failure leaves the accepted receipt in the report.
+
+The report path is passed from `--report` to each checkpoint write. The focused
+guard `scripts/g58-cohort-evidence-guard.mjs` writes
+`.artifacts/sdt-g58-w100-cohort-evidence-guard.json`, verifies the preserved W99
+failed receipt, and removes the immediate pre-poll write in its self-test; that
+mutation is red. The guard artifact records schema
+`sdt-g58-cohort-evidence/v1`, baseline W99 run ID, and the exact 5,000 ms
+failure without any credential material. The existing W96 red receipt and W97
+green same-tick witness remain untouched.
+
+### Checks and scope boundary
+
+- `npm run test:g58` — passed; existing G58/G44-boundary fixtures and mutation
+  guards plus the new pre-unsafe checkpoint guard passed.
+- `node scripts/g58-cohort-evidence-guard.mjs --self-test` and the guard —
+  passed; removing the checkpoint is deterministically red.
+- `node scripts/deploy/g58-safe-lane-e2e.mjs --self-test` — passed.
+- SafeWindow constants remain 20,000 ms / 120,000 ms; unsafe bound remains
+  5,000 ms; no polling deadline or queue/outbox semantics changed.
+- No Wrangler, Cloudflare API, application request, replacement cohort, or
+  SDT-G56 operation was performed.

@@ -65,6 +65,18 @@ function writeReport(path, value) {
   writeFileSync(output, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+/**
+ * Persist a cohort checkpoint while the request receipt is still the only
+ * newly-known fact.  The deployed witness can stop at any subsequent health
+ * or visibility read, so an accepted command must never exist only in the
+ * in-memory report.
+ */
+function persistReport(options, report) {
+  if (typeof options.reportPath === "string" && options.reportPath.length > 0) {
+    writeReport(options.reportPath, report);
+  }
+}
+
 function commandSuid(body) {
   const response = body !== null && typeof body === "object" && body.response !== null && typeof body.response === "object"
     ? body.response
@@ -346,6 +358,7 @@ async function run(options) {
     const roomId = `g58-room-${runId.slice(0, 12)}`;
     const room = await acceptedCommand(options, "/api/commands/create-room", { roomId, name: `SDT-G58 ${options.mode}` });
     report.setupRoom = { roomId, suid: room.suid, commit: { receivedAtMs: room.receivedAtMs, responseMs: room.elapsedMs, cfRay: room.cfRay } };
+    persistReport(options, report);
 
     let previousCommitAtMs = room.receivedAtMs;
     for (let ordinal = 1; ordinal <= pacedCount; ordinal += 1) {
@@ -357,18 +370,27 @@ async function run(options) {
         reservationId,
         userId: `g58-user-${ordinal}`,
       });
-      const healthAtCommit = await readHealth(options);
-      report.healthSnapshots.push(healthAtCommit);
-      const unsafe = await waitForUnsafe(options, reservationId);
-      report.reservations.push({
+      // This checkpoint is intentionally before health/unsafe polling.  If a
+      // visibility bound fails, the accepted receipt and SUID remain durable
+      // evidence instead of disappearing with the thrown request.
+      const reservation = {
         ordinal,
         reservationId,
         suid: commit.suid,
         commit: { receivedAtMs: commit.receivedAtMs, responseMs: commit.elapsedMs, cfRay: commit.cfRay },
         pacing: { previousCommitToThisCommitMs: commit.receivedAtMs - previousCommitAtMs, requiredMs: options.mode === "paced" ? options.paceMs : 0 },
-        unsafe: { reachedAtMs: unsafe.firstVisibleAtMs, commitToUnsafeMs: unsafe.firstVisibleAtMs - commit.receivedAtMs, observations: unsafe.observations },
-        safeWindowAtCommitMs: healthAtCommit.lag.safeWindowMs,
-      });
+        unsafe: null,
+        safeWindowAtCommitMs: null,
+      };
+      report.reservations.push(reservation);
+      persistReport(options, report);
+      const healthAtCommit = await readHealth(options);
+      report.healthSnapshots.push(healthAtCommit);
+      reservation.safeWindowAtCommitMs = healthAtCommit.lag.safeWindowMs;
+      persistReport(options, report);
+      const unsafe = await waitForUnsafe(options, reservationId);
+      reservation.unsafe = { reachedAtMs: unsafe.firstVisibleAtMs, commitToUnsafeMs: unsafe.firstVisibleAtMs - commit.receivedAtMs, observations: unsafe.observations };
+      persistReport(options, report);
       previousCommitAtMs = commit.receivedAtMs;
     }
 
@@ -417,11 +439,13 @@ if (process.argv.includes("--self-test")) {
     baseUrl: required("--base-url", argument("--base-url", process.env.G58_BASE_URL)).replace(/\/$/, ""),
     serviceId: required("--service-id", argument("--service-id", process.env.G58_SERVICE_ID ?? DEFAULT_SERVICE_ID)),
     token,
+    reportPath: undefined,
     pacedCount: positiveInteger("--paced-count", argument("--paced-count", "10"), 10),
     paceMs: positiveInteger("--pace-ms", argument("--pace-ms", "10000"), 10_000),
     pollMs: positiveInteger("--poll-ms", argument("--poll-ms", "2000"), 100),
   };
   const output = resolve(required("--report", argument("--report", options.mode === "paced" ? ".artifacts/sdt-g58-paced-cohort.json" : ".artifacts/sdt-g58-e2e.json")));
+  options.reportPath = output;
   run(options).then((report) => {
     writeReport(output, report);
     process.stdout.write(`${JSON.stringify({ task: report.task, mode: report.mode, status: report.status, runId: report.runId, output })}\n`);
