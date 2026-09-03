@@ -429,3 +429,85 @@ did not invoke Wrangler or execute this statement.
 No SafeWindow bound, G44 test, cohort, remote D1 row, SDT-G56 work item, or
 deployment was changed in this checkpoint. The AC4 checkpoint is ready for the
 next authorized deployment/purge and fresh verification continuation.
+
+## W99 deployed proof — 2026-09-03 (blocked at unsafe visibility)
+
+This was the one authorized normal-config deployment/proof wake from the W98
+checkpoint. The pinned Wrangler `whoami` began at
+`2026-09-03T08:58:53.3Z` and completed at `08:58:56.3Z` with OAuth success;
+all API-token fallback variables were unset. No other Wrangler user or process
+was used. The exact branch source was
+`a7da2589272842115fb7f8a0c0050f2c2e3494e9`.
+
+### Deployment identity and C-0 lag purge
+
+The normal config was deployed once with the source annotation
+`SDT-G58 W99 deployed proof a7da2589272842115fb7f8a0c0050f2c2e3494e9`:
+
+- Cloudflare version: `2ec23a75-8365-484b-9c8f-1197d3499cec` (version 191).
+- Deployment log: `.artifacts/sdt-g58-w99-deploy.log`.
+- Pinned `versions list --json` identity: `.artifacts/sdt-g58-w99-versions.json`,
+  where version 191 has that exact annotation and `triggered_by=version_upload`.
+
+The pre-purge remote inventory (`.artifacts/sdt-g58-w99-lag-before.json`) found
+exactly two lag rows:
+
+| Service ID | estimate_ms | observed_at |
+| --- | ---: | ---: |
+| `sdt-g47-repair-wake32c-20260831` (retired) | 61,546,651 | 1,788,284,117,839 |
+| `sekiban-dcb-meeting-room-cloudflare-only` (deployed) | 6,591 | 1,788,422,518,180 |
+
+Under the authorized C-0/C-13 scope, the checked-in
+`scripts/deploy/g58-ac4-retired-lag-purge.sql` was executed exactly once via
+the pinned remote D1 `D1` binding. Its raw receipt is
+`.artifacts/sdt-g58-w99-lag-purge.json`; Cloudflare reported `success=true`,
+`rows_read=2`, `rows_written=1`, and `changes=2`. The post-purge inventory
+(`.artifacts/sdt-g58-w99-lag-after.json`) contains only the deployed service
+row with `estimate_ms=6591`; the retired row is absent. No D1_MV, queue, or
+event rows were reset.
+
+### Single fresh paced cohort and exact failure
+
+The only application window was run ID
+`97edc4cd-5910-410a-9de9-9f9cbc6fb969`, UTC
+`09:02:04.058Z`–`09:02:48.358Z`, with one setup-room command and a requested
+10-reservation sequence. It used `paceMs=10,000` and `pollMs=250`, retaining
+the unchanged `unsafeBoundMs=5,000` and safe deadline
+`safeWindowMs + 120,000 ms`. The conformance bearer was read only from the
+protected token file; its value was not persisted. No Observability query was
+needed, so the Observability token was not read.
+
+The raw receipt is `.artifacts/sdt-g58-w99-paced-cohort.json` and the runner
+log is `.artifacts/sdt-g58-w99-paced-cohort.log`. The setup room was accepted
+at SUID `063924022926070000001564666749`. The first reservation was accepted
+at `09:02:18.623Z` and became unsafe-visible at `09:02:24.015Z` after
+`5,392 ms` (first fine poll at `5,116 ms`); this exceeds the unchanged 5 s
+contract. The second was accepted at `09:02:30.658Z` and unsafe-visible after
+`2,797 ms`. Its nearest-rank observed-only unsafe values are p50 `2,797 ms`
+and p95 `5,392 ms`; a full-cohort percentile is intentionally undefined
+because the window stopped before row 3 completed.
+
+The third reservation request reached the runner's accepted-command path, but
+the existing harness does not append its response to the report until unsafe
+visibility succeeds. The runner stopped at the exact bounded stage with:
+
+```
+unsafe reservation g58-reservation-97edc4cd-591-3 was not visible within 5000ms
+```
+
+No SUID is fabricated for that incomplete report. At the row-3 health sample
+(`09:02:43.222Z`), the observed gate was `BLOCK/UNSETTLED` with reason
+`source_partition_set_changed_during_scan`, `decayedMs=6279`,
+`safeWindowMs=20000`, global head
+`063924022950280000000689507569`, ReservationProjector safe head still the
+pre-cohort `063924019311336000000431147168`, and two unsafe rows. Earlier
+samples were `SETTLED`/`reason=null`; the complete health snapshots and every
+250 ms list observation are retained in the raw receipt.
+
+Because the authoritative unsafe contract failed, no safe timings were
+claimed, no live-projector/tag-state completion was asserted, and `e2e:g58`
+was not followed by G15 or G16. There were no replacement requests, no
+stitched cohort, and no SafeWindow bound change. This is a durable blocked
+deployed-proof checkpoint for a focused follow-up to diagnose the row-3
+unsafe-visibility/gate behavior; changing the published 20 s/120 s bounds is
+not proposed.

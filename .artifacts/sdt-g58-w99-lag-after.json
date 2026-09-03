@@ -1,0 +1,29 @@
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+        "estimate_ms": 6591,
+        "observed_at": 1788422518180
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SJC",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2746
+      },
+      "duration": 0.2746,
+      "changes": 0,
+      "last_row_id": 736,
+      "changed_db": false,
+      "size_after": 18571264,
+      "rows_read": 1,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
