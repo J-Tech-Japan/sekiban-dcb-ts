@@ -349,4 +349,5 @@ to precede `pollLiveProjections` and checks the direct runtime handoff.
 No Wrangler command was run or needed. The <=5 s unsafe and <=180 s safe
 contracts, published 20 s/120 s SafeWindow bounds, G44 correctness test, W95
 raw cohort, and W96 red evidence are unchanged. The pushed repair checkpoint
-is ready for orchestration to dispatch the next bounded verification wake.
+is `4aa0deb4280baad7b51877a395ebe2972a1f5995` and is ready for orchestration
+to dispatch the next bounded verification wake.

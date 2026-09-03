@@ -9,7 +9,7 @@ open a PR, or complete the worker.
 
 - Branch: `claude/sdt-g58-safe-lane-w93`.
 - Starting checkpoint: `afd6041deb04c51b9bf15e005c619e0012bcdd64`.
-- Final pushed head: recorded after validation below.
+- Repair checkpoint commit: `4aa0deb4280baad7b51877a395ebe2972a1f5995`.
 - W95 cohort: `5588d9cc-b508-41f4-a332-f6464721e747` (not rerun or stitched).
 - W96 red receipt: `.artifacts/sdt-g58-w96-red-guard.json` (unchanged,
   `status=red-baseline`, `exitCode=1`).
