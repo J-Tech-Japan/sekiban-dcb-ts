@@ -72,4 +72,6 @@ the unexecuted purge plan, this evidence update, the W98 report, and the raw
 red-mutant artifact. No SafeWindow bound, G44 correctness test, product
 semantics, remote state, or cohort evidence was changed.
 
-Pushed checkpoint: `PENDING_COMMIT_SHA`.
+Implementation/artifact checkpoint: `1d813c5b819c9caaefd641e7b7b1dca5c7dcd4d0`.
+The final metadata-only follow-up commit is the branch head reported with this
+checkpoint; no code or evidence was changed after the implementation commit.
