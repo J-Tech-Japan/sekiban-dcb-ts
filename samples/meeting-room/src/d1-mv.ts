@@ -584,7 +584,11 @@ export async function drainMeetingRoomUnsafeKicks(
     if (lease === undefined) continue;
     // If this fails, retain the lease until expiry rather than marking work
     // clean. Cron still runs the normal safe catch-up as the recovery net.
-    await runtime.follow(serviceId, materializer, nowMs, {}, { maximumSuid: frontierSuid });
-    await unsafe.finishKick(serviceId, materializer.id, owner);
+    const result = await runtime.follow(serviceId, materializer, nowMs, {}, { maximumSuid: frontierSuid });
+    // `follow` may stop at the first recent event.  Pass the actual reached
+    // checkpoint so finishKick re-arms the durable kick while its target is
+    // still ahead, allowing a later scheduled tick to retry without a request
+    // busy-wait or an irreversible clean transition.
+    await unsafe.finishKick(serviceId, materializer.id, owner, result.instance.lastSuid);
   }
 }

@@ -1,0 +1,27 @@
+{
+  "schema": "sdt-g58-reservation-reentry/v1",
+  "status": "red-baseline",
+  "task": "SDT-G58-RESERVATION-REENTRY-GREEN-REPAIR-W106",
+  "command": "npx vitest run --config vitest.config.ts test/g58-reservation-reentry.spec.ts --no-cache",
+  "exitCode": 1,
+  "failure": {
+    "test": "SDT-G58 ReservationProjector unsafe-kick re-entry > re-arms a partially settled kick and re-enters after the first unsafe event ages",
+    "assertion": "expected kick row dirty=1 after the first-unsafe follow/finish",
+    "expected": {
+      "dirty": 1,
+      "leaseOwner": null
+    },
+    "received": {
+      "dirty": 0,
+      "leaseOwner": null
+    }
+  },
+  "meaning": "The checkpoint baseline clears an acquired kick even when follow returns before lease.targetSuid, so the same recent event cannot be re-entered by a later scheduled drain.",
+  "preservedContract": {
+    "firstUnsafeBarrier": "reservation follow remained at oldSuid while target lastArrivedAt was recent",
+    "safeWindowFloorMs": 20000,
+    "safeWindowCeilingMs": 120000,
+    "unsafeBoundMs": 5000,
+    "retainedFrontier": "maximumSuid targetSuid"
+  }
+}

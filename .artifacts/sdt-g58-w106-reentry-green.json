@@ -1,0 +1,40 @@
+{
+  "schema": "sdt-g58-reservation-reentry/v1",
+  "status": "green",
+  "task": "SDT-G58-RESERVATION-REENTRY-GREEN-REPAIR-W106",
+  "baselineRedReceipt": {
+    "path": ".artifacts/sdt-g58-w106-red-baseline.json",
+    "status": "red-baseline",
+    "expectedDirty": 1,
+    "receivedDirty": 0
+  },
+  "productionRepair": {
+    "unsafeKickFinish": "atomically clears the lease and re-arms dirty when target_suid remains beyond the reached checkpoint",
+    "drain": "passes follow().instance.lastSuid to finishKick",
+    "nextScheduledDecision": "acquireKick can re-enter after the event is SafeWindow-eligible"
+  },
+  "mutationEvidence": {
+    "targetMutationRed": true,
+    "handoffMutationRed": true,
+    "barrierMutationRed": true,
+    "frontierMutationRed": true
+  },
+  "fixture": {
+    "views": [
+      "RoomProjector",
+      "ReservationProjector"
+    ],
+    "firstDecision": "Room reaches target; Reservation stops at oldSuid at the first recent event",
+    "partialKick": "follow returns oldSuid; kick remains dirty=1 after settlement",
+    "reentry": "at nowMs+21000 the same target is acquired and Reservation reaches it",
+    "roomIndependent": true
+  },
+  "bounds": {
+    "safeWindowFloorMs": 20000,
+    "safeWindowCeilingMs": 120000,
+    "unsafeBoundMs": 5000,
+    "firstUnsafeBarrierPreserved": true,
+    "retainedFrontierFencePreserved": true,
+    "upstreamOutboxQueueGlobalAdmission": "held SDT-G60; not modified"
+  }
+}
