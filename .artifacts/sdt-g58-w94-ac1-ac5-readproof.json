@@ -1,0 +1,879 @@
+{
+  "schema": "sdt-g58-ac1-ac5-readproof/v1",
+  "task": "SDT-G58",
+  "sourceCommit": "98b4534980e9886f7c7127ce99fae0bb0e01a7af",
+  "deployedVersionId": "07c3d85f-9bdf-4cf4-b342-6493ef32ef20",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "startedAt": "2026-09-03T07:45:02.962Z",
+  "contract": {
+    "noAppRequests": true,
+    "noProjectionPollQuery": true,
+    "authorization": "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted"
+  },
+  "tagStateIds": [
+    "room:g15-room-8cdac0bf6d874091:RoomProjector",
+    "reservation:g15-reservation-8cdac0bf6d874091:ReservationProjector"
+  ],
+  "healthSnapshots": [
+    {
+      "receivedAtMs": 1788421503535,
+      "responseMs": 573,
+      "cfRay": "a35321fa3e008535-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9580871,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9563767,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421445222
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9595395,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9595395,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421514721,
+      "responseMs": 468,
+      "cfRay": "a3532240498abdda-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9592109,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9575005,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421505404
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9606633,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9606633,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421525538,
+      "responseMs": 578,
+      "cfRay": "a35322837d0225da-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9602741,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9585637,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421505404
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9617265,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9617265,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421536070,
+      "responseMs": 278,
+      "cfRay": "a35322c6e8b9f472-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9613526,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9596422,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421505404
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9628050,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9628050,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421546544,
+      "responseMs": 269,
+      "cfRay": "a3532308694b3969-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9624006,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9606902,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421505404
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9638530,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9638530,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421557186,
+      "responseMs": 323,
+      "cfRay": "a353234a9ad6af1e-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9634600,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9617496,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421505404
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9649124,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9649124,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421568004,
+      "responseMs": 426,
+      "cfRay": "a353238e1f0ce172-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9645394,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9628290,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421505404
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9659918,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9659918,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421578802,
+      "responseMs": 547,
+      "cfRay": "a35323d05eaa2b58-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9656166,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9639062,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421535962
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9670690,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9670690,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421589497,
+      "responseMs": 407,
+      "cfRay": "a35324146bf1efba-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9666890,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9649786,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421535962
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9681414,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9681414,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421600581,
+      "responseMs": 485,
+      "cfRay": "a35324593dde1a9f-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9677907,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9660803,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421535962
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9692431,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9692431,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421611578,
+      "responseMs": 742,
+      "cfRay": "a353249be9e3b256-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9688575,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9671471,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421535962
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9703099,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9703099,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421622195,
+      "responseMs": 371,
+      "cfRay": "a35324e09950b26d-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9699564,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9682460,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421535962
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9714088,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9714088,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421632862,
+      "responseMs": 466,
+      "cfRay": "a35325235c022ede-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9710272,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9693168,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421597421
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9724796,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9724796,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421644566,
+      "responseMs": 307,
+      "cfRay": "a353256ccf91dcee-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9721991,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9704887,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421597421
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9736515,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9736515,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    {
+      "receivedAtMs": 1788421653314,
+      "responseMs": 350,
+      "cfRay": "a35325a34c232af1-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9730708,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9713604,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421597421
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9745232,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9745232,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    }
+  ],
+  "latest": {
+    "health": {
+      "receivedAtMs": 1788421653314,
+      "responseMs": 350,
+      "cfRay": "a35325a34c232af1-LAX",
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9730708,
+          "unsafeRows": 0,
+          "unsafeReceipts": 34
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924008135922000000562824059",
+          "safeHeadAgeMs": 9713604,
+          "unsafeRows": 0,
+          "unsafeReceipts": 144
+        }
+      ],
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788421597421
+      },
+      "lag": {
+        "estimateMs": 651320,
+        "observedAt": 1788411341276,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9745232,
+          "lastPollAt": 1788411907785
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924008135922000000562824059",
+          "headAgeMs": 9745232,
+          "lastPollAt": 1788411907785
+        }
+      ],
+      "globalHead": "063924008135922000000562824059"
+    },
+    "perTag": [
+      {
+        "tagStateId": "room:g15-room-8cdac0bf6d874091:RoomProjector",
+        "projectionLag": {
+          "checkpointSuid": "063924008135922000000562824059",
+          "headSuid": "063924008134412000001835012279",
+          "behindEvents": 0,
+          "safeWindowMs": 20000,
+          "cfRay": "a35325a53dee2af1-LAX"
+        },
+        "tagState": {
+          "lastSortedUniqueId": "063924008134412000001835012279",
+          "version": 1,
+          "cfRay": "a35325a62ef12af1-LAX"
+        }
+      },
+      {
+        "tagStateId": "reservation:g15-reservation-8cdac0bf6d874091:ReservationProjector",
+        "projectionLag": {
+          "checkpointSuid": "063924008135922000000562824059",
+          "headSuid": "063924008135922000000562824059",
+          "behindEvents": 0,
+          "safeWindowMs": 20000,
+          "cfRay": "a35325a56a78e004-LAX"
+        },
+        "tagState": {
+          "lastSortedUniqueId": "063924008135922000000562824059",
+          "version": 2,
+          "cfRay": "a35325a64d2de004-LAX"
+        }
+      }
+    ],
+    "readiness": {
+      "coverageObserved": true,
+      "viewsReady": true,
+      "projectionsReady": true,
+      "tagsReady": false,
+      "passed": false
+    }
+  },
+  "status": "failed",
+  "finishedAt": "2026-09-03T07:47:33.539Z",
+  "failure": "AC1/AC5 read-only proof did not reach the required deployed state within the bounded window"
+}

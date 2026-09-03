@@ -1,0 +1,22 @@
+{
+  "schema": "sdt-g58-safe-lane-e2e/v1",
+  "task": "SDT-G58",
+  "mode": "single",
+  "runId": "cf0cf24a-2498-4029-97e5-762511edfed9",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+  "startedAt": "2026-09-03T11:31:50.216Z",
+  "contract": {
+    "pacedReservationCommits": 1,
+    "paceMs": null,
+    "unsafeBoundMs": 5000,
+    "unsafeProof": "asserted by the unchanged 5000ms bound",
+    "safeDeadline": "health.safeWindowMs + 120000ms",
+    "conformanceAuthorization": "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted"
+  },
+  "healthSnapshots": [],
+  "reservations": [],
+  "finishedAt": "2026-09-03T11:31:50.643Z",
+  "status": "failed",
+  "failure": "read-health failed HTTP 403"
+}

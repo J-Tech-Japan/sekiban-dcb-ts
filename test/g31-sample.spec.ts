@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import appSource from "../samples/meeting-room/public/app.js?raw";
 // @ts-expect-error Raw Cloudflare-only worker source is the deployed proxy parity fixture.
 import cloudflareOnlySource from "../samples/meeting-room/src/worker.cloudflare-only.ts?raw";
+// @ts-expect-error Raw runtime source is the scheduled fresh-frontier ordering fixture.
+import runtimeCloudflareSource from "../packages/dcb-runtime/src/cloudflare.ts?raw";
 import {
   postCommitReservationListPath,
   requestPostCommitReservationList,
@@ -15,6 +17,28 @@ function response(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+}
+
+function assertScheduledDelegationAndFreshFrontierOrder(workerSource: string, runtimeSource: string): void {
+  const workerScheduledStart = workerSource.indexOf("async scheduled(controller, env, ctx)");
+  if (workerScheduledStart < 0) throw new Error("sample scheduled wrapper is missing");
+  const workerScheduled = workerSource.slice(workerScheduledStart);
+  if (!workerScheduled.includes("await runtime.scheduled?.(controller, env, ctx);")) {
+    throw new Error("sample scheduled wrapper must delegate to runtime.scheduled");
+  }
+
+  const runtimeScheduledStart = runtimeSource.indexOf("async scheduled(_controller, env): Promise<void>");
+  if (runtimeScheduledStart < 0) throw new Error("runtime scheduled handler is missing");
+  const runtimeScheduled = runtimeSource.slice(runtimeScheduledStart);
+  const scanIndex = runtimeScheduled.indexOf("const scan = await new GlobalCompletenessReconciler");
+  const hookIndex = runtimeScheduled.indexOf("const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });");
+  const pollIndex = runtimeScheduled.indexOf("await pollLiveProjections(env, {");
+  if (scanIndex < 0 || hookIndex < 0 || pollIndex < 0 || !(scanIndex < hookIndex && hookIndex < pollIndex)) {
+    throw new Error("runtime scheduled order must be reconcile, fresh-frontier hook, then live poll");
+  }
+  if (!runtimeScheduled.includes("maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),")) {
+    throw new Error("live poll must use the fresh safe-lane frontier as its maximum SUID");
+  }
 }
 
 describe("SDT-G31 meeting-room list auto-refresh", () => {
@@ -99,7 +123,29 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
       },
     })).rejects.toThrow("generic scheduled polling failed");
     expect(calls).toEqual(["catch-up", "drain", "generic"]);
-    const scheduled = (cloudflareOnlySource as string).slice((cloudflareOnlySource as string).indexOf("async scheduled"));
-    expect(scheduled).toContain("runMeetingRoomScheduledMaintenance");
+    const workerSource = cloudflareOnlySource as string;
+    const runtimeSource = runtimeCloudflareSource as string;
+    assertScheduledDelegationAndFreshFrontierOrder(workerSource, runtimeSource);
+
+    const directCall = workerSource.replace(
+      "await runtime.scheduled?.(controller, env, ctx);",
+      "await runMeetingRoomScheduledMaintenance();",
+    );
+    expect(() => assertScheduledDelegationAndFreshFrontierOrder(directCall, runtimeSource))
+      .toThrow("runtime.scheduled");
+
+    const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });";
+    const pollCall = `await pollLiveProjections(env, {
+        registry: composition.projectors,
+        storeProvider,
+        serviceIdentityProvider: serviceIdentity,
+        maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),
+        observer: options.liveProjectionPollObserver,
+      });`;
+    const outOfOrder = runtimeSource
+      .replace(`${hook}\n      `, "")
+      .replace(pollCall, `${pollCall}\n      ${hook}`);
+    expect(() => assertScheduledDelegationAndFreshFrontierOrder(workerSource, outOfOrder))
+      .toThrow("reconcile, fresh-frontier hook, then live poll");
   });
 });

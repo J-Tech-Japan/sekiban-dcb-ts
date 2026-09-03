@@ -21,6 +21,37 @@ export interface LiveProjectionEnv {
   BOOTSTRAP?: DurableObjectNamespace;
 }
 
+export const LIVE_PROJECTION_POLL_OUTCOMES = [
+  "never-invoked",
+  "invoked-and-threw",
+  "invoked-but-no-work",
+  "explicitly-gated",
+  "advanced",
+] as const;
+
+export type LiveProjectionPollOutcome = (typeof LIVE_PROJECTION_POLL_OUTCOMES)[number];
+
+export interface LiveProjectionPollObservation {
+  readonly serviceId: string;
+  readonly projectorId: string;
+  readonly attemptedAt: number;
+  readonly outcome: LiveProjectionPollOutcome;
+  readonly reason: string | null;
+  readonly advancedSourceEvents: number;
+}
+
+export interface LiveProjectionPollObserver {
+  /** Called before bootstrap admission/store initialization is attempted. */
+  readonly onAttempt?: (input: {
+    readonly env: LiveProjectionEnv;
+    readonly serviceId: string;
+    readonly projectorIds: readonly string[];
+    readonly attemptedAt: number;
+  }) => Promise<void> | void;
+  /** Called once per registered projector after a poll returns or throws. */
+  readonly onOutcome?: (input: LiveProjectionPollObservation & { readonly env: LiveProjectionEnv }) => Promise<void> | void;
+}
+
 export interface ProjectionPollOptions {
   clock?: PipelineClock;
   store?: PipelineStore;
@@ -30,7 +61,15 @@ export interface ProjectionPollOptions {
   serviceId?: string;
   /** Optional single tag scope for queue/HTTP operator catch-up. */
   tag?: string;
+  /**
+   * Optional G44-proven high-water mark for a scheduled poll. `null` keeps
+   * the poll observable but permits no source advancement on BLOCK/UNSETTLED;
+   * `undefined` retains the unbounded FULL/on-demand behavior.
+   */
+  maximumSuid?: string | null;
   serviceIdentityProvider?: ServiceIdentityProvider;
+  /** Observation-only lifecycle sink; it cannot alter projection decisions. */
+  observer?: LiveProjectionPollObserver;
 }
 
 function sharedStore(env: LiveProjectionEnv, provider: StoreProvider): PipelineStore {
@@ -61,6 +100,80 @@ async function admitBootstrapRoute(env: LiveProjectionEnv, serviceId: string): P
   if (!admitted.ok) throw new Error("bootstrap_route_rejected:projection-rebuild");
 }
 
+function boundedErrorReason(error: unknown): string {
+  const value = error instanceof Error ? error.message : String(error);
+  return value.length > 256 ? `${value.slice(0, 253)}...` : value;
+}
+
+async function notifyObserver(
+  observer: LiveProjectionPollObserver | undefined,
+  callback: "onAttempt" | "onOutcome",
+  input: Parameters<NonNullable<LiveProjectionPollObserver[typeof callback]>>[0],
+): Promise<void> {
+  // Health persistence is deliberately ancillary: a D1 diagnostic outage must
+  // never change commit/projection semantics or turn a successful poll into a
+  // failed scheduled invocation.
+  try {
+    if (callback === "onAttempt") {
+      await observer?.onAttempt?.(input as Parameters<NonNullable<LiveProjectionPollObserver["onAttempt"]>>[0]);
+    } else {
+      await observer?.onOutcome?.(input as Parameters<NonNullable<LiveProjectionPollObserver["onOutcome"]>>[0]);
+    }
+  } catch {
+    // The next health read will retain the last durable observation and its
+    // reason; projection advancement remains governed by the existing fences.
+  }
+}
+
+async function notifyOutcomes(
+  observer: LiveProjectionPollObserver | undefined,
+  serviceId: string,
+  projectorIds: readonly string[],
+  attemptedAt: number,
+  results: readonly CatchUpResult[],
+  maximumSuid: string | null | undefined,
+  env: LiveProjectionEnv,
+  error?: unknown,
+): Promise<void> {
+  if (observer?.onOutcome === undefined) return;
+  const byProjector = new Map<string, CatchUpResult[]>();
+  for (const result of results) {
+    const values = byProjector.get(result.projectorId) ?? [];
+    values.push(result);
+    byProjector.set(result.projectorId, values);
+  }
+  for (const projectorId of projectorIds) {
+    const projectorResults = byProjector.get(projectorId) ?? [];
+    let outcome: LiveProjectionPollOutcome = "invoked-but-no-work";
+    let reason: string | null = null;
+    let advancedSourceEvents = 0;
+    if (error !== undefined) {
+      outcome = "invoked-and-threw";
+      reason = boundedErrorReason(error);
+    } else {
+      advancedSourceEvents = projectorResults.reduce((total, result) => total + result.advancedSourceEvents, 0);
+      if (advancedSourceEvents > 0) {
+        outcome = "advanced";
+      } else if (projectorResults.some((result) => result.indeterminate)) {
+        outcome = "explicitly-gated";
+        reason = "safe_window_ceiling_exceeded";
+      } else if (maximumSuid !== undefined) {
+        outcome = "explicitly-gated";
+        reason = maximumSuid === null ? "retained_frontier_unproven" : "retained_frontier_fence";
+      }
+    }
+    await notifyObserver(observer, "onOutcome", {
+      serviceId,
+      projectorId,
+      attemptedAt,
+      outcome,
+      reason,
+      advancedSourceEvents,
+      env,
+    });
+  }
+}
+
 /**
  * Scheduled polling entry point. It discovers durable tag memberships and
  * advances every deploy-time registered projector only through SafeWindow.
@@ -73,26 +186,39 @@ export async function pollLiveProjections(
     throw new Error("A projection store provider is not configured");
   }
   const serviceId = options.serviceId ?? requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
-  await admitBootstrapRoute(env, serviceId);
-  const store = options.store ?? sharedStore(env, options.storeProvider!);
-  await store.initialize();
-  const runtime = new ProjectionRuntime(store, options.registry ?? DEPLOYED_PROJECTOR_REGISTRY);
-  if (options.tag !== undefined) {
-    const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
-    const results: CatchUpResult[] = [];
-    for (const projector of registry.registered()) {
-      const identity = tagStateIdentityFrom(`${options.tag}:${projector.id}`, registry);
-      if (identity.value !== undefined) {
-        results.push(await runtime.catchUp(
-          serviceId,
-          identity.value,
-          (options.clock ?? systemPipelineClock).now(),
-        ));
+  const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
+  const projectorIds = registry.registered().map((projector) => projector.id);
+  const attemptedAt = (options.clock ?? systemPipelineClock).now();
+  await notifyObserver(options.observer, "onAttempt", { env, serviceId, projectorIds, attemptedAt });
+  try {
+    await admitBootstrapRoute(env, serviceId);
+    const store = options.store ?? sharedStore(env, options.storeProvider!);
+    await store.initialize();
+    const runtime = new ProjectionRuntime(store, registry);
+    if (options.tag !== undefined) {
+      const results: CatchUpResult[] = [];
+      for (const projector of registry.registered()) {
+        const identity = tagStateIdentityFrom(`${options.tag}:${projector.id}`, registry);
+        if (identity.value !== undefined) {
+          results.push(await runtime.catchUp(
+            serviceId,
+            identity.value,
+            attemptedAt,
+            {},
+            { maximumSuid: options.maximumSuid },
+          ));
+        }
       }
+      await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
+      return results;
     }
+    const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);
+    await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
     return results;
+  } catch (error) {
+    await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, [], options.maximumSuid, env, error);
+    throw error;
   }
-  return runtime.pollRegistered(serviceId, (options.clock ?? systemPipelineClock).now());
 }
 
 /**

@@ -1,0 +1,12 @@
+{
+  "schema": "sdt-g58-w108-auth-classification/v1",
+  "endpoint": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev/conformance/v1/read-health",
+  "startedAt": "2026-09-03T11:39:30.764Z",
+  "status": 403,
+  "elapsedMs": 292,
+  "body": {
+    "code": "unauthorized",
+    "error": "Conformance authentication required"
+  },
+  "authorization": "redacted; supplied from existing protected G53 token file"
+}

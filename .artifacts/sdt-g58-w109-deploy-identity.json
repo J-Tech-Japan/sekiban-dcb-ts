@@ -1,0 +1,43 @@
+{
+  "task": "SDT-G58-EXACT-REDEPLOY-PROOF-W109",
+  "windowStartedUtc": "2026-09-03T11:47:44Z",
+  "oauthCheck": {
+    "command": "env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler whoami",
+    "timestampUtc": "2026-09-03T11:47:44Z",
+    "status": "succeeded",
+    "wranglerVersion": "4.125.0",
+    "authMode": "OAuth"
+  },
+  "secretInventory": {
+    "command": "env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler secret list --name sekiban-dcb-meeting-room-cloudflare-only --config samples/meeting-room/wrangler.cloudflare-only.jsonc --format json",
+    "timestampUtc": "2026-09-03T11:47:45Z",
+    "status": "succeeded",
+    "conformanceTokenPresent": true,
+    "valueExposed": false
+  },
+  "detachedWorktree": {
+    "path": "/private/tmp/sdt-g58-w109-exact.Won0bb",
+    "head": "700c0cb4bf7c896a8b676d4613bfae53fca58519",
+    "status": "detached-exact-product-commit"
+  },
+  "deploy": {
+    "command": "env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --strict --message 'SDT-G58 W109 exact product 700c0cb4bf7c896a8b676d4613bfae53fca58519'",
+    "startedUtc": "2026-09-03T11:47:46Z",
+    "completedUtc": "2026-09-03T11:47:55Z",
+    "status": "succeeded",
+    "versionId": "7b4e30eb-5666-46d6-8a8e-57ffa9edb07a",
+    "deploymentId": "88923566-dde8-47c2-ac48-d17b3c28a541",
+    "versionNumber": 194,
+    "activePercentage": 100,
+    "sourceAnnotation": "SDT-G58 W109 exact product 700c0cb4bf7c896a8b676d4613bfae53fca58519",
+    "sourceCommit": "700c0cb4bf7c896a8b676d4613bfae53fca58519",
+    "exactSourceMatch": true,
+    "secretVersionReused": true
+  },
+  "wranglerConfigMtime": {
+    "beforeEpoch": 1788434789,
+    "afterEpoch": 1788434789,
+    "advanced": false
+  },
+  "proofGate": "exact-source-deployment-verified-before-proof"
+}

@@ -1,0 +1,62 @@
+{
+  "schema": "sdt-g58-w104-block-live-green/v1",
+  "status": "green",
+  "task": "SDT-G58-BLOCK-LIVE-GREEN-REPAIR-W104",
+  "baselineRedReceipt": {
+    "report": ".artifacts/sdt-g58-w103-red-guard.json",
+    "status": "red-baseline",
+    "livePollCalled": false
+  },
+  "repairedRuntime": {
+    "order": [
+      "stabilize",
+      "reconcile",
+      "beforeLiveProjectionPoll",
+      "pollLiveProjections"
+    ],
+    "block": "invokes pollLiveProjections after the retained-frontier hook, fenced by its returned last proven SUID",
+    "noFrontier": "invokes the poll with maximumSuid=null; ProjectionRuntime cannot advance an event",
+    "full": "invokes the poll with maximumSuid=undefined, preserving the established FULL behavior"
+  },
+  "mutationEvidence": {
+    "earlyReturnMutationRed": true,
+    "fenceMutationRed": true,
+    "catchUpMutationRed": true,
+    "block": {
+      "order": [
+        "stabilize",
+        "reconcile",
+        "beforeLiveProjectionPoll",
+        "pollLiveProjections"
+      ],
+      "livePollCalled": true,
+      "maximumSuid": "063924025000000000000000000001"
+    },
+    "unsettled": {
+      "order": [
+        "stabilize",
+        "reconcile",
+        "beforeLiveProjectionPoll",
+        "pollLiveProjections"
+      ],
+      "livePollCalled": true,
+      "maximumSuid": null
+    },
+    "full": {
+      "order": [
+        "stabilize",
+        "reconcile",
+        "beforeLiveProjectionPoll",
+        "pollLiveProjections"
+      ],
+      "livePollCalled": true
+    }
+  },
+  "bounds": {
+    "g44FencePreserved": true,
+    "safeWindowFloorMs": 20000,
+    "safeWindowCeilingMs": 120000,
+    "unsafeBoundMs": 5000,
+    "upstreamOutboxQueueGlobalAdmission": "held SDT-G60; not modified"
+  }
+}

@@ -127,7 +127,11 @@ export function assertG44Contract(value) {
   requireContains(detector, "options.onDetectorFailure", "detector health persistence callback");
   requireContains(adapter, "recordDetectorFailure", "D1 detector health authority");
   requireContains(core, "phase: \"completeness\"", "coverage failure classification");
-  requireContains(cloudflare, 'scan.kind !== "FULL"', "scheduled scanner gate");
+  // A non-FULL scanner result still invokes the live poll, but only through
+  // the retained frontier returned by the sample safe-lane hook. This keeps
+  // the G44 fence while preventing BLOCK/UNSETTLED from starving liveness.
+  requireContains(cloudflare, "scheduledLiveProjectionMaximumSuid", "scheduled scanner gate");
+  requireContains(cloudflare, "maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid)", "scheduled scanner frontier fence");
   requireContains(sampleWorker, "globalCoverage", "sample scheduled coverage gate");
 
   // AC6/AC8: no separate worker/public route and no mixed-version rollout

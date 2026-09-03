@@ -24,7 +24,7 @@ import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject as RuntimeJournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
-import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
+import { handleProjectionLag, pollLiveProjections, type LiveProjectionPollObserver } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
@@ -33,6 +33,7 @@ import {
   configureTagStateProjectorRegistry,
 } from "./tagstate/TagStateDurableObject";
 import { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
+import type { GlobalCompletenessScanResult } from "./completeness/types";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
 import { createCommitTraceConsoleSink } from "./trace/CommitTraceConsoleSink";
@@ -119,6 +120,18 @@ export interface CloudflareOnlyWorkerOptions {
   readonly serviceIdentityProvider?: ServiceIdentityProvider;
   /** Optional deployment read-model rebuild that must finish before READY. */
   readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;
+  /**
+   * Runs after the fresh G44 reconciliation and before the scheduled
+   * live-projection poll. A sample can use the resulting persisted coverage
+   * for its SafeWindow-fenced materialized-view pass in this same tick.
+   */
+  readonly beforeLiveProjectionPoll?: (input: {
+    readonly env: CloudflareOnlyEnv;
+    readonly serviceId: string;
+    readonly scan: GlobalCompletenessScanResult;
+  }) => Promise<BeforeLiveProjectionPollResult | void>;
+  /** Persists the observation-only lifecycle of each scheduled live poll. */
+  readonly liveProjectionPollObserver?: LiveProjectionPollObserver;
   /** Factories are evaluated per invocation; Queue and receiver can select views independently. */
   readonly deliveryViews?: (input: {
     readonly env: CloudflareOnlyEnv;
@@ -134,6 +147,28 @@ export interface CloudflareOnlyWorkerOptions {
     readonly source?: "queue" | "fast" | "import";
     readonly result?: DeliveryCoreResult;
   }) => Promise<void>;
+}
+
+/**
+ * Result returned by the sample's retained-frontier safe-lane hook. The
+ * scanner result itself intentionally has no mutable frontier: on BLOCK the
+ * hook reads the last proven FULL cursor from the persisted health authority.
+ */
+export interface BeforeLiveProjectionPollResult {
+  readonly frontierSuid?: string | null;
+}
+
+/**
+ * Translate a scheduled scanner outcome and the hook's retained frontier into
+ * the live-poll fence. A FULL scan keeps the established unbounded behavior;
+ * every other outcome invokes the poll but is bounded by the last proven
+ * frontier (or by `null` when none exists).
+ */
+export function scheduledLiveProjectionMaximumSuid(
+  scan: Pick<GlobalCompletenessScanResult, "kind">,
+  retainedFrontierSuid: string | null | undefined,
+): string | null | undefined {
+  return scan.kind === "FULL" ? undefined : retainedFrontierSuid ?? null;
 }
 
 /**
@@ -348,14 +383,33 @@ export function createCloudflareOnlyRuntimeWorker(
       // health/finding tables are the only G44 interim BLOCK/UNSETTLED path.
       const scan = await new GlobalCompletenessReconciler(env.D1, env.TAG).reconcile(serviceId, Date.now());
       // A source gap, page failure, or stale/unknown scan can never advance
-      // a live projection. The source receipt still remains retryable.
-      if (scan.kind !== "FULL") return;
-      await pollLiveProjections(env, { registry: composition.projectors, storeProvider, serviceIdentityProvider: serviceIdentity });
+      // a live projection past the last proven frontier. The source receipt
+      // remains retryable, but the poll still runs so retained safe work and
+      // projection liveness are not starved on a BLOCK tick.
+      const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });
+      await pollLiveProjections(env, {
+        registry: composition.projectors,
+        storeProvider,
+        serviceIdentityProvider: serviceIdentity,
+        maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),
+        observer: options.liveProjectionPollObserver,
+      });
     },
   };
 }
 
 export { processDownstreamDoorbell } from "./downstream/DownstreamAdapter";
+export {
+  LIVE_PROJECTION_POLL_OUTCOMES,
+  pollLiveProjections,
+} from "./projection/LiveProjectionWorker";
+export type {
+  LiveProjectionEnv,
+  LiveProjectionPollObservation,
+  LiveProjectionPollObserver,
+  LiveProjectionPollOutcome,
+  ProjectionPollOptions,
+} from "./projection/LiveProjectionWorker";
 export {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,

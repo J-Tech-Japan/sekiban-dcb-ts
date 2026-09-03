@@ -250,7 +250,7 @@ describe("SDT-G23 unsafe-window MV core", () => {
   });
   it("AC9 mid-drain dirty arrival requires another drain", async () => {
     const { unsafe, serviceId } = await unsafeStore(); await unsafe.apply(input(serviceId, "kick", "suid-2", "x")); await unsafe.acquireKick(serviceId, MATERIALIZER.id, "a", 10, 10);
-    await unsafe.apply(input(serviceId, "kick-2", "suid-3", "y")); expect(await unsafe.finishKick(serviceId, MATERIALIZER.id, "a")).toBe(false);
+    await unsafe.apply(input(serviceId, "kick-2", "suid-3", "y")); expect(await unsafe.finishKick(serviceId, MATERIALIZER.id, "a", canonicalSuid("suid-2"))).toBe(false);
     await expect(unsafe.acquireKick(serviceId, MATERIALIZER.id, "a", 11, 10)).resolves.toMatchObject({ targetSuid: canonicalSuid("suid-3") });
   });
   it("AC9 crashed holder is recovered after lease expiry", async () => {

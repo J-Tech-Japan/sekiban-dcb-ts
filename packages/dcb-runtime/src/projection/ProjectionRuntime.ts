@@ -29,6 +29,12 @@ export {
 };
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
+/**
+ * Live projection identities have independent checkpoints. A bounded worker
+ * pool prevents a large retained tag set from monopolizing one cron
+ * invocation while keeping D1/CAS pressure finite and deterministic.
+ */
+export const MAX_LIVE_PROJECTION_CONCURRENCY = 8;
 
 export interface ProjectedTagState {
   payload: string;
@@ -43,7 +49,21 @@ export interface CatchUpHooks {
   afterCheckpoint?(event: StoredEvent, checkpoint: ProjectionCheckpoint): Promise<void> | void;
 }
 
+/**
+ * Optional scanner-proven high-water mark for a scheduled live-projection
+ * pass. `null` means that no settled frontier exists, so the pass may run
+ * and observe projection state but cannot advance a source checkpoint.
+ * `undefined` retains the ordinary unbounded caller behaviour used by a
+ * proven FULL scan and by on-demand operator reads.
+ */
+export interface ProjectionCatchUpOptions {
+  readonly maximumSuid?: string | null;
+}
+
 export interface CatchUpResult {
+  /** Registered projector and tag identity for scheduled-poll diagnostics. */
+  readonly projectorId: string;
+  readonly tag: string;
   checkpoint: ProjectionCheckpoint | undefined;
   dynamicLagBoundMs: number;
   safeWindowMs: number;
@@ -156,6 +176,7 @@ export class ProjectionRuntime {
     identity: TagStateIdentity,
     nowMs: number,
     hooks: CatchUpHooks = {},
+    options: ProjectionCatchUpOptions = {},
   ): Promise<CatchUpResult> {
     const projector = this.registry.resolve(identity.tagProjector);
     if (projector === undefined) {
@@ -166,6 +187,8 @@ export class ProjectionRuntime {
     if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
       const projectionId = projectionIdFor(identity);
       return {
+        projectorId: identity.tagProjector,
+        tag: identity.tag,
         checkpoint: await this.store.readProjectionCheckpoint(serviceId, projectionId),
         dynamicLagBoundMs,
         safeWindowMs: windowMs,
@@ -190,11 +213,29 @@ export class ProjectionRuntime {
           await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
         }
+        // A G44 BLOCK/UNSETTLED tick may still poll live projections, but it
+        // must remain fenced by the last settled source frontier. `null`
+        // deliberately permits no source advancement; it is not an empty
+        // unbounded frontier.
+        if (options.maximumSuid === null || (
+          options.maximumSuid !== undefined && compareSuid(event.suid, options.maximumSuid) > 0
+        )) {
+          break;
+        }
         // Stop at the first unsafe source event. Because the source is SUID
         // ordered, advancing past it could skip a delayed lower SUID.
         assertSortableUniqueId(event.suid);
         if (!isSortableUniqueIdSafeAt(event.suid, nowMs, dynamicLagBoundMs)) {
-          return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
+          return {
+            projectorId: identity.tagProjector,
+            tag: identity.tag,
+            checkpoint,
+            dynamicLagBoundMs,
+            safeWindowMs: windowMs,
+            indeterminate: false,
+            advancedSourceEvents,
+            appliedEvents,
+          };
         }
 
         const appliesToTag = event.eventTags.includes(identity.tag);
@@ -220,23 +261,47 @@ export class ProjectionRuntime {
       }
 
       if (!casConflict) {
-        return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
+        return {
+          projectorId: identity.tagProjector,
+          tag: identity.tag,
+          checkpoint,
+          dynamicLagBoundMs,
+          safeWindowMs: windowMs,
+          indeterminate: false,
+          advancedSourceEvents,
+          appliedEvents,
+        };
       }
     }
     throw new Error("Projection checkpoint did not converge after concurrent updates");
   }
 
-  async pollRegistered(serviceId: string, nowMs: number): Promise<CatchUpResult[]> {
+  async pollRegistered(
+    serviceId: string,
+    nowMs: number,
+    maximumSuid?: string | null,
+  ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
-    const results: CatchUpResult[] = [];
+    const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
     for (const tag of tags) {
       for (const projector of this.registry.registered()) {
-        const identity = tagStateIdentityForPolledTag(tag, projector.id, this.registry);
-        if (identity !== undefined) {
-          results.push(await this.catchUp(serviceId, identity, nowMs));
-        }
+        if (tagStateIdentityForPolledTag(tag, projector.id, this.registry) !== undefined) jobs.push({ tag, projector: projector.id });
       }
     }
+    const results: CatchUpResult[] = [];
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = next;
+        next += 1;
+        const job = jobs[index];
+        if (job === undefined) return;
+        const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
+        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid });
+      }
+    };
+    const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
     return results;
   }
 }

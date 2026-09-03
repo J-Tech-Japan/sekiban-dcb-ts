@@ -1,0 +1,29 @@
+{
+  "schema": "sdt-g58-w107-deploy-identity/v1",
+  "status": "deployed-proof-blocked",
+  "task": "SDT-G58-DEPLOY-AC1-AC5-PROOF-W107",
+  "sourceCommit": "700c0cb4bf7c896a8b676d4613bfae53fca58519",
+  "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "wrangler": "4.125.0",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "versionId": "9e5586ad-0cb1-4d00-9c05-89306e04520f",
+  "versionNumber": 192,
+  "versionAnnotation": "SDT-G58 W107 AC1 AC5 proof 700c0cb4",
+  "deploymentId": "33834995-7f23-4102-bea7-7c677708861e",
+  "deploymentPercentage": 100,
+  "deployStartedAt": "2026-09-03T11:30:54Z",
+  "cloudflareReportedVersionAt": "2026-09-03T11:30:57Z",
+  "activeCheckAt": "2026-09-03T11:31:23Z",
+  "sourceIdentity": "version annotation carries the exact full checked-out SHA",
+  "deployWrapper": {
+    "reportedExitCode": 1,
+    "postDeployError": "zsh:7: read-only variable: status",
+    "meaning": "Cloudflare deploy had already reported success; only local receipt bookkeeping failed"
+  },
+  "tokenHandling": {
+    "apiTokenFallback": "unset",
+    "observability": "not required for this AC1/AC5 proof; no value read",
+    "conformance": "protected file supplied to the harness; secret list confirmed CONFORMANCE_TOKEN by name only"
+  }
+}

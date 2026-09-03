@@ -18,11 +18,21 @@ import {
   TagDurableObject,
   TagStateDurableObject,
   type G42JournalProbeRequest,
+  type GlobalCompletenessCoverage,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
-import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
+import {
+  catchUpMeetingRoomMaterializedViews,
+  drainMeetingRoomUnsafeKicks,
+  meetingRoomDeliveryViews,
+  readMeetingRoomHealth,
+  recordMeetingRoomLivePollAttempt,
+  recordMeetingRoomLivePollOutcome,
+  recordMeetingRoomSafeLaneCoverage,
+  type MeetingRoomSafeLaneCoverage,
+} from "./d1-mv";
 import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
@@ -39,6 +49,35 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
   deliveryViews: ({ env }) => meetingRoomDeliveryViews(env),
+  beforeLiveProjectionPoll: async ({ env, serviceId }) => {
+    // Unit-only D1 fixtures intentionally omit the Tag authority. Preserve
+    // their original unrestricted local catch-up seam; deployed primaries
+    // always bind TAG and take the fresh-reconcile path below.
+    if (env.TAG === undefined) {
+      await runMeetingRoomScheduledMaintenance({
+        catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+        drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+        runGenericScheduledWork: async () => {},
+      });
+      return { frontierSuid: undefined };
+    }
+    const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
+    await runMeetingRoomScheduledMaintenance({
+      freshCoverage: async () => coverage,
+      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+      // The runtime invokes pollLiveProjections immediately after this hook;
+      // no second generic scanner or poll is started by the safe-lane pass.
+      runGenericScheduledWork: async () => {},
+      recordCoverage: async (safeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage),
+    });
+    return { frontierSuid: coverage.frontierSuid };
+  },
+  liveProjectionPollObserver: {
+    onAttempt: ({ env, serviceId, projectorIds, attemptedAt }) =>
+      recordMeetingRoomLivePollAttempt(env, serviceId, projectorIds, attemptedAt),
+    onOutcome: ({ env, ...observation }) => recordMeetingRoomLivePollOutcome(env, observation),
+  },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
@@ -49,26 +88,69 @@ const G51_P1_PROBE_SPAN = "sdt.g51.probe.p1";
 const G51_PROBE_ATTRIBUTE = "sdt.g51.probe";
 
 /**
- * Safe MV convergence is the first scheduled duty.  Generic downstream and
- * tag-state polling may be expensive on a historical service, but must never
- * starve the receipt-GC path that proves a stored target through safe head.
+ * Safe MV convergence runs from an already-computed coverage decision. The
+ * freshCoverage seam is used by the deployed Worker after the current G44
+ * reconciliation; the older globalCoverage seam remains for unit-only callers
+ * that supply a persisted decision directly.
  */
 export async function runMeetingRoomScheduledMaintenance(input: {
-  readonly catchUp: () => Promise<void>;
-  readonly drainUnsafeKicks: () => Promise<void>;
+  readonly catchUp: (frontierSuid?: string | null) => Promise<void>;
+  readonly drainUnsafeKicks: (frontierSuid?: string | null) => Promise<void>;
   readonly runGenericScheduledWork: () => Promise<void>;
   /**
    * G44's one interim coverage decision.  It is intentionally an internal
    * gate rather than a new public query-response policy.
-   */
-  readonly globalCoverage?: () => Promise<"SETTLED" | "BLOCK/UNSETTLED">;
+  */
+  readonly globalCoverage?: () => Promise<"SETTLED" | "BLOCK/UNSETTLED" | GlobalCompletenessCoverage>;
+  /** A fresh reconciliation result, computed before this safe-lane pass. */
+  readonly freshCoverage?: () => Promise<GlobalCompletenessCoverage>;
+  /** Records the decision that governed this scheduled safe-lane pass. */
+  readonly recordCoverage?: (coverage: MeetingRoomSafeLaneCoverage) => Promise<void>;
 }): Promise<void> {
-  if (input.globalCoverage !== undefined && await input.globalCoverage() !== "SETTLED") {
-    // Keep generic scheduled work alive: it owns the independent source scan
-    // and can establish a new FULL frontier. Its own live-poll path is gated
-    // by that scan, while this materialized catch-up remains blocked here.
+  if (input.freshCoverage !== undefined) {
+    const coverage = await input.freshCoverage();
+    await input.recordCoverage?.({
+      kind: coverage.kind,
+      reason: coverage.reason,
+      partitionTag: coverage.partitionTag,
+      frontierSuid: coverage.frontierSuid,
+      observedAt: coverage.observedAt,
+    });
+    // The caller has just completed this tick's scanner. A FULL/SETTLED
+    // frontier is therefore immediately eligible; a BLOCK frontier is the
+    // last proven cursor retained by the reconciler and remains fenced.
+    await input.catchUp(coverage.frontierSuid);
+    await input.drainUnsafeKicks(coverage.frontierSuid);
     await input.runGenericScheduledWork();
     return;
+  }
+  if (input.globalCoverage !== undefined) {
+    const coverage = await input.globalCoverage();
+    if (typeof coverage === "string") {
+      // Compatibility for the original unit-only seam: a bare BLOCK decision
+      // carries no durable FULL frontier, so it cannot safely advance any
+      // source checkpoint. Deployed maintenance always supplies the richer
+      // reconciler result below.
+      if (coverage !== "SETTLED") {
+        await input.runGenericScheduledWork();
+        return;
+      }
+    } else {
+      await input.recordCoverage?.({
+        kind: coverage.kind,
+        reason: coverage.reason,
+        partitionTag: coverage.partitionTag,
+        frontierSuid: coverage.frontierSuid,
+        observedAt: coverage.observedAt,
+      });
+      // A BLOCK tick still drains work that a prior FULL scan proved
+      // contiguous. `null` permits no source advancement; it is not an
+      // unrestricted empty frontier.
+      await input.catchUp(coverage.frontierSuid);
+      await input.drainUnsafeKicks(coverage.frontierSuid);
+      await input.runGenericScheduledWork();
+      return;
+    }
   }
   await input.catchUp();
   await input.drainUnsafeKicks();
@@ -314,6 +396,28 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     const mismatchedServiceId = configured === "g53-mismatch" ? "g53-other" : "g53-mismatch";
     return runtimeFetch(new Request(`https://runtime.internal/bootstrap/${encodeURIComponent(mismatchedServiceId)}/state`), env, ctx);
   }
+  if (url.pathname === "/conformance/v1/read-health") {
+    if (request.method !== "GET") {
+      return json({ error: "Read health requires GET", code: "validation_error" }, 405);
+    }
+    const configured = optionalServiceIdentity(env);
+    if (configured === null) {
+      return json({ error: "Read health bindings are unavailable", code: "projection_unavailable" }, 503);
+    }
+    try {
+      return json(await readMeetingRoomHealth(env, configured));
+    } catch {
+      return json({ error: "Read health storage is unavailable", code: "projection_unavailable" }, 503);
+    }
+  }
+  if (url.pathname === "/conformance/v1/internal/projection/lag") {
+    // Keep the existing internal projection-lag semantics and storage
+    // authority, but make the deployed proof bearer-gated like the G58
+    // health surface. This does not create a public query policy.
+    const target = new URL("https://runtime.internal/internal/projection/lag");
+    target.search = url.search;
+    return runtimeFetch(new Request(target.toString(), request), env, ctx);
+  }
   if (url.pathname === "/conformance/v1/g26-config") {
     const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
     return json({
@@ -525,22 +629,11 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   },
   async scheduled(controller, env, ctx) {
     await assertFinalCutoverFenceIfConfigured(env);
-    await runMeetingRoomScheduledMaintenance({
-      catchUp: () => catchUpMeetingRoomMaterializedViews(env),
-      drainUnsafeKicks: () => drainMeetingRoomUnsafeKicks(env),
-      // A D1-only receiver fixture has no Tag source authority to scan. The
-      // deployed primary always binds both authorities; do not manufacture a
-      // mixed-version feature switch just to alter that invariant in tests.
-      globalCoverage: env.TAG === undefined
-        ? undefined
-        : async () => {
-          const configured = optionalServiceIdentity(env);
-          return configured === null
-            ? "BLOCK/UNSETTLED"
-            : (await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(configured, Date.now())).kind;
-        },
-      runGenericScheduledWork: async () => { await runtime.scheduled?.(controller, env, ctx); },
-    });
+    // The runtime reconciles G44 first, then invokes the sample's safe-lane
+    // hook with that fresh coverage, and finally polls live projections in the
+    // same scheduled tick. Keeping this call direct avoids an extra stale
+    // frontier pass before the fresh reconciliation.
+    await runtime.scheduled?.(controller, env, ctx);
   },
 };
 

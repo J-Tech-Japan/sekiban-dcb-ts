@@ -29,6 +29,16 @@ export interface MaterializedViewCatchUpHooks {
 }
 
 /**
+ * An optional scanner-proven high-water mark for a safe-lane pass. `null`
+ * means that no FULL snapshot exists yet, so this pass may perform GC but
+ * cannot advance a source checkpoint. `undefined` retains the existing
+ * ungated caller behaviour.
+ */
+export interface MaterializedViewCatchUpOptions {
+  readonly maximumSuid?: string | null;
+}
+
+/**
  * SafeWindow-aware row materializer runtime.  It keeps the memory projection
  * runtime untouched while allowing the same event source to feed a separate
  * D1 MV database.
@@ -44,6 +54,7 @@ export class MaterializedViewCatchUpRuntime {
     materializer: MaterializedViewRowMaterializer<TEvent>,
     nowMs: number,
     hooks: MaterializedViewCatchUpHooks = {},
+    options: MaterializedViewCatchUpOptions = {},
   ): Promise<MaterializedViewCatchUpResult> {
     const existing = await this.materializedViews.readActive(serviceId, materializer.id);
     if (existing !== undefined) {
@@ -56,7 +67,7 @@ export class MaterializedViewCatchUpRuntime {
       definitionVersion: materializer.version,
       updatedAt: nowMs,
     });
-    return this.follow(serviceId, materializer, nowMs, hooks);
+    return this.follow(serviceId, materializer, nowMs, hooks, options);
   }
 
   async follow<TEvent = StoredEvent>(
@@ -64,12 +75,13 @@ export class MaterializedViewCatchUpRuntime {
     materializer: MaterializedViewRowMaterializer<TEvent>,
     nowMs: number,
     hooks: MaterializedViewCatchUpHooks = {},
+    options: MaterializedViewCatchUpOptions = {},
   ): Promise<MaterializedViewCatchUpResult> {
     const active = await this.materializedViews.readActive(serviceId, materializer.id);
     if (active === undefined) {
       throw new MaterializedViewStoreError("apply", "MV_INSTANCE_MISSING", "Materialized-view must be built before follow");
     }
-    return this.followGeneration(serviceId, materializer, active.generation, nowMs, "apply", hooks);
+    return this.followGeneration(serviceId, materializer, active.generation, nowMs, "apply", hooks, options);
   }
 
   async rebuild<TEvent = StoredEvent>(
@@ -78,6 +90,7 @@ export class MaterializedViewCatchUpRuntime {
     nowMs: number,
     rebuildId?: string,
     hooks: MaterializedViewCatchUpHooks = {},
+    options: MaterializedViewCatchUpOptions = {},
   ): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string }> {
     const candidate = await this.materializedViews.beginRebuild({
       serviceId,
@@ -85,7 +98,7 @@ export class MaterializedViewCatchUpRuntime {
       definitionVersion: materializer.version,
       updatedAt: nowMs,
     });
-    const result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks);
+    const result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks, options);
     return { ...result, candidateGeneration: candidate.generation, rebuildId };
   }
 
@@ -121,6 +134,7 @@ export class MaterializedViewCatchUpRuntime {
     nowMs: number,
     _operation: "apply",
     hooks: MaterializedViewCatchUpHooks,
+    options: MaterializedViewCatchUpOptions,
   ): Promise<MaterializedViewCatchUpResult> {
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt += 1) {
       const instance = await this.materializedViews.readInstance(serviceId, materializer.id, generation);
@@ -170,6 +184,15 @@ export class MaterializedViewCatchUpRuntime {
       let appliedEvents = 0;
       let conflicted = false;
       for (const event of sourceEvents) {
+        // A G44 BLOCK tick may drain only through the last FULL snapshot's
+        // high-water mark.  Do not skip an earlier row or treat a later one
+        // as a new safe frontier; either would violate the source ordering
+        // proof that protects the materialized safe lane.
+        if (options.maximumSuid === null || (
+          options.maximumSuid !== undefined && compareSuid(event.suid, options.maximumSuid) > 0
+        )) {
+          break;
+        }
         // Read-only SafeWindow rule: do not skip the first unsafe event or
         // process later events ahead of a late lower SUID.
         if (event.lastArrivedAt > nowMs - windowMs) {

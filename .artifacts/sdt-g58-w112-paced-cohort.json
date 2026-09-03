@@ -1,0 +1,2862 @@
+{
+  "schema": "sdt-g58-safe-lane-e2e/v1",
+  "task": "SDT-G58",
+  "mode": "paced",
+  "runId": "6ad7bb99-ff63-4e8a-aa44-42487c652890",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+  "startedAt": "2026-09-03T12:35:37.862Z",
+  "contract": {
+    "pacedReservationCommits": 10,
+    "paceMs": 10000,
+    "unsafeBoundMs": 5000,
+    "unsafeProof": "delegated to SDT-G60: retain each 5000ms pass/miss and observe eventual visibility without reclassification",
+    "safeDeadline": "health.safeWindowMs + 120000ms",
+    "conformanceAuthorization": "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted"
+  },
+  "healthSnapshots": [
+    {
+      "receivedAtMs": 1788438938389,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788438864992
+      },
+      "lag": {
+        "estimateMs": 5578,
+        "observedAt": 1788436158888,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2751811,
+          "unsafeRows": 0,
+          "unsafeReceipts": 56
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2746901,
+          "unsafeRows": 0,
+          "unsafeReceipts": 148
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2734366,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2734366,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924032953080000000952631413",
+      "cfRay": "a354cba20980b74c-LAX",
+      "responseMs": 527
+    },
+    {
+      "receivedAtMs": 1788438953035,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788438864992
+      },
+      "lag": {
+        "estimateMs": 3500,
+        "observedAt": 1788438943799,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2766341,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2761431,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2748896,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2748896,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035739871000002087517963",
+      "cfRay": "a354cbfd4a492ef6-LAX",
+      "responseMs": 515
+    },
+    {
+      "receivedAtMs": 1788438965078,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438925867
+      },
+      "lag": {
+        "estimateMs": 12104,
+        "observedAt": 1788438964420,
+        "decayedMs": 11753,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2778551,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2773641,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2761106,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2761106,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035752095000002044138285",
+      "cfRay": "a354cc49bf07055e-SJC",
+      "responseMs": 335
+    },
+    {
+      "receivedAtMs": 1788438979001,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438925867
+      },
+      "lag": {
+        "estimateMs": 7520,
+        "observedAt": 1788438978585,
+        "decayedMs": 7520,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2792304,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2787394,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2774859,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2774859,
+          "lastPollAt": 1788438914243,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035776436000001827802555",
+      "cfRay": "a354cc9fbda42ec1-LAX",
+      "responseMs": 496
+    },
+    {
+      "receivedAtMs": 1788438991052,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438925867
+      },
+      "lag": {
+        "estimateMs": 14098,
+        "observedAt": 1788438990755,
+        "decayedMs": 14087,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2804546,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2799636,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2787101,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2787101,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035776436000001827802555",
+      "cfRay": "a354ccec4d81cb86-LAX",
+      "responseMs": 298
+    },
+    {
+      "receivedAtMs": 1788439003636,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438925867
+      },
+      "lag": {
+        "estimateMs": 11728,
+        "observedAt": 1788439002200,
+        "decayedMs": 10978,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2816730,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2811820,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2799285,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2799285,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035790238000000056046107",
+      "cfRay": "a354cd386af983d9-LAX",
+      "responseMs": 698
+    },
+    {
+      "receivedAtMs": 1788439015695,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438925867
+      },
+      "lag": {
+        "estimateMs": 12209,
+        "observedAt": 1788439014832,
+        "decayedMs": 11980,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2828841,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2823931,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2811396,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2811396,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035802381000001099032571",
+      "cfRay": "a354cd8368f1cdfb-LAX",
+      "responseMs": 759
+    },
+    {
+      "receivedAtMs": 1788439027419,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438925867
+      },
+      "lag": {
+        "estimateMs": 11999,
+        "observedAt": 1788439026755,
+        "decayedMs": 11826,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2840708,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2835798,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2823263,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2823263,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035814534000000132864283",
+      "cfRay": "a354cdce283bcdfb-LAX",
+      "responseMs": 522
+    },
+    {
+      "receivedAtMs": 1788439039286,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 11751,
+        "observedAt": 1788439038476,
+        "decayedMs": 11254,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2852753,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2847843,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2835308,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2835308,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035826504000001134306731",
+      "cfRay": "a354ce198cf4f8f3-SJC",
+      "responseMs": 328
+    },
+    {
+      "receivedAtMs": 1788439051934,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 12025,
+        "observedAt": 1788439050771,
+        "decayedMs": 11570,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2865006,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2860096,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2847561,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2847561,
+          "lastPollAt": 1788438979612,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035838513000002140254220",
+      "cfRay": "a354ce661867ab58-SJC",
+      "responseMs": 735
+    },
+    {
+      "receivedAtMs": 1788439064028,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 12300,
+        "observedAt": 1788439063117,
+        "decayedMs": 11748,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2877449,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2872539,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2860004,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2860004,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035850444000001744434636",
+      "cfRay": "a354ceb3de6f196e-LAX",
+      "responseMs": 377
+    },
+    {
+      "receivedAtMs": 1788439071459,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 7664,
+        "observedAt": 1788439070887,
+        "decayedMs": 7474,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2884857,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2879947,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2867412,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2867412,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cee23bc8196e-LAX",
+      "responseMs": 392
+    },
+    {
+      "receivedAtMs": 1788439074604,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 10795,
+        "observedAt": 1788439074018,
+        "decayedMs": 10565,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2888028,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2883118,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2870583,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2870583,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cef5fc68196e-LAX",
+      "responseMs": 369
+    },
+    {
+      "receivedAtMs": 1788439077645,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 13889,
+        "observedAt": 1788439077112,
+        "decayedMs": 13628,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2891153,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2886243,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2873708,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2873708,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cf098c4a196e-LAX",
+      "responseMs": 285
+    },
+    {
+      "receivedAtMs": 1788439081525,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 13889,
+        "observedAt": 1788439077112,
+        "decayedMs": 10615,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2894166,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2889256,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2876721,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2876721,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cf1c5e04196e-LAX",
+      "responseMs": 1152
+    },
+    {
+      "receivedAtMs": 1788439084633,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 13889,
+        "observedAt": 1788439077112,
+        "decayedMs": 6802,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2897979,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2893069,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2880534,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2880534,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cf3439f1196e-LAX",
+      "responseMs": 448
+    },
+    {
+      "receivedAtMs": 1788439087581,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 13889,
+        "observedAt": 1788439077112,
+        "decayedMs": 3649,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2901132,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2896222,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2883687,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2883687,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cf47e8d5196e-LAX",
+      "responseMs": 245
+    },
+    {
+      "receivedAtMs": 1788439090668,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 13889,
+        "observedAt": 1788439077112,
+        "decayedMs": 645,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2904136,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2899226,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2886691,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2886691,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cf5abe29196e-LAX",
+      "responseMs": 324
+    },
+    {
+      "receivedAtMs": 1788439093819,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": null,
+        "observedAt": 1788438994027
+      },
+      "lag": {
+        "estimateMs": 13889,
+        "observedAt": 1788439077112,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2907273,
+          "unsafeRows": 1,
+          "unsafeReceipts": 57
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924032953080000000952631413",
+          "safeHeadAgeMs": 2902363,
+          "unsafeRows": 0,
+          "unsafeReceipts": 149
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2889828,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924032953080000000952631413",
+          "headAgeMs": 2889828,
+          "lastPollAt": 1788439057989,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924035863002000001774577097",
+      "cfRay": "a354cf6e49b3196e-LAX",
+      "responseMs": 337
+    }
+  ],
+  "reservations": [
+    {
+      "ordinal": 1,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-1",
+      "suid": "063924035752095000002044138285",
+      "commit": {
+        "receivedAtMs": 1788438952519,
+        "responseMs": 2077,
+        "cfRay": "a354cbf09a222ef6-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12080,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788438958315,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788438953367,
+            "elapsedMs": 331,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc008cf52ef6-LAX"
+          },
+          {
+            "atMs": 1788438954646,
+            "elapsedMs": 1610,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc08da572ef6-LAX"
+          },
+          {
+            "atMs": 1788438955927,
+            "elapsedMs": 2891,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc10deb52ef6-LAX"
+          },
+          {
+            "atMs": 1788438957208,
+            "elapsedMs": 4172,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc191b8b2ef6-LAX"
+          },
+          {
+            "atMs": 1788438958315,
+            "elapsedMs": 5279,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc1fcf922ef6-LAX"
+          },
+          {
+            "atMs": 1788439069362,
+            "elapsedMs": 116843,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ced69e55196e-LAX"
+          },
+          {
+            "atMs": 1788439072637,
+            "elapsedMs": 120118,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceeb2888196e-LAX"
+          },
+          {
+            "atMs": 1788439075806,
+            "elapsedMs": 123287,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cefed960196e-LAX"
+          },
+          {
+            "atMs": 1788439078798,
+            "elapsedMs": 126279,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf119dcd196e-LAX"
+          },
+          {
+            "atMs": 1788439082666,
+            "elapsedMs": 130147,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf29d859196e-LAX"
+          },
+          {
+            "atMs": 1788439085777,
+            "elapsedMs": 133258,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf3d4d5a196e-LAX"
+          },
+          {
+            "atMs": 1788439088762,
+            "elapsedMs": 136243,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf4fb9f9196e-LAX"
+          },
+          {
+            "atMs": 1788439091909,
+            "elapsedMs": 139390,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf633fdb196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-2",
+      "suid": "063924035764310000001157238110",
+      "commit": {
+        "receivedAtMs": 1788438964742,
+        "responseMs": 2221,
+        "cfRay": "a354cc3c2c85055e-SJC"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12223,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788438970280,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788438965249,
+            "elapsedMs": 171,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc4bcbed055e-SJC"
+          },
+          {
+            "atMs": 1788438966413,
+            "elapsedMs": 1335,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc532e0b055e-SJC"
+          },
+          {
+            "atMs": 1788438967652,
+            "elapsedMs": 2574,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc5ab9da055e-SJC"
+          },
+          {
+            "atMs": 1788438968818,
+            "elapsedMs": 3740,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc626e33055e-SJC"
+          },
+          {
+            "atMs": 1788438969962,
+            "elapsedMs": 4884,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc697949055e-SJC"
+          },
+          {
+            "atMs": 1788438970280,
+            "elapsedMs": 5202,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cc6b1de3055e-SJC"
+          },
+          {
+            "atMs": 1788439069507,
+            "elapsedMs": 104765,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ced78930196e-LAX"
+          },
+          {
+            "atMs": 1788439072839,
+            "elapsedMs": 108097,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceec0af9196e-LAX"
+          },
+          {
+            "atMs": 1788439075985,
+            "elapsedMs": 111243,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceffdcc5196e-LAX"
+          },
+          {
+            "atMs": 1788439078935,
+            "elapsedMs": 114193,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf1288bc196e-LAX"
+          },
+          {
+            "atMs": 1788439082814,
+            "elapsedMs": 118072,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf2abaf3196e-LAX"
+          },
+          {
+            "atMs": 1788439085952,
+            "elapsedMs": 121210,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf3e281f196e-LAX"
+          },
+          {
+            "atMs": 1788439088905,
+            "elapsedMs": 124163,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf50de64196e-LAX"
+          },
+          {
+            "atMs": 1788439092053,
+            "elapsedMs": 127311,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf647b55196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-3",
+      "suid": "063924035776436000001827802555",
+      "commit": {
+        "receivedAtMs": 1788438978501,
+        "responseMs": 3757,
+        "cfRay": "a354cc88c8102ec1-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 13759,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788438984073,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788438979230,
+            "elapsedMs": 226,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cca2d8812ec1-LAX"
+          },
+          {
+            "atMs": 1788438980426,
+            "elapsedMs": 1422,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccaa88422ec1-LAX"
+          },
+          {
+            "atMs": 1788438981619,
+            "elapsedMs": 2615,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccb1ff962ec1-LAX"
+          },
+          {
+            "atMs": 1788438982869,
+            "elapsedMs": 3865,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccb9afd52ec1-LAX"
+          },
+          {
+            "atMs": 1788438984073,
+            "elapsedMs": 5069,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccc16fe62ec1-LAX"
+          },
+          {
+            "atMs": 1788439069885,
+            "elapsedMs": 91384,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ced87be8196e-LAX"
+          },
+          {
+            "atMs": 1788439073031,
+            "elapsedMs": 94530,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceed4ebe196e-LAX"
+          },
+          {
+            "atMs": 1788439076178,
+            "elapsedMs": 97677,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf010881196e-LAX"
+          },
+          {
+            "atMs": 1788439079131,
+            "elapsedMs": 100630,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf136b8b196e-LAX"
+          },
+          {
+            "atMs": 1788439082994,
+            "elapsedMs": 104493,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf2b9e4b196e-LAX"
+          },
+          {
+            "atMs": 1788439086141,
+            "elapsedMs": 107640,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf3f3bcd196e-LAX"
+          },
+          {
+            "atMs": 1788439089093,
+            "elapsedMs": 110592,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf51b9c0196e-LAX"
+          },
+          {
+            "atMs": 1788439092241,
+            "elapsedMs": 113740,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf656e17196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-4",
+      "suid": "063924035790238000000056046107",
+      "commit": {
+        "receivedAtMs": 1788438990754,
+        "responseMs": 2250,
+        "cfRay": "a354ccdeebb1cb86-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12253,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788438996109,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788438991247,
+            "elapsedMs": 194,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccee1af1cb86-LAX"
+          },
+          {
+            "atMs": 1788438992432,
+            "elapsedMs": 1379,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccf5dfcacb86-LAX"
+          },
+          {
+            "atMs": 1788438993673,
+            "elapsedMs": 2620,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ccfcfb84cb86-LAX"
+          },
+          {
+            "atMs": 1788438994913,
+            "elapsedMs": 3860,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd0508cccb86-LAX"
+          },
+          {
+            "atMs": 1788438996109,
+            "elapsedMs": 5056,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd0ccd12cb86-LAX"
+          },
+          {
+            "atMs": 1788439070024,
+            "elapsedMs": 79270,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cedadacd196e-LAX"
+          },
+          {
+            "atMs": 1788439073177,
+            "elapsedMs": 82423,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceee7a69196e-LAX"
+          },
+          {
+            "atMs": 1788439076313,
+            "elapsedMs": 85559,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf022bfe196e-LAX"
+          },
+          {
+            "atMs": 1788439079325,
+            "elapsedMs": 88571,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf149ef2196e-LAX"
+          },
+          {
+            "atMs": 1788439083136,
+            "elapsedMs": 92382,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf2cb9d2196e-LAX"
+          },
+          {
+            "atMs": 1788439086289,
+            "elapsedMs": 95535,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf406f7e196e-LAX"
+          },
+          {
+            "atMs": 1788439089287,
+            "elapsedMs": 98533,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf52dd44196e-LAX"
+          },
+          {
+            "atMs": 1788439092433,
+            "elapsedMs": 101679,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf668995196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-5",
+      "suid": "063924035802381000001099032571",
+      "commit": {
+        "receivedAtMs": 1788439002938,
+        "responseMs": 2183,
+        "cfRay": "a354cd2ae8d983d9-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12184,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788439008785,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788439003825,
+            "elapsedMs": 188,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd3cc82783d9-LAX"
+          },
+          {
+            "atMs": 1788439005015,
+            "elapsedMs": 1378,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd447e8e83d9-LAX"
+          },
+          {
+            "atMs": 1788439006165,
+            "elapsedMs": 2528,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd4bab4983d9-LAX"
+          },
+          {
+            "atMs": 1788439007317,
+            "elapsedMs": 3680,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd52d80083d9-LAX"
+          },
+          {
+            "atMs": 1788439008547,
+            "elapsedMs": 4910,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd5a68c883d9-LAX"
+          },
+          {
+            "atMs": 1788439008785,
+            "elapsedMs": 5148,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd5c0e3083d9-LAX"
+          },
+          {
+            "atMs": 1788439070217,
+            "elapsedMs": 67279,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cedbad89196e-LAX"
+          },
+          {
+            "atMs": 1788439073363,
+            "elapsedMs": 70425,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceef6d86196e-LAX"
+          },
+          {
+            "atMs": 1788439076510,
+            "elapsedMs": 73572,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf02fe7c196e-LAX"
+          },
+          {
+            "atMs": 1788439079479,
+            "elapsedMs": 76541,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf15dab5196e-LAX"
+          },
+          {
+            "atMs": 1788439083325,
+            "elapsedMs": 80387,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf2dac90196e-LAX"
+          },
+          {
+            "atMs": 1788439086475,
+            "elapsedMs": 83537,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf415a45196e-LAX"
+          },
+          {
+            "atMs": 1788439089430,
+            "elapsedMs": 86492,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf54199b196e-LAX"
+          },
+          {
+            "atMs": 1788439092586,
+            "elapsedMs": 89648,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf67cd3a196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-6",
+      "suid": "063924035814534000000132864283",
+      "commit": {
+        "receivedAtMs": 1788439014934,
+        "responseMs": 1995,
+        "cfRay": "a354cd771ffdcdfb-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11996,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788439020955,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788439015926,
+            "elapsedMs": 230,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd882acacdfb-LAX"
+          },
+          {
+            "atMs": 1788439017153,
+            "elapsedMs": 1457,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd8fd929cdfb-LAX"
+          },
+          {
+            "atMs": 1788439018382,
+            "elapsedMs": 2686,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd978eb7cdfb-LAX"
+          },
+          {
+            "atMs": 1788439019617,
+            "elapsedMs": 3921,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cd9f3cfdcdfb-LAX"
+          },
+          {
+            "atMs": 1788439020955,
+            "elapsedMs": 5259,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cda6eb28cdfb-LAX"
+          },
+          {
+            "atMs": 1788439070409,
+            "elapsedMs": 55475,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cedce9b0196e-LAX"
+          },
+          {
+            "atMs": 1788439073555,
+            "elapsedMs": 58621,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cef099f0196e-LAX"
+          },
+          {
+            "atMs": 1788439076701,
+            "elapsedMs": 61767,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf043abc196e-LAX"
+          },
+          {
+            "atMs": 1788439079656,
+            "elapsedMs": 64722,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf16cdac196e-LAX"
+          },
+          {
+            "atMs": 1788439083518,
+            "elapsedMs": 68584,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf2ed902196e-LAX"
+          },
+          {
+            "atMs": 1788439086665,
+            "elapsedMs": 71731,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf428e7e196e-LAX"
+          },
+          {
+            "atMs": 1788439089620,
+            "elapsedMs": 74686,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf54fc92196e-LAX"
+          },
+          {
+            "atMs": 1788439092768,
+            "elapsedMs": 77834,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf68b824196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-7",
+      "suid": "063924035826504000001134306731",
+      "commit": {
+        "receivedAtMs": 1788439026896,
+        "responseMs": 1960,
+        "cfRay": "a354cdc1e84ccdfb-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11962,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788439032748,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788439027960,
+            "elapsedMs": 540,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cdd16e2ccdfb-LAX"
+          },
+          {
+            "atMs": 1788439029195,
+            "elapsedMs": 1775,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cddb39dccdfb-LAX"
+          },
+          {
+            "atMs": 1788439030424,
+            "elapsedMs": 3004,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cde2cfc0cdfb-LAX"
+          },
+          {
+            "atMs": 1788439031632,
+            "elapsedMs": 4212,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cdea7fe6cdfb-LAX"
+          },
+          {
+            "atMs": 1788439032748,
+            "elapsedMs": 5328,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cdf0fce8cdfb-LAX"
+          },
+          {
+            "atMs": 1788439070549,
+            "elapsedMs": 43653,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cede1de1196e-LAX"
+          },
+          {
+            "atMs": 1788439073691,
+            "elapsedMs": 46795,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cef1cdb4196e-LAX"
+          },
+          {
+            "atMs": 1788439076842,
+            "elapsedMs": 49946,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf056e7b196e-LAX"
+          },
+          {
+            "atMs": 1788439079848,
+            "elapsedMs": 52952,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf17e8c6196e-LAX"
+          },
+          {
+            "atMs": 1788439083657,
+            "elapsedMs": 56761,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf300d28196e-LAX"
+          },
+          {
+            "atMs": 1788439086821,
+            "elapsedMs": 59925,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf43ba78196e-LAX"
+          },
+          {
+            "atMs": 1788439089812,
+            "elapsedMs": 62916,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf5628bc196e-LAX"
+          },
+          {
+            "atMs": 1788439092958,
+            "elapsedMs": 66062,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf69dbc5196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-8",
+      "suid": "063924035838513000002140254220",
+      "commit": {
+        "receivedAtMs": 1788439038957,
+        "responseMs": 2059,
+        "cfRay": "a354ce0d2c6ef8f3-SJC"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12061,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788439044408,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788439039480,
+            "elapsedMs": 193,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce1b98ebf8f3-SJC"
+          },
+          {
+            "atMs": 1788439040633,
+            "elapsedMs": 1346,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce2358acf8f3-SJC"
+          },
+          {
+            "atMs": 1788439041756,
+            "elapsedMs": 2469,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce2a4f02f8f3-SJC"
+          },
+          {
+            "atMs": 1788439042957,
+            "elapsedMs": 3670,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce314e3af8f3-SJC"
+          },
+          {
+            "atMs": 1788439044110,
+            "elapsedMs": 4823,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce391ff5f8f3-SJC"
+          },
+          {
+            "atMs": 1788439044408,
+            "elapsedMs": 5121,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce3adbd9f8f3-SJC"
+          },
+          {
+            "atMs": 1788439070742,
+            "elapsedMs": 31785,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cedef880196e-LAX"
+          },
+          {
+            "atMs": 1788439073889,
+            "elapsedMs": 34932,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cef298d4196e-LAX"
+          },
+          {
+            "atMs": 1788439077034,
+            "elapsedMs": 38077,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf064986196e-LAX"
+          },
+          {
+            "atMs": 1788439080027,
+            "elapsedMs": 41070,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf191c09196e-LAX"
+          },
+          {
+            "atMs": 1788439083854,
+            "elapsedMs": 44897,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf30efef196e-LAX"
+          },
+          {
+            "atMs": 1788439086999,
+            "elapsedMs": 48042,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf44adbf196e-LAX"
+          },
+          {
+            "atMs": 1788439089957,
+            "elapsedMs": 51000,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf576ca9196e-LAX"
+          },
+          {
+            "atMs": 1788439093107,
+            "elapsedMs": 54150,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf6b0f44196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-9",
+      "suid": "063924035850444000001744434636",
+      "commit": {
+        "receivedAtMs": 1788439051196,
+        "responseMs": 2236,
+        "cfRay": "a354ce5899a6ab58-SJC"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12239,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788439057112,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788439052080,
+            "elapsedMs": 144,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce6aa8d5ab58-SJC"
+          },
+          {
+            "atMs": 1788439053225,
+            "elapsedMs": 1289,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce71fce6ab58-SJC"
+          },
+          {
+            "atMs": 1788439054351,
+            "elapsedMs": 2415,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce790feaab58-SJC"
+          },
+          {
+            "atMs": 1788439055546,
+            "elapsedMs": 3610,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce800c58ab58-SJC"
+          },
+          {
+            "atMs": 1788439056782,
+            "elapsedMs": 4846,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce87ba0aab58-SJC"
+          },
+          {
+            "atMs": 1788439057112,
+            "elapsedMs": 5176,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ce89fdeaab58-SJC"
+          },
+          {
+            "atMs": 1788439070935,
+            "elapsedMs": 19739,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cee03d2d196e-LAX"
+          },
+          {
+            "atMs": 1788439074084,
+            "elapsedMs": 22888,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cef3dc73196e-LAX"
+          },
+          {
+            "atMs": 1788439077225,
+            "elapsedMs": 26029,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf078dc8196e-LAX"
+          },
+          {
+            "atMs": 1788439080181,
+            "elapsedMs": 28985,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf1a3f2b196e-LAX"
+          },
+          {
+            "atMs": 1788439084043,
+            "elapsedMs": 32847,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf322bc2196e-LAX"
+          },
+          {
+            "atMs": 1788439087189,
+            "elapsedMs": 35993,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf45d990196e-LAX"
+          },
+          {
+            "atMs": 1788439090143,
+            "elapsedMs": 38947,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf584f0d196e-LAX"
+          },
+          {
+            "atMs": 1788439093291,
+            "elapsedMs": 42095,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf6bfa39196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g58-reservation-6ad7bb99-ff6-10",
+      "suid": "063924035863002000001774577097",
+      "commit": {
+        "receivedAtMs": 1788439063647,
+        "responseMs": 2450,
+        "cfRay": "a354cea55a63196e-LAX"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12451,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788439069205,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788439064182,
+            "elapsedMs": 151,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ceb63ce1196e-LAX"
+          },
+          {
+            "atMs": 1788439065340,
+            "elapsedMs": 1309,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cebd7af0196e-LAX"
+          },
+          {
+            "atMs": 1788439066552,
+            "elapsedMs": 2521,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cec4a8fb196e-LAX"
+          },
+          {
+            "atMs": 1788439067794,
+            "elapsedMs": 3763,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cecc783a196e-LAX"
+          },
+          {
+            "atMs": 1788439068979,
+            "elapsedMs": 4948,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ced43f63196e-LAX"
+          },
+          {
+            "atMs": 1788439069205,
+            "elapsedMs": 5174,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354ced5bb93196e-LAX"
+          },
+          {
+            "atMs": 1788439071066,
+            "elapsedMs": 7419,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cee168df196e-LAX"
+          },
+          {
+            "atMs": 1788439074234,
+            "elapsedMs": 10587,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cef51880196e-LAX"
+          },
+          {
+            "atMs": 1788439077360,
+            "elapsedMs": 13713,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf08b9e1196e-LAX"
+          },
+          {
+            "atMs": 1788439080372,
+            "elapsedMs": 16725,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf1b2a16196e-LAX"
+          },
+          {
+            "atMs": 1788439084182,
+            "elapsedMs": 20535,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf335f32196e-LAX"
+          },
+          {
+            "atMs": 1788439087332,
+            "elapsedMs": 23685,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf46fd79196e-LAX"
+          },
+          {
+            "atMs": 1788439090339,
+            "elapsedMs": 26692,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf597a8d196e-LAX"
+          },
+          {
+            "atMs": 1788439093478,
+            "elapsedMs": 29831,
+            "pageCount": 1,
+            "totalCount": 54,
+            "itemCount": 54,
+            "visible": false,
+            "readHead": "063924032953080000000952631413",
+            "cfRay": "a354cf6d1ded196e-LAX"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    }
+  ],
+  "healthBefore": {
+    "receivedAtMs": 1788438938389,
+    "coverage": {
+      "kind": "SETTLED",
+      "reason": null,
+      "partitionTag": null,
+      "observedAt": 1788438864992
+    },
+    "lag": {
+      "estimateMs": 5578,
+      "observedAt": 1788436158888,
+      "decayedMs": 0,
+      "safeWindowMs": 20000,
+      "ceilingExceeded": false
+    },
+    "materializedViews": [
+      {
+        "viewId": "RoomProjector",
+        "generation": 0,
+        "safeHead": "063924032953080000000952631413",
+        "safeHeadAgeMs": 2751811,
+        "unsafeRows": 0,
+        "unsafeReceipts": 56
+      },
+      {
+        "viewId": "ReservationProjector",
+        "generation": 0,
+        "safeHead": "063924032953080000000952631413",
+        "safeHeadAgeMs": 2746901,
+        "unsafeRows": 0,
+        "unsafeReceipts": 148
+      }
+    ],
+    "liveProjections": [
+      {
+        "projectorId": "RoomProjector",
+        "head": "063924032953080000000952631413",
+        "headAgeMs": 2734366,
+        "lastPollAt": 1788438914243,
+        "pollStatus": "invoked-but-no-work",
+        "pollReason": "poll_in_progress"
+      },
+      {
+        "projectorId": "ReservationProjector",
+        "head": "063924032953080000000952631413",
+        "headAgeMs": 2734366,
+        "lastPollAt": 1788438914243,
+        "pollStatus": "invoked-but-no-work",
+        "pollReason": "poll_in_progress"
+      }
+    ],
+    "globalHead": "063924032953080000000952631413",
+    "cfRay": "a354cba20980b74c-LAX",
+    "responseMs": 527
+  },
+  "setupRoom": {
+    "roomId": "g58-room-6ad7bb99-ff6",
+    "suid": "063924035739871000002087517963",
+    "commit": {
+      "receivedAtMs": 1788438940439,
+      "responseMs": 2044,
+      "cfRay": "a354cba50f12b74c-LAX"
+    }
+  },
+  "scheduledPollLifecycle": [
+    {
+      "observedAt": 1788438864992,
+      "observedAtIso": "2026-09-03T12:34:24.992Z",
+      "httpSamples": 2,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attemptedAt": 1788438914243,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attemptedAt": 1788438914243,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        }
+      ],
+      "allRegisteredProjectorsObserved": true
+    },
+    {
+      "observedAt": 1788438925867,
+      "observedAtIso": "2026-09-03T12:35:25.867Z",
+      "httpSamples": 6,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attemptedAt": 1788438979612,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attemptedAt": 1788438979612,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        }
+      ],
+      "allRegisteredProjectorsObserved": true
+    },
+    {
+      "observedAt": 1788438994027,
+      "observedAtIso": "2026-09-03T12:36:34.027Z",
+      "httpSamples": 11,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attemptedAt": 1788439057989,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attemptedAt": 1788439057989,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        }
+      ],
+      "allRegisteredProjectorsObserved": true
+    }
+  ],
+  "finishedAt": "2026-09-03T12:38:13.822Z",
+  "status": "failed",
+  "failure": "safe lane or live projections did not reach 063924035752095000002044138285 by safeWindowMs + 120000ms",
+  "lastHealth": {
+    "receivedAtMs": 1788439093819,
+    "coverage": {
+      "kind": "BLOCK/UNSETTLED",
+      "reason": "source_partition_set_changed_during_scan",
+      "partitionTag": null,
+      "observedAt": 1788438994027
+    },
+    "lag": {
+      "estimateMs": 13889,
+      "observedAt": 1788439077112,
+      "decayedMs": 0,
+      "safeWindowMs": 20000,
+      "ceilingExceeded": false
+    },
+    "materializedViews": [
+      {
+        "viewId": "RoomProjector",
+        "generation": 0,
+        "safeHead": "063924032953080000000952631413",
+        "safeHeadAgeMs": 2907273,
+        "unsafeRows": 1,
+        "unsafeReceipts": 57
+      },
+      {
+        "viewId": "ReservationProjector",
+        "generation": 0,
+        "safeHead": "063924032953080000000952631413",
+        "safeHeadAgeMs": 2902363,
+        "unsafeRows": 0,
+        "unsafeReceipts": 149
+      }
+    ],
+    "liveProjections": [
+      {
+        "projectorId": "RoomProjector",
+        "head": "063924032953080000000952631413",
+        "headAgeMs": 2889828,
+        "lastPollAt": 1788439057989,
+        "pollStatus": "invoked-but-no-work",
+        "pollReason": "poll_in_progress"
+      },
+      {
+        "projectorId": "ReservationProjector",
+        "head": "063924032953080000000952631413",
+        "headAgeMs": 2889828,
+        "lastPollAt": 1788439057989,
+        "pollStatus": "invoked-but-no-work",
+        "pollReason": "poll_in_progress"
+      }
+    ],
+    "globalHead": "063924035863002000001774577097",
+    "cfRay": "a354cf6e49b3196e-LAX",
+    "responseMs": 337
+  }
+}

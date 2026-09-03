@@ -1,0 +1,36 @@
+{
+  "schema": "sdt-g58-ac4-retired-lag-purge/v1",
+  "task": "SDT-G58-SPLIT-COMPLETION-W118",
+  "recordedAt": "2026-09-03T17:24:45Z",
+  "authorization": "C-0",
+  "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "database": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+  "databaseId": "f26d1299-82d9-4a64-8647-bc2ec86326ac",
+  "serviceIdRetained": "sekiban-dcb-meeting-room-cloudflare-only",
+  "before": {
+    "dcb_events": 11,
+    "projection_checkpoints": 22,
+    "mv_unsafe_receipts": 11,
+    "mv_rows": 11,
+    "serialized_dcb_lag_estimates": {
+      "total": 1,
+      "currentService": 1,
+      "retiredServices": 0
+    }
+  },
+  "operation": {
+    "sql": "DELETE FROM serialized_dcb_lag_estimates WHERE service_id <> 'sekiban-dcb-meeting-room-cloudflare-only';",
+    "wrangler": "d1 execute sekiban-dcb-meeting-room-cloudflare-pipeline --remote --config samples/meeting-room/wrangler.cloudflare-only.jsonc --command <exact SQL> --json",
+    "changes": 0,
+    "rowsWritten": 0,
+    "status": "success"
+  },
+  "after": {
+    "serialized_dcb_lag_estimates": {
+      "total": 1,
+      "currentService": 1,
+      "retiredServices": 0
+    }
+  },
+  "classification": "authorized targeted purge executed; no retired lag rows existed, so no operational rows were removed"
+}

@@ -521,11 +521,26 @@ export class UnsafeWindowMaterializedViewStore {
     return row === null || row === undefined ? undefined : { targetSuid: string(row, "target_suid"), dirty: integer(row, "dirty") === 1 };
   }
 
-  async finishKick(serviceId: string, viewId: string, owner: string): Promise<boolean> {
+  /**
+   * Settle an unsafe kick at the checkpoint actually reached by its follow.
+   * A first-unsafe return is a successful bounded pass, not proof that the
+   * lease target was reached.  When a reached checkpoint is supplied, keep the
+   * durable dirty bit set if the target remains ahead so the next scheduled
+   * tick can acquire the kick again.  Requiring this checkpoint keeps every
+   * production settlement honest about whether its target was reached.
+   */
+  async finishKick(serviceId: string, viewId: string, owner: string, reachedSuid: string): Promise<boolean> {
+    if (reachedSuid.length > 0) assertSortableUniqueId(reachedSuid);
     const result = await this.database.prepare(
-      `UPDATE mv_unsafe_kicks SET lease_owner = NULL, lease_until = 0
+      `UPDATE mv_unsafe_kicks
+          SET lease_owner = NULL,
+              lease_until = 0,
+              dirty = CASE
+                WHEN ? IS NOT NULL AND target_suid COLLATE BINARY > ? COLLATE BINARY THEN 1
+                ELSE 0
+              END
         WHERE service_id = ? AND view_id = ? AND lease_owner = ? AND dirty = 0`,
-    ).bind(serviceId, viewId, owner).run();
+    ).bind(reachedSuid, reachedSuid, serviceId, viewId, owner).run();
     return result.meta.changes === 1;
   }
 
