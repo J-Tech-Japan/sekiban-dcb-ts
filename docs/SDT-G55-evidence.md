@@ -5,7 +5,7 @@ Product source commit: `be2f0ee1688e92208876f3d713f3d4563b2f00f4`
 Packaging-gate commit: `bb7afec95dbe2c3749f25216885a962bc6cfa20c`
 Fresh deployment: Cloudflare version `22b5ba16-b8aa-4927-a5f1-eeaa1769a48b`
 
-## Status: blocked after the one fresh packaging-repair cohort
+## Status: blocked after the W83 deployed G15 gate timeout
 
 The earlier version `a49d2a7e-0dd4-470d-b9ee-7854170075d9` is historical
 blocked evidence only: although it was annotated with `be2f0ee…`, it bundled
@@ -14,10 +14,15 @@ claim below.
 
 The fresh version was built from this worktree after a local lockfile-faithful
 dependency install and passed a deterministic bundle gate before and after
-upload. It then ran exactly one fresh room-plus-three-reservations cohort. The
-cohort's final safe-head D1 query failed with OAuth authentication code 10000,
-so its third safe timing and the requested post-cohort D1 receipt are honestly
-unavailable. No retry, replacement cohort, or evidence stitch was performed.
+upload. It then ran exactly one fresh room-plus-three-reservations cohort. Its
+original final safe-head D1 query stopped on OAuth authentication code 10000.
+
+W83 resumed only that preserved cohort after a successful fresh OAuth identity
+check. Its resume reader sent zero app requests and made one remote D1 query,
+completing the required post-cohort receipt and third safe timing. The first
+required deployed G15 gate then timed out while reading the frontend root
+before sending any G15 command. This is an honest bounded-e2e stop: no G15
+retry, G16 run, replacement cohort, or evidence stitch was performed.
 
 ## AC1 / AC2 implementation and red-to-green proof
 
@@ -73,9 +78,11 @@ reference point.
 
 The fresh packaging-repair cohort began with a separate D1 before receipt of
 133 receipts / 0 rows. Its three app-list observations subsequently proved the
-new rows visible under the explicit unsafe lane. The required after receipt
-was not queried because the first remote D1 authentication failure is the
-window's stopping point.
+new rows visible under the explicit unsafe lane. In the authorized W83
+same-cohort resume, one remote D1 query observed 134 receipts / 0 rows and the
+active safe head `063923995692002000000693137501`. The zero remaining unsafe
+rows are consistent with safe follow and garbage collection after the safe
+checkpoint reaches the cohort's final reservation.
 
 ## AC4 UI change
 
@@ -90,7 +97,7 @@ The existing one server-side wait request and its safe-lane convergence rules
 remain; it now updates the separate list state rather than continuing to call
 a committed command “Sending”.
 
-## AC5 fresh-cohort receipt and blocking result
+## AC5 fresh-cohort receipt, resumed safe timing, and gate stop
 
 The repair installed the lockfile dependencies inside `.g55-w81`; the resolved
 `node_modules/@sekiban/dcb-runtime` target is this worktree's
@@ -120,16 +127,33 @@ reservations. All three met the unsafe visibility requirement.
 | --- | ---: | ---: | ---: | --- |
 | `g55-reservation-3fecda14-172-1` | 1539 ms | 4407 ms | 38356 ms | unsafe within 5 s; safe captured |
 | `g55-reservation-3fecda14-172-2` | 1312 ms | 3003 ms | 268852 ms | unsafe within 5 s; safe captured |
-| `g55-reservation-3fecda14-172-3` | 1568 ms | 2512 ms | unavailable | unsafe within 5 s; query stopped |
+| `g55-reservation-3fecda14-172-3` | 1568 ms | 2512 ms | 1006099 ms | unsafe within 5 s; safe observed in W83 resume |
 
-After the second safe timing, the next remote D1 call was the first and only
-failed one:
+The original W81 D1 query was the first and only failed one at that time:
 `remote D1 query failed: exit 1`. Wrangler's captured stdout names the remote
 D1 query and `Authentication error [code: 10000]`; captured stderr is the
-empty string. The failure is retained verbatim in the raw artifact. This is a
-credential/e2e stop, not a reason to fabricate the third safe timing or D1
-after receipt. G15/G16 deployed e2e was not started after that stop, so neither
-is claimed green for this window.
+empty string. The failure remains verbatim in the original raw artifact.
+
+After operator-refreshed OAuth, W83 first verified live identity with the
+pinned Wrangler: the latest 100%-traffic deployment-list record was version
+`22b5ba16-b8aa-4927-a5f1-eeaa1769a48b` remained annotated
+`SDT-G55 bb7afec95dbe2c3749f25216885a962bc6cfa20c`. No redeploy occurred.
+At `2026-09-03T01:44:57.384Z`, the one authorized resume query recorded the
+before receipt preserved from the original cohort (133 receipts / 0 rows), the
+after receipt (134 receipts / 0 rows), and active safe head
+`063923995692002000000693137501`. That head exactly equals reservation 3's
+SUID, completing its commit-to-observed-safe timing at 1,006,099 ms at
+`2026-09-03T01:44:58.487Z`. The original first/second safe observations remain
+the authoritative 38,356 ms and 268,852 ms timings; they were not recomputed
+from the later resume observation.
+
+The single deployed G15 invocation then failed before its command sequence:
+the Python harness's `GET /` frontend-root read raised
+`socket.timeout: The read operation timed out` after 15 seconds. Its failure
+receipt is `.artifacts/sdt-g55-w83-g15-failure.json`. G15 was not retried and
+G16 was not started, so neither deployed gate is claimed green. This e2e stop
+blocks a passing AC5/ready-PR claim without altering the completed same-cohort
+receipt or timing evidence.
 
 ## Local validation / preservation
 
@@ -142,6 +166,12 @@ is claimed green for this window.
   mutants.
 - `npm run build:g55:bundle` — passed with the new local-runtime/bundle
   mutation proof before deploy; the same gate passed on the uploaded bundle.
+- `node scripts/deploy/g55-read-visibility-resume.mjs --self-test` — passed,
+  including the below-safe-head forced-red completion mutant.
+- `npm run lint -- --quiet` — passed during W83.
+- `npm run e2e:g15 -- --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --report .artifacts/sdt-g55-w83-g15.json`
+  — attempted exactly once; blocked at frontend-root read timeout before any
+  G15 command. G16 intentionally was not started.
 
 No G54 known-divergence expectations, SDT-G56 work, SDT-G53 work, commit
 path, tag-state response, trace schema, safe-window constants, G41 fixture,

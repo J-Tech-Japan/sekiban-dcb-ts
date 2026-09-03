@@ -1,0 +1,28 @@
+{
+  "schema": "sdt-g55-deployed-gate-failure/v1",
+  "task": "SDT-G55",
+  "cohortRunId": "3fecda14-172b-41df-992c-0f04cd8ce281",
+  "recordedAtUtc": "2026-09-03T01:46:14Z",
+  "command": [
+    "env",
+    "-u",
+    "CLOUDFLARE_API_TOKEN",
+    "npm",
+    "run",
+    "e2e:g15",
+    "--",
+    "--base-url",
+    "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+    "--report",
+    ".artifacts/sdt-g55-w83-g15.json"
+  ],
+  "attempts": 1,
+  "result": {
+    "exitCode": 1,
+    "stage": "GET / frontend-root request",
+    "error": "socket.timeout: The read operation timed out",
+    "detail": "The Python harness timed out while reading the deployed frontend root before it could create a report or send its G15 command sequence."
+  },
+  "g16Started": false,
+  "followUp": "honest-stop; no retry, replacement AC5 cohort, or evidence stitch"
+}
