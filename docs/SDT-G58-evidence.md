@@ -739,3 +739,105 @@ and no additional application request was sent after this cohort failed.
 - No Tag outbox, Queue producer/consumer/configuration, global admission
   batch, SDT-G53 naming, SDT-G55 semantics, SafeWindow bounds, G44 test, or
   SDT-G56/G60 publication state was changed.
+
+## W103 safe/live starvation diagnosis — 2026-09-03 (red guard checkpoint)
+
+W103 is a read-only diagnosis continuation of the committed W102 receipt. No
+Wrangler operation, deployment, D1 mutation, application request, replacement
+cohort, PR, or worker completion was performed. The W102 receipt remains the
+only cohort evidence and is not stitched with any other window:
+`.artifacts/sdt-g58-w102-safe-proof-cohort.json` (run
+`acc68d23-6133-446d-9470-e54fb3c28284`). The derived guard receipt is
+`.artifacts/sdt-g58-w103-red-guard.json`.
+
+### Scheduled ticks, not HTTP samples
+
+The raw receipt has 91 HTTP health samples but only four distinct scheduled
+coverage `observedAt` values. The following table reports the first and last
+state in each coverage group; all heads and row counts are retained in the
+JSON guard receipt.
+
+| coverage observedAt (UTC) | HTTP samples | coverage | Room safe head / unsafe rows | Reservation safe head / unsafe rows | live Room head / lastPollAt | live Reservation head / lastPollAt |
+| --- | ---: | --- | --- | --- | --- | --- |
+| 1788428250004 / 09:37:30.004Z | 5 | SETTLED / null | old / 0 → old / 1 | old / 0 → old / 3 | old / 1788426228497 | old / 1788426228497 |
+| 1788428310641 / 09:38:30.641Z | 5 | SETTLED / null | row 2 / 1 → row 2 / 1 | row 2 / 4 → row 2 / 8 | old / 1788426228497 | old / 1788426228497 |
+| 1788428377716 / 09:39:37.716Z | 72 | BLOCK/UNSETTLED / `source_partition_set_changed_during_scan` | row 2 / 1 → row 3 / 0 | row 2 / 9 → row 3 / 6 | old / 1788426228497 | old / 1788426228497 |
+| 1788428437283 / 09:40:37.283Z | 9 | SETTLED / null | row 3 / 0 → row 10 / 0 | row 3 / 6 → row 3 / 6 | old / 1788426228497 | old / 1788426228497 |
+
+Thus the 72 repeated BLOCK reads are one scheduled decision, not 72 cron
+ticks. `safeWindowMs` stayed 20,000 ms; the largest raw estimate was 17,708
+ms and the maximum decayed value was 15,616 ms. The final global head and
+RoomProjector safe head are row 10
+(`063924025191103000001618685662`). ReservationProjector is row 3
+(`063924025106891000001134410415`) with six unsafe rows. Both reported live
+heads remain behind the cohort and their `lastPollAt` never advances from
+`1788426228497`.
+
+### Diagnosis
+
+The primary G58 AC5 cause is in the runtime scheduler. In
+`packages/dcb-runtime/src/cloudflare.ts`, `scheduled()` invokes the sample's
+`beforeLiveProjectionPoll` hook, then executes
+`if (scan.kind !== "FULL") return;`. Consequently, the BLOCK tick performs the
+fenced retained-frontier safe work but never calls `pollLiveProjections`; a
+long BLOCK group can therefore starve every live projector. The focused green
+repair seam is to run that poll after the retained-frontier pass on BLOCK while
+preserving the G44 no-gap fence and the last proven frontier.
+
+The MV divergence is per-view, not a global-head gap. The sample's
+`catchUpMeetingRoomMaterializedViews` and `drainMeetingRoomUnsafeKicks` each
+iterate materializers serially in RoomProjector → ReservationProjector order.
+Queue delivery invokes the two view branches independently/concurrently. In
+the receipt, Room has no remaining unsafe rows and can follow the settled
+frontier to row 10; Reservation retains six unsafe rows and its safe follow
+stops at row 3 at the first unsafe barrier. This proves the per-view starvation
+shape while remaining honest about the lower-level CAS/lease winner: the
+read-only health surface contains no exception field that would identify one.
+`MaterializedViewCatchUpRuntime`'s first-unsafe return is preserved, so no
+view can cross an unproven gap.
+
+Even if a poll runs for some tag states, `ProjectionRuntime.pollRegistered`
+walks every tag and registered projector serially, while the sample health
+surface aggregates each projector's head and `lastPollAt` by the minimum across
+its tag states. One stale state therefore keeps the reported live head/poll
+behind; the W102 values are consistent with that minimum and with the BLOCK
+early return. This is an aggregation/polling observability effect in addition
+to the proven scheduler starvation, not evidence that the global source head
+was unsafe.
+
+The 5,289 ms late unsafe observation remains a miss against the unchanged
+5,000 ms contract (eventual-only visibility, not a pass). W103 sends no new
+sample and does not reclassify it or assign the upstream outbox/Queue/global
+admission path to G58; that path remains held by SDT-G60.
+
+### Red-capable guard and validation
+
+`scripts/g58-safe-live-starvation-guard.mjs` parses the W102 receipt, derives
+the four coverage groups and all per-view progress/heads/poll times, and checks
+the source seams above. Its deterministic self-test proves red behavior for:
+
+- removing the runtime BLOCK early return (the BLOCK model must then call the
+  live poll);
+- removing serial per-materializer catch-up or the first-unsafe SafeWindow
+  barrier; and
+- reversing minimum-across-tags head aggregation.
+
+The normal guard intentionally records `status: "red-baseline"` because the
+current runtime still skips the live poll on BLOCK. The existing W96 red
+receipt, W97 same-tick green witness, G44 correctness test, SafeWindow
+20,000/120,000 ms bounds, and 5,000 ms unsafe constant remain untouched.
+
+Checks run:
+
+- `node scripts/g58-safe-live-starvation-guard.mjs --self-test` — passed;
+  runtime, serial-MV, first-unsafe, and minimum-aggregation mutants were
+  rejected.
+- `node scripts/g58-safe-live-starvation-guard.mjs` — passed as a recorded
+  red-baseline diagnosis (`.artifacts/sdt-g58-w103-red-guard.json`).
+- The new guard is wired into `npm run test:g58`; no product/runtime source,
+  Queue/outbox/global admission path, G44 test, or published bound changed.
+
+This checkpoint is **completed** for the in-scope G58 AC5 diagnosis and
+red-capable guard. A subsequent focused green-repair wake must address the
+BLOCK live-poll seam and then re-verify safe/live behavior; W103 does not apply
+that fix or recollect a cohort.
