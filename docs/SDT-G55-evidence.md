@@ -5,7 +5,7 @@ Product source commit: `be2f0ee1688e92208876f3d713f3d4563b2f00f4`
 Packaging-gate commit: `bb7afec95dbe2c3749f25216885a962bc6cfa20c`
 Fresh deployment: Cloudflare version `22b5ba16-b8aa-4927-a5f1-eeaa1769a48b`
 
-## Status: blocked after the W83 deployed G15 gate timeout
+## Status: blocked after the W84 deployed G16 connection reset
 
 The earlier version `a49d2a7e-0dd4-470d-b9ee-7854170075d9` is historical
 blocked evidence only: although it was annotated with `be2f0ee…`, it bundled
@@ -19,10 +19,14 @@ original final safe-head D1 query stopped on OAuth authentication code 10000.
 
 W83 resumed only that preserved cohort after a successful fresh OAuth identity
 check. Its resume reader sent zero app requests and made one remote D1 query,
-completing the required post-cohort receipt and third safe timing. The first
-required deployed G15 gate then timed out while reading the frontend root
-before sending any G15 command. This is an honest bounded-e2e stop: no G15
-retry, G16 run, replacement cohort, or evidence stitch was performed.
+completing the required post-cohort receipt and third safe timing. Its first
+G15 root-read timeout remains preserved as an honest stop.
+
+W84 used the single explicitly authorized transient-cold-start retry: one
+separately recorded `GET /` warm-up with a 30-second bound, followed by one
+unmodified G15 run. G15 passed. The then-required one unmodified G16 run hit a
+connection reset during its reservation-list poll. No retry, replacement G55
+cohort, deployment, or evidence stitch was performed.
 
 ## AC1 / AC2 implementation and red-to-green proof
 
@@ -136,7 +140,7 @@ empty string. The failure remains verbatim in the original raw artifact.
 
 After operator-refreshed OAuth, W83 first verified live identity with the
 pinned Wrangler: the latest 100%-traffic deployment-list record was version
-`22b5ba16-b8aa-4927-a5f1-eeaa1769a48b` remained annotated
+`22b5ba16-b8aa-4927-a5f1-eeaa1769a48b`, annotated
 `SDT-G55 bb7afec95dbe2c3749f25216885a962bc6cfa20c`. No redeploy occurred.
 At `2026-09-03T01:44:57.384Z`, the one authorized resume query recorded the
 before receipt preserved from the original cohort (133 receipts / 0 rows), the
@@ -147,13 +151,30 @@ SUID, completing its commit-to-observed-safe timing at 1,006,099 ms at
 the authoritative 38,356 ms and 268,852 ms timings; they were not recomputed
 from the later resume observation.
 
-The single deployed G15 invocation then failed before its command sequence:
+The original single deployed G15 invocation failed before its command sequence:
 the Python harness's `GET /` frontend-root read raised
 `socket.timeout: The read operation timed out` after 15 seconds. Its failure
-receipt is `.artifacts/sdt-g55-w83-g15-failure.json`. G15 was not retried and
-G16 was not started, so neither deployed gate is claimed green. This e2e stop
-blocks a passing AC5/ready-PR claim without altering the completed same-cohort
-receipt or timing evidence.
+receipt is `.artifacts/sdt-g55-w83-g15-failure.json` and remains part of the
+honest evidence.
+
+W84 made the one explicitly authorized bounded retry, not a loop. The separate
+warm-up `GET /` returned HTTP 200 in 130.870 ms under a 30-second bound and is
+recorded in `.artifacts/sdt-g55-w84-warmup.json`; it was not a G15 command.
+The next unmodified G15 harness passed and wrote
+`.artifacts/sdt-g55-w84-g15.json` (fresh run
+`117001331abf4a62b1839fa95a783a67`): raw V1 endpoints returned 404, valid
+create/reserve/cancel commands returned 200, invalid command input returned
+400, and the unchanged 120,000-ms safe-window oracle executed green.
+
+The required one unmodified G16 run then stopped after 79,252 ms while polling
+`GET /api/read/reservations?pageNumber=1&pageSize=20`, with
+`ConnectionResetError: [Errno 54] Connection reset by peer`. Its failure receipt
+is `.artifacts/sdt-g55-w84-g16-failure.json`; no G16 retry occurred. Thus G15
+is green but G16 is not claimed green, and the ready-PR claim remains blocked.
+
+The 1,006,099-ms third safe timing is retained as a measured residual for a
+separate safe-lane convergence unit. This unit does not tune lag estimates,
+the safe window, cron catch-up, or any other safe-convergence behavior.
 
 ## Local validation / preservation
 
@@ -172,6 +193,12 @@ receipt or timing evidence.
 - `npm run e2e:g15 -- --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --report .artifacts/sdt-g55-w83-g15.json`
   — attempted exactly once; blocked at frontend-root read timeout before any
   G15 command. G16 intentionally was not started.
+- W84 bounded warm-up `GET /` (30-second cap) — HTTP 200 in 130.870 ms; not a
+  G15 command.
+- W84 unmodified deployed G15 — passed once; receipt
+  `.artifacts/sdt-g55-w84-g15.json`.
+- W84 unmodified deployed G16 — attempted once; stopped after 79,252 ms on
+  peer connection reset in the reservation-list poll, with no retry.
 
 No G54 known-divergence expectations, SDT-G56 work, SDT-G53 work, commit
 path, tag-state response, trace schema, safe-window constants, G41 fixture,

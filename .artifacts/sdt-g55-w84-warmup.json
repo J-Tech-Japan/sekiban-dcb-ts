@@ -1,0 +1,22 @@
+{
+  "schema": "sdt-g55-warmup/v1",
+  "task": "SDT-G55",
+  "purpose": "one pre-G15 frontend warm-up; not a G15 command or G55 cohort request",
+  "command": [
+    "curl",
+    "--silent",
+    "--show-error",
+    "--max-time",
+    "30",
+    "--output",
+    "/dev/null",
+    "--write-out",
+    "warmup_http_status=%{http_code}\\nwarmup_time_total_s=%{time_total}\\n",
+    "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev/"
+  ],
+  "startedAtUtc": "2026-09-03T01:53:53Z",
+  "finishedAtUtc": "2026-09-03T01:53:53Z",
+  "httpStatus": 200,
+  "elapsedMs": 130.87,
+  "curlExitCode": 0
+}
