@@ -1,6 +1,7 @@
 # SDT-G53 conformance-auth resume — W90
 
-Status: completed pending PR publication.
+Status: completed. PR #111 is open and ready for review:
+https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/111
 
 Starting checkpoint: `dc4a270cae7ed2d36b00ae7e9f236ed8821b05fa` on
 `claude/sdt-g53-scope-identity-w87`.
@@ -27,3 +28,7 @@ Starting checkpoint: `dc4a270cae7ed2d36b00ae7e9f236ed8821b05fa` on
 No deployment, configuration change, token value, or token-file path is part
 of this artifact. The full command/timestamp ledger and preserved W89 G15/G16
 and downstream-lineage evidence are in `docs/SDT-G53-evidence.md`.
+
+The canonical issue-to-PR result summary found no evidence gaps and classified
+PR #111 as ready for review. The issue lifecycle completion follows this final
+artifact update.

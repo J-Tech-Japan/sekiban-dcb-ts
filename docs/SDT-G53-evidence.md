@@ -1,8 +1,9 @@
 # SDT-G53 deployment evidence
 
-Status: complete. W89 completed the downstream repair and deployed G15/G16
-receipts; W90 recorded the active secret-only version, persisted a fresh
-authenticated mismatch receipt, and ran the required post-secret G15 check.
+Status: complete and ready for review in PR #111. W89 completed the
+downstream repair and deployed G15/G16 receipts; W90 recorded the active
+secret-only version, persisted a fresh authenticated mismatch receipt, and ran
+the required post-secret G15 check.
 
 ## Deployed identity
 
