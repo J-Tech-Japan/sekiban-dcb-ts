@@ -519,9 +519,8 @@ use Wrangler, deploy, reset remote data, send an application request, rerun
 the W99 cohort, or change the G58 runtime. The committed W99 raw receipt and
 its red outcome remain the baseline evidence.
 
-The diagnosis/harness checkpoint is pushed at
-`1e71eadc57667a0027c99edce5b26122d0e1deb7` on
-`claude/sdt-g58-safe-lane-w93`.
+The diagnosis/harness checkpoint is pushed on
+`claude/sdt-g58-safe-lane-w93`; the canonical handoff records its exact head.
 
 ### Correlated W99 facts
 
