@@ -1441,3 +1441,105 @@ issue/PR workflow. G58 still does not claim unsafe 5000-ms proof (SDT-G60),
 projector-head convergence (SDT-G61), or any outbox/Queue/global-admission
 repair. SDT-G60 remains unpublished, SDT-G56 remains held, and no action was
 taken on G57/G59.
+
+## W120 final frontier-history classification — 2026-09-03
+
+W120 makes the missing coverage-frontier history part of G58 AC1 under
+`HOST-LOOP-WAKE-104`. The preserved W119 red receipt was demonstrated before
+the change: `.artifacts/sdt-g58-w119-safe-convergence-diagnosis-guard.json`
+returned `red-baseline`, with 3 BLOCK groups and 3 missing frontier values.
+The W120 red-before-green receipt is
+`.artifacts/sdt-g58-w120-frontier-history-red-before-green.json`.
+
+The additive migration
+`.artifacts/../migrations/d1/g32/0005_g58_safe_lane_history.sql` creates the
+append-only `serialized_dcb_safe_lane_history` table. Its stable tick identity
+is `scheduled:<observedAt>`, constrained by `(service_id, tick_id)` and
+`(service_id, observed_at)`. The health surface now exposes every recorded
+tick's `tickId`, `kind`, `reason`, `partitionTag`, `frontierSuid`, and
+`observedAt`, including an explicit null frontier when no proven frontier
+exists. It never substitutes an MV head. The W120 guard preserves red-before-
+green evidence and keeps missing-frontier and safe-head-over-frontier
+mutations red.
+
+The exact source deployed was commit
+`9637e1f6c4e2b4b4c604763239abc4d214249118` on
+`claude/sdt-g58-safe-lane-w93`, using the normal config whose SHA-256 is
+`f0c55e4676ad2f9f3adb2f2a7f42045f2827d4d99aff80a85cdaa955be54e345`.
+Wrangler `4.125.0` deployed exactly one 100% version
+`29fa773f-bceb-40f1-bd06-53f6b887f2da` at
+`2026-09-03T18:21:02.460Z`, with annotation
+`SDT-G58 W120 frontier history 9637e1f`. The sanitized identity receipt is
+`.artifacts/sdt-g58-w120-deploy-identity.json`; the additive D1 migration was
+applied once. The first `--yes` migration argument was rejected locally by
+Wrangler before contacting Cloudflare; the corrected prompt succeeded. There
+was no code-10000 or OAuth/authentication failure.
+
+The final fresh, non-stitched cohort receipt is
+`.artifacts/sdt-g58-w120-final-classification-cohort.json`; the guard receipt is
+`.artifacts/sdt-g58-w120-frontier-history-guard.json`. It contains 10 accepted
+reservations, paced `12561, 13466, 12620, 13750, 14155, 12260, 12159, 12568,
+12562, 12625 ms` (minimum `12159 ms`), and 34 health snapshots. The first
+reservation committed at `2026-09-03T18:22:03.271Z`; its 180-second deadline
+was `2026-09-03T18:25:03.271Z`. No second cohort ran.
+
+### WAKE-103 persisted classification
+
+| tick ID | observedAt UTC | kind | reason | partitionTag | proven frontier | Room MV safe head | Reservation MV safe head | head observations | per-projector attempt/outcome |
+|---|---|---|---|---|---|---|---|---:|---|
+| `scheduled:1788459748077` | `2026-09-03T18:22:28.077Z` | `BLOCK/UNSETTLED` | `source_partition_set_changed_during_scan` | `reservation:g58-reservation-9b8befe9-144-1` | `063924053488305000000669856102` | `063924053488305000000669856102` | `063924053488305000000669856102` | 19 | Room/Reservation attempted `1788459783423`, both `advanced` |
+| `scheduled:1788459809755` | `2026-09-03T18:23:29.755Z` | `BLOCK/UNSETTLED` | `source_partition_set_changed_during_scan` | `reservation:g58-reservation-9b8befe9-144-1` | `063924053488305000000669856102` | `063924053488305000000669856102` | `063924053488305000000669856102` | 8 | Room/Reservation attempted `1788459850262`, both `advanced` |
+
+The two persisted BLOCK frontiers stayed exactly equal. Both MV safe heads were
+exactly equal to that frontier on all recorded observations. This is Outcome A
+(`A_FRONTIER_STAYED_PUT`), not Outcome B; no frontier advance was inferred from
+an MV head. The latest deadline health snapshot retained the same BLOCK reason,
+frontier, and heads, with `decayedMs=0`, `safeWindowMs=20000`, and both live
+poll outcomes `advanced`. Actual live projector-head/tag-state convergence
+remains G61.
+
+### Complete final cohort table
+
+| # | reservation ID | commit UTC | SUID | spacing ms | unsafe-visible UTC | raw commit-to-unsafe ms | raw over/missing 5000 ms | commit-to-safe ms |
+|---:|---|---|---|---:|---|---:|---|---|
+| 1 | `g58-reservation-f0c9a000-593-1` | `18:22:03.271Z` | `063924056522344000001601439360` | 12561 | `18:22:09.107Z` | 5836 | over | censored |
+| 2 | `g58-reservation-f0c9a000-593-2` | `18:22:16.737Z` | `063924056536034000001117718433` | 13466 | `18:22:19.565Z` | 2828 | within | censored |
+| 3 | `g58-reservation-f0c9a000-593-3` | `18:22:29.357Z` | `063924056548419000001556449942` | 12620 | `18:22:35.283Z` | 5926 | over | censored |
+| 4 | `g58-reservation-f0c9a000-593-4` | `18:22:43.107Z` | `063924056562124000000664397736` | 13750 | `18:22:45.827Z` | 2720 | within | censored |
+| 5 | `g58-reservation-f0c9a000-593-5` | `18:22:57.262Z` | `063924056576285000001492127972` | 14155 | censored | — | missing | censored |
+| 6 | `g58-reservation-f0c9a000-593-6` | `18:23:09.522Z` | `063924056588671000001740209859` | 12260 | censored | — | missing | censored |
+| 7 | `g58-reservation-f0c9a000-593-7` | `18:23:21.681Z` | `063924056601018000001094214700` | 12159 | censored | — | missing | censored |
+| 8 | `g58-reservation-f0c9a000-593-8` | `18:23:34.249Z` | `063924056613208000000677996215` | 12568 | censored | — | missing | censored |
+| 9 | `g58-reservation-f0c9a000-593-9` | `18:23:46.811Z` | `063924056625856000000049826690` | 12562 | censored | — | missing | censored |
+| 10 | `g58-reservation-f0c9a000-593-10` | `18:23:59.436Z` | `063924056638460000000983947577` | 12625 | censored | — | missing | censored |
+
+The W120 cohort itself had safe `n=0`, p50 `N/A`, and p95 `N/A` because its
+first sample missed the unchanged 180,000 ms line. Unsafe evidence is not a
+G58 gate: actual observed unsafe values were `2720, 2828, 5836, 5926 ms`,
+observed-only p50 `2828 ms`, observed-only p95 `5926 ms`, and six were
+censored. The honest unchanged-bound count is `8/10` over or missing 5000 ms.
+The preserved non-starved safe samples remain W118 AC6 `95,629 ms` and W95
+`42,492 ms`, both under 180 seconds; unsafe attribution belongs to G60.
+
+### W120 gates and disposition
+
+The history-enabled source passed `npm run test:g15` (9 tests), `test:g16`
+(6), `test:g41` (8), `test:g44` (8), `test:g49`, `test:g51`, `test:g52` (18),
+`test:g53` (10), `test:g54` (18), `test:g55` (12), `test:g58` (14 plus all
+preserved/red-capable guards), `npm run typecheck`, and `npm run lint` with
+zero warnings. The existing G44 production mutation set remained red. G41
+printed local Workerd teardown noise after its passing test but exited green.
+The G58 run's older W97/W98 timestamp/output drift was restored exactly and is
+not part of this checkpoint.
+
+Under WAKE-104 Outcome A, G58 is finalized with the starvation attribution:
+continuous paced writes kept the source partition universe changing, so the
+G44 completeness scan recorded BLOCK and the retained proven frontier stayed
+put; the safe lane caught up only to that proven frontier. No fence, SafeWindow
+bound, 5,000 ms constant, outbox, Queue, or global-D1 admission path changed.
+The expected W120 report is
+`.g58-w93/sdt-g58-frontier-history-classification-w120.md`.
+
+G60/#113 and G61/#114 remain queued and undispatched; G56 remains held. The
+branch/PR head and canonical issue-to-PR worker transition are recorded in the
+W120 report after PR creation.

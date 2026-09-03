@@ -1,0 +1,63 @@
+{
+  "schema": "sdt-g58-w120-frontier-history-guard/v1",
+  "task": "SDT-G58-FRONTIER-HISTORY-CLASSIFICATION-W120",
+  "status": "pass",
+  "sourceReceipt": ".artifacts/sdt-g58-w120-final-classification-cohort.json",
+  "preservedW119RedEvidence": {
+    "path": ".artifacts/sdt-g58-w119-safe-convergence-diagnosis-guard.json",
+    "status": "red-baseline",
+    "blockTicks": 3,
+    "missingFrontierGroups": 3,
+    "currentPathFails": true
+  },
+  "redCapableMutations": {
+    "outcomeA": true,
+    "outcomeB": true,
+    "missingFrontierRed": true,
+    "fenceMutationRed": true
+  },
+  "classification": {
+    "outcome": "A_FRONTIER_STAYED_PUT",
+    "basis": "the persisted proven frontier value stayed unchanged across every BLOCK/UNSETTLED tick",
+    "blockTickIds": [
+      "scheduled:1788459748077",
+      "scheduled:1788459809755"
+    ],
+    "rows": [
+      {
+        "tickId": "scheduled:1788459748077",
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-9b8befe9-144-1",
+        "frontierSuid": "063924053488305000000669856102",
+        "observedAt": 1788459748077,
+        "roomSafeHead": "063924053488305000000669856102",
+        "reservationSafeHead": "063924053488305000000669856102"
+      },
+      {
+        "tickId": "scheduled:1788459809755",
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-9b8befe9-144-1",
+        "frontierSuid": "063924053488305000000669856102",
+        "observedAt": 1788459809755,
+        "roomSafeHead": "063924053488305000000669856102",
+        "reservationSafeHead": "063924053488305000000669856102"
+      }
+    ]
+  },
+  "classificationError": null,
+  "rawCohortStatus": "failed",
+  "bounds": {
+    "pacedMinimumMs": 10000,
+    "safeAcceptanceMs": 180000,
+    "safeWindowFloorMs": 20000,
+    "safeWindowCeilingMs": 120000,
+    "unsafeBoundMs": 5000
+  },
+  "invariants": {
+    "g44FencePreserved": true,
+    "outboxQueueGlobalAdmissionTouched": false,
+    "projectorHeadConvergenceOwnedBy": "SDT-G61"
+  }
+}
