@@ -45,6 +45,8 @@ function snapshot() {
     runtime: read("packages/dcb-runtime/src/index.ts"),
     cloudflare: read("packages/dcb-runtime/src/cloudflare.ts"),
     test: read("test/g53-scope-identity.spec.ts"),
+    downstreamTest: read("test/g44-global-completeness.spec.ts"),
+    downstreamMutation: read("scripts/g53-downstream-scope-mutation-runner.mjs"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
   };
@@ -96,6 +98,11 @@ export function assertG53ScopeIdentityContract(value) {
   requireContains(value.test, "returns scope.identity_missing without deriving a control-route identity", "missing-identity fixture");
   requireContains(value.test, "uses the same .test and G11 request behaviour", "provider equivalence fixture");
   requireContains(value.test, "rejects every invalid scope part", "grammar negative fixture");
+  requireContains(value.downstreamTest, "a canonical scoped source drains through the Queue adapter into global D1 before acknowledgement", "downstream scoped D1 fixture");
+  requireContains(value.downstreamTest, "processDownstreamDelivery", "downstream Queue adapter fixture");
+  requireContains(value.downstreamTest, "tagScopeName", "downstream scoped source fixture");
+  requireContains(value.downstreamMutation, "outbox-drain-retired-service-pipe-tag-name", "downstream old-name mutation");
+  requireContains(value.downstreamMutation, "G53 scoped Queue-to-D1 oracle", "downstream mutation oracle");
   requireContains(value.packageJson, '"test:g53"', "G53 package lane");
   requireContains(value.ci, "Run SDT-G53 scoped Durable Object identity lane", "G53 CI lane");
   requireContains(value.ci, "SDT_G53_FORCE_FAILURE", "G53 CI forced-red reachability");
@@ -125,6 +132,12 @@ function main() {
     expectRed(value, (candidate) => {
       candidate.scope = candidate.scope.replace("namespace.idFromName(buildScopeName(scope))", "namespace.idFromName(scope.identity)");
     }, "canonical grammar bypassed");
+    expectRed(value, (candidate) => {
+      candidate.downstreamTest = candidate.downstreamTest.replace(
+        "a canonical scoped source drains through the Queue adapter into global D1 before acknowledgement",
+        "downstream scoped fixture removed",
+      );
+    }, "Queue receiver adapter fixture removed");
     process.stdout.write(`${JSON.stringify({ selfTest: "g53-scope-identity-contract-mutations-red" })}\n`);
   }
   process.stdout.write(`${JSON.stringify({ result: "g53-scope-identity-contract-passed" })}\n`);
