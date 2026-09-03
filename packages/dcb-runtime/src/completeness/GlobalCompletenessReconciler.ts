@@ -16,6 +16,12 @@ type D1Row = Record<string, unknown>;
 
 const PAGE_SIZE = 64;
 
+interface SettledCursor {
+  readonly schema: "sdt-g58-settled-frontier/v1";
+  readonly snapshots: readonly SourcePartitionSnapshot[];
+  readonly frontierSuid: string | null;
+}
+
 function asString(value: unknown, name: string): string {
   if (typeof value !== "string" || value.length === 0) throw new Error(`G44 ${name} must be a non-empty string`);
   return value;
@@ -29,6 +35,26 @@ function asNumber(value: unknown, name: string): number {
 
 function errorText(error: unknown): string {
   return error instanceof Error && error.message.length > 0 ? error.message : String(error);
+}
+
+/**
+ * G44 originally stored only the scanner's vector snapshot in cursor_json.
+ * G58 deliberately keeps that historical shape readable while adding the
+ * exact high-water SUID that the FULL snapshot proved.  A malformed or
+ * pre-G58 cursor never grants a frontier.
+ */
+function settledFrontierFromCursor(cursorJson: string | null): string | null {
+  if (cursorJson === null) return null;
+  try {
+    const parsed: unknown = JSON.parse(cursorJson);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    const cursor = parsed as Partial<SettledCursor>;
+    return typeof cursor.frontierSuid === "string" && cursor.frontierSuid.length > 0
+      ? cursor.frontierSuid
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function findingIdentity(serviceId: string, tag: string, obligation: SourceObligationFact): string {
@@ -227,7 +253,11 @@ export class GlobalCompletenessReconciler {
       // partition is different: it changes the very universe this pass says
       // it covered, so this pass must remain UNKNOWN rather than claim FULL.
       this.assertSnapshotUniverseUnchanged(snapshots, await this.snapshotPartitions(serviceId));
-      const cursor = JSON.stringify(snapshots);
+      const cursor: SettledCursor = {
+        schema: "sdt-g58-settled-frontier/v1",
+        snapshots,
+        frontierSuid: await this.settledFrontierAtSnapshot(serviceId, snapshots),
+      };
       if (findings > 0) {
         // An unresolved source obligation is deliberately not a completed
         // frontier. Retaining a vector cursor here would let a later reader
@@ -235,7 +265,7 @@ export class GlobalCompletenessReconciler {
         await this.writeHealth(serviceId, "BLOCK", null, null, "source present/global receipt absent", nowMs);
         return { kind: "BLOCK", partitions: snapshots, findingCount: findings };
       }
-      await this.writeHealth(serviceId, "HEALTHY", cursor, nowMs, null, nowMs);
+      await this.writeHealth(serviceId, "HEALTHY", JSON.stringify(cursor), nowMs, null, nowMs);
       return { kind: "FULL", partitions: snapshots, scannedObligations: scanned };
     } catch (error) {
       const message = errorText(error);
@@ -303,6 +333,7 @@ export class GlobalCompletenessReconciler {
         scannerVersion: this.scannerVersion,
         status: "UNKNOWN",
         cursorJson: null,
+        lastSettledFrontierSuid: null,
         lastFullScanAt: null,
         lastError: "scanner_has_never_run",
         updatedAt: nowMs,
@@ -316,7 +347,10 @@ export class GlobalCompletenessReconciler {
         serviceId,
         scannerVersion: asString(row.scanner_version, "scanner_health.scanner_version"),
         status: "STALE",
-        cursorJson: null,
+        cursorJson: row.cursor_json === null ? null : asString(row.cursor_json, "scanner_health.cursor_json"),
+        lastSettledFrontierSuid: settledFrontierFromCursor(
+          row.cursor_json === null ? null : asString(row.cursor_json, "scanner_health.cursor_json"),
+        ),
         lastFullScanAt,
         lastError: "scanner_full_scan_stale",
         updatedAt: nowMs,
@@ -330,6 +364,9 @@ export class GlobalCompletenessReconciler {
       scannerVersion: asString(row.scanner_version, "scanner_health.scanner_version"),
       status,
       cursorJson: row.cursor_json === null ? null : asString(row.cursor_json, "scanner_health.cursor_json"),
+      lastSettledFrontierSuid: settledFrontierFromCursor(
+        row.cursor_json === null ? null : asString(row.cursor_json, "scanner_health.cursor_json"),
+      ),
       lastFullScanAt,
       lastError: row.last_error === null ? null : asString(row.last_error, "scanner_health.last_error"),
       updatedAt: asNumber(row.updated_at, "scanner_health.updated_at"),
@@ -342,9 +379,24 @@ export class GlobalCompletenessReconciler {
    */
   async coverage(serviceId: string, nowMs: number): Promise<GlobalCompletenessCoverage> {
     const health = await this.readHealth(serviceId, nowMs);
-    return health.status === "HEALTHY"
-      ? { kind: "SETTLED", health }
-      : { kind: "BLOCK/UNSETTLED", health };
+    if (health.status === "HEALTHY") {
+      return {
+        kind: "SETTLED",
+        health,
+        frontierSuid: health.lastSettledFrontierSuid,
+        reason: null,
+        partitionTag: null,
+        observedAt: health.updatedAt,
+      };
+    }
+    return {
+      kind: "BLOCK/UNSETTLED",
+      health,
+      frontierSuid: health.lastSettledFrontierSuid,
+      reason: health.lastError ?? `scanner_${health.status.toLowerCase()}`,
+      partitionTag: await this.latestFindingPartitionTag(serviceId),
+      observedAt: health.updatedAt,
+    };
   }
 
   /**
@@ -429,6 +481,49 @@ export class GlobalCompletenessReconciler {
     }
   }
 
+  /**
+   * The frontier is derived only from receipts inside the immutable source
+   * snapshot that just passed every G44 join.  It is not the mutable global
+   * table head: a delivery arriving after the snapshot is deliberately left
+   * for a later FULL scan.
+   */
+  private async settledFrontierAtSnapshot(
+    serviceId: string,
+    snapshots: readonly SourcePartitionSnapshot[],
+  ): Promise<string | null> {
+    let frontier: string | null = null;
+    for (const snapshot of snapshots) {
+      const row = await this.database.prepare(
+        `SELECT MAX(event."SortableUniqueId" COLLATE BINARY) AS frontier_suid
+           FROM serialized_dcb_global_receipts receipt
+           JOIN dcb_events event
+             ON event."ServiceId" = receipt.service_id
+            AND event."Id" = receipt.event_id
+          WHERE receipt.service_id = ?
+            AND receipt.partition_tag = ?
+            AND receipt.obligation_sequence <= ?`,
+      ).bind(serviceId, snapshot.tag, snapshot.upperBoundSequence).first<D1Row>();
+      const candidate = row?.frontier_suid;
+      if (typeof candidate === "string" && candidate.length > 0 && (frontier === null || candidate > frontier)) {
+        frontier = candidate;
+      }
+    }
+    return frontier;
+  }
+
+  private async latestFindingPartitionTag(serviceId: string): Promise<string | null> {
+    const row = await this.database.prepare(
+      `SELECT partition_tag
+         FROM serialized_dcb_completeness_findings
+        WHERE service_id = ? AND partition_tag IS NOT NULL
+        ORDER BY last_observed_at DESC, partition_tag COLLATE BINARY ASC
+        LIMIT 1`,
+    ).bind(serviceId).first<D1Row>();
+    return row === null || row === undefined || row.partition_tag === null
+      ? null
+      : asString(row.partition_tag, "scanner_health.partition_tag");
+  }
+
   private async appendObligationFinding(serviceId: string, tag: string, obligation: SourceObligationFact, nowMs: number): Promise<void> {
     const incidentType = obligation.status === "poison"
       ? "GLOBAL_ARRAY_POISON_OBLIGATION"
@@ -480,8 +575,8 @@ export class GlobalCompletenessReconciler {
        ON CONFLICT (service_id) DO UPDATE SET
          scanner_version = excluded.scanner_version,
          status = excluded.status,
-         cursor_json = excluded.cursor_json,
-         last_full_scan_at = excluded.last_full_scan_at,
+         cursor_json = COALESCE(excluded.cursor_json, serialized_dcb_completeness_scanner_health.cursor_json),
+         last_full_scan_at = COALESCE(excluded.last_full_scan_at, serialized_dcb_completeness_scanner_health.last_full_scan_at),
          last_error = excluded.last_error,
          updated_at = excluded.updated_at`,
     ).bind(serviceId, this.scannerVersion, status, cursor, lastFullScanAt, error, nowMs).run();

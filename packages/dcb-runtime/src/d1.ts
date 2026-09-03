@@ -10,6 +10,13 @@ export {
   type D1StoreOptions,
   type D1WriteOperation,
 } from "./store/D1EventStore";
+// The D1/Cloudflare sample health surface needs the published SafeWindow
+// calculations without importing the default runtime entrypoint (which owns
+// the Postgres graph).
+export {
+  safeWindowCeilingExceeded,
+  safeWindowMs,
+} from "./safeWindow";
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,

@@ -1,7 +1,10 @@
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { envServiceIdentity, requireServiceIdentity } from "@sekiban/dcb-runtime/cloudflare";
 import {
+  D1EventStore,
   createD1StoreProvider,
+  safeWindowCeilingExceeded,
+  safeWindowMs,
 } from "@sekiban/dcb-runtime/d1";
 import {
   D1MaterializedViewStore,
@@ -9,11 +12,64 @@ import {
 } from "@sekiban/dcb-runtime/d1-mv";
 import type { DeliveryViewFailureClass, DeliveryViewHandler } from "@sekiban/dcb-runtime/d1-mv";
 import type { StoredEvent } from "@sekiban/dcb-runtime/d1-mv";
+
 interface MeetingRoomD1Env {
   readonly D1?: D1Database;
   readonly D1_MV?: D1Database;
   readonly SDT_SERVICE_ID?: string;
   readonly G26_VIEW_COUNT?: string;
+}
+
+/** The persisted result of the most recent scheduled G44 coverage decision. */
+export interface MeetingRoomSafeLaneCoverage {
+  readonly kind: "SETTLED" | "BLOCK/UNSETTLED";
+  readonly reason: string | null;
+  readonly partitionTag: string | null;
+  /** Null means this service has not yet completed a FULL scanner snapshot. */
+  readonly frontierSuid: string | null;
+  readonly observedAt: number;
+}
+
+export interface MeetingRoomReadHealth {
+  readonly serviceId: string;
+  readonly materializedViews: readonly Readonly<{
+    viewId: string;
+    generation: number | null;
+    safeHead: string;
+    safeHeadAgeMs: number | null;
+    unsafeRows: number;
+    unsafeReceipts: number;
+  }>[];
+  readonly coverage: Readonly<{
+    kind: "SETTLED" | "BLOCK/UNSETTLED";
+    reason: string | null;
+    partitionTag: string | null;
+    observedAt: number | null;
+  }>;
+  readonly lag: Readonly<{
+    estimateMs: number | null;
+    observedAt: number | null;
+    decayedMs: number;
+    safeWindowMs: number;
+    ceilingExceeded: boolean;
+  }>;
+  readonly liveProjections: readonly Readonly<{
+    projectorId: string;
+    head: string;
+    headAgeMs: number | null;
+    lastPollAt: number | null;
+  }>[];
+  readonly globalHead: string;
+}
+
+function asCount(value: unknown, name: string): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`Meeting-room ${name} was not a non-negative integer`);
+  return parsed;
+}
+
+function nonNegativeAge(nowMs: number, updatedAt: number): number {
+  return Math.max(0, nowMs - updatedAt);
 }
 
 function requiredServiceId(env: MeetingRoomD1Env): string {
@@ -217,18 +273,172 @@ async function ensureSafeInstances(
 }
 
 /**
+ * Persist the coverage decision made at the start of a cron tick.  Request
+ * reads intentionally do not infer this from current scanner rows: operators
+ * need to know which gate actually governed the scheduled safe-lane work.
+ */
+export async function recordMeetingRoomSafeLaneCoverage(
+  env: MeetingRoomD1Env,
+  serviceId: string,
+  coverage: MeetingRoomSafeLaneCoverage,
+): Promise<void> {
+  if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  await env.D1.prepare(
+    `INSERT INTO serialized_dcb_safe_lane_health
+       (service_id, coverage_kind, coverage_reason, coverage_partition_tag, settled_frontier_suid, observed_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (service_id) DO UPDATE SET
+       coverage_kind = excluded.coverage_kind,
+       coverage_reason = excluded.coverage_reason,
+       coverage_partition_tag = excluded.coverage_partition_tag,
+       settled_frontier_suid = excluded.settled_frontier_suid,
+       observed_at = excluded.observed_at`,
+  ).bind(
+    serviceId,
+    coverage.kind,
+    coverage.reason,
+    coverage.partitionTag,
+    coverage.frontierSuid ?? "",
+    coverage.observedAt,
+  ).run();
+}
+
+/**
+ * Read the authenticated operator health snapshot. Every value comes from an
+ * existing operational table used by the safe or live-projection runtime; no
+ * V1 query path is selected and this function never advances state.
+ */
+export async function readMeetingRoomHealth(
+  env: MeetingRoomD1Env,
+  serviceId = requiredServiceId(env),
+  nowMs = Date.now(),
+): Promise<MeetingRoomReadHealth> {
+  if (env.D1 === undefined || env.D1_MV === undefined) {
+    throw new Error("Cloudflare-only composition requires D1 and D1_MV bindings");
+  }
+  const { views } = await openMaterializedViews(env);
+  const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
+  const materializedViews = await Promise.all(configured.map(async (materializer) => {
+    const active = await views.readActive(serviceId, materializer.id);
+    if (active === undefined) {
+      return {
+        viewId: materializer.id,
+        generation: null,
+        safeHead: "",
+        safeHeadAgeMs: null,
+        unsafeRows: 0,
+        unsafeReceipts: 0,
+      };
+    }
+    const counts = await env.D1_MV!.prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM mv_unsafe_rows
+           WHERE service_id = ? AND view_id = ? AND generation = ?) AS unsafe_rows,
+         (SELECT COUNT(*) FROM mv_unsafe_receipts
+           WHERE service_id = ? AND view_id = ?) AS unsafe_receipts`,
+    ).bind(serviceId, materializer.id, active.generation, serviceId, materializer.id).first<Record<string, unknown>>();
+    if (counts === null || counts === undefined) throw new Error("Materialized-view health count query returned no row");
+    return {
+      viewId: materializer.id,
+      generation: active.generation,
+      safeHead: active.lastSuid,
+      safeHeadAgeMs: nonNegativeAge(nowMs, active.updatedAt),
+      unsafeRows: asCount(counts.unsafe_rows, "unsafe_rows"),
+      unsafeReceipts: asCount(counts.unsafe_receipts, "unsafe_receipts"),
+    };
+  }));
+
+  const source = new D1EventStore(env.D1);
+  await source.initialize();
+  const lag = await source.lagBoundDiagnostics(serviceId, nowMs);
+  const [coverageRow, globalHeadRow, projectionRows] = await Promise.all([
+    env.D1.prepare(
+      `SELECT coverage_kind, coverage_reason, coverage_partition_tag, observed_at
+         FROM serialized_dcb_safe_lane_health
+        WHERE service_id = ?`,
+    ).bind(serviceId).first<Record<string, unknown>>(),
+    env.D1.prepare(
+      `SELECT COALESCE(MAX("SortableUniqueId" COLLATE BINARY), '') AS global_head
+         FROM dcb_events
+        WHERE "ServiceId" = ?`,
+    ).bind(serviceId).first<Record<string, unknown>>(),
+    env.D1.prepare(
+      `SELECT projection_id, last_suid, updated_at
+         FROM serialized_dcb_projection_checkpoints
+        WHERE service_id = ?
+        ORDER BY projection_id COLLATE BINARY ASC`,
+    ).bind(serviceId).all<Record<string, unknown>>(),
+  ]);
+  const globalHead = globalHeadRow === null || globalHeadRow === undefined || typeof globalHeadRow.global_head !== "string"
+    ? ""
+    : globalHeadRow.global_head;
+  const checkpoints = projectionRows.results.map((row) => ({
+    projectionId: typeof row.projection_id === "string" ? row.projection_id : "",
+    head: typeof row.last_suid === "string" ? row.last_suid : "",
+    updatedAt: asCount(row.updated_at, "projection.updated_at"),
+  })).filter((row) => row.projectionId.length > 0);
+  const liveProjections = materializers().map((projector) => {
+    const states = checkpoints.filter((checkpoint) => checkpoint.projectionId.endsWith(`:${projector.id}`));
+    const head = states.reduce((minimum, checkpoint) => minimum === "" || checkpoint.head < minimum ? checkpoint.head : minimum, "");
+    const lastPollAt = states.length === 0 ? null : Math.min(...states.map((state) => state.updatedAt));
+    return {
+      projectorId: projector.id,
+      head,
+      headAgeMs: lastPollAt === null ? null : nonNegativeAge(nowMs, lastPollAt),
+      lastPollAt,
+    };
+  });
+
+  const coverage = coverageRow === null || coverageRow === undefined
+    ? {
+      kind: "BLOCK/UNSETTLED" as const,
+      reason: "scheduled_maintenance_has_not_run",
+      partitionTag: null,
+      observedAt: null,
+    }
+    : {
+      kind: coverageRow.coverage_kind === "SETTLED" ? "SETTLED" as const : "BLOCK/UNSETTLED" as const,
+      reason: coverageRow.coverage_reason === null || coverageRow.coverage_reason === undefined
+        ? null
+        : String(coverageRow.coverage_reason),
+      partitionTag: coverageRow.coverage_partition_tag === null || coverageRow.coverage_partition_tag === undefined
+        ? null
+        : String(coverageRow.coverage_partition_tag),
+      observedAt: asCount(coverageRow.observed_at, "coverage.observed_at"),
+    };
+  return {
+    serviceId,
+    materializedViews,
+    coverage,
+    lag: {
+      estimateMs: lag.rawEstimateMs,
+      observedAt: lag.rawObservedAt,
+      decayedMs: lag.dynamicLagBoundMs,
+      safeWindowMs: safeWindowMs(lag.dynamicLagBoundMs),
+      ceilingExceeded: safeWindowCeilingExceeded(lag.dynamicLagBoundMs),
+    },
+    liveProjections,
+    globalHead,
+  };
+}
+
+/**
  * Catch up both materialized views from the D1 PipelineStore. The source and
  * MV databases are intentionally separate bindings, while every source read
  * remains behind the existing SafeWindow/checkpoint rules.
  */
-export async function catchUpMeetingRoomMaterializedViews(env: MeetingRoomD1Env, serviceId = requiredServiceId(env)): Promise<void> {
+export async function catchUpMeetingRoomMaterializedViews(
+  env: MeetingRoomD1Env,
+  serviceId = requiredServiceId(env),
+  frontierSuid: string | null | undefined = undefined,
+): Promise<void> {
   const { runtime, views } = await openMaterializedViews(env);
   for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const active = await views.readActive(serviceId, materializer.id);
     if (active === undefined) {
-      await runtime.build(serviceId, materializer, Date.now());
+      await runtime.build(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
     } else {
-      await runtime.follow(serviceId, materializer, Date.now());
+      await runtime.follow(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
     }
   }
 }
@@ -355,7 +565,11 @@ export async function applyMeetingRoomUnsafeArrival(
 }
 
 /** Coalesced safe drain. A held lease is ordinary coalescing, not a Queue success/failure decision. */
-export async function drainMeetingRoomUnsafeKicks(env: MeetingRoomD1Env, nowMs = Date.now()): Promise<void> {
+export async function drainMeetingRoomUnsafeKicks(
+  env: MeetingRoomD1Env,
+  nowMs = Date.now(),
+  frontierSuid: string | null | undefined = undefined,
+): Promise<void> {
   const serviceId = requiredServiceId(env);
   const { runtime, views } = await openMaterializedViews(env);
   for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
@@ -370,7 +584,7 @@ export async function drainMeetingRoomUnsafeKicks(env: MeetingRoomD1Env, nowMs =
     if (lease === undefined) continue;
     // If this fails, retain the lease until expiry rather than marking work
     // clean. Cron still runs the normal safe catch-up as the recovery net.
-    await runtime.follow(serviceId, materializer, nowMs);
+    await runtime.follow(serviceId, materializer, nowMs, {}, { maximumSuid: frontierSuid });
     await unsafe.finishKick(serviceId, materializer.id, owner);
   }
 }

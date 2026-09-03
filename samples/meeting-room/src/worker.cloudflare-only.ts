@@ -18,11 +18,19 @@ import {
   TagDurableObject,
   TagStateDurableObject,
   type G42JournalProbeRequest,
+  type GlobalCompletenessCoverage,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
 import { executeMeetingRoomCommand } from "./transport";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
-import { catchUpMeetingRoomMaterializedViews, drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
+import {
+  catchUpMeetingRoomMaterializedViews,
+  drainMeetingRoomUnsafeKicks,
+  meetingRoomDeliveryViews,
+  readMeetingRoomHealth,
+  recordMeetingRoomSafeLaneCoverage,
+  type MeetingRoomSafeLaneCoverage,
+} from "./d1-mv";
 import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
@@ -54,21 +62,44 @@ const G51_PROBE_ATTRIBUTE = "sdt.g51.probe";
  * starve the receipt-GC path that proves a stored target through safe head.
  */
 export async function runMeetingRoomScheduledMaintenance(input: {
-  readonly catchUp: () => Promise<void>;
-  readonly drainUnsafeKicks: () => Promise<void>;
+  readonly catchUp: (frontierSuid?: string | null) => Promise<void>;
+  readonly drainUnsafeKicks: (frontierSuid?: string | null) => Promise<void>;
   readonly runGenericScheduledWork: () => Promise<void>;
   /**
    * G44's one interim coverage decision.  It is intentionally an internal
    * gate rather than a new public query-response policy.
    */
-  readonly globalCoverage?: () => Promise<"SETTLED" | "BLOCK/UNSETTLED">;
+  readonly globalCoverage?: () => Promise<"SETTLED" | "BLOCK/UNSETTLED" | GlobalCompletenessCoverage>;
+  /** Records the decision that governed this scheduled safe-lane pass. */
+  readonly recordCoverage?: (coverage: MeetingRoomSafeLaneCoverage) => Promise<void>;
 }): Promise<void> {
-  if (input.globalCoverage !== undefined && await input.globalCoverage() !== "SETTLED") {
-    // Keep generic scheduled work alive: it owns the independent source scan
-    // and can establish a new FULL frontier. Its own live-poll path is gated
-    // by that scan, while this materialized catch-up remains blocked here.
-    await input.runGenericScheduledWork();
-    return;
+  if (input.globalCoverage !== undefined) {
+    const coverage = await input.globalCoverage();
+    if (typeof coverage === "string") {
+      // Compatibility for the original unit-only seam: a bare BLOCK decision
+      // carries no durable FULL frontier, so it cannot safely advance any
+      // source checkpoint. Deployed maintenance always supplies the richer
+      // reconciler result below.
+      if (coverage !== "SETTLED") {
+        await input.runGenericScheduledWork();
+        return;
+      }
+    } else {
+      await input.recordCoverage?.({
+        kind: coverage.kind,
+        reason: coverage.reason,
+        partitionTag: coverage.partitionTag,
+        frontierSuid: coverage.frontierSuid,
+        observedAt: coverage.observedAt,
+      });
+      // A BLOCK tick still drains work that a prior FULL scan proved
+      // contiguous. `null` permits no source advancement; it is not an
+      // unrestricted empty frontier.
+      await input.catchUp(coverage.frontierSuid);
+      await input.drainUnsafeKicks(coverage.frontierSuid);
+      await input.runGenericScheduledWork();
+      return;
+    }
   }
   await input.catchUp();
   await input.drainUnsafeKicks();
@@ -314,6 +345,28 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     const mismatchedServiceId = configured === "g53-mismatch" ? "g53-other" : "g53-mismatch";
     return runtimeFetch(new Request(`https://runtime.internal/bootstrap/${encodeURIComponent(mismatchedServiceId)}/state`), env, ctx);
   }
+  if (url.pathname === "/conformance/v1/read-health") {
+    if (request.method !== "GET") {
+      return json({ error: "Read health requires GET", code: "validation_error" }, 405);
+    }
+    const configured = optionalServiceIdentity(env);
+    if (configured === null) {
+      return json({ error: "Read health bindings are unavailable", code: "projection_unavailable" }, 503);
+    }
+    try {
+      return json(await readMeetingRoomHealth(env, configured));
+    } catch {
+      return json({ error: "Read health storage is unavailable", code: "projection_unavailable" }, 503);
+    }
+  }
+  if (url.pathname === "/conformance/v1/internal/projection/lag") {
+    // Keep the existing internal projection-lag semantics and storage
+    // authority, but make the deployed proof bearer-gated like the G58
+    // health surface. This does not create a public query policy.
+    const target = new URL("https://runtime.internal/internal/projection/lag");
+    target.search = url.search;
+    return runtimeFetch(new Request(target.toString(), request), env, ctx);
+  }
   if (url.pathname === "/conformance/v1/g26-config") {
     const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
     return json({
@@ -526,8 +579,8 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   async scheduled(controller, env, ctx) {
     await assertFinalCutoverFenceIfConfigured(env);
     await runMeetingRoomScheduledMaintenance({
-      catchUp: () => catchUpMeetingRoomMaterializedViews(env),
-      drainUnsafeKicks: () => drainMeetingRoomUnsafeKicks(env),
+      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, undefined, frontierSuid),
+      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
       // A D1-only receiver fixture has no Tag source authority to scan. The
       // deployed primary always binds both authorities; do not manufacture a
       // mixed-version feature switch just to alter that invariant in tests.
@@ -537,8 +590,12 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
           const configured = optionalServiceIdentity(env);
           return configured === null
             ? "BLOCK/UNSETTLED"
-            : (await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(configured, Date.now())).kind;
+            : new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(configured, Date.now());
         },
+      recordCoverage: async (coverage) => {
+        const configured = optionalServiceIdentity(env);
+        if (configured !== null) await recordMeetingRoomSafeLaneCoverage(env, configured, coverage);
+      },
       runGenericScheduledWork: async () => { await runtime.scheduled?.(controller, env, ctx); },
     });
   },

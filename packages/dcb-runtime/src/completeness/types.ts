@@ -11,6 +11,12 @@ export interface GlobalCompletenessHealthRecord {
   readonly scannerVersion: string;
   readonly status: GlobalCompletenessHealth;
   readonly cursorJson: string | null;
+  /**
+   * The high-water SUID from the most recent FULL source snapshot. It is
+   * deliberately retained while a later scan is BLOCK/UNSETTLED so a safe
+   * consumer can continue only through already-proven contiguous work.
+   */
+  readonly lastSettledFrontierSuid: string | null;
   readonly lastFullScanAt: number | null;
   readonly lastError: string | null;
   readonly updatedAt: number;
@@ -63,5 +69,19 @@ export const GLOBAL_COMPLETENESS_INTERIM_DISPOSITION = "BLOCK/UNSETTLED" as cons
  * scanner health record; every other health state stays BLOCK/UNSETTLED.
  */
 export type GlobalCompletenessCoverage =
-  | Readonly<{ kind: "SETTLED"; health: GlobalCompletenessHealthRecord }>
-  | Readonly<{ kind: typeof GLOBAL_COMPLETENESS_INTERIM_DISPOSITION; health: GlobalCompletenessHealthRecord }>;
+  | Readonly<{
+    kind: "SETTLED";
+    health: GlobalCompletenessHealthRecord;
+    frontierSuid: string | null;
+    reason: null;
+    partitionTag: null;
+    observedAt: number;
+  }>
+  | Readonly<{
+    kind: typeof GLOBAL_COMPLETENESS_INTERIM_DISPOSITION;
+    health: GlobalCompletenessHealthRecord;
+    frontierSuid: string | null;
+    reason: string;
+    partitionTag: string | null;
+    observedAt: number;
+  }>;
