@@ -135,6 +135,16 @@ export async function processDownstreamDoorbell(
   if (!isDownstreamOutboxMessage(message)) {
     throw new Error("Doorbell contained an invalid outbox message");
   }
+  options.durableHopObserver?.observe({
+    stage: "consumer-invocation-started",
+    serviceId: message.serviceId,
+    eventId: message.eventId,
+    suid: message.suid,
+    attemptId: message.attemptId,
+    partitionTag: message.tag,
+    transport: "fast",
+    observedAt: Date.now(),
+  });
   await admitBootstrapRoute(env, message.serviceId, "fast");
   return processDeliveryCore(message, "fast", env, sourceAcknowledgementOptions(env, options));
 }
@@ -148,6 +158,16 @@ export async function processDownstreamDelivery(
   if (!isDownstreamOutboxMessage(message)) {
     throw new Error("Downstream Queue contained an invalid outbox message");
   }
+  options.durableHopObserver?.observe({
+    stage: "consumer-invocation-started",
+    serviceId: message.serviceId,
+    eventId: message.eventId,
+    suid: message.suid,
+    attemptId: message.attemptId,
+    partitionTag: message.tag,
+    transport: "queue",
+    observedAt: Date.now(),
+  });
   await admitBootstrapRoute(env, message.serviceId, "queue");
   const outcome = await processDeliveryCore(message, "queue", env, sourceAcknowledgementOptions(env, options));
   if (outcome.queueDisposition !== "ack") {
@@ -180,6 +200,16 @@ export async function handleDownstreamQueue(
   await withStore(env, options, async (store, clock) => {
     for (const queued of valid) {
       try {
+        options.durableHopObserver?.observe({
+          stage: "consumer-invocation-started",
+          serviceId: queued.body.serviceId,
+          eventId: queued.body.eventId,
+          suid: queued.body.suid,
+          attemptId: queued.body.attemptId,
+          partitionTag: queued.body.tag,
+          transport: "queue",
+          observedAt: Date.now(),
+        });
         await admitBootstrapRoute(env, queued.body.serviceId, "queue");
         const outcome = await processDeliveryCore(queued.body, "queue", env, {
           ...sourceAcknowledgementOptions(env, options),

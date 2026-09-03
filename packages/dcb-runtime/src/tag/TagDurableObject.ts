@@ -53,6 +53,7 @@ import {
   TAG_READ_AFTER_THROUGH_SQL,
 } from "./TagSqlSchema";
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
+import { recordDurableHop, type G60DurableHopObservation } from "../diagnostics/G60DurableHop";
 
 const REPAIR_FACTS_KEY = "repair-facts";
 /**
@@ -187,6 +188,17 @@ interface TagDurableObjectEnv {
 interface OperationResult {
   status: number;
   body: unknown;
+  /** G60 facts captured inside the committed SQL transaction. */
+  hopFacts?: readonly AppendHopFact[];
+}
+
+interface AppendHopFact {
+  readonly eventId: string;
+  readonly suid: string;
+  readonly attemptId: string;
+  readonly tag: string;
+  readonly tagAppendCommittedAt: number;
+  readonly obligationWrittenAt: number;
 }
 
 interface ExpiryResult {
@@ -1899,7 +1911,7 @@ export class TagDurableObject implements DurableObject {
       timestamp: candidate.timestamp,
     }));
     const artifacts = await Promise.all(events.map((event) => this.obligationArtifact(event, serviceId, tag)));
-    return this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const sql = this.sqlStorage();
       if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
       this.ensureSqlTag(tag);
@@ -2021,12 +2033,24 @@ export class TagDurableObject implements DurableObject {
         ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
       `, input.attemptId, nextHighest);
       const committedAt = nowIso();
+      const hopFacts: AppendHopFact[] = [];
       for (let index = 0; index < events.length; index += 1) {
         const event = events[index]!;
         const artifact = artifacts[index]!;
         this.writeCommittedSqlEvent(sql, serviceId, event);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
+        const obligationWrittenAt = Date.now();
         this.writeCommittedSqlObligation(sql, serviceId, event, artifact);
+        hopFacts.push({
+          eventId: event.eventId,
+          suid: event.suid,
+          attemptId: event.attemptId,
+          tag,
+          // This is the existing durable tag_commit_receipt clock fact,
+          // shared by membership/head/receipt writes in this transaction.
+          tagAppendCommittedAt: Date.parse(committedAt),
+          obligationWrittenAt,
+        });
       }
       this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);
       if (input.faultInjection === "after-append-before-confirm") {
@@ -2042,8 +2066,10 @@ export class TagDurableObject implements DurableObject {
           fenceGate: { checked: true, activeFenceCount: 0 },
           version: version + 1,
         },
+        hopFacts,
       };
     });
+    return result;
   }
 
   /**
@@ -2757,6 +2783,26 @@ export class TagDurableObject implements DurableObject {
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
         const result = await this.appendSql(tag, input, serviceId);
+        for (const fact of result.hopFacts ?? []) {
+          this.scheduleDurableHop({
+            stage: "tag-append-committed",
+            serviceId: serviceId ?? "",
+            eventId: fact.eventId,
+            suid: fact.suid,
+            attemptId: fact.attemptId,
+            partitionTag: fact.tag,
+            observedAt: fact.tagAppendCommittedAt,
+          });
+          this.scheduleDurableHop({
+            stage: "outbox-obligation-written",
+            serviceId: serviceId ?? "",
+            eventId: fact.eventId,
+            suid: fact.suid,
+            attemptId: fact.attemptId,
+            partitionTag: fact.tag,
+            observedAt: fact.obligationWrittenAt,
+          });
+        }
         if (
           (result.status === 201 || result.status === 200) &&
           serviceId !== null && serviceId.length > 0
@@ -3015,6 +3061,16 @@ export class TagDurableObject implements DurableObject {
       if (queue !== undefined) {
         try {
           await queue.send(row, { contentType: "json" });
+          this.scheduleDurableHop({
+            stage: "queue-send-returned",
+            serviceId,
+            eventId: row.eventId,
+            suid: row.suid,
+            attemptId: row.attemptId,
+            partitionTag: tag,
+            transport: "queue",
+            observedAt: Date.now(),
+          });
         } catch (failure) {
           // A failed source-to-sink handoff is itself source state.  Do not
           // let one poison row skip a later due row or suppress re-arming.
@@ -3022,6 +3078,12 @@ export class TagDurableObject implements DurableObject {
         }
       }
     }
+  }
+
+  /** G60 writes are observation-only and stay outside the append/drain result. */
+  private scheduleDurableHop(input: G60DurableHopObservation): void {
+    if (this.env.D1 === undefined) return;
+    this.ctx.waitUntil(recordDurableHop(this.env.D1, input).catch(() => undefined));
   }
 
   private async confirm(tag: string, body: unknown): Promise<Response> {

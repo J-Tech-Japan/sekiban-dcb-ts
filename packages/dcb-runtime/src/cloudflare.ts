@@ -37,6 +37,7 @@ import type { GlobalCompletenessScanResult } from "./completeness/types";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
 import { createCommitTraceConsoleSink } from "./trace/CommitTraceConsoleSink";
+import { createG60DurableHopObserver, recordFirstUnsafeVisibleRead } from "./diagnostics/G60DurableHop";
 import { enforceControlRouteScope, scopeIdentityMissingResponse } from "./scope/ControlRouteScope";
 import { scopeIdFor } from "./scope/ScopeName";
 import {
@@ -44,6 +45,17 @@ import {
   requireServiceIdentity,
   type ServiceIdentityProvider,
 } from "./service/ServiceIdentityProvider";
+export {
+  createG60DurableHopObserver,
+  recordDurableHop,
+  recordFirstUnsafeVisibleRead,
+} from "./diagnostics/G60DurableHop";
+export type {
+  G60DurableHopObservation,
+  G60DurableHopObserver,
+  G60HopStage,
+  G60HopTransport,
+} from "./diagnostics/G60DurableHop";
 export {
   buildScopeName,
   DURABLE_OBJECT_SCOPE_CLASSES,
@@ -220,6 +232,7 @@ export function createCloudflareOnlyRuntimeWorker(
       } catch {
         return scopeIdentityMissingResponse();
       }
+      const durableHopObserver = createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
@@ -239,6 +252,7 @@ export function createCloudflareOnlyRuntimeWorker(
           commitTraceSink: createCommitTraceConsoleSink({
             platformRequestId: request.headers.get("cf-ray") ?? undefined,
           }),
+          durableHopObserver,
           serviceIdentityProvider: serviceIdentity,
         });
       }
@@ -251,6 +265,18 @@ export function createCloudflareOnlyRuntimeWorker(
           projectors: composition.projectors,
           storeProvider,
           queryBacking: "d1-mv",
+          afterUnsafeRead: ({ serviceId, viewId, entries, observedAt }) => {
+            for (const entry of entries) {
+              const write = recordFirstUnsafeVisibleRead(env.D1, env.D1_MV, {
+                serviceId,
+                viewId,
+                suid: entry.suid,
+                eventIdHint: entry.eventId,
+                observedAt,
+              }).catch(() => false);
+              ctx.waitUntil(write);
+            }
+          },
           serviceIdentityProvider: serviceIdentity,
         });
       }
@@ -265,7 +291,10 @@ export function createCloudflareOnlyRuntimeWorker(
         });
       }
       if (url.pathname === "/internal/downstream/drain" && request.method === "POST") {
-        return handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt" });
+        if (durableHopObserver === undefined) {
+          return handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt" });
+        }
+        return handleOutboxDrainRequest(request, env, { acknowledgement: "global-receipt", durableHopObserver });
       }
       if (url.pathname === "/internal/projection/lag") {
         return handleProjectionLag(request, env, composition.projectors, storeProvider, serviceIdentity);
@@ -366,9 +395,17 @@ export function createCloudflareOnlyRuntimeWorker(
     async queue(batch, env, ctx): Promise<void> {
       const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
       requireServiceIdentity(serviceIdentity);
+      // The receiver-only G25 fixture intentionally omits TAG and is not a
+      // complete G44 source topology. Keep its transport-only seam free of
+      // G60 source-hop observations; deployed primary Queue consumers always
+      // bind TAG and use the durable ledger.
+      const durableHopObserver = env.TAG === undefined
+        ? undefined
+        : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
       await handleDownstreamQueue(batch, env, {
         storeProvider,
         views: options.deliveryViews?.({ env, ctx }) ?? [],
+        durableHopObserver,
         afterDelivery: options.afterStoredDownstreamDelivery === undefined
           ? undefined
           : ({ message, event, arrivedAt, source, result }) => options.afterStoredDownstreamDelivery!({ message, event, arrivedAt, env, ctx, source, result }),

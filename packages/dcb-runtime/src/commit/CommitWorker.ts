@@ -34,6 +34,7 @@ import {
   requestServiceIdentity,
   type ServiceIdentityProvider,
 } from "../service/ServiceIdentityProvider";
+import type { G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
@@ -78,6 +79,8 @@ export interface CommitWorkerHooks {
   nativeTracing?: NativeTracing;
   /** Test-only sink injection; production emits the structured log normally. */
   workerObservationSink?: ObservationLogSink;
+  /** G60 internal durable hop observation; never changes the V1 wire. */
+  durableHopObserver?: G60DurableHopObserver;
   /** Host/deployment identity seam; absent callers receive the env-backed default. */
   serviceIdentityProvider?: ServiceIdentityProvider;
 }
@@ -504,6 +507,7 @@ export class CommitWorker {
     if (request.method !== "POST") {
       return error(404, "commit_route_not_found", "Commit route requires POST");
     }
+    const commandReceivedAt = Date.now();
 
     const decodeAndValidate = async (): Promise<ReturnType<typeof validateCommitEnvelope>> => {
       let body: unknown;
@@ -597,6 +601,20 @@ export class CommitWorker {
     if (allocatedCandidates === undefined) {
       await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
       return this.noApplicationOutcome(attemptId, fault !== undefined);
+    }
+    // Allocation supplies the exact EventId/SUID pair needed by the durable
+    // operational ledger. The timestamp is captured at the request boundary;
+    // the observer writes after the response path through waitUntil and never
+    // becomes an admission, ordering, or response dependency.
+    for (const candidate of allocatedCandidates) {
+      this.hooks.durableHopObserver?.observe({
+        stage: "command-receipt",
+        serviceId: this.serviceId,
+        eventId: candidate.eventId,
+        suid: candidate.suid,
+        attemptId,
+        observedAt: commandReceivedAt,
+      });
     }
     await this.retiredJournalMilestone("S05b", traceState?.scope, 1);
     if (fault === "journal-cas-after-allocator") {

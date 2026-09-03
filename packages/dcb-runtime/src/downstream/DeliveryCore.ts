@@ -6,6 +6,7 @@ import { systemPipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { StoreProviderEnvironment } from "../store/provider";
 import type { GlobalReceiptJoin, PipelineStore, StoredEvent } from "../store/types";
+import type { G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 export type DeliveryViewFailureClass =
   | "retryable-transient"
@@ -70,6 +71,8 @@ export interface DeliveryCoreOptions {
   readonly store?: PipelineStore;
   readonly storeProvider?: StoreProvider;
   readonly views?: readonly DeliveryViewHandler[];
+  /** Internal G60 hop observation; it is never a delivery decision input. */
+  readonly durableHopObserver?: G60DurableHopObserver;
   /** Compatibility hook for callers that have not adopted a view handler yet. */
   readonly onStored?: (input: {
     readonly message: DownstreamOutboxMessage;
@@ -215,6 +218,18 @@ export async function processDeliveryCore(
   try {
     // Normative step 1: durable EventStore record before any detector or view.
     outcome = await store.recordDelivery(message, arrivedAt, source);
+    options.durableHopObserver?.observe({
+      stage: "record-delivery-batch-committed",
+      serviceId: message.serviceId,
+      eventId: message.eventId,
+      suid: message.suid,
+      attemptId: message.attemptId,
+      partitionTag: message.tag,
+      transport: source,
+      // D1 recordDelivery returns only after its batch and read-back have
+      // settled; this is the durable post-batch observation boundary.
+      observedAt: Date.now(),
+    });
   } catch (error) {
     const failures: DeliveryCoreFailure[] = [{ phase: "recordDelivery", class: "retryable-transient", error: errorText(error) }];
     return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId, startedAt);

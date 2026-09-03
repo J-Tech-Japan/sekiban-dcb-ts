@@ -58,6 +58,13 @@ export interface QueryExecutionOptions {
   now?: () => number;
   sleep?: (milliseconds: number) => Promise<void>;
   pollIntervalMs?: number;
+  /** Internal observation only; invoked without awaiting or changing the V1 response. */
+  afterUnsafeRead?: (input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly entries: readonly ProjectedQueryEntry[];
+    readonly observedAt: number;
+  }) => void;
   /** Host/deployment identity seam; defaults to envServiceIdentity. */
   serviceIdentityProvider?: ServiceIdentityProvider;
 }
@@ -510,6 +517,14 @@ export async function handleSerializedQuery(
         suid: row.sourceSuid,
         payload: JSON.stringify(row.value),
       }));
+      if (requestedPage.consistency === "unsafe") {
+        options.afterUnsafeRead?.({
+          serviceId,
+          viewId,
+          entries,
+          observedAt: Date.now(),
+        });
+      }
       return resultResponse(endpoint, entries, requestedPage, page.totalCount, true, page.readHead);
     }
     const supportsServerPaging = selection.backing === "d1-mv" && selection.store.queryRowsWithTotal !== undefined;
@@ -526,6 +541,14 @@ export async function handleSerializedQuery(
           ...(requestedPage.newestFirst ? { descending: true } : {}),
         },
     );
+    if (requestedPage?.consistency === "unsafe") {
+      options.afterUnsafeRead?.({
+        serviceId,
+        viewId,
+        entries: page.entries,
+        observedAt: Date.now(),
+      });
+    }
     return resultResponse(endpoint, page.entries, pagination.value, page.totalCount, page.serverPaged);
   } catch {
     return error(503, "projection_unavailable", "The mapped query projection is unavailable");
