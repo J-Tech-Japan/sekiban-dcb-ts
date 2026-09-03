@@ -47,6 +47,29 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
   deliveryViews: ({ env }) => meetingRoomDeliveryViews(env),
+  beforeLiveProjectionPoll: async ({ env, serviceId }) => {
+    // Unit-only D1 fixtures intentionally omit the Tag authority. Preserve
+    // their original unrestricted local catch-up seam; deployed primaries
+    // always bind TAG and take the fresh-reconcile path below.
+    if (env.TAG === undefined) {
+      await runMeetingRoomScheduledMaintenance({
+        catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+        drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+        runGenericScheduledWork: async () => {},
+      });
+      return;
+    }
+    const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
+    await runMeetingRoomScheduledMaintenance({
+      freshCoverage: async () => coverage,
+      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+      // The runtime invokes pollLiveProjections immediately after this hook;
+      // no second generic scanner or poll is started by the safe-lane pass.
+      runGenericScheduledWork: async () => {},
+      recordCoverage: async (safeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage),
+    });
+  },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
@@ -57,9 +80,10 @@ const G51_P1_PROBE_SPAN = "sdt.g51.probe.p1";
 const G51_PROBE_ATTRIBUTE = "sdt.g51.probe";
 
 /**
- * Safe MV convergence is the first scheduled duty.  Generic downstream and
- * tag-state polling may be expensive on a historical service, but must never
- * starve the receipt-GC path that proves a stored target through safe head.
+ * Safe MV convergence runs from an already-computed coverage decision. The
+ * freshCoverage seam is used by the deployed Worker after the current G44
+ * reconciliation; the older globalCoverage seam remains for unit-only callers
+ * that supply a persisted decision directly.
  */
 export async function runMeetingRoomScheduledMaintenance(input: {
   readonly catchUp: (frontierSuid?: string | null) => Promise<void>;
@@ -68,11 +92,30 @@ export async function runMeetingRoomScheduledMaintenance(input: {
   /**
    * G44's one interim coverage decision.  It is intentionally an internal
    * gate rather than a new public query-response policy.
-   */
+  */
   readonly globalCoverage?: () => Promise<"SETTLED" | "BLOCK/UNSETTLED" | GlobalCompletenessCoverage>;
+  /** A fresh reconciliation result, computed before this safe-lane pass. */
+  readonly freshCoverage?: () => Promise<GlobalCompletenessCoverage>;
   /** Records the decision that governed this scheduled safe-lane pass. */
   readonly recordCoverage?: (coverage: MeetingRoomSafeLaneCoverage) => Promise<void>;
 }): Promise<void> {
+  if (input.freshCoverage !== undefined) {
+    const coverage = await input.freshCoverage();
+    await input.recordCoverage?.({
+      kind: coverage.kind,
+      reason: coverage.reason,
+      partitionTag: coverage.partitionTag,
+      frontierSuid: coverage.frontierSuid,
+      observedAt: coverage.observedAt,
+    });
+    // The caller has just completed this tick's scanner. A FULL/SETTLED
+    // frontier is therefore immediately eligible; a BLOCK frontier is the
+    // last proven cursor retained by the reconciler and remains fenced.
+    await input.catchUp(coverage.frontierSuid);
+    await input.drainUnsafeKicks(coverage.frontierSuid);
+    await input.runGenericScheduledWork();
+    return;
+  }
   if (input.globalCoverage !== undefined) {
     const coverage = await input.globalCoverage();
     if (typeof coverage === "string") {
@@ -578,26 +621,11 @@ const worker: ExportedHandler<MeetingRoomCloudflareEnv> = {
   },
   async scheduled(controller, env, ctx) {
     await assertFinalCutoverFenceIfConfigured(env);
-    await runMeetingRoomScheduledMaintenance({
-      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, undefined, frontierSuid),
-      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
-      // A D1-only receiver fixture has no Tag source authority to scan. The
-      // deployed primary always binds both authorities; do not manufacture a
-      // mixed-version feature switch just to alter that invariant in tests.
-      globalCoverage: env.TAG === undefined
-        ? undefined
-        : async () => {
-          const configured = optionalServiceIdentity(env);
-          return configured === null
-            ? "BLOCK/UNSETTLED"
-            : new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(configured, Date.now());
-        },
-      recordCoverage: async (coverage) => {
-        const configured = optionalServiceIdentity(env);
-        if (configured !== null) await recordMeetingRoomSafeLaneCoverage(env, configured, coverage);
-      },
-      runGenericScheduledWork: async () => { await runtime.scheduled?.(controller, env, ctx); },
-    });
+    // The runtime reconciles G44 first, then invokes the sample's safe-lane
+    // hook with that fresh coverage, and finally polls live projections in the
+    // same scheduled tick. Keeping this call direct avoids an extra stale
+    // frontier pass before the fresh reconciliation.
+    await runtime.scheduled?.(controller, env, ctx);
   },
 };
 

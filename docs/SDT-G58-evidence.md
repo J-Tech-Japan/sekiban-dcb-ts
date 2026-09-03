@@ -277,3 +277,76 @@ and this evidence section. No deployment, cohort rerun, green product change,
 SafeWindow change, G44 modification, SDT-G56 work, PR, or worker completion was
 performed. The next authorized wake can implement and validate the focused
 same-tick frontier repair against this preserved red witness.
+
+## W97 same-tick green repair — 2026-09-03
+
+This focused repair continues W96 at starting checkpoint
+`afd6041deb04c51b9bf15e005c619e0012bcdd64`. It did not deploy, send a new
+request, rerun or stitch a cohort, change SafeWindow bounds, open a PR, or
+complete the worker. The W95 cohort and W96 red receipt remain immutable.
+
+### Repair and safety behavior
+
+`packages/dcb-runtime/src/cloudflare.ts` now exposes a narrow
+`beforeLiveProjectionPoll` scheduled hook. The runtime performs its one fresh
+`GlobalCompletenessReconciler.reconcile()` first, invokes the hook, and only
+then runs `pollLiveProjections()` for a FULL scan. The sample Worker uses that
+hook to read the just-written coverage and run safe MV catch-up plus
+unsafe-kick draining before the live-projection poll. The outer sample
+scheduled handler now hands directly to this runtime path, so it no longer
+performs a stale persisted-frontier pass before reconciliation.
+
+For a FULL/SETTLED tick, the safe lane receives the newly proven frontier from
+that same scan. For a non-FULL/BLOCK tick, `coverage()` returns the reconciler's
+retained cursor (`lastSettledFrontierSuid`), so catch-up and drain remain fenced
+to the last proven contiguous frontier; the BLOCK reason is recorded through
+the existing safe-lane health row. No source event can cross an unproven gap,
+and the existing `maximumSuid` and first-unsafe-event rules remain unchanged.
+The D1-only test environment with no TAG authority retains its old local
+unrestricted seam solely for existing unit fixtures; deployed primaries always
+take the TAG-backed fresh-reconcile path.
+
+The runtime calls the live-projection poll after the hook in the same scheduled
+invocation. No second scanner or poll is started by the safe-lane hook, and the
+existing serial projector behavior is unchanged.
+
+### Red-to-green guard evidence
+
+The W96 raw red receipt
+`.artifacts/sdt-g58-w96-red-guard.json` remains checked in with
+`status=red-baseline` and `exitCode=1`. Its witness test was changed only in
+expectation/fixture wiring to assert the repaired behavior and now passes as
+`W97 GREEN: applies a freshly scanned FULL frontier in the same scheduled
+tick`. A second fixture asserts that a BLOCK decision uses only the last proven
+frontier and retains its reason. The green run is preserved in
+`.artifacts/sdt-g58-w97-green-guard.json` with:
+
+```json
+{"schema":"sdt-g58-w97-green-guard/v1","status":"green","exitCode":0,"baselineRedReceipt":{"report":".artifacts/sdt-g58-w96-red-guard.json","status":"red-baseline","exitCode":1}}
+```
+
+`npm run test:g58` now directly runs both safe-lane fixtures, the existing G58
+source/mutation guards, the deployed-script self-tests, and the green
+diagnosis guard. The static G58 contract additionally requires the fresh hook
+to precede `pollLiveProjections` and checks the direct runtime handoff.
+
+### Validation
+
+- `npm run test:g58` — passed (2 files, 5 tests; all existing G58 guards and
+  production omission mutation red proofs passed, green same-tick witness
+  passed).
+- `npm run test:g44` — passed unchanged (8 tests and all four G44 production
+  mutation red proofs).
+- `npm run test:g25` — passed (3 tests; deployed sample scheduled recovery
+  remains intact, including its TAG-omitted fixture seam).
+- `npm run test:g31` — passed (33 tests and wait-for contract).
+- `npm run typecheck` — passed, including all workspace builds and root
+  `tsc --noEmit`.
+- `npm run lint` — passed with `--max-warnings=0`.
+- `npm run diagnose:g58` — passed with the green witness and preserved W96
+  baseline receipt.
+
+No Wrangler command was run or needed. The <=5 s unsafe and <=180 s safe
+contracts, published 20 s/120 s SafeWindow bounds, G44 correctness test, W95
+raw cohort, and W96 red evidence are unchanged. The pushed repair checkpoint
+is ready for orchestration to dispatch the next bounded verification wake.

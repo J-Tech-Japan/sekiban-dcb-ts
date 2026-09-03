@@ -33,19 +33,18 @@ function settled(frontierSuid: string, observedAt: number): GlobalCompletenessCo
   };
 }
 
-describe("SDT-G58 W96 diagnosis guard", () => {
-  it("W96 RED: applies a freshly scanned FULL frontier in the same scheduled tick", async () => {
+describe("SDT-G58 W97 same-tick frontier repair", () => {
+  it("W97 GREEN: applies a freshly scanned FULL frontier in the same scheduled tick", async () => {
     const order: string[] = [];
     let safeHead = "";
-    let freshFrontierAvailable = false;
 
     await runMeetingRoomScheduledMaintenance({
-      // W95 observed this stale persisted frontier before the scheduled scan
-      // completed. A future repair must make the fresh FULL result available
-      // to the safe lane in this same tick, without crossing an unproven gap.
-      globalCoverage: async () => {
-        order.push("read-persisted-frontier");
-        return settled(staleFrontier, 1);
+      // The repaired runtime computes this result after the fresh scanner and
+      // before safe catch-up, so the newly proven frontier is not delayed to a
+      // later cron tick.
+      freshCoverage: async () => {
+        order.push("fresh-scan");
+        return settled(freshlyScannedFrontier, 2);
       },
       recordCoverage: async () => {
         order.push("record-coverage");
@@ -53,28 +52,58 @@ describe("SDT-G58 W96 diagnosis guard", () => {
       catchUp: async (frontierSuid) => {
         order.push(`catch-up:${frontierSuid ?? "null"}`);
         safeHead = frontierSuid ?? "";
-        if (freshFrontierAvailable) safeHead = freshlyScannedFrontier;
       },
       drainUnsafeKicks: async (frontierSuid) => {
         order.push(`drain:${frontierSuid ?? "null"}`);
       },
-      runGenericScheduledWork: async () => {
-        order.push("fresh-scan");
-        // Simulate the generic runtime's fresh G44 scan. The broken scheduler
-        // never gives this newly proven frontier back to catch-up this tick.
-        freshFrontierAvailable = true;
-      },
+      runGenericScheduledWork: async () => { order.push("live-poll"); },
     });
 
     expect(order).toEqual([
-      "read-persisted-frontier",
+      "fresh-scan",
+      "record-coverage",
+      `catch-up:${freshlyScannedFrontier}`,
+      `drain:${freshlyScannedFrontier}`,
+      "live-poll",
+    ]);
+    expect(safeHead).toBe(freshlyScannedFrontier);
+  });
+
+  it("keeps only the last proven frontier and records the reason on a BLOCK tick", async () => {
+    const order: string[] = [];
+    let observed: { kind: string; reason: string | null; frontierSuid: string | null } | undefined;
+    let safeHead = "";
+
+    await runMeetingRoomScheduledMaintenance({
+      freshCoverage: async () => ({
+        ...settled(staleFrontier, 3),
+        kind: "BLOCK/UNSETTLED" as const,
+        reason: "source present/global receipt absent",
+        partitionTag: "room:g58-blocked",
+      }),
+      recordCoverage: async (coverage) => {
+        observed = coverage;
+        order.push("record-coverage");
+      },
+      catchUp: async (frontierSuid) => {
+        safeHead = frontierSuid ?? "";
+        order.push(`catch-up:${frontierSuid ?? "null"}`);
+      },
+      drainUnsafeKicks: async (frontierSuid) => { order.push(`drain:${frontierSuid ?? "null"}`); },
+      runGenericScheduledWork: async () => { order.push("live-poll"); },
+    });
+
+    expect(safeHead).toBe(staleFrontier);
+    expect(observed).toMatchObject({
+      kind: "BLOCK/UNSETTLED",
+      reason: "source present/global receipt absent",
+      frontierSuid: staleFrontier,
+    });
+    expect(order).toEqual([
       "record-coverage",
       `catch-up:${staleFrontier}`,
       `drain:${staleFrontier}`,
-      "fresh-scan",
+      "live-poll",
     ]);
-    // Intentionally red on the current baseline (9b21259). Keep this witness
-    // until the focused green repair proves same-tick frontier application.
-    expect(safeHead).toBe(freshlyScannedFrontier);
   });
 });

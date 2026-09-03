@@ -25,6 +25,8 @@ function snapshot() {
     catchUp: read("packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts"),
     completeness: read("packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler.ts"),
     cloudflare: read("packages/dcb-runtime/src/cloudflare.ts"),
+    diagnosis: read("test/g58-safe-lane-diagnosis.spec.ts"),
+    diagnosisGuard: read("scripts/g58-safe-lane-diagnosis-guard.mjs"),
     test: read("test/g58-safe-lane.spec.ts"),
     mutation: read("scripts/g58-safe-lane-mutation-runner.mjs"),
     e2e: read("scripts/deploy/g58-safe-lane-e2e.mjs"),
@@ -50,6 +52,17 @@ export function assertG58SafeLaneContract(value) {
   requireContains(value.completeness, "sdt-g58-settled-frontier/v1", "frontier cursor schema");
   requireContains(value.completeness, "COALESCE(excluded.cursor_json", "prior FULL frontier retention");
   requireContains(value.cloudflare, "await pollLiveProjections", "scheduled live-projection poll");
+  requireContains(value.cloudflare, "beforeLiveProjectionPoll", "fresh reconciliation safe-lane hook");
+  requireContains(value.cloudflare, "await options.beforeLiveProjectionPoll?.", "fresh reconciliation hook invocation");
+  requireContains(value.worker, "await runtime.scheduled?.(controller, env, ctx);", "direct runtime scheduled handoff");
+  const freshHookIndex = value.cloudflare.lastIndexOf("await options.beforeLiveProjectionPoll?.");
+  const pollIndex = value.cloudflare.lastIndexOf("await pollLiveProjections");
+  if (freshHookIndex < 0 || pollIndex < 0 || freshHookIndex > pollIndex) {
+    fail("fresh safe-lane hook must run before the live-projection poll");
+  }
+  requireContains(value.diagnosis, "W97 GREEN: applies a freshly scanned FULL frontier in the same scheduled tick", "green same-tick fixture");
+  requireContains(value.diagnosis, "last proven frontier", "BLOCK frontier fixture");
+  requireContains(value.diagnosisGuard, "sdt-g58-w97-green-guard/v1", "green diagnosis runner");
   requireContains(value.migration, "serialized_dcb_safe_lane_health", "operational health migration");
   requireContains(value.test, "continues a BLOCK tick through only the retained FULL frontier", "red-capable BLOCK fixture");
   requireContains(value.test, "returns the bearer-only health surface", "health authentication fixture");
@@ -80,7 +93,7 @@ function main() {
   assertG58SafeLaneContract(value);
   if (process.argv.includes("--self-test")) {
     expectRed(value, (candidate) => {
-      candidate.worker = candidate.worker.replace("await input.catchUp(coverage.frontierSuid);", "await input.catchUp();");
+      candidate.worker = candidate.worker.replaceAll("await input.catchUp(coverage.frontierSuid);", "await input.catchUp();");
     }, "BLOCK pass loses its retained frontier");
     expectRed(value, (candidate) => {
       candidate.catchUp = candidate.catchUp.replace("options.maximumSuid === null", "false");

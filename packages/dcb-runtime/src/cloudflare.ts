@@ -33,6 +33,7 @@ import {
   configureTagStateProjectorRegistry,
 } from "./tagstate/TagStateDurableObject";
 import { GlobalCompletenessReconciler } from "./completeness/GlobalCompletenessReconciler";
+import type { GlobalCompletenessScanResult } from "./completeness/types";
 import type { StoredEvent } from "./store/types";
 import { cloudflareTracing } from "./trace/CloudflareTracing";
 import { createCommitTraceConsoleSink } from "./trace/CommitTraceConsoleSink";
@@ -119,6 +120,16 @@ export interface CloudflareOnlyWorkerOptions {
   readonly serviceIdentityProvider?: ServiceIdentityProvider;
   /** Optional deployment read-model rebuild that must finish before READY. */
   readonly afterBootstrapVerify?: (input: { readonly serviceId: string; readonly env: CloudflareOnlyEnv }) => Promise<void>;
+  /**
+   * Runs after the fresh G44 reconciliation and before the scheduled
+   * live-projection poll. A sample can use the resulting persisted coverage
+   * for its SafeWindow-fenced materialized-view pass in this same tick.
+   */
+  readonly beforeLiveProjectionPoll?: (input: {
+    readonly env: CloudflareOnlyEnv;
+    readonly serviceId: string;
+    readonly scan: GlobalCompletenessScanResult;
+  }) => Promise<void>;
   /** Factories are evaluated per invocation; Queue and receiver can select views independently. */
   readonly deliveryViews?: (input: {
     readonly env: CloudflareOnlyEnv;
@@ -349,6 +360,7 @@ export function createCloudflareOnlyRuntimeWorker(
       const scan = await new GlobalCompletenessReconciler(env.D1, env.TAG).reconcile(serviceId, Date.now());
       // A source gap, page failure, or stale/unknown scan can never advance
       // a live projection. The source receipt still remains retryable.
+      await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });
       if (scan.kind !== "FULL") return;
       await pollLiveProjections(env, { registry: composition.projectors, storeProvider, serviceIdentityProvider: serviceIdentity });
     },
