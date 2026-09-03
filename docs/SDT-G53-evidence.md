@@ -1,8 +1,8 @@
 # SDT-G53 deployment evidence
 
-Status: blocked at the W89 authenticated scope-mismatch verifier after the
-downstream repair, one normal-config deployment, and fresh G15/G16 receipts
-completed. The failed verifier was not retried.
+Status: complete. W89 completed the downstream repair and deployed G15/G16
+receipts; W90 recorded the active secret-only version, persisted a fresh
+authenticated mismatch receipt, and ran the required post-secret G15 check.
 
 ## Deployed identity
 
@@ -168,9 +168,79 @@ The one authorized `g53-scope-mismatch-e2e.mjs` invocation then failed at
 
 `Error: G53 mismatch probe did not return typed scope.mismatch`
 
-The harness intentionally does not persist a non-passing response payload, so
-no status or body is inferred here. The private token's contents and path were
-never printed, copied into evidence, or committed. Per the bounded rule, no
-second probe was sent. That final typed-control receipt remains incomplete,
-so this checkpoint has no PR or worker-complete outcome despite the repaired
-downstream and G15/G16 receipts.
+The harness intentionally did not persist W89's non-passing response payload,
+so no status or body is inferred for that historical attempt. The private
+token's contents and path were never printed, copied into evidence, or
+committed. Per the W89 bounded rule, no second probe was sent. W90 separately
+authorized one fresh probe after the harness was made able to retain a safe
+failure receipt; that completed receipt is recorded below.
+
+## W90 conformance authentication resume
+
+### Secret metadata and active-version verification
+
+All W90 Wrangler calls used the repository-pinned binary under OAuth with
+`CLOUDFLARE_API_TOKEN` unset, the normal
+`samples/meeting-room/wrangler.cloudflare-only.jsonc` config, and no
+`--keep-vars`.
+
+At `2026-09-03T04:51:27Z`, the initial metadata-only invocation
+`wrangler secret list ... --json` was rejected locally by the installed CLI
+with `Unknown argument: json`, before a Cloudflare request. At
+`2026-09-03T04:51:40Z`, the one syntax correction used the CLI's supported
+form:
+
+`env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler secret list --name sekiban-dcb-meeting-room-cloudflare-only --config samples/meeting-room/wrangler.cloudflare-only.jsonc --format json`
+
+It listed the name `CONFORMANCE_TOKEN` as `secret_text`; no value was read.
+The protected file referenced only through `G53_CONFORMANCE_TOKEN_FILE` was
+nonempty, so W90 did not generate, rotate, or install a secret. In particular,
+there was no W90 `secret put`, no config change, and no code deployment.
+
+The recorded active-version checks were:
+
+| Timestamp and command | Result |
+| --- | --- |
+| `2026-09-03T04:52:33Z` — `env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler versions list --name sekiban-dcb-meeting-room-cloudflare-only --config samples/meeting-room/wrangler.cloudflare-only.jsonc --json` | Version `0c3818e7-8d6c-47f8-8a03-bb66d25391ec` (number 188) has source `wrangler` and trigger `secret`. Its immediately preceding code version is `6b24a78a-c09b-48bd-bf26-751b22a63384` with message `SDT-G53 downstream scope repair 002e33ef1fbc071632f5ba3118f1018aae7a2652`. |
+| `2026-09-03T04:52:38Z` — `env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler deployments list --name sekiban-dcb-meeting-room-cloudflare-only --config samples/meeting-room/wrangler.cloudflare-only.jsonc --json` | Deployment `6488e842-d8f6-45d8-8072-321df1c616ff` serves version 188 at 100%. It is the secret-only successor of code deployment `fd613edd-eb80-4fce-bc23-9c0c0558ee9d`; no unrecorded source commit is inferred for the secret-only version. |
+
+### Fresh authenticated mismatch receipt
+
+Commit `2f9a419` changes only
+`scripts/deploy/g53-scope-mismatch-e2e.mjs`: a non-passing probe now writes a
+safe artifact containing its HTTP status and only the protocol `code` and
+`error` fields before failing. The harness never persists an authorization
+value, deployment identity, or protected file path. Its focused self-test and
+the full `npm run test:g53` suite were green before the live request.
+
+Exactly one W90 authenticated probe ran at `2026-09-03T04:54:55.541Z`:
+
+`G53_CONFORMANCE_TOKEN_FILE=<protected file> node scripts/deploy/g53-scope-mismatch-e2e.mjs --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --report .artifacts/sdt-g53-w90-scope-mismatch.json`
+
+It returned HTTP `403` in `956.122 ms` with typed body
+`{"code":"scope.mismatch","error":"The path service identity is not authorized for this deployment"}`.
+The complete safe receipt is
+`.artifacts/sdt-g53-w90-scope-mismatch.json`. There was no retry.
+
+### Post-secret G15 receipt
+
+Although W90 did not execute `secret put`, the active version is the
+secret-only successor created in W89. To validate that active version after
+the recorded version/source check, one additional unmodified G15 run started
+at `2026-09-03T04:55:27Z`:
+
+`G15_EXPECTED_SERVICE_ID=sekiban-dcb-meeting-room-cloudflare-only python3 scripts/deploy/g15-e2e.py --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --report .artifacts/sdt-g53-w90-post-secret-g15.json`
+
+| Command | HTTP / SUID | Commit-to-visible |
+| --- | --- | --- |
+| create | 200 / `063924008131836000000224285740` | 488.595 ms |
+| reserve | 200 / `063924008134412000001835012279` | 286.952 ms |
+| cancel | 200 / `063924008135922000000562824059` | 1,147.197 ms |
+| invalid command | 400 `invalid_command_input` | n/a |
+
+The deployed UI, runtime, and harness each retained the unchanged 120,000 ms
+safe-window bound; the run used fresh IDs and completed at
+`2026-09-03T04:55:37Z`. The raw receipt is
+`.artifacts/sdt-g53-w90-post-secret-g15.json`. W89's successful G16 and its
+downstream old-name mutation guard remain the deployed lineage proof; W90 did
+not alter their code, artifacts, or semantics.
