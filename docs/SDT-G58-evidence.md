@@ -979,3 +979,77 @@ ms; G44 correctness and SDT-G60-owned upstream paths are untouched.
 Checks passed: `node scripts/g58-reservation-safe-starvation-guard.mjs
 --self-test`, the normal guard, `npm run test:g58`, `npm run test:g44`,
 `npm run typecheck`, and `npm run lint`.
+
+## W106 ReservationProjector unsafe-kick re-entry repair — 2026-09-03
+
+This focused checkpoint starts at pushed head
+`c28c92beb346c566617a0697fb4afbf9c565e8bc`. It performs no deployment,
+Wrangler operation, application request, cohort, PR creation, worker
+completion, or host/G56/G60 mutation. The W102-W105 receipts and diagnosis
+documents remain immutable. SafeWindow stays at its published 20,000 ms floor
+and 120,000 ms ceiling, and the upstream outbox/Queue/global-admission path
+remains held by SDT-G60.
+
+### Production-level red witness and exact seam
+
+`test/g58-reservation-reentry.spec.ts` uses the production
+`MaterializedViewCatchUpRuntime` and `D1MaterializedViewStore` against the
+versioned MV schema, with independent RoomProjector and ReservationProjector
+sources, one retained target frontier, and controlled clocks. At
+`nowMs=1788428500000`, the Room target is already SafeWindow-eligible
+(`lastArrivedAt=nowMs-30000`), while the Reservation target is recent
+(`lastArrivedAt=nowMs-1000`). Both follows are fenced by `maximumSuid=targetSuid`.
+The first scheduled decision therefore reaches the Room target but leaves the
+Reservation checkpoint at `oldSuid`; it neither skips the first unsafe event
+nor classifies it as safe. The later unsafe follow returns before its kick
+lease target as expected.
+
+The preserved baseline receipt is `.artifacts/sdt-g58-w106-red-baseline.json`.
+Running
+`npx vitest run --config vitest.config.ts test/g58-reservation-reentry.spec.ts --no-cache`
+at the checkpoint exited 1: after the partial follow/finish, the kick row was
+received as `dirty=0` although the deterministic oracle required `dirty=1`.
+That is the exact W105 seam: `acquireKick` clears `dirty`, a first-unsafe
+return is not target completion, and the old unconditional `finishKick` made
+the outstanding target irreversibly clean.
+
+### Minimal green repair
+
+`UnsafeWindowMaterializedViewStore.finishKick` now requires the reached SUID
+and atomically clears the lease while setting `dirty=1` whenever
+`target_suid COLLATE BINARY > reachedSuid COLLATE BINARY`. The sample drain
+passes `result.instance.lastSuid` from its bounded `follow` call, so a later
+scheduled tick can reacquire the same kick without request-side waiting. Once
+the same target is eligible at `nowMs+21000` (21 seconds, inside the unchanged
+180-second G58 deadline), the second acquisition and follow reach the target;
+the final kick row is `dirty=0`. Room remains independently at the target
+throughout. The existing G23 dirty-arrival oracle continues to prove that a
+concurrent/new arrival cannot be cleared by a finish guarded on `dirty=0`.
+
+The green receipt is `.artifacts/sdt-g58-w106-reentry-green.json`. Its
+red-capable mutations are all required to fail: removing the target comparison,
+omitting the reached-checkpoint hand-off, removing the first-unsafe barrier,
+and removing the retained-frontier fence. The existing first-unsafe,
+maximum-SUID, W104 BLOCK live-poll, W97 reconciliation, minimum aggregation,
+G44 fence, 5,000 ms unsafe constant, and 20,000/120,000 ms SafeWindow
+contracts are unchanged.
+
+### Checks and paths
+
+- `npx vitest run --config vitest.config.ts test/g58-reservation-reentry.spec.ts --no-cache` — green (1 test).
+- `npx vitest run --config vitest.config.ts test/g23-unsafe-window.spec.ts --no-cache` — green (27 tests); the existing G23 dirty-arrival oracle remains green.
+- `node scripts/g58-reservation-reentry-guard.mjs --self-test` — green; all four mutations red.
+- `node scripts/g58-reservation-reentry-guard.mjs` — green; wrote the W106 receipt.
+- `npm run test:g58` — green (3 files, 8 tests plus all existing G58 guard/mutation lanes).
+- `npm run test:g44` — green; the existing G44 correctness fixture and four production mutants remain green/red as prescribed.
+- `npm run typecheck` — green.
+- `npm run lint` — green with zero warnings.
+
+Product repair paths are `packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView.ts`
+and `samples/meeting-room/src/d1-mv.ts`. The production-level fixture is
+`test/g58-reservation-reentry.spec.ts`; its package gate and red/green guard
+are wired through `package.json` and
+`scripts/g58-reservation-reentry-guard.mjs`. The W106 red and green receipts
+are the only new artifacts. No SafeWindow bound, timeout, gate, G44 test,
+W102-W105 artifact, deployment, cohort, token, SDT-G56 state, or SDT-G60-owned
+path changed.
