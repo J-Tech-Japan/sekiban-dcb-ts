@@ -1165,3 +1165,75 @@ no proof request after this mismatch, did not reuse W107 version
 `9e5586ad-0cb1-4d00-9c05-89306e04520f`, did not redeploy, and did not start a
 cohort or G15/G16. The expected W108 artifact records the durable blocked
 checkpoint.
+
+## W109 exact-product provenance recovery and AC1/AC5 stop — 2026-09-03 (blocked)
+
+This wake began from the pushed evidence checkpoint `2978a269` and first
+checked the private W108 credential path with a filesystem existence test only:
+`/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g58-w93/.artifacts/.sdt-g58-w108-conformance-token`
+was present. Its contents were not read, printed, logged, copied, or committed;
+no second credential was generated. The Observability token was not needed for
+this AC1/AC5 witness and was not read. The one Wrangler user window used the
+repository-pinned Wrangler 4.125.0, OAuth only, with `CLOUDFLARE_API_TOKEN`
+unset. The credential/config mtime was `1788434789` before and after the window.
+
+At `2026-09-03T11:47:44Z` the sole OAuth `whoami` succeeded. Metadata-only
+`secret list` at `11:47:45Z` showed `CONFORMANCE_TOKEN` as `secret_text`; its
+value was never exposed. No secret was rotated. From a temporary detached
+worktree at the exact product commit
+`700c0cb4bf7c896a8b676d4613bfae53fca58519`, the single normal-config deploy
+ran at `11:47:46Z`–`11:47:55Z`:
+
+```text
+env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --strict --message "SDT-G58 W109 exact product 700c0cb4bf7c896a8b676d4613bfae53fca58519"
+```
+
+The readback before any proof request showed the exact provenance required by
+the packet: version `7b4e30eb-5666-46d6-8a8e-57ffa9edb07a` (version 194),
+deployment `88923566-dde8-47c2-ac48-d17b3c28a541`, 100% traffic, and annotation
+`SDT-G58 W109 exact product 700c0cb4bf7c896a8b676d4613bfae53fca58519`. Raw
+metadata are `.artifacts/sdt-g58-w109-versions.json`,
+`.artifacts/sdt-g58-w109-deployments.json`, and the sanitized identity receipt
+`.artifacts/sdt-g58-w109-deploy-identity.json`; the Wrangler command logs are
+also retained without credential material.
+
+### Authenticated AC1/AC5 witness and stop
+
+After the identity readback, exactly one single-witness invocation of the
+existing safe-lane harness began at `2026-09-03T11:49:09.071Z` and ended at
+`11:51:34.927Z`:
+
+```text
+env -u CLOUDFLARE_API_TOKEN G53_CONFORMANCE_TOKEN_FILE=/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g58-w93/.artifacts/.sdt-g58-w108-conformance-token node scripts/deploy/g58-safe-lane-e2e.mjs --mode single --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --token-file /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g58-w93/.artifacts/.sdt-g58-w108-conformance-token --report .artifacts/sdt-g58-w109-ac5-single.json
+```
+
+The initial authenticated read-health was HTTP 200 with coverage `SETTLED`,
+`safeWindowMs=20000`, both materialized views present, and both live projector
+heads at the pre-cohort head. The harness then accepted one room command
+(`room:g58-room-2cefbf1d-bea`, SUID
+`063924032951123000000681124863`) and one reservation command
+(`g58-reservation-2cefbf1d-bea-1`, SUID
+`063924032953080000000952631413`). The reservation was unsafe-visible in
+`2567 ms` and reached both materialized safe heads in `42492 ms`, but AC5 did
+not pass: at the bounded stop the RoomProjector live head remained
+`063924025191103000001618685662` and ReservationProjector remained
+`063923872440789000000196782566`; both `lastPollAt` values were the old
+`1788428464638`. The read-only tag-state values had reached the target, but
+the projection-lag rows still reported `behindEvents` 2 (room) and 1
+(reservation), so neither aggregate live-head nor projection-row readiness was
+true. The exact harness failure was:
+
+```text
+safe lane or live projections did not reach 063924032953080000000952631413 by safeWindowMs + 120000ms
+```
+
+The complete 58-snapshot failed receipt is
+`.artifacts/sdt-g58-w109-ac5-single.json`; it contains the response CF-Ray
+values, health gates, SUIDs, and no bearer value. This is an AC5 live-projector
+failure after successful exact-source deployment, not an authentication or
+provenance failure. Per the packet, no paced cohort, second proof attempt,
+replacement request, redeploy, PR, or worker completion was run. The
+unchanged 5,000 ms unsafe constant, SafeWindow 20,000/120,000 bounds,
+G44/W97/W104/W106 guards, fence/order semantics, minimum aggregation, and
+SDT-G60-owned outbox/Queue/global-admission path are untouched. The temporary
+detached worktree was removed after this evidence was durable.
