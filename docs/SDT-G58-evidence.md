@@ -520,7 +520,7 @@ the W99 cohort, or change the G58 runtime. The committed W99 raw receipt and
 its red outcome remain the baseline evidence.
 
 The diagnosis/harness checkpoint is pushed at
-`436a6b1cc1696b3ae5ced931a157be88610c3ec3` on
+`1e71eadc57667a0027c99edce5b26122d0e1deb7` on
 `claude/sdt-g58-safe-lane-w93`.
 
 ### Correlated W99 facts

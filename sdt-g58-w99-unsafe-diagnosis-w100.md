@@ -6,7 +6,7 @@ Starting and pushed head: `5627d8644b503c1f987d007b1655f5a7bd963299` on
 `claude/sdt-g58-safe-lane-w93`. This wake did not deploy, use Wrangler, send a
 request, rerun or replace the W99 cohort, open a PR, or touch SDT-G56.
 
-Final pushed diagnosis checkpoint: `436a6b1cc1696b3ae5ced931a157be88610c3ec3`.
+Final pushed diagnosis checkpoint: `1e71eadc57667a0027c99edce5b26122d0e1deb7`.
 
 ## W99 facts correlated
 
