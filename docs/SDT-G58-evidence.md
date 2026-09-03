@@ -834,10 +834,84 @@ Checks run:
   rejected.
 - `node scripts/g58-safe-live-starvation-guard.mjs` — passed as a recorded
   red-baseline diagnosis (`.artifacts/sdt-g58-w103-red-guard.json`).
-- The new guard is wired into `npm run test:g58`; no product/runtime source,
-  Queue/outbox/global admission path, G44 test, or published bound changed.
+- The W103 diagnosis guard and its red receipt remain preserved as historical
+  evidence. W104's successor guard is wired into `npm run test:g58`; no
+  product/runtime source, Queue/outbox/global admission path, G44 test, or
+  published bound changed in the diagnosis unit.
 
 This checkpoint is **completed** for the in-scope G58 AC5 diagnosis and
 red-capable guard. A subsequent focused green-repair wake must address the
 BLOCK live-poll seam and then re-verify safe/live behavior; W103 does not apply
 that fix or recollect a cohort.
+
+## W104 BLOCK live-projection green repair — 2026-09-03
+
+W104 is a local, no-deploy continuation from the W103 checkpoint at
+`5641a09066f7d4318da1d48e3187b37dafab7fd1`. It sends no application request,
+starts no cohort, changes no D1 state, and does not open a PR or complete the
+worker. The W103 red receipt
+`.artifacts/sdt-g58-w103-red-guard.json` remains byte-preserved and records the
+pre-fix `scan.kind !== "FULL"` early return. The new green receipt is
+`.artifacts/sdt-g58-w104-green-guard.json`.
+
+### Repair boundary and ordering
+
+The Cloudflare-only scheduled entry point now executes the established order:
+
+```
+stabilizeDownstream → fresh G44 reconcile → beforeLiveProjectionPoll
+  (sample retained-frontier safe catch-up/drain) → pollLiveProjections
+```
+
+The previous return after the hook was the W103 starvation defect. Every scan
+outcome now reaches `pollLiveProjections`. A `FULL` scan passes
+`maximumSuid=undefined`, retaining the established unbounded poll behavior. A
+`BLOCK`/`UNSETTLED`, `UNKNOWN`, or `FAILED` scan passes only the frontier
+returned by the hook from the persisted last proven FULL cursor; with no such
+cursor it passes `maximumSuid=null`. `null` keeps the poll observable but makes
+`ProjectionRuntime` advance zero source events. A source event above the
+retained SUID is stopped before the SafeWindow check, so no unproven frontier
+can be applied. The sample now returns its persisted `coverage.frontierSuid`
+to the runtime after the retained-frontier hook completes.
+
+The same optional fence is propagated through single-tag and all-tag polling.
+Projection polling remains serial over tags and registered projectors, and
+the minimum-across-tags health aggregation is untouched. The first-unsafe
+SafeWindow barrier, 20,000 ms floor, 120,000 ms ceiling, 5,000 ms unsafe
+constant, G44 source-partition fence, W97 same-tick ordering, and upstream
+outbox/Queue/global-admission paths held by SDT-G60 are unchanged.
+
+### Deterministic red/green proof
+
+`test/g58-safe-lane-diagnosis.spec.ts` retains the W97 FULL and BLOCK safe-lane
+order witnesses and adds a runtime `ProjectionRuntime` fixture. It proves that
+a BLOCK poll applies only the retained SUID, a null frontier applies nothing,
+and a FULL poll continues to apply the next event. It also proves the pure
+scanner-to-fence mapping: FULL → `undefined`, BLOCK with a retained frontier →
+that SUID, and BLOCK without one → `null`.
+
+`scripts/g58-block-live-green-guard.mjs` checks the production source order,
+the returned-frontier seam, all propagation points, and the retained frontier
+fence. Its self-test is red-capable for three focused mutations: restoring the
+W103 early return, replacing the scheduler fence with `undefined`, and
+removing the `ProjectionRuntime` high-water check. The self-test also checks
+the BLOCK/null/FULL plans and confirms the W103 red receipt remains a
+pre-fix (`status=red-baseline`, `livePollCalled=false`) record. The normal
+guard writes `.artifacts/sdt-g58-w104-green-guard.json` with `status=green`.
+
+### Validation and scope
+
+- `npm run test:g58` — passed, including the existing G44/G58 fixtures,
+  production omission and lag-hygiene mutations, W100 evidence guard, the
+  W97 witness, and W104's red-capable green guard (which also verifies the
+  preserved W103 receipt).
+- `npm run test:g44` — passed; the existing `test/g44-global-completeness.spec.ts`
+  remains byte-unmodified and the production G44 mutation runner remains
+  green with all four forced-red cases.
+- `npm run typecheck` — passed.
+- `npm run lint` — passed after the focused test/guard cleanup.
+
+No SafeWindow bound, timeout, gate, G44 correctness fixture, deployment,
+cohort, Wrangler operation, token, D1 reset, SDT-G56 state, or SDT-G60-owned
+path changed. This W104 checkpoint is **completed** for the focused G58 AC5
+BLOCK live-poll repair and is ready for a later deployed proof continuation.
