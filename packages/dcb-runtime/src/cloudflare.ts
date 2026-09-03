@@ -48,11 +48,16 @@ import {
 export {
   createG60DurableHopObserver,
   recordDurableHop,
+  recordDurableHopSubstep,
   recordFirstUnsafeVisibleRead,
 } from "./diagnostics/G60DurableHop";
+export { G60_POST_ADMISSION_STAGES } from "./diagnostics/G60DurableHop";
 export type {
+  G60DurablePostAdmissionObservation,
   G60DurableHopObservation,
   G60DurableHopObserver,
+  G60PostAdmissionBoundary,
+  G60PostAdmissionStage,
   G60HopStage,
   G60HopTransport,
 } from "./diagnostics/G60DurableHop";

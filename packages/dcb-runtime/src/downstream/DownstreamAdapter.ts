@@ -4,6 +4,7 @@ import {
   processDeliveryCore,
   type DeliveryCoreOptions,
   type DeliveryCoreResult,
+  type DeliverySource,
 } from "./DeliveryCore";
 import {
   isDownstreamOutboxMessage,
@@ -14,6 +15,7 @@ import {
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
 import { GlobalCompletenessReconciler, globalReceiptAcknowledgement } from "../completeness/GlobalCompletenessReconciler";
+import { observeG60PostAdmission, type G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 import { scopeIdFor } from "../scope/ScopeName";
 import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
 
@@ -32,6 +34,29 @@ export interface DownstreamAdapterEnv {
 }
 
 export type AdapterOptions = DeliveryCoreOptions;
+
+function observeSourceSubstep(
+  observer: G60DurableHopObserver | undefined,
+  input: Readonly<{
+    message: DownstreamOutboxMessage;
+    source: DeliverySource;
+    boundary: "start" | "end";
+    outcome: string;
+  }>,
+): void {
+  observeG60PostAdmission(observer, {
+    stage: "source-tag-acknowledgement",
+    boundary: input.boundary,
+    outcome: input.outcome,
+    serviceId: input.message.serviceId,
+    eventId: input.message.eventId,
+    suid: input.message.suid,
+    attemptId: input.message.attemptId,
+    partitionTag: input.message.tag,
+    transport: input.source,
+    observedAt: Date.now(),
+  });
+}
 
 function sourceAcknowledgementOptions(env: DownstreamAdapterEnv, options: AdapterOptions): AdapterOptions {
   // D1 itself is the G44 global-array authority. Do not add a rollout flag:
@@ -57,23 +82,78 @@ function sourceAcknowledgementOptions(env: DownstreamAdapterEnv, options: Adapte
     };
   const coverage = hasG44Authority
     ? async ({ message, event, arrivedAt, source }: Parameters<NonNullable<AdapterOptions["beforeViews"]>>[0]) => {
+      let completed = false;
       await options.beforeViews?.({ message, event, arrivedAt, source });
-      const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt);
-      if (decision.kind !== "SETTLED") {
-        throw new Error(`global_completeness_${decision.kind}:${decision.health.status}`);
+      observeG60PostAdmission(options.durableHopObserver, {
+        stage: "completeness-coverage",
+        boundary: "start",
+        outcome: "started",
+        serviceId: message.serviceId,
+        eventId: message.eventId,
+        suid: message.suid,
+        attemptId: message.attemptId,
+        partitionTag: message.tag,
+        transport: source,
+        observedAt: Date.now(),
+      });
+      try {
+        const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt);
+        observeG60PostAdmission(options.durableHopObserver, {
+          stage: "completeness-coverage",
+          boundary: "end",
+          outcome: decision.kind,
+          serviceId: message.serviceId,
+          eventId: message.eventId,
+          suid: message.suid,
+          attemptId: message.attemptId,
+          partitionTag: message.tag,
+          transport: source,
+          observedAt: Date.now(),
+        });
+        completed = true;
+        if (decision.kind !== "SETTLED") {
+          throw new Error(`global_completeness_${decision.kind}:${decision.health.status}`);
+        }
+      } catch (error) {
+        if (!completed) {
+          observeG60PostAdmission(options.durableHopObserver, {
+            stage: "completeness-coverage",
+            boundary: "end",
+            outcome: "error",
+            serviceId: message.serviceId,
+            eventId: message.eventId,
+            suid: message.suid,
+            attemptId: message.attemptId,
+            partitionTag: message.tag,
+            transport: source,
+            observedAt: Date.now(),
+          });
+        }
+        throw error;
       }
     }
     : options.beforeViews;
+  const observedSourceAcknowledgement = sourceAcknowledgement === undefined
+    ? undefined
+    : async (input: Parameters<NonNullable<AdapterOptions["afterGlobalReceipt"]>>[0]) => {
+      observeSourceSubstep(options.durableHopObserver, { ...input, boundary: "start", outcome: "started" });
+      try {
+        await sourceAcknowledgement(input);
+        observeSourceSubstep(options.durableHopObserver, { ...input, boundary: "end", outcome: "acknowledged" });
+      } catch (error) {
+        observeSourceSubstep(options.durableHopObserver, { ...input, boundary: "end", outcome: "error" });
+        throw error;
+      }
+    };
   const detectorFailure = hasG44Authority
     ? async ({ message, arrivedAt, error, source }: Parameters<NonNullable<AdapterOptions["onDetectorFailure"]>>[0]) => {
       await options.onDetectorFailure?.({ message, arrivedAt, error, source });
       await new GlobalCompletenessReconciler(env.D1!, env.TAG!).recordDetectorFailure(message.serviceId, error, arrivedAt);
     }
     : options.onDetectorFailure;
-  if (sourceAcknowledgement === options.afterGlobalReceipt && coverage === options.beforeViews && detectorFailure === options.onDetectorFailure) return options;
   return {
     ...options,
-    ...(sourceAcknowledgement === undefined ? {} : { afterGlobalReceipt: sourceAcknowledgement }),
+    ...(observedSourceAcknowledgement === undefined ? {} : { afterGlobalReceipt: observedSourceAcknowledgement }),
     ...(coverage === undefined ? {} : { beforeViews: coverage }),
     ...(detectorFailure === undefined ? {} : { onDetectorFailure: detectorFailure }),
   };

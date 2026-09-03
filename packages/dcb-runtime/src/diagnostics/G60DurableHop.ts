@@ -20,6 +20,18 @@ export const G60_HOP_STAGES = [
 export type G60HopStage = typeof G60_HOP_STAGES[number];
 export type G60HopTransport = "" | "queue" | "fast" | "import" | "public-read";
 
+/** Observation-only boundaries inside the interval after recordDelivery. */
+export const G60_POST_ADMISSION_STAGES = [
+  "post-record-delivery-global-receipt-readback",
+  "source-tag-acknowledgement",
+  "completeness-coverage",
+  "detector",
+  "unsafe-view-apply",
+] as const;
+
+export type G60PostAdmissionStage = typeof G60_POST_ADMISSION_STAGES[number];
+export type G60PostAdmissionBoundary = "start" | "end";
+
 export interface G60DurableHopObservation {
   readonly stage: G60HopStage;
   readonly serviceId: string;
@@ -34,6 +46,21 @@ export interface G60DurableHopObservation {
 
 export interface G60DurableHopObserver {
   observe(input: G60DurableHopObservation): void;
+  observeSubstep?(input: G60DurablePostAdmissionObservation): void;
+}
+
+export interface G60DurablePostAdmissionObservation {
+  readonly stage: G60PostAdmissionStage;
+  readonly boundary: G60PostAdmissionBoundary;
+  readonly outcome: string;
+  readonly serviceId: string;
+  readonly eventId: string;
+  readonly suid: string;
+  readonly attemptId: string;
+  readonly observedAt: number;
+  readonly partitionTag?: string;
+  readonly viewId?: string;
+  readonly transport?: G60HopTransport;
 }
 
 interface D1HopRow {
@@ -93,6 +120,71 @@ export async function recordDurableHop(database: D1Database, input: G60DurableHo
   ).run();
 }
 
+function validatePostAdmission(input: G60DurablePostAdmissionObservation): Required<Pick<G60DurablePostAdmissionObservation, "partitionTag" | "viewId" | "transport">> {
+  nonEmpty(input.serviceId, "serviceId");
+  nonEmpty(input.eventId, "eventId");
+  nonEmpty(input.suid, "suid");
+  nonEmpty(input.attemptId, "attemptId");
+  nonEmpty(input.outcome, "outcome");
+  if (!G60_POST_ADMISSION_STAGES.includes(input.stage)) {
+    throw new Error(`G60 unknown post-admission stage: ${input.stage}`);
+  }
+  if (input.boundary !== "start" && input.boundary !== "end") {
+    throw new Error(`G60 post-admission boundary must be start or end: ${input.boundary}`);
+  }
+  if (!Number.isSafeInteger(input.observedAt) || input.observedAt < 0) {
+    throw new Error("G60 post-admission observedAt must be a non-negative safe integer");
+  }
+  const partitionTag = input.partitionTag ?? "";
+  const viewId = input.viewId ?? "";
+  const transport = input.transport ?? "";
+  if (input.stage === "source-tag-acknowledgement" && partitionTag.length === 0) {
+    throw new Error("G60 source-tag-acknowledgement requires partitionTag");
+  }
+  if (input.stage === "unsafe-view-apply" && viewId.length === 0) {
+    throw new Error("G60 unsafe-view-apply requires viewId");
+  }
+  return { partitionTag, viewId, transport };
+}
+
+/** Append one observation-only post-admission boundary; replays are ignored. */
+export async function recordDurableHopSubstep(database: D1Database, input: G60DurablePostAdmissionObservation): Promise<void> {
+  const normalized = validatePostAdmission(input);
+  await database.prepare(`
+    INSERT OR IGNORE INTO serialized_dcb_hop_submeasurements
+      (service_id, event_id, suid, attempt_id, stage, boundary, outcome,
+       partition_tag, view_id, transport, observed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    input.serviceId,
+    input.eventId,
+    input.suid,
+    input.attemptId,
+    input.stage,
+    input.boundary,
+    input.outcome,
+    normalized.partitionTag,
+    normalized.viewId,
+    normalized.transport,
+    input.observedAt,
+  ).run();
+}
+
+/**
+ * Deliver one post-admission observation to the active waitUntil-backed
+ * observer. A diagnostic observer is never allowed to change protocol flow.
+ */
+export function observeG60PostAdmission(
+  observer: G60DurableHopObserver | undefined,
+  input: G60DurablePostAdmissionObservation,
+): void {
+  try {
+    observer?.observeSubstep?.(input);
+  } catch {
+    // Observation is never allowed to affect admission, delivery, or reads.
+  }
+}
+
 /**
  * Schedule an observation without extending the application response or
  * transport loop. The timestamp is captured by the caller at the hop; only
@@ -106,6 +198,10 @@ export function createG60DurableHopObserver(
   return Object.freeze({
     observe(input: G60DurableHopObservation): void {
       const write = recordDurableHop(database, input).catch(() => undefined);
+      waitUntil(write);
+    },
+    observeSubstep(input: G60DurablePostAdmissionObservation): void {
+      const write = recordDurableHopSubstep(database, input).catch(() => undefined);
       waitUntil(write);
     },
   });

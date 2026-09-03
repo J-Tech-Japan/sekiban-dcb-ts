@@ -6,7 +6,7 @@ import { systemPipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { StoreProviderEnvironment } from "../store/provider";
 import type { GlobalReceiptJoin, PipelineStore, StoredEvent } from "../store/types";
-import type { G60DurableHopObserver } from "../diagnostics/G60DurableHop";
+import { observeG60PostAdmission, type G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 export type DeliveryViewFailureClass =
   | "retryable-transient"
@@ -127,6 +127,29 @@ export interface DeliveryCoreEnvironment extends StoreProviderEnvironment {
 }
 
 export type { DeliverySource };
+
+function observePostAdmission(
+  observer: G60DurableHopObserver | undefined,
+  message: DownstreamOutboxMessage,
+  source: DeliverySource,
+  input: Readonly<{
+    stage: "post-record-delivery-global-receipt-readback" | "completeness-coverage" | "detector" | "unsafe-view-apply";
+    boundary: "start" | "end";
+    outcome: string;
+    viewId?: string;
+  }>,
+): void {
+  observeG60PostAdmission(observer, {
+    ...input,
+    serviceId: message.serviceId,
+    eventId: message.eventId,
+    suid: message.suid,
+    attemptId: message.attemptId,
+    partitionTag: message.tag,
+    transport: source,
+    observedAt: Date.now(),
+  });
+}
 
 function errorText(error: unknown): string {
   if (error instanceof Error && error.message.length > 0) return error.message;
@@ -259,10 +282,25 @@ export async function processDeliveryCore(
   // before a source Tag DO can mark its obligation acknowledged.
   if (store.readGlobalReceiptJoin !== undefined) {
     let receipt: GlobalReceiptJoin | undefined;
+    observePostAdmission(options.durableHopObserver, message, source, {
+      stage: "post-record-delivery-global-receipt-readback",
+      boundary: "start",
+      outcome: "started",
+    });
     try {
       receipt = await store.readGlobalReceiptJoin(message);
       if (receipt === undefined) throw new Error("global receipt/membership join is absent");
+      observePostAdmission(options.durableHopObserver, message, source, {
+        stage: "post-record-delivery-global-receipt-readback",
+        boundary: "end",
+        outcome: "available",
+      });
     } catch (error) {
+      observePostAdmission(options.durableHopObserver, message, source, {
+        stage: "post-record-delivery-global-receipt-readback",
+        boundary: "end",
+        outcome: "error",
+      });
       failures.push({ phase: "recordDelivery", class: "retryable-transient", error: errorText(error) });
       return result(source, message, "stored", arrivedAt, false, [], failures, options.correlationId, startedAt);
     }
@@ -284,12 +322,27 @@ export async function processDeliveryCore(
   }
   // Normative step 3: detector only for a stored event.
   let detectorApplied = false;
+  observePostAdmission(options.durableHopObserver, message, source, {
+    stage: "detector",
+    boundary: "start",
+    outcome: "started",
+  });
   try {
     const lagBound = await store.currentLagBound(message.serviceId, arrivedAt);
     const detector = new InconsistencyDetector(store, new BindingExclusionLedgerClient(env.REPAIR_EXCLUSION_LOOKUP));
     await detector.observe(message, arrivedAt, lagBound);
     detectorApplied = true;
+    observePostAdmission(options.durableHopObserver, message, source, {
+      stage: "detector",
+      boundary: "end",
+      outcome: "applied",
+    });
   } catch (error) {
+    observePostAdmission(options.durableHopObserver, message, source, {
+      stage: "detector",
+      boundary: "end",
+      outcome: "error",
+    });
     try {
       await options.onDetectorFailure?.({ message, arrivedAt, source, error });
     } catch (healthError) {
@@ -313,15 +366,33 @@ export async function processDeliveryCore(
   // slowest view while preserving the input order in the returned oracle.
   const viewOutcomes = await Promise.all(views.map(async (view) => {
     const viewStartedAt = performance.now();
+    observePostAdmission(options.durableHopObserver, message, source, {
+      stage: "unsafe-view-apply",
+      boundary: "start",
+      outcome: "started",
+      viewId: view.id,
+    });
     try {
       const applied = await view.apply({ message, event: storedEvent, arrivedAt, source });
       const status = applied === "duplicate-race" ? "duplicate-race" : "applied";
+      observePostAdmission(options.durableHopObserver, message, source, {
+        stage: "unsafe-view-apply",
+        boundary: "end",
+        outcome: status,
+        viewId: view.id,
+      });
       return {
         result: { id: view.id, status, durationMs: Math.max(0, performance.now() - viewStartedAt) } as DeliveryViewResult,
         failure: undefined,
       };
     } catch (error) {
       const failureClass = view.classifyError?.(error) ?? defaultFailureClass(error);
+      observePostAdmission(options.durableHopObserver, message, source, {
+        stage: "unsafe-view-apply",
+        boundary: "end",
+        outcome: `failed:${failureClass}`,
+        viewId: view.id,
+      });
       return {
         result: {
           id: view.id,

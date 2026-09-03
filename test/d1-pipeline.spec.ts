@@ -12,7 +12,7 @@ import { createD1StoreProvider, D1EventStore, D1IdentityConflictError } from "..
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
 import { handleSerializedRead } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
-import { recordDurableHop } from "../packages/dcb-runtime/src/diagnostics/G60DurableHop";
+import { recordDurableHop, recordDurableHopSubstep } from "../packages/dcb-runtime/src/diagnostics/G60DurableHop";
 import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { g32EventId, g32Message, g32Suid, withG44FixtureFacts } from "./helpers/g32-fixtures";
@@ -279,6 +279,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_global_memberships",
       "serialized_dcb_global_receipts",
       "serialized_dcb_hop_measurements",
+      "serialized_dcb_hop_submeasurements",
       "serialized_dcb_inconsistency_findings",
       "serialized_dcb_lag_estimates",
       "serialized_dcb_pending_arrivals",
@@ -327,5 +328,59 @@ describe("SDT-G18 D1 PipelineStore", () => {
     expect(new Set(rows.results.filter((row) => row.event_id === "event-one").map((row) => row.stage))).toEqual(new Set(observations.map((row) => row.stage)));
     expect(rows.results.find((row) => row.stage === "record-delivery-batch-committed")?.observed_at).toBe(900);
     expect(rows.results.some((row) => row.event_id === "event-two" && row.suid === identity.suid)).toBe(true);
+  });
+
+  it("keeps G60 post-admission boundaries append-only and exactly correlated", async () => {
+    const serviceId = `d1-g60-substeps-${crypto.randomUUID()}`;
+    const identity = {
+      serviceId,
+      eventId: "substep-event",
+      suid: "000000000000000000000000000002",
+      attemptId: "substep-attempt",
+      partitionTag: "reservation:substep",
+      transport: "queue" as const,
+    };
+    const observations = [
+      { stage: "post-record-delivery-global-receipt-readback" as const, boundary: "start" as const, outcome: "started", observedAt: 2000 },
+      { stage: "post-record-delivery-global-receipt-readback" as const, boundary: "end" as const, outcome: "available", observedAt: 2001 },
+      { stage: "source-tag-acknowledgement" as const, boundary: "start" as const, outcome: "started", observedAt: 2002 },
+      { stage: "source-tag-acknowledgement" as const, boundary: "end" as const, outcome: "acknowledged", observedAt: 2003 },
+      { stage: "completeness-coverage" as const, boundary: "start" as const, outcome: "started", observedAt: 2004 },
+      { stage: "completeness-coverage" as const, boundary: "end" as const, outcome: "SETTLED", observedAt: 2005 },
+      { stage: "detector" as const, boundary: "start" as const, outcome: "started", observedAt: 2006 },
+      { stage: "detector" as const, boundary: "end" as const, outcome: "applied", observedAt: 2007 },
+      { stage: "unsafe-view-apply" as const, boundary: "start" as const, outcome: "started", viewId: "RoomProjector", observedAt: 2008 },
+      { stage: "unsafe-view-apply" as const, boundary: "end" as const, outcome: "applied", viewId: "RoomProjector", observedAt: 2009 },
+      { stage: "unsafe-view-apply" as const, boundary: "start" as const, outcome: "started", viewId: "ReservationProjector", observedAt: 2010 },
+      { stage: "unsafe-view-apply" as const, boundary: "end" as const, outcome: "applied", viewId: "ReservationProjector", observedAt: 2011 },
+    ];
+    for (const observation of observations) await recordDurableHopSubstep(database(), { ...identity, ...observation });
+    await recordDurableHopSubstep(database(), { ...identity, ...observations[1], outcome: "mutated", observedAt: 9999 });
+    const rows = await database().prepare(
+      `SELECT event_id, suid, attempt_id, stage, boundary, outcome, partition_tag, view_id, transport, observed_at
+         FROM serialized_dcb_hop_submeasurements
+        WHERE service_id = ?
+        ORDER BY observed_at ASC, stage COLLATE BINARY, boundary COLLATE BINARY, view_id COLLATE BINARY`,
+    ).bind(serviceId).all<{
+      event_id: string;
+      suid: string;
+      attempt_id: string;
+      stage: string;
+      boundary: string;
+      outcome: string;
+      partition_tag: string;
+      view_id: string;
+      transport: string;
+      observed_at: number;
+    }>();
+    expect(rows.results).toHaveLength(observations.length);
+    expect(rows.results.every((row) => row.event_id === identity.eventId && row.suid === identity.suid && row.attempt_id === identity.attemptId)).toBe(true);
+    expect(rows.results.find((row) => row.stage === observations[1].stage && row.boundary === observations[1].boundary)?.outcome).toBe("available");
+    expect(rows.results.filter((row) => row.stage === "unsafe-view-apply").map((row) => row.view_id)).toEqual([
+      "RoomProjector",
+      "RoomProjector",
+      "ReservationProjector",
+      "ReservationProjector",
+    ]);
   });
 });

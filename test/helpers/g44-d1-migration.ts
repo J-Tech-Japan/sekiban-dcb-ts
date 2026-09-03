@@ -9,6 +9,8 @@ import g58Migration from "../../migrations/d1/g32/0003_g58_safe_lane_health.sql?
 import g58HistoryMigration from "../../migrations/d1/g32/0005_g58_safe_lane_history.sql?raw";
 // @ts-expect-error Vite raw asset import.
 import g60HopMigration from "../../migrations/d1/g32/0006_g60_durable_hop_measurements.sql?raw";
+// @ts-expect-error Vite raw asset import.
+import g60PostAdmissionMigration from "../../migrations/d1/g32/0007_g60_post_admission_decomposition.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -41,5 +43,11 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).first<{ name: string }>();
   if (hopMeasurements === null || hopMeasurements === undefined) {
     await database.batch(statements(database, g60HopMigration as string));
+  }
+  const hopSubmeasurements = await database.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_hop_submeasurements'",
+  ).first<{ name: string }>();
+  if (hopSubmeasurements === null || hopSubmeasurements === undefined) {
+    await database.batch(statements(database, g60PostAdmissionMigration as string));
   }
 }

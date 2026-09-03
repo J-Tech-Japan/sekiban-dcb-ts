@@ -1,0 +1,20 @@
+{
+  "guard": "SDT-G60 post-admission decomposition",
+  "phase": "pre-change",
+  "status": "red",
+  "expectedFailure": true,
+  "reason": "expected exactly 12 post-admission boundaries",
+  "legacyStageCount": 7,
+  "requiredBoundaryCount": 12,
+  "stages": [
+    "post-record-delivery-global-receipt-readback",
+    "source-tag-acknowledgement",
+    "completeness-coverage",
+    "detector",
+    "unsafe-view-apply"
+  ],
+  "views": [
+    "RoomProjector",
+    "ReservationProjector"
+  ]
+}
