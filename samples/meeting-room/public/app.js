@@ -2,6 +2,7 @@
 
 import {
   UI_SAFE_WINDOW_BOUND_MS,
+  compareV1Ordinal,
   commandOutcome,
   reservationListView,
   roomQueryView,
@@ -123,6 +124,7 @@ async function sendCommand(commandId, input, projection, options = {}) {
   }
   showProjection(body, "committed");
   const suid = commitSortableUniqueId(body);
+  if (suid !== undefined) setStatus(`Committed (${suid})`, "success");
   if (options.refreshReservations === true && suid !== undefined) {
     await refreshReservationsAfterCommit(suid);
     return;
@@ -176,7 +178,7 @@ async function fetchReservationPage(pageNumber, options = {}) {
  * does not retry or poll after a 504.
  */
 async function refreshReservationsAfterCommit(commitSuid) {
-  setQueryState(reservationsState, "Refreshing reservations after committed change…", "pending");
+  setQueryState(reservationsState, `List head unavailable; waiting for ${commitSuid}`, "pending");
   try {
     const view = await fetchReservationPage(1, { waitForSortableUniqueId: commitSuid });
     if (view.kind === "error") {
@@ -191,9 +193,14 @@ async function refreshReservationsAfterCommit(commitSuid) {
     setReadHead(reservationsHead, view.readHead);
     const newestFirst = view.rows.slice(0, RESERVATION_PAGE_SIZE);
     renderReservationRows(newestFirst);
+    const catchUp = typeof view.readHead !== "string"
+      ? `List head unavailable; waiting for ${commitSuid}`
+      : compareV1Ordinal(view.readHead, commitSuid) >= 0
+        ? `List head ${view.readHead} caught up to ${commitSuid}`
+        : `List head ${view.readHead} waiting for ${commitSuid}`;
     setQueryState(
       reservationsState,
-      view.kind === "empty" ? "No reservations found." : `${view.totalCount} reservation(s) — showing newest ${newestFirst.length}`,
+      `${catchUp} — ${view.kind === "empty" ? "No reservations found." : `${view.totalCount} reservation(s) — showing newest ${newestFirst.length}`}`,
       view.kind === "empty" ? "empty" : "ready",
     );
   } catch (error) {

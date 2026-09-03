@@ -7,7 +7,7 @@ import {
 import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { assertG32FinalFence } from "./compatibility";
 import { meetingRoomDeliveryPolicy, meetingRoomRuntimeConfig } from "./domain";
-import { drainMeetingRoomUnsafeKicks, meetingRoomDeliveryViews } from "./d1-mv";
+import { meetingRoomDeliveryViews } from "./d1-mv";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
 /** Local/legacy fixtures do not set G32 phase. A deployed final C always does. */
@@ -49,9 +49,10 @@ export async function deliverMeetingRoomDoorbell(
   const result = await processDownstreamDoorbell(message, env, {
     ...(testOverrides?.store === undefined ? { storeProvider: createD1StoreProvider() } : { store: testOverrides.store }),
     views: selectDirectDoorbellViews(configuredViews, config),
-    afterDelivery: testOverrides?.afterDelivery ?? (async () => {
-      ctx.waitUntil(drainMeetingRoomUnsafeKicks(env));
-    }),
+    // Unsafe delivery owns a durable kick, but it must stay queryable until
+    // scheduled safe convergence consumes it. The test seam may still supply
+    // an explicit post-delivery hook for its own bounded lifecycle oracle.
+    afterDelivery: testOverrides?.afterDelivery,
   });
   console.log("direct_doorbell_core", {
     correlationId: result.correlationId,

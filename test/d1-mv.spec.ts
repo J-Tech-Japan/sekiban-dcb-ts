@@ -440,7 +440,13 @@ describe("SDT-G19 D1 materialized-view store", () => {
       queryBacking: "d1-mv", materializedViewQueryPort: mv,
     });
     expect(mvResponse.status).toBe(200);
-    expect(await mvResponse.json()).toEqual(await memoryResponse.json());
+    // The safe row payload/page remains byte-identical to memory; G55 adds
+    // the D1 active checkpoint as an explicit list-read watermark.
+    const memoryBody = await memoryResponse.json<Record<string, unknown>>();
+    expect(await mvResponse.json()).toEqual({
+      ...memoryBody,
+      readHead: events[1]!.suid,
+    });
   });
 
   it("preserves roomId for a cancelled reservation in memory and D1 MV, including after rebuild", async () => {
@@ -511,7 +517,11 @@ describe("SDT-G19 D1 materialized-view store", () => {
       projectors: composition.projectors,
     });
     expect(mvResponse.status).toBe(200);
-    expect(await mvResponse.json()).toEqual(await memoryResponse.json());
+    const memoryBody = await memoryResponse.json<Record<string, unknown>>();
+    expect(await mvResponse.json()).toEqual({
+      ...memoryBody,
+      readHead: canonicalSuid("suid-2"),
+    });
     expect(incidents).toEqual([]);
   });
 

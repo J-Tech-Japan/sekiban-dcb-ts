@@ -66,6 +66,7 @@ interface Pagination {
   currentPage: number;
   pageSize: number;
   newestFirst: boolean;
+  consistency: "safe" | "unsafe";
 }
 
 function json(body: unknown, status = 200): Response {
@@ -131,14 +132,16 @@ function paginationFrom(value: unknown): { value?: Pagination; error?: string } 
   const currentPage = value.PageNumber ?? 1;
   const pageSize = value.PageSize ?? 20;
   const newestFirst = value.NewestFirst ?? false;
+  const consistency = value.consistency ?? "safe";
   if (
     typeof currentPage !== "number" || !Number.isSafeInteger(currentPage) || currentPage < 1 ||
     typeof pageSize !== "number" || !Number.isSafeInteger(pageSize) || pageSize < 1 ||
-    typeof newestFirst !== "boolean"
+    typeof newestFirst !== "boolean" ||
+    (consistency !== "safe" && consistency !== "unsafe")
   ) {
-    return { error: "PageNumber and PageSize must be positive integers and NewestFirst must be a boolean" };
+    return { error: "PageNumber and PageSize must be positive integers, NewestFirst must be a boolean, and consistency must be safe or unsafe" };
   }
-  return { value: { currentPage, pageSize, newestFirst } };
+  return { value: { currentPage, pageSize, newestFirst, consistency } };
 }
 
 function decodePayload(entry: ProjectedQueryEntry): unknown {
@@ -351,7 +354,14 @@ function endpointFromPath(path: string): QueryEndpoint | undefined {
   return undefined;
 }
 
-function resultResponse(endpoint: QueryEndpoint, entries: readonly ProjectedQueryEntry[], pagination?: Pagination, totalCount = entries.length, serverPaged = false): Response {
+function resultResponse(
+  endpoint: QueryEndpoint,
+  entries: readonly ProjectedQueryEntry[],
+  pagination?: Pagination,
+  totalCount = entries.length,
+  serverPaged = false,
+  readHead?: string,
+): Response {
   if (endpoint === "query") {
     return json({ resultJson: JSON.stringify({ count: entries.length }) });
   }
@@ -364,6 +374,7 @@ function resultResponse(endpoint: QueryEndpoint, entries: readonly ProjectedQuer
     totalPages: totalCount === 0 ? 0 : Math.ceil(totalCount / page.pageSize),
     currentPage: page.currentPage,
     pageSize: page.pageSize,
+    ...(readHead === undefined ? {} : { readHead }),
   });
 }
 
@@ -481,11 +492,26 @@ export async function handleSerializedQuery(
       }
     }
     const requestedPage = pagination.value;
+    const viewId = definition.materializedViewId ?? definition.tagProjector;
+    if (requestedPage !== undefined && selection.backing === "d1-mv" && selection.store.readListPage !== undefined) {
+      const page = await selection.store.readListPage(serviceId, viewId, {
+        limit: requestedPage.pageSize,
+        offset: (requestedPage.currentPage - 1) * requestedPage.pageSize,
+        ...(requestedPage.newestFirst ? { descending: true } : {}),
+        consistency: requestedPage.consistency,
+      });
+      const entries = page.rows.map((row) => ({
+        eventId: isObject(row.value) && typeof row.value.eventId === "string" && row.value.eventId.length > 0 ? row.value.eventId : row.rowKey,
+        suid: row.sourceSuid,
+        payload: JSON.stringify(row.value),
+      }));
+      return resultResponse(endpoint, entries, requestedPage, page.totalCount, true, page.readHead);
+    }
     const supportsServerPaging = selection.backing === "d1-mv" && selection.store.queryRowsWithTotal !== undefined;
     const page = await readRowsPageFromBacking(
       selection,
       serviceId,
-      definition.materializedViewId ?? definition.tagProjector,
+      viewId,
       definition,
       requestedPage === undefined || !supportsServerPaging
         ? { limit: null }
