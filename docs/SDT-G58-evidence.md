@@ -1053,3 +1053,85 @@ are wired through `package.json` and
 are the only new artifacts. No SafeWindow bound, timeout, gate, G44 test,
 W102-W105 artifact, deployment, cohort, token, SDT-G56 state, or SDT-G60-owned
 path changed.
+
+## W107 deployed AC1/AC5 proof checkpoint — 2026-09-03 (blocked)
+
+This checkpoint started from the exact pushed branch head
+`700c0cb4bf7c896a8b676d4613bfae53fca58519` and performed the one authorized
+normal-config deployment. It did not run the ten-reservation paced cohort,
+G15/G16, a D1 reset, a replacement request, a PR, or worker completion. The
+W106 ReservationProjector re-entry state is included in the deployed source;
+its unchanged local green receipt remains `.artifacts/sdt-g58-w106-reentry-green.json`.
+
+### Wrangler/OAuth and C-0/C-13 preconditions
+
+- The repository-pinned `./node_modules/.bin/wrangler` reported `4.125.0`.
+  The single `whoami` at `2026-09-03T11:26:28Z`–`11:26:30Z` succeeded through
+  OAuth. `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` were unset.
+- Wrangler's credential file mtime advanced from
+  `2026-09-03T01:58:55Z` to `2026-09-03T04:26:29Z` during that OAuth operation
+  and remained unchanged through the deployment/read-only verification.
+- The read-only precondition at `2026-09-03T11:29:58Z`–`11:30:01Z` listed
+  the prior version `2ec23a75-8365-484b-9c8f-1197d3499cec` and returned
+  `No migrations to apply!` for both the pipeline and materialized-view D1
+  databases. No C-0/C-13 application reset or purge was run in this wake.
+- The first secret-list spelling `--json` was rejected locally (`Unknown
+  argument: json`) before an API request. The one syntax correction used
+  `--format json` and confirmed `CONFORMANCE_TOKEN` as `secret_text` by name
+  only. No secret value was read or rotated. The Observability token was not
+  required by this AC1/AC5 proof and its contents were never read.
+
+### Exact deployment identity
+
+The exact command was:
+
+```text
+env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --strict --message "SDT-G58 W107 AC1 AC5 proof 700c0cb4"
+```
+
+Cloudflare reported a successful upload/deployment at
+`2026-09-03T11:30:54Z`–`11:30:57Z`:
+
+- Worker URL: `https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev`;
+- version `9e5586ad-0cb1-4d00-9c05-89306e04520f` (version 192);
+- annotation `SDT-G58 W107 AC1 AC5 proof 700c0cb4`, carrying the full source
+  SHA `700c0cb4bf7c896a8b676d4613bfae53fca58519`;
+- deployment `33834995-7f23-4102-bea7-7c677708861e` at 100%.
+
+The deploy wrapper then attempted to assign zsh's read-only `status` variable
+and exited 1 after Cloudflare had already printed the version. This local
+bookkeeping error did not trigger a deploy retry. The sanitized identity
+receipt is `.artifacts/sdt-g58-w107-deploy-identity.json`, and the precondition
+receipt is `.artifacts/sdt-g58-w107-preconditions.json`.
+
+### AC1/AC5 bounded proof stop
+
+Exactly one invocation of the existing single-witness harness started at
+`2026-09-03T11:31:50.216Z`:
+
+```text
+env -u CLOUDFLARE_API_TOKEN G53_CONFORMANCE_TOKEN_FILE=/private/tmp/sdt-g53-w89-conformance-token node scripts/deploy/g58-safe-lane-e2e.mjs --mode single --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --token-file /private/tmp/sdt-g53-w89-conformance-token --report .artifacts/sdt-g58-w107-ac5-single.json
+```
+
+The bearer-authenticated `GET /conformance/v1/read-health` failed HTTP 403 in
+`427 ms`, before the harness sent a room or reservation command. The failed
+receipt `.artifacts/sdt-g58-w107-ac5-single.json` contains no bearer value and
+records the exact run id `cf0cf24a-2498-4029-97e5-762511edfed9`, status
+`failed`, and `read-health failed HTTP 403`. No second request, token rotation,
+deployment, or alternative authentication was attempted. Consequently this
+wake cannot claim authenticated AC1 health fields or a fresh AC5
+live-projection advancement witness and is a durable **blocked** checkpoint.
+
+### Local validation and scope
+
+- `npm run test:g58` — passed (8 tests plus all G58 red-capable guards and
+  preserved W106 re-entry receipt).
+- `npm run test:g44` — passed; G44 correctness and forced-red mutations remain
+  unchanged.
+- `npm run typecheck` — passed.
+- `npm run lint` — passed with zero warnings.
+
+The published SafeWindow floor/ceiling (`20,000`/`120,000 ms`), 5,000 ms
+unsafe constant, G44/W97/W104/W106 guards, minimum aggregation, and
+SDT-G60-owned upstream paths are unchanged. No PR or worker lifecycle command
+was run because the first deployed AC1 authentication proof failed.
