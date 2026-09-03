@@ -184,3 +184,96 @@ the safe head stopped at reservation 4. This is a blocked AC2/AC5 checkpoint,
 not a reason to raise the SafeWindow, average away missing samples, or stitch
 another window. A later focused continuation must diagnose the safe-lane gate
 and the unsafe-bound sample; this wake made no product or timeout change.
+
+## W96 diagnosis and red guard — 2026-09-03
+
+This is a diagnosis-only checkpoint on top of the W95 receipt. It sent no
+requests, performed no deployment, changed no SafeWindow bound, and did not
+open a PR or complete the worker. The W95 raw receipt remains the sole source
+for this diagnosis: `.artifacts/sdt-g58-ac2-cohort-checkpoint-w95.json`.
+
+### Exact failure diagnosis
+
+W95 recorded `coverage.kind=SETTLED`, `coverage.reason=null`, and
+`safeWindowMs=20000` for all 42 health snapshots. The scheduled coverage ticks
+were 07:58:35.669Z, 07:59:35.261Z, 08:00:47.143Z, and 08:02:51.116Z. At the
+08:00:47.143Z observation the ReservationProjector safe head had advanced only
+through cohort row 4 (`063924019239189000001227397085`), leaving rows 5–10
+unsafe. At 08:02:51.116Z it was still row 4 with six unsafe rows, even though
+the global head had reached row 10. Both reported live-projector heads were
+pre-cohort at the terminal observation.
+
+The exact product cause is scheduled execution ordering, not a broken
+`follow` algorithm:
+
+1. `samples/meeting-room/src/worker.cloudflare-only.ts:76-101` calls
+   `globalCoverage()` and passes that persisted frontier to
+   `catchUp(frontierSuid)` and `drainUnsafeKicks(frontierSuid)` before invoking
+   `runGenericScheduledWork()`.
+2. The production generic schedule in
+   `packages/dcb-runtime/src/cloudflare.ts:343-353` then performs the fresh
+   `GlobalCompletenessReconciler.reconcile()` and, only for a FULL result,
+   calls `pollLiveProjections()`. Therefore the fresh scanner frontier is not
+   fed back into the safe MV pass during that same cron invocation. The next
+   tick is the first opportunity to consume it; W95's bounded deadline expired
+   before that happened.
+3. `packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts:186-207` correctly
+   stops at the first SafeWindow-unsafe event and honors `maximumSuid`; it did
+   not skip a gap or cross an unproven frontier. The observed row-4 stop is
+   exactly what the stale persisted frontier plus the first-unsafe-event rule
+   predicts.
+
+Live polling was not independently proven corrupt. It is downstream of the
+fresh scanner in the same generic schedule, and
+`ProjectionRuntime.pollRegistered()` (`packages/dcb-runtime/src/projection/ProjectionRuntime.ts:229-240`)
+processes every tag/projector serially. The health reader also reports the
+minimum checkpoint and poll time across all tags
+(`samples/meeting-room/src/d1-mv.ts:375-389`), so a pre-cohort minimum is not a
+cohort-specific proof that every poll failed. The terminal pre-cohort live
+heads mean AC5 was not reached, but the actionable G58 defect demonstrated by
+the receipt is the scanner-to-safe-lane scheduling gap; a future repair must
+make a newly proven FULL frontier available to safe catch-up in the same tick
+while retaining the existing gap fence.
+
+### Red-capable guard (preserved before a green repair)
+
+`test/g58-safe-lane-diagnosis.spec.ts` is an intentionally failing witness on
+this baseline. It simulates the W95 sequence: a persisted stale frontier is
+consumed, generic scheduled work discovers a fresh FULL frontier afterward,
+and no second safe pass occurs. The final assertion requires the safe head to
+reach the fresh frontier, so the current baseline fails with the exact
+received/expected SUIDs. Existing `test/g44-global-completeness.spec.ts` is
+untouched, and the existing G58 frontier/gap guards remain in place.
+
+`scripts/g58-safe-lane-diagnosis-guard.mjs` runs that fixture with the pinned
+local Vitest, requires the baseline to remain red, and writes the complete
+stdout/stderr and exit status to
+`.artifacts/sdt-g58-w96-red-guard.json`. The package lane now includes the
+guard's self-test; `npm run diagnose:g58` produced:
+
+```json
+{"guard":"g58-w96-same-tick-frontier","status":"red-baseline","report":".artifacts/sdt-g58-w96-red-guard.json","exitCode":1}
+```
+
+The future focused green repair must make this witness pass and then replace
+the expected-red checkpoint deliberately; no product fix is included here.
+
+### Unsafe 5-second observation classification
+
+Row 1's raw observations were not visible at commit+2,347 ms and visible at
+commit+5,289 ms; the `waitForUnsafe` loop elapsed 4,974 ms and polls roughly
+every two seconds. This brackets the transition between two observations but
+does not establish that the product crossed the authoritative 5,000 ms limit;
+the 5,289 ms value is a first-visible upper bound. Row 10 is exactly 5,000 ms.
+Accordingly this single row is classified **indeterminate at the existing
+sampling resolution**, not as a proven product defect. The <=5 s contract is
+unchanged, no timeout or acceptance limit was weakened, and no value was
+imputed.
+
+### Checkpoint boundary
+
+W96 pushes only the diagnosis fixture, red-output artifact, package wiring,
+and this evidence section. No deployment, cohort rerun, green product change,
+SafeWindow change, G44 modification, SDT-G56 work, PR, or worker completion was
+performed. The next authorized wake can implement and validate the focused
+same-tick frontier repair against this preserved red witness.
