@@ -519,6 +519,10 @@ use Wrangler, deploy, reset remote data, send an application request, rerun
 the W99 cohort, or change the G58 runtime. The committed W99 raw receipt and
 its red outcome remain the baseline evidence.
 
+The diagnosis/harness checkpoint is pushed at
+`436a6b1cc1696b3ae5ced931a157be88610c3ec3` on
+`claude/sdt-g58-safe-lane-w93`.
+
 ### Correlated W99 facts
 
 The W99 run was `97edc4cd-5910-410a-9de9-9f9cbc6fb969` and used 250 ms list
