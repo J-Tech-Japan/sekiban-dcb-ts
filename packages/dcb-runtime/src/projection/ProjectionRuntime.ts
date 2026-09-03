@@ -29,6 +29,12 @@ export {
 };
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
+/**
+ * Live projection identities have independent checkpoints. A bounded worker
+ * pool prevents a large retained tag set from monopolizing one cron
+ * invocation while keeping D1/CAS pressure finite and deterministic.
+ */
+export const MAX_LIVE_PROJECTION_CONCURRENCY = 8;
 
 export interface ProjectedTagState {
   payload: string;
@@ -276,15 +282,26 @@ export class ProjectionRuntime {
     maximumSuid?: string | null,
   ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
-    const results: CatchUpResult[] = [];
+    const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
     for (const tag of tags) {
       for (const projector of this.registry.registered()) {
-        const identity = tagStateIdentityForPolledTag(tag, projector.id, this.registry);
-        if (identity !== undefined) {
-          results.push(await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid }));
-        }
+        if (tagStateIdentityForPolledTag(tag, projector.id, this.registry) !== undefined) jobs.push({ tag, projector: projector.id });
       }
     }
+    const results: CatchUpResult[] = [];
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = next;
+        next += 1;
+        const job = jobs[index];
+        if (job === undefined) return;
+        const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
+        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid });
+      }
+    };
+    const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
     return results;
   }
 }

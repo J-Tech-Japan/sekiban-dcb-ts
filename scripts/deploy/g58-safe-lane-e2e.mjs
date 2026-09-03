@@ -139,6 +139,8 @@ function healthSummary(body, receivedAtMs) {
       head: typeof projection?.head === "string" ? projection.head : "",
       headAgeMs: typeof projection?.headAgeMs === "number" ? projection.headAgeMs : null,
       lastPollAt: typeof projection?.lastPollAt === "number" ? projection.lastPollAt : null,
+      pollStatus: typeof projection?.pollStatus === "string" ? projection.pollStatus : "never-invoked",
+      pollReason: projection?.pollReason === null || projection?.pollReason === undefined ? null : String(projection.pollReason),
     })),
     globalHead: typeof body.globalHead === "string" ? body.globalHead : "",
   };
@@ -290,6 +292,35 @@ function slowAttribution(sample, snapshots) {
   const coverageTicks = new Set(during.map((snapshot) => snapshot.coverage.observedAt).filter((value) => value !== null));
   if (coverageTicks.size === 0) return { kind: "cron_not_firing", reason: "no scheduled coverage observation during the slow interval" };
   return { kind: "follow_stopping_at_unsafe_event", reason: "scheduled coverage advanced but the safe head remained below the target" };
+}
+
+function scheduledPollLifecycle(snapshots) {
+  const groups = new Map();
+  for (const snapshot of snapshots) {
+    const observedAt = snapshot?.coverage?.observedAt;
+    if (!Number.isSafeInteger(observedAt)) continue;
+    const rows = groups.get(observedAt) ?? [];
+    rows.push(snapshot);
+    groups.set(observedAt, rows);
+  }
+  return [...groups.entries()].map(([observedAt, rows]) => {
+    const latest = rows.at(-1);
+    const projectors = (latest?.liveProjections ?? []).map((projection) => ({
+      projectorId: projection.projectorId,
+      attemptedAt: projection.lastPollAt,
+      outcome: projection.pollStatus,
+      reason: projection.pollReason,
+    }));
+    return {
+      observedAt,
+      observedAtIso: new Date(observedAt).toISOString(),
+      httpSamples: rows.length,
+      coverage: { kind: latest?.coverage?.kind ?? "unknown", reason: latest?.coverage?.reason ?? null },
+      projectors,
+      allRegisteredProjectorsObserved: ["RoomProjector", "ReservationProjector"].every((projectorId) =>
+        projectors.some((row) => row.projectorId === projectorId && Number.isSafeInteger(row.attemptedAt))),
+    };
+  });
 }
 
 function projectionTargets(roomId, reservations) {
@@ -456,6 +487,7 @@ async function run(options) {
     }
 
     await waitForSafeAndLive(options, report, projectionTargets(roomId, report.reservations));
+    report.scheduledPollLifecycle = scheduledPollLifecycle(report.healthSnapshots);
     for (const reservation of report.reservations) reservation.slowGateAttribution = slowAttribution(reservation, report.healthSnapshots);
     const safeSamples = report.reservations.map((reservation) => reservation.safe.commitToSafeMs);
     const unsafeSamples = report.reservations
@@ -493,6 +525,7 @@ async function run(options) {
     report.status = "completed";
     return report;
   } catch (caught) {
+    report.scheduledPollLifecycle = scheduledPollLifecycle(report.healthSnapshots);
     report.finishedAt = new Date().toISOString();
     report.status = "failed";
     report.failure = caught instanceof Error ? caught.message : String(caught);
