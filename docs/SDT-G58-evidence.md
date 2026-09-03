@@ -351,3 +351,81 @@ contracts, published 20 s/120 s SafeWindow bounds, G44 correctness test, W95
 raw cohort, and W96 red evidence are unchanged. The pushed repair checkpoint
 is `4aa0deb4280baad7b51877a395ebe2972a1f5995` and is ready for orchestration
 to dispatch the next bounded verification wake.
+
+## W98 AC4 lag-estimate hygiene checkpoint — 2026-09-03
+
+This is the local/code-only AC4 continuation from branch
+`claude/sdt-g58-safe-lane-w93` at starting head
+`2db0ad3ff2072959c750d5f71bcd0ff57d1d7fad`. It sent no application request,
+performed no deployment, mutated no remote D1 state, reran no cohort, opened no
+PR, and did not complete the worker. The W95 cohort and its evidence remain
+unchanged.
+
+### Lag decay and SafeWindow contract
+
+The W95 health ledger already showed the retained estimate falling from about
+10 seconds to `0 ms` while `safeWindowMs` stayed at `20,000 ms`. That behavior
+does not justify a single-arrival cap, so no cap or other SafeWindow policy was
+added. The implementation remains the existing linear current-estimate rule:
+`max(0, estimateMs - (nowMs - observedAtMs))`. The published constants remain
+byte-for-byte `PUBLISHED_SAFE_WINDOW_MS = 20_000` and
+`MAX_PUBLISHED_SAFE_WINDOW_MS = 120_000`.
+
+`test/g58-safe-lane.spec.ts` now exercises the service calculation and the
+pure helper at a deterministic stale-estimate boundary. An `80,000 ms`
+estimate is still `80,000 ms` at its observation time; at `79,999 ms` of idle
+time it is `1 ms` and already clamps to the `20,000 ms` floor; at one full
+`80,000 ms` decay interval `D1EventStore.currentLagBound` returns `0` and the
+computed SafeWindow is exactly `20,000 ms`. This proves that after arrivals stop
+the deployed service does not treat a stale estimate as current, without
+changing the 20-second floor or 120-second ceiling.
+
+### Red-capable mutation receipt
+
+`scripts/g58-lag-hygiene-guard.mjs` runs the focused oracle green, mutates only
+the `estimateMs - elapsed` term to a no-decay implementation, and requires the
+same oracle to fail. It restores the source in a `finally` path and retains the
+full child-process output in
+`.artifacts/sdt-g58-w98-lag-red-guard.json`:
+
+```json
+{"schema":"sdt-g58-ac4-lag-hygiene/v1","status":"red-mutant","baseline":{"exitCode":0},"mutant":{"exitCode":1},"restored":true}
+```
+
+The mutant's assertion is the expected `1` ms stale value versus the received
+`80,000` ms, so the guard is red-capable rather than merely checking that a
+script ran. The normal `g58-safe-lane-guard.mjs` statically requires this guard,
+the fixture anchor, and the purge plan; the W96 red receipt and W97 green
+witness remain preserved.
+
+### Prepared, unexecuted C-0 retired-row purge
+
+The next authorized deployment continuation must first inventory lag-estimate
+rows, then run this exact C-0/C-13-scoped remote operation against the normal
+config's `D1` binding:
+
+```sh
+./node_modules/.bin/wrangler d1 execute D1 --remote --json --yes \
+  --config samples/meeting-room/wrangler.cloudflare-only.jsonc \
+  --command "DELETE FROM serialized_dcb_lag_estimates WHERE service_id <> 'sekiban-dcb-meeting-room-cloudflare-only'"
+```
+
+The SQL is checked in as
+`scripts/deploy/g58-ac4-retired-lag-purge.sql`. Its predicate removes only
+retired-service lag rows and retains the deployed service row
+`sekiban-dcb-meeting-room-cloudflare-only`; the operation must not be run until
+the next wake's identity inventory and reset authorization are recorded. W98
+did not invoke Wrangler or execute this statement.
+
+### Deterministic validation
+
+- Focused decay oracle: `npm run build:packages && ./node_modules/.bin/vitest run --config vitest.config.ts --no-file-parallelism --maxWorkers=1 test/g58-safe-lane.spec.ts --testNamePattern 'decays a retired lag estimate'` — passed.
+- `node scripts/g58-lag-hygiene-guard.mjs --self-test && node scripts/g58-lag-hygiene-guard.mjs` — passed; mutant exit `1`, receipt restored.
+- `npm run test:g58` — passed (2 files, 5 tests, existing G58 production-omission and W97 same-tick guards intact).
+- `npm run test:g44` — passed unchanged (8 tests and all four G44 production mutants red).
+- `npm run typecheck` — passed.
+- `npm run lint` — passed with `--max-warnings=0`.
+
+No SafeWindow bound, G44 test, cohort, remote D1 row, SDT-G56 work item, or
+deployment was changed in this checkpoint. The AC4 checkpoint is ready for the
+next authorized deployment/purge and fresh verification continuation.

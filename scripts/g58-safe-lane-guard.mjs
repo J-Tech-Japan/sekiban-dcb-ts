@@ -29,6 +29,8 @@ function snapshot() {
     diagnosisGuard: read("scripts/g58-safe-lane-diagnosis-guard.mjs"),
     test: read("test/g58-safe-lane.spec.ts"),
     mutation: read("scripts/g58-safe-lane-mutation-runner.mjs"),
+    lagGuard: read("scripts/g58-lag-hygiene-guard.mjs"),
+    purgePlan: read("scripts/deploy/g58-ac4-retired-lag-purge.sql"),
     e2e: read("scripts/deploy/g58-safe-lane-e2e.mjs"),
     readProof: read("scripts/deploy/g58-ac1-ac5-readproof.mjs"),
     migration: read("migrations/d1/g32/0003_g58_safe_lane_health.sql"),
@@ -67,6 +69,10 @@ export function assertG58SafeLaneContract(value) {
   requireContains(value.test, "continues a BLOCK tick through only the retained FULL frontier", "red-capable BLOCK fixture");
   requireContains(value.test, "returns the bearer-only health surface", "health authentication fixture");
   requireContains(value.test, "decays a retired lag estimate", "lag floor fixture");
+  requireContains(value.test, "decayedLagEstimateMs", "lag decay function fixture");
+  requireContains(value.lagGuard, "sdt-g58-ac4-lag-hygiene/v1", "lag hygiene mutation guard");
+  requireContains(value.lagGuard, "estimateMs - elapsed", "linear lag decay mutant");
+  requireContains(value.purgePlan, "service_id <> 'sekiban-dcb-meeting-room-cloudflare-only'", "C-0 retired-lag purge plan");
   requireContains(value.mutation, "g58-coverage-gate-production-mutant-red", "production BLOCK omission proof");
   requireContains(value.e2e, "safeWindowMs + 120000ms", "deployed e2e safe deadline");
   requireContains(value.e2e, "pacedReservationCommits", "paced cohort recorder");

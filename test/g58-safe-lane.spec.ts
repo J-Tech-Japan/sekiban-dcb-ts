@@ -16,6 +16,7 @@ import mvMigration0005 from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 import mvMigration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1EventStore, D1MaterializedViewStore, safeWindowMs } from "../packages/dcb-runtime/src/d1";
+import { decayedLagEstimateMs, PUBLISHED_SAFE_WINDOW_MS } from "../packages/dcb-runtime/src/safeWindow";
 import { MaterializedViewCatchUpRuntime } from "../packages/dcb-runtime/src/mv/MaterializedViewCatchUp";
 import type { GlobalCompletenessCoverage } from "../packages/dcb-runtime/src/completeness/types";
 import type { ProjectionStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
@@ -237,7 +238,7 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
     });
   });
 
-  it("decays a retired lag estimate back to the published 20-second safe-window floor after one decay interval", async () => {
+  it("decays a retired lag estimate back to the published 20-second safe-window floor after one decay interval when arrivals stop", async () => {
     const serviceId = `g58-lag-${crypto.randomUUID()}`;
     const observedAt = Date.now() - 80_000;
     await pipeline().prepare(
@@ -246,8 +247,14 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
     ).bind(serviceId, observedAt).run();
     const source = new D1EventStore(pipeline());
     await source.initialize();
-    const decayed = await source.currentLagBound(serviceId, observedAt + 80_000);
+    const staleAt = observedAt + 79_999;
+    const decayBoundary = observedAt + 80_000;
+    expect(decayedLagEstimateMs(80_000, observedAt, staleAt)).toBe(1);
+    expect(safeWindowMs(decayedLagEstimateMs(80_000, observedAt, staleAt))).toBe(PUBLISHED_SAFE_WINDOW_MS);
+    expect(await source.currentLagBound(serviceId, observedAt)).toBe(80_000);
+    const decayed = await source.currentLagBound(serviceId, decayBoundary);
     expect(decayed).toBe(0);
+    expect(safeWindowMs(decayed)).toBe(PUBLISHED_SAFE_WINDOW_MS);
     expect(safeWindowMs(decayed)).toBe(20_000);
   });
 });
