@@ -35,6 +35,7 @@
     "e2e:g15:local": "bash scripts/deploy/g15-local-e2e.sh",
     "e2e:g16": "python3 scripts/deploy/g15-e2e.py --include-query-views",
     "e2e:g55": "node scripts/deploy/g55-read-visibility-e2e.mjs",
+    "build:g55:bundle": "npm run build:packages && env -u CLOUDFLARE_API_TOKEN ./node_modules/.bin/wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/sdt-g55-cloudflare-build --outfile .artifacts/sdt-g55-cloudflare-build/worker.js --metafile .artifacts/sdt-g55-cloudflare-build/bundle-meta.json && node scripts/g55-deployment-bundle-preflight.mjs --self-test && node scripts/g55-deployment-bundle-preflight.mjs",
     "e2e:g16:local": "G15_INCLUDE_QUERY_VIEWS=true G15_LOCAL_REPORT=.artifacts/g16-local-e2e.json bash scripts/deploy/g15-local-e2e.sh",
     "conformance:g20": "bash scripts/deploy/g20-conformance.sh",
     "e2e:g20": "bash scripts/deploy/g20-query-e2e.sh",

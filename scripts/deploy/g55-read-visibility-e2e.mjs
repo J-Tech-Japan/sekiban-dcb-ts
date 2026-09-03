@@ -181,6 +181,25 @@ async function waitForUnsafe({ baseUrl, reservationId, timeoutMs, pollMs }) {
   }
 }
 
+async function deployedRuntimePreflight(baseUrl) {
+  const result = await requestJson(baseUrl, "/api/read/reservations?pageNumber=1&pageSize=1&newestFirst=true", {
+    headers: { accept: "application/json" },
+  });
+  if (result.status !== 200) throw new Error(`deployed G55 list preflight failed HTTP ${result.status}`);
+  const items = listItems(result.body);
+  const readHead = result.body?.readHead;
+  if (typeof readHead !== "string" || !SORTABLE_UNIQUE_ID.test(readHead)) {
+    throw new Error("deployed G55 list preflight omitted a 30-digit readHead; normal-config bundle is stale or lacks the runtime change");
+  }
+  return {
+    status: result.status,
+    responseMs: result.elapsedMs,
+    readHead,
+    itemCount: items.length,
+    cfRay: result.cfRay,
+  };
+}
+
 async function run(options) {
   const runId = crypto.randomUUID();
   const startedAtMs = Date.now();
@@ -196,11 +215,13 @@ async function run(options) {
       unsafeBoundMs: options.unsafeTimeoutMs,
       safeHeadSource: "remote D1 mv_active_generations ReservationProjector last_suid",
       listRoute: "GET /api/read/reservations (app route opts into consistency:unsafe)",
+      deployedRuntimePreflight: "GET app list has a populated 30-digit readHead before the fresh cohort begins",
     },
     d1Before: unsafeD1Facts(options),
     reservations: [],
   };
   try {
+    report.deployedRuntimePreflight = await deployedRuntimePreflight(options.baseUrl);
     const roomId = `g55-room-${runId.slice(0, 12)}`;
     const room = await requestJson(options.baseUrl, "/api/commands/create-room", {
       method: "POST",
@@ -241,6 +262,7 @@ async function run(options) {
 
     const pending = new Set(report.reservations.map((entry) => entry.reservationId));
     const safeHeadObservations = [];
+    report.safeHeadObservations = safeHeadObservations;
     while (pending.size > 0) {
       const observedAtMs = Date.now();
       const head = activeSafeHead(options);
@@ -256,7 +278,6 @@ async function run(options) {
       }
       if (pending.size > 0) await sleep(options.pollMs);
     }
-    report.safeHeadObservations = safeHeadObservations;
     report.d1After = unsafeD1Facts(options);
     report.finishedAt = new Date().toISOString();
     report.status = "completed";
