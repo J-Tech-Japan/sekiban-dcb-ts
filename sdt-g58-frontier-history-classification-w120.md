@@ -205,17 +205,24 @@ and mutation gate were green.
 ## Branch, PR, and worker transition
 
 The implementation checkpoint was pushed before deployment at
-`9637e1f6c4e2b4b4c604763239abc4d214249118`. The final evidence commit and PR
-head are recorded here after the evidence/report commit is pushed. The PR is
-against `main` for issue #112; no G60/#113 or G61/#114 dispatch was performed,
-and G56 remains held.
+`9637e1f6c4e2b4b4c604763239abc4d214249118`. The final evidence/PR head is
+`e4610cb5e68d30c0ca1d42336427489cf812c303` on
+`claude/sdt-g58-safe-lane-w93`. PR `#115`
+(`https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/115`) is open, non-draft,
+and targets `main` for issue #112. No G60/#113 or G61/#114 dispatch was
+performed, and G56 remains held.
 
-The canonical issue-to-PR worker transition is run only after the PR is open,
-using `intent-cli worker result-summary` followed by
-`intent-cli worker complete --kind issue --number 112 --repo
-J-Tech-Japan/sekiban-dcb-ts --github-only --outcome pr-created --pr <PR_NUMBER>
---write --format json`. Its exact result is added to this section before the
-canonical W120 report notification.
+The required `intent-cli worker result-summary` completed for issue 112 / PR
+115 with outcome `pr-created`, `pr_draft=false`, and no evidence gap. The
+canonical command then completed with `applied=true`, `pr_target_applied=true`,
+`errors=[]`, added `intent-pr-created`, and removed
+`intent-issue-in-progress` on the issue. It reported the child-cwd warning
+that queue-state linked-PR synchronization was skipped; the GitHub issue/PR
+transition itself succeeded. The exact command was:
+
+```text
+intent-cli worker complete --kind issue --number 112 --repo J-Tech-Japan/sekiban-dcb-ts --github-only --outcome pr-created --pr 115 --write --format json
+```
 
 ## Scope boundaries
 
