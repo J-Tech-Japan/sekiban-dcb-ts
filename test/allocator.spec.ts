@@ -6,6 +6,7 @@ import type {
   AllocationVector,
   AllocatorState,
 } from "../packages/dcb-runtime/src/allocator/types";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 
 async function allocatorRequest(path: string, body?: unknown): Promise<Response> {
   const init =
@@ -29,7 +30,7 @@ async function namedAllocatorRequest(name: string, path: string, body?: unknown)
           body: JSON.stringify(body),
         };
   const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
-  const stub = namespace.get(namespace.idFromName(name));
+  const stub = namespace.get(scopeIdFor(namespace, { serviceId: name, doClass: "allocator", identity: "allocator" }));
   return stub.fetch(`https://${name}.allocator.test${path}`, init);
 }
 

@@ -223,6 +223,14 @@ jobs:
             echo "SDT-G54 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G53 scoped Durable Object identity lane
+        run: npm run test:g53
+      - name: Prove SDT-G53 forced-red CI reachability
+        run: |
+          if SDT_G53_FORCE_FAILURE=1 npm run test:g53:forced-red; then
+            echo "SDT-G53 forced-red probe unexpectedly passed"
+            exit 1
+          fi
 
   ci-g26-g27:
     runs-on: ubuntu-latest

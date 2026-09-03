@@ -1,7 +1,7 @@
 import { parseBootstrapDump } from "./manifest";
 import type { BootstrapManifestError } from "./manifest";
 import type { BootstrapControlRecord, BootstrapDump, BootstrapEventRecord } from "./types";
-import { allocatorNameForService } from "../allocator/types";
+import { scopeIdFor } from "../scope/ScopeName";
 import {
   DurableObjectActivation,
   enterNativeActorHandleSpan,
@@ -134,7 +134,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     // Sequential tags give strict same-tag ordering and bounded cross-tag concurrency (one).
     for (const [tag, events] of [...byTag.entries()].sort(([left], [right]) => left.localeCompare(right))) {
       for (const chunk of this.chunks(events)) {
-        const stub = this.env.TAG.get(this.env.TAG.idFromName(`${serviceId}|${tag}`)); const tagUrl = new URL("https://bootstrap.internal/bootstrap/admit"); tagUrl.searchParams.set("__tag", tag); tagUrl.searchParams.set("__serviceId", serviceId);
+        const stub = this.env.TAG.get(scopeIdFor(this.env.TAG, { serviceId, doClass: "tag", identity: tag })); const tagUrl = new URL("https://bootstrap.internal/bootstrap/admit"); tagUrl.searchParams.set("__tag", tag); tagUrl.searchParams.set("__serviceId", serviceId);
         // Bootstrap dumps model C# provenance as an object, while Tag's
         // durable internal envelope uses the fixed G32 discriminator.  This
         // is a representation boundary, not a legacy fallback.
@@ -167,7 +167,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     // an old `suid-` sentinel: the first normal allocation must establish the
     // new 30-digit domain itself.  A non-empty dump is seeded exactly once.
     if (control.manifest.highWatermark !== null) {
-      const allocator = this.env.ALLOCATOR.get(this.env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
+      const allocator = this.env.ALLOCATOR.get(scopeIdFor(this.env.ALLOCATOR, { serviceId, doClass: "allocator", identity: "allocator" }));
       const seeded = await allocator.fetch(new Request("https://bootstrap.internal/seed-after", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch, highWatermark: control.manifest.highWatermark }) }));
       if (!seeded.ok) return reject("bootstrap_allocator_seed_failed", "allocator seedAfter rejected bootstrap", seeded.status);
     }
@@ -182,7 +182,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
     const dump = await this.ctx.storage.get<BootstrapDump>(DUMP); if (dump === undefined) return reject("bootstrap_plan_missing", "planned dump is unavailable", 500);
     const expectedByTag = new Map<string, BootstrapEventRecord[]>(); for (const event of dump.events) for (const tag of event.eventTags) expectedByTag.set(tag, [...(expectedByTag.get(tag) ?? []), event]);
     for (const [tag, expected] of expectedByTag) {
-      const url = new URL("https://bootstrap.internal/state"); url.searchParams.set("__tag", tag); const actual = await this.env.TAG.get(this.env.TAG.idFromName(`${serviceId}|${tag}`)).fetch(new Request(url));
+      const url = new URL("https://bootstrap.internal/state"); url.searchParams.set("__tag", tag); const actual = await this.env.TAG.get(scopeIdFor(this.env.TAG, { serviceId, doClass: "tag", identity: tag })).fetch(new Request(url));
       if (!actual.ok) return reject("bootstrap_verify_tag_missing", `tag ${tag} is missing`, actual.status);
       const state = await actual.json() as { head?: unknown; events?: unknown }; const actualEvents = Array.isArray(state.events) ? state.events : [];
       const expectedHead = expected.at(-1)?.suid ?? null;
@@ -209,7 +209,7 @@ export class BootstrapCoordinatorDurableObject implements DurableObject {
   private async ready(serviceId: string, body: unknown): Promise<Response> {
     const control = await this.control(serviceId); const invalid = this.valid(control, body); if (invalid !== undefined) return reject("bootstrap_epoch_rejected", invalid);
     if (control.status !== "VERIFYING" || control.verifiedImportId !== control.importId || control.verifiedLeaseEpoch !== control.leaseEpoch || control.storeCompletion === null) return reject("bootstrap_verification_required", "READY requires same importId and epoch verification");
-    for (const tag of Object.keys(control.manifest!.tagCounts)) { const stub = this.env.TAG.get(this.env.TAG.idFromName(`${serviceId}|${tag}`)); const url = new URL("https://bootstrap.internal/bootstrap/close"); url.searchParams.set("__tag", tag); const closed = await stub.fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch }) })); if (!closed.ok) return reject("bootstrap_tag_close_failed", `tag ${tag} refused READY close`, closed.status); }
+    for (const tag of Object.keys(control.manifest!.tagCounts)) { const stub = this.env.TAG.get(scopeIdFor(this.env.TAG, { serviceId, doClass: "tag", identity: tag })); const url = new URL("https://bootstrap.internal/bootstrap/close"); url.searchParams.set("__tag", tag); const closed = await stub.fetch(new Request(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ importId: control.importId, leaseEpoch: control.leaseEpoch }) })); if (!closed.ok) return reject("bootstrap_tag_close_failed", `tag ${tag} refused READY close`, closed.status); }
     if (fault(body, "ready-cas")) return reject("bootstrap_simulated_crash", "simulated crash before READY CAS", 503);
     const ready = await this.ctx.storage.transaction(async (txn) => { const current = (await txn.get<BootstrapControlRecord>(CONTROL)) ?? empty(serviceId); if (current.status === "READY") return current; if (current.status !== "VERIFYING" || current.leaseEpoch !== control.leaseEpoch || current.verifiedImportId !== current.importId || current.verifiedLeaseEpoch !== current.leaseEpoch) throw new Error("bootstrap READY CAS failed"); const updated: BootstrapControlRecord = { ...current, status: "READY", leaseUntil: null, readyAt: new Date().toISOString() }; await txn.put(CONTROL, updated); return updated; });
     return response(ready);

@@ -106,7 +106,7 @@ describe("SDT-G22 provider bootstrap adapters", () => {
     expect(exported.status).toBe(200);
     const body = await exported.json<{ dump: { manifest: { target: { allocatorLineageId: string } } } }>();
     expect(body.dump.manifest.target.allocatorLineageId).toBe("serving-allocator-lineage");
-    expect(allocatorNames).toEqual(["service-allocator:target", "service-allocator:source"]);
+    expect(allocatorNames).toEqual(["target/allocator/allocator", "source/allocator/allocator"]);
     const synthetic = await handleOperatorBootstrap(new Request(endpoint, { method: "POST", headers: { authorization: "Bearer operator-secret", "content-type": "application/json" }, body: JSON.stringify({ targetServiceId: "target", allocatorLineageId: "synthetic" }) }), env as never, provider);
     expect(synthetic.status).toBe(400);
   });

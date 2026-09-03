@@ -5,6 +5,8 @@ import { CommitWorker, type CommitWorkerEnv } from "../packages/dcb-runtime/src/
 import type { AllocatedCommitCandidate, ValidatedCommitEnvelope } from "../packages/dcb-runtime/src/commit/types";
 import type { G43SqlMeasurementSnapshot } from "../packages/dcb-runtime/src/tag/TagSqlMeasurement";
 import type { TagEvent, TagHeadFacts, TagRecord } from "../packages/dcb-runtime/src/tag/types";
+import { parseScopeName, scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 interface Scope {
@@ -40,7 +42,7 @@ const SUID_BASE = 8_000_000;
 
 function tagStub(value: Scope): DurableObjectStub {
   const namespace = (env as unknown as { readonly TAG: DurableObjectNamespace }).TAG;
-  return namespace.get(namespace.idFromName(`${value.serviceId}|${value.tag}`));
+  return namespace.get(scopeIdFor(namespace, { serviceId: value.serviceId, doClass: "tag", identity: value.tag }));
 }
 
 function scope(historySize: number): Scope {
@@ -107,12 +109,14 @@ async function seedHistory(value: Scope, historySize: number): Promise<void> {
 async function getHeadFacts(value: Scope): Promise<Response> {
   return SELF.fetch(
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/head-facts`,
+    { headers: { [TEST_SERVICE_ID_HEADER]: value.serviceId } },
   );
 }
 
 async function getState(value: Scope): Promise<Response> {
   return SELF.fetch(
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/state`,
+    { headers: { [TEST_SERVICE_ID_HEADER]: value.serviceId } },
   );
 }
 
@@ -160,12 +164,13 @@ function fakeTagNamespace(factsByTag: Readonly<Record<string, TagHeadFacts>>, pa
       return name as unknown as DurableObjectId;
     },
     get(id: DurableObjectId): DurableObjectStub {
-      const tag = String(id).split("|").at(-1)!;
+      const scope = parseScopeName(String(id));
+      const tag = scope.doClass === "tag" ? scope.identity : undefined;
       return {
         async fetch(request: Request): Promise<Response> {
           const url = new URL(request.url);
           paths.push(url.pathname);
-          const facts = factsByTag[tag];
+          const facts = tag === undefined ? undefined : factsByTag[tag];
           return facts === undefined
             ? new Response(JSON.stringify({ code: "tag_not_found" }), { status: 404 })
             : new Response(JSON.stringify(facts), { status: 200 });

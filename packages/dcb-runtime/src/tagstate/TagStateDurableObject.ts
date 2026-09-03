@@ -8,6 +8,7 @@ import type {
   G43TagStateIncrementalPage,
   TagEvent,
 } from "../tag/types";
+import { scopeIdFor } from "../scope/ScopeName";
 
 /** The fixed bounded source page used by both normal delta and replay. */
 export const TAG_STATE_SOURCE_PAGE_LIMIT = 64;
@@ -156,16 +157,6 @@ function parseIdentity(value: unknown): TagStateObjectIdentity | undefined {
     return undefined;
   }
   return { serviceId: value.serviceId, tag: value.tag, projectorId: value.projectorId };
-}
-
-/**
- * Stable tuple encoding for the distinct TagState namespace.  Length prefixes
- * keep service/tag/projector components unambiguous without assuming that a
- * delimiter cannot appear in an authored service identity.
- */
-export function tagStateObjectName(identity: TagStateObjectIdentity): string {
-  const part = (value: string): string => `${value.length}:${value}`;
-  return `tag-state-v1:${part(identity.serviceId)}${part(identity.tag)}${part(identity.projectorId)}`;
 }
 
 function initializeTagStateSchema(sql: SqlStorage): void {
@@ -403,7 +394,11 @@ export class TagStateDurableObject implements DurableObject {
     if (through !== undefined && through !== null && through !== "") assertSortableUniqueId(through);
     try {
       const namespace = this.g46SourceNamespace ?? this.env.TAG;
-      const stub = namespace.get(namespace.idFromName(`${identity.serviceId}|${identity.tag}`)) as unknown as TagStateSourceStub;
+      const stub = namespace.get(scopeIdFor(namespace, {
+        serviceId: identity.serviceId,
+        doClass: "tag",
+        identity: identity.tag,
+      })) as unknown as TagStateSourceStub;
       const sourceUrl = new URL("https://tag-source.internal/__internal/g46/tag-state-incremental");
       sourceUrl.searchParams.set("__tag", identity.tag);
       sourceUrl.searchParams.set("__serviceId", identity.serviceId);

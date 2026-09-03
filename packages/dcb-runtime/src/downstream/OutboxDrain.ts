@@ -1,4 +1,5 @@
 import { outboxIdentity, systemPipelineClock, type DownstreamOutboxMessage, type PipelineClock } from "./types";
+import { scopeIdFor } from "../scope/ScopeName";
 
 interface OutboxPendingResponse {
   rows: DownstreamOutboxMessage[];
@@ -81,7 +82,11 @@ async function tagPost(
   path: string,
   body: unknown,
 ): Promise<Response> {
-  const stub = env.TAG.get(env.TAG.idFromName(`${input.serviceId}|${input.tag}`));
+  const stub = env.TAG.get(scopeIdFor(env.TAG, {
+    serviceId: input.serviceId,
+    doClass: "tag",
+    identity: input.tag,
+  }));
   const url = new URL(`https://outbox-drain.internal${path}`);
   url.searchParams.set("__tag", input.tag);
   url.searchParams.set("__serviceId", input.serviceId);

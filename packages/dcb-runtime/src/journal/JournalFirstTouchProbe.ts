@@ -6,6 +6,7 @@
  * authenticated control surface for exercising the already-deployed JOURNAL
  * namespace without changing normal commit routing or Journal recovery.
  */
+import { scopeIdFor } from "../scope/ScopeName";
 
 export const G42_JOURNAL_PROBE_SCHEMA = "sdt.g42.journal-first-touch/v1" as const;
 export const G42_JOURNAL_PROBE_PATH = "/conformance/v1/g42/journal-first-touch" as const;
@@ -360,9 +361,9 @@ function internalBody(trial: G42JournalProbeTrial, action: "ping" | "state" | "w
   };
 }
 
-function stubFor(namespace: DurableObjectNamespace, physicalIdentity: string): DurableObjectStub {
+function stubFor(namespace: DurableObjectNamespace, serviceId: string, physicalIdentity: string): DurableObjectStub {
   if (!isG42ProbeIdentity(physicalIdentity)) throw new Error("G42 Journal probe attempted an unreserved physical identity");
-  return namespace.get(namespace.idFromName(physicalIdentity));
+  return namespace.get(scopeIdFor(namespace, { serviceId, doClass: "journal", identity: physicalIdentity }));
 }
 
 /**
@@ -371,10 +372,11 @@ function stubFor(namespace: DurableObjectNamespace, physicalIdentity: string): D
  */
 export async function runG42JournalProbeTrial(
   namespace: DurableObjectNamespace,
+  serviceId: string,
   trial: G42JournalProbeTrial,
   callerColo: string | null = null,
 ): Promise<G42JournalProbeTrialReceipt> {
-  const stub = stubFor(namespace, trial.physicalIdentity);
+  const stub = stubFor(namespace, serviceId, trial.physicalIdentity);
   let preceding: G42ProbeOperationResult | undefined;
   let mediatorCompletedBeforeMeasurement: boolean | null = null;
   if (trial.cell === "D") {
@@ -447,9 +449,10 @@ export async function runG42JournalProbeTrial(
  */
 export async function prepareG42JournalProbeTrial(
   namespace: DurableObjectNamespace,
+  serviceId: string,
   request: G42JournalProbePreparation,
 ): Promise<G42JournalProbePreparationReceipt> {
-  const stub = stubFor(namespace, request.physicalIdentity);
+  const stub = stubFor(namespace, serviceId, request.physicalIdentity);
   const preparation = await call(stub, `${G42_JOURNAL_PROBE_INTERNAL_PREFIX}/write`, {
     schema: G42_JOURNAL_PROBE_SCHEMA,
     action: "write",
@@ -478,10 +481,11 @@ export async function prepareG42JournalProbeTrial(
 /** Completes the D-only post-idle measurement without re-running warm-up. */
 export async function measureG42JournalProbeTrial(
   namespace: DurableObjectNamespace,
+  serviceId: string,
   request: G42JournalProbeMeasurement,
   callerColo: string | null = null,
 ): Promise<G42JournalProbeMeasurementReceipt> {
-  const stub = stubFor(namespace, request.physicalIdentity);
+  const stub = stubFor(namespace, serviceId, request.physicalIdentity);
   const startedAtMs = Date.now();
   const measured = await call(stub, `${G42_JOURNAL_PROBE_INTERNAL_PREFIX}/write`, {
     schema: G42_JOURNAL_PROBE_SCHEMA,
@@ -525,9 +529,10 @@ export async function measureG42JournalProbeTrial(
 /** Cleanup is intentionally timed outside a trial's measured write. */
 export async function cleanupG42JournalProbeTrial(
   namespace: DurableObjectNamespace,
+  serviceId: string,
   request: G42JournalProbeCleanup,
 ): Promise<G42JournalProbeCleanupReceipt> {
-  const stub = stubFor(namespace, request.physicalIdentity);
+  const stub = stubFor(namespace, serviceId, request.physicalIdentity);
   const body = {
     schema: G42_JOURNAL_PROBE_SCHEMA,
     action: "cleanup",
@@ -555,9 +560,10 @@ export async function cleanupG42JournalProbeTrial(
 
 export async function inventoryG42JournalProbeTrial(
   namespace: DurableObjectNamespace,
+  serviceId: string,
   request: G42JournalProbeInventory,
 ): Promise<G42JournalProbeInventoryReceipt> {
-  const stub = stubFor(namespace, request.physicalIdentity);
+  const stub = stubFor(namespace, serviceId, request.physicalIdentity);
   const inventory = await call(stub, `${G42_JOURNAL_PROBE_INTERNAL_PREFIX}/inventory`, {
     schema: G42_JOURNAL_PROBE_SCHEMA,
     action: "inventory",

@@ -1,0 +1,19 @@
+{
+  "schema": "sdt-g53-downstream-repair-predeploy/v1",
+  "sourceCommit": "002e33ef1fbc071632f5ba3118f1018aae7a2652",
+  "normalConfig": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "wrangler": "./node_modules/.bin/wrangler 4.125.0",
+  "authentication": "OAuth only; CLOUDFLARE_API_TOKEN unset; no --keep-vars",
+  "bundle": {
+    "dryRun": "passed",
+    "workerSha256": "10af754e221dc3973ed9ee2d0f3373c9eec7a5646d96eb70c0602d1673c2380b"
+  },
+  "localChecks": [
+    "npm run test:g53",
+    "npm run test:g44",
+    "npm run test:g15",
+    "npm run test:g16",
+    "npm run lint",
+    "npm run typecheck"
+  ]
+}

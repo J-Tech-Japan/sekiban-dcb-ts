@@ -1,6 +1,5 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
 import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
-import { allocatorNameForService } from "./allocator/types";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
@@ -13,7 +12,6 @@ import { JournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
-import { requireConfiguredServiceId, serviceIdForRequest } from "./http/testServiceId";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject } from "./tag/TagDurableObject";
 import { TagStateDurableObject, configureTagStateProjectorRegistry } from "./tagstate/TagStateDurableObject";
@@ -21,6 +19,39 @@ import { POSTGRES_STORE_PROVIDER, type StoreProvider } from "./store/provider";
 import type { MaterializedViewQueryPort, QueryBacking } from "./query/ProjectionQueryStore";
 import { nativeTracingFromContext } from "./trace/CommitTrace";
 import { createCommitTraceConsoleSink } from "./trace/CommitTraceConsoleSink";
+import { enforceControlRouteScope, scopeIdentityMissingResponse } from "./scope/ControlRouteScope";
+import { scopeIdFor } from "./scope/ScopeName";
+import {
+  envServiceIdentity,
+  requireServiceIdentity,
+  type ServiceIdentityProvider,
+} from "./service/ServiceIdentityProvider";
+export {
+  buildScopeName,
+  DURABLE_OBJECT_SCOPE_CLASSES,
+  isScopeServiceId,
+  parseScopeName,
+  scopeIdFor,
+  ScopeNameError,
+  tagStateScopeIdentity,
+} from "./scope/ScopeName";
+export type { DurableObjectScope, DurableObjectScopeClass, ScopeNameNamespace } from "./scope/ScopeName";
+export {
+  envServiceIdentity,
+  G11_SERVICE_ID_HEADER,
+  injectableServiceIdentity,
+  requestServiceIdentity,
+  requireServiceIdentity,
+  ServiceIdentityMissingError,
+  TEST_SERVICE_ID_HEADER,
+} from "./service/ServiceIdentityProvider";
+export type {
+  ServiceIdentityBehavior,
+  ServiceIdentityEnvironment,
+  ServiceIdentityProvider,
+  ServiceIdentityRequestOptions,
+  ServiceIdentityResolution,
+} from "./service/ServiceIdentityProvider";
 export {
   D1MaterializedViewStore,
   MaterializedViewCasError,
@@ -279,6 +310,8 @@ export interface RuntimeWorkerOptions {
   readonly queryBacking?: QueryBacking;
   /** Optional injected D1-MV query port for explicit composition/tests. */
   readonly materializedViewQueryPort?: MaterializedViewQueryPort;
+  /** Host seam; default composition resolves identity from SDT_SERVICE_ID. */
+  readonly serviceIdentityProvider?: ServiceIdentityProvider;
 }
 
 /**
@@ -293,7 +326,14 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
   const storeProvider = options.storeProvider ?? POSTGRES_STORE_PROVIDER;
   return {
     async fetch(request, env, ctx): Promise<Response> {
-      requireConfiguredServiceId(env.SDT_SERVICE_ID);
+      const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
+      const requestIdentityOptions = { allowG11Verification: env.G11_VERIFICATION_ENABLED === "true" };
+      let requestServiceId: string;
+      try {
+        requestServiceId = serviceIdentity.forRequest(request, requestIdentityOptions).serviceId;
+      } catch {
+        return scopeIdentityMissingResponse();
+      }
       const url = new URL(request.url);
       if (url.pathname === "/api/sekiban/serialized/commit") {
         return handleSerializedCommit(request, env, {
@@ -303,6 +343,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           commitTraceSink: createCommitTraceConsoleSink({
             platformRequestId: request.headers.get("cf-ray") ?? undefined,
           }),
+          serviceIdentityProvider: serviceIdentity,
         });
       }
       if (
@@ -315,10 +356,11 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           storeProvider,
           queryBacking: options.queryBacking,
           materializedViewQueryPort: options.materializedViewQueryPort,
+          serviceIdentityProvider: serviceIdentity,
         });
       }
       if (url.pathname === "/operator/repair") {
-        return handleOperatorRepair(request, env, nativeTracingFromContext(ctx));
+        return handleOperatorRepair(request, env, nativeTracingFromContext(ctx), serviceIdentity);
       }
       if (url.pathname.startsWith("/operator/bootstrap/")) {
         return handleOperatorBootstrap(request, env, storeProvider);
@@ -327,30 +369,43 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         return handleOutboxDrainRequest(request, env);
       }
       if (url.pathname === "/internal/projection/lag") {
-        return handleProjectionLag(request, env, composition.projectors, storeProvider);
+        return handleProjectionLag(request, env, composition.projectors, storeProvider, serviceIdentity);
       }
       if (
         url.pathname === "/api/sekiban/serialized/tag-latest-sortable" ||
         url.pathname === "/api/sekiban/serialized/tag-state"
       ) {
-        return handleSerializedRead(request, env, composition.projectors, storeProvider);
+        return handleSerializedRead(request, env, composition.projectors, storeProvider, serviceIdentity);
       }
       if (url.pathname === "/allocator" || url.pathname.startsWith("/allocator/")) {
         url.pathname = url.pathname.slice("/allocator".length) || "/state";
-        const serviceId = serviceIdForRequest(request, {
-          allowG11Verification: env.G11_VERIFICATION_ENABLED === "true",
-          configuredServiceId: env.SDT_SERVICE_ID,
-        });
-        const allocator = env.ALLOCATOR.get(env.ALLOCATOR.idFromName(allocatorNameForService(serviceId)));
+        const allocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+          serviceId: requestServiceId,
+          doClass: "allocator",
+          identity: "allocator",
+        }));
         return allocator.fetch(new Request(url.toString(), request));
       }
       const bootstrapMatch = url.pathname.match(/^\/bootstrap\/([^/]+)(\/.*)?$/);
       if (bootstrapMatch !== null) {
-        let serviceId: string;
-        try { serviceId = decodeURIComponent(bootstrapMatch[1]); } catch { return new Response("Bootstrap serviceId must be URI encoded", { status: 400 }); }
-        if (serviceId.length === 0) return new Response("Bootstrap serviceId is required", { status: 400 });
+        let pathServiceId: string;
+        try { pathServiceId = decodeURIComponent(bootstrapMatch[1]); } catch { return new Response("Bootstrap serviceId must be URI encoded", { status: 400 }); }
+        if (pathServiceId.length === 0) return new Response("Bootstrap serviceId is required", { status: 400 });
+        const scope = enforceControlRouteScope({
+          request,
+          provider: serviceIdentity,
+          pathServiceId,
+          route: "bootstrap",
+          requestOptions: requestIdentityOptions,
+        });
+        if ("response" in scope) return scope.response;
+        const serviceId = scope.serviceId;
         url.pathname = bootstrapMatch[2] ?? "/state"; url.searchParams.set("__serviceId", serviceId);
-        return env.BOOTSTRAP.get(env.BOOTSTRAP.idFromName(serviceId)).fetch(new Request(url.toString(), request));
+        return env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+          serviceId,
+          doClass: "bootstrap",
+          identity: "coordinator",
+        })).fetch(new Request(url.toString(), request));
       }
 
       const tagMatch = url.pathname.match(/^\/tags\/([^/]+)\/([^/]+)(\/.*)?$/);
@@ -361,21 +416,34 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         if (tagMatch[3]?.startsWith("/__internal/g46/")) {
           return new Response("Tag internal route not found", { status: 404 });
         }
-        let serviceId: string;
+        let pathServiceId: string;
         let tag: string;
         try {
-          serviceId = decodeURIComponent(tagMatch[1]);
+          pathServiceId = decodeURIComponent(tagMatch[1]);
           tag = decodeURIComponent(tagMatch[2]);
         } catch {
           return new Response("Tag serviceId and tag must be URI encoded", { status: 400 });
         }
-        if (serviceId.length === 0 || tag.length === 0) {
+        if (pathServiceId.length === 0 || tag.length === 0) {
           return new Response("Tag serviceId and tag are required", { status: 400 });
         }
+        const scope = enforceControlRouteScope({
+          request,
+          provider: serviceIdentity,
+          pathServiceId,
+          route: "tag",
+          requestOptions: requestIdentityOptions,
+        });
+        if ("response" in scope) return scope.response;
+        const serviceId = scope.serviceId;
         url.pathname = tagMatch[3] ?? "/state";
         url.searchParams.set("__tag", tag);
         url.searchParams.set("__serviceId", serviceId);
-        const tagObject = env.TAG.get(env.TAG.idFromName(`${serviceId}|${tag}`));
+        const tagObject = env.TAG.get(scopeIdFor(env.TAG, {
+          serviceId,
+          doClass: "tag",
+          identity: tag,
+        }));
         return tagObject.fetch(new Request(url.toString(), request));
       }
 
@@ -390,19 +458,24 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
       }
 
       url.pathname = match[2] ?? "/state";
-      const journal = env.JOURNAL.get(env.JOURNAL.idFromName(attemptId));
+      const journal = env.JOURNAL.get(scopeIdFor(env.JOURNAL, {
+        serviceId: requestServiceId,
+        doClass: "journal",
+        identity: attemptId,
+      }));
       return journal.fetch(new Request(url.toString(), request));
     },
 
     async queue(batch, env): Promise<void> {
-      requireConfiguredServiceId(env.SDT_SERVICE_ID);
+      requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
       await handleDownstreamQueue(batch, env, { storeProvider });
     },
 
     async scheduled(_controller, env): Promise<void> {
-      requireConfiguredServiceId(env.SDT_SERVICE_ID);
-      await stabilizeDownstream(env, { storeProvider });
-      await pollLiveProjections(env, { registry: composition.projectors, storeProvider });
+      const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
+      requireServiceIdentity(serviceIdentity);
+      await stabilizeDownstream(env, { storeProvider }, undefined, serviceIdentity);
+      await pollLiveProjections(env, { registry: composition.projectors, storeProvider, serviceIdentityProvider: serviceIdentity });
     },
   };
 }

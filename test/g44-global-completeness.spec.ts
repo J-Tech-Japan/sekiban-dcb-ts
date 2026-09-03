@@ -2,6 +2,8 @@ import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
+import { buildScopeName, scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import {
   G44_HEALTH_STALE_AFTER_MS,
   GLOBAL_COMPLETENESS_INTERIM_DISPOSITION,
@@ -11,6 +13,7 @@ import {
 } from "../packages/dcb-runtime/src/completeness/types";
 import { drainTagOutbox } from "../packages/dcb-runtime/src/downstream/OutboxDrain";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import { processDeliveryCore, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
 import { D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/store/D1EventStore";
 import { g32EventId, g32Message, g32Suid } from "./helpers/g32-fixtures";
@@ -53,7 +56,12 @@ function scope(): Scope {
 }
 
 function tagStub(value: Scope): DurableObjectStub {
-  return tags().get(tags().idFromName(`${value.serviceId}|${value.tag}`));
+  return tags().get(scopeIdFor(tags(), { serviceId: value.serviceId, doClass: "tag", identity: value.tag }));
+}
+
+/** The source fixture must use the same physical tag identity as production. */
+function tagScopeName(value: Scope): string {
+  return buildScopeName({ serviceId: value.serviceId, doClass: "tag", identity: value.tag });
 }
 
 function candidate(value: Scope, suffix: string, eventTags = [value.tag]) {
@@ -117,7 +125,7 @@ async function append(value: Scope, suffix: string, eventTags = [value.tag]): Pr
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/append`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId },
       body: JSON.stringify({ attemptId: `g44-attempt-${suffix}`, epoch: 0, candidates: [candidate(value, suffix, eventTags)] }),
     },
   );
@@ -261,7 +269,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     await expect(count("serialized_dcb_global_receipts", serviceId)).resolves.toBe(0);
   });
 
-  it("AC2/AC3: source registration and source acknowledgement are independent from a successful queue handoff", async () => {
+  it("AC2/AC3/G53: a canonical scoped source drains through the Queue adapter into global D1 before acknowledgement", async () => {
     const value = scope();
     await configureG44Source(value);
     expect((await append(value, "handoff")).status).toBe(201);
@@ -283,22 +291,29 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
 
     const beforeJoin = await SELF.fetch(
       `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/outbox/mark-delivered`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_010 }) },
+      { method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_010 }) },
     );
     expect(beforeJoin.status).toBe(409);
     expect((await sourceRows(value))[0]?.status).toBe("pending");
 
     const store = new D1EventStore(database());
     await store.initialize();
-    await store.recordDelivery(handoffs[0]!, 4_020);
-    const joined = await SELF.fetch(
-      `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/outbox/mark-delivered`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deliveries: handoffs, nowMs: 4_030 }) },
-    );
-    expect(joined.status).toBe(200);
+    // The first receiver attempt has durably admitted the global event and
+    // acknowledged its source, but it still retries until the independent
+    // scanner establishes the first FULL frontier. That queue policy is
+    // intentional and keeps views blocked while coverage is UNKNOWN.
+    await expect(processDownstreamDelivery(handoffs[0]!, { D1: database(), TAG: tags() }, {
+      store,
+      clock: { now: () => 4_020 },
+    })).rejects.toThrow(/^downstream_delivery_retry:/);
+    expect(await count("dcb_events", value.serviceId)).toBe(1);
     expect((await sourceRows(value))[0]?.status).toBe("acknowledged");
     const scanner = new GlobalCompletenessReconciler(database(), tags());
     await expect(scanner.reconcile(value.serviceId, 4_040)).resolves.toMatchObject({ kind: "FULL", scannedObligations: 1 });
+    await expect(processDownstreamDelivery(handoffs[0]!, { D1: database(), TAG: tags() }, {
+      store,
+      clock: { now: () => 4_050 },
+    })).resolves.toBeUndefined();
     await expect(scanner.readHealth(value.serviceId, 4_041)).resolves.toMatchObject({
       status: "HEALTHY",
       lastFullScanAt: 4_040,
@@ -335,7 +350,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
       { serviceId: value.serviceId, tag: value.tag, upperBoundSequence: message.completeness.obligationSequence },
       [],
     );
-    const namespace = sourceNamespace(new Map([[`${value.serviceId}|${value.tag}`, healthySource]]));
+    const namespace = sourceNamespace(new Map([[tagScopeName(value), healthySource]]));
     const scanner = new GlobalCompletenessReconciler(database(), namespace);
     await expect(scanner.reconcile(value.serviceId, 6_000)).resolves.toMatchObject({ kind: "UNKNOWN" });
     expect((await scanner.readHealth(value.serviceId, 6_001)).status).toBe("UNKNOWN");
@@ -354,7 +369,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
         }), { headers: { "content-type": "application/json" } });
       },
     };
-    const unknownScanner = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[`${value.serviceId}|${value.tag}`, truncating]])));
+    const unknownScanner = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[tagScopeName(value), truncating]])));
     await expect(unknownScanner.reconcile(value.serviceId, 6_100)).resolves.toMatchObject({ kind: "UNKNOWN" });
     expect((await unknownScanner.readHealth(value.serviceId, 6_101)).status).toBe("UNKNOWN");
 
@@ -363,7 +378,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     expect((await unreadable.readHealth(value.serviceId, 6_201)).status).toBe("UNKNOWN");
 
     const crashing: SourceFixture = { async fetch() { throw new Error("scanner_crashed"); } };
-    const failed = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[`${value.serviceId}|${value.tag}`, crashing]])));
+    const failed = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[tagScopeName(value), crashing]])));
     await expect(failed.reconcile(value.serviceId, 6_300)).resolves.toMatchObject({ kind: "FAILED", error: "scanner_crashed" });
     expect((await failed.readHealth(value.serviceId, 6_301)).status).toBe("FAILED");
     const failureFindings = await database().prepare(
@@ -397,7 +412,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
         }), { headers: { "content-type": "application/json" } });
       },
     };
-    const changed = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[`${changingScope.serviceId}|${changingScope.tag}`, mutatingSource]])));
+    const changed = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[tagScopeName(changingScope), mutatingSource]])));
     await expect(changed.reconcile(changingScope.serviceId, 6_400)).resolves.toMatchObject({ kind: "UNKNOWN", reason: "source_partition_set_changed_during_scan" });
     expect((await changed.readHealth(changingScope.serviceId, 6_401)).status).toBe("UNKNOWN");
 
@@ -411,7 +426,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
       { serviceId: duplicateScope.serviceId, tag: duplicateScope.tag, upperBoundSequence: 1 },
       [factFrom(duplicateMessage), factFrom(duplicateMessage)],
     );
-    const duplicateScanner = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[`${duplicateScope.serviceId}|${duplicateScope.tag}`, duplicatePage]])));
+    const duplicateScanner = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[tagScopeName(duplicateScope), duplicatePage]])));
     await expect(duplicateScanner.reconcile(duplicateScope.serviceId, 6_450)).resolves.toMatchObject({ kind: "UNKNOWN", reason: expect.stringContaining("source_page_sequence_outside_snapshot") });
     await expect(database().prepare(
       `INSERT INTO serialized_dcb_source_partitions (service_id, partition_tag, last_obligation_sequence, registered_at)
@@ -427,7 +442,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     );
     const receiptUnavailable = new GlobalCompletenessReconciler(
       database(),
-      sourceNamespace(new Map([[`${receiptScope.serviceId}|${receiptScope.tag}`, receiptSource]])),
+      sourceNamespace(new Map([[tagScopeName(receiptScope), receiptSource]])),
       G44_SCANNER_VERSION,
       { globalReceiptMatcher: async () => { throw new Error("g44_fixture_receipt_join_unavailable"); } },
     );
@@ -517,7 +532,7 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
       { serviceId: value.serviceId, tag: value.tag, upperBoundSequence: message.completeness.obligationSequence },
       [factFrom(message, "poison")],
     );
-    const scanner = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[`${value.serviceId}|${value.tag}`, source]])));
+    const scanner = new GlobalCompletenessReconciler(database(), sourceNamespace(new Map([[tagScopeName(value), source]])));
     await expect(scanner.reconcile(value.serviceId, 8_000)).resolves.toMatchObject({ kind: "BLOCK", findingCount: 1 });
     const finding = await database().prepare(
       `SELECT incident_type, state FROM serialized_dcb_completeness_findings WHERE service_id = ?`,

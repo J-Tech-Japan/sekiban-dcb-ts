@@ -6,6 +6,7 @@ import { observePortableMappingExecution, type MappingAdmissionEvidence } from "
 import { composeRuntime } from "../packages/dcb-runtime/src/composition";
 import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import { CommitWorker, type CommitWorkerEnv, validateCommitEnvelope } from "../packages/dcb-runtime/src/commit/CommitWorker";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 
 const mapping = validateMapping(mappingArtifact);
 
@@ -28,7 +29,7 @@ describe("SDT-G29 mapping authority", () => {
     expect(written.writtenEvents).toHaveLength(1);
     const eventId = written.writtenEvents[0]!.id;
     const tagNamespace = (env as unknown as { readonly TAG: DurableObjectNamespace }).TAG;
-    const tagStub = tagNamespace.get(tagNamespace.idFromName(`${serviceId}|${tag}`));
+    const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tag }));
     const stateResponse = await tagStub.fetch(new Request(`https://mapping.test/state?__tag=${encodeURIComponent(tag)}`));
     expect(stateResponse.status).toBe(200);
     const state = await stateResponse.json<{ events: Array<{ eventId: string; eventType?: string; suid?: string; eventTags?: string[] }> }>();

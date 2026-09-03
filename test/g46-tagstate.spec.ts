@@ -13,9 +13,10 @@ import type { G43SqlMeasurementSnapshot } from "../packages/dcb-runtime/src/tag/
 import type { G43TagStateIncrementalPage, G43TagStateIncrementalRequest, TagEvent } from "../packages/dcb-runtime/src/tag/types";
 import {
   configureTagStateProjectorRegistry,
-  tagStateObjectName,
   type TagStateObjectIdentity,
 } from "../packages/dcb-runtime/src/tagstate/TagStateDurableObject";
+import { buildScopeName, scopeIdFor, tagStateScopeIdentity } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 const SOURCE_PAGE_LIMIT = 64;
@@ -63,12 +64,24 @@ function identity(value: Scope, projectorId = TEST_TAG_STATE_PROJECTOR): TagStat
 
 function tagStub(value: Scope): DurableObjectStub {
   const namespace = (env as unknown as { readonly TAG: DurableObjectNamespace }).TAG;
-  return namespace.get(namespace.idFromName(`${value.serviceId}|${value.tag}`));
+  return namespace.get(scopeIdFor(namespace, { serviceId: value.serviceId, doClass: "tag", identity: value.tag }));
 }
 
 function tagStateStub(value: TagStateObjectIdentity): DurableObjectStub {
   const namespace = (env as unknown as { readonly TAG_STATE: DurableObjectNamespace }).TAG_STATE;
-  return namespace.get(namespace.idFromName(tagStateObjectName(value)));
+  return namespace.get(scopeIdFor(namespace, {
+    serviceId: value.serviceId,
+    doClass: "tag-state",
+    identity: tagStateScopeIdentity(value.tag, value.projectorId),
+  }));
+}
+
+function tagStateScopeName(value: TagStateObjectIdentity): string {
+  return buildScopeName({
+    serviceId: value.serviceId,
+    doClass: "tag-state",
+    identity: tagStateScopeIdentity(value.tag, value.projectorId),
+  });
 }
 
 function eventFor(value: Scope, ordinal: number): TagEvent {
@@ -246,7 +259,7 @@ describe("SDT-G46 TagStateDO", () => {
         `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/append`,
         {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId },
           body: JSON.stringify({
             attemptId: "g46-commit-no-projection",
             epoch: 0,
@@ -272,6 +285,7 @@ describe("SDT-G46 TagStateDO", () => {
         method: "POST",
         headers: {
           "content-type": "application/json",
+          [TEST_SERVICE_ID_HEADER]: value.serviceId,
           // This is deliberately the same header the direct DO transport
           // carries. A public request must not be able to replay it.
           "x-sdt-g46-source-read": "1",
@@ -575,7 +589,7 @@ describe("SDT-G46 TagStateDO", () => {
       expect(second.status).toBe(200);
       expect((await result(first)).tagPayloadName).toBe("G46custom-one");
       expect((await result(second)).tagPayloadName).toBe("G46custom-two");
-      expect(tagStateObjectName(firstState)).not.toBe(tagStateObjectName(secondState));
+      expect(tagStateScopeName(firstState)).not.toBe(tagStateScopeName(secondState));
 
       // Same author version means the source is not replayed merely because
       // reducer code changes. This is the explicit ADR 7.1 ruling-3 risk.

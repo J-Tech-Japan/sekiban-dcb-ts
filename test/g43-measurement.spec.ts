@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import measurementSpecJson from "../contracts/g43-measurement-spec.json";
 import { TAG_READ_AFTER_INDEX, TAG_READ_AFTER_SQL } from "../packages/dcb-runtime/src/tag/TagSqlSchema";
 import type { TagEvent } from "../packages/dcb-runtime/src/tag/types";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 
 interface Scope {
@@ -70,7 +72,7 @@ const fixedLineage = "g43-measurement-lineage";
 
 function tagStub(value: Scope): DurableObjectStub {
   const namespace = (env as unknown as { readonly TAG: DurableObjectNamespace }).TAG;
-  return namespace.get(namespace.idFromName(`${value.serviceId}|${value.tag}`));
+  return namespace.get(scopeIdFor(namespace, { serviceId: value.serviceId, doClass: "tag", identity: value.tag }));
 }
 
 function scope(kind: string, historySize: number, repetition: number): Scope {
@@ -133,7 +135,7 @@ async function rawPost(value: Scope, path: string, body: unknown): Promise<Respo
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}${path}`,
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId },
       body: JSON.stringify(body),
     },
   );
@@ -151,7 +153,7 @@ async function measureRequest(value: Scope, path: string, body: unknown): Promis
   });
   const response = await SELF.fetch(
     `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}${path}`,
-    { method: "POST", headers: { "content-type": "application/json" }, body: encodedBody },
+    { method: "POST", headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: value.serviceId }, body: encodedBody },
   );
   const responseText = await response.text();
   const snapshot = await runInDurableObject(tagStub(value), (instance) =>

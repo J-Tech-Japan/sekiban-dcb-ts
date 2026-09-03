@@ -1,6 +1,7 @@
 import type { RepairBranch, RepairFacts, RepairScopeItem, TagFence } from "../tag/types";
 import type { ExclusionLookupPort } from "../downstream/ExclusionLookup";
-import { requireConfiguredServiceId } from "../http/testServiceId";
+import { scopeIdFor } from "../scope/ScopeName";
+import { envServiceIdentity, requireServiceIdentity } from "../service/ServiceIdentityProvider";
 import {
   CommitTrace,
   type CommitTraceClock,
@@ -164,7 +165,8 @@ export class RepairWorker {
   constructor(
     private readonly env: RepairWorkerEnv,
     private readonly exclusions: ExclusionLookupPort,
-    private readonly serviceId = requireConfiguredServiceId(env.SDT_SERVICE_ID),
+    /** Tests and embedding hosts may supply a fixed identity explicitly. */
+    private readonly serviceId = requireServiceIdentity(envServiceIdentity(env)),
     private readonly hooks: RepairWorkerHooks = {},
   ) {}
 
@@ -562,11 +564,19 @@ export class RepairWorker {
   }
 
   private journalFor(attemptId: string): DurableObjectStub {
-    return this.env.JOURNAL.get(this.env.JOURNAL.idFromName(attemptId));
+    return this.env.JOURNAL.get(scopeIdFor(this.env.JOURNAL, {
+      serviceId: this.serviceId,
+      doClass: "journal",
+      identity: attemptId,
+    }));
   }
 
   private tagFor(tag: string): DurableObjectStub {
-    return this.env.TAG.get(this.env.TAG.idFromName(`${this.serviceId}|${tag}`));
+    return this.env.TAG.get(scopeIdFor(this.env.TAG, {
+      serviceId: this.serviceId,
+      doClass: "tag",
+      identity: tag,
+    }));
   }
 
   private journalGet(attemptId: string, path: string): Promise<Response> {
