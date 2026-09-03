@@ -2,7 +2,8 @@
 
 Issue: [#105](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/105)
 Branch: `claude/sdt-g54-envelope-interop-w77`
-Packet authority: `907bcee02784b81d8ab00e3208de173b28e6605c` (W78 amended AC5a)
+Packet authority: `907bcee02784b81d8ab00e3208de173b28e6605c` (W78 amended AC5a),
+with the W80 known-divergence amendment at `16197d151`
 
 ## Scope and source authority
 
@@ -109,20 +110,56 @@ result reports all seventeen source pins and all fifteen manifest fixtures.
 | Witness group | Result |
 | --- | --- |
 | Legacy upstream catalogues | Pinned and classified as typed unversioned rejects by this V1-only runtime; no client-dialect translation is introduced. |
-| R1 official V1 | Every base64 payload decodes and re-encodes byte-identically; its explicit empty consistency head receives the retained typed `invalid_sortable_unique_id` rejection before any Durable Object call. |
-| R2 positive | Raw client model is rejected at runtime; the real adapter produces the expected official V1 bytes without translation, and that source-preserved empty head receives the same typed rejection. |
+| R1 official V1 | **Known divergence, not a pass:** every candidate payload decodes and re-encodes byte-identically, while the explicit empty consistency head receives the retained typed `invalid_sortable_unique_id` rejection before any Durable Object call. |
+| R2 positive | **Known divergence, not a pass:** the raw client model is rejected at runtime; the real adapter produces the expected V1 bytes without translation, and that source-preserved empty head receives the same typed rejection. |
 | R2 loss/error | Integer-key ordering and numeric lexical loss receive distinct runner typed errors; duplicate raw key receives `client_payload_duplicate_key`. |
 | R3 payload | BOM and invalid UTF-8 receive `invalid_payload_utf8`; non-JSON receives `invalid_payload_json`. |
 | Tag validation | Empty tag reaches `validation_error`; the duplicate-consistency source carries an empty head and therefore first reaches the retained ordered `invalid_sortable_unique_id` rejection. |
 | Response vocabulary | `projectorVersion` is a string and tag-state includes `lastSortedUniqueId`; commit response members remain present. |
 
+### W80 — explicit SDT-G56 known divergence
+
+The authoritative W80 amendment and the [design record on
+Sekiban#1172](https://github.com/J-Tech-Japan/Sekiban/issues/1172#issuecomment-5518115881)
+make the C# meaning of `lastSortableUniqueId: ""` explicit: it is assert-empty
+on the shared V1 wire. This runtime intentionally does not implement that
+behavior until SDT-G56. The four immutable positive witnesses are therefore
+listed in `test/fixtures/g54-known-divergences.json` as
+`known-divergence`, each with its original manifest outcome, expected V1
+bytes, HTTP 400 `invalid_sortable_unique_id`, rejected member name, and
+resolving unit `SDT-G56`.
+
+| Input fixture | Expected V1 bytes | Current TS result | Resolution |
+| --- | --- | --- | --- |
+| `interop_official_v1_populated.json` | Its frozen V1 bytes | HTTP 400 `invalid_sortable_unique_id`, before any DO call | SDT-G56 |
+| `interop_r2_canonical_positive_v1.json` | Its frozen V1 bytes | HTTP 400 `invalid_sortable_unique_id`, before any DO call | SDT-G56 |
+| `interop_ts_client_model.json` | Byte-identical `interop_official_v1_populated.json` adapter output | HTTP 400 `invalid_sortable_unique_id`, before any DO call | SDT-G56 |
+| `interop_r2_canonical_positive.json` | Byte-identical `interop_r2_canonical_positive_v1.json` adapter output | HTTP 400 `invalid_sortable_unique_id`, before any DO call | SDT-G56 |
+
+This is not a reclassification as success. The dependency-free runner first
+checks all fifteen original manifest outcomes, then emits each of these four as
+`known-divergence` with its code and resolving unit. The focused Worker test
+checks exact adapter bytes, candidate-part R1 byte identity, the typed HTTP
+400, and zero calls to every fake Durable Object binding. Its companion
+unexpected-acceptance mutant reports
+`known-divergence-unexpected-acceptance-mutant-red`; if SDT-G56 starts
+accepting one of these envelopes, that expectation must be deliberately
+changed in the checked-in file. The frozen source bytes, SHA pins, and client
+transport are untouched.
+
+The remaining fixtures retain their manifest expectations: R2
+lexical/numeric/duplicate-key failures remain typed client-side errors; R3
+BOM/non-JSON/invalid-UTF-8 witnesses remain typed failures; empty-tag and
+duplicate-consistency witnesses retain typed runtime rejections; and the
+response vocabulary retains string `projectorVersion` and tag-state
+`lastSortedUniqueId`.
+
 The W79 repair records, rather than masks, the copied witnesses' explicit
 empty consistency heads: the retained runtime contract rejects them before a
-Durable Object call. The source bytes and adapter output remain unchanged, so
-no source fixture is altered and no second client dialect is introduced. The
-old legacy compatibility labels in the copied upstream manifest are recorded
-as upstream catalogue metadata, not a request to make this V1-only runtime
-silently accept unversioned input.
+Durable Object call. No source fixture is altered and no second client dialect
+is introduced. The old legacy compatibility labels in the copied upstream
+manifest are recorded as upstream catalogue metadata, not a request to make
+this V1-only runtime silently accept unversioned input.
 
 TypeScript receives a parsed `Request.json()` object, so duplicate raw JSON
 members are inherently undetectable at the runtime boundary. The frozen

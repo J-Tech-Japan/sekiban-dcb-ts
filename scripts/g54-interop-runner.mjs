@@ -13,12 +13,39 @@ import { pathToFileURL } from "node:url";
 const root = process.cwd();
 const fixtures = resolve(root, "test/fixtures/g54-sekiban-interop");
 const pinsFile = "SHA256SUMS";
+const knownDivergencesFile = resolve(root, "test/fixtures/g54-known-divergences.json");
+const unexpectedAcceptanceMutant = process.argv.includes("--unexpected-acceptance-mutant");
+
+const EXPECTED_MANIFEST_OUTCOMES = new Map([
+  ["interop_official_v1_populated.json", "r1-byte-identical"],
+  ["interop_legacy_populated.json", "legacy-compatible"],
+  ["interop_legacy_explicit_empty.json", "legacy-empty-compatible"],
+  ["interop_ts_client_model.json", "r1-r2-paired-positive"],
+  ["interop_r2_canonical_positive.json", "r2-byte-exact-positive"],
+  ["interop_r2_canonical_positive_v1.json", "r2-byte-exact-expected-v1"],
+  ["interop_r2_integer_like_key.json", "r2-key-order-loss"],
+  ["interop_r2_numeric_lexical_loss.json", "r2-numeric-lexical-loss"],
+  ["interop_r2_duplicate_key.json", "r2-duplicate-key-error"],
+  ["interop_r3_bom_payload.json", "r3-bom-payload-error"],
+  ["interop_r3_non_json_payload.json", "r3-non-json-payload-error"],
+  ["interop_r3_invalid_utf8_payload.json", "r3-invalid-utf8-payload-error"],
+  ["interop_client_empty_tag.json", "r2-empty-tag-error"],
+  ["interop_client_duplicate_consistency.json", "r2-duplicate-consistency-error"],
+  ["interop_response_member_vocabulary.json", "response-vocabulary"],
+]);
+const EXPECTED_DIVERGENCE_INPUTS = new Set([
+  "interop_official_v1_populated.json",
+  "interop_r2_canonical_positive_v1.json",
+  "interop_ts_client_model.json",
+  "interop_r2_canonical_positive.json",
+]);
 
 class InteropError extends Error {
-  constructor(code, message) {
+  constructor(code, message, httpStatus = 400) {
     super(message);
     this.name = "InteropError";
     this.code = code;
+    this.httpStatus = httpStatus;
   }
 }
 
@@ -74,6 +101,56 @@ function verifyPins() {
     expect(sha256(bytes(fixture.file)) === fixture.sha256, `manifest SHA-256 mismatch for ${fixture.file}`);
   }
   return manifest;
+}
+
+function manifestFixtureMap(manifest) {
+  const entries = new Map();
+  for (const fixture of manifest.fixtures) {
+    expect(!entries.has(fixture.file), `manifest has duplicate fixture ${fixture.file}`);
+    entries.set(fixture.file, fixture);
+  }
+  return entries;
+}
+
+function verifyManifestOutcomes(manifest) {
+  const entries = manifestFixtureMap(manifest);
+  expect(entries.size === EXPECTED_MANIFEST_OUTCOMES.size, "manifest fixture outcomes changed count");
+  for (const [file, expectedOutcome] of EXPECTED_MANIFEST_OUTCOMES) {
+    const fixture = entries.get(file);
+    expect(fixture !== undefined, `manifest missing expected fixture ${file}`);
+    expect(fixture.expectedOutcome === expectedOutcome, `${file} expected manifest outcome ${expectedOutcome}, received ${fixture.expectedOutcome}`);
+  }
+  return entries;
+}
+
+function knownDivergenceExpectations(manifestEntries) {
+  const document = JSON.parse(readFileSync(knownDivergencesFile, "utf8"));
+  expect(document !== null && typeof document === "object" && !Array.isArray(document), "known-divergence expectations must be an object");
+  expect(document.schema === "sdt-g54-known-divergences/v1", "known-divergence expectations schema changed");
+  expect(document.classification === "known-divergence", "known-divergence expectations classification changed");
+  expect(Array.isArray(document.divergences) && document.divergences.length === EXPECTED_DIVERGENCE_INPUTS.size, "known-divergence expectations must name exactly four fixtures");
+
+  const seen = new Set();
+  for (const entry of document.divergences) {
+    expect(entry !== null && typeof entry === "object" && !Array.isArray(entry), "known-divergence entry must be an object");
+    expect(typeof entry.inputFixture === "string" && EXPECTED_DIVERGENCE_INPUTS.has(entry.inputFixture), `unexpected known-divergence input ${entry.inputFixture}`);
+    expect(!seen.has(entry.inputFixture), `duplicate known-divergence input ${entry.inputFixture}`);
+    seen.add(entry.inputFixture);
+    expect(entry.inputKind === "v1-wire" || entry.inputKind === "client-model", `${entry.inputFixture} must declare a supported input kind`);
+    expect(typeof entry.expectedV1Fixture === "string" && manifestEntries.has(entry.expectedV1Fixture), `${entry.inputFixture} must name a pinned expected V1 fixture`);
+    expect(typeof entry.manifestExpectedOutcome === "string", `${entry.inputFixture} is missing its manifest expectation`);
+    expect(manifestEntries.get(entry.inputFixture)?.expectedOutcome === entry.manifestExpectedOutcome, `${entry.inputFixture} manifest expectation was reclassified`);
+    expect(entry.reason === "empty-lastSortableUniqueId-assertion-not-yet-supported", `${entry.inputFixture} must retain the explicit empty-head divergence reason`);
+    expect(entry.resolvingUnit === "SDT-G56", `${entry.inputFixture} must name SDT-G56 as the resolving unit`);
+    expect(entry.runtime?.httpStatus === 400, `${entry.inputFixture} must expect HTTP 400`);
+    expect(entry.runtime?.code === "invalid_sortable_unique_id", `${entry.inputFixture} must expect invalid_sortable_unique_id`);
+    expect(entry.runtime?.messageIncludes === "lastSortableUniqueId", `${entry.inputFixture} must name the rejected consistency member`);
+    if (entry.inputKind === "v1-wire") {
+      expect(entry.inputFixture === entry.expectedV1Fixture, `${entry.inputFixture} must retain its exact V1 source bytes`);
+    }
+  }
+  expect(seen.size === EXPECTED_DIVERGENCE_INPUTS.size && [...EXPECTED_DIVERGENCE_INPUTS].every((file) => seen.has(file)), "known-divergence expectations omitted a required positive fixture");
+  return document.divergences;
 }
 
 class JsonScanner {
@@ -317,6 +394,58 @@ function clientToV1(rawClientEnvelope) {
   return { version: 1, eventCandidates, consistencyTags: consistencyNode.value };
 }
 
+function verifyCandidatePartR1(actualWire, expectedWire, fixture) {
+  const actual = JSON.parse(actualWire);
+  const expected = JSON.parse(expectedWire);
+  expect(Array.isArray(actual.eventCandidates), `${fixture} omitted eventCandidates`);
+  expect(Array.isArray(expected.eventCandidates), `${fixture} expected V1 wire omitted eventCandidates`);
+  expect(JSON.stringify(actual.eventCandidates) === JSON.stringify(expected.eventCandidates), `${fixture} candidate part diverged from the expected V1 bytes`);
+  for (const [index, candidate] of actual.eventCandidates.entries()) {
+    const expectedCandidate = expected.eventCandidates[index];
+    expect(typeof candidate?.payload === "string", `${fixture} candidate ${index} omitted its base64 payload`);
+    expect(typeof expectedCandidate?.payload === "string", `${fixture} expected V1 candidate ${index} omitted its base64 payload`);
+    const admitted = Buffer.from(candidate.payload, "base64");
+    const expectedAdmitted = Buffer.from(expectedCandidate.payload, "base64");
+    expect(admitted.equals(expectedAdmitted), `${fixture} candidate ${index} R1 payload bytes changed`);
+    expect(admitted.toString("base64") === candidate.payload, `${fixture} candidate ${index} payload is not canonical base64`);
+  }
+  return actual;
+}
+
+function expectedKnownDivergence(entry, envelope) {
+  try {
+    if (!unexpectedAcceptanceMutant) runtimeValidate(envelope);
+  } catch (caught) {
+    if (!(caught instanceof InteropError)) {
+      throw new Error(`SDT-G54 interop runner: ${entry.inputFixture} known-divergence threw an unexpected error`);
+    }
+    expect(caught.httpStatus === entry.runtime.httpStatus, `${entry.inputFixture} expected HTTP ${entry.runtime.httpStatus}, received ${caught.httpStatus}`);
+    expect(caught.code === entry.runtime.code, `${entry.inputFixture} expected ${entry.runtime.code}, received ${caught.code}`);
+    expect(caught.message.includes(entry.runtime.messageIncludes), `${entry.inputFixture} rejection did not name ${entry.runtime.messageIncludes}`);
+    return Object.freeze({
+      fixture: entry.inputFixture,
+      expectedV1Fixture: entry.expectedV1Fixture,
+      classification: "known-divergence",
+      httpStatus: caught.httpStatus,
+      code: caught.code,
+      resolvingUnit: entry.resolvingUnit,
+    });
+  }
+  fail(`${entry.inputFixture} known-divergence unexpectedly accepted; SDT-G56 must deliberately replace this expectation`);
+}
+
+function verifyKnownDivergences(entries) {
+  return entries.map((entry) => {
+    const expectedWire = text(entry.expectedV1Fixture);
+    const actualWire = entry.inputKind === "client-model"
+      ? JSON.stringify(clientToV1(text(entry.inputFixture)))
+      : text(entry.inputFixture);
+    expect(actualWire === expectedWire, `${entry.inputFixture} did not preserve the expected V1 bytes exactly`);
+    const envelope = verifyCandidatePartR1(actualWire, expectedWire, entry.inputFixture);
+    return expectedKnownDivergence(entry, envelope);
+  });
+}
+
 function expectedError(action, code, fixture) {
   try {
     action();
@@ -327,7 +456,9 @@ function expectedError(action, code, fixture) {
   fail(`${fixture} expected ${code}, but completed successfully`);
 }
 
-function verifyOutcomes() {
+function verifyOutcomes(manifest) {
+  const manifestEntries = verifyManifestOutcomes(manifest);
+  const knownDivergences = verifyKnownDivergences(knownDivergenceExpectations(manifestEntries));
   // These two upstream witnesses remain frozen evidence of the former C#
   // compatibility surface. The TypeScript runtime's shared boundary is V1,
   // so the runner deliberately classifies them as typed unversioned rejects
@@ -335,22 +466,8 @@ function verifyOutcomes() {
   expectedError(() => runtimeValidate(JSON.parse(text("interop_legacy_populated.json"))), "malformed_commit_envelope", "interop_legacy_populated.json");
   expectedError(() => runtimeValidate(JSON.parse(text("interop_legacy_explicit_empty.json"))), "malformed_commit_envelope", "interop_legacy_explicit_empty.json");
 
-  const official = JSON.parse(text("interop_official_v1_populated.json"));
-  expectedError(() => runtimeValidate(official), "invalid_sortable_unique_id", "interop_official_v1_populated.json");
-  for (const candidate of official.eventCandidates) {
-    const admitted = decodePayload(candidate.payload);
-    expect(Buffer.from(admitted, "utf8").toString("base64") === candidate.payload, "R1 payload round trip changed bytes");
-  }
-
   const tsClient = text("interop_ts_client_model.json");
   expectedError(() => runtimeValidate(JSON.parse(tsClient)), "malformed_commit_envelope", "interop_ts_client_model.json runtime");
-  const officialWire = clientToV1(tsClient);
-  expect(JSON.stringify(officialWire) === text("interop_official_v1_populated.json"), "R2 adapter did not produce official V1 bytes");
-  expectedError(() => runtimeValidate(officialWire), "invalid_sortable_unique_id", "interop_ts_client_model.json adapted runtime");
-  expect(
-    JSON.stringify(clientToV1(text("interop_r2_canonical_positive.json"))) === text("interop_r2_canonical_positive_v1.json"),
-    "R2 canonical adapter did not produce expected V1 bytes",
-  );
   expectedError(() => clientToV1(text("interop_r2_integer_like_key.json")), "client_payload_key_order_loss", "interop_r2_integer_like_key.json");
   expectedError(() => clientToV1(text("interop_r2_numeric_lexical_loss.json")), "client_payload_numeric_lexical_loss", "interop_r2_numeric_lexical_loss.json");
   expectedError(() => clientToV1(text("interop_r2_duplicate_key.json")), "client_payload_duplicate_key", "interop_r2_duplicate_key.json");
@@ -365,9 +482,10 @@ function verifyOutcomes() {
   expect(typeof vocabulary.lastSortedUniqueId === "string", "response vocabulary requires tag-state lastSortedUniqueId");
   expect(Array.isArray(vocabulary.writtenEvents) && Array.isArray(vocabulary.tagWriteResults), "response vocabulary requires commit response members");
   return Object.freeze({
+    knownDivergences,
     legacy: "catalogued-as-typed-unversioned-rejects",
-    r1: "payload-bytes-preserved-empty-head-typed",
-    r2: "adapter-byte-identical-empty-head-typed-and-losses-typed",
+    r1: "candidate-bytes-preserved-known-divergence",
+    r2: "adapter-byte-identical-known-divergence-and-losses-typed",
     r3: "payload-errors-typed",
     response: "projector-version-string-and-last-sorted-unique-id",
   });
@@ -375,8 +493,8 @@ function verifyOutcomes() {
 
 function main() {
   const manifest = verifyPins();
-  const outcomes = verifyOutcomes();
-  process.stdout.write(`${JSON.stringify({ result: "all-g54-interop-witnesses-verified", sourceFiles: 17, manifestFixtures: manifest.fixtures.length, outcomes })}\n`);
+  const outcomes = verifyOutcomes(manifest);
+  process.stdout.write(`${JSON.stringify({ result: "g54-interop-catalogue-verified-with-known-divergences", sourceFiles: 17, manifestFixtures: manifest.fixtures.length, knownDivergenceCount: outcomes.knownDivergences.length, outcomes })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();
