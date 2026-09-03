@@ -1,6 +1,8 @@
 # SDT-G53 deployment evidence
 
-Status: blocked after one authorized normal-config deployment window.
+Status: blocked at the W89 authenticated scope-mismatch verifier after the
+downstream repair, one normal-config deployment, and fresh G15/G16 receipts
+completed. The failed verifier was not retried.
 
 ## Deployed identity
 
@@ -78,3 +80,97 @@ logged, or committed; the Observability credential was not used as a
 substitute. The deployed `scope.mismatch` probe was not sent.
 
 AC5 remains incomplete, so no PR has been opened from this checkpoint.
+
+## W89 downstream scope cutover repair
+
+### Reproduction and hop trace before repair
+
+At `2026-09-03T04:22:30.545Z`, one diagnostic room and reservation were
+accepted by the deployed G53 Worker. The reservation response carried SUID
+`063924006150182000000680543461` and event id
+`01a06581-0604-7839-8fc4-6b9f799cf818`. Its scoped Tag state was present as
+`reservation:g53-w89-reservation-5ca9433a1cb7411a:ReservationProjector` with
+that exact head, so commit admission and the new physical Tag scope were not
+the failure.
+
+The downstream facts pinpointed the next hop:
+
+| Hop | Observed fact |
+| --- | --- |
+| source outbox | The diagnostic room/reservation appeared in the source-partition registry; the service had 341 registered source partitions. |
+| Queue | `sekiban-dcb-meeting-room-cloudflare-outbox` had the primary Worker as its sole consumer, with `max_retries=3` and the configured DLQ. |
+| global D1 admission | Neither diagnostic event existed in `dcb_events` or `dcb_event_ops`. |
+| delivery incident | The reservation had a `serialized_dcb_wait_target_incidents` row with `LINEAGE_MISMATCH`. |
+
+The old global allocator binding was
+`5b4aa018-94ee-412f-8155-47c8cbfeaefe`; the incoming scoped allocator lineage
+was `11a7b3b1-dd35-49dc-b459-c51f9588520d`. The source scanner was also
+`UNKNOWN` with `source_partition_unreadable:503`, because historic registry
+rows resolve to Durable Object instances abandoned by the G53 physical-name
+grammar. This is a producer/consumer cutover-state mismatch, not a silent
+commit or materialized-view failure.
+
+### Repair and local guard
+
+Commit `002e33ef1fbc071632f5ba3118f1018aae7a2652` adds the one-time
+`scripts/deploy/g53-scope-cutover-reset.sql` procedure and makes the G44
+source fixture use `buildScopeName`. The focused fixture now performs the
+actual path: canonical Tag source -> outbox Queue payload ->
+`processDownstreamDelivery` -> global D1 receipt -> source acknowledgement ->
+FULL scanner frontier. Its old-name OutboxDrain mutant (`service|tag`) turns
+the exact focused fixture red after a successful package build.
+
+Green local evidence before deployment:
+
+- `npm run test:g53` (including control-route and downstream old-name mutants);
+- `npm run test:g44`, `npm run test:g15`, and `npm run test:g16`;
+- `npm run lint` and `npm run typecheck`.
+
+The normal-config dry build also passed with bundle SHA-256
+`10af754e221dc3973ed9ee2d0f3373c9eec7a5646d96eb70c0602d1673c2380b`.
+
+### Deployment, authorized C-0/C-13 reset, and fresh receipts
+
+The repository-pinned OAuth Wrangler deployed commit `002e33ef1fbc071632f5ba3118f1018aae7a2652`
+with `samples/meeting-room/wrangler.cloudflare-only.jsonc`, no API-token
+fallback and no `--keep-vars`. Code version
+`6b24a78a-c09b-48bd-bf26-751b22a63384` was deployed at 100% with message
+`SDT-G53 downstream scope repair 002e33ef1fbc071632f5ba3118f1018aae7a2652`.
+
+Under C-0/C-13, the one-time reset removed the service's retired global
+allocator binding, source-partition registry, scanner health, and completeness
+findings: 358 rows across those four tables. It intentionally retained
+`dcb_events`, delivery/wait-target incidents, receipts, and other audit data.
+Because the source registry does not encode the old physical grammar, this
+also abandons the diagnostic unacknowledged source entries; that is an explicit
+authorized cutover consequence, not a migration claim.
+
+Post-reset, the new allocator binding is
+`11a7b3b1-dd35-49dc-b459-c51f9588520d`; four fresh scoped partitions are
+registered and scanner health is `HEALTHY`. All six fresh G15/G16 command
+SUIDs are present in global `dcb_events`, proving the repaired path reaches
+global D1 before either materialized-view lane observes it.
+
+| Fresh receipt | Result |
+| --- | --- |
+| G15 run `c4470758a37a4fed83915d0d81a3c177` | create/reserve/cancel HTTP 200, visible in 366.200 / 236.777 / 168.561 ms; SUIDs `063924007110245000000872153413`, `063924007114460000001927391132`, and `063924007115933000000866071434`. |
+| recorded warm-up | one `GET /` at `2026-09-03T04:38:47Z`: HTTP 200 in 12.623597 s, under the separate 30-second bound; not a G16 command. |
+| G16 run `eb73659b923e46ebad9e54ddc7bf3134` | create/reserve/cancel HTTP 200, projection visibility 268.587 / 252.527 / 189.241 ms; reservation-list page-two item visible in 5,532.056 ms, with 25 total rows across two pages. |
+
+### Bounded authenticated mismatch proof: blocked without retry
+
+After G15/G16, a fresh private `CONFORMANCE_TOKEN` was generated through
+`G53_CONFORMANCE_TOKEN_FILE` and installed once with the pinned OAuth
+Wrangler. Cloudflare recorded the resulting secret-only active version as
+`0c3818e7-8d6c-47f8-8a03-bb66d25391ec`; no second code deployment occurred.
+The one authorized `g53-scope-mismatch-e2e.mjs` invocation then failed at
+`verifyScopeMismatch` with the exact stderr message:
+
+`Error: G53 mismatch probe did not return typed scope.mismatch`
+
+The harness intentionally does not persist a non-passing response payload, so
+no status or body is inferred here. The private token's contents and path were
+never printed, copied into evidence, or committed. Per the bounded rule, no
+second probe was sent. That final typed-control receipt remains incomplete,
+so this checkpoint has no PR or worker-complete outcome despite the repaired
+downstream and G15/G16 receipts.

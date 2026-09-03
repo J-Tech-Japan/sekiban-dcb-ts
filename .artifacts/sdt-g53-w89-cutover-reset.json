@@ -1,0 +1,41 @@
+{
+  "schema": "sdt-g53-scope-cutover-reset/v1",
+  "deployment": {
+    "sourceCommit": "002e33ef1fbc071632f5ba3118f1018aae7a2652",
+    "codeVersion": "6b24a78a-c09b-48bd-bf26-751b22a63384",
+    "deploymentId": "fd613edd-eb80-4fce-bc23-9c0c0558ee9d"
+  },
+  "operation": {
+    "script": "scripts/deploy/g53-scope-cutover-reset.sql",
+    "authorization": "C-0/C-13",
+    "queries": 4,
+    "rowsRead": 358,
+    "rowsWritten": 358,
+    "reportedChanges": 359,
+    "abandoned": [
+      "retired allocator binding",
+      "service source-partition registry including the pre-reset diagnostic entries",
+      "scanner health",
+      "completeness findings"
+    ],
+    "retained": [
+      "dcb_events",
+      "delivery incidents",
+      "wait-target incidents",
+      "global receipts"
+    ]
+  },
+  "postReset": {
+    "allocatorBinding": "11a7b3b1-dd35-49dc-b459-c51f9588520d",
+    "sourcePartitionCount": 4,
+    "scannerHealth": "HEALTHY",
+    "globalD1EventSuids": [
+      "063924007110245000000872153413",
+      "063924007114460000001927391132",
+      "063924007115933000000866071434",
+      "063924007149316000001976785014",
+      "063924007151429000000566479641",
+      "063924007158786000002138376468"
+    ]
+  }
+}

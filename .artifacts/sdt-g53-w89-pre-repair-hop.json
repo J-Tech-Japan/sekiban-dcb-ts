@@ -1,0 +1,44 @@
+{
+  "schema": "sdt-g53-downstream-hop-trace/v1",
+  "diagnostic": {
+    "recordedAt": "2026-09-03T04:22:30.545Z",
+    "roomId": "g53-w89-room-5ca9433a1cb7411a",
+    "reservationId": "g53-w89-reservation-5ca9433a1cb7411a",
+    "reservationResponse": {
+      "status": 200,
+      "eventId": "01a06581-0604-7839-8fc4-6b9f799cf818",
+      "suid": "063924006150182000000680543461"
+    },
+    "tagState": {
+      "status": 200,
+      "tagStateId": "reservation:g53-w89-reservation-5ca9433a1cb7411a:ReservationProjector",
+      "lastSortedUniqueId": "063924006150182000000680543461"
+    }
+  },
+  "sourceOutbox": {
+    "registeredDiagnosticPartitions": [
+      "reservation:g53-w89-reservation-5ca9433a1cb7411a",
+      "room:g53-w89-room-5ca9433a1cb7411a"
+    ],
+    "servicePartitionCount": 341
+  },
+  "queue": {
+    "name": "sekiban-dcb-meeting-room-cloudflare-outbox",
+    "consumerWorker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "maxRetries": 3,
+    "deadLetterQueue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq"
+  },
+  "globalD1": {
+    "diagnosticEvents": 0,
+    "allocatorBinding": "5b4aa018-94ee-412f-8155-47c8cbfeaefe",
+    "scannerHealth": "UNKNOWN",
+    "scannerError": "source_partition_unreadable:503"
+  },
+  "queueDelivery": {
+    "classification": "LINEAGE_MISMATCH",
+    "eventId": "01a06581-0604-7839-8fc4-6b9f799cf818",
+    "suid": "063924006150182000000680543461",
+    "observedAt": 1788409352405,
+    "incomingScopedAllocatorLineage": "11a7b3b1-dd35-49dc-b459-c51f9588520d"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "sdt-g53-scope-mismatch-failure/v1",
+  "attempted": true,
+  "attempts": 1,
+  "token": "fresh private token supplied only through G53_CONFORMANCE_TOKEN_FILE; content and path omitted",
+  "secretUpload": {
+    "result": "uploaded CONFORMANCE_TOKEN",
+    "secretOnlyVersion": "0c3818e7-8d6c-47f8-8a03-bb66d25391ec"
+  },
+  "command": "node scripts/deploy/g53-scope-mismatch-e2e.mjs --base-url <workers.dev> --report .artifacts/sdt-g53-w89-scope-mismatch.json",
+  "failingHop": "scripts/deploy/g53-scope-mismatch-e2e.mjs verifyScopeMismatch",
+  "stderr": "Error: G53 mismatch probe did not return typed scope.mismatch",
+  "retry": "not authorized; no second authenticated probe sent",
+  "response": "not persisted by the fail-closed harness; no status or body inferred"
+}
