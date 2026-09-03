@@ -1,5 +1,9 @@
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { envServiceIdentity, requireServiceIdentity } from "@sekiban/dcb-runtime/cloudflare";
+import type {
+  LiveProjectionPollObservation,
+  LiveProjectionPollOutcome,
+} from "@sekiban/dcb-runtime/cloudflare";
 import {
   D1EventStore,
   createD1StoreProvider,
@@ -58,6 +62,8 @@ export interface MeetingRoomReadHealth {
     head: string;
     headAgeMs: number | null;
     lastPollAt: number | null;
+    pollStatus: LiveProjectionPollOutcome;
+    pollReason: string | null;
   }>[];
   readonly globalHead: string;
 }
@@ -303,6 +309,66 @@ export async function recordMeetingRoomSafeLaneCoverage(
   ).run();
 }
 
+const LIVE_POLL_OUTCOMES: readonly LiveProjectionPollOutcome[] = [
+  "never-invoked",
+  "invoked-and-threw",
+  "invoked-but-no-work",
+  "explicitly-gated",
+  "advanced",
+];
+
+function livePollOutcome(value: unknown): LiveProjectionPollOutcome {
+  return typeof value === "string" && LIVE_POLL_OUTCOMES.includes(value as LiveProjectionPollOutcome)
+    ? value as LiveProjectionPollOutcome
+    : "never-invoked";
+}
+
+/** Persist a per-projector attempt before bootstrap admission/store init. */
+export async function recordMeetingRoomLivePollAttempt(
+  env: MeetingRoomD1Env,
+  serviceId: string,
+  projectorIds: readonly string[],
+  attemptedAt: number,
+): Promise<void> {
+  if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  if (projectorIds.length === 0) return;
+  await env.D1.batch(projectorIds.map((projectorId) => env.D1!.prepare(
+    `INSERT INTO serialized_dcb_live_poll_health
+       (service_id, projector_id, attempted_at, outcome, reason, advanced_source_events)
+     VALUES (?, ?, ?, 'invoked-but-no-work', 'poll_in_progress', 0)
+     ON CONFLICT (service_id, projector_id) DO UPDATE SET
+       attempted_at = excluded.attempted_at,
+       outcome = excluded.outcome,
+       reason = excluded.reason,
+       advanced_source_events = excluded.advanced_source_events`,
+  ).bind(serviceId, projectorId, attemptedAt)));
+}
+
+/** Persist the terminal result without affecting projection semantics. */
+export async function recordMeetingRoomLivePollOutcome(
+  env: MeetingRoomD1Env,
+  observation: LiveProjectionPollObservation,
+): Promise<void> {
+  if (env.D1 === undefined) throw new Error("Cloudflare-only composition requires the D1 binding");
+  await env.D1.prepare(
+    `INSERT INTO serialized_dcb_live_poll_health
+       (service_id, projector_id, attempted_at, outcome, reason, advanced_source_events)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (service_id, projector_id) DO UPDATE SET
+       attempted_at = excluded.attempted_at,
+       outcome = excluded.outcome,
+       reason = excluded.reason,
+       advanced_source_events = excluded.advanced_source_events`,
+  ).bind(
+    observation.serviceId,
+    observation.projectorId,
+    observation.attemptedAt,
+    observation.outcome,
+    observation.reason,
+    observation.advancedSourceEvents,
+  ).run();
+}
+
 /**
  * Read the authenticated operator health snapshot. Every value comes from an
  * existing operational table used by the safe or live-projection runtime; no
@@ -351,7 +417,7 @@ export async function readMeetingRoomHealth(
   const source = new D1EventStore(env.D1);
   await source.initialize();
   const lag = await source.lagBoundDiagnostics(serviceId, nowMs);
-  const [coverageRow, globalHeadRow, projectionRows] = await Promise.all([
+  const [coverageRow, globalHeadRow, projectionRows, livePollRows] = await Promise.all([
     env.D1.prepare(
       `SELECT coverage_kind, coverage_reason, coverage_partition_tag, observed_at
          FROM serialized_dcb_safe_lane_health
@@ -366,8 +432,23 @@ export async function readMeetingRoomHealth(
       `SELECT projection_id, last_suid, updated_at
          FROM serialized_dcb_projection_checkpoints
         WHERE service_id = ?
-        ORDER BY projection_id COLLATE BINARY ASC`,
+      ORDER BY projection_id COLLATE BINARY ASC`,
     ).bind(serviceId).all<Record<string, unknown>>(),
+    (async () => {
+      try {
+        return await env.D1!.prepare(
+          `SELECT projector_id, attempted_at, outcome, reason, advanced_source_events
+             FROM serialized_dcb_live_poll_health
+            WHERE service_id = ?
+            ORDER BY projector_id COLLATE BINARY ASC`,
+        ).bind(serviceId).all<Record<string, unknown>>();
+      } catch {
+        // The additive table may be absent on a pre-G58 deployment. Expose an
+        // explicit never-invoked status rather than deriving a false stale
+        // timestamp from a checkpoint row.
+        return { results: [] as Record<string, unknown>[] };
+      }
+    })(),
   ]);
   const globalHead = globalHeadRow === null || globalHeadRow === undefined || typeof globalHeadRow.global_head !== "string"
     ? ""
@@ -377,15 +458,25 @@ export async function readMeetingRoomHealth(
     head: typeof row.last_suid === "string" ? row.last_suid : "",
     updatedAt: asCount(row.updated_at, "projection.updated_at"),
   })).filter((row) => row.projectionId.length > 0);
+  const livePollObservations = livePollRows.results.map((row) => ({
+    projectorId: typeof row.projector_id === "string" ? row.projector_id : "",
+    attemptedAt: asCount(row.attempted_at, "live_poll.attempted_at"),
+    outcome: livePollOutcome(row.outcome),
+    reason: row.reason === null || row.reason === undefined ? null : String(row.reason),
+  })).filter((row) => row.projectorId.length > 0);
   const liveProjections = materializers().map((projector) => {
     const states = checkpoints.filter((checkpoint) => checkpoint.projectionId.endsWith(`:${projector.id}`));
     const head = states.reduce((minimum, checkpoint) => minimum === "" || checkpoint.head < minimum ? checkpoint.head : minimum, "");
-    const lastPollAt = states.length === 0 ? null : Math.min(...states.map((state) => state.updatedAt));
+    const checkpointUpdatedAt = states.length === 0 ? null : Math.min(...states.map((state) => state.updatedAt));
+    const observation = livePollObservations.find((row) => row.projectorId === projector.id);
+    const lastPollAt = observation?.attemptedAt ?? null;
     return {
       projectorId: projector.id,
       head,
-      headAgeMs: lastPollAt === null ? null : nonNegativeAge(nowMs, lastPollAt),
+      headAgeMs: checkpointUpdatedAt === null ? null : nonNegativeAge(nowMs, checkpointUpdatedAt),
       lastPollAt,
+      pollStatus: observation?.outcome ?? "never-invoked",
+      pollReason: observation?.reason ?? "scheduled_live_poll_has_not_run",
     };
   });
 

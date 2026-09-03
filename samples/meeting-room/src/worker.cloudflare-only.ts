@@ -28,6 +28,8 @@ import {
   drainMeetingRoomUnsafeKicks,
   meetingRoomDeliveryViews,
   readMeetingRoomHealth,
+  recordMeetingRoomLivePollAttempt,
+  recordMeetingRoomLivePollOutcome,
   recordMeetingRoomSafeLaneCoverage,
   type MeetingRoomSafeLaneCoverage,
 } from "./d1-mv";
@@ -70,6 +72,11 @@ const runtime = createCloudflareOnlyRuntimeWorker({
       recordCoverage: async (safeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage),
     });
     return { frontierSuid: coverage.frontierSuid };
+  },
+  liveProjectionPollObserver: {
+    onAttempt: ({ env, serviceId, projectorIds, attemptedAt }) =>
+      recordMeetingRoomLivePollAttempt(env, serviceId, projectorIds, attemptedAt),
+    onOutcome: ({ env, ...observation }) => recordMeetingRoomLivePollOutcome(env, observation),
   },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;

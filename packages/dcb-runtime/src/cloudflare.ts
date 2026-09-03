@@ -24,7 +24,7 @@ import type { DownstreamOutboxMessage } from "./downstream/types";
 import { JournalDurableObject as RuntimeJournalDurableObject } from "./journal/JournalDurableObject";
 import { composeRuntime, registeredEventParsers, type RuntimeDomainLike, type RuntimeWorkerConfig } from "./composition";
 import { createD1StoreProvider } from "./d1";
-import { handleProjectionLag, pollLiveProjections } from "./projection/LiveProjectionWorker";
+import { handleProjectionLag, pollLiveProjections, type LiveProjectionPollObserver } from "./projection/LiveProjectionWorker";
 import { handleSerializedQuery } from "./http/SerializedQueryWorker";
 import { handleSerializedRead } from "./read/SerializedReadWorker";
 import { TagDurableObject as RuntimeTagDurableObject } from "./tag/TagDurableObject";
@@ -130,6 +130,8 @@ export interface CloudflareOnlyWorkerOptions {
     readonly serviceId: string;
     readonly scan: GlobalCompletenessScanResult;
   }) => Promise<BeforeLiveProjectionPollResult | void>;
+  /** Persists the observation-only lifecycle of each scheduled live poll. */
+  readonly liveProjectionPollObserver?: LiveProjectionPollObserver;
   /** Factories are evaluated per invocation; Queue and receiver can select views independently. */
   readonly deliveryViews?: (input: {
     readonly env: CloudflareOnlyEnv;
@@ -390,12 +392,24 @@ export function createCloudflareOnlyRuntimeWorker(
         storeProvider,
         serviceIdentityProvider: serviceIdentity,
         maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),
+        observer: options.liveProjectionPollObserver,
       });
     },
   };
 }
 
 export { processDownstreamDoorbell } from "./downstream/DownstreamAdapter";
+export {
+  LIVE_PROJECTION_POLL_OUTCOMES,
+  pollLiveProjections,
+} from "./projection/LiveProjectionWorker";
+export type {
+  LiveProjectionEnv,
+  LiveProjectionPollObservation,
+  LiveProjectionPollObserver,
+  LiveProjectionPollOutcome,
+  ProjectionPollOptions,
+} from "./projection/LiveProjectionWorker";
 export {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,

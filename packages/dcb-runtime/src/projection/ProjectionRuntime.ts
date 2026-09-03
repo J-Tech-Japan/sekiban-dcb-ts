@@ -55,6 +55,9 @@ export interface ProjectionCatchUpOptions {
 }
 
 export interface CatchUpResult {
+  /** Registered projector and tag identity for scheduled-poll diagnostics. */
+  readonly projectorId: string;
+  readonly tag: string;
   checkpoint: ProjectionCheckpoint | undefined;
   dynamicLagBoundMs: number;
   safeWindowMs: number;
@@ -178,6 +181,8 @@ export class ProjectionRuntime {
     if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
       const projectionId = projectionIdFor(identity);
       return {
+        projectorId: identity.tagProjector,
+        tag: identity.tag,
         checkpoint: await this.store.readProjectionCheckpoint(serviceId, projectionId),
         dynamicLagBoundMs,
         safeWindowMs: windowMs,
@@ -215,7 +220,16 @@ export class ProjectionRuntime {
         // ordered, advancing past it could skip a delayed lower SUID.
         assertSortableUniqueId(event.suid);
         if (!isSortableUniqueIdSafeAt(event.suid, nowMs, dynamicLagBoundMs)) {
-          return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
+          return {
+            projectorId: identity.tagProjector,
+            tag: identity.tag,
+            checkpoint,
+            dynamicLagBoundMs,
+            safeWindowMs: windowMs,
+            indeterminate: false,
+            advancedSourceEvents,
+            appliedEvents,
+          };
         }
 
         const appliesToTag = event.eventTags.includes(identity.tag);
@@ -241,7 +255,16 @@ export class ProjectionRuntime {
       }
 
       if (!casConflict) {
-        return { checkpoint, dynamicLagBoundMs, safeWindowMs: windowMs, indeterminate: false, advancedSourceEvents, appliedEvents };
+        return {
+          projectorId: identity.tagProjector,
+          tag: identity.tag,
+          checkpoint,
+          dynamicLagBoundMs,
+          safeWindowMs: windowMs,
+          indeterminate: false,
+          advancedSourceEvents,
+          appliedEvents,
+        };
       }
     }
     throw new Error("Projection checkpoint did not converge after concurrent updates");

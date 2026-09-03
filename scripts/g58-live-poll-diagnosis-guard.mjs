@@ -144,14 +144,14 @@ function sourceContracts(sources) {
   requireContains(live, "async function admitBootstrapRoute", "bootstrap admission stage");
   requireContains(live, "await admitBootstrapRoute(env, serviceId);", "bootstrap admission invocation");
   requireContains(live, "await store.initialize();", "projection store initialization stage");
-  requireContains(live, "return runtime.pollRegistered(serviceId, (options.clock ?? systemPipelineClock).now(), options.maximumSuid);", "registered projector polling stage");
+  requireContains(live, "const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);", "registered projector polling stage");
   requireContains(projection, "const tags = await this.store.listProjectionTags(serviceId);", "tag discovery stage");
   requireContains(projection, "for (const tag of tags)", "all-tag poll loop");
   requireContains(projection, "for (const projector of this.registry.registered())", "both projector loop");
   requireContains(projection, "options.maximumSuid === null", "non-FULL null fence");
   requireContains(projection, "compareSuid(event.suid, options.maximumSuid) > 0", "non-FULL high-water fence");
   requireContains(mv, "SELECT projection_id, last_suid, updated_at", "checkpoint health query");
-  requireContains(mv, "const lastPollAt = states.length === 0 ? null : Math.min(...states.map((state) => state.updatedAt));", "checkpoint-derived lastPollAt");
+  requireContains(mv, "const lastPollAt = observation?.attemptedAt ?? null;", "attempt-derived lastPollAt");
   requireContains(completeness, "assertSnapshotUniverseUnchanged", "G44 snapshot-universe fence");
 }
 
@@ -211,7 +211,7 @@ function sourceMutationSelfTest(sources) {
   try { sourceContracts({ ...sources, projection: fenceMutation }); } catch { fenceRed = true; }
   if (!fenceRed) fail("removing the retained-frontier comparison did not turn the guard red");
   const lastPollMutation = sources.mv.replace(
-    "const lastPollAt = states.length === 0 ? null : Math.min(...states.map((state) => state.updatedAt));",
+    "const lastPollAt = observation?.attemptedAt ?? null;",
     "const lastPollAt = null;",
   );
   let lastPollRed = false;
@@ -292,4 +292,3 @@ function main() {
 
 if (process.argv.includes("--self-test")) runSelfTest();
 else main();
-

@@ -48,7 +48,7 @@ function sourceContracts(sources) {
   requireContains(runtime, "export function scheduledLiveProjectionMaximumSuid(", "FULL/BLOCK fence mapper");
   requireContains(live, "maximumSuid?: string | null;", "live-poll maximum frontier option");
   requireContains(live, "{ maximumSuid: options.maximumSuid },", "single-tag maximum frontier propagation");
-  requireContains(live, "runtime.pollRegistered(serviceId, (options.clock ?? systemPipelineClock).now(), options.maximumSuid)", "all-tag maximum frontier propagation");
+  requireContains(live, "const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);", "all-tag maximum frontier propagation");
   requireContains(projection, "options.maximumSuid === null", "null frontier fence");
   requireContains(projection, "compareSuid(event.suid, options.maximumSuid) > 0", "retained high-water fence");
   requireContains(projection, "async pollRegistered(\n    serviceId: string,\n    nowMs: number,\n    maximumSuid?: string | null,", "pollRegistered fence API");
