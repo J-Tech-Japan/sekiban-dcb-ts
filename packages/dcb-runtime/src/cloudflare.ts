@@ -129,7 +129,7 @@ export interface CloudflareOnlyWorkerOptions {
     readonly env: CloudflareOnlyEnv;
     readonly serviceId: string;
     readonly scan: GlobalCompletenessScanResult;
-  }) => Promise<void>;
+  }) => Promise<BeforeLiveProjectionPollResult | void>;
   /** Factories are evaluated per invocation; Queue and receiver can select views independently. */
   readonly deliveryViews?: (input: {
     readonly env: CloudflareOnlyEnv;
@@ -145,6 +145,28 @@ export interface CloudflareOnlyWorkerOptions {
     readonly source?: "queue" | "fast" | "import";
     readonly result?: DeliveryCoreResult;
   }) => Promise<void>;
+}
+
+/**
+ * Result returned by the sample's retained-frontier safe-lane hook. The
+ * scanner result itself intentionally has no mutable frontier: on BLOCK the
+ * hook reads the last proven FULL cursor from the persisted health authority.
+ */
+export interface BeforeLiveProjectionPollResult {
+  readonly frontierSuid?: string | null;
+}
+
+/**
+ * Translate a scheduled scanner outcome and the hook's retained frontier into
+ * the live-poll fence. A FULL scan keeps the established unbounded behavior;
+ * every other outcome invokes the poll but is bounded by the last proven
+ * frontier (or by `null` when none exists).
+ */
+export function scheduledLiveProjectionMaximumSuid(
+  scan: Pick<GlobalCompletenessScanResult, "kind">,
+  retainedFrontierSuid: string | null | undefined,
+): string | null | undefined {
+  return scan.kind === "FULL" ? undefined : retainedFrontierSuid ?? null;
 }
 
 /**
@@ -359,10 +381,16 @@ export function createCloudflareOnlyRuntimeWorker(
       // health/finding tables are the only G44 interim BLOCK/UNSETTLED path.
       const scan = await new GlobalCompletenessReconciler(env.D1, env.TAG).reconcile(serviceId, Date.now());
       // A source gap, page failure, or stale/unknown scan can never advance
-      // a live projection. The source receipt still remains retryable.
-      await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });
-      if (scan.kind !== "FULL") return;
-      await pollLiveProjections(env, { registry: composition.projectors, storeProvider, serviceIdentityProvider: serviceIdentity });
+      // a live projection past the last proven frontier. The source receipt
+      // remains retryable, but the poll still runs so retained safe work and
+      // projection liveness are not starved on a BLOCK tick.
+      const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });
+      await pollLiveProjections(env, {
+        registry: composition.projectors,
+        storeProvider,
+        serviceIdentityProvider: serviceIdentity,
+        maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),
+      });
     },
   };
 }

@@ -57,7 +57,7 @@ const runtime = createCloudflareOnlyRuntimeWorker({
         drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
         runGenericScheduledWork: async () => {},
       });
-      return;
+      return { frontierSuid: undefined };
     }
     const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
     await runMeetingRoomScheduledMaintenance({
@@ -69,6 +69,7 @@ const runtime = createCloudflareOnlyRuntimeWorker({
       runGenericScheduledWork: async () => {},
       recordCoverage: async (safeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage),
     });
+    return { frontierSuid: coverage.frontierSuid };
   },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;

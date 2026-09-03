@@ -43,6 +43,17 @@ export interface CatchUpHooks {
   afterCheckpoint?(event: StoredEvent, checkpoint: ProjectionCheckpoint): Promise<void> | void;
 }
 
+/**
+ * Optional scanner-proven high-water mark for a scheduled live-projection
+ * pass. `null` means that no settled frontier exists, so the pass may run
+ * and observe projection state but cannot advance a source checkpoint.
+ * `undefined` retains the ordinary unbounded caller behaviour used by a
+ * proven FULL scan and by on-demand operator reads.
+ */
+export interface ProjectionCatchUpOptions {
+  readonly maximumSuid?: string | null;
+}
+
 export interface CatchUpResult {
   checkpoint: ProjectionCheckpoint | undefined;
   dynamicLagBoundMs: number;
@@ -156,6 +167,7 @@ export class ProjectionRuntime {
     identity: TagStateIdentity,
     nowMs: number,
     hooks: CatchUpHooks = {},
+    options: ProjectionCatchUpOptions = {},
   ): Promise<CatchUpResult> {
     const projector = this.registry.resolve(identity.tagProjector);
     if (projector === undefined) {
@@ -189,6 +201,15 @@ export class ProjectionRuntime {
         if (previousSuid !== undefined && compareSuid(previousSuid, event.suid) >= 0) {
           await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
+        }
+        // A G44 BLOCK/UNSETTLED tick may still poll live projections, but it
+        // must remain fenced by the last settled source frontier. `null`
+        // deliberately permits no source advancement; it is not an empty
+        // unbounded frontier.
+        if (options.maximumSuid === null || (
+          options.maximumSuid !== undefined && compareSuid(event.suid, options.maximumSuid) > 0
+        )) {
+          break;
         }
         // Stop at the first unsafe source event. Because the source is SUID
         // ordered, advancing past it could skip a delayed lower SUID.
@@ -226,14 +247,18 @@ export class ProjectionRuntime {
     throw new Error("Projection checkpoint did not converge after concurrent updates");
   }
 
-  async pollRegistered(serviceId: string, nowMs: number): Promise<CatchUpResult[]> {
+  async pollRegistered(
+    serviceId: string,
+    nowMs: number,
+    maximumSuid?: string | null,
+  ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
     const results: CatchUpResult[] = [];
     for (const tag of tags) {
       for (const projector of this.registry.registered()) {
         const identity = tagStateIdentityForPolledTag(tag, projector.id, this.registry);
         if (identity !== undefined) {
-          results.push(await this.catchUp(serviceId, identity, nowMs));
+          results.push(await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid }));
         }
       }
     }

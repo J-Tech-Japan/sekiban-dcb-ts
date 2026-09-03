@@ -30,6 +30,12 @@ export interface ProjectionPollOptions {
   serviceId?: string;
   /** Optional single tag scope for queue/HTTP operator catch-up. */
   tag?: string;
+  /**
+   * Optional G44-proven high-water mark for a scheduled poll. `null` keeps
+   * the poll observable but permits no source advancement on BLOCK/UNSETTLED;
+   * `undefined` retains the unbounded FULL/on-demand behavior.
+   */
+  maximumSuid?: string | null;
   serviceIdentityProvider?: ServiceIdentityProvider;
 }
 
@@ -87,12 +93,14 @@ export async function pollLiveProjections(
           serviceId,
           identity.value,
           (options.clock ?? systemPipelineClock).now(),
+          {},
+          { maximumSuid: options.maximumSuid },
         ));
       }
     }
     return results;
   }
-  return runtime.pollRegistered(serviceId, (options.clock ?? systemPipelineClock).now());
+  return runtime.pollRegistered(serviceId, (options.clock ?? systemPipelineClock).now(), options.maximumSuid);
 }
 
 /**
