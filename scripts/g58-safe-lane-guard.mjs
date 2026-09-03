@@ -28,6 +28,7 @@ function snapshot() {
     test: read("test/g58-safe-lane.spec.ts"),
     mutation: read("scripts/g58-safe-lane-mutation-runner.mjs"),
     e2e: read("scripts/deploy/g58-safe-lane-e2e.mjs"),
+    readProof: read("scripts/deploy/g58-ac1-ac5-readproof.mjs"),
     migration: read("migrations/d1/g32/0003_g58_safe_lane_health.sql"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
@@ -56,6 +57,8 @@ export function assertG58SafeLaneContract(value) {
   requireContains(value.mutation, "g58-coverage-gate-production-mutant-red", "production BLOCK omission proof");
   requireContains(value.e2e, "safeWindowMs + 120000ms", "deployed e2e safe deadline");
   requireContains(value.e2e, "pacedReservationCommits", "paced cohort recorder");
+  requireContains(value.readProof, "expectedTagHead", "tag-scoped AC5 head oracle");
+  requireContains(value.readProof, "noProjectionPollQuery", "read-only AC5 proof boundary");
   requireContains(value.packageJson, '"test:g58"', "dedicated G58 package lane");
   requireContains(value.ci, "Run SDT-G58 safe-lane and live-projection reliability lane", "G58 CI invocation");
   requireContains(value.ci, "SDT_G58_FORCE_FAILURE", "G58 forced-red CI reachability");
