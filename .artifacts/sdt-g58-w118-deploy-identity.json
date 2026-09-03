@@ -1,0 +1,26 @@
+{
+  "schema": "sdt-g58-deploy-identity/v1",
+  "task": "SDT-G58-SPLIT-COMPLETION-W118",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "url": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "configSha256": "f0c55e4676ad2f9f3adb2f2a7f42045f2827d4d99aff80a85cdaa955be54e345",
+  "localSourceSha": "e94ffa1eb935d901234f67738b6e9be8122a0eb3",
+  "localSourceCommit": "SDT-G58 amend split safe-lane evidence witness",
+  "wranglerVersion": "4.125.0",
+  "deployCommand": "env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN -u CLOUDFLARE_EMAIL ./node_modules/.bin/wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --strict --message \"SDT-G58 W118 split completion e94ffa1\"",
+  "version": {
+    "id": "b1d15a65-cee9-4f4b-b342-395c3a28c66a",
+    "number": 202,
+    "createdOn": "2026-09-03T17:25:53.495485Z",
+    "annotation": "SDT-G58 W118 split completion e94ffa1",
+    "annotationMatchesLocalSourcePrefix": true
+  },
+  "deployment": {
+    "id": "ebccecc3-02a2-476f-bb8d-6970069f8a79",
+    "createdOn": "2026-09-03T17:25:54.60165Z",
+    "trafficPercentage": 100,
+    "annotation": "SDT-G58 W118 split completion e94ffa1"
+  },
+  "identity": "exact local W118 source commit e94ffa1eb935d901234f67738b6e9be8122a0eb3 is the deployed version-202 source prefix; active deployment is version b1d15a65-cee9-4f4b-b342-395c3a28c66a at 100%"
+}

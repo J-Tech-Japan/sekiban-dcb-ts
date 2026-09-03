@@ -1237,3 +1237,207 @@ unchanged 5,000 ms unsafe constant, SafeWindow 20,000/120,000 bounds,
 G44/W97/W104/W106 guards, fence/order semantics, minimum aggregation, and
 SDT-G60-owned outbox/Queue/global-admission path are untouched. The temporary
 detached worktree was removed after this evidence was durable.
+
+## W118 split completion — 2026-09-03 (blocked on AC2)
+
+W118 resumes the preserved `claude/sdt-g58-safe-lane-w93` branch under the
+operator-approved split at authoritative host commit `0bc0e2fd5`. Actual
+projector-head convergence and committed cohort tag-state convergence are
+explicitly moved to SDT-G61/#114. This checkpoint therefore preserves the
+W111 live-poll observability repair at `a9bee26`, the existing AC3/AC4 safe-lane
+work, and the W112 bounded pool evidence without attempting another projector
+head repair.
+
+### W118 source and deployment identity
+
+The amended evidence witness is commit
+`e94ffa1eb935d901234f67738b6e9be8122a0eb3`, pushed on
+`claude/sdt-g58-safe-lane-w93`. It changes only the deployed evidence runner,
+the G58 package scripts, and the red-capable G58 source guard. The normal
+config SHA-256 is
+`f0c55e4676ad2f9f3adb2f2a7f42045f2827d4d99aff80a85cdaa955be54e345`.
+
+Exactly one W118 deployment used Wrangler 4.125.0, OAuth-only credentials
+with API-token environment variables unset, the normal
+`samples/meeting-room/wrangler.cloudflare-only.jsonc` config, and no
+`--keep-vars`. Cloudflare read back version `b1d15a65-cee9-4f4b-b342-395c3a28c66a`
+(version 202), deployment `ebccecc3-02a2-476f-bb8d-6970069f8a79`, at 100%.
+The source annotation was `SDT-G58 W118 split completion e94ffa1`; its
+seven-character source prefix matches the exact local commit. The sanitized
+receipt is `.artifacts/sdt-g58-w118-deploy-identity.json`.
+
+### AC1 health surface
+
+The preserved completed W94 read-only proof remains
+`.artifacts/sdt-g58-w94-ac1-ac5-readproof-repaired.json`. It proves the
+bearer-only `/conformance/v1/read-health` surface with coverage, lag,
+materialized-view, and live-projection fields, without app requests or a
+projection-lag query. The W118 AC6 receipt independently authenticated
+`read-health` successfully and recorded 30 health snapshots, including
+coverage kind/reason, decayed lag, safe window, both materialized views, and
+both live projector rows. The G58 read-proof self-test and the full
+`test:g58` lane passed.
+
+### AC2 amended paced cohort
+
+The one fresh, non-stitched cohort receipt is
+`.artifacts/sdt-g58-w118-ac2-paced-cohort.json`. It accepted ten reservations
+with the cold first sample included. The commit-to-commit spacing values were
+`13997, 12913, 13033, 12830, 12723, 12951, 12814, 13194, 12816, 13966 ms`
+(the first value is room-create to reservation 1); the minimum is above the
+required 10,000 ms. The receipt contains 32 health snapshots and four
+distinct observed coverage ticks, each retaining nested coverage, decayed lag,
+safe-window, and both projector attempt/outcome snapshots.
+
+| # | commit UTC | reservation SUID | spacing ms | unsafe raw observation | commit-to-safe ms |
+|---:|---|---|---:|---|---:|
+| 1 | 17:27:32.449Z | `063924053251522000001725631009` | 13997 | runner pass; raw commit-to-unsafe 5170 | censored |
+| 2 | 17:27:45.362Z | `063924053264349000001244092179` | 12913 | miss; censored after 5000 | censored |
+| 3 | 17:27:58.395Z | `063924053277255000001323688585` | 13033 | miss; censored after 5000 | censored |
+| 4 | 17:28:11.225Z | `063924053290189000000736742739` | 12830 | miss; censored after 5000 | censored |
+| 5 | 17:28:23.948Z | `063924053303126000001047542373` | 12723 | miss; censored after 5000 | censored |
+| 6 | 17:28:36.899Z | `063924053315853000001193660926` | 12951 | miss; censored after 5000 | censored |
+| 7 | 17:28:49.713Z | `063924053328710000000066374337` | 12814 | miss; censored after 5000 | censored |
+| 8 | 17:29:02.907Z | `063924053341627000001182203812` | 13194 | miss; censored after 5000 | censored |
+| 9 | 17:29:15.723Z | `063924053354735000000331309543` | 12816 | miss; censored after 5000 | censored |
+| 10 | 17:29:29.689Z | `063924053368759000000482611667` | 13966 | miss; censored after 5000 | censored |
+
+The harness stopped at `2026-09-03T17:30:42.877Z` with
+`safe lane did not reach 063924053251522000001725631009 within the 180000ms
+paced safe acceptance line`. No sample reached safe visibility, so
+commit-to-safe `n=0`, `p50=N/A`, and `p95=N/A`; there is no safe sample over
+`safeWindowMs + 60 s` to attribute. The last health surface was
+`BLOCK/UNSETTLED`, reason `source_partition_set_changed_during_scan`, with
+`decayedMs=0` and `safeWindowMs=20000`; both registered projectors had
+attempt/outcome telemetry. The unsafe column is recorded only: one raw
+commit-to-unsafe value was 5170 ms and the other nine were censored; these
+values do not fail G58 and remain owned by SDT-G60.
+
+The four observed coverage groups were:
+
+| observed tick UTC | HTTP samples | coverage | final projector outcome | both attempted |
+|---|---:|---|---|---|
+| 17:26:26.229Z | 6 | `SETTLED` / null | both `invoked-but-no-work` / `scheduled_live_poll_has_not_run` | yes |
+| 17:27:25.970Z | 11 | `BLOCK/UNSETTLED` / `source_partition_set_changed_during_scan` | both `advanced` | yes |
+| 17:28:26.391Z | 9 | `BLOCK/UNSETTLED` / `source_partition_set_changed_during_scan` | both `advanced` | yes |
+| 17:29:26.528Z | 6 | `BLOCK/UNSETTLED` / `source_partition_set_changed_during_scan` | both `advanced` | yes |
+
+This is a deployed AC2 failure, not a missing receipt: all accepted commands,
+per-sample unsafe observations, and per-tick health data are durable. It is
+the reason this W118 checkpoint is blocked and why no G58 completion claim is
+made.
+
+### AC3 coverage ordering and guard
+
+`.artifacts/sdt-g58-w118-ac3-guard.json` records the passing guard and its
+red-capable mutations. The guard output was:
+
+```text
+{"selfTest":"g58-safe-lane-mutations-red"}
+{"guard":"g58-safe-lane","status":"pass"}
+```
+
+The preserved contract applies fresh FULL-frontier reconciliation and the
+retained-frontier BLOCK handling before scheduled coverage persistence and
+the live-projector poll. Red mutations cover retained-frontier removal,
+no-frontier hold removal, scheduled poll removal, shortening the 180-second
+paced line, and removing the AC6 attempt-telemetry gate. The published
+`5000 ms` unsafe bound and SafeWindow `20000/120000 ms` bounds are unchanged.
+
+### AC4 retired-lag purge
+
+Under C-0, the exact targeted operation in
+`.artifacts/sdt-g58-w118-ac4-retired-lag-purge.json` was executed against the
+normal-config pipeline D1. Before and after, the pipeline had 11 `dcb_events`,
+22 projection checkpoints, and one current-service lag estimate with zero
+retired lag rows; the separate MV D1 had 11 `mv_unsafe_receipts` and 11
+`mv_rows`. The SQL was:
+
+```sql
+DELETE FROM serialized_dcb_lag_estimates
+WHERE service_id <> 'sekiban-dcb-meeting-room-cloudflare-only';
+```
+
+Cloudflare reported `success=true`, `changes=0`, and `rows_written=0`, so no
+operational rows were removed. The first inventory attempt used an invalid
+pipeline checkpoint `service_id` subquery and returned SQLite code 7500; the
+read-only query was corrected once. This was not code-10000 or auth failure.
+
+### AC5 live-poll observability split
+
+The W111 source/guard receipt remains green at
+`.artifacts/sdt-g58-w111-green-guard.json`: every registered projector receives
+an attempt timestamp and terminal outcome from the scheduled poll, and
+`lastPollAt` is derived from the attempt timestamp while `head` remains
+checkpoint-derived. Its outcome vocabulary is `never-invoked`,
+`invoked-and-threw`, `invoked-but-no-work`, `explicitly-gated`, and `advanced`.
+The immutable W112 red receipt and W112 red-capable bounded-pool guard remain
+at `.artifacts/sdt-g58-w112-paced-cohort.json` and
+`.artifacts/sdt-g58-w112-green-guard.json`; no new head repair was attempted.
+
+The deployed W118 AC6 receipt provides the before/after observability proof:
+
+| state | RoomProjector | ReservationProjector |
+|---|---|---|
+| baseline health | head `063924050289760000000088044272`; `lastPollAt=1788456409853`; `invoked-but-no-work` / `poll_in_progress` | same |
+| final health | head `063924053368759000000482611667`; `lastPollAt=1788456719828`; `advanced` | same |
+| cohort final SUID | `063924053488305000000669856102` | `063924053488305000000669856102` |
+| attempt telemetry after baseline | true | true |
+
+The AC6 receipt records three observed ticks and 30 health snapshots; every
+tick has both registered projector rows and `allRegisteredProjectorsObserved`
+is true. At the final observation, the two projection-lag rows remained behind
+by 2 and 1 events, while both cohort tag-state reads returned the final SUID
+with version 1. Those head/tag facts are recorded as G61 before-state, not as
+a G58 assertion.
+
+### AC6 amended deployed e2e
+
+The one deployed `e2e:g58` run is
+`.artifacts/sdt-g58-w118-ac6-e2e.json`, run
+`49e01282-95e9-4fec-92a6-98f9cb502c05`, and completed. It accepted one
+reservation with SUID `063924053488305000000669856102`; the unsafe observation
+was an SDT-G60-owned miss with eventual visibility at 7134 ms, and safe
+visibility reached in 95629 ms. Thus `n=1`, safe `p50=95629 ms`, safe
+`p95=95629 ms`, and unsafe over/missing count `1`; the unsafe result is not a
+G58 failure. The e2e asserted only safe visibility plus both post-baseline
+attempt telemetry values, failed at the unchanged `safeWindowMs + 120000 ms`
+deadline if absent, and did not assert unsafe visibility within 5000 ms or
+projector-head convergence.
+
+### Local gates and incidental generated drift
+
+The requested gates all passed without weakening, removing, or inflating a
+timeout:
+
+| command | result |
+|---|---|
+| `npm run test:g15` | pass; 2 files, 9 tests, pagination self-test |
+| `npm run test:g16` | pass; 2 files, 6 tests, UI check |
+| `npm run test:g41` | pass; 8 tests and production mutation red |
+| `npm run test:g44` | pass; 8 tests and production mutation red |
+| `npm run test:g49` | pass; binding/migration parity and red mutants |
+| `npm run test:g51` | pass; 4 selected tests and regression/probe guards |
+| `npm run test:g52` | pass; 18 tests and omission mutants red |
+| `npm run test:g53` | pass; 10 tests and scope mutants red |
+| `npm run test:g54` | pass; 18 tests and known-divergence mutants red |
+| `npm run test:g55` | pass; 12 tests and read-visibility mutants red |
+| `npm run test:g58` | pass; 13 tests plus all preserved and amended G58 guards |
+| `npm run typecheck` | pass |
+| `npm run lint` | pass with zero warnings |
+
+The G58 guard runs rewrote only timestamped stdout fields in tracked W97/W98
+generated guard receipts; those two incidental changes were restored exactly to
+their committed content and are not part of W118. No product/runtime source
+was touched by that drift.
+
+### W118 disposition and remaining work
+
+AC1, AC3, AC4, AC5 observability, and the amended AC6 e2e witness are recorded.
+AC2's required ten-commit safe-convergence proof is missing because the single
+fresh cohort stopped on the `BLOCK/UNSETTLED` source-partition-set gate. The
+W118 report is therefore blocked; this document does not open or complete the
+issue/PR workflow. G58 still does not claim unsafe 5000-ms proof (SDT-G60),
+projector-head convergence (SDT-G61), or any outbox/Queue/global-admission
+repair. SDT-G60 remains unpublished, SDT-G56 remains held, and no action was
+taken on G57/G59.
