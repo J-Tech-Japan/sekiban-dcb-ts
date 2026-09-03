@@ -1,0 +1,1415 @@
+{
+  "schema": "sdt-g58-safe-lane-e2e/v1",
+  "task": "SDT-G58",
+  "mode": "paced",
+  "runId": "e038aee6-3053-4f29-a1d5-b3b229d1ab79",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+  "startedAt": "2026-09-03T15:46:07.629Z",
+  "contract": {
+    "pacedReservationCommits": 10,
+    "paceMs": 10000,
+    "unsafeBoundMs": 5000,
+    "unsafeProof": "delegated to SDT-G60: retain each 5000ms pass/miss and observe eventual visibility without reclassification",
+    "safeDeadline": "health.safeWindowMs + 120000ms",
+    "conformanceAuthorization": "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted"
+  },
+  "healthSnapshots": [
+    {
+      "receivedAtMs": 1788450370135,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788450264204
+      },
+      "lag": {
+        "estimateMs": 14554,
+        "observedAt": 1788442788735,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7486167,
+          "unsafeRows": 0,
+          "unsafeReceipts": 58
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7469967,
+          "unsafeRows": 0,
+          "unsafeReceipts": 150
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7440231,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7440231,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924039573941000000201368604",
+      "cfRay": "a355e2b0e9249a8b-SYD",
+      "responseMs": 2503
+    },
+    {
+      "receivedAtMs": 1788450391022,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788450323627
+      },
+      "lag": {
+        "estimateMs": 7289,
+        "observedAt": 1788450381823,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7507170,
+          "unsafeRows": 1,
+          "unsafeReceipts": 59
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7490970,
+          "unsafeRows": 0,
+          "unsafeReceipts": 151
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7461234,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7461234,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047173607000001503852288",
+      "cfRay": "a355e334fbf932c0-SYD",
+      "responseMs": 1928
+    },
+    {
+      "receivedAtMs": 1788450406038,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788450323627
+      },
+      "lag": {
+        "estimateMs": 8149,
+        "observedAt": 1788450396795,
+        "decayedMs": 1830,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7521008,
+          "unsafeRows": 1,
+          "unsafeReceipts": 60
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7504808,
+          "unsafeRows": 1,
+          "unsafeReceipts": 152
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7475072,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7475072,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047201985000001191970427",
+      "cfRay": "a355e38b6ff657d5-SYD",
+      "responseMs": 3025
+    },
+    {
+      "receivedAtMs": 1788450419263,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788450323627
+      },
+      "lag": {
+        "estimateMs": 2028,
+        "observedAt": 1788450418219,
+        "decayedMs": 2028,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7535292,
+          "unsafeRows": 1,
+          "unsafeReceipts": 61
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7519092,
+          "unsafeRows": 2,
+          "unsafeReceipts": 153
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7489356,
+          "lastPollAt": 1788450414330,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7489356,
+          "lastPollAt": 1788450414330,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047215687000001432855132",
+      "cfRay": "a355e3e4be5957d5-SYD",
+      "responseMs": 1962
+    },
+    {
+      "receivedAtMs": 1788450432888,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "observedAt": 1788450323627
+      },
+      "lag": {
+        "estimateMs": 5017,
+        "observedAt": 1788450421562,
+        "decayedMs": 0,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7548973,
+          "unsafeRows": 1,
+          "unsafeReceipts": 62
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7532773,
+          "unsafeRows": 3,
+          "unsafeReceipts": 154
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7503037,
+          "lastPollAt": 1788450414330,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7503037,
+          "lastPollAt": 1788450414330,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047215687000001432855132",
+      "cfRay": "a355e43a3874f34b-SYD",
+      "responseMs": 1908
+    },
+    {
+      "receivedAtMs": 1788450447169,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 15409,
+        "observedAt": 1788450445915,
+        "decayedMs": 15409,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7563005,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7546805,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7220134,
+          "lastPollAt": 1788450414330,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063924039573941000000201368604",
+          "headAgeMs": 7220134,
+          "lastPollAt": 1788450414330,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047229987000000478411011",
+      "cfRay": "a355e491ebfbf34b-SYD",
+      "responseMs": 2161
+    },
+    {
+      "receivedAtMs": 1788450462455,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 9540,
+        "observedAt": 1788450461596,
+        "decayedMs": 9540,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7578534,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7562334,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063923846729298000000907942875",
+          "headAgeMs": 7235663,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "scheduled_live_poll_has_not_run"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063923846726419000001670974991",
+          "headAgeMs": 7235663,
+          "lastPollAt": 1788450336992,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "scheduled_live_poll_has_not_run"
+        }
+      ],
+      "globalHead": "063924047257426000001476844191",
+      "cfRay": "a355e4f2fe9af34b-SYD",
+      "responseMs": 1914
+    },
+    {
+      "receivedAtMs": 1788450476212,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 16063,
+        "observedAt": 1788450475162,
+        "decayedMs": 16063,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7592297,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7576097,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063923889788339000000028179033",
+          "headAgeMs": 6986865,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063923889784848000001880172230",
+          "headAgeMs": 6986865,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047272880000000560394951",
+      "cfRay": "a355e548fa5cf34b-SYD",
+      "responseMs": 1907
+    },
+    {
+      "receivedAtMs": 1788450490033,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 15155,
+        "observedAt": 1788450489264,
+        "decayedMs": 15155,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7606094,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7589894,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063923898167640000000601610025",
+          "headAgeMs": 7000662,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063923889855935000002134015912",
+          "headAgeMs": 7000662,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047286677000001602897605",
+      "cfRay": "a355e59f3d3ef34b-SYD",
+      "responseMs": 1930
+    },
+    {
+      "receivedAtMs": 1788450510838,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 12556,
+        "observedAt": 1788450499733,
+        "decayedMs": 3636,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7626547,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7610347,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063923846723399000001877841203",
+          "headAgeMs": 7021115,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063923898199543000001827112663",
+          "headAgeMs": 7021115,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047286677000001602897605",
+      "cfRay": "a355e61f081ef34b-SYD",
+      "responseMs": 2282
+    },
+    {
+      "receivedAtMs": 1788450525875,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 21300,
+        "observedAt": 1788450524159,
+        "decayedMs": 21300,
+        "safeWindowMs": 21300,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7641583,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7625383,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063923872371114000001393014600",
+          "headAgeMs": 7036151,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063923872374269000000773862859",
+          "headAgeMs": 7036151,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-but-no-work",
+          "pollReason": "poll_in_progress"
+        }
+      ],
+      "globalHead": "063924047321183000001665199681",
+      "cfRay": "a355e67d0c78f34b-SYD",
+      "responseMs": 2285
+    },
+    {
+      "receivedAtMs": 1788450541559,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+        "observedAt": 1788450388415
+      },
+      "lag": {
+        "estimateMs": 16970,
+        "observedAt": 1788450538664,
+        "decayedMs": 16217,
+        "safeWindowMs": 20000,
+        "ceilingExceeded": false
+      },
+      "materializedViews": [
+        {
+          "viewId": "RoomProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7657311,
+          "unsafeRows": 1,
+          "unsafeReceipts": 63
+        },
+        {
+          "viewId": "ReservationProjector",
+          "generation": 0,
+          "safeHead": "063924039573941000000201368604",
+          "safeHeadAgeMs": 7641111,
+          "unsafeRows": 4,
+          "unsafeReceipts": 155
+        }
+      ],
+      "liveProjections": [
+        {
+          "projectorId": "RoomProjector",
+          "head": "063923889781699000000567681621",
+          "headAgeMs": 7051879,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-and-threw",
+          "pollReason": "Projection checkpoint did not converge after concurrent updates"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "head": "063923889784848000001880172230",
+          "headAgeMs": 7051879,
+          "lastPollAt": 1788450467845,
+          "pollStatus": "invoked-and-threw",
+          "pollReason": "Projection checkpoint did not converge after concurrent updates"
+        }
+      ],
+      "globalHead": "063924047321183000001665199681",
+      "cfRay": "a355e6df5a27f34b-SYD",
+      "responseMs": 2240
+    }
+  ],
+  "reservations": [
+    {
+      "ordinal": 1,
+      "reservationId": "g58-reservation-e038aee6-305-1",
+      "suid": "063924047188111000000120870582",
+      "commit": {
+        "receivedAtMs": 1788450389093,
+        "responseMs": 4178,
+        "cfRay": "a355e31e0f8332c0-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 14178,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "pass",
+        "firstVisibleAtMs": 1788450392218,
+        "commitToUnsafeMs": 3125,
+        "observations": [
+          {
+            "atMs": 1788450392218,
+            "elapsedMs": 1195,
+            "pageCount": 1,
+            "totalCount": 75,
+            "itemCount": 75,
+            "visible": true,
+            "readHead": "063924047188111000000120870582",
+            "cfRay": "a355e3407e1332c0-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g58-reservation-e038aee6-305-2",
+      "suid": "063924047201985000001191970427",
+      "commit": {
+        "receivedAtMs": 1788450403011,
+        "responseMs": 3917,
+        "cfRay": "a355e375982f57d5-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 13918,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "pass",
+        "firstVisibleAtMs": 1788450410449,
+        "commitToUnsafeMs": 7438,
+        "observations": [
+          {
+            "atMs": 1788450407214,
+            "elapsedMs": 1171,
+            "pageCount": 1,
+            "totalCount": 75,
+            "itemCount": 75,
+            "visible": false,
+            "readHead": "063924047188111000000120870582",
+            "cfRay": "a355e39e5e6657d5-SYD"
+          },
+          {
+            "atMs": 1788450410449,
+            "elapsedMs": 4406,
+            "pageCount": 1,
+            "totalCount": 76,
+            "itemCount": 76,
+            "visible": true,
+            "readHead": "063924047201985000001191970427",
+            "cfRay": "a355e3b2ae1557d5-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g58-reservation-e038aee6-305-3",
+      "suid": "063924047215687000001432855132",
+      "commit": {
+        "receivedAtMs": 1788450417300,
+        "responseMs": 4287,
+        "cfRay": "a355e3c9eff957d5-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 14289,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "pass",
+        "firstVisibleAtMs": 1788450420432,
+        "commitToUnsafeMs": 3132,
+        "observations": [
+          {
+            "atMs": 1788450420432,
+            "elapsedMs": 1166,
+            "pageCount": 1,
+            "totalCount": 77,
+            "itemCount": 77,
+            "visible": true,
+            "readHead": "063924047215687000001432855132",
+            "cfRay": "a355e3f10f4b57d5-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g58-reservation-e038aee6-305-4",
+      "suid": "063924047229987000000478411011",
+      "commit": {
+        "receivedAtMs": 1788450430980,
+        "responseMs": 3678,
+        "cfRay": "a355e4256af2f34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 13680,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "pass",
+        "firstVisibleAtMs": 1788450437213,
+        "commitToUnsafeMs": 6233,
+        "observations": [
+          {
+            "atMs": 1788450434060,
+            "elapsedMs": 1172,
+            "pageCount": 1,
+            "totalCount": 77,
+            "itemCount": 77,
+            "visible": false,
+            "readHead": "063924047215687000001432855132",
+            "cfRay": "a355e44628b7f34b-SYD"
+          },
+          {
+            "atMs": 1788450437213,
+            "elapsedMs": 4325,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": true,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e459fb81f34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g58-reservation-e038aee6-305-5",
+      "suid": "063924047243484000000123629886",
+      "commit": {
+        "receivedAtMs": 1788450445005,
+        "responseMs": 4022,
+        "cfRay": "a355e478baaaf34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 14025,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788450453342,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788450448426,
+            "elapsedMs": 1255,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e49f6c98f34b-SYD"
+          },
+          {
+            "atMs": 1788450451618,
+            "elapsedMs": 4447,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e4b3c878f34b-SYD"
+          },
+          {
+            "atMs": 1788450453342,
+            "elapsedMs": 6171,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e4beafcff34b-SYD"
+          },
+          {
+            "atMs": 1788450533356,
+            "elapsedMs": 88351,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6b22b3df34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g58-reservation-e038aee6-305-6",
+      "suid": "063924047257426000001476844191",
+      "commit": {
+        "receivedAtMs": 1788450460538,
+        "responseMs": 5533,
+        "cfRay": "a355e4d0595af34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 15533,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788450468663,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788450463634,
+            "elapsedMs": 1172,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e4fefe17f34b-SYD"
+          },
+          {
+            "atMs": 1788450466970,
+            "elapsedMs": 4508,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e5135fbef34b-SYD"
+          },
+          {
+            "atMs": 1788450468663,
+            "elapsedMs": 6201,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e51e5f7ef34b-SYD"
+          },
+          {
+            "atMs": 1788450534597,
+            "elapsedMs": 74059,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6ba1d5af34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g58-reservation-e038aee6-305-7",
+      "suid": "063924047272880000000560394951",
+      "commit": {
+        "receivedAtMs": 1788450474304,
+        "responseMs": 3766,
+        "cfRay": "a355e53178fff34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 13766,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788450482404,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788450477462,
+            "elapsedMs": 1245,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e554fa32f34b-SYD"
+          },
+          {
+            "atMs": 1788450480740,
+            "elapsedMs": 4523,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e569bda4f34b-SYD"
+          },
+          {
+            "atMs": 1788450482404,
+            "elapsedMs": 6187,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e5743c78f34b-SYD"
+          },
+          {
+            "atMs": 1788450535749,
+            "elapsedMs": 61445,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6c1d829f34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g58-reservation-e038aee6-305-8",
+      "suid": "063924047286677000001602897605",
+      "commit": {
+        "receivedAtMs": 1788450488102,
+        "responseMs": 3797,
+        "cfRay": "a355e5878e0bf34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 13798,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788450496324,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788450491227,
+            "elapsedMs": 1193,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e5ab5dabf34b-SYD"
+          },
+          {
+            "atMs": 1788450494391,
+            "elapsedMs": 4357,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e5bf49aef34b-SYD"
+          },
+          {
+            "atMs": 1788450496324,
+            "elapsedMs": 6290,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e5cad9d4f34b-SYD"
+          },
+          {
+            "atMs": 1788450536911,
+            "elapsedMs": 48809,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6c909ebf34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g58-reservation-e038aee6-305-9",
+      "suid": "063924047300719000000656602468",
+      "commit": {
+        "receivedAtMs": 1788450508555,
+        "responseMs": 10452,
+        "cfRay": "a355e5ddbd73f34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 20453,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788450517002,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788450512054,
+            "elapsedMs": 1215,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e62d5c8ef34b-SYD"
+          },
+          {
+            "atMs": 1788450515228,
+            "elapsedMs": 4389,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6416907f34b-SYD"
+          },
+          {
+            "atMs": 1788450517002,
+            "elapsedMs": 6163,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e64c9e56f34b-SYD"
+          },
+          {
+            "atMs": 1788450538095,
+            "elapsedMs": 29540,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6d04be4f34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 20000
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g58-reservation-e038aee6-305-10",
+      "suid": "063924047321183000001665199681",
+      "commit": {
+        "receivedAtMs": 1788450523587,
+        "responseMs": 5031,
+        "cfRay": "a355e65d9ac9f34b-SYD"
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 15032,
+        "requiredMs": 10000
+      },
+      "unsafe": {
+        "disposition": "miss",
+        "boundMs": 5000,
+        "boundExceededAtMs": 1788450532095,
+        "firstVisibleAtMs": null,
+        "eventualFirstVisibleAtMs": null,
+        "eventualCommitToUnsafeMs": null,
+        "observations": [
+          {
+            "atMs": 1788450527066,
+            "elapsedMs": 1190,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e68b5fa8f34b-SYD"
+          },
+          {
+            "atMs": 1788450530403,
+            "elapsedMs": 4527,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e69fda13f34b-SYD"
+          },
+          {
+            "atMs": 1788450532095,
+            "elapsedMs": 6219,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6aae8d1f34b-SYD"
+          },
+          {
+            "atMs": 1788450539317,
+            "elapsedMs": 15730,
+            "pageCount": 1,
+            "totalCount": 78,
+            "itemCount": 78,
+            "visible": false,
+            "readHead": "063924047229987000000478411011",
+            "cfRay": "a355e6d7aebdf34b-SYD"
+          }
+        ]
+      },
+      "safeWindowAtCommitMs": 21300
+    }
+  ],
+  "healthBefore": {
+    "receivedAtMs": 1788450370135,
+    "coverage": {
+      "kind": "SETTLED",
+      "reason": null,
+      "partitionTag": null,
+      "observedAt": 1788450264204
+    },
+    "lag": {
+      "estimateMs": 14554,
+      "observedAt": 1788442788735,
+      "decayedMs": 0,
+      "safeWindowMs": 20000,
+      "ceilingExceeded": false
+    },
+    "materializedViews": [
+      {
+        "viewId": "RoomProjector",
+        "generation": 0,
+        "safeHead": "063924039573941000000201368604",
+        "safeHeadAgeMs": 7486167,
+        "unsafeRows": 0,
+        "unsafeReceipts": 58
+      },
+      {
+        "viewId": "ReservationProjector",
+        "generation": 0,
+        "safeHead": "063924039573941000000201368604",
+        "safeHeadAgeMs": 7469967,
+        "unsafeRows": 0,
+        "unsafeReceipts": 150
+      }
+    ],
+    "liveProjections": [
+      {
+        "projectorId": "RoomProjector",
+        "head": "063924039573941000000201368604",
+        "headAgeMs": 7440231,
+        "lastPollAt": 1788450336992,
+        "pollStatus": "invoked-but-no-work",
+        "pollReason": "poll_in_progress"
+      },
+      {
+        "projectorId": "ReservationProjector",
+        "head": "063924039573941000000201368604",
+        "headAgeMs": 7440231,
+        "lastPollAt": 1788450336992,
+        "pollStatus": "invoked-but-no-work",
+        "pollReason": "poll_in_progress"
+      }
+    ],
+    "globalHead": "063924039573941000000201368604",
+    "cfRay": "a355e2b0e9249a8b-SYD",
+    "responseMs": 2503
+  },
+  "setupRoom": {
+    "roomId": "g58-room-e038aee6-305",
+    "suid": "063924047173607000001503852288",
+    "commit": {
+      "receivedAtMs": 1788450374915,
+      "responseMs": 4778,
+      "cfRay": "a355e2bdfe5f9a8b-SYD"
+    }
+  },
+  "scheduledPollLifecycle": [
+    {
+      "observedAt": 1788450264204,
+      "observedAtIso": "2026-09-03T15:44:24.204Z",
+      "httpSamples": 1,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attemptedAt": 1788450336992,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attemptedAt": 1788450336992,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        }
+      ],
+      "allRegisteredProjectorsObserved": true
+    },
+    {
+      "observedAt": 1788450323627,
+      "observedAtIso": "2026-09-03T15:45:23.627Z",
+      "httpSamples": 4,
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attemptedAt": 1788450414330,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attemptedAt": 1788450414330,
+          "outcome": "invoked-but-no-work",
+          "reason": "poll_in_progress"
+        }
+      ],
+      "allRegisteredProjectorsObserved": true
+    },
+    {
+      "observedAt": 1788450388415,
+      "observedAtIso": "2026-09-03T15:46:28.415Z",
+      "httpSamples": 7,
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attemptedAt": 1788450467845,
+          "outcome": "invoked-and-threw",
+          "reason": "Projection checkpoint did not converge after concurrent updates"
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attemptedAt": 1788450467845,
+          "outcome": "invoked-and-threw",
+          "reason": "Projection checkpoint did not converge after concurrent updates"
+        }
+      ],
+      "allRegisteredProjectorsObserved": true
+    }
+  ],
+  "finishedAt": "2026-09-03T15:49:01.563Z",
+  "status": "failed",
+  "failure": "safe lane or live projections did not reach 063924047188111000000120870582 by safeWindowMs + 120000ms",
+  "lastHealth": {
+    "receivedAtMs": 1788450541559,
+    "coverage": {
+      "kind": "BLOCK/UNSETTLED",
+      "reason": "source_partition_set_changed_during_scan",
+      "partitionTag": "reservation:g58-reservation-acc68d23-613-5",
+      "observedAt": 1788450388415
+    },
+    "lag": {
+      "estimateMs": 16970,
+      "observedAt": 1788450538664,
+      "decayedMs": 16217,
+      "safeWindowMs": 20000,
+      "ceilingExceeded": false
+    },
+    "materializedViews": [
+      {
+        "viewId": "RoomProjector",
+        "generation": 0,
+        "safeHead": "063924039573941000000201368604",
+        "safeHeadAgeMs": 7657311,
+        "unsafeRows": 1,
+        "unsafeReceipts": 63
+      },
+      {
+        "viewId": "ReservationProjector",
+        "generation": 0,
+        "safeHead": "063924039573941000000201368604",
+        "safeHeadAgeMs": 7641111,
+        "unsafeRows": 4,
+        "unsafeReceipts": 155
+      }
+    ],
+    "liveProjections": [
+      {
+        "projectorId": "RoomProjector",
+        "head": "063923889781699000000567681621",
+        "headAgeMs": 7051879,
+        "lastPollAt": 1788450467845,
+        "pollStatus": "invoked-and-threw",
+        "pollReason": "Projection checkpoint did not converge after concurrent updates"
+      },
+      {
+        "projectorId": "ReservationProjector",
+        "head": "063923889784848000001880172230",
+        "headAgeMs": 7051879,
+        "lastPollAt": 1788450467845,
+        "pollStatus": "invoked-and-threw",
+        "pollReason": "Projection checkpoint did not converge after concurrent updates"
+      }
+    ],
+    "globalHead": "063924047321183000001665199681",
+    "cfRay": "a355e6df5a27f34b-SYD",
+    "responseMs": 2240
+  }
+}

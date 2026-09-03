@@ -1,0 +1,51 @@
+{
+  "schema": "sdt-g58-w115-precounts/v1",
+  "task": "SDT-G58-UNSAFE-AB-ATTRIBUTION-W115",
+  "variant": "B-g58",
+  "sourceCommit": "8d889cfe2e550930a14a7c30c33d80b4b0759344",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "activeVersionId": "660fb952-57bf-4e7a-957e-1e929a31d6af",
+  "activeAnnotation": "SDT-G58 W115 B G58 8d889cfe2e550930a14a7c30c33d80b4b0759344",
+  "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "wranglerVersion": "4.125.0",
+  "credentialHandling": "path-only; protected token values are not persisted",
+  "remoteReadOnly": true,
+  "capturedAt": "2026-09-03T15:43:52.3NZ",
+  "counts": {
+    "dcb_events": 5366,
+    "mv_unsafe_receipts": 208,
+    "mv_rows": 407
+  },
+  "queries": {
+    "pipeline": {
+      "sql": "SELECT 'dcb_events' AS table_name, COUNT(*) AS row_count FROM dcb_events;",
+      "shellTimestamp": "2026-09-03T15:43:42.3NZ",
+      "result": {
+        "dcb_events": 5366,
+        "changes": 0,
+        "rowsRead": 5366,
+        "rowsWritten": 0,
+        "totalAttempts": 1,
+        "servedBy": "v3-prod",
+        "servedByPrimary": "WNAM",
+        "servedByRegion": "SJC",
+        "sqlDurationMs": 0.576
+      }
+    },
+    "mv": {
+      "sql": "SELECT 'mv_unsafe_receipts' AS table_name, COUNT(*) AS row_count FROM mv_unsafe_receipts; SELECT 'mv_rows' AS table_name, COUNT(*) AS row_count FROM mv_rows;",
+      "shellTimestamp": "2026-09-03T15:43:52.3NZ",
+      "result": {
+        "mv_unsafe_receipts": 208,
+        "mv_rows": 407,
+        "changes": 0,
+        "rowsWritten": 0,
+        "totalAttempts": 1,
+        "servedBy": "v3-prod",
+        "servedByPrimary": "WNAM",
+        "servedByRegion": "SJC",
+        "sqlDurationMs": 2.9049
+      }
+    }
+  }
+}
