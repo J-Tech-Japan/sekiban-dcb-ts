@@ -1,0 +1,156 @@
+{
+  "probe": "SDT-G16",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "runId": "ebf08be0261c4682a2d761b2d1ef876f",
+  "roomId": "g15-room-ebf08be0261c4682",
+  "reservationId": "g15-reservation-ebf08be0261c4682",
+  "uiSafeWindowBoundMs": 120000,
+  "safeWindowBoundSources": {
+    "runtimeSource": "packages/dcb-runtime/src/safeWindow.ts",
+    "runtimeBoundMs": 120000,
+    "servedUiSource": "samples/meeting-room/public/ui-model.js",
+    "servedUiBoundMs": 120000,
+    "harnessBoundMs": 120000,
+    "absoluteProtocolBoundMs": 120000,
+    "deployedUiAsset": "/ui-model.js",
+    "deployedUiBoundMs": 120000
+  },
+  "harnessGraceMs": 5000,
+  "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
+  "serviceIdentity": {
+    "configuredServiceId": "sekiban-dcb-meeting-room-cloudflare-only",
+    "source": "G15_EXPECTED_SERVICE_ID",
+    "clientHeaderForwarded": false
+  },
+  "visibilityOracle": {
+    "executed": true,
+    "pendingAtBoundMinusOne": "pending",
+    "timeoutAtBound": "timeout",
+    "visibleAtBoundWithEqualHead": "visible",
+    "timeoutAfterBound": "timeout",
+    "boundMs": 120000
+  },
+  "rawV1Unauthenticated": {
+    "commit": 404,
+    "tag-latest-sortable": 404,
+    "tag-state": 404,
+    "query": 404,
+    "list-query": 404
+  },
+  "commands": {
+    "create": {
+      "status": 200,
+      "requestMs": 1739.359,
+      "suid": "063923998204496000000586662241"
+    },
+    "reserve": {
+      "status": 200,
+      "requestMs": 2886.684,
+      "suid": "063923998207488000000638419948"
+    },
+    "cancel": {
+      "status": 200,
+      "requestMs": 1906.331,
+      "suid": "063923998214396000000161547874"
+    },
+    "rejected": {
+      "status": 400,
+      "kind": "invalid",
+      "code": "invalid_command_input"
+    }
+  },
+  "projection": {
+    "createVisible": true,
+    "createCommitToVisibleMs": 410.568,
+    "createObservations": [
+      {
+        "head": "063923998204496000000586662241",
+        "requestMs": 410.507,
+        "elapsedMs": 410.561,
+        "state": "visible"
+      }
+    ],
+    "reservationVisible": true,
+    "reservationCommitToVisibleMs": 588.194,
+    "cancelVisible": true,
+    "cancelCommitToVisibleMs": 749.641
+  },
+  "queryViews": {
+    "reservationList": {
+      "status": 200,
+      "reservationId": "g15-reservation-ebf08be0261c4682",
+      "commitToVisibleMs": 3333.082,
+      "readHead": "063923995692002000000693137501",
+      "observations": [
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 22,
+          "containsReservation": false,
+          "readHead": "063923995692002000000693137501",
+          "requestMs": 979.312,
+          "elapsedMs": 1210.949,
+          "totalCount": 22,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 22,
+              "readHead": "063923995692002000000693137501",
+              "requestMs": 979.312,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 2,
+              "totalCount": 22,
+              "readHead": "063923997275413000001052720743",
+              "requestMs": 231.464,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 23,
+          "containsReservation": true,
+          "readHead": "063923995692002000000693137501",
+          "requestMs": 966.486,
+          "elapsedMs": 3333.082,
+          "totalCount": 22,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 22,
+              "readHead": "063923995692002000000693137501",
+              "requestMs": 966.486,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 3,
+              "totalCount": 23,
+              "readHead": "063923998207488000000638419948",
+              "requestMs": 900.462,
+              "containsReservation": true
+            }
+          ]
+        }
+      ]
+    },
+    "roomQuery": {
+      "status": 200,
+      "requestMs": 1159.314,
+      "result": {
+        "count": 320
+      }
+    }
+  },
+  "freshRunIds": true,
+  "secret": "no bearer token or credential used by app-layer E2E",
+  "recordedAt": "2026-09-03T02:10:16Z"
+}

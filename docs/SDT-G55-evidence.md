@@ -5,7 +5,7 @@ Product source commit: `be2f0ee1688e92208876f3d713f3d4563b2f00f4`
 Packaging-gate commit: `bb7afec95dbe2c3749f25216885a962bc6cfa20c`
 Fresh deployment: Cloudflare version `22b5ba16-b8aa-4927-a5f1-eeaa1769a48b`
 
-## Status: blocked after the W84 deployed G16 connection reset
+## Status: W85 evidence complete; ready for PR
 
 The earlier version `a49d2a7e-0dd4-470d-b9ee-7854170075d9` is historical
 blocked evidence only: although it was annotated with `be2f0ee…`, it bundled
@@ -24,9 +24,14 @@ G15 root-read timeout remains preserved as an honest stop.
 
 W84 used the single explicitly authorized transient-cold-start retry: one
 separately recorded `GET /` warm-up with a 30-second bound, followed by one
-unmodified G15 run. G15 passed. The then-required one unmodified G16 run hit a
-connection reset during its reservation-list poll. No retry, replacement G55
-cohort, deployment, or evidence stitch was performed.
+unmodified G15 run. G15 passed. The then-required G16 poll hit a connection
+reset and was not retried.
+
+W85 repairs only that harness's page-one-only list oracle. It pages through
+the count declared by its first list response, preserves that first page's
+`readHead` capture, and leaves the 120-second visibility bound and
+item-presence semantics unchanged. It neither resets data nor deploys or sends
+a replacement G55 cohort; the single repaired G16 run passed.
 
 ## AC1 / AC2 implementation and red-to-green proof
 
@@ -166,11 +171,29 @@ The next unmodified G15 harness passed and wrote
 create/reserve/cancel commands returned 200, invalid command input returned
 400, and the unchanged 120,000-ms safe-window oracle executed green.
 
-The required one unmodified G16 run then stopped after 79,252 ms while polling
+The original W84 G16 poll then stopped after 79,252 ms while polling
 `GET /api/read/reservations?pageNumber=1&pageSize=20`, with
 `ConnectionResetError: [Errno 54] Connection reset by peer`. Its failure receipt
-is `.artifacts/sdt-g55-w84-g16-failure.json`; no G16 retry occurred. Thus G15
-is green but G16 is not claimed green, and the ready-PR claim remains blocked.
+is `.artifacts/sdt-g55-w84-g16-failure.json`; it remains an honest poll
+interruption. Independently, that unmodified oracle could only inspect page 1,
+although the deployed list had 22 row-key-ordered rows: page 1 had 20 rows and
+page 2 had the two newest rows. No data was cleared to make page 1 fit.
+
+W85 changes only the harness to page through all pages declared by page 1's
+`totalCount`, retaining page 1's `readHead` as the reported list head. Its
+focused self-test is a 20+2 fixture with the target only on page 2; it requests
+`[1, 2]`, reports `totalCount: 22`, and would fail if only page 1 were used.
+The one deployed W85 G16 run passed and wrote
+`.artifacts/sdt-g55-w85-g16.json` (run
+`ebf08be0261c4682a2d761b2d1ef876f`). Its first list poll is the deployed
+overflow receipt: page 1 = 20 rows, page 2 = 2 rows, `totalCount = 22`, and
+the captured page-1 `readHead` was populated as
+`063923995692002000000693137501`. The second poll found the fresh reservation
+on page 2 at 3,333.082 ms. It records page 1 = 20 and page 2 = 3 after a
+concurrent row arrival; each page's own count/head is retained rather than
+presented as one artificial snapshot. G16 also preserved the 120,000-ms
+safe-window oracle, raw-V1 404 boundary, valid 200 commands, and typed 400
+invalid-command result.
 
 The 1,006,099-ms third safe timing is retained as a measured residual for a
 separate safe-lane convergence unit. This unit does not tune lag estimates,
@@ -199,6 +222,15 @@ the safe window, cron catch-up, or any other safe-convergence behavior.
   `.artifacts/sdt-g55-w84-g15.json`.
 - W84 unmodified deployed G16 — attempted once; stopped after 79,252 ms on
   peer connection reset in the reservation-list poll, with no retry.
+- `python3 scripts/deploy/g15-e2e.py --self-test` — passed W85's 20+2
+  pagination fixture, including the page-two target and preserved first-page
+  `readHead` capture.
+- `npm run test:g15` — passed: 9 tests plus the W85 pagination self-test.
+- `npm run test:g16` — passed: 6 tests and static UI contract.
+- `npm run test:g55` — passed: 12 tests plus all G55 forced-red mutations.
+- `npm run lint -- --quiet` — passed.
+- W85 repaired deployed G16 — passed once; page 1/page 2 overflow receipt and
+  fresh page-two reservation are in `.artifacts/sdt-g55-w85-g16.json`.
 
 No G54 known-divergence expectations, SDT-G56 work, SDT-G53 work, commit
 path, tag-state response, trace schema, safe-window constants, G41 fixture,

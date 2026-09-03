@@ -40,7 +40,7 @@
     "e2e:g16:local": "G15_INCLUDE_QUERY_VIEWS=true G15_LOCAL_REPORT=.artifacts/g16-local-e2e.json bash scripts/deploy/g15-local-e2e.sh",
     "conformance:g20": "bash scripts/deploy/g20-conformance.sh",
     "e2e:g20": "bash scripts/deploy/g20-query-e2e.sh",
-    "test:g15": "npm run build:packages && vitest run --config vitest.config.ts test/g15-frontend.spec.ts test/meeting-room.spec.ts",
+    "test:g15": "npm run build:packages && vitest run --config vitest.config.ts test/g15-frontend.spec.ts test/meeting-room.spec.ts && python3 scripts/deploy/g15-e2e.py --self-test",
     "test:g16": "npm run build:packages && vitest run --config vitest.config.ts test/g16-query.spec.ts test/g16-frontend.spec.ts && node scripts/g16-ui-check.mjs",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "npm run build:packages && tsc --noEmit",
