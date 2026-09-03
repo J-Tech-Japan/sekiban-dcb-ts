@@ -1135,3 +1135,33 @@ The published SafeWindow floor/ceiling (`20,000`/`120,000 ms`), 5,000 ms
 unsafe constant, G44/W97/W104/W106 guards, minimum aggregation, and
 SDT-G60-owned upstream paths are unchanged. No PR or worker lifecycle command
 was run because the first deployed AC1 authentication proof failed.
+
+## W108 conformance resume — 2026-09-03 (blocked)
+
+W108 continued from pushed checkpoint `617da2cfebfcf39985b0d6996f2e22b0defa8efc`
+and classified W107's bearer failure before changing credentials. Exactly one
+protected `GET /conformance/v1/read-health` request returned HTTP 403 in
+292 ms with `{"code":"unauthorized","error":"Conformance authentication required"}`.
+The response is preserved in `.artifacts/sdt-g58-w108-auth-classification.json`;
+no bearer value is present. This is `unauthorized`, not the SDT-G53
+`scope.mismatch` identity result.
+
+The one exclusive Wrangler window then ran metadata-only `secret list` and one
+OAuth `whoami` (Wrangler 4.125.0, API-token fallback unset), both successful.
+Because the existing bearer was demonstrably stale/doubtful, W108 generated a
+fresh value directly into the ignored private path
+`.artifacts/.sdt-g58-w108-conformance-token` and installed it exactly once with
+`secret put CONFORMANCE_TOKEN`; the value was never printed, logged, read back,
+copied into an artifact, or committed. The Observability token was not used.
+
+The required post-secret identity readback showed active version
+`1cb7a506-f9ea-4c55-8e25-a6c7c2eaa3b8` (number 193), deployment
+`4e57f59c-3dec-4b9b-9d32-00a137fa5b28`, at 100%, with only
+`workers/triggered_by=secret` and no source annotation. It therefore does not
+match required product head
+`700c0cb4bf7c896a8b676d4613bfae53fca58519`. The exact identity receipt is
+`.artifacts/sdt-g58-w108-post-secret-identity.json`. Per the packet, W108 sent
+no proof request after this mismatch, did not reuse W107 version
+`9e5586ad-0cb1-4d00-9c05-89306e04520f`, did not redeploy, and did not start a
+cohort or G15/G16. The expected W108 artifact records the durable blocked
+checkpoint.
