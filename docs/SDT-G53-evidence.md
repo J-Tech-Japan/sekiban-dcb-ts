@@ -52,22 +52,29 @@ Its raw receipt is `.artifacts/sdt-g53-w87-g15.json`:
 | invalid command | HTTP 400 `invalid_command_input` |
 | safe-window bound | 120,000 ms in runtime, served UI, and harness |
 
-## Honest AC5 stop
+## W88 receipt continuation and honest AC5 stop
 
-The one unmodified G16 invocation was started with its required deployed URL,
-configured service identity, and report target
-`.artifacts/sdt-g53-w87-g16.json`. Its command receipt yielded after 30.2
-seconds without a terminal result, and no G16 report was subsequently
-persisted. No second G16 invocation was issued. Therefore it is not counted as
-a pass and cannot be reconstructed from individual requests.
+Before the authorized W88 G16 run, a separate, non-command warm-up `GET /`
+returned HTTP 200 in `0.206415 s` at `2026-09-03T04:09:30Z`, below its
+30-second bound. It is not counted as a G16 command.
 
-The negative mismatch endpoint is intentionally authenticated. No authorized
-`G53_CONFORMANCE_TOKEN_FILE` (or existing G14/G20/G29/G31/G32/G37/G42/G54/G55
-conformance-token-file alias) was available to this seat; only the separately
-authorized observability credential exists, and it was neither read nor used.
-The secret was not rotated, guessed, copied, logged, or committed. Consequently
-the deployed `scope.mismatch` probe was not sent.
+The unmodified deployed G16 harness then ran exactly once. It did not hit its
+15-second per-request socket limit: its final page-two request took
+`7,404.298 ms`. Instead, it reached the unchanged 120,000 ms reservation-list
+visibility bound. The final page scan had `totalCount=23`, `totalPages=2`, and
+`pageItemsTotal=23`, but did not contain the new reservation on either page;
+the final elapsed time was `125,350.705 ms`. The complete preserved error and
+the three final observations are in
+`.artifacts/sdt-g53-w88-g16-failure.json`.
 
-AC5 is incomplete solely on those two explicit missing receipts. This evidence
-does not claim a passing G16 result or a deployed mismatch result, and no PR
-has been opened from this blocked checkpoint.
+Because this was not a 15-second socket timeout, the narrow authorization to
+raise only that socket bound to 30 seconds does not apply. No harness code was
+changed and no second G16 invocation was issued. The 120-second safe-window
+and all oracle semantics remain unchanged.
+
+The W88 stop rule therefore also prevents the authenticated mismatch step. No
+`CONFORMANCE_TOKEN` secret was installed, rotated, read, guessed, copied,
+logged, or committed; the Observability credential was not used as a
+substitute. The deployed `scope.mismatch` probe was not sent.
+
+AC5 remains incomplete, so no PR has been opened from this checkpoint.

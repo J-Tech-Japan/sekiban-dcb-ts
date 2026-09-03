@@ -1,0 +1,74 @@
+{
+  "probe": "SDT-G16",
+  "outcome": "failed",
+  "command": "G15_EXPECTED_SERVICE_ID=sekiban-dcb-meeting-room-cloudflare-only npm run e2e:g16 -- --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --report .artifacts/sdt-g53-w88-g16.json",
+  "warmup": {
+    "startedAt": "2026-09-03T04:09:30Z",
+    "method": "GET",
+    "path": "/",
+    "boundMs": 30000,
+    "status": 200,
+    "timeTotalSeconds": 0.206415,
+    "countedAsG16Command": false
+  },
+  "error": {
+    "type": "RuntimeError",
+    "message": "reservation list visibility timeout after 120000ms",
+    "safeWindowBoundMs": 120000,
+    "lastObservations": [
+      {
+        "itemCount": 20,
+        "pageItemsTotal": 23,
+        "containsReservation": false,
+        "readHead": "063923995692002000000693137501",
+        "requestMs": 251.401,
+        "elapsedMs": 116562.823,
+        "totalCount": 23,
+        "totalPages": 2,
+        "pageSize": 20,
+        "pages": [
+          { "pageNumber": 1, "itemCount": 20, "totalCount": 23, "readHead": "063923995692002000000693137501", "requestMs": 251.401, "containsReservation": false },
+          { "pageNumber": 2, "itemCount": 3, "totalCount": 23, "readHead": "063923998214396000000161547874", "requestMs": 190.145, "containsReservation": false }
+        ]
+      },
+      {
+        "itemCount": 20,
+        "pageItemsTotal": 23,
+        "containsReservation": false,
+        "readHead": "063923995692002000000693137501",
+        "requestMs": 284.513,
+        "elapsedMs": 117420.761,
+        "totalCount": 23,
+        "totalPages": 2,
+        "pageSize": 20,
+        "pages": [
+          { "pageNumber": 1, "itemCount": 20, "totalCount": 23, "readHead": "063923995692002000000693137501", "requestMs": 284.513, "containsReservation": false },
+          { "pageNumber": 2, "itemCount": 3, "totalCount": 23, "readHead": "063923998214396000000161547874", "requestMs": 315.276, "containsReservation": false }
+        ]
+      },
+      {
+        "itemCount": 20,
+        "pageItemsTotal": 23,
+        "containsReservation": false,
+        "readHead": "063923995692002000000693137501",
+        "requestMs": 265.453,
+        "elapsedMs": 125350.705,
+        "totalCount": 23,
+        "totalPages": 2,
+        "pageSize": 20,
+        "pages": [
+          { "pageNumber": 1, "itemCount": 20, "totalCount": 23, "readHead": "063923995692002000000693137501", "requestMs": 265.453, "containsReservation": false },
+          { "pageNumber": 2, "itemCount": 3, "totalCount": 23, "readHead": "063923998214396000000161547874", "requestMs": 7404.298, "containsReservation": false }
+        ]
+      }
+    ]
+  },
+  "retryDecision": {
+    "eligible": false,
+    "reason": "The failure was the unchanged 120000 ms list-visibility oracle, not a 15000 ms per-request socket timeout. No harness change or second G16 invocation is authorized."
+  },
+  "mismatchProbe": {
+    "attempted": false,
+    "reason": "The bounded G16 path failed first, requiring an honest stop. No CONFORMANCE_TOKEN secret was installed, rotated, read, or logged."
+  }
+}
