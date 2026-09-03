@@ -2,6 +2,8 @@ import { projectionIdFor } from "../projection/ProjectionRuntime";
 import type { ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import type { QueryDefinition } from "./QueryRegistry";
 import type {
+  MaterializedViewListOptions,
+  MaterializedViewListPage,
   MaterializedViewQueryOptions,
   MaterializedViewRow,
   MaterializedViewWaitForState,
@@ -36,6 +38,8 @@ export interface MaterializedViewQueryPort {
   queryRows(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<MaterializedViewRow[]>;
   /** Optional SDT-G23 port. D1 provides one-statement winner/count paging. */
   queryRowsWithTotal?(serviceId: string, viewId: string, options?: MaterializedViewQueryOptions): Promise<UnsafeComposedPage>;
+  /** SDT-G55's explicit safe/unsafe list port; absent ports retain legacy behavior. */
+  readListPage?(serviceId: string, viewId: string, options?: MaterializedViewListOptions): Promise<MaterializedViewListPage>;
   /** Target receipt is the unsafe-window wait oracle; global heads are not. */
   hasTargetReceipt?(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>;
   /** SDT-G24 active-generation finding; true means every composed read is unavailable. */

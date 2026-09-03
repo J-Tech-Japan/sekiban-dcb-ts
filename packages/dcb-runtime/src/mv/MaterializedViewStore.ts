@@ -142,6 +142,21 @@ export interface MaterializedViewQueryOptions {
   readonly descending?: boolean;
 }
 
+/** The list surface must choose whether it can see the exceptional unsafe lane. */
+export type MaterializedViewListConsistency = "safe" | "unsafe";
+
+export interface MaterializedViewListOptions extends MaterializedViewQueryOptions {
+  /** Omitted is deliberately safe; unsafe visibility is never an accidental fallback. */
+  readonly consistency?: MaterializedViewListConsistency;
+}
+
+/** A server-paged list response and the watermark that actually backs that response. */
+export interface MaterializedViewListPage {
+  readonly rows: readonly MaterializedViewRow[];
+  readonly totalCount: number;
+  readonly readHead: string;
+}
+
 /**
  * One active-generation snapshot used by the SDT-G31 d1-mv waitFor path.
  * `targetReceipt` is deliberately separate from `safeContiguousHead`: the
@@ -172,6 +187,25 @@ function asInteger(value: unknown, name: string): number {
 function asStatus(value: unknown): MaterializedViewInstance["status"] {
   if (value === "active" || value === "candidate" || value === "retired") return value;
   throw new Error("MV instance status was invalid");
+}
+
+/** V1 SUID comparison is bytewise ordinal, never locale-aware. */
+function compareSuid(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  for (let index = 0; index < Math.min(leftBytes.length, rightBytes.length); index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+function maxReflectedSuid(rows: readonly MaterializedViewRow[]): string {
+  let maximum = "";
+  for (const row of rows) {
+    if (maximum === "" || compareSuid(row.sourceSuid, maximum) > 0) maximum = row.sourceSuid;
+  }
+  return maximum;
 }
 
 function instanceFrom(row: D1Row): MaterializedViewInstance {
@@ -419,6 +453,69 @@ export class D1MaterializedViewStore {
       throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV composed query needs limit -1 or a non-negative limit/offset");
     }
     return this.unsafe.queryComposedPage(serviceId, viewId, selected, limit, offset, options.descending === true);
+  }
+
+  /**
+   * SDT-G55's explicit list-read port.  Existing composed reads intentionally
+   * keep their G23 semantics; only this port can include unsafe rows, and it
+   * can include only rows newer than the active safe checkpoint.
+   */
+  async readListPage(serviceId: string, viewId: string, options: MaterializedViewListOptions = {}): Promise<MaterializedViewListPage> {
+    this.ready("initialize");
+    const active = await this.readActive(serviceId, viewId);
+    if (active === undefined) return { rows: [], totalCount: 0, readHead: "" };
+    const selected = options.generation ?? active.generation;
+    const limit = options.limit === null ? -1 : options.limit === undefined ? 100 : options.limit;
+    const offset = options.offset ?? 0;
+    if (!Number.isSafeInteger(limit) || limit < -1 || !Number.isSafeInteger(offset) || offset < 0) {
+      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV list query needs limit -1 or a non-negative limit/offset");
+    }
+    if (options.indexId !== undefined || options.valueType !== undefined) {
+      throw new MaterializedViewStoreError("initialize", "MV_VALUE_INVALID", "MV list query does not support an index selector");
+    }
+    const direction = options.descending === true ? "DESC" : "ASC";
+    const safeRows = `SELECT row_key, value_json, row_version, source_suid, 0 AS tombstone, 0 AS unsafe_layer FROM mv_rows
+          WHERE service_id = ? AND view_id = ? AND generation = ?`;
+    const result = options.consistency === "unsafe"
+      ? await this.database.prepare(
+        `WITH candidates AS (
+           ${safeRows}
+           UNION ALL
+           SELECT row_key, value_json, row_version, source_suid, tombstone, 1 AS unsafe_layer FROM mv_unsafe_rows
+            WHERE service_id = ? AND view_id = ? AND generation = ?
+              AND source_suid COLLATE BINARY > ? COLLATE BINARY
+         ), ranked AS (
+           SELECT *, ROW_NUMBER() OVER (PARTITION BY row_key ORDER BY source_suid COLLATE BINARY DESC, unsafe_layer ASC) AS winner_rank FROM candidates
+         ), live AS (
+           SELECT *, COUNT(*) OVER() AS total_count FROM ranked WHERE winner_rank = 1 AND tombstone = 0
+         )
+         SELECT row_key, value_json, row_version, source_suid, total_count FROM live
+         ORDER BY source_suid COLLATE BINARY ${direction}, row_key COLLATE BINARY ${direction} LIMIT ? OFFSET ?`,
+      ).bind(serviceId, viewId, selected, serviceId, viewId, selected, active.lastSuid, limit, offset).all<D1Row>()
+      : await this.database.prepare(
+        `WITH live AS (
+           SELECT row_key, value_json, row_version, source_suid, COUNT(*) OVER() AS total_count FROM mv_rows
+            WHERE service_id = ? AND view_id = ? AND generation = ?
+         )
+         SELECT row_key, value_json, row_version, source_suid, total_count FROM live
+         ORDER BY source_suid COLLATE BINARY ${direction}, row_key COLLATE BINARY ${direction} LIMIT ? OFFSET ?`,
+      ).bind(serviceId, viewId, selected, limit, offset).all<D1Row>();
+    const rows = result.results.map((row) => ({
+      serviceId,
+      viewId,
+      generation: selected,
+      rowKey: asString(row.row_key, "row_key"),
+      value: assertJsonValue(JSON.parse(asString(row.value_json, "value_json")), "state-persistence"),
+      rowVersion: asInteger(row.row_version, "row_version"),
+      sourceSuid: asString(row.source_suid, "source_suid"),
+    }));
+    return {
+      rows,
+      totalCount: result.results.length === 0 ? 0 : asInteger(result.results[0]!.total_count, "total_count"),
+      // Safe reads report the active checkpoint even for an empty page. Unsafe
+      // reads instead report only what this page actually reflected.
+      readHead: options.consistency === "unsafe" ? maxReflectedSuid(rows) : active.lastSuid,
+    };
   }
 
   /** Explicit unsafe port: callers must choose this exceptional immediate lane. */
@@ -929,6 +1026,7 @@ export type MaterializedViewStore = Pick<
   | "readIndexEntries"
   | "queryRows"
   | "queryRowsWithTotal"
+  | "readListPage"
   | "hasTargetReceipt"
   | "readWaitForState"
   | "recordCheckpointAhead"

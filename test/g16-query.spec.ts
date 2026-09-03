@@ -63,7 +63,7 @@ describe("SDT-G16 application query views", () => {
     expect(new URL(calls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/list-query");
     expect(calls[0]!.body).toEqual({
       queryType: "GetReservationListQuery",
-      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20 }),
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "unsafe" }),
     });
     expect(new URL(calls[1]!.request.url).pathname).toBe("/api/sekiban/serialized/query");
     expect(calls[1]!.body).toEqual({

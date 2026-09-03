@@ -56,7 +56,7 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
     expect(new URL(runtimeCalls[0]!.request.url).pathname).toBe("/api/sekiban/serialized/list-query");
     expect(runtimeCalls[0]!.body).toEqual({
       queryType: "GetReservationListQuery",
-      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, NewestFirst: true }),
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "unsafe", NewestFirst: true }),
       waitForSortableUniqueId: suid,
     });
     expect(runtimeCalls[0]!.request.headers.has("authorization")).toBe(false);
@@ -70,6 +70,7 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
     expect(refresh).not.toContain("observeProjection");
     expect(refresh).not.toContain("setTimeout");
     expect(refresh).toContain("Use Refresh to read the latest list.");
+    expect(refresh).toContain("List head");
     expect(source).toContain("async function observeProjection");
     expect(source).toContain("void sendCommand(\"reserve-room\"");
     expect(source).toContain("void sendCommand(\"cancel-reservation\"");

@@ -119,17 +119,21 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     }
   });
 
-  it("uses the deployed Worker entrypoint for stored-only unsafe apply, same-batch kick, and waitUntil drain", async () => {
+  it("uses the deployed Worker entrypoint for stored-only unsafe apply and retains the durable kick for scheduled safe convergence", async () => {
     const serviceId = `g25-${crypto.randomUUID()}`;
     const queued = message(serviceId, "1");
     const stored = await invokeDeployedQueue(queued, serviceId);
     expect(stored.acked).toBe(1); expect(stored.retried).toBe(0);
-    expect(stored.waits).toHaveLength(1);
-    await Promise.all(stored.waits);
+    // G55 must not start safe follow in the same Queue execution: it would
+    // collect the just-applied unsafe row before an app list can observe it.
+    expect(stored.waits).toEqual([]);
     const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
     const page = await views.queryRowsWithTotal(serviceId, "ReservationProjector", { limit: 20 });
     expect(page.totalCount).toBe(1);
     expect(page.rows[0]?.value).toMatchObject({ reservationId: "g25-1", status: "reserved" });
+    expect(await mvDatabase().prepare(
+      "SELECT COUNT(*) AS count FROM mv_unsafe_rows WHERE service_id = ? AND view_id = 'ReservationProjector'",
+    ).bind(serviceId).first<{ count: number }>()).toEqual({ count: 1 });
     const atomicArrival = await mvDatabase().prepare(
       `SELECT receipt.suid AS receipt_suid, kick.target_suid AS kick_target_suid
          FROM mv_unsafe_receipts receipt

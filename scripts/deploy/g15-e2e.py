@@ -29,6 +29,7 @@ from typing import Any
 # new bound look valid without an intentional protocol change.
 EXPECTED_PUBLISHED_SAFE_WINDOW_MS = 120_000
 HARNESS_SAFE_WINDOW_BOUND_MS = 120_000
+RESERVATION_LIST_PAGE_SIZE = 20
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -194,6 +195,70 @@ def list_items(body: dict[str, Any]) -> list[dict[str, Any]]:
     return raw_items
 
 
+def non_negative_integer(value: object, field: str) -> int:
+    require(isinstance(value, int) and not isinstance(value, bool) and value >= 0,
+            f"reservation list omitted a non-negative {field}: {value}")
+    return value
+
+
+def list_read_head(body: dict[str, Any]) -> str | None:
+    return next((body.get(key) for key in ("lastSortedUniqueId", "lastSortableUniqueId", "readHead") if isinstance(body.get(key), str)), None)
+
+
+def scan_reservation_list_pages(
+        request_page: Any,
+        reservation_id: str,
+        page_size: int = RESERVATION_LIST_PAGE_SIZE,
+) -> dict[str, Any]:
+    """Read every page in the first page's explicit list snapshot.
+
+    The list endpoint is server-paged in row-key order. A new reservation may
+    therefore land beyond page one; scanning the declared count is still an
+    item-presence oracle, and preserves page one's read-head capture.
+    """
+    require(page_size > 0, "reservation list page size must be positive")
+    status, first_body, first_elapsed_ms = request_page(1)
+    require(status == 200 and isinstance(first_body, dict), f"reservation list returned HTTP {status}: {first_body}")
+    first_items = list_items(first_body)
+    total_count = non_negative_integer(first_body.get("totalCount"), "totalCount")
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    first_head = list_read_head(first_body)
+    pages: list[dict[str, Any]] = []
+    found = next((item for item in first_items if item.get("reservationId") == reservation_id), None)
+
+    def record_page(page_number: int, body: dict[str, Any], elapsed_ms: float, items: list[dict[str, Any]]) -> None:
+        pages.append({
+            "pageNumber": page_number,
+            "itemCount": len(items),
+            "totalCount": non_negative_integer(body.get("totalCount"), "totalCount"),
+            "readHead": list_read_head(body),
+            "requestMs": round(elapsed_ms, 3),
+            "containsReservation": any(item.get("reservationId") == reservation_id for item in items),
+        })
+
+    record_page(1, first_body, first_elapsed_ms, first_items)
+    for page_number in range(2, total_pages + 1):
+        page_status, page_body, page_elapsed_ms = request_page(page_number)
+        require(page_status == 200 and isinstance(page_body, dict), f"reservation list page {page_number} returned HTTP {page_status}: {page_body}")
+        items = list_items(page_body)
+        if found is None:
+            found = next((item for item in items if item.get("reservationId") == reservation_id), None)
+        record_page(page_number, page_body, page_elapsed_ms, items)
+
+    return {
+        "status": status,
+        "item": found,
+        "readHead": first_head,
+        "firstPageItemCount": len(first_items),
+        "pageItemsTotal": sum(page["itemCount"] for page in pages),
+        "totalCount": total_count,
+        "totalPages": total_pages,
+        "pageSize": page_size,
+        "firstPageRequestMs": first_elapsed_ms,
+        "pages": pages,
+    }
+
+
 def read_until_reservation_listed(base_url: str, reservation_id: str, bound_ms: int) -> tuple[dict[str, Any], float]:
     """Use the list-query result as the app-level visibility oracle.
 
@@ -211,27 +276,83 @@ def read_until_reservation_listed(base_url: str, reservation_id: str, bound_ms: 
         if os.environ.get("G15_TRIGGER_SCHEDULED") == "true":
             scheduled_status, _, _ = request(base_url, "/__scheduled", method="GET")
             require(scheduled_status == 200, f"local scheduled projection poll returned HTTP {scheduled_status}")
-        status, body, elapsed_ms = request(base_url, "/api/read/reservations?pageNumber=1&pageSize=20", method="GET")
-        require(status == 200 and isinstance(body, dict), f"reservation list returned HTTP {status}: {body}")
-        items = list_items(body)
-        found = next((item for item in items if item.get("reservationId") == reservation_id), None)
-        head = next((body.get(key) for key in ("lastSortedUniqueId", "lastSortableUniqueId", "readHead") if isinstance(body.get(key), str)), None)
+        def request_page(page_number: int) -> tuple[int, Any, float]:
+            return request(base_url, f"/api/read/reservations?pageNumber={page_number}&pageSize={RESERVATION_LIST_PAGE_SIZE}", method="GET")
+
+        page_scan = scan_reservation_list_pages(request_page, reservation_id)
         elapsed_ms_total = (time.perf_counter() - started) * 1000
-        observations.append({"itemCount": len(items), "containsReservation": found is not None, "readHead": head, "requestMs": round(elapsed_ms, 3), "elapsedMs": round(elapsed_ms_total, 3)})
-        if found is not None:
-            return {"status": status, "item": found, "readHead": head, "observations": observations}, elapsed_ms_total
+        observations.append({
+            "itemCount": page_scan["firstPageItemCount"],
+            "pageItemsTotal": page_scan["pageItemsTotal"],
+            "containsReservation": page_scan["item"] is not None,
+            "readHead": page_scan["readHead"],
+            "requestMs": round(page_scan["firstPageRequestMs"], 3),
+            "elapsedMs": round(elapsed_ms_total, 3),
+            "totalCount": page_scan["totalCount"],
+            "totalPages": page_scan["totalPages"],
+            "pageSize": page_scan["pageSize"],
+            "pages": page_scan["pages"],
+        })
+        if page_scan["item"] is not None:
+            return {
+                "status": page_scan["status"],
+                "item": page_scan["item"],
+                "readHead": page_scan["readHead"],
+                "totalCount": page_scan["totalCount"],
+                "totalPages": page_scan["totalPages"],
+                "pageSize": page_scan["pageSize"],
+                "pages": page_scan["pages"],
+                "observations": observations,
+            }, elapsed_ms_total
         if elapsed_ms_total >= bound_ms:
             raise RuntimeError(f"reservation list visibility timeout after {bound_ms}ms: {observations[-3:]}")
         time.sleep(min(0.25, max(0.0, deadline - time.perf_counter())))
 
 
+def pagination_self_test() -> None:
+    target = "page-two-reservation"
+    head = "063923995692002000000693137501"
+    pages = {
+        1: {
+            "itemsJson": json.dumps([{"reservationId": f"older-{index}"} for index in range(20)]),
+            "totalCount": 22,
+            "readHead": head,
+        },
+        2: {
+            "itemsJson": json.dumps([{"reservationId": "older-20"}, {"reservationId": target, "status": "reserved"}]),
+            "totalCount": 22,
+            "readHead": head,
+        },
+    }
+    requested_pages: list[int] = []
+
+    def fake_request_page(page_number: int) -> tuple[int, dict[str, Any], float]:
+        requested_pages.append(page_number)
+        return 200, pages[page_number], float(page_number)
+
+    result = scan_reservation_list_pages(fake_request_page, target)
+    require(requested_pages == [1, 2], f"pagination fixture requested {requested_pages}, not both declared pages")
+    require(result["item"] == {"reservationId": target, "status": "reserved"}, "page-two reservation was not found")
+    require(result["firstPageItemCount"] == 20 and result["pageItemsTotal"] == 22, "page-overflow counts were not preserved")
+    require(result["totalCount"] == 22 and result["totalPages"] == 2, "page-overflow plan was not derived from totalCount")
+    require(result["readHead"] == head, "first-page readHead capture drifted")
+    process_result = {"selfTest": "g15-e2e-pagination", "requestedPages": requested_pages, "totalCount": result["totalCount"]}
+    print(json.dumps(process_result))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", required=True)
-    parser.add_argument("--report", required=True)
+    parser.add_argument("--base-url")
+    parser.add_argument("--report")
     parser.add_argument("--harness-grace-ms", type=int, default=5_000)
     parser.add_argument("--include-query-views", action="store_true")
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if args.self_test:
+        pagination_self_test()
+        return
+    if not args.base_url or not args.report:
+        parser.error("--base-url and --report are required unless --self-test")
     require(args.harness_grace_ms >= 0, "harnessGraceMs must be non-negative")
     configured_service_id = os.environ.get("G15_EXPECTED_SERVICE_ID", "")
     require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,95}", configured_service_id) is not None,

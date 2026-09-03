@@ -197,7 +197,9 @@ async function readApplicationQuery(
       return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
     }
     waitForSortableUniqueId = requestedWait ?? undefined;
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
+    // Match the deployed app route: list reads opt in to the immediate lane,
+    // while raw runtime callers continue to default to safe-only results.
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize, consistency: "unsafe", ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
   } else {
     const roomId = url.searchParams.get("roomId");
     queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };

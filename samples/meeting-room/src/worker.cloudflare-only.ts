@@ -37,12 +37,6 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
   deliveryViews: ({ env }) => meetingRoomDeliveryViews(env),
-  afterStoredDownstreamDelivery: async ({ env, ctx }) => {
-    // The durable kick lease collapses many waitUntil calls to one owner.  A
-    // drain failure is intentionally not allowed to turn the already-applied
-    // Queue message into an acknowledgement decision.
-    ctx.waitUntil(drainMeetingRoomUnsafeKicks(env));
-  },
 });
 const runtimeFetch = runtime.fetch as unknown as (request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext) => Promise<Response>;
 
@@ -208,7 +202,9 @@ async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: E
     const requestedWait = url.searchParams.get("waitForSortableUniqueId");
     if (requestedWait !== null && requestedWait.length === 0) return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
     waitForSortableUniqueId = requestedWait ?? undefined;
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
+    // The app list explicitly opts into the immediate read lane. Raw V1 list
+    // callers remain safe by default and cannot inherit this route policy.
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize, consistency: "unsafe", ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
   } else {
     const roomId = url.searchParams.get("roomId");
     queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
