@@ -79,7 +79,12 @@ export function assertG58SafeLaneContract(value) {
   requireContains(value.purgePlan, "service_id <> 'sekiban-dcb-meeting-room-cloudflare-only'", "C-0 retired-lag purge plan");
   requireContains(value.mutation, "g58-coverage-gate-production-mutant-red", "production BLOCK omission proof");
   requireContains(value.e2e, "safeWindowMs + 120000ms", "deployed e2e safe deadline");
+  requireContains(value.e2e, "const SAFE_ACCEPTANCE_MS = 180_000;", "amended paced 180-second safe line");
   requireContains(value.e2e, "pacedReservationCommits", "paced cohort recorder");
+  requireContains(value.e2e, "recordUnsafeOnly", "AC6 unsafe observation-only mode");
+  requireContains(value.e2e, "report.liveProjectionObservation", "split live-projection observation");
+  requireContains(value.e2e, "const telemetryAdvanced = attemptTelemetryAdvanced(", "AC6 attempt telemetry gate");
+  requireContains(value.e2e, "headConvergence: \"observed-only; projector head advancement and committed tag-state belong to SDT-G61\"", "G61 head-convergence boundary");
   requireContains(value.readProof, "expectedTagHead", "tag-scoped AC5 head oracle");
   requireContains(value.readProof, "noProjectionPollQuery", "read-only AC5 proof boundary");
   requireContains(value.packageJson, '"test:g58"', "dedicated G58 package lane");
@@ -111,6 +116,12 @@ function main() {
     expectRed(value, (candidate) => {
       candidate.cloudflare = candidate.cloudflare.replace("await pollLiveProjections", "await removedLiveProjectionPoll");
     }, "scheduled projection poll removed");
+    expectRed(value, (candidate) => {
+      candidate.e2e = candidate.e2e.replace("const SAFE_ACCEPTANCE_MS = 180_000;", "const SAFE_ACCEPTANCE_MS = 60_000;");
+    }, "paced safe line shortened");
+    expectRed(value, (candidate) => {
+      candidate.e2e = candidate.e2e.replace("const telemetryAdvanced = attemptTelemetryAdvanced(health.liveProjections, report.attemptTelemetryBaseline);", "const telemetryAdvanced = false;");
+    }, "AC6 attempt telemetry gate removed");
     process.stdout.write(`${JSON.stringify({ selfTest: "g58-safe-lane-mutations-red" })}\n`);
   }
   process.stdout.write(`${JSON.stringify({ guard: "g58-safe-lane", status: "pass" })}\n`);

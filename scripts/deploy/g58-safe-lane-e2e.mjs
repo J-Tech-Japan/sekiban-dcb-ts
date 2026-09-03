@@ -3,18 +3,21 @@
  * SDT-G58 deployed safe-lane witness.
  *
  * `--mode paced` is one coherent setup-room plus >=10 paced reservation
- * cohort. `--mode single` is AC6's one-reservation smoke witness. The only
- * delegated-proof continuation adds `--continue-after-unsafe`: the unchanged
+ * cohort. `--mode single` is AC6's one-reservation smoke witness. The
+ * delegated-proof continuation adds `--continue-after-unsafe` for the paced
+ * cohort or `--record-unsafe-only` for the single witness: the unchanged
  * 5,000 ms unsafe disposition is recorded as pass/miss, while later list
- * visibility is observation-only for the G58 safe/projector proof. The only
- * credential is read from the private conformance-token file in memory; no
- * bearer value is logged or persisted.
+ * visibility is observation-only. Live projector heads and tag state are
+ * recorded as AC5 observations; head convergence belongs to SDT-G61. The
+ * only credential is read from the private conformance-token file in memory;
+ * no bearer value is logged or persisted.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const DEFAULT_SERVICE_ID = "sekiban-dcb-meeting-room-cloudflare-only";
 const SAFE_EXTRA_MS = 120_000;
+const SAFE_ACCEPTANCE_MS = 180_000;
 const UNSAFE_BOUND_MS = 5_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const SUID = /^\d{30}$/;
@@ -271,10 +274,31 @@ async function waitForUnsafe(options, reservationId) {
           observations,
         };
       }
+      if (options.recordUnsafeOnly) {
+        return {
+          disposition: "miss",
+          boundMs: UNSAFE_BOUND_MS,
+          boundExceededAtMs: result.receivedAtMs,
+          elapsedMs: result.elapsedMs,
+          firstVisibleAtMs: null,
+          eventualFirstVisibleAtMs: result.visible ? result.receivedAtMs : null,
+          observations,
+        };
+      }
       throw new Error(`unsafe reservation ${reservationId} was not visible within ${UNSAFE_BOUND_MS}ms`);
     }
     if (result.visible) return { disposition: "pass", firstVisibleAtMs: result.receivedAtMs, elapsedMs: result.elapsedMs, observations };
     await sleep(Math.min(options.pollMs, Math.max(1, UNSAFE_BOUND_MS - result.elapsedMs)));
+  }
+}
+
+async function waitForPacedCommit(options, report, notBeforeMs) {
+  while (Date.now() < notBeforeMs) {
+    const health = await readHealth(options);
+    report.healthSnapshots.push(health);
+    persistReport(options, report);
+    const remainingMs = notBeforeMs - Date.now();
+    if (remainingMs > 0) await sleep(Math.min(options.pollMs, remainingMs));
   }
 }
 
@@ -316,6 +340,26 @@ function scheduledPollLifecycle(snapshots) {
       observedAtIso: new Date(observedAt).toISOString(),
       httpSamples: rows.length,
       coverage: { kind: latest?.coverage?.kind ?? "unknown", reason: latest?.coverage?.reason ?? null },
+      snapshots: rows.map((snapshot) => ({
+        receivedAtMs: snapshot.receivedAtMs,
+        receivedAtIso: new Date(snapshot.receivedAtMs).toISOString(),
+        coverage: {
+          kind: snapshot.coverage.kind,
+          reason: snapshot.coverage.reason,
+          observedAt: snapshot.coverage.observedAt,
+        },
+        lag: {
+          decayedMs: snapshot.lag.decayedMs,
+          safeWindowMs: snapshot.lag.safeWindowMs,
+          ceilingExceeded: snapshot.lag.ceilingExceeded,
+        },
+        projectors: snapshot.liveProjections.map((projection) => ({
+          projectorId: projection.projectorId,
+          attemptedAt: projection.lastPollAt,
+          outcome: projection.pollStatus,
+          reason: projection.pollReason,
+        })),
+      })),
       projectors,
       allRegisteredProjectorsObserved: ["RoomProjector", "ReservationProjector"].every((projectorId) =>
         projectors.some((row) => row.projectorId === projectorId && Number.isSafeInteger(row.attemptedAt))),
@@ -330,13 +374,34 @@ function projectionTargets(roomId, reservations) {
   ];
 }
 
+function projectorAttemptTelemetry(health) {
+  return (health?.liveProjections ?? []).map((projection) => ({
+    projectorId: projection.projectorId,
+    lastPollAt: projection.lastPollAt,
+    pollStatus: projection.pollStatus,
+    pollReason: projection.pollReason,
+  }));
+}
+
+function attemptTelemetryAdvanced(current, baseline) {
+  return ["RoomProjector", "ReservationProjector"].every((projectorId) => {
+    const now = current?.find((projection) => projection.projectorId === projectorId);
+    const before = baseline?.find((projection) => projection.projectorId === projectorId);
+    if (!Number.isSafeInteger(now?.lastPollAt)) return false;
+    return !Number.isSafeInteger(before?.lastPollAt) || now.lastPollAt > before.lastPollAt;
+  });
+}
+
 async function waitForSafeAndLive(options, report, targets) {
   const pending = new Set(report.reservations.map((reservation) => reservation.reservationId));
   const lastSuid = report.reservations.at(-1).suid;
-  const finalDeadlineMs = report.reservations.at(-1).commit.receivedAtMs + report.reservations.at(-1).safeWindowAtCommitMs + SAFE_EXTRA_MS;
+  const safeDeadlineFor = (reservation) => options.mode === "paced"
+    ? reservation.commit.receivedAtMs + SAFE_ACCEPTANCE_MS
+    : reservation.commit.receivedAtMs + reservation.safeWindowAtCommitMs + SAFE_EXTRA_MS;
+  const finalDeadlineMs = Math.max(...report.reservations.map(safeDeadlineFor));
   let lastHealth = null;
   for (;;) {
-    if (options.continueAfterUnsafe) {
+    if (options.continueAfterUnsafe || options.recordUnsafeOnly) {
       for (const reservation of report.reservations) {
         const unsafe = reservation.unsafe;
         if (unsafe?.disposition !== "miss" || unsafe.eventualFirstVisibleAtMs !== null) continue;
@@ -363,26 +428,43 @@ async function waitForSafeAndLive(options, report, targets) {
       pending.delete(reservation.reservationId);
     }
     if (pending.size === 0) {
-      const lags = await Promise.all(targets.map((target) => projectionLag(options, target.tagStateId)));
-      const states = await Promise.all(targets.map((target) => tagState(options, target.tagStateId)));
-      const allProjectionRowsAtTarget = lags.every((lag) => atLeast(lag.checkpointSuid, lastSuid) && lag.behindEvents === 0);
-      const allTagStatesAtTarget = states.every((state) => atLeast(state.lastSortedUniqueId, lastSuid));
-      const aggregateHeadsAtTarget = health.liveProjections.every((projection) => atLeast(projection.head, lastSuid));
-      report.liveProjectionProof = {
-        targetSuid: lastSuid,
-        health: health.liveProjections,
-        projectionLag: lags,
-        tagState: states,
-        allProjectionRowsAtTarget,
-        allTagStatesAtTarget,
-        aggregateHeadsAtTarget,
-      };
-      if (allProjectionRowsAtTarget && allTagStatesAtTarget && aggregateHeadsAtTarget) return;
+      const telemetryAdvanced = attemptTelemetryAdvanced(health.liveProjections, report.attemptTelemetryBaseline);
+      if (options.mode === "single" && !telemetryAdvanced) {
+        report.liveProjectionObservation = {
+          targetSuid: lastSuid,
+          health: health.liveProjections,
+          attemptTelemetryBaseline: report.attemptTelemetryBaseline,
+          attemptTelemetryAdvanced: false,
+          projectionLag: null,
+          tagState: null,
+          headConvergence: "observed-only; projector head advancement and committed tag-state belong to SDT-G61",
+        };
+      } else {
+        const lags = await Promise.all(targets.map((target) => projectionLag(options, target.tagStateId)));
+        const states = await Promise.all(targets.map((target) => tagState(options, target.tagStateId)));
+        report.liveProjectionObservation = {
+          targetSuid: lastSuid,
+          health: health.liveProjections,
+          attemptTelemetryBaseline: report.attemptTelemetryBaseline,
+          attemptTelemetryAdvanced: telemetryAdvanced,
+          projectionLag: lags,
+          tagState: states,
+          headConvergence: "observed-only; projector head advancement and committed tag-state belong to SDT-G61",
+          allProjectionRowsAtTarget: lags.every((lag) => atLeast(lag.checkpointSuid, lastSuid) && lag.behindEvents === 0),
+          allTagStatesAtTarget: states.every((state) => atLeast(state.lastSortedUniqueId, lastSuid)),
+          aggregateHeadsAtTarget: health.liveProjections.every((projection) => atLeast(projection.head, lastSuid)),
+        };
+        persistReport(options, report);
+        if (options.mode !== "single" || telemetryAdvanced) return;
+      }
+      persistReport(options, report);
     }
-    const overdue = report.reservations.find((reservation) => health.receivedAtMs > reservation.commit.receivedAtMs + reservation.safeWindowAtCommitMs + SAFE_EXTRA_MS && reservation.safe === undefined);
+    const overdue = report.reservations.find((reservation) => health.receivedAtMs > safeDeadlineFor(reservation) && reservation.safe === undefined);
     if (overdue !== undefined || health.receivedAtMs > finalDeadlineMs) {
       const target = overdue?.suid ?? lastSuid;
-      const error = new Error(`safe lane or live projections did not reach ${target} by safeWindowMs + ${SAFE_EXTRA_MS}ms`);
+      const error = new Error(options.mode === "paced"
+        ? `safe lane did not reach ${target} within the 180000ms paced safe acceptance line`
+        : `safe lane or projector attempt telemetry did not reach ${target} by safeWindowMs + ${SAFE_EXTRA_MS}ms`);
       error.lastHealth = lastHealth;
       throw error;
     }
@@ -418,8 +500,12 @@ async function run(options) {
       unsafeBoundMs: UNSAFE_BOUND_MS,
       unsafeProof: options.continueAfterUnsafe
         ? "delegated to SDT-G60: retain each 5000ms pass/miss and observe eventual visibility without reclassification"
-        : "asserted by the unchanged 5000ms bound",
+        : options.recordUnsafeOnly
+          ? "recorded only for SDT-G60: retain each 5000ms pass/miss and observe eventual visibility without reclassification"
+          : "asserted by the unchanged 5000ms bound",
       safeDeadline: "health.safeWindowMs + 120000ms",
+      pacedSafeAcceptanceMs: options.mode === "paced" ? SAFE_ACCEPTANCE_MS : null,
+      liveProjectionProof: "observed only; head advancement and committed tag-state belong to SDT-G61",
       conformanceAuthorization: "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted",
     },
     healthSnapshots: [],
@@ -428,6 +514,7 @@ async function run(options) {
   try {
     report.healthBefore = await readHealth(options);
     report.healthSnapshots.push(report.healthBefore);
+    report.attemptTelemetryBaseline = projectorAttemptTelemetry(report.healthBefore);
     const roomId = `g58-room-${runId.slice(0, 12)}`;
     const room = await acceptedCommand(options, "/api/commands/create-room", { roomId, name: `SDT-G58 ${options.mode}` });
     report.setupRoom = { roomId, suid: room.suid, commit: { receivedAtMs: room.receivedAtMs, responseMs: room.elapsedMs, cfRay: room.cfRay } };
@@ -436,7 +523,7 @@ async function run(options) {
     let previousCommitAtMs = room.receivedAtMs;
     for (let ordinal = 1; ordinal <= pacedCount; ordinal += 1) {
       const notBeforeMs = previousCommitAtMs + (options.mode === "paced" ? options.paceMs : 0);
-      if (Date.now() < notBeforeMs) await sleep(notBeforeMs - Date.now());
+      if (Date.now() < notBeforeMs) await waitForPacedCommit(options, report, notBeforeMs);
       const reservationId = `g58-reservation-${runId.slice(0, 12)}-${ordinal}`;
       const commit = await acceptedCommand(options, "/api/commands/reserve-room", {
         roomId,
@@ -495,7 +582,7 @@ async function run(options) {
       .filter((unsafe) => unsafe?.disposition === "pass" && typeof unsafe.commitToUnsafeMs === "number")
       .map((unsafe) => unsafe.commitToUnsafeMs);
     report.unsafeDisposition = {
-      owner: options.continueAfterUnsafe ? "SDT-G60" : "SDT-G58",
+      owner: options.continueAfterUnsafe || options.recordUnsafeOnly ? "SDT-G60" : "SDT-G58",
       boundMs: UNSAFE_BOUND_MS,
       rule: "A visibility after the 5000ms bound remains a miss and is observation-only; it is never reclassified as an unsafe pass.",
       rows: report.reservations.map((reservation) => ({
@@ -513,7 +600,8 @@ async function run(options) {
       unsafe: {
         n: report.reservations.length,
         passN: unsafeSamples.length,
-        missN: report.reservations.length - unsafeSamples.length,
+        missN: report.reservations.filter((reservation) => reservation.unsafe?.disposition === "miss").length,
+        censoredN: report.reservations.filter((reservation) => reservation.unsafe?.eventualFirstVisibleAtMs === null).length,
         p50Ms: unsafeSamples.length > 0 ? nearestRank(unsafeSamples, 0.5) : null,
         p95Ms: unsafeSamples.length > 0 ? nearestRank(unsafeSamples, 0.95) : null,
       },
@@ -551,6 +639,7 @@ if (process.argv.includes("--self-test")) {
   if (mode !== "single" && mode !== "paced") throw new Error("--mode must be single or paced");
   const continueAfterUnsafe = process.argv.includes("--continue-after-unsafe");
   if (continueAfterUnsafe && mode !== "paced") throw new Error("--continue-after-unsafe requires --mode paced");
+  const recordUnsafeOnly = process.argv.includes("--record-unsafe-only");
   const tokenFile = required("--token-file", argument("--token-file", process.env.G53_CONFORMANCE_TOKEN_FILE));
   const token = readFileSync(tokenFile, "utf8").trim();
   if (token.length === 0) throw new Error("protected conformance token file is empty");
@@ -564,6 +653,7 @@ if (process.argv.includes("--self-test")) {
     paceMs: positiveInteger("--pace-ms", argument("--pace-ms", "10000"), 10_000),
     pollMs: positiveInteger("--poll-ms", argument("--poll-ms", "2000"), 100),
     continueAfterUnsafe,
+    recordUnsafeOnly,
   };
   const output = resolve(required("--report", argument("--report", options.mode === "paced" ? ".artifacts/sdt-g58-paced-cohort.json" : ".artifacts/sdt-g58-e2e.json")));
   options.reportPath = output;
