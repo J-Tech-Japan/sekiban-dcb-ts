@@ -120,4 +120,40 @@ The AC2 integration oracle uses real committed A and B obligations. It proves A-
 
 The focused command `./node_modules/.bin/vitest run --config vitest.config.ts --no-cache --maxWorkers=1 test/g62-global-completeness.spec.ts` passed all 3 tests. The full local protection commands passed without changing `test/g44-global-completeness.spec.ts`: `npm run test:g41`, `npm run test:g44`, `npm run test:g49`, `npm run test:g51`, `npm run test:g52`, `npm run test:g53`, `npm run test:g54`, `npm run test:g55`, `npm run test:g58`, `npm run test:g62`, `npm run typecheck`, `npm run lint -- --max-warnings=0`, and `git diff --check`. G41 emitted existing Durable Object teardown warnings while exiting 0; no gate was weakened or timeout changed. The four G58 generated receipt rewrites caused incidentally by running its guard were restored to the pinned head and are not part of W141.
 
-The exact repaired commit is pushed and the existing-worker deployment and fresh cold-first paced cohort proof are recorded in the W141 task artifact and the deployment section below. No Cloudflare resource is created; W139 receipts remain historical evidence only.
+The exact repaired commit `05d9d27cf77dda090da36bfb46e578a8e5841120` was pushed before deployment. No Cloudflare resource was created; W139 receipts remain historical evidence only.
+
+### W141 existing-worker deployment and fresh cohort
+
+The repaired code head `05d9d27cf77dda090da36bfb46e578a8e5841120` was deployed once to the existing `sekiban-dcb-meeting-room-cloudflare-only` Worker with `samples/meeting-room/wrangler.cloudflare-only.jsonc` and no `--keep-vars`. The deployment returned Worker version `d414765c-3303-42b5-8da2-b38889b4ecdc`, created `2026-09-04T06:00:30.343Z`, at 100% traffic. Its exact source annotation/message was:
+
+`SDT-G62 W141 exact 05d9d27cf77dda090da36bfb46e578a8e5841120`
+
+The existing bindings remained the production-shaped resources: pipeline D1 `f26d1299-82d9-4a64-8647-bc2ec86326ac`, MV D1 `b416b212-4d09-413c-9b8d-7660e475772f`, Queue `sekiban-dcb-meeting-room-cloudflare-outbox`, and DLQ `sekiban-dcb-meeting-room-cloudflare-outbox-dlq`. The deploy output showed the unchanged G32, G53/G55, SafeWindow, outbox/Queue, and projector bindings. WAKE-115 was applied to the Wrangler process: `CLOUDFLARE_API_TOKEN=UNSET`, `CF_API_TOKEN=UNSET`, `CLOUDFLARE_API_KEY=UNSET`, `CF_API_KEY=UNSET`, `WRANGLER_API_TOKEN=UNSET`; `G50_OBSERVABILITY_TOKEN_FILE=UNSET`. The conformance credential was referenced only through the existing path `/private/tmp/sdt-g62-w139-conformance-token`; its value is absent from this document and the raw receipt.
+
+One fresh cold-first public paced cohort ran under run ID `3a90eb55-ef97-4de9-822f-bfdc8d70755a`, from `2026-09-04T06:01:11.299Z` through `2026-09-04T06:04:07.093Z`, with 10 reservations, `paceMs=10000`, and minimum observed pacing 11,660 ms. The W116 public instrument fully paged `GET /api/read/reservations` for each sample. The durable raw receipt is `.artifacts/sdt-g62-w141-ac4-paced-cohort.json` and was persisted incrementally by the harness.
+
+Safe convergence used the unchanged 180,000 ms acceptance line and 20,000 ms SafeWindow: n=10, p50=75,281 ms, p95=114,811 ms, max=114,811 ms, and 0/10 over 180,000 ms. The 5,000 ms unsafe disposition is recorded only for SDT-G60: all 10 were misses at the strict bound, no rows were censored, and eventual first-public-visibility values are retained below.
+
+| # | reservation ID / SUID | commit response ms | pace ms | unsafe disposition / eventual ms | safe ms | safe head |
+| ---: | --- | ---: | ---: | --- | ---: | --- |
+| 1 | g58-reservation-3a90eb55-ef9-1 / 063924098486039000000753418212 | 1,981 | 11,982 | miss / 112,944 | 114,811 | 063924098546071000001100363589 |
+| 2 | g58-reservation-3a90eb55-ef9-2 / 063924098498185000001135073243 | 2,053 | 12,053 | miss / 101,053 | 102,758 | 063924098546071000001100363589 |
+| 3 | g58-reservation-3a90eb55-ef9-3 / 063924098510221000000663480972 | 1,969 | 11,971 | miss / 89,236 | 90,787 | 063924098546071000001100363589 |
+| 4 | g58-reservation-3a90eb55-ef9-4 / 063924098522319000001577686232 | 2,229 | 12,230 | miss / 77,141 | 78,557 | 063924098546071000001100363589 |
+| 5 | g58-reservation-3a90eb55-ef9-5 / 063924098534313000000444420102 | 1,808 | 11,810 | miss / 65,508 | 66,747 | 063924098546071000001100363589 |
+| 6 | g58-reservation-3a90eb55-ef9-6 / 063924098546071000001100363589 | 1,776 | 11,777 | miss / 53,922 | 54,970 | 063924098546071000001100363589 |
+| 7 | g58-reservation-3a90eb55-ef9-7 / 063924098557973000000738342377 | 1,876 | 11,878 | miss / 86,085 | 86,941 | 063924098593396000000557418223 |
+| 8 | g58-reservation-3a90eb55-ef9-8 / 063924098569629000000674102005 | 1,658 | 11,660 | miss / 74,556 | 75,281 | 063924098593396000000557418223 |
+| 9 | g58-reservation-3a90eb55-ef9-9 / 063924098581534000001118550270 | 1,948 | 11,949 | miss / 62,806 | 63,332 | 063924098593396000000557418223 |
+| 10 | g58-reservation-3a90eb55-ef9-10 / 063924098593396000000557418223 | 1,960 | 11,961 | miss / 51,040 | 51,371 | 063924098593396000000557418223 |
+
+The current-run health response set contains 50 snapshots and the raw persisted coverage history contains 501 cumulative tick rows. The four new persisted scheduled ticks after the pre-cohort baseline were all `SETTLED`, with null `reason` and `partitionTag`; the table shows the exact frontier and the corresponding materialized safe heads recorded in the first health response observing each new frontier:
+
+| persisted tick | frontier SUID | RoomProjector MV safe head | ReservationProjector MV safe head |
+| --- | --- | --- | --- |
+| `scheduled:1788501691054` | 063924098486039000000753418212 | 063924098474171000001652831636 | 063924091551674000000134649594 |
+| `scheduled:1788501724859` | 063924098522319000001577686232 | 063924098474171000001652831636 | 063924098474171000001652831636 |
+| `scheduled:1788501775628` | 063924098569629000000674102005 | 063924098546071000001100363589 | 063924098546071000001100363589 |
+| `scheduled:1788501835226` | 063924098593396000000557418223 | 063924098546071000001100363589 | 063924098546071000001100363589 |
+
+The final health response at `2026-09-04T06:04:05.269Z` was `SETTLED`, frontier/global head `063924098593396000000557418223`, and both RoomProjector and ReservationProjector materialized safe heads equaled that final cohort SUID. The raw receipt also records both live projector attempts and observed live heads; those fields were not used as a G62 gate because actual live head convergence remains SDT-G61.
