@@ -1,9 +1,10 @@
 # SDT-G60 stripped-environment sub-hop resume (W143)
 
 Task: `SDT-G60-STRIPPED-ENV-SUBHOP-RESUME-W143`
-Status: **completed — one bounded fresh-resource measurement; no repair, commit, PR, or landing**
+Status: **completed — one bounded fresh-resource measurement; no product repair, PR, or landing**
 Branch: `claude/sdt-g60-clean-preg53-ab-w124`
 Exact source head: `3e5954b8c6ea2f29d664f09417b4c09e6cef4880`
+Evidence checkpoint: `07dbf3f` (evidence-only; pushed)
 Recorded on: 2026-09-04
 
 This continuation used only a new W131-C resource set. The production Worker/database/queues and both W130 arms were not touched. The named W131-C resources are intentionally retained as abandoned evidence resources; no destructive cleanup was performed.
@@ -167,4 +168,4 @@ Dominant observed interval for every strict-over or censored sample:
 
 Thus the four strict over-bound public samples are not explained by a long W127 post-admission sub-hop. The post-admission spans are short, while the pre-admission Queue/consumer wait is several seconds. Several public-visible timestamps precede the asynchronously persisted delivery/sub-boundary timestamps, so the residual fields are explicitly ambiguous rather than treated as proof of a public-read or delivery ordering. Observer perturbation is unproven because this is one fresh arm without a matched control. No repair lever was selected or implemented.
 
-The 5,000 ms contract, ordering, durability, fences, G53 naming, G55 reads, and G58 behavior were unchanged. No outbox/Queue/global-admission code was changed. G56 remains held; G62/G61 remain outside this continuation. No PR, commit, or landing was performed.
+The 5,000 ms contract, ordering, durability, fences, G53 naming, G55 reads, and G58 behavior were unchanged. No outbox/Queue/global-admission code was changed. G56 remains held; G62/G61 remain outside this continuation. No product repair, PR, or landing was performed; the only commit was the evidence-only checkpoint recorded above.
