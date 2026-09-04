@@ -248,11 +248,20 @@ export class GlobalCompletenessReconciler {
           throw error;
         }
       }
-      // Existing partitions may advance after their high-water marks were
-      // captured; that is a later scan's range. A new, removed, or duplicate
-      // partition is different: it changes the very universe this pass says
-      // it covered, so this pass must remain UNKNOWN rather than claim FULL.
-      this.assertSnapshotUniverseUnchanged(snapshots, await this.snapshotPartitions(serviceId));
+      // The proof domain is the start-of-pass snapshot. A partition added
+      // after that snapshot is intentionally left for the next pass; it must
+      // not invalidate the proof already established for the partitions that
+      // were actually walked. A removed start partition is different because
+      // the pass can no longer be said to have covered its proof domain.
+      const endSnapshots = await this.snapshotPartitions(serviceId);
+      this.assertStartPartitionsRetained(snapshots, endSnapshots);
+      if (findings > 0) {
+        // Keep the historical G44 diagnostic for an unresolved obligation
+        // discovered while the universe was changing. It remains fail-closed
+        // and does not grant a frontier; the all-joined case above is the
+        // bounded AC2 path that may settle the start-of-pass snapshot.
+        this.assertSnapshotUniverseUnchanged(snapshots, endSnapshots);
+      }
       const cursor: SettledCursor = {
         schema: "sdt-g58-settled-frontier/v1",
         snapshots,
@@ -469,6 +478,16 @@ export class GlobalCompletenessReconciler {
     const startSet = new Set(start.map((entry) => `${entry.serviceId}\u0000${entry.tag}`));
     const endSet = new Set(end.map((entry) => `${entry.serviceId}\u0000${entry.tag}`));
     if (startSet.size !== endSet.size || [...startSet].some((entry) => !endSet.has(entry))) {
+      throw new Error("source_partition_set_changed_during_scan");
+    }
+  }
+
+  private assertStartPartitionsRetained(
+    start: readonly SourcePartitionSnapshot[],
+    end: readonly SourcePartitionSnapshot[],
+  ): void {
+    const endSet = new Set(end.map((entry) => `${entry.serviceId}\u0000${entry.tag}`));
+    if (start.some((entry) => !endSet.has(`${entry.serviceId}\u0000${entry.tag}`))) {
       throw new Error("source_partition_set_changed_during_scan");
     }
   }
