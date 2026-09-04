@@ -58,7 +58,12 @@ function sourceAcknowledgementOptions(env: DownstreamAdapterEnv, options: Adapte
   const coverage = hasG44Authority
     ? async ({ message, event, arrivedAt, source }: Parameters<NonNullable<AdapterOptions["beforeViews"]>>[0]) => {
       await options.beforeViews?.({ message, event, arrivedAt, source });
-      const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt);
+      const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverageForObligation(
+        message.serviceId,
+        message.tag,
+        message.completeness.obligationSequence,
+        arrivedAt,
+      );
       if (decision.kind !== "SETTLED") {
         throw new Error(`global_completeness_${decision.kind}:${decision.health.status}`);
       }
