@@ -82,12 +82,9 @@ async function wireFromClientFixture(name: string): Promise<string> {
 }
 
 describe("SDT-G54 copied Sekiban interop goldens", () => {
-  it("R1 preserves official V1 payload bytes while retaining the empty-head runtime rejection", async () => {
+  it("R1 preserves official V1 payload bytes while accepting the explicit empty-head claim", async () => {
     const official = parseFixture("interop_official_v1_populated.json");
-    await expect(runtimeError(official)).resolves.toMatchObject({
-      code: "invalid_sortable_unique_id",
-      error: expect.stringContaining("lastSortableUniqueId"),
-    });
+    expect(validateCommitEnvelope(official)).toHaveProperty("value");
 
     const sourceCandidates = official.eventCandidates as Array<{ readonly payload: string }>;
     for (const candidate of sourceCandidates) {
@@ -96,7 +93,7 @@ describe("SDT-G54 copied Sekiban interop goldens", () => {
     }
   });
 
-  it("R2 rejects the raw client model while the unchanged transport adapter preserves official V1 bytes", async () => {
+  it("R2 keeps the raw client model adapter byte-identical while accepting its V1 output", async () => {
     const rejection = await runtimeError(parseFixture("interop_ts_client_model.json"));
     expect(rejection).toMatchObject({ code: "malformed_commit_envelope" });
     expect(rejection.error).toContain("eventCandidates");
@@ -106,8 +103,9 @@ describe("SDT-G54 copied Sekiban interop goldens", () => {
 
     const officialWire = await wireFromClientFixture("interop_ts_client_model.json");
     expect(officialWire).toBe(fixture("interop_official_v1_populated.json"));
-    await expect(runtimeError(JSON.parse(officialWire))).resolves.toMatchObject({ code: "invalid_sortable_unique_id" });
+    expect(validateCommitEnvelope(JSON.parse(officialWire))).toHaveProperty("value");
     expect(await wireFromClientFixture("interop_r2_canonical_positive.json")).toBe(fixture("interop_r2_canonical_positive_v1.json"));
+    expect(validateCommitEnvelope(JSON.parse(fixture("interop_r2_canonical_positive_v1.json")))).toHaveProperty("value");
   });
 
   it("R3 runtime payload witnesses remain typed failures", async () => {
@@ -129,8 +127,8 @@ describe("SDT-G54 copied Sekiban interop goldens", () => {
 
     await expect(runtimeError(emptyTagWire)).resolves.toMatchObject({ code: "validation_error", error: expect.stringContaining("tags") });
     await expect(runtimeError(duplicateConsistencyWire)).resolves.toMatchObject({
-      code: "invalid_sortable_unique_id",
-      error: expect.stringContaining("lastSortableUniqueId"),
+      code: "validation_error",
+      error: expect.stringContaining("Consistency tags"),
     });
   });
 

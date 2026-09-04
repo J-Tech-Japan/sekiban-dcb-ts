@@ -298,9 +298,12 @@ export async function capturePacedCohort({
   persist,
   fetchImpl = globalThis.fetch,
   sleepFor,
+  now,
 }) {
   if (typeof persist !== "function") fail("persist must be a function");
   if (typeof fetchImpl !== "function") fail("fetchImpl must be a function");
+  if (now !== undefined && typeof now !== "function") fail("now must be a function");
+  const readNow = now ?? (() => Date.now());
   const state = mutableCopy(initialState);
   if (state.resume?.lifecycle !== "capturing-paced-cohort" || state.warmup !== null || state.ledger.length !== 0) {
     fail("paced cohort state is not empty; a replacement cohort is forbidden");
@@ -320,6 +323,7 @@ export async function capturePacedCohort({
     fetchImpl,
     sampleIntervalMs: PACED_SAMPLE_INTERVAL_MS,
     ...(sleepFor === undefined ? {} : { sleepFor }),
+    now: readNow,
     captureTelemetry: async () => Object.freeze({
       status: "deferred-to-resume-query",
       perHopDescriptiveMedians: Object.freeze([]),
@@ -346,7 +350,7 @@ export async function capturePacedCohort({
     to: state.ledger.at(-1).completedAtMs,
   });
   state.resume.lifecycle = "ready-for-exact-ray-query";
-  state.resume.nextQueryAtMs = Date.now();
+  state.resume.nextQueryAtMs = readNow();
   await persist(state);
   return Object.freeze(state);
 }

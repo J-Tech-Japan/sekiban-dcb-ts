@@ -97,7 +97,12 @@ function sourceAcknowledgementOptions(env: DownstreamAdapterEnv, options: Adapte
         observedAt: Date.now(),
       });
       try {
-        const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt);
+        const decision = await new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverageForObligation(
+          message.serviceId,
+          message.tag,
+          message.completeness.obligationSequence,
+          arrivedAt,
+        );
         observeG60PostAdmission(options.durableHopObserver, {
           stage: "completeness-coverage",
           boundary: "end",

@@ -239,6 +239,8 @@ function rejected(reason: string, status = 409): OperationResult {
   };
 }
 
+const ASSERT_EMPTY_CONFLICT_REASON = "consistency_head_mismatch_assert_empty";
+
 function repairRejected(reason: string, status = 409): OperationResult {
   return {
     status,
@@ -353,10 +355,12 @@ function consistencyTagsFrom(value: unknown): { value?: TagConsistencyEntry[]; e
     if (typeof rawEntry.lastSortableUniqueId !== "string") {
       return { error: "lastSortableUniqueId must be a string" };
     }
-    try {
-      assertSortableUniqueId(rawEntry.lastSortableUniqueId);
-    } catch {
-      return { error: "lastSortableUniqueId must be a 30-digit SortableUniqueId" };
+    if (rawEntry.lastSortableUniqueId !== "") {
+      try {
+        assertSortableUniqueId(rawEntry.lastSortableUniqueId);
+      } catch {
+        return { error: "lastSortableUniqueId must be a 30-digit SortableUniqueId" };
+      }
     }
     entries.push({ tag: rawEntry.tag, lastSortableUniqueId: rawEntry.lastSortableUniqueId });
   }
@@ -2126,6 +2130,17 @@ export class TagDurableObject implements DurableObject {
         return fenceGateRejected();
       }
       const head = sqlString(control.head_suid, "tag_control.head_suid");
+      const assertedEmpty = input.expectedHead === "";
+      if (assertedEmpty) {
+        const eventCount = sql.exec<SqlRow>("SELECT COUNT(*) AS count FROM tag_event").one();
+        if (sqlNumber(eventCount.count, "tag_event.count") > 0 || head !== "") {
+          await this.rearmScheduler(txn);
+          return {
+            ...rejected(ASSERT_EMPTY_CONFLICT_REASON),
+            body: { ...rejected(ASSERT_EMPTY_CONFLICT_REASON).body as JsonObject, version },
+          };
+        }
+      }
       if (head !== input.expectedHead) {
         await this.rearmScheduler(txn);
         return {
@@ -2162,8 +2177,11 @@ export class TagDurableObject implements DurableObject {
         }
         await this.rearmScheduler(txn);
         return {
-          ...rejected("active_reservation_conflict"),
-          body: { ...rejected("active_reservation_conflict").body as JsonObject, version },
+          ...rejected(assertedEmpty ? ASSERT_EMPTY_CONFLICT_REASON : "active_reservation_conflict"),
+          body: {
+            ...rejected(assertedEmpty ? ASSERT_EMPTY_CONFLICT_REASON : "active_reservation_conflict").body as JsonObject,
+            version,
+          },
         };
       }
 
@@ -2181,8 +2199,16 @@ export class TagDurableObject implements DurableObject {
         VALUES (?, ?, NULL, NULL)
         ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
       `, input.attemptId, input.epoch);
-      version += 1;
-      sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+      if (assertedEmpty) {
+        // An asserted-empty reservation is the prepare step of the ordinary
+        // first write. It must not manufacture a version before the first
+        // committed event; append therefore returns version 1 just like the
+        // unobserved first-write path.
+        sql.exec("UPDATE tag_control SET updated_at = ? WHERE singleton = 1", nowIso());
+      } else {
+        version += 1;
+        sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
+      }
       sql.exec(`
         INSERT INTO tag_reservation
           (singleton, attempt_id, epoch, reservation_token, expected_head, expires_at, alarm_due_at)
@@ -2529,6 +2555,13 @@ export class TagDurableObject implements DurableObject {
       if (isFenceGateClosed(record)) {
         return fenceGateRejected();
       }
+      const assertedEmpty = input.expectedHead === "";
+      if (assertedEmpty && (record.events.length > 0 || record.head !== "")) {
+        return {
+          ...rejected(ASSERT_EMPTY_CONFLICT_REASON),
+          body: { ...rejected(ASSERT_EMPTY_CONFLICT_REASON).body as JsonObject, version: record.version },
+        };
+      }
       if (record.head !== input.expectedHead) {
         return {
           ...rejected("consistency_head_mismatch"),
@@ -2550,8 +2583,11 @@ export class TagDurableObject implements DurableObject {
           };
         }
         return {
-          ...rejected("active_reservation_conflict"),
-          body: { ...rejected("active_reservation_conflict").body as JsonObject, version: record.version },
+          ...rejected(assertedEmpty ? ASSERT_EMPTY_CONFLICT_REASON : "active_reservation_conflict"),
+          body: {
+            ...rejected(assertedEmpty ? ASSERT_EMPTY_CONFLICT_REASON : "active_reservation_conflict").body as JsonObject,
+            version: record.version,
+          },
         };
       }
 
@@ -2566,10 +2602,18 @@ export class TagDurableObject implements DurableObject {
         expiresAt: now + RESERVATION_WINDOW_MS,
         alarmDueAt: Date.now() + RESERVATION_WINDOW_MS,
       };
-      const updated = await this.commit(txn, record, {
+      const updated = assertedEmpty
+        ? {
+          ...record,
+          activeReservation: reservation,
+          alarmDueAt: reservation.alarmDueAt,
+          updatedAt: nowIso(),
+        }
+        : await this.commit(txn, record, {
         activeReservation: reservation,
         alarmDueAt: reservation.alarmDueAt,
       });
+      if (assertedEmpty) await this.write(txn, updated, "");
       return {
         status: 201,
         body: { status: "reserved", reservation, fenceGate, version: updated.version },

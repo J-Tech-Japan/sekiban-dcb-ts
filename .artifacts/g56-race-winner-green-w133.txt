@@ -1,0 +1,13 @@
+SDT-G56 AC2/AC3 race and first-write green receipt
+command: npm run test:g56
+focused test: test/g56-assert-empty.spec.ts
+
+Observed assertions:
+- empty acquire before append: HTTP 201; persisted events=0; expectedHead="".
+- append after asserted-empty reservation: HTTP 201; persisted events=1; tag version=1; active reservation=null.
+- asserted-empty acquire after the committed event: HTTP 409; reason=consistency_head_mismatch_assert_empty.
+- two direct acquire calls for one empty tag: statuses [201, 409]; loser reason contains assert_empty.
+- two concurrent serialized commits for one empty tag: statuses [200, 400]; loser code=consistency_conflict.
+
+The receipt is the focused test's completed green race oracle; no remote
+resource or Wrangler operation was invoked.

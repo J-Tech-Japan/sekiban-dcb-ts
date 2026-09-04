@@ -1,0 +1,7 @@
+SDT-G56 empty-head omission-mutant receipt
+command: npm run test:g56
+mutant command: node scripts/g56-assert-empty-mutation-runner.mjs
+mutation: packages/dcb-runtime/src/commit/CommitWorker.ts, if (rawTag.lastSortableUniqueId !== "") { -> if (true) {
+baseline focused oracle: green, 3 tests passed
+mutant focused oracle: red, exit status 1
+restoration: source restored in finally and post-run branch remained on the accepted implementation

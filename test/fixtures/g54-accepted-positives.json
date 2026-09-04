@@ -1,18 +1,12 @@
 {
-  "schema": "sdt-g54-known-divergences/v1",
-  "classification": "known-divergence",
-  "divergences": [
+  "schema": "sdt-g54-accepted-positives/v1",
+  "classification": "accepted-positive",
+  "acceptances": [
     {
       "inputFixture": "interop_official_v1_populated.json",
       "inputKind": "v1-wire",
       "expectedV1Fixture": "interop_official_v1_populated.json",
       "manifestExpectedOutcome": "r1-byte-identical",
-      "reason": "empty-lastSortableUniqueId-assertion-not-yet-supported",
-      "runtime": {
-        "httpStatus": 400,
-        "code": "invalid_sortable_unique_id",
-        "messageIncludes": "lastSortableUniqueId"
-      },
       "resolvingUnit": "SDT-G56"
     },
     {
@@ -20,12 +14,6 @@
       "inputKind": "v1-wire",
       "expectedV1Fixture": "interop_r2_canonical_positive_v1.json",
       "manifestExpectedOutcome": "r2-byte-exact-expected-v1",
-      "reason": "empty-lastSortableUniqueId-assertion-not-yet-supported",
-      "runtime": {
-        "httpStatus": 400,
-        "code": "invalid_sortable_unique_id",
-        "messageIncludes": "lastSortableUniqueId"
-      },
       "resolvingUnit": "SDT-G56"
     },
     {
@@ -33,12 +21,6 @@
       "inputKind": "client-model",
       "expectedV1Fixture": "interop_official_v1_populated.json",
       "manifestExpectedOutcome": "r1-r2-paired-positive",
-      "reason": "empty-lastSortableUniqueId-assertion-not-yet-supported",
-      "runtime": {
-        "httpStatus": 400,
-        "code": "invalid_sortable_unique_id",
-        "messageIncludes": "lastSortableUniqueId"
-      },
       "resolvingUnit": "SDT-G56"
     },
     {
@@ -46,12 +28,6 @@
       "inputKind": "client-model",
       "expectedV1Fixture": "interop_r2_canonical_positive_v1.json",
       "manifestExpectedOutcome": "r2-byte-exact-positive",
-      "reason": "empty-lastSortableUniqueId-assertion-not-yet-supported",
-      "runtime": {
-        "httpStatus": 400,
-        "code": "invalid_sortable_unique_id",
-        "messageIncludes": "lastSortableUniqueId"
-      },
       "resolvingUnit": "SDT-G56"
     }
   ]

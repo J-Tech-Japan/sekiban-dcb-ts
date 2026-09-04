@@ -44,17 +44,52 @@ function errorText(error: unknown): string {
  * pre-G58 cursor never grants a frontier.
  */
 function settledFrontierFromCursor(cursorJson: string | null): string | null {
+  const cursor = settledCursorFromJson(cursorJson);
+  return cursor?.frontierSuid ?? null;
+}
+
+function settledCursorFromJson(cursorJson: string | null): SettledCursor | null {
   if (cursorJson === null) return null;
   try {
     const parsed: unknown = JSON.parse(cursorJson);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    const cursor = parsed as Partial<SettledCursor>;
-    return typeof cursor.frontierSuid === "string" && cursor.frontierSuid.length > 0
-      ? cursor.frontierSuid
-      : null;
+    const candidate = parsed as Record<string, unknown>;
+    if (candidate.schema !== "sdt-g58-settled-frontier/v1" || !Array.isArray(candidate.snapshots)) return null;
+    const snapshots: SourcePartitionSnapshot[] = [];
+    for (const raw of candidate.snapshots) {
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+      const snapshot = raw as Record<string, unknown>;
+      if (typeof snapshot.serviceId !== "string" || snapshot.serviceId.length === 0 ||
+        typeof snapshot.tag !== "string" || snapshot.tag.length === 0 ||
+        !Number.isSafeInteger(snapshot.upperBoundSequence) ||
+        (snapshot.upperBoundSequence as number) < 0) return null;
+      snapshots.push({
+        serviceId: snapshot.serviceId,
+        tag: snapshot.tag,
+        upperBoundSequence: snapshot.upperBoundSequence as number,
+      });
+    }
+    const frontierSuid = candidate.frontierSuid;
+    if (frontierSuid !== null && (typeof frontierSuid !== "string" || frontierSuid.length === 0)) return null;
+    return {
+      schema: "sdt-g58-settled-frontier/v1",
+      snapshots,
+      frontierSuid: frontierSuid as string | null,
+    };
   } catch {
     return null;
   }
+}
+
+function cursorIncludesObligation(
+  cursorJson: string | null,
+  serviceId: string,
+  tag: string,
+  obligationSequence: number,
+): boolean {
+  const cursor = settledCursorFromJson(cursorJson);
+  return cursor !== null && cursor.snapshots.some((snapshot) =>
+    snapshot.serviceId === serviceId && snapshot.tag === tag && obligationSequence <= snapshot.upperBoundSequence);
 }
 
 function findingIdentity(serviceId: string, tag: string, obligation: SourceObligationFact): string {
@@ -248,11 +283,20 @@ export class GlobalCompletenessReconciler {
           throw error;
         }
       }
-      // Existing partitions may advance after their high-water marks were
-      // captured; that is a later scan's range. A new, removed, or duplicate
-      // partition is different: it changes the very universe this pass says
-      // it covered, so this pass must remain UNKNOWN rather than claim FULL.
-      this.assertSnapshotUniverseUnchanged(snapshots, await this.snapshotPartitions(serviceId));
+      // The proof domain is the start-of-pass snapshot. A partition added
+      // after that snapshot is intentionally left for the next pass; it must
+      // not invalidate the proof already established for the partitions that
+      // were actually walked. A removed start partition is different because
+      // the pass can no longer be said to have covered its proof domain.
+      const endSnapshots = await this.snapshotPartitions(serviceId);
+      this.assertStartPartitionsRetained(snapshots, endSnapshots);
+      if (findings > 0) {
+        // Keep the historical G44 diagnostic for an unresolved obligation
+        // discovered while the universe was changing. It remains fail-closed
+        // and does not grant a frontier; the all-joined case above is the
+        // bounded AC2 path that may settle the start-of-pass snapshot.
+        this.assertSnapshotUniverseUnchanged(snapshots, endSnapshots);
+      }
       const cursor: SettledCursor = {
         schema: "sdt-g58-settled-frontier/v1",
         snapshots,
@@ -400,6 +444,36 @@ export class GlobalCompletenessReconciler {
   }
 
   /**
+   * The downstream view gate must consume the same proof domain that the
+   * reconciler persisted. A service-level HEALTHY bit is insufficient: a
+   * delivery from a partition added after that scan must remain blocked until
+   * a later successful cursor includes its exact local obligation sequence.
+   */
+  async coverageForObligation(
+    serviceId: string,
+    tag: string,
+    obligationSequence: number,
+    nowMs: number,
+  ): Promise<GlobalCompletenessCoverage> {
+    if (serviceId.length === 0 || tag.length === 0 ||
+      !Number.isSafeInteger(obligationSequence) || obligationSequence < 1) {
+      throw new Error("g44_coverage_obligation_invalid_identity");
+    }
+    const decision = await this.coverage(serviceId, nowMs);
+    if (decision.kind !== "SETTLED" || cursorIncludesObligation(decision.health.cursorJson, serviceId, tag, obligationSequence)) {
+      return decision;
+    }
+    return {
+      kind: "BLOCK/UNSETTLED",
+      health: decision.health,
+      frontierSuid: decision.frontierSuid,
+      reason: `obligation_not_in_settled_cursor:${tag}:${obligationSequence}`,
+      partitionTag: tag,
+      observedAt: decision.observedAt,
+    };
+  }
+
+  /**
    * DeliveryCore calls this after a detector exception and before it returns
    * without applying views. It shares the scanner's single health/finding
    * authority rather than creating a second incident workflow.
@@ -469,6 +543,16 @@ export class GlobalCompletenessReconciler {
     const startSet = new Set(start.map((entry) => `${entry.serviceId}\u0000${entry.tag}`));
     const endSet = new Set(end.map((entry) => `${entry.serviceId}\u0000${entry.tag}`));
     if (startSet.size !== endSet.size || [...startSet].some((entry) => !endSet.has(entry))) {
+      throw new Error("source_partition_set_changed_during_scan");
+    }
+  }
+
+  private assertStartPartitionsRetained(
+    start: readonly SourcePartitionSnapshot[],
+    end: readonly SourcePartitionSnapshot[],
+  ): void {
+    const endSet = new Set(end.map((entry) => `${entry.serviceId}\u0000${entry.tag}`));
+    if (start.some((entry) => !endSet.has(`${entry.serviceId}\u0000${entry.tag}`))) {
       throw new Error("source_partition_set_changed_during_scan");
     }
   }

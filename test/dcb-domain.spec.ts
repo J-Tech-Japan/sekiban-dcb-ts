@@ -431,7 +431,7 @@ describe("SDT-G28 authoring surface", () => {
     const envelope = session.seal(done());
     expect(envelope.events).toHaveLength(2);
     expect(envelope.tags.map((tag) => tag.id)).toEqual(["order:append-b", "order:append-c", "order:read-only-a"]);
-    expect(envelope.readClaims).toMatchObject([{ kind: "exists", tag: { id: "order:read-only-a" }, head: null }]);
+    expect(envelope.readClaims).toMatchObject([{ kind: "exists", tag: { id: "order:read-only-a" }, head: "" }]);
 
     const sameTag = new Session({
       now: 0,
@@ -682,10 +682,9 @@ describe("SDT-G28 authoring surface", () => {
     // G41 keeps the authored command on the real CommitWorker path while
     // proving that the command no longer resolves the retired JOURNAL saga.
     expect(paths).not.toContain("/admit");
-    // The first write has no observed tag head. G32 omits that claim instead
-    // of sending an empty-SUID reservation, so acquire is intentionally not
-    // invoked before the initial append.
-    expect(paths).not.toContain("/acquire");
+    // G56 carries the explicit empty-SUID assertion through the real acquire
+    // reservation path before the initial append.
+    expect(paths).toContain("/acquire");
     expect(paths).toContain("/allocate");
     expect(paths).toContain("/append");
   });
