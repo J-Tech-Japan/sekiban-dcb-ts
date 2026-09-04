@@ -44,17 +44,52 @@ function errorText(error: unknown): string {
  * pre-G58 cursor never grants a frontier.
  */
 function settledFrontierFromCursor(cursorJson: string | null): string | null {
+  const cursor = settledCursorFromJson(cursorJson);
+  return cursor?.frontierSuid ?? null;
+}
+
+function settledCursorFromJson(cursorJson: string | null): SettledCursor | null {
   if (cursorJson === null) return null;
   try {
     const parsed: unknown = JSON.parse(cursorJson);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    const cursor = parsed as Partial<SettledCursor>;
-    return typeof cursor.frontierSuid === "string" && cursor.frontierSuid.length > 0
-      ? cursor.frontierSuid
-      : null;
+    const candidate = parsed as Record<string, unknown>;
+    if (candidate.schema !== "sdt-g58-settled-frontier/v1" || !Array.isArray(candidate.snapshots)) return null;
+    const snapshots: SourcePartitionSnapshot[] = [];
+    for (const raw of candidate.snapshots) {
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+      const snapshot = raw as Record<string, unknown>;
+      if (typeof snapshot.serviceId !== "string" || snapshot.serviceId.length === 0 ||
+        typeof snapshot.tag !== "string" || snapshot.tag.length === 0 ||
+        !Number.isSafeInteger(snapshot.upperBoundSequence) ||
+        (snapshot.upperBoundSequence as number) < 0) return null;
+      snapshots.push({
+        serviceId: snapshot.serviceId,
+        tag: snapshot.tag,
+        upperBoundSequence: snapshot.upperBoundSequence as number,
+      });
+    }
+    const frontierSuid = candidate.frontierSuid;
+    if (frontierSuid !== null && (typeof frontierSuid !== "string" || frontierSuid.length === 0)) return null;
+    return {
+      schema: "sdt-g58-settled-frontier/v1",
+      snapshots,
+      frontierSuid: frontierSuid as string | null,
+    };
   } catch {
     return null;
   }
+}
+
+function cursorIncludesObligation(
+  cursorJson: string | null,
+  serviceId: string,
+  tag: string,
+  obligationSequence: number,
+): boolean {
+  const cursor = settledCursorFromJson(cursorJson);
+  return cursor !== null && cursor.snapshots.some((snapshot) =>
+    snapshot.serviceId === serviceId && snapshot.tag === tag && obligationSequence <= snapshot.upperBoundSequence);
 }
 
 function findingIdentity(serviceId: string, tag: string, obligation: SourceObligationFact): string {
@@ -405,6 +440,36 @@ export class GlobalCompletenessReconciler {
       reason: health.lastError ?? `scanner_${health.status.toLowerCase()}`,
       partitionTag: await this.latestFindingPartitionTag(serviceId),
       observedAt: health.updatedAt,
+    };
+  }
+
+  /**
+   * The downstream view gate must consume the same proof domain that the
+   * reconciler persisted. A service-level HEALTHY bit is insufficient: a
+   * delivery from a partition added after that scan must remain blocked until
+   * a later successful cursor includes its exact local obligation sequence.
+   */
+  async coverageForObligation(
+    serviceId: string,
+    tag: string,
+    obligationSequence: number,
+    nowMs: number,
+  ): Promise<GlobalCompletenessCoverage> {
+    if (serviceId.length === 0 || tag.length === 0 ||
+      !Number.isSafeInteger(obligationSequence) || obligationSequence < 1) {
+      throw new Error("g44_coverage_obligation_invalid_identity");
+    }
+    const decision = await this.coverage(serviceId, nowMs);
+    if (decision.kind !== "SETTLED" || cursorIncludesObligation(decision.health.cursorJson, serviceId, tag, obligationSequence)) {
+      return decision;
+    }
+    return {
+      kind: "BLOCK/UNSETTLED",
+      health: decision.health,
+      frontierSuid: decision.frontierSuid,
+      reason: `obligation_not_in_settled_cursor:${tag}:${obligationSequence}`,
+      partitionTag: tag,
+      observedAt: decision.observedAt,
     };
   }
 

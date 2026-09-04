@@ -4,8 +4,9 @@
  *
  * The pre-fix mode is run once on the preserved current-main implementation
  * and records the real reconciler's red AC1 receipt. The normal mode runs the
- * green runtime oracles and then applies two temporary production mutations:
- * restoring discard-the-whole-pass and removing the local contiguity check.
+ * green runtime oracles and then applies temporary production mutations:
+ * restoring discard-the-whole-pass, removing the local contiguity check, and
+ * omitting the downstream cursor-membership gate.
  * Each mutant must make its focused oracle red, and every source mutation is
  * restored in a finally block.
  */
@@ -18,9 +19,10 @@ const root = process.cwd();
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 const sourceFile = "packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler.ts";
 const testFile = "test/g62-global-completeness.spec.ts";
-const redReceipt = "test/fixtures/g62-ac1-red-before-green.json";
-const greenReceipt = "test/fixtures/g62-ac3-green.json";
-const mutantReceipt = "test/fixtures/g62-ac3-mutants-red.json";
+const historicalRedReceipt = "test/fixtures/g62-ac1-red-before-green.json";
+const redReceipt = "test/fixtures/g62-ac1-real-red-before-green.json";
+const greenReceipt = "test/fixtures/g62-w141-ac1-ac3-green.json";
+const mutantReceipt = "test/fixtures/g62-w141-mutants-red.json";
 
 const mutations = Object.freeze([
   {
@@ -38,6 +40,19 @@ const mutations = Object.freeze([
     to: "if (obligation.obligationSequence > snapshot.upperBoundSequence)",
     oracle: "AC3: a gap in a start-of-pass partition prevents frontier advancement",
     expectedReason: "source_page_sequence_outside_snapshot",
+  },
+  {
+    name: "omit-delivery-cursor-membership-check",
+    sourceFile: "packages/dcb-runtime/src/downstream/DownstreamAdapter.ts",
+    from: `new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverageForObligation(
+        message.serviceId,
+        message.tag,
+        message.completeness.obligationSequence,
+        arrivedAt,
+      )`,
+    to: "new GlobalCompletenessReconciler(env.D1!, env.TAG!).coverage(message.serviceId, arrivedAt)",
+    oracle: "AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it",
+    expectedReason: "obligation_not_in_settled_cursor",
   },
 ]);
 
@@ -109,8 +124,10 @@ function requireRed(result, mutation) {
 }
 
 function selfTest() {
-  const source = readFileSync(resolve(root, sourceFile), "utf8");
-  for (const mutation of mutations) mutate(source, mutation);
+  for (const mutation of mutations) {
+    const source = readFileSync(resolve(root, mutation.sourceFile), "utf8");
+    mutate(source, mutation);
+  }
   const test = readFileSync(resolve(root, testFile), "utf8");
   if (!test.includes("AC1: sustained new source-partition stream settles the start-of-pass frontier")) {
     fail("AC1 runtime oracle is missing");
@@ -118,16 +135,36 @@ function selfTest() {
   if (!test.includes("AC3: a gap in a start-of-pass partition prevents frontier advancement")) {
     fail("AC3 runtime oracle is missing");
   }
+  if (!test.includes("AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it")) {
+    fail("AC2 cursor-aware runtime oracle is missing");
+  }
   process.stdout.write(`${JSON.stringify({ selfTest: "g62-anchors-unique", mutations: mutations.map(({ name }) => name)})}\n`);
 }
 
 function preFix() {
-  const result = runVitest(mutations[0].oracle, "AC1 current-main red reproduction");
+  const path = resolve(root, sourceFile);
+  const current = readFileSync(path, "utf8");
+  const currentMain = spawnSync("git", ["show", `origin/main:${sourceFile}`], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (currentMain.status !== 0 || currentMain.stdout.length === 0) {
+    fail(`could not read exact origin/main source for AC1 red reproduction: ${currentMain.stderr}`);
+  }
+  writeFileSync(path, currentMain.stdout, "utf8");
+  let result;
+  try {
+    result = runVitest(mutations[0].oracle, "AC1 exact origin/main red reproduction");
+  } finally {
+    writeFileSync(path, current, "utf8");
+  }
   const observations = extractAc1Observations(result);
   const receipt = {
-    schema: "sdt-g62-w132-ac1-red-receipt/v1",
+    schema: "sdt-g62-w141-ac1-real-red-receipt/v1",
     status: result.status === 0 ? "unexpected-green" : "red-before-green",
     expectedFailure: result.status !== 0,
+    sourceRef: "origin/main",
+    sourceFile,
     command: result.command,
     exitCode: result.status,
     signal: result.signal,
@@ -136,8 +173,8 @@ function preFix() {
     stderr: result.stderr,
   };
   writeReceipt(redReceipt, receipt);
-  if (result.status === 0) fail("current-main AC1 reproduction was unexpectedly green; red receipt is not valid");
-  process.stdout.write(`${JSON.stringify({ result: "g62-ac1-red-before-green", receipt: redReceipt, observations })}\n`);
+  if (result.status === 0) fail("exact origin/main AC1 reproduction was unexpectedly green; red receipt is not valid");
+  process.stdout.write(`${JSON.stringify({ result: "g62-ac1-real-red-before-green", receipt: redReceipt, observations, historicalRedReceipt })}\n`);
 }
 
 function runMutation(mutation) {
@@ -170,11 +207,11 @@ function green() {
     fail(`invalid preserved red receipt ${redReceipt}`);
   }
 
-  const greenResult = runVitest("AC1: sustained new source-partition stream settles the start-of-pass frontier|AC3: a gap in a start-of-pass partition prevents frontier advancement", "G62 AC1/AC3 green oracles");
+  const greenResult = runVitest("AC1: sustained new source-partition stream settles the start-of-pass frontier|AC2: cursor-aware admission blocks a committed post-snapshot obligation until a later scan includes it|AC3: a gap in a start-of-pass partition prevents frontier advancement", "G62 AC1/AC2/AC3 green oracles");
   requirePass(greenResult);
   const rows = mutations.map(runMutation);
   writeReceipt(greenReceipt, {
-    schema: "sdt-g62-w132-ac3-green-receipt/v1",
+    schema: "sdt-g62-w141-ac1-ac3-green-receipt/v1",
     status: "green",
     command: greenResult.command,
     exitCode: greenResult.status,
@@ -184,7 +221,7 @@ function green() {
     mutantReceipts: mutantReceipt,
   });
   writeReceipt(mutantReceipt, {
-    schema: "sdt-g62-w132-mutant-receipts/v1",
+    schema: "sdt-g62-w141-mutant-receipts/v1",
     status: "all-required-mutants-red",
     rows,
   });
