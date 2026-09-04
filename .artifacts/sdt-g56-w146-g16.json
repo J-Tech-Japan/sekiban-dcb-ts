@@ -1,0 +1,1693 @@
+{
+  "probe": "SDT-G16",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "runId": "1f2e8d5a08ae417d8dddad063a653bba",
+  "roomId": "g15-room-1f2e8d5a08ae417d",
+  "reservationId": "g15-reservation-1f2e8d5a08ae417d",
+  "uiSafeWindowBoundMs": 120000,
+  "safeWindowBoundSources": {
+    "runtimeSource": "packages/dcb-runtime/src/safeWindow.ts",
+    "runtimeBoundMs": 120000,
+    "servedUiSource": "samples/meeting-room/public/ui-model.js",
+    "servedUiBoundMs": 120000,
+    "harnessBoundMs": 120000,
+    "absoluteProtocolBoundMs": 120000,
+    "deployedUiAsset": "/ui-model.js",
+    "deployedUiBoundMs": 120000
+  },
+  "harnessGraceMs": 5000,
+  "harnessGraceSemanticRole": "measurement-only; never widens UI visibility threshold",
+  "serviceIdentity": {
+    "configuredServiceId": "sekiban-dcb-meeting-room-cloudflare-only",
+    "source": "G15_EXPECTED_SERVICE_ID",
+    "clientHeaderForwarded": false
+  },
+  "visibilityOracle": {
+    "executed": true,
+    "pendingAtBoundMinusOne": "pending",
+    "timeoutAtBound": "timeout",
+    "visibleAtBoundWithEqualHead": "visible",
+    "timeoutAfterBound": "timeout",
+    "boundMs": 120000
+  },
+  "rawV1Unauthenticated": {
+    "commit": 404,
+    "tag-latest-sortable": 404,
+    "tag-state": 404,
+    "query": 404,
+    "list-query": 404
+  },
+  "commands": {
+    "create": {
+      "status": 200,
+      "requestMs": 1608.378,
+      "suid": "063924107130936000000654430944"
+    },
+    "reserve": {
+      "status": 200,
+      "requestMs": 1791.867,
+      "suid": "063924107132792000001664737064"
+    },
+    "cancel": {
+      "status": 200,
+      "requestMs": 1189.363,
+      "suid": "063924107179113000001087872127"
+    },
+    "rejected": {
+      "status": 400,
+      "kind": "invalid",
+      "code": "invalid_command_input"
+    }
+  },
+  "projection": {
+    "createVisible": true,
+    "createCommitToVisibleMs": 125.68,
+    "createObservations": [
+      {
+        "head": "063924107130936000000654430944",
+        "requestMs": 125.085,
+        "elapsedMs": 125.652,
+        "state": "visible"
+      }
+    ],
+    "reservationVisible": true,
+    "reservationCommitToVisibleMs": 158.757,
+    "cancelVisible": true,
+    "cancelCommitToVisibleMs": 192.625
+  },
+  "queryViews": {
+    "reservationList": {
+      "status": 200,
+      "reservationId": "g15-reservation-1f2e8d5a08ae417d",
+      "commitToVisibleMs": 44493.814,
+      "readHead": "063924091551674000000134649594",
+      "observations": [
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 214.976,
+          "elapsedMs": 502.652,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 214.976,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 287.134,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 309.932,
+          "elapsedMs": 1281.128,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 309.932,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 216.494,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 402.89,
+          "elapsedMs": 2337.484,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 402.89,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 401.846,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 391.251,
+          "elapsedMs": 3177.979,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 391.251,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 195.32,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 262.407,
+          "elapsedMs": 4030.52,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 262.407,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 337.794,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 268.567,
+          "elapsedMs": 4884.496,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 268.567,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 330.166,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 198.224,
+          "elapsedMs": 5690.402,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 198.224,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 356.542,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 350.828,
+          "elapsedMs": 6652.596,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 350.828,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 359.529,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 268.021,
+          "elapsedMs": 7382.697,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 268.021,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 207.603,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 265.982,
+          "elapsedMs": 8135.934,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 265.982,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 231.884,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 248.788,
+          "elapsedMs": 8970.461,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 248.788,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 335.109,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 247.538,
+          "elapsedMs": 9682.82,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 247.538,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 209.585,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 196.463,
+          "elapsedMs": 10394.155,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 196.463,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 259.646,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 208.267,
+          "elapsedMs": 11046.445,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 208.267,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 188.911,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 260.55,
+          "elapsedMs": 11728.531,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 260.55,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 168.736,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 163.325,
+          "elapsedMs": 12415.45,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 163.325,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 268.367,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 268.335,
+          "elapsedMs": 13134.232,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 268.335,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 195.207,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 265.397,
+          "elapsedMs": 13989.779,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 265.397,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 335.57,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 267.729,
+          "elapsedMs": 14704.58,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 267.729,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 191.832,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 386.836,
+          "elapsedMs": 15845.501,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 386.836,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 498.87,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 177.838,
+          "elapsedMs": 16483.183,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 177.838,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 204.621,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 246.487,
+          "elapsedMs": 17167.93,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 246.487,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 183.046,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 237.479,
+          "elapsedMs": 17849.272,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 237.479,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 190.115,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 338.195,
+          "elapsedMs": 19624.424,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 338.195,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 1182.458,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 255.148,
+          "elapsedMs": 20472.489,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 255.148,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 337.689,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 319.634,
+          "elapsedMs": 21330.613,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 319.634,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 283.273,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 180.997,
+          "elapsedMs": 22043.982,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 180.997,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 279.636,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 297.168,
+          "elapsedMs": 22903.657,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 297.168,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 306.98,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 475.828,
+          "elapsedMs": 23950.47,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 475.828,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 319.14,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 373.407,
+          "elapsedMs": 25000.112,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 373.407,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 423.443,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 418.53,
+          "elapsedMs": 26047.312,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 418.53,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 372.874,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 272.199,
+          "elapsedMs": 26778.95,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 272.199,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 203.726,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 253.98,
+          "elapsedMs": 27456.978,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 253.98,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 171.667,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 195.017,
+          "elapsedMs": 28152.98,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 195.017,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 249.812,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 264.947,
+          "elapsedMs": 28867.508,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 264.947,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 195.656,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 328.954,
+          "elapsedMs": 29720.968,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 328.954,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 269.069,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 268.337,
+          "elapsedMs": 30429.429,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 268.337,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 186.87,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 283.464,
+          "elapsedMs": 31201.973,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 283.464,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 233.647,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 358.385,
+          "elapsedMs": 32028.037,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 358.385,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 212.19,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 240.719,
+          "elapsedMs": 32726.088,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 240.719,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 202.534,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 185.447,
+          "elapsedMs": 33395.333,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 185.447,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 228.959,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 447.732,
+          "elapsedMs": 34437.676,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 447.732,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 339.317,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 505.738,
+          "elapsedMs": 35493.666,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 505.738,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 295.469,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 266.498,
+          "elapsedMs": 36197.88,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 266.498,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 187.107,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 276.561,
+          "elapsedMs": 36899.26,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 276.561,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 173.222,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 188.125,
+          "elapsedMs": 37582.422,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 188.125,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 240.438,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 271.576,
+          "elapsedMs": 38468.882,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 271.576,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 358.724,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 193.29,
+          "elapsedMs": 39154.48,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 193.29,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 239.86,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 271.847,
+          "elapsedMs": 39859.338,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 271.847,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 178.738,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 307.332,
+          "elapsedMs": 40639.681,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 307.332,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 217.587,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 226.15,
+          "elapsedMs": 41349.773,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 226.15,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 228.523,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 193.99,
+          "elapsedMs": 42026.136,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 193.99,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 228.884,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 240.274,
+          "elapsedMs": 42829.225,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 240.274,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 308.228,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 30,
+          "containsReservation": false,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 265.213,
+          "elapsedMs": 43580.733,
+          "totalCount": 30,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 30,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 265.213,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 10,
+              "totalCount": 30,
+              "readHead": "063924098593396000000557418223",
+              "requestMs": 230.808,
+              "containsReservation": false
+            }
+          ]
+        },
+        {
+          "itemCount": 20,
+          "pageItemsTotal": 32,
+          "containsReservation": true,
+          "readHead": "063924091551674000000134649594",
+          "requestMs": 279.923,
+          "elapsedMs": 44493.814,
+          "totalCount": 32,
+          "totalPages": 2,
+          "pageSize": 20,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "itemCount": 20,
+              "totalCount": 32,
+              "readHead": "063924091551674000000134649594",
+              "requestMs": 279.923,
+              "containsReservation": false
+            },
+            {
+              "pageNumber": 2,
+              "itemCount": 12,
+              "totalCount": 32,
+              "readHead": "063924107132792000001664737064",
+              "requestMs": 380.335,
+              "containsReservation": true
+            }
+          ]
+        }
+      ]
+    },
+    "roomQuery": {
+      "status": 200,
+      "requestMs": 434.292,
+      "result": {
+        "count": 5
+      }
+    }
+  },
+  "freshRunIds": true,
+  "secret": "no bearer token or credential used by app-layer E2E",
+  "recordedAt": "2026-09-04T08:26:19Z"
+}

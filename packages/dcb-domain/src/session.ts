@@ -222,11 +222,12 @@ export class Session {
     if (suppliedTag.id !== tag.id || supplied.projectorId !== projector.id) {
       throw new DomainAuthoringError("SNAPSHOT_IDENTITY_INVALID", `Snapshot identity did not match ${projector.id}/${tag.id}`);
     }
+    const suppliedHead = supplied.head ?? "";
     const existingHead = this.headByTag.get(tag.id);
-    if (existingHead !== undefined && existingHead !== supplied.head) {
-      throw new IncoherentSnapshotError(tag, existingHead, supplied.head);
+    if (existingHead !== undefined && existingHead !== suppliedHead) {
+      throw new IncoherentSnapshotError(tag, existingHead, suppliedHead);
     }
-    this.headByTag.set(tag.id, supplied.head);
+    this.headByTag.set(tag.id, suppliedHead);
     this.snapshotByCell.set(key, supplied);
     return supplied as PortableSnapshot<State>;
   }
@@ -247,7 +248,7 @@ export class Session {
       this.observe({ point: "eligible-cells", eventType: record.eventType, tags: record.tags });
     }
     this.overlayByCell.set(key, state);
-    this.rememberClaim({ kind: "state", projectorId: projector.id, tag }, snapshot.head);
+    this.rememberClaim({ kind: "state", projectorId: projector.id, tag }, snapshot.head ?? "");
     return state;
   }
 
@@ -259,8 +260,14 @@ export class Session {
     // A host-provided `exists=false` is the base snapshot result, not a veto
     // over an event already staged in this session.
     const result = (snapshotExists ?? this.snapshotByCellHasTag(tag)) || stagedExists;
-    const head = this.headByTag.get(tag.id) ?? null;
-    this.rememberClaim({ kind: "exists", tag }, head);
+    let head = this.headByTag.get(tag.id);
+    if (snapshotExists === false) {
+      // `exists=false` is an observed empty-head fact. Keep it distinct from
+      // an exists-only read that did not provide an exact head.
+      head = "";
+      this.headByTag.set(tag.id, head);
+    }
+    this.rememberClaim({ kind: "exists", tag }, head ?? null);
     return result;
   }
 

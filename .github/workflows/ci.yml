@@ -223,6 +223,14 @@ jobs:
             echo "SDT-G54 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G56 assert-empty local conformance lane
+        run: npm run test:g56
+      - name: Prove SDT-G56 forced-red CI reachability
+        run: |
+          if SDT_G56_FORCE_FAILURE=1 npm run test:g56:forced-red; then
+            echo "SDT-G56 forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - name: Run SDT-G53 scoped Durable Object identity lane
         run: npm run test:g53
       - name: Prove SDT-G53 forced-red CI reachability

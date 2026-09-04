@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 const root = process.cwd();
 const fixtures = resolve(root, "test/fixtures/g54-sekiban-interop");
 const pinsFile = "SHA256SUMS";
-const knownDivergencesFile = resolve(root, "test/fixtures/g54-known-divergences.json");
+const acceptedPositivesFile = resolve(root, "test/fixtures/g54-accepted-positives.json");
 const unexpectedAcceptanceMutant = process.argv.includes("--unexpected-acceptance-mutant");
 
 const EXPECTED_MANIFEST_OUTCOMES = new Map([
@@ -33,7 +33,7 @@ const EXPECTED_MANIFEST_OUTCOMES = new Map([
   ["interop_client_duplicate_consistency.json", "r2-duplicate-consistency-error"],
   ["interop_response_member_vocabulary.json", "response-vocabulary"],
 ]);
-const EXPECTED_DIVERGENCE_INPUTS = new Set([
+const EXPECTED_ACCEPTED_INPUTS = new Set([
   "interop_official_v1_populated.json",
   "interop_r2_canonical_positive_v1.json",
   "interop_ts_client_model.json",
@@ -123,34 +123,30 @@ function verifyManifestOutcomes(manifest) {
   return entries;
 }
 
-function knownDivergenceExpectations(manifestEntries) {
-  const document = JSON.parse(readFileSync(knownDivergencesFile, "utf8"));
-  expect(document !== null && typeof document === "object" && !Array.isArray(document), "known-divergence expectations must be an object");
-  expect(document.schema === "sdt-g54-known-divergences/v1", "known-divergence expectations schema changed");
-  expect(document.classification === "known-divergence", "known-divergence expectations classification changed");
-  expect(Array.isArray(document.divergences) && document.divergences.length === EXPECTED_DIVERGENCE_INPUTS.size, "known-divergence expectations must name exactly four fixtures");
+function acceptedPositiveExpectations(manifestEntries) {
+  const document = JSON.parse(readFileSync(acceptedPositivesFile, "utf8"));
+  expect(document !== null && typeof document === "object" && !Array.isArray(document), "accepted-positive expectations must be an object");
+  expect(document.schema === "sdt-g54-accepted-positives/v1", "accepted-positive expectations schema changed");
+  expect(document.classification === "accepted-positive", "accepted-positive expectations classification changed");
+  expect(Array.isArray(document.acceptances) && document.acceptances.length === EXPECTED_ACCEPTED_INPUTS.size, "accepted-positive expectations must name exactly four fixtures");
 
   const seen = new Set();
-  for (const entry of document.divergences) {
-    expect(entry !== null && typeof entry === "object" && !Array.isArray(entry), "known-divergence entry must be an object");
-    expect(typeof entry.inputFixture === "string" && EXPECTED_DIVERGENCE_INPUTS.has(entry.inputFixture), `unexpected known-divergence input ${entry.inputFixture}`);
-    expect(!seen.has(entry.inputFixture), `duplicate known-divergence input ${entry.inputFixture}`);
+  for (const entry of document.acceptances) {
+    expect(entry !== null && typeof entry === "object" && !Array.isArray(entry), "accepted-positive entry must be an object");
+    expect(typeof entry.inputFixture === "string" && EXPECTED_ACCEPTED_INPUTS.has(entry.inputFixture), `unexpected accepted-positive input ${entry.inputFixture}`);
+    expect(!seen.has(entry.inputFixture), `duplicate accepted-positive input ${entry.inputFixture}`);
     seen.add(entry.inputFixture);
     expect(entry.inputKind === "v1-wire" || entry.inputKind === "client-model", `${entry.inputFixture} must declare a supported input kind`);
     expect(typeof entry.expectedV1Fixture === "string" && manifestEntries.has(entry.expectedV1Fixture), `${entry.inputFixture} must name a pinned expected V1 fixture`);
     expect(typeof entry.manifestExpectedOutcome === "string", `${entry.inputFixture} is missing its manifest expectation`);
     expect(manifestEntries.get(entry.inputFixture)?.expectedOutcome === entry.manifestExpectedOutcome, `${entry.inputFixture} manifest expectation was reclassified`);
-    expect(entry.reason === "empty-lastSortableUniqueId-assertion-not-yet-supported", `${entry.inputFixture} must retain the explicit empty-head divergence reason`);
     expect(entry.resolvingUnit === "SDT-G56", `${entry.inputFixture} must name SDT-G56 as the resolving unit`);
-    expect(entry.runtime?.httpStatus === 400, `${entry.inputFixture} must expect HTTP 400`);
-    expect(entry.runtime?.code === "invalid_sortable_unique_id", `${entry.inputFixture} must expect invalid_sortable_unique_id`);
-    expect(entry.runtime?.messageIncludes === "lastSortableUniqueId", `${entry.inputFixture} must name the rejected consistency member`);
     if (entry.inputKind === "v1-wire") {
       expect(entry.inputFixture === entry.expectedV1Fixture, `${entry.inputFixture} must retain its exact V1 source bytes`);
     }
   }
-  expect(seen.size === EXPECTED_DIVERGENCE_INPUTS.size && [...EXPECTED_DIVERGENCE_INPUTS].every((file) => seen.has(file)), "known-divergence expectations omitted a required positive fixture");
-  return document.divergences;
+  expect(seen.size === EXPECTED_ACCEPTED_INPUTS.size && [...EXPECTED_ACCEPTED_INPUTS].every((file) => seen.has(file)), "accepted-positive expectations omitted a required fixture");
+  return document.acceptances;
 }
 
 class JsonScanner {
@@ -356,7 +352,7 @@ function runtimeValidate(value) {
     if (entry.lastSortableUniqueId === null || typeof entry.lastSortableUniqueId !== "string") {
       throw new InteropError("malformed_commit_envelope", "lastSortableUniqueId must be a non-null string");
     }
-    if (!/^[0-9]{30}$/.test(entry.lastSortableUniqueId)) {
+    if (entry.lastSortableUniqueId !== "" && !/^[0-9]{30}$/.test(entry.lastSortableUniqueId)) {
       throw new InteropError("invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId");
     }
     if (consistency.has(entry.tag)) throw new InteropError("validation_error", "consistency tags must be unique");
@@ -412,29 +408,33 @@ function verifyCandidatePartR1(actualWire, expectedWire, fixture) {
   return actual;
 }
 
-function expectedKnownDivergence(entry, envelope) {
+function expectedAcceptedPositive(entry, envelope) {
   try {
-    if (!unexpectedAcceptanceMutant) runtimeValidate(envelope);
+    if (unexpectedAcceptanceMutant) {
+      if (envelope.consistencyTags.some((candidate) => candidate.lastSortableUniqueId === "")) {
+        throw new InteropError("invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId");
+      }
+    }
+    runtimeValidate(envelope);
   } catch (caught) {
     if (!(caught instanceof InteropError)) {
-      throw new Error(`SDT-G54 interop runner: ${entry.inputFixture} known-divergence threw an unexpected error`);
+      throw new Error(`SDT-G54 interop runner: ${entry.inputFixture} accepted-positive threw an unexpected error`);
     }
-    expect(caught.httpStatus === entry.runtime.httpStatus, `${entry.inputFixture} expected HTTP ${entry.runtime.httpStatus}, received ${caught.httpStatus}`);
-    expect(caught.code === entry.runtime.code, `${entry.inputFixture} expected ${entry.runtime.code}, received ${caught.code}`);
-    expect(caught.message.includes(entry.runtime.messageIncludes), `${entry.inputFixture} rejection did not name ${entry.runtime.messageIncludes}`);
-    return Object.freeze({
-      fixture: entry.inputFixture,
-      expectedV1Fixture: entry.expectedV1Fixture,
-      classification: "known-divergence",
-      httpStatus: caught.httpStatus,
-      code: caught.code,
-      resolvingUnit: entry.resolvingUnit,
-    });
+    if (!unexpectedAcceptanceMutant) {
+      throw new Error(`SDT-G54 interop runner: ${entry.inputFixture} accepted-positive rejected unexpectedly: ${caught.code}`);
+    }
+    fail(`${entry.inputFixture} accepted-positive unexpectedly rejected by the empty-head omission mutant`);
   }
-  fail(`${entry.inputFixture} known-divergence unexpectedly accepted; SDT-G56 must deliberately replace this expectation`);
+  return Object.freeze({
+    fixture: entry.inputFixture,
+    expectedV1Fixture: entry.expectedV1Fixture,
+    classification: "accepted-positive",
+    httpStatus: 200,
+    resolvingUnit: entry.resolvingUnit,
+  });
 }
 
-function verifyKnownDivergences(entries) {
+function verifyAcceptedPositives(entries) {
   return entries.map((entry) => {
     const expectedWire = text(entry.expectedV1Fixture);
     const actualWire = entry.inputKind === "client-model"
@@ -442,7 +442,7 @@ function verifyKnownDivergences(entries) {
       : text(entry.inputFixture);
     expect(actualWire === expectedWire, `${entry.inputFixture} did not preserve the expected V1 bytes exactly`);
     const envelope = verifyCandidatePartR1(actualWire, expectedWire, entry.inputFixture);
-    return expectedKnownDivergence(entry, envelope);
+    return expectedAcceptedPositive(entry, envelope);
   });
 }
 
@@ -458,7 +458,7 @@ function expectedError(action, code, fixture) {
 
 function verifyOutcomes(manifest) {
   const manifestEntries = verifyManifestOutcomes(manifest);
-  const knownDivergences = verifyKnownDivergences(knownDivergenceExpectations(manifestEntries));
+  const acceptedPositives = verifyAcceptedPositives(acceptedPositiveExpectations(manifestEntries));
   // These two upstream witnesses remain frozen evidence of the former C#
   // compatibility surface. The TypeScript runtime's shared boundary is V1,
   // so the runner deliberately classifies them as typed unversioned rejects
@@ -475,17 +475,17 @@ function verifyOutcomes(manifest) {
   expectedError(() => runtimeValidate(JSON.parse(text("interop_r3_non_json_payload.json"))), "invalid_payload_json", "interop_r3_non_json_payload.json");
   expectedError(() => runtimeValidate(JSON.parse(text("interop_r3_invalid_utf8_payload.json"))), "invalid_payload_utf8", "interop_r3_invalid_utf8_payload.json");
   expectedError(() => runtimeValidate(clientToV1(text("interop_client_empty_tag.json"))), "validation_error", "interop_client_empty_tag.json");
-  expectedError(() => runtimeValidate(clientToV1(text("interop_client_duplicate_consistency.json"))), "invalid_sortable_unique_id", "interop_client_duplicate_consistency.json");
+  expectedError(() => runtimeValidate(clientToV1(text("interop_client_duplicate_consistency.json"))), "validation_error", "interop_client_duplicate_consistency.json");
 
   const vocabulary = JSON.parse(text("interop_response_member_vocabulary.json"));
   expect(typeof vocabulary.projectorVersion === "string", "response vocabulary requires string projectorVersion");
   expect(typeof vocabulary.lastSortedUniqueId === "string", "response vocabulary requires tag-state lastSortedUniqueId");
   expect(Array.isArray(vocabulary.writtenEvents) && Array.isArray(vocabulary.tagWriteResults), "response vocabulary requires commit response members");
   return Object.freeze({
-    knownDivergences,
+    acceptedPositives,
     legacy: "catalogued-as-typed-unversioned-rejects",
-    r1: "candidate-bytes-preserved-known-divergence",
-    r2: "adapter-byte-identical-known-divergence-and-losses-typed",
+    r1: "candidate-bytes-preserved-and-empty-head-accepted",
+    r2: "adapter-byte-identical-and-empty-head-accepted",
     r3: "payload-errors-typed",
     response: "projector-version-string-and-last-sorted-unique-id",
   });
@@ -494,7 +494,7 @@ function verifyOutcomes(manifest) {
 function main() {
   const manifest = verifyPins();
   const outcomes = verifyOutcomes(manifest);
-  process.stdout.write(`${JSON.stringify({ result: "g54-interop-catalogue-verified-with-known-divergences", sourceFiles: 17, manifestFixtures: manifest.fixtures.length, knownDivergenceCount: outcomes.knownDivergences.length, outcomes })}\n`);
+  process.stdout.write(`${JSON.stringify({ result: "g54-interop-catalogue-verified-with-accepted-positives", sourceFiles: 17, manifestFixtures: manifest.fixtures.length, acceptedPositiveCount: outcomes.acceptedPositives.length, outcomes })}\n`);
 }
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

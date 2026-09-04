@@ -211,9 +211,9 @@ async function tagPost(tag: string, path: string, body: unknown): Promise<Respon
 }
 
 /**
- * G32 has no wire spelling for an asserted-empty head.  Tests that exercise
- * reservation behavior therefore establish a real durable head first and
- * pass that exact 30-digit value through the observed-tag path.
+ * The legacy commit fixtures still normalize their pre-G56 empty claims when
+ * they intentionally exercise the omitted-entry path.  Dedicated G56 tests
+ * send the explicit empty sentinel through the real V1 boundary.
  */
 async function seedObservedHead(tag: string, label = tag): Promise<string> {
   const response = await tagPost(tag, "/append", {
@@ -294,8 +294,9 @@ describe("Serialized V1 commit worker", () => {
     expect(unobservedState.events.map((event) => event.eventId)).toEqual(
       written.writtenEvents.map((event) => event.id),
     );
-    // G32 omits an asserted-empty consistency entry, so both first-write
-    // tags take the unobserved path and no synthetic reservation is created.
+    // This legacy fixture normalizes asserted-empty entries away to exercise
+    // the omitted-entry path. Dedicated G56 tests cover the explicit empty
+    // assertion and prove that it creates no synthetic event.
     expect(observedState.version).toBe(unobservedState.version);
     expect(observedState.confirmations).toHaveLength(0);
     expect(unobservedState.confirmations).toHaveLength(0);
@@ -397,7 +398,7 @@ describe("Serialized V1 commit worker", () => {
     const exactHead = (await responseJson<CommitResponse>(exact)).writtenEvents[0]!.sortableUniqueIdValue;
     expect(exactHead > firstHead).toBe(true);
     expect((await write(exactTag, firstHead)).status).toBe(400);
-    await expectSection6Error(await write(exactTag, ""), 400, "invalid_sortable_unique_id");
+    await expectSection6Error(await write(exactTag, ""), 400, "consistency_conflict");
 
     const multiConflict = await commit({
       version: 1,

@@ -162,8 +162,8 @@ function v1CandidateEnvelope(envelope: CandidateEnvelope): CommitEnvelope {
   const eventTags = new Set(envelope.events.flatMap((event) => event.tags.map((tag) => tag.id)));
   const consistency = new Map<string, string>();
   for (const claim of envelope.readClaims) {
-    if (eventTags.has(claim.tag.id) && !consistency.has(claim.tag.id)) {
-      consistency.set(claim.tag.id, claim.head ?? "");
+    if (eventTags.has(claim.tag.id) && claim.head !== null && !consistency.has(claim.tag.id)) {
+      consistency.set(claim.tag.id, claim.head);
     }
   }
   return {
@@ -173,11 +173,7 @@ function v1CandidateEnvelope(envelope: CandidateEnvelope): CommitEnvelope {
       payload: assertJsonValue(event.payload),
       tags: event.tags.map((tag) => tag.id),
     })),
-    // Initial state has no SUID. It remains a local absent-head fact rather
-    // than becoming an invalid empty SUID on the serialized commit wire.
-    consistency: [...consistency]
-      .filter(([, lastSortableUniqueId]) => lastSortableUniqueId.length > 0)
-      .map(([tag, lastSortableUniqueId]) => ({ tag, lastSortableUniqueId })),
+    consistency: [...consistency].map(([tag, lastSortableUniqueId]) => ({ tag, lastSortableUniqueId })),
   };
 }
 
