@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "reset-pipeline-operational-data",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/sdt-g60-w155-wrangler.cloudflare-only.jsonc",
+    "--file",
+    ".artifacts/sdt-g60-w155-reset-operational.sql"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-04T13:55:28.720Z",
+  "finishedAt": "2026-09-04T13:55:30.802Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "├ Checking if file needs uploading\n│\n├ 🌀 Uploading ac751211-fde8-4587-9d56-1e9fd8051bc3.02d5184262e3cf9b.sql\n│ 🌀 Uploading complete.\n│\n\n{\n  \"error\": {\n    \"text\": \"To execute a transaction, please use the state.storage.transaction() or state.storage.transactionSync() APIs instead of the SQL BEGIN TRANSACTION or SAVEPOINT statements. The JavaScript API is safer because it will automatically roll back on exceptions, and because it interacts correctly with Durable Objects' automatic atomic write coalescing.\"\n  }\n}\n",
+  "stderr": ""
+}

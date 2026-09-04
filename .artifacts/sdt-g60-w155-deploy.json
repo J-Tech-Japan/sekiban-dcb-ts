@@ -1,0 +1,28 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "deploy-exact-31ca80d",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "deploy",
+    "--config",
+    ".artifacts/sdt-g60-w155-wrangler.cloudflare-only.jsonc",
+    "--message",
+    "SDT-G60 W155 exact 31ca80dbbde5b7537ebb804e62cd14c30bfe5bcf"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-04T13:51:13.086Z",
+  "finishedAt": "2026-09-04T13:51:26.395Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n───────────────────────────────────────────────\n🌀 Building list of assets...\n✨ Read 7 files from the assets directory /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/samples/meeting-room/public\n🌀 Starting asset upload...\n🌀 Found 7 new or modified static assets to upload. Proceeding with upload...\n+ /reservation-auto-refresh.d.ts\n+ /styles.css\n+ /app.js\n+ /reservation-auto-refresh.js\n+ /index.html\n+ /ui-model.d.ts\n+ /ui-model.js\nUploaded 2 of 7 assets\nUploaded 4 of 7 assets\nUploaded 7 of 7 assets\n✨ Success! Uploaded 7 files (0.92 sec)\n\nTotal Upload: 2216.52 KiB / gzip: 370.19 KiB\nWorker Startup Time: 24 ms\nYour Worker has access to the following bindings:\nBinding                                                                               Resource                  \nenv.ALLOCATOR (AllocatorDurableObject)                                                Durable Object            \nenv.JOURNAL (JournalDurableObject)                                                    Durable Object            \nenv.TAG (TagDurableObject)                                                            Durable Object            \nenv.TAG_STATE (TagStateDurableObject)                                                 Durable Object            \nenv.BOOTSTRAP (BootstrapCoordinatorDurableObject)                                     Durable Object            \nenv.DOWNSTREAM_QUEUE (sekiban-dcb-g60-w155-c-outbox)                                  Queue                     \nenv.D1 (sekiban-dcb-g60-w155-c-pipeline)                                              D1 Database               \nenv.D1_MV (sekiban-dcb-g60-w155-c-mv)                                                 D1 Database               \nenv.AUTO_DRAIN_OUTBOX (\"true\")                                                        Environment Variable      \nenv.DOMAIN_DELIVERY_CLASS (\"immediate-preferred\")                                     Environment Variable      \nenv.DIRECT_DOORBELL (\"false\")                                                         Environment Variable      \nenv.DIRECT_DOORBELL_ALLOWED_VIEWS (\"RoomProjector,ReservationProjector\")              Environment Variable      \nenv.DIRECT_DOORBELL_MAX_INVOCATIONS (\"32\")                                            Environment Variable      \nenv.DIRECT_DOORBELL_DEGRADATION (\"queued-degraded\")                                   Environment Variable      \nenv.DIRECT_DOORBELL_RECEIVER_MODE (\"separate\")                                        Environment Variable      \nenv.G26_VIEW_COUNT (\"2\")                                                              Environment Variable      \nenv.G32_COMPONENT (\"primary\")                                                         Environment Variable      \nenv.G32_CUTOVER_PHASE (\"final-g32\")                                                   Environment Variable      \nenv.G32_FREEZE_RELEASE (\"after-new-bindings\")                                         Environment Variable      \nenv.G32_CUTOVER_FENCE_FINGERPRINT (\"6e1cf1c9454d5eb7a184265b56fcd2a369cf5...\")        Environment Variable      \nenv.SDT_SERVICE_ID (\"sekiban-dcb-g60-w155-c\")                                         Environment Variable      \n\nUploaded sekiban-dcb-g60-w155-c (6.12 sec)\nDeployed sekiban-dcb-g60-w155-c triggers (5.72 sec)\n  https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev\n  schedule: * * * * *\n  Producer for sekiban-dcb-g60-w155-c-outbox\n  Consumer for sekiban-dcb-g60-w155-c-outbox\nCurrent Version ID: b00974ad-cb17-4b44-a8ca-72a273416f71\n",
+  "stderr": "\u001b[33m▲ \u001b[43;33m[\u001b[43;30mWARNING\u001b[43;33m]\u001b[0m \u001b[1mBecause 'workers_dev' is not in your Wrangler file, it will be enabled for this deployment by default.\u001b[0m\n\n  To override this setting, you can disable workers.dev by explicitly setting 'workers_dev = false' in your Wrangler file.\n\n\n\u001b[33m▲ \u001b[43;33m[\u001b[43;30mWARNING\u001b[43;33m]\u001b[0m \u001b[1mBecause your 'workers.dev' route is enabled and your 'preview_urls' setting is not in your Wrangler file, Preview URLs will be enabled for this deployment by default.\u001b[0m\n\n  To override this setting, you can disable Preview URLs by explicitly setting 'preview_urls = false' in your Wrangler file.\n\n\n"
+}

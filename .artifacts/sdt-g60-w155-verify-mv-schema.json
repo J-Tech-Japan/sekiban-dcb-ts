@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "verify-mv-schema",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1_MV",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/sdt-g60-w155-wrangler.cloudflare-only.jsonc",
+    "--command",
+    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name; SELECT id,name FROM d1_migrations ORDER BY id;"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-04T13:50:02.975Z",
+  "finishedAt": "2026-09-04T13:50:03.829Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"results\": [\n      {\n        \"name\": \"_cf_KV\"\n      },\n      {\n        \"name\": \"d1_migrations\"\n      },\n      {\n        \"name\": \"mv_active_generations\"\n      },\n      {\n        \"name\": \"mv_atomic_guards\"\n      },\n      {\n        \"name\": \"mv_checkpoint_ahead_findings\"\n      },\n      {\n        \"name\": \"mv_index_entries\"\n      },\n      {\n        \"name\": \"mv_instances\"\n      },\n      {\n        \"name\": \"mv_rows\"\n      },\n      {\n        \"name\": \"mv_unsafe_arrivals\"\n      },\n      {\n        \"name\": \"mv_unsafe_failure_findings\"\n      },\n      {\n        \"name\": \"mv_unsafe_index_entries\"\n      },\n      {\n        \"name\": \"mv_unsafe_kicks\"\n      },\n      {\n        \"name\": \"mv_unsafe_markers\"\n      },\n      {\n        \"name\": \"mv_unsafe_receipts\"\n      },\n      {\n        \"name\": \"mv_unsafe_rows\"\n      },\n      {\n        \"name\": \"mv_wait_receipts\"\n      },\n      {\n        \"name\": \"mv_wait_target_poison\"\n      },\n      {\n        \"name\": \"sqlite_sequence\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2016\n      },\n      \"duration\": 0.2016,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 60,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"id\": 1,\n        \"name\": \"0001_materialized_views.sql\"\n      },\n      {\n        \"id\": 2,\n        \"name\": \"0002_unsafe_window_materialized_views.sql\"\n      },\n      {\n        \"id\": 3,\n        \"name\": \"0003_checkpoint_ahead_hardening.sql\"\n      },\n      {\n        \"id\": 4,\n        \"name\": \"0004_unsafe_window_failure_findings.sql\"\n      },\n      {\n        \"id\": 5,\n        \"name\": \"0005_g31_wait_receipts.sql\"\n      },\n      {\n        \"id\": 6,\n        \"name\": \"0006_g31_wait_target_poison.sql\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.0875\n      },\n      \"duration\": 0.0875,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 6,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

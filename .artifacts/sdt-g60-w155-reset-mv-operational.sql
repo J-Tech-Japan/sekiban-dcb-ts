@@ -1,0 +1,13 @@
+DELETE FROM mv_checkpoint_ahead_findings;
+DELETE FROM mv_index_entries;
+DELETE FROM mv_rows;
+DELETE FROM mv_unsafe_index_entries;
+DELETE FROM mv_unsafe_rows;
+DELETE FROM mv_wait_receipts;
+DELETE FROM mv_wait_target_poison;
+DELETE FROM mv_unsafe_arrivals;
+DELETE FROM mv_unsafe_kicks;
+DELETE FROM mv_unsafe_markers;
+DELETE FROM mv_unsafe_receipts;
+DELETE FROM mv_unsafe_failure_findings;
+DELETE FROM mv_atomic_guards;

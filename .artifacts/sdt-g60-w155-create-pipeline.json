@@ -1,0 +1,28 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "create-pipeline",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "create",
+    "sekiban-dcb-g60-w155-c-pipeline",
+    "--location",
+    "wnam"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-04T13:47:50.198Z",
+  "finishedAt": "2026-09-04T13:47:51.655Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n───────────────────────────────────────────────\n✅ Successfully created DB 'sekiban-dcb-g60-w155-c-pipeline' in region WNAM\nCreated your new D1 database.\n\nTo access your new D1 Database in your Worker, add the following snippet to your configuration file:\n{\n  \"d1_databases\": [\n    {\n      \"binding\": \"sekiban_dcb_g60_w155_c_pipeline\",\n      \"database_name\": \"sekiban-dcb-g60-w155-c-pipeline\",\n      \"database_id\": \"ac751211-fde8-4587-9d56-1e9fd8051bc3\"\n    }\n  ]\n}\n? Would you like Wrangler to add it on your behalf?\n🤖 Using fallback value in non-interactive context: no\n",
+  "stderr": ""
+}
