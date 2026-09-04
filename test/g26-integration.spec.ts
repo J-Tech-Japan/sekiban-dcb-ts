@@ -216,6 +216,7 @@ async function runBoundary(boundary: Boundary, options: {
   const directResults: DeliveryCoreResult[] = [];
   const queueResults: DeliveryCoreResult[] = [];
   const queued: DownstreamOutboxMessage[] = [];
+  const lifecycle: string[] = [];
   let directEnvelopeBytes: string | undefined;
   const { storage, values } = tagStorage();
   const waits: Promise<unknown>[] = [];
@@ -232,19 +233,24 @@ async function runBoundary(boundary: Boundary, options: {
     DIRECT_DOORBELL_DEGRADATION: "queued-degraded",
     DOWNSTREAM_DOORBELL: {
       deliver: async (envelope: DownstreamOutboxMessage) => {
+        lifecycle.push("direct-start");
         directEnvelopeBytes = JSON.stringify(envelope);
-        const result = await processDeliveryCore(envelope, "fast", {}, {
-          store,
-          views: handlers,
-          afterDelivery: async () => {
-            if (boundary === "after-all-views" && !drainFaulted) {
-              drainFaulted = true;
-              throw new Error("G26 injected cancellation after all views");
-            }
-          },
-        });
-        directResults.push(result);
-        return result;
+        try {
+          const result = await processDeliveryCore(envelope, "fast", {}, {
+            store,
+            views: handlers,
+            afterDelivery: async () => {
+              if (boundary === "after-all-views" && !drainFaulted) {
+                drainFaulted = true;
+                throw new Error("G26 injected cancellation after all views");
+              }
+            },
+          });
+          directResults.push(result);
+          return result;
+        } finally {
+          lifecycle.push("direct-end");
+        }
       },
     },
     DOWNSTREAM_QUEUE: { send: async (envelope: DownstreamOutboxMessage) => { queued.push(envelope); } },
@@ -262,6 +268,8 @@ async function runBoundary(boundary: Boundary, options: {
     },
   ));
   expect(response.status).toBe(201);
+  lifecycle.push("response-returned");
+  expect(lifecycle).toEqual(["direct-start", "direct-end", "response-returned"]);
   await Promise.all(waits);
   expect(queued).toHaveLength(1);
   expect(directEnvelopeBytes).toBe(JSON.stringify(queued[0]));
@@ -297,6 +305,7 @@ async function runBoundary(boundary: Boundary, options: {
   return {
     event,
     direct: directResults[0],
+    directBeforeResponse: lifecycle.indexOf("direct-end") < lifecycle.indexOf("response-returned"),
     queue: queueResults[0],
     receiptsBeforeReplay,
     afterKCommitted,

@@ -151,9 +151,13 @@ if (preChange) {
     process.exitCode = 1;
   }
   if (green !== undefined) {
-    const omitted = source.replace("this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass);", "");
+    const firstDrainCall = source.indexOf("this.startAutoDrainBeforeResponse(");
+    const firstDrainEnd = source.indexOf(");", firstDrainCall);
+    const omitted = firstDrainCall < 0 || firstDrainEnd < 0
+      ? source
+      : `${source.slice(0, firstDrainCall)}${source.slice(firstDrainEnd + 2)}`;
     const oldWaitUntil = source.replaceAll(
-      "this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass);",
+      /this\.startAutoDrainBeforeResponse\(tag, serviceId, domainDeliveryClass(?:, directRows)?\);/g,
       "this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId, domainDeliveryClass).catch(() => undefined));",
     );
     const redMutants = {

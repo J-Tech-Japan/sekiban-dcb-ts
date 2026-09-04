@@ -2868,7 +2868,10 @@ export class TagDurableObject implements DurableObject {
           (this.env.DOWNSTREAM_QUEUE !== undefined ||
             (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
         ) {
-          this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass);
+          const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
+            ? await this.directDeliveryBeforeResponse(tag, serviceId)
+            : undefined;
+          this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
         }
         return response;
       }
@@ -2988,7 +2991,10 @@ export class TagDurableObject implements DurableObject {
         (this.env.DOWNSTREAM_QUEUE !== undefined ||
           (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
       ) {
-        this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass);
+        const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
+          ? await this.directDeliveryBeforeResponse(tag, serviceId)
+          : undefined;
+        this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
       }
       return response;
     } catch (failure) {
@@ -3004,17 +3010,111 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * The append transaction has durably committed the Tag event, outbox
-   * obligation, and receipt before this handoff is started. Start the drain
-   * before returning the 201 response so Queue submission overlaps the
-   * response clock; waitUntil retains the already-started promise without
-   * making transport backpressure a response dependency. Delivery remains
-   * outside the storage transaction and all existing retry/failure handling is
-   * preserved by autoDrainOutbox.
+   * Claim and run the opted-in direct unsafe path after the append transaction
+   * has committed, but before the 201 response is returned. The rows are
+   * handed to the Queue drain afterwards so the durable Queue remains the
+   * owner of global admission, ordering, retries, and DLQ recovery.
+   *
+   * A pending-row read can fail independently of the already committed
+   * append. In that case the caller falls back to the ordinary Queue drain;
+   * it never turns a durable acceptance into a response failure.
    */
-  private startAutoDrainBeforeResponse(tag: string, serviceId: string, domainDeliveryClass?: string): void {
-    const drain = this.autoDrainOutbox(tag, serviceId, domainDeliveryClass).catch(() => undefined);
+  private async directDeliveryBeforeResponse(
+    tag: string,
+    serviceId: string,
+  ): Promise<readonly DownstreamOutboxMessage[] | undefined> {
+    try {
+      const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
+      if (!pending.ok) throw new Error(`direct outbox pending read failed with ${pending.status}`);
+      const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+      const rows = body.rows ?? [];
+      await this.deliverDirectRows(rows);
+      return rows;
+    } catch (error) {
+      // The durable Queue is the fallback for a direct capability/read/attempt
+      // failure. The already committed event, obligation, and local receipt
+      // remain authoritative and are never rolled back here.
+      console.warn("direct_doorbell_before_response", {
+        status: "queued-degraded",
+        reason: "direct_doorbell_before_response_failed",
+        error: String(error),
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * The append transaction has durably committed the Tag event, outbox
+   * obligation, and receipt before this handoff is started. A direct delivery
+   * has already run when `preclaimedRows` is present; the retained promise
+   * then performs only the unchanged Queue submission for those same bytes.
+   * With no preclaimed rows this remains the existing waitUntil-backed drain,
+   * including its direct-before-Queue behavior for alarms and fallback paths.
+   */
+  private startAutoDrainBeforeResponse(
+    tag: string,
+    serviceId: string,
+    domainDeliveryClass?: string,
+    preclaimedRows?: readonly DownstreamOutboxMessage[],
+  ): void {
+    const drain = this.autoDrainOutbox(
+      tag,
+      serviceId,
+      domainDeliveryClass,
+      undefined,
+      preclaimedRows,
+      preclaimedRows !== undefined,
+    ).catch(() => undefined);
     this.ctx.waitUntil(drain);
+  }
+
+  private async deliverDirectRows(rows: readonly DownstreamOutboxMessage[]): Promise<void> {
+    for (const row of rows) {
+      // `row` is the object created by pendingOutbox. The bytes are captured
+      // once for correlation/equality evidence and the exact same envelope is
+      // handed to both transports; no reduced TagOutboxRow is reconstructed.
+      const envelopeBytes = downstreamEnvelopeBytes(row);
+      const correlationId = deliveryCorrelationId(row, "fast");
+      try {
+        const delivered = await this.env.DOWNSTREAM_DOORBELL!.deliver(row);
+        const resultCorrelationId =
+          typeof delivered === "object" && delivered !== null &&
+          "correlationId" in delivered &&
+          typeof (delivered as { correlationId?: unknown }).correlationId === "string"
+            ? (delivered as { correlationId: string }).correlationId
+            : correlationId;
+        if (
+          typeof delivered === "object" && delivered !== null &&
+          "fastDisposition" in delivered &&
+          (delivered as { fastDisposition?: unknown }).fastDisposition === "failed"
+        ) {
+          console.warn("direct_doorbell_status", {
+            status: "failed",
+            reason: "receiver_delivery_failed",
+            correlationId: resultCorrelationId,
+            envelopeBytes,
+          });
+          throw new Error("doorbell_receiver_delivery_failed");
+        }
+        console.log("direct_doorbell_delivery", {
+          correlationId: resultCorrelationId,
+          envelopeBytes,
+          status: "success",
+        });
+      } catch (error) {
+        // A direct failure is explicit and the durable Queue is the backstop.
+        // Replaying the same envelope is safe because the core is
+        // receipt-idempotent; this is not a silent capability downgrade.
+        console.warn("direct_doorbell_status", {
+          status: "queued-degraded",
+          reason: "direct_doorbell_delivery_failed",
+          correlationId,
+          envelopeBytes,
+          failureKind: classifyDirectDoorbellFailure(error),
+          error: String(error),
+        });
+      }
+    }
   }
 
   private async autoDrainOutbox(
@@ -3022,6 +3122,8 @@ export class TagDurableObject implements DurableObject {
     serviceId: string,
     domainDeliveryClass?: string,
     limit?: number,
+    preclaimedRows?: readonly DownstreamOutboxMessage[],
+    skipDirect = false,
   ): Promise<void> {
     const domainClass = domainDeliveryClass === undefined
       ? undefined
@@ -3031,12 +3133,14 @@ export class TagDurableObject implements DurableObject {
     if (preflight.status === "fail-fast") {
       throw new Error(`direct_doorbell_preflight_failed:${preflight.reason}`);
     }
-    const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), limit });
-    if (!pending.ok) {
-      throw new Error(`automatic outbox pending read failed with ${pending.status}`);
-    }
-    const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
-    const rows = body.rows ?? [];
+    const rows = preclaimedRows ?? await (async () => {
+      const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), limit });
+      if (!pending.ok) {
+        throw new Error(`automatic outbox pending read failed with ${pending.status}`);
+      }
+      const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+      return body.rows ?? [];
+    })();
     const directReady =
       preflight.status === "ready" &&
       config.deliveryClass === "immediate-preferred" &&
@@ -3048,49 +3152,9 @@ export class TagDurableObject implements DurableObject {
       // once for correlation/equality evidence and the exact same envelope is
       // handed to both transports; no reduced TagOutboxRow is reconstructed.
       const envelopeBytes = downstreamEnvelopeBytes(row);
-      let correlationId = deliveryCorrelationId(row, "fast");
-      if (directReady) {
-        try {
-          const delivered = await this.env.DOWNSTREAM_DOORBELL!.deliver(row);
-          if (
-            typeof delivered === "object" && delivered !== null &&
-            "correlationId" in delivered &&
-            typeof (delivered as { correlationId?: unknown }).correlationId === "string"
-          ) {
-            correlationId = (delivered as { correlationId: string }).correlationId;
-          }
-          if (
-            typeof delivered === "object" && delivered !== null &&
-            "fastDisposition" in delivered &&
-            (delivered as { fastDisposition?: unknown }).fastDisposition === "failed"
-          ) {
-            console.warn("direct_doorbell_status", {
-              status: "failed",
-              reason: "receiver_delivery_failed",
-              correlationId,
-              envelopeBytes,
-            });
-            throw new Error("doorbell_receiver_delivery_failed");
-          }
-          console.log("direct_doorbell_delivery", {
-            correlationId,
-            envelopeBytes,
-            status: "success",
-          });
-        } catch (error) {
-          // A direct failure is explicit and the durable Queue is the
-          // backstop. Replaying the same envelope is safe because the core is
-          // receipt-idempotent; this is not a silent capability downgrade.
-          console.warn("direct_doorbell_status", {
-            status: "queued-degraded",
-            reason: "direct_doorbell_delivery_failed",
-            correlationId,
-            envelopeBytes,
-            failureKind: classifyDirectDoorbellFailure(error),
-            error: String(error),
-          });
-        }
-      } else if (config.deliveryClass === "immediate-preferred" && config.enabled) {
+      const correlationId = deliveryCorrelationId(row, "fast");
+      if (directReady && !skipDirect) await this.deliverDirectRows([row]);
+      if (!directReady && config.deliveryClass === "immediate-preferred" && config.enabled) {
         console.warn("direct_doorbell_status", {
           status: "queued-degraded",
           reason: "direct_doorbell_not_ready",
