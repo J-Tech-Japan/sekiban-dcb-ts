@@ -266,6 +266,9 @@ export class Session {
       // an exists-only read that did not provide an exact head.
       head = "";
       this.headByTag.set(tag.id, head);
+    } else if (snapshotExists === true && this.snapshots?.head !== undefined) {
+      head = await this.snapshots.head(tag);
+      this.headByTag.set(tag.id, head);
     }
     this.rememberClaim({ kind: "exists", tag }, head ?? null);
     return result;

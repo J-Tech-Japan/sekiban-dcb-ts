@@ -81,9 +81,15 @@ export function createV1Transport(fetcher: InternalRuntimeFetcher, serviceId?: s
     return { status: response.status, body: await readBody(response) };
   };
   return {
+    serviceId,
     async readTagState(request, signal) {
       const result = await call("/api/sekiban/serialized/tag-state", request, signal);
       if (result.status >= 200 && result.status < 300) return result.body as ReadonlyTagStateResponse;
+      return result;
+    },
+    async readTagLatestSortable(request, signal) {
+      const result = await call("/api/sekiban/serialized/tag-latest-sortable", request, signal);
+      if (result.status >= 200 && result.status < 300) return result.body as { readonly exists: boolean; readonly lastSortableUniqueId: string };
       return result;
     },
     async commit(request: CommitEnvelope, signal) {
@@ -100,6 +106,22 @@ export function createV1Transport(fetcher: InternalRuntimeFetcher, serviceId?: s
         })),
       };
       return call("/api/sekiban/serialized/commit", wire, signal);
+    },
+    async query(request, signal) {
+      const result = await call("/api/sekiban/serialized/query", request, signal);
+      if (result.status >= 200 && result.status < 300) return result.body as { readonly resultJson: string };
+      return result;
+    },
+    async listQuery(request, signal) {
+      const result = await call("/api/sekiban/serialized/list-query", request, signal);
+      if (result.status >= 200 && result.status < 300) return result.body as {
+        readonly itemsJson: string;
+        readonly totalCount: number;
+        readonly totalPages: number;
+        readonly currentPage: number;
+        readonly pageSize: number;
+      };
+      return result;
     },
   };
 }

@@ -14,7 +14,8 @@
   "types": "./dist/index.d.ts",
   "files": ["dist"],
   "dependencies": {
-    "@sekiban/dcb-core": "file:../dcb-core"
+    "@sekiban/dcb-core": "file:../dcb-core",
+    "@sekiban/dcb-domain": "file:../dcb-domain"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",

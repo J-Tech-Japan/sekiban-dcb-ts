@@ -222,6 +222,8 @@ export interface CandidateEnvelope {
 export interface SnapshotReader {
   readonly read: (projector: ProjectorLike, tag: Tag) => Promise<PortableSnapshot> | PortableSnapshot;
   readonly exists?: (tag: Tag) => Promise<boolean> | boolean;
+  /** Optional exact head for exists-only reads; null is the assert-empty head. */
+  readonly head?: (tag: Tag) => Promise<string | null> | string | null;
 }
 
 export interface ProjectorLike {

@@ -83,7 +83,16 @@ export interface SerializedDcbTransport {
     request: { readonly tagStateId: string },
     signal?: AbortSignal,
   ) => Promise<ReadonlyTagStateResponse | CommitHttpResult>;
+  readonly readTagLatestSortable?: (
+    request: { readonly tag: string },
+    signal?: AbortSignal,
+  ) => Promise<TagLatestSortableResponse | CommitHttpResult>;
   readonly commit: (request: CommitEnvelope, signal?: AbortSignal) => Promise<unknown | CommitHttpResult>;
+  /** G57 makes the two read-only query endpoints part of every transport. */
+  readonly query: (request: QueryRequest, signal?: AbortSignal) => Promise<QueryResponse | CommitHttpResult>;
+  readonly listQuery: (request: ListQueryRequest, signal?: AbortSignal) => Promise<ListQueryResponse | CommitHttpResult>;
+  /** Optional identity supplied by a transport that is already scoped. */
+  readonly serviceId?: string;
 }
 
 export class ClientError extends Error {
@@ -558,3 +567,5 @@ export const createSerializedDcbClient = (baseUrl: string, fetchImpl?: typeof fe
   new SerializedDcbClient(baseUrl, fetchImpl);
 
 export type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput };
+
+export * from "./executor";

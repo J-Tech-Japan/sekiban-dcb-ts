@@ -128,6 +128,8 @@ function transport(capture: { value?: CommitEnvelope }): SerializedDcbTransport 
       capture.value = envelope;
       return { status: 200, body: { writtenEvents: [], tagWriteResults: [] } };
     },
+    query: async () => ({ status: 200, body: { resultJson: "{}" } }),
+    listQuery: async () => ({ status: 200, body: { itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 } }),
   };
 }
 
