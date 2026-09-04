@@ -9,6 +9,9 @@ Branch: `claude/sdt-g60-clean-preg53-ab-w124`
 Verified source/report head: `ae81feeae0452780f7a815e7d02fe7fba9054739`
 
 Product repair carried by that head: `84892e5bd5233de9c12f07dffb12b28e08bee00e`
+
+Pushed W158 evidence checkpoint: `a9292c2` (`docs(g60): record W158 fresh
+resource auth block`)
 Status: **blocked before fresh-arm provisioning**
 
 ## Bounded result
