@@ -1,10 +1,10 @@
 # SDT-G60 unsafe-writer diagnosis — W153
 
-Task: `SDT-G60-UNSAFE-WRITER-DIAGNOSIS-W153`  
-Issue: SDT-G60 / #113  
-Branch: `claude/sdt-g60-clean-preg53-ab-w124`  
-Starting W152 head: `48296e900d5ee2563e109f1f4805034150d3c0f5`  
-Code/evidence checkpoint: `31ca80dbbde5b7537ebb804e62cd14c30bfe5bcf`  
+Task: `SDT-G60-UNSAFE-WRITER-DIAGNOSIS-W153`
+Issue: SDT-G60 / #113
+Branch: `claude/sdt-g60-clean-preg53-ab-w124`
+Starting W152 head: `48296e900d5ee2563e109f1f4805034150d3c0f5`
+Code/evidence checkpoint: `31ca80dbbde5b7537ebb804e62cd14c30bfe5bcf`
 Status: **local diagnosis and bounded repair complete; deployed measurement still required**
 
 This continuation used no Wrangler, Cloudflare read/write, deployment, cohort,
