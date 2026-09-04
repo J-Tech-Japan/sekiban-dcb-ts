@@ -1,6 +1,7 @@
 import type { ExecuteResult } from "@sekiban/dcb-client";
 import {
   createCloudflareOnlyRuntimeWorker,
+  createG60DurableHopObserver,
   AllocatorDurableObject,
   BootstrapCoordinatorDurableObject,
   cleanupG42JournalProbeTrial,
@@ -48,7 +49,10 @@ const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
   config: meetingRoomRuntimeConfig,
   afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
-  deliveryViews: ({ env }) => meetingRoomDeliveryViews(env),
+  deliveryViews: ({ env, ctx }) => meetingRoomDeliveryViews(
+    env,
+    env.TAG === undefined ? undefined : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise)),
+  ),
   beforeLiveProjectionPoll: async ({ env, serviceId }) => {
     // Unit-only D1 fixtures intentionally omit the Tag authority. Preserve
     // their original unrestricted local catch-up seam; deployed primaries

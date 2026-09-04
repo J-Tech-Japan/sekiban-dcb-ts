@@ -1,0 +1,32 @@
+{
+  "schema": "sdt-g60-w159-command-receipt/v1",
+  "label": "runtime-schema-0008",
+  "program": "node",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "command": [
+    "scripts/deploy/g37-d1-migrations.mjs",
+    "--wrangler",
+    "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+    "--config",
+    "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/.artifacts/sdt-g60-w159-wrangler.cloudflare-only.jsonc",
+    "--database",
+    "D1",
+    "--migration",
+    "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/migrations/d1/g32/0008_g60_unsafe_writer_boundaries.sql",
+    "--output",
+    "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/.artifacts/sdt-g60-w159-runtime-schema-0008.json"
+  ],
+  "startedAt": "2026-09-04T20:03:48.288Z",
+  "finishedAt": "2026-09-04T20:03:52.944Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "{\"schema\":\"sdt-g37-d1-migrations/v1\",\"database\":\"D1\",\"remote\":true,\"dryRun\":false,\"executed\":true,\"migrations\":[{\"path\":\"/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/migrations/d1/g32/0008_g60_unsafe_writer_boundaries.sql\",\"statementCount\":3,\"pendingStatements\":3,\"skippedStatements\":0,\"pending\":[\"table serialized_dcb_unsafe_writer_boundaries\",\"index serialized_dcb_unsafe_writer_boundaries_service_event_idx\",\"index serialized_dcb_unsafe_writer_boundaries_service_time_idx\"],\"skipped\":[]}],\"verification\":{\"requiredObjectCount\":65,\"requiredColumnCount\":11,\"pendingVerified\":true,\"pendingMissing\":[],\"relevantObjects\":[\"index:IX_dcb_events_EventType\",\"index:IX_dcb_events_Timestamp\",\"index:serialized_dcb_completeness_findings_open_idx\",\"index:serialized_dcb_event_arrivals_service_idx\",\"index:serialized_dcb_global_memberships_lookup_idx\",\"index:serialized_dcb_global_receipts_event_idx\",\"index:serialized_dcb_hop_measurements_service_event_idx\",\"index:serialized_dcb_hop_measurements_service_time_idx\",\"index:serialized_dcb_hop_submeasurements_service_event_idx\",\"index:serialized_dcb_hop_submeasurements_service_time_idx\",\"index:serialized_dcb_pending_service_idx\",\"index:serialized_dcb_safe_lane_history_service_observed\",\"index:serialized_dcb_source_partitions_service_idx\",\"index:serialized_dcb_unsafe_writer_boundaries_service_event_idx\",\"index:serialized_dcb_unsafe_writer_boundaries_service_time_idx\",\"index:serialized_dcb_wait_target_incidents_lookup_idx\",\"index:sqlite_autoindex_dcb_events_1\",\"index:sqlite_autoindex_serialized_dcb_allocator_bindings_1\",\"index:sqlite_autoindex_serialized_dcb_completeness_findings_1\",\"index:sqlite_autoindex_serialized_dcb_completeness_scanner_health_1\",\"index:sqlite_autoindex_serialized_dcb_delivery_incidents_1\",\"index:sqlite_autoindex_serialized_dcb_event_arrivals_1\",\"index:sqlite_autoindex_serialized_dcb_global_memberships_1\",\"index:sqlite_autoindex_serialized_dcb_global_receipts_1\",\"index:sqlite_autoindex_serialized_dcb_global_receipts_2\",\"index:sqlite_autoindex_serialized_dcb_hop_measurements_1\",\"index:sqlite_autoindex_serialized_dcb_hop_submeasurements_1\",\"index:sqlite_autoindex_serialized_dcb_inconsistency_findings_1\",\"index:sqlite_autoindex_serialized_dcb_lag_estimates_1\",\"index:sqlite_autoindex_serialized_dcb_live_poll_health_1\",\"index:sqlite_autoindex_serialized_dcb_pending_arrivals_1\",\"index:sqlite_autoindex_serialized_dcb_projection_checkpoints_1\",\"index:sqlite_autoindex_serialized_dcb_safe_lane_health_1\",\"index:sqlite_autoindex_serialized_dcb_safe_lane_history_1\",\"index:sqlite_autoindex_serialized_dcb_safe_lane_history_2\",\"index:sqlite_autoindex_serialized_dcb_source_partitions_1\",\"index:sqlite_autoindex_serialized_dcb_wait_target_incidents_1\",\"table:d1_migrations\",\"table:dcb_events\",\"table:serialized_dcb_allocator_bindings\",\"table:serialized_dcb_completeness_findings\",\"table:serialized_dcb_completeness_scanner_health\",\"table:serialized_dcb_delivery_incidents\",\"table:serialized_dcb_event_arrivals\",\"table:serialized_dcb_global_memberships\",\"table:serialized_dcb_global_receipts\",\"table:serialized_dcb_hop_measurements\",\"table:serialized_dcb_hop_submeasurements\",\"table:serialized_dcb_inconsistency_findings\",\"table:serialized_dcb_lag_estimates\",\"table:serialized_dcb_live_poll_health\",\"table:serialized_dcb_pending_arrivals\",\"table:serialized_dcb_projection_checkpoints\",\"table:serialized_dcb_safe_lane_health\",\"table:serialized_dcb_safe_lane_history\",\"table:serialized_dcb_source_partitions\",\"table:serialized_dcb_unsafe_writer_boundaries\",\"table:serialized_dcb_wait_target_incidents\"],\"dcbEventsColumns\":[\"CausationId\",\"CorrelationId\",\"EventDigest\",\"EventType\",\"ExecutedUser\",\"Id\",\"Payload\",\"ServiceId\",\"SortableUniqueId\",\"Tags\",\"Timestamp\"]}}\n",
+  "stderr": ""
+}

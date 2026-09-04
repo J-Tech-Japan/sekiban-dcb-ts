@@ -1,0 +1,861 @@
+{
+  "schema": "sdt-g60-w159-mv/v1",
+  "task": "SDT-G60-REUSED-ARM-DEPLOYED-W159",
+  "serviceId": "sekiban-dcb-g60-w131-c",
+  "sourceCommit": "6481ddf4285b5bd71b576aee4a02e0605fb102b1",
+  "config": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/.artifacts/sdt-g60-w159-wrangler.cloudflare-only.jsonc",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "cohortEvents": [
+    {
+      "ordinal": 1,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-1",
+      "eventId": "01a06e0d-69fa-7715-ad1f-eaf6991bdaee",
+      "suid": "063924149568195000001705026963"
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-2",
+      "eventId": "01a06e0d-9bbe-7105-aa78-5d5021e57b05",
+      "suid": "063924149580934000000406340974"
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-3",
+      "eventId": "01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb",
+      "suid": "063924149593889000000968970887"
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-4",
+      "eventId": "01a06e0e-020e-7907-bacf-23b27d69f537",
+      "suid": "063924149607182000001635336287"
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-5",
+      "eventId": "01a06e0e-367b-74ae-ab41-2fb4fcc905b6",
+      "suid": "063924149620624000001233170953"
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-6",
+      "eventId": "01a06e0e-6be4-7e3a-94f3-759c601982d3",
+      "suid": "063924149634239000001916402820"
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-7",
+      "eventId": "01a06e0e-a049-763e-944b-46c97caf7d47",
+      "suid": "063924149647696000000495280147"
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-8",
+      "eventId": "01a06e0e-d598-7edf-b26f-bffedfe6b69f",
+      "suid": "063924149661470000000226411998"
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-9",
+      "eventId": "01a06e0f-0aa3-76d7-9b37-dd382e457a92",
+      "suid": "063924149675073000002009964515"
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-10",
+      "eventId": "01a06e0f-403c-7019-b705-abc644aaed08",
+      "suid": "063924149689043000002023902206"
+    }
+  ],
+  "sql": "SELECT 'unsafe-receipt' AS record_kind, service_id, view_id, event_id, suid, outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, 0 AS generation, '' AS last_suid, '' AS tombstone FROM mv_unsafe_receipts WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'mv-row' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, 0 AS observed_at, row_key, source_suid, value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924149568195000001705026963', '063924149580934000000406340974', '063924149593889000000968970887', '063924149607182000001635336287', '063924149620624000001233170953', '063924149634239000001916402820', '063924149647696000000495280147', '063924149661470000000226411998', '063924149675073000002009964515', '063924149689043000002023902206') ORDER BY source_suid COLLATE BINARY, view_id COLLATE BINARY; SELECT 'unsafe-row' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, 0 AS observed_at, row_key, source_suid, value_json, generation, '' AS last_suid, tombstone FROM mv_unsafe_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924149568195000001705026963', '063924149580934000000406340974', '063924149593889000000968970887', '063924149607182000001635336287', '063924149620624000001233170953', '063924149634239000001916402820', '063924149647696000000495280147', '063924149661470000000226411998', '063924149675073000002009964515', '063924149689043000002023902206') ORDER BY source_suid COLLATE BINARY, view_id COLLATE BINARY; SELECT 'unsafe-marker' AS record_kind, service_id, view_id, event_id, suid, reason AS outcome, 0 AS observed_at, row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_unsafe_markers WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'unsafe-arrival' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, CAST(rebuild_required AS TEXT) AS outcome, 0 AS observed_at, '' AS row_key, arrival_watermark AS source_suid, '' AS value_json, generation, safe_head AS last_suid, 0 AS tombstone FROM mv_unsafe_arrivals WHERE service_id = 'sekiban-dcb-g60-w131-c' ORDER BY view_id COLLATE BINARY, generation; SELECT 'unsafe-failure' AS record_kind, service_id, view_id, event_id, suid, classification AS outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, 0 AS generation, '' AS last_suid, 0 AS tombstone FROM mv_unsafe_failure_findings WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'wait-receipt' AS record_kind, service_id, view_id, event_id, suid, '' AS outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_wait_receipts WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'wait-poison' AS record_kind, service_id, view_id, event_id, suid, classification AS outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_wait_target_poison WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'mv-instance' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, status AS outcome, updated_at AS observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, last_suid, 0 AS tombstone FROM mv_instances WHERE service_id = 'sekiban-dcb-g60-w131-c' ORDER BY view_id COLLATE BINARY, generation; SELECT 'mv-active-generation' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, updated_at AS observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_active_generations WHERE service_id = 'sekiban-dcb-g60-w131-c' ORDER BY view_id COLLATE BINARY;",
+  "attempts": [
+    {
+      "args": [
+        "d1",
+        "execute",
+        "D1_MV",
+        "--remote",
+        "--json",
+        "--yes",
+        "--config",
+        "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/.artifacts/sdt-g60-w159-wrangler.cloudflare-only.jsonc",
+        "--command",
+        "SELECT 'unsafe-receipt' AS record_kind, service_id, view_id, event_id, suid, outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, 0 AS generation, '' AS last_suid, '' AS tombstone FROM mv_unsafe_receipts WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'mv-row' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, 0 AS observed_at, row_key, source_suid, value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924149568195000001705026963', '063924149580934000000406340974', '063924149593889000000968970887', '063924149607182000001635336287', '063924149620624000001233170953', '063924149634239000001916402820', '063924149647696000000495280147', '063924149661470000000226411998', '063924149675073000002009964515', '063924149689043000002023902206') ORDER BY source_suid COLLATE BINARY, view_id COLLATE BINARY; SELECT 'unsafe-row' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, 0 AS observed_at, row_key, source_suid, value_json, generation, '' AS last_suid, tombstone FROM mv_unsafe_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924149568195000001705026963', '063924149580934000000406340974', '063924149593889000000968970887', '063924149607182000001635336287', '063924149620624000001233170953', '063924149634239000001916402820', '063924149647696000000495280147', '063924149661470000000226411998', '063924149675073000002009964515', '063924149689043000002023902206') ORDER BY source_suid COLLATE BINARY, view_id COLLATE BINARY; SELECT 'unsafe-marker' AS record_kind, service_id, view_id, event_id, suid, reason AS outcome, 0 AS observed_at, row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_unsafe_markers WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'unsafe-arrival' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, CAST(rebuild_required AS TEXT) AS outcome, 0 AS observed_at, '' AS row_key, arrival_watermark AS source_suid, '' AS value_json, generation, safe_head AS last_suid, 0 AS tombstone FROM mv_unsafe_arrivals WHERE service_id = 'sekiban-dcb-g60-w131-c' ORDER BY view_id COLLATE BINARY, generation; SELECT 'unsafe-failure' AS record_kind, service_id, view_id, event_id, suid, classification AS outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, 0 AS generation, '' AS last_suid, 0 AS tombstone FROM mv_unsafe_failure_findings WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'wait-receipt' AS record_kind, service_id, view_id, event_id, suid, '' AS outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_wait_receipts WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'wait-poison' AS record_kind, service_id, view_id, event_id, suid, classification AS outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_wait_target_poison WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06e0d-69fa-7715-ad1f-eaf6991bdaee', '01a06e0d-9bbe-7105-aa78-5d5021e57b05', '01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb', '01a06e0e-020e-7907-bacf-23b27d69f537', '01a06e0e-367b-74ae-ab41-2fb4fcc905b6', '01a06e0e-6be4-7e3a-94f3-759c601982d3', '01a06e0e-a049-763e-944b-46c97caf7d47', '01a06e0e-d598-7edf-b26f-bffedfe6b69f', '01a06e0f-0aa3-76d7-9b37-dd382e457a92', '01a06e0f-403c-7019-b705-abc644aaed08') ORDER BY event_id COLLATE BINARY, view_id COLLATE BINARY; SELECT 'mv-instance' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, status AS outcome, updated_at AS observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, last_suid, 0 AS tombstone FROM mv_instances WHERE service_id = 'sekiban-dcb-g60-w131-c' ORDER BY view_id COLLATE BINARY, generation; SELECT 'mv-active-generation' AS record_kind, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, updated_at AS observed_at, '' AS row_key, '' AS source_suid, '' AS value_json, generation, '' AS last_suid, 0 AS tombstone FROM mv_active_generations WHERE service_id = 'sekiban-dcb-g60-w131-c' ORDER BY view_id COLLATE BINARY;"
+      ],
+      "startedAt": "2026-09-04T20:18:29.055Z",
+      "finishedAt": "2026-09-04T20:18:30.216Z",
+      "exitCode": 0,
+      "signal": null,
+      "spawnError": null,
+      "stdout": "[\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0d-69fa-7715-ad1f-eaf6991bdaee\",\n        \"suid\": \"063924149568195000001705026963\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552768313,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0d-9bbe-7105-aa78-5d5021e57b05\",\n        \"suid\": \"063924149580934000000406340974\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552781214,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb\",\n        \"suid\": \"063924149593889000000968970887\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552794065,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-020e-7907-bacf-23b27d69f537\",\n        \"suid\": \"063924149607182000001635336287\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552807396,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-367b-74ae-ab41-2fb4fcc905b6\",\n        \"suid\": \"063924149620624000001233170953\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552820818,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-6be4-7e3a-94f3-759c601982d3\",\n        \"suid\": \"063924149634239000001916402820\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552834426,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-a049-763e-944b-46c97caf7d47\",\n        \"suid\": \"063924149647696000000495280147\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552847937,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-d598-7edf-b26f-bffedfe6b69f\",\n        \"suid\": \"063924149661470000000226411998\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552861696,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0f-0aa3-76d7-9b37-dd382e457a92\",\n        \"suid\": \"063924149675073000002009964515\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552875269,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      },\n      {\n        \"record_kind\": \"unsafe-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0f-403c-7019-b705-abc644aaed08\",\n        \"suid\": \"063924149689043000002023902206\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788552889254,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": \"\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.593\n      },\n      \"duration\": 0.593,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 21,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-1\",\n        \"source_suid\": \"063924149568195000001705026963\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-2\",\n        \"source_suid\": \"063924149580934000000406340974\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-3\",\n        \"source_suid\": \"063924149593889000000968970887\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-4\",\n        \"source_suid\": \"063924149607182000001635336287\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-5\",\n        \"source_suid\": \"063924149620624000001233170953\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-6\",\n        \"source_suid\": \"063924149634239000001916402820\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-7\",\n        \"source_suid\": \"063924149647696000000495280147\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-8\",\n        \"source_suid\": \"063924149661470000000226411998\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-9\",\n        \"source_suid\": \"063924149675073000002009964515\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-9\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-row\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-1a60e4cdd5734c22-10\",\n        \"source_suid\": \"063924149689043000002023902206\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-10\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.317\n      },\n      \"duration\": 0.317,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 21,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.0985\n      },\n      \"duration\": 0.0985,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 1,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.3168\n      },\n      \"duration\": 0.3168,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 1,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"unsafe-arrival\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"0\",\n        \"observed_at\": 0,\n        \"row_key\": \"\",\n        \"source_suid\": \"063924149689043000002023902206\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"063924149689043000002023902206\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"unsafe-arrival\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"0\",\n        \"observed_at\": 0,\n        \"row_key\": \"\",\n        \"source_suid\": \"063924149689043000002023902206\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"063924149689043000002023902206\",\n        \"tombstone\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1371\n      },\n      \"duration\": 0.1371,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1122\n      },\n      \"duration\": 0.1122,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0d-69fa-7715-ad1f-eaf6991bdaee\",\n        \"suid\": \"063924149568195000001705026963\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552768313,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0d-9bbe-7105-aa78-5d5021e57b05\",\n        \"suid\": \"063924149580934000000406340974\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552781214,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb\",\n        \"suid\": \"063924149593889000000968970887\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552794065,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-020e-7907-bacf-23b27d69f537\",\n        \"suid\": \"063924149607182000001635336287\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552807396,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-367b-74ae-ab41-2fb4fcc905b6\",\n        \"suid\": \"063924149620624000001233170953\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552820818,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-6be4-7e3a-94f3-759c601982d3\",\n        \"suid\": \"063924149634239000001916402820\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552834426,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-a049-763e-944b-46c97caf7d47\",\n        \"suid\": \"063924149647696000000495280147\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552847937,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0e-d598-7edf-b26f-bffedfe6b69f\",\n        \"suid\": \"063924149661470000000226411998\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552861696,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0f-0aa3-76d7-9b37-dd382e457a92\",\n        \"suid\": \"063924149675073000002009964515\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552875269,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"wait-receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06e0f-403c-7019-b705-abc644aaed08\",\n        \"suid\": \"063924149689043000002023902206\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788552889254,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1857\n      },\n      \"duration\": 0.1857,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 21,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.101\n      },\n      \"duration\": 0.101,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"mv-instance\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"active\",\n        \"observed_at\": 1788552978610,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"063924149689043000002023902206\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-instance\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"active\",\n        \"observed_at\": 1788552975438,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"063924149689043000002023902206\",\n        \"tombstone\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1629\n      },\n      \"duration\": 0.1629,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"mv-active-generation\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788506985069,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      },\n      {\n        \"record_kind\": \"mv-active-generation\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 1788506984706,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\",\n        \"generation\": 0,\n        \"last_suid\": \"\",\n        \"tombstone\": 0\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.9389\n      },\n      \"duration\": 0.9389,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 2,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+      "stderr": ""
+    }
+  ],
+  "parsed": [
+    {
+      "results": [
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0d-69fa-7715-ad1f-eaf6991bdaee",
+          "suid": "063924149568195000001705026963",
+          "outcome": "no-change",
+          "observed_at": 1788552768313,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0d-9bbe-7105-aa78-5d5021e57b05",
+          "suid": "063924149580934000000406340974",
+          "outcome": "no-change",
+          "observed_at": 1788552781214,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb",
+          "suid": "063924149593889000000968970887",
+          "outcome": "no-change",
+          "observed_at": 1788552794065,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-020e-7907-bacf-23b27d69f537",
+          "suid": "063924149607182000001635336287",
+          "outcome": "no-change",
+          "observed_at": 1788552807396,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-367b-74ae-ab41-2fb4fcc905b6",
+          "suid": "063924149620624000001233170953",
+          "outcome": "no-change",
+          "observed_at": 1788552820818,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-6be4-7e3a-94f3-759c601982d3",
+          "suid": "063924149634239000001916402820",
+          "outcome": "no-change",
+          "observed_at": 1788552834426,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-a049-763e-944b-46c97caf7d47",
+          "suid": "063924149647696000000495280147",
+          "outcome": "no-change",
+          "observed_at": 1788552847937,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-d598-7edf-b26f-bffedfe6b69f",
+          "suid": "063924149661470000000226411998",
+          "outcome": "no-change",
+          "observed_at": 1788552861696,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0f-0aa3-76d7-9b37-dd382e457a92",
+          "suid": "063924149675073000002009964515",
+          "outcome": "no-change",
+          "observed_at": 1788552875269,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        },
+        {
+          "record_kind": "unsafe-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0f-403c-7019-b705-abc644aaed08",
+          "suid": "063924149689043000002023902206",
+          "outcome": "no-change",
+          "observed_at": 1788552889254,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": ""
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.593
+        },
+        "duration": 0.593,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 21,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-1",
+          "source_suid": "063924149568195000001705026963",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-1\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-2",
+          "source_suid": "063924149580934000000406340974",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-2\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-3",
+          "source_suid": "063924149593889000000968970887",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-3\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-4",
+          "source_suid": "063924149607182000001635336287",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-4\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-5",
+          "source_suid": "063924149620624000001233170953",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-5\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-6",
+          "source_suid": "063924149634239000001916402820",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-6\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-7",
+          "source_suid": "063924149647696000000495280147",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-7\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-8",
+          "source_suid": "063924149661470000000226411998",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-8\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-9",
+          "source_suid": "063924149675073000002009964515",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-9\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-row",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-1a60e4cdd5734c22-10",
+          "source_suid": "063924149689043000002023902206",
+          "value_json": "{\"reservationId\":\"g15-reservation-1a60e4cdd5734c22-10\",\"roomId\":\"g15-room-1a60e4cdd5734c22\",\"status\":\"reserved\",\"version\":1}",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.317
+        },
+        "duration": 0.317,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 21,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.0985
+        },
+        "duration": 0.0985,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 1,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.3168
+        },
+        "duration": 0.3168,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 1,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [
+        {
+          "record_kind": "unsafe-arrival",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "0",
+          "observed_at": 0,
+          "row_key": "",
+          "source_suid": "063924149689043000002023902206",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "063924149689043000002023902206",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "unsafe-arrival",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "0",
+          "observed_at": 0,
+          "row_key": "",
+          "source_suid": "063924149689043000002023902206",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "063924149689043000002023902206",
+          "tombstone": 0
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.1371
+        },
+        "duration": 0.1371,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 2,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.1122
+        },
+        "duration": 0.1122,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 2,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0d-69fa-7715-ad1f-eaf6991bdaee",
+          "suid": "063924149568195000001705026963",
+          "outcome": "",
+          "observed_at": 1788552768313,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0d-9bbe-7105-aa78-5d5021e57b05",
+          "suid": "063924149580934000000406340974",
+          "outcome": "",
+          "observed_at": 1788552781214,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb",
+          "suid": "063924149593889000000968970887",
+          "outcome": "",
+          "observed_at": 1788552794065,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-020e-7907-bacf-23b27d69f537",
+          "suid": "063924149607182000001635336287",
+          "outcome": "",
+          "observed_at": 1788552807396,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-367b-74ae-ab41-2fb4fcc905b6",
+          "suid": "063924149620624000001233170953",
+          "outcome": "",
+          "observed_at": 1788552820818,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-6be4-7e3a-94f3-759c601982d3",
+          "suid": "063924149634239000001916402820",
+          "outcome": "",
+          "observed_at": 1788552834426,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-a049-763e-944b-46c97caf7d47",
+          "suid": "063924149647696000000495280147",
+          "outcome": "",
+          "observed_at": 1788552847937,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0e-d598-7edf-b26f-bffedfe6b69f",
+          "suid": "063924149661470000000226411998",
+          "outcome": "",
+          "observed_at": 1788552861696,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0f-0aa3-76d7-9b37-dd382e457a92",
+          "suid": "063924149675073000002009964515",
+          "outcome": "",
+          "observed_at": 1788552875269,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "wait-receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06e0f-403c-7019-b705-abc644aaed08",
+          "suid": "063924149689043000002023902206",
+          "outcome": "",
+          "observed_at": 1788552889254,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.1857
+        },
+        "duration": 0.1857,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 21,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.101
+        },
+        "duration": 0.101,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 2,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [
+        {
+          "record_kind": "mv-instance",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "active",
+          "observed_at": 1788552978610,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "063924149689043000002023902206",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-instance",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "active",
+          "observed_at": 1788552975438,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "063924149689043000002023902206",
+          "tombstone": 0
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.1629
+        },
+        "duration": 0.1629,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 2,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    },
+    {
+      "results": [
+        {
+          "record_kind": "mv-active-generation",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 1788506985069,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        },
+        {
+          "record_kind": "mv-active-generation",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 1788506984706,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": "",
+          "generation": 0,
+          "last_suid": "",
+          "tombstone": 0
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.9389
+        },
+        "duration": 0.9389,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 2,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ],
+  "status": "completed"
+}

@@ -1,0 +1,14 @@
+{
+  "guard": "SDT-G60 direct commit-time doorbell",
+  "phase": "pre-change",
+  "status": "red",
+  "expectedFailure": true,
+  "sourcePath": "packages/dcb-runtime/src/tag/TagDurableObject.ts",
+  "sourceRevision": "HEAD (W156 queue-dependent checkpoint)",
+  "red": {
+    "label": "W156 queue-dependent source",
+    "status": "red",
+    "expectedFailure": true,
+    "reason": "direct commit-time handoff is absent: directDeliveryBeforeResponse"
+  }
+}

@@ -1,5 +1,6 @@
 import {
   observeFaultBarrier,
+  createG60DurableHopObserver,
   processDownstreamDoorbell,
   readDirectDoorbellConfig,
   selectDirectDoorbellViews,
@@ -45,7 +46,10 @@ export async function deliverMeetingRoomDoorbell(
     meetingRoomRuntimeConfig.deliveryClass,
     testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy,
   );
-  const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(env);
+  const durableHopObserver = env.TAG === undefined
+    ? undefined
+    : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
+  const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(env, durableHopObserver);
   const result = await processDownstreamDoorbell(message, env, {
     ...(testOverrides?.store === undefined ? { storeProvider: createD1StoreProvider() } : { store: testOverrides.store }),
     views: selectDirectDoorbellViews(configuredViews, config),
@@ -53,6 +57,7 @@ export async function deliverMeetingRoomDoorbell(
     // scheduled safe convergence consumes it. The test seam may still supply
     // an explicit post-delivery hook for its own bounded lifecycle oracle.
     afterDelivery: testOverrides?.afterDelivery,
+    durableHopObserver,
   });
   console.log("direct_doorbell_core", {
     correlationId: result.correlationId,

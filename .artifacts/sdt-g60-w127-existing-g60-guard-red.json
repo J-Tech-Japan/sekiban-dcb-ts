@@ -1,0 +1,20 @@
+{
+  "guard": "SDT-G60 durable hop",
+  "phase": "pre-change",
+  "status": "red",
+  "expectedFailure": true,
+  "reason": "expected exactly 7 hop records",
+  "sourceWiring": {
+    "ok": true,
+    "missing": []
+  },
+  "stages": [
+    "command-receipt",
+    "tag-append-committed",
+    "outbox-obligation-written",
+    "queue-send-returned",
+    "consumer-invocation-started",
+    "record-delivery-batch-committed",
+    "first-unsafe-visible-read"
+  ]
+}

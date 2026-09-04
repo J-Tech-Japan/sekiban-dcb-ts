@@ -1,5 +1,6 @@
 import { outboxIdentity, systemPipelineClock, type DownstreamOutboxMessage, type PipelineClock } from "./types";
 import { scopeIdFor } from "../scope/ScopeName";
+import type { G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 interface OutboxPendingResponse {
   rows: DownstreamOutboxMessage[];
@@ -27,6 +28,8 @@ export interface DrainTagInput {
  */
 export interface OutboxDrainOptions {
   readonly acknowledgement?: "transport" | "global-receipt";
+  /** G60 observation is scheduled by the active Worker context. */
+  readonly durableHopObserver?: G60DurableHopObserver;
 }
 
 export interface DrainResult {
@@ -120,6 +123,16 @@ export async function drainTagOutbox(
   let delivered = 0;
   for (const row of body.rows) {
     await env.DOWNSTREAM_QUEUE.send(row, { contentType: "json" });
+    options.durableHopObserver?.observe({
+      stage: "queue-send-returned",
+      serviceId: input.serviceId,
+      eventId: row.eventId,
+      suid: row.suid,
+      attemptId: row.attemptId,
+      partitionTag: input.tag,
+      transport: "queue",
+      observedAt: clock.now(),
+    });
     if (options.acknowledgement === "global-receipt") {
       // G44 Queue handoff is only transport acceptance.  The D1 receiver
       // performs the source acknowledgement after its atomic event,

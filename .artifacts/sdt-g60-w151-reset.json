@@ -1,0 +1,96 @@
+{
+  "schema": "sdt-g60-w124-clean-reset/v1",
+  "task": "SDT-G60-CLEAN-PREG53-AB-W124",
+  "status": "failed-reset-command",
+  "variant": "W151-existing-production",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "config": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "wranglerVersion": "4.125.0",
+  "authorization": "C-0/C-13 authorized clean operational-data reset; OAuth state is path-only",
+  "credentialHandling": "No conformance token used; Wrangler uses its configured path-only OAuth state; no --keep-vars",
+  "operation": {
+    "type": "full application-D1 operational reset",
+    "preserved": [
+      "_cf_KV",
+      "d1_migrations",
+      "database schemas",
+      "Queue",
+      "outbox",
+      "global-admission code/path",
+      "Durable Object code"
+    ],
+    "notTouched": [
+      "Queue",
+      "outbox",
+      "global-admission code/path",
+      "worker source",
+      "configuration"
+    ],
+    "pipelineTables": [
+      "serialized_dcb_global_receipts",
+      "serialized_dcb_global_memberships",
+      "serialized_dcb_event_arrivals",
+      "dcb_event_ops",
+      "dcb_events",
+      "serialized_dcb_allocator_bindings",
+      "serialized_dcb_completeness_findings",
+      "serialized_dcb_completeness_scanner_health",
+      "serialized_dcb_delivery_incidents",
+      "serialized_dcb_inconsistency_findings",
+      "serialized_dcb_lag_estimates",
+      "serialized_dcb_live_poll_health",
+      "serialized_dcb_pending_arrivals",
+      "serialized_dcb_projection_checkpoints",
+      "serialized_dcb_safe_lane_health",
+      "serialized_dcb_safe_lane_history",
+      "serialized_dcb_source_partitions",
+      "serialized_dcb_wait_target_incidents"
+    ],
+    "mvTables": [
+      "mv_active_generations",
+      "mv_checkpoint_ahead_findings",
+      "mv_index_entries",
+      "mv_rows",
+      "mv_unsafe_index_entries",
+      "mv_unsafe_rows",
+      "mv_wait_receipts",
+      "mv_wait_target_poison",
+      "mv_unsafe_arrivals",
+      "mv_unsafe_kicks",
+      "mv_unsafe_markers",
+      "mv_unsafe_receipts",
+      "mv_unsafe_failure_findings",
+      "mv_atomic_guards",
+      "mv_instances"
+    ],
+    "sqlForm": "one explicit DELETE FROM statement per listed operational table; no DROP/DDL"
+  },
+  "commands": [
+    {
+      "label": "pre-reset-pipeline-serialized_dcb_global_receipts",
+      "database": "D1",
+      "sql": "SELECT 'serialized_dcb_global_receipts' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_global_receipts",
+      "startedAt": "2026-09-04T11:58:27.003Z",
+      "finishedAt": "2026-09-04T11:58:28.227Z",
+      "exitCode": 1,
+      "signal": null,
+      "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/f26d1299-82d9-4a64-8647-bc2ec86326ac/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"The given account is not valid or is not authorized to access this service [code: 7403]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 7403,\n    \"accountTag\": \"3ede2188f4cf39a28e0aa3722d3d02c5\"\n  }\n}\n",
+      "stderr": "",
+      "json": {
+        "error": {
+          "text": "A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/f26d1299-82d9-4a64-8647-bc2ec86326ac/query) failed.",
+          "notes": [
+            {
+              "text": "The given account is not valid or is not authorized to access this service [code: 7403]"
+            }
+          ],
+          "kind": "error",
+          "name": "APIError",
+          "code": 7403,
+          "accountTag": "3ede2188f4cf39a28e0aa3722d3d02c5"
+        }
+      }
+    }
+  ],
+  "failure": "pre-reset-pipeline-serialized_dcb_global_receipts exited 1"
+}

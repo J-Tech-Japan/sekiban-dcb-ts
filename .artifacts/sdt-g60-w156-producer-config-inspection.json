@@ -1,0 +1,11 @@
+{
+  "schema": "sdt-g60-w156-producer-config-inspection/v1",
+  "inspectedAt": "2026-09-04",
+  "source": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/wrangler/config-schema.json",
+  "wranglerVersion": "4.125.0 (from W155 receipts)",
+  "queuesProducerProperties": ["binding", "queue", "delivery_delay", "remote"],
+  "queuesConsumerProperties": ["queue", "type", "max_batch_size", "max_batch_timeout", "max_retries", "dead_letter_queue", "max_concurrency", "visibility_timeout_ms", "retry_delay"],
+  "checkpoint1ConsumerConfig": { "max_batch_size": 1, "max_batch_timeout": 1 },
+  "producerImmediateDispatchSetting": null,
+  "conclusion": "No supported producer-side lone-message immediate-dispatch setting exists in the inspected Wrangler schema. delivery_delay is a delay, not an immediate-dispatch control; no producer setting was added."
+}

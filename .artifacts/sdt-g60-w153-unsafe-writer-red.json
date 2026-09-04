@@ -1,0 +1,19 @@
+{
+  "guard": "SDT-G60 concrete unsafe writer admission",
+  "phase": "pre-change",
+  "status": "red",
+  "expectedFailure": true,
+  "reason": "BLOCK/UNSETTLED returned before the old ordinary view loop, so no inline unsafe writer boundary could be reached",
+  "simulated": {
+    "trace": [
+      "recordDelivery",
+      "global-receipt-readback",
+      "source-acknowledgement",
+      "completeness:BLOCK/UNSETTLED"
+    ],
+    "unsafeApplied": false,
+    "gatedViewApplied": false
+  },
+  "writerPathUnderTest": "inline-delivery",
+  "scheduledDrainFact": "runtime.follow is the safe checkpoint path; it does not call unsafe.apply"
+}

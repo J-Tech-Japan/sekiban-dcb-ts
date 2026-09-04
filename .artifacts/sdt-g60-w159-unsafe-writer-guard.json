@@ -1,0 +1,66 @@
+{
+  "guard": "SDT-G60 concrete unsafe writer admission",
+  "phase": "post-change",
+  "status": "green",
+  "sourceWiring": {
+    "ok": true,
+    "missing": []
+  },
+  "redBeforeGreen": {
+    "status": "red",
+    "expectedFailure": true,
+    "reason": "old ordinary views were reached only after completeness and therefore produced no writer boundary on BLOCK"
+  },
+  "green": {
+    "status": "green",
+    "boundaryCount": 2,
+    "identity": {
+      "serviceId": "g60-unsafe-writer-guard",
+      "eventId": "writer-event",
+      "suid": "000000000000000000000000000001",
+      "attemptId": "writer-attempt",
+      "viewId": "ReservationProjector",
+      "writerPath": "inline-delivery",
+      "transport": "queue"
+    }
+  },
+  "independentBlockFixture": {
+    "trace": [
+      "recordDelivery",
+      "global-receipt-readback",
+      "source-acknowledgement",
+      "unsafe-row-apply:start",
+      "unsafe-row-apply:end",
+      "completeness:BLOCK/UNSETTLED"
+    ],
+    "unsafeApplied": true,
+    "gatedViewApplied": false
+  },
+  "redMutants": {
+    "omissionOrOldWaitUntilGate": {
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "removing admission=independent-unsafe restores the pre-fix no-writer-on-BLOCK result",
+      "fixture": {
+        "trace": [
+          "recordDelivery",
+          "global-receipt-readback",
+          "source-acknowledgement",
+          "completeness:BLOCK/UNSETTLED"
+        ],
+        "unsafeApplied": false,
+        "gatedViewApplied": false
+      }
+    },
+    "boundaryOmission": {
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "a complete unsafe writer observation requires both start and end boundaries"
+    }
+  },
+  "scheduledDrain": {
+    "writerPath": "scheduled-drain",
+    "operation": "safe runtime.follow / mv_rows catch-up",
+    "unsafeRowWriter": false
+  }
+}

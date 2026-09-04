@@ -1,0 +1,352 @@
+{
+  "schema": "sdt-g60-w143-c-mv/v1",
+  "task": "SDT-G60-STRIPPED-ENV-SUBHOP-RESUME-W143",
+  "serviceId": "sekiban-dcb-g60-w131-c",
+  "sourceCommit": "3e5954b8c6ea2f29d664f09417b4c09e6cef4880",
+  "config": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/.artifacts/sdt-g60-w143-c-wrangler.cloudflare-only.jsonc",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "cohortEvents": [
+    {
+      "ordinal": 1,
+      "reservationId": "g15-reservation-448fac4913684891-1",
+      "eventId": "01a06b52-c5ce-7d6b-9d76-a5d5872194fd",
+      "suid": "063924103781982000001994323723"
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g15-reservation-448fac4913684891-2",
+      "eventId": "01a06b54-a187-7395-b114-13d86b74f3ef",
+      "suid": "063924103903917000002130751144"
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g15-reservation-448fac4913684891-3",
+      "eventId": "01a06b54-ce99-7ec7-9126-1518a4984d5a",
+      "suid": "063924103915366000001512967560"
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g15-reservation-448fac4913684891-4",
+      "eventId": "01a06b54-fb5c-75c2-a398-5ef2d5103cbe",
+      "suid": "063924103926805000001509745972"
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g15-reservation-448fac4913684891-5",
+      "eventId": "01a06b55-28ce-76cd-a845-7330f7a561cf",
+      "suid": "063924103938434000001115246821"
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g15-reservation-448fac4913684891-6",
+      "eventId": "01a06b55-554c-7786-b55f-ef0098238a99",
+      "suid": "063924103949832000000423997189"
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g15-reservation-448fac4913684891-7",
+      "eventId": "01a06b55-827f-73a1-b845-af1ee6242e8f",
+      "suid": "063924103961396000000988529375"
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g15-reservation-448fac4913684891-8",
+      "eventId": "01a06b55-b0bb-71f6-84fe-4dc7bdb66348",
+      "suid": "063924103973240000001421704648"
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g15-reservation-448fac4913684891-9",
+      "eventId": "01a06b55-ddab-75c0-aca4-5b8d260f8d9b",
+      "suid": "063924103985176000001073418623"
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g15-reservation-448fac4913684891-10",
+      "eventId": "01a06b56-0c37-737a-a95c-9cd75dca8f04",
+      "suid": "063924103996663000001421498456"
+    }
+  ],
+  "command": {
+    "args": [
+      "d1",
+      "execute",
+      "D1_MV",
+      "--remote",
+      "--json",
+      "--yes",
+      "--config",
+      "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g60-w124/.artifacts/sdt-g60-w143-c-wrangler.cloudflare-only.jsonc",
+      "--command",
+      "SELECT 'unsafe_receipt' AS ledger, service_id, view_id, event_id, suid, outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json FROM mv_unsafe_receipts WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06b52-c5ce-7d6b-9d76-a5d5872194fd', '01a06b54-a187-7395-b114-13d86b74f3ef', '01a06b54-ce99-7ec7-9126-1518a4984d5a', '01a06b54-fb5c-75c2-a398-5ef2d5103cbe', '01a06b55-28ce-76cd-a845-7330f7a561cf', '01a06b55-554c-7786-b55f-ef0098238a99', '01a06b55-827f-73a1-b845-af1ee6242e8f', '01a06b55-b0bb-71f6-84fe-4dc7bdb66348', '01a06b55-ddab-75c0-aca4-5b8d260f8d9b', '01a06b56-0c37-737a-a95c-9cd75dca8f04') UNION ALL SELECT 'mv_rows' AS ledger, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, 0 AS observed_at, row_key, source_suid, value_json FROM mv_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924103781982000001994323723', '063924103903917000002130751144', '063924103915366000001512967560', '063924103926805000001509745972', '063924103938434000001115246821', '063924103949832000000423997189', '063924103961396000000988529375', '063924103973240000001421704648', '063924103985176000001073418623', '063924103996663000001421498456') UNION ALL SELECT 'mv_unsafe_rows' AS ledger, service_id, view_id, '' AS event_id, '' AS suid, CAST(tombstone AS TEXT) AS outcome, 0 AS observed_at, row_key, source_suid, value_json FROM mv_unsafe_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924103781982000001994323723', '063924103903917000002130751144', '063924103915366000001512967560', '063924103926805000001509745972', '063924103938434000001115246821', '063924103949832000000423997189', '063924103961396000000988529375', '063924103973240000001421704648', '063924103985176000001073418623', '063924103996663000001421498456') ORDER BY ledger COLLATE BINARY, event_id COLLATE BINARY, observed_at ASC, view_id COLLATE BINARY, row_key COLLATE BINARY"
+    ],
+    "startedAt": "2026-09-04T07:37:52.043Z",
+    "exitCode": 0,
+    "signal": null,
+    "spawnError": null,
+    "sql": "SELECT 'unsafe_receipt' AS ledger, service_id, view_id, event_id, suid, outcome, observed_at, '' AS row_key, '' AS source_suid, '' AS value_json FROM mv_unsafe_receipts WHERE service_id = 'sekiban-dcb-g60-w131-c' AND event_id IN ('01a06b52-c5ce-7d6b-9d76-a5d5872194fd', '01a06b54-a187-7395-b114-13d86b74f3ef', '01a06b54-ce99-7ec7-9126-1518a4984d5a', '01a06b54-fb5c-75c2-a398-5ef2d5103cbe', '01a06b55-28ce-76cd-a845-7330f7a561cf', '01a06b55-554c-7786-b55f-ef0098238a99', '01a06b55-827f-73a1-b845-af1ee6242e8f', '01a06b55-b0bb-71f6-84fe-4dc7bdb66348', '01a06b55-ddab-75c0-aca4-5b8d260f8d9b', '01a06b56-0c37-737a-a95c-9cd75dca8f04') UNION ALL SELECT 'mv_rows' AS ledger, service_id, view_id, '' AS event_id, '' AS suid, '' AS outcome, 0 AS observed_at, row_key, source_suid, value_json FROM mv_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924103781982000001994323723', '063924103903917000002130751144', '063924103915366000001512967560', '063924103926805000001509745972', '063924103938434000001115246821', '063924103949832000000423997189', '063924103961396000000988529375', '063924103973240000001421704648', '063924103985176000001073418623', '063924103996663000001421498456') UNION ALL SELECT 'mv_unsafe_rows' AS ledger, service_id, view_id, '' AS event_id, '' AS suid, CAST(tombstone AS TEXT) AS outcome, 0 AS observed_at, row_key, source_suid, value_json FROM mv_unsafe_rows WHERE service_id = 'sekiban-dcb-g60-w131-c' AND source_suid IN ('063924103781982000001994323723', '063924103903917000002130751144', '063924103915366000001512967560', '063924103926805000001509745972', '063924103938434000001115246821', '063924103949832000000423997189', '063924103961396000000988529375', '063924103973240000001421704648', '063924103985176000001073418623', '063924103996663000001421498456') ORDER BY ledger COLLATE BINARY, event_id COLLATE BINARY, observed_at ASC, view_id COLLATE BINARY, row_key COLLATE BINARY",
+    "stdout": "[\n  {\n    \"results\": [\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-1\",\n        \"source_suid\": \"063924103781982000001994323723\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-1\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-10\",\n        \"source_suid\": \"063924103996663000001421498456\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-10\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-2\",\n        \"source_suid\": \"063924103903917000002130751144\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-2\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-3\",\n        \"source_suid\": \"063924103915366000001512967560\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-3\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-4\",\n        \"source_suid\": \"063924103926805000001509745972\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-4\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-5\",\n        \"source_suid\": \"063924103938434000001115246821\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-5\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-6\",\n        \"source_suid\": \"063924103949832000000423997189\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-6\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-7\",\n        \"source_suid\": \"063924103961396000000988529375\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-7\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-8\",\n        \"source_suid\": \"063924103973240000001421704648\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-8\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"mv_rows\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"event_id\": \"\",\n        \"suid\": \"\",\n        \"outcome\": \"\",\n        \"observed_at\": 0,\n        \"row_key\": \"g15-reservation-448fac4913684891-9\",\n        \"source_suid\": \"063924103985176000001073418623\",\n        \"value_json\": \"{\\\"reservationId\\\":\\\"g15-reservation-448fac4913684891-9\\\",\\\"roomId\\\":\\\"g15-room-448fac4913684891\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b54-a187-7395-b114-13d86b74f3ef\",\n        \"suid\": \"063924103903917000002130751144\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507107496,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b54-ce99-7ec7-9126-1518a4984d5a\",\n        \"suid\": \"063924103915366000001512967560\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507123012,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b54-fb5c-75c2-a398-5ef2d5103cbe\",\n        \"suid\": \"063924103926805000001509745972\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507134794,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b55-28ce-76cd-a845-7330f7a561cf\",\n        \"suid\": \"063924103938434000001115246821\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507145622,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b55-554c-7786-b55f-ef0098238a99\",\n        \"suid\": \"063924103949832000000423997189\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507157294,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b55-827f-73a1-b845-af1ee6242e8f\",\n        \"suid\": \"063924103961396000000988529375\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507162977,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b55-b0bb-71f6-84fe-4dc7bdb66348\",\n        \"suid\": \"063924103973240000001421704648\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507174775,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b55-ddab-75c0-aca4-5b8d260f8d9b\",\n        \"suid\": \"063924103985176000001073418623\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507187577,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      },\n      {\n        \"ledger\": \"unsafe_receipt\",\n        \"service_id\": \"sekiban-dcb-g60-w131-c\",\n        \"view_id\": \"RoomProjector\",\n        \"event_id\": \"01a06b56-0c37-737a-a95c-9cd75dca8f04\",\n        \"suid\": \"063924103996663000001421498456\",\n        \"outcome\": \"no-change\",\n        \"observed_at\": 1788507198245,\n        \"row_key\": \"\",\n        \"source_suid\": \"\",\n        \"value_json\": \"\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.6211\n      },\n      \"duration\": 0.6211,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 40,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+    "stderr": "",
+    "finishedAt": "2026-09-04T07:37:52.043Z"
+  },
+  "status": "completed",
+  "parsed": [
+    {
+      "results": [
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-1",
+          "source_suid": "063924103781982000001994323723",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-1\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-10",
+          "source_suid": "063924103996663000001421498456",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-10\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-2",
+          "source_suid": "063924103903917000002130751144",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-2\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-3",
+          "source_suid": "063924103915366000001512967560",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-3\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-4",
+          "source_suid": "063924103926805000001509745972",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-4\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-5",
+          "source_suid": "063924103938434000001115246821",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-5\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-6",
+          "source_suid": "063924103949832000000423997189",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-6\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-7",
+          "source_suid": "063924103961396000000988529375",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-7\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-8",
+          "source_suid": "063924103973240000001421704648",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-8\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "mv_rows",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "ReservationProjector",
+          "event_id": "",
+          "suid": "",
+          "outcome": "",
+          "observed_at": 0,
+          "row_key": "g15-reservation-448fac4913684891-9",
+          "source_suid": "063924103985176000001073418623",
+          "value_json": "{\"reservationId\":\"g15-reservation-448fac4913684891-9\",\"roomId\":\"g15-room-448fac4913684891\",\"status\":\"reserved\",\"version\":1}"
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b54-a187-7395-b114-13d86b74f3ef",
+          "suid": "063924103903917000002130751144",
+          "outcome": "no-change",
+          "observed_at": 1788507107496,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b54-ce99-7ec7-9126-1518a4984d5a",
+          "suid": "063924103915366000001512967560",
+          "outcome": "no-change",
+          "observed_at": 1788507123012,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b54-fb5c-75c2-a398-5ef2d5103cbe",
+          "suid": "063924103926805000001509745972",
+          "outcome": "no-change",
+          "observed_at": 1788507134794,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b55-28ce-76cd-a845-7330f7a561cf",
+          "suid": "063924103938434000001115246821",
+          "outcome": "no-change",
+          "observed_at": 1788507145622,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b55-554c-7786-b55f-ef0098238a99",
+          "suid": "063924103949832000000423997189",
+          "outcome": "no-change",
+          "observed_at": 1788507157294,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b55-827f-73a1-b845-af1ee6242e8f",
+          "suid": "063924103961396000000988529375",
+          "outcome": "no-change",
+          "observed_at": 1788507162977,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b55-b0bb-71f6-84fe-4dc7bdb66348",
+          "suid": "063924103973240000001421704648",
+          "outcome": "no-change",
+          "observed_at": 1788507174775,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b55-ddab-75c0-aca4-5b8d260f8d9b",
+          "suid": "063924103985176000001073418623",
+          "outcome": "no-change",
+          "observed_at": 1788507187577,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        },
+        {
+          "ledger": "unsafe_receipt",
+          "service_id": "sekiban-dcb-g60-w131-c",
+          "view_id": "RoomProjector",
+          "event_id": "01a06b56-0c37-737a-a95c-9cd75dca8f04",
+          "suid": "063924103996663000001421498456",
+          "outcome": "no-change",
+          "observed_at": 1788507198245,
+          "row_key": "",
+          "source_suid": "",
+          "value_json": ""
+        }
+      ],
+      "success": true,
+      "meta": {
+        "served_by": "v3-prod",
+        "served_by_region": "WNAM",
+        "served_by_colo": "SJC",
+        "served_by_primary": true,
+        "timings": {
+          "sql_duration_ms": 0.6211
+        },
+        "duration": 0.6211,
+        "changes": 0,
+        "last_row_id": 0,
+        "changed_db": false,
+        "size_after": 192512,
+        "rows_read": 40,
+        "rows_written": 0,
+        "total_attempts": 1
+      }
+    }
+  ]
+}

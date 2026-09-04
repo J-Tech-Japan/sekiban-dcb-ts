@@ -53,6 +53,7 @@ import {
   TAG_READ_AFTER_THROUGH_SQL,
 } from "./TagSqlSchema";
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
+import { recordDurableHop, type G60DurableHopObservation } from "../diagnostics/G60DurableHop";
 
 const REPAIR_FACTS_KEY = "repair-facts";
 /**
@@ -187,6 +188,17 @@ interface TagDurableObjectEnv {
 interface OperationResult {
   status: number;
   body: unknown;
+  /** G60 facts captured inside the committed SQL transaction. */
+  hopFacts?: readonly AppendHopFact[];
+}
+
+interface AppendHopFact {
+  readonly eventId: string;
+  readonly suid: string;
+  readonly attemptId: string;
+  readonly tag: string;
+  readonly tagAppendCommittedAt: number;
+  readonly obligationWrittenAt: number;
 }
 
 interface ExpiryResult {
@@ -1903,7 +1915,7 @@ export class TagDurableObject implements DurableObject {
       timestamp: candidate.timestamp,
     }));
     const artifacts = await Promise.all(events.map((event) => this.obligationArtifact(event, serviceId, tag)));
-    return this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
+    const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const sql = this.sqlStorage();
       if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
       this.ensureSqlTag(tag);
@@ -2025,12 +2037,24 @@ export class TagDurableObject implements DurableObject {
         ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
       `, input.attemptId, nextHighest);
       const committedAt = nowIso();
+      const hopFacts: AppendHopFact[] = [];
       for (let index = 0; index < events.length; index += 1) {
         const event = events[index]!;
         const artifact = artifacts[index]!;
         this.writeCommittedSqlEvent(sql, serviceId, event);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
+        const obligationWrittenAt = Date.now();
         this.writeCommittedSqlObligation(sql, serviceId, event, artifact);
+        hopFacts.push({
+          eventId: event.eventId,
+          suid: event.suid,
+          attemptId: event.attemptId,
+          tag,
+          // This is the existing durable tag_commit_receipt clock fact,
+          // shared by membership/head/receipt writes in this transaction.
+          tagAppendCommittedAt: Date.parse(committedAt),
+          obligationWrittenAt,
+        });
       }
       this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);
       if (input.faultInjection === "after-append-before-confirm") {
@@ -2046,8 +2070,10 @@ export class TagDurableObject implements DurableObject {
           fenceGate: { checked: true, activeFenceCount: 0 },
           version: version + 1,
         },
+        hopFacts,
       };
     });
+    return result;
   }
 
   /**
@@ -2801,6 +2827,26 @@ export class TagDurableObject implements DurableObject {
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
         const result = await this.appendSql(tag, input, serviceId);
+        for (const fact of result.hopFacts ?? []) {
+          this.scheduleDurableHop({
+            stage: "tag-append-committed",
+            serviceId: serviceId ?? "",
+            eventId: fact.eventId,
+            suid: fact.suid,
+            attemptId: fact.attemptId,
+            partitionTag: fact.tag,
+            observedAt: fact.tagAppendCommittedAt,
+          });
+          this.scheduleDurableHop({
+            stage: "outbox-obligation-written",
+            serviceId: serviceId ?? "",
+            eventId: fact.eventId,
+            suid: fact.suid,
+            attemptId: fact.attemptId,
+            partitionTag: fact.tag,
+            observedAt: fact.obligationWrittenAt,
+          });
+        }
         if (
           (result.status === 201 || result.status === 200) &&
           serviceId !== null && serviceId.length > 0
@@ -2822,7 +2868,10 @@ export class TagDurableObject implements DurableObject {
           (this.env.DOWNSTREAM_QUEUE !== undefined ||
             (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
         ) {
-          this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId, domainDeliveryClass).catch(() => undefined));
+          const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
+            ? await this.directDeliveryBeforeResponse(tag, serviceId)
+            : undefined;
+          this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
         }
         return response;
       }
@@ -2942,12 +2991,10 @@ export class TagDurableObject implements DurableObject {
         (this.env.DOWNSTREAM_QUEUE !== undefined ||
           (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
       ) {
-        // The append transaction is already durable. Both transports consume
-        // the full pending-outbox envelope after the response; this DO never
-        // records delivery or applies a view. Keep the handoff off the
-        // application response lifetime so transport backpressure cannot turn
-        // a committed append into a Worker timeout.
-        this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId, domainDeliveryClass).catch(() => undefined));
+        const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
+          ? await this.directDeliveryBeforeResponse(tag, serviceId)
+          : undefined;
+        this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
       }
       return response;
     } catch (failure) {
@@ -2963,16 +3010,111 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * A DO can receive the CommitWorker's immediate /head-facts read as the next
-   * input event. Yield once before starting the awaited service binding so the
-   * append response and that authoritative state read are not serialized
-   * behind a cold receiver's first MV-generation build. The binding call is
-   * still awaited inside waitUntil, and all delivery work remains outside the
-   * Tag DO.
+   * Claim and run the opted-in direct unsafe path after the append transaction
+   * has committed, but before the 201 response is returned. The rows are
+   * handed to the Queue drain afterwards so the durable Queue remains the
+   * owner of global admission, ordering, retries, and DLQ recovery.
+   *
+   * A pending-row read can fail independently of the already committed
+   * append. In that case the caller falls back to the ordinary Queue drain;
+   * it never turns a durable acceptance into a response failure.
    */
-  private async autoDrainAfterResponse(tag: string, serviceId: string, domainDeliveryClass?: string): Promise<void> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await this.autoDrainOutbox(tag, serviceId, domainDeliveryClass);
+  private async directDeliveryBeforeResponse(
+    tag: string,
+    serviceId: string,
+  ): Promise<readonly DownstreamOutboxMessage[] | undefined> {
+    try {
+      const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
+      if (!pending.ok) throw new Error(`direct outbox pending read failed with ${pending.status}`);
+      const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+      const rows = body.rows ?? [];
+      await this.deliverDirectRows(rows);
+      return rows;
+    } catch (error) {
+      // The durable Queue is the fallback for a direct capability/read/attempt
+      // failure. The already committed event, obligation, and local receipt
+      // remain authoritative and are never rolled back here.
+      console.warn("direct_doorbell_before_response", {
+        status: "queued-degraded",
+        reason: "direct_doorbell_before_response_failed",
+        error: String(error),
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * The append transaction has durably committed the Tag event, outbox
+   * obligation, and receipt before this handoff is started. A direct delivery
+   * has already run when `preclaimedRows` is present; the retained promise
+   * then performs only the unchanged Queue submission for those same bytes.
+   * With no preclaimed rows this remains the existing waitUntil-backed drain,
+   * including its direct-before-Queue behavior for alarms and fallback paths.
+   */
+  private startAutoDrainBeforeResponse(
+    tag: string,
+    serviceId: string,
+    domainDeliveryClass?: string,
+    preclaimedRows?: readonly DownstreamOutboxMessage[],
+  ): void {
+    const drain = this.autoDrainOutbox(
+      tag,
+      serviceId,
+      domainDeliveryClass,
+      undefined,
+      preclaimedRows,
+      preclaimedRows !== undefined,
+    ).catch(() => undefined);
+    this.ctx.waitUntil(drain);
+  }
+
+  private async deliverDirectRows(rows: readonly DownstreamOutboxMessage[]): Promise<void> {
+    for (const row of rows) {
+      // `row` is the object created by pendingOutbox. The bytes are captured
+      // once for correlation/equality evidence and the exact same envelope is
+      // handed to both transports; no reduced TagOutboxRow is reconstructed.
+      const envelopeBytes = downstreamEnvelopeBytes(row);
+      const correlationId = deliveryCorrelationId(row, "fast");
+      try {
+        const delivered = await this.env.DOWNSTREAM_DOORBELL!.deliver(row);
+        const resultCorrelationId =
+          typeof delivered === "object" && delivered !== null &&
+          "correlationId" in delivered &&
+          typeof (delivered as { correlationId?: unknown }).correlationId === "string"
+            ? (delivered as { correlationId: string }).correlationId
+            : correlationId;
+        if (
+          typeof delivered === "object" && delivered !== null &&
+          "fastDisposition" in delivered &&
+          (delivered as { fastDisposition?: unknown }).fastDisposition === "failed"
+        ) {
+          console.warn("direct_doorbell_status", {
+            status: "failed",
+            reason: "receiver_delivery_failed",
+            correlationId: resultCorrelationId,
+            envelopeBytes,
+          });
+          throw new Error("doorbell_receiver_delivery_failed");
+        }
+        console.log("direct_doorbell_delivery", {
+          correlationId: resultCorrelationId,
+          envelopeBytes,
+          status: "success",
+        });
+      } catch (error) {
+        // A direct failure is explicit and the durable Queue is the backstop.
+        // Replaying the same envelope is safe because the core is
+        // receipt-idempotent; this is not a silent capability downgrade.
+        console.warn("direct_doorbell_status", {
+          status: "queued-degraded",
+          reason: "direct_doorbell_delivery_failed",
+          correlationId,
+          envelopeBytes,
+          failureKind: classifyDirectDoorbellFailure(error),
+          error: String(error),
+        });
+      }
+    }
   }
 
   private async autoDrainOutbox(
@@ -2980,6 +3122,8 @@ export class TagDurableObject implements DurableObject {
     serviceId: string,
     domainDeliveryClass?: string,
     limit?: number,
+    preclaimedRows?: readonly DownstreamOutboxMessage[],
+    skipDirect = false,
   ): Promise<void> {
     const domainClass = domainDeliveryClass === undefined
       ? undefined
@@ -2989,12 +3133,14 @@ export class TagDurableObject implements DurableObject {
     if (preflight.status === "fail-fast") {
       throw new Error(`direct_doorbell_preflight_failed:${preflight.reason}`);
     }
-    const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), limit });
-    if (!pending.ok) {
-      throw new Error(`automatic outbox pending read failed with ${pending.status}`);
-    }
-    const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
-    const rows = body.rows ?? [];
+    const rows = preclaimedRows ?? await (async () => {
+      const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), limit });
+      if (!pending.ok) {
+        throw new Error(`automatic outbox pending read failed with ${pending.status}`);
+      }
+      const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+      return body.rows ?? [];
+    })();
     const directReady =
       preflight.status === "ready" &&
       config.deliveryClass === "immediate-preferred" &&
@@ -3006,49 +3152,9 @@ export class TagDurableObject implements DurableObject {
       // once for correlation/equality evidence and the exact same envelope is
       // handed to both transports; no reduced TagOutboxRow is reconstructed.
       const envelopeBytes = downstreamEnvelopeBytes(row);
-      let correlationId = deliveryCorrelationId(row, "fast");
-      if (directReady) {
-        try {
-          const delivered = await this.env.DOWNSTREAM_DOORBELL!.deliver(row);
-          if (
-            typeof delivered === "object" && delivered !== null &&
-            "correlationId" in delivered &&
-            typeof (delivered as { correlationId?: unknown }).correlationId === "string"
-          ) {
-            correlationId = (delivered as { correlationId: string }).correlationId;
-          }
-          if (
-            typeof delivered === "object" && delivered !== null &&
-            "fastDisposition" in delivered &&
-            (delivered as { fastDisposition?: unknown }).fastDisposition === "failed"
-          ) {
-            console.warn("direct_doorbell_status", {
-              status: "failed",
-              reason: "receiver_delivery_failed",
-              correlationId,
-              envelopeBytes,
-            });
-            throw new Error("doorbell_receiver_delivery_failed");
-          }
-          console.log("direct_doorbell_delivery", {
-            correlationId,
-            envelopeBytes,
-            status: "success",
-          });
-        } catch (error) {
-          // A direct failure is explicit and the durable Queue is the
-          // backstop. Replaying the same envelope is safe because the core is
-          // receipt-idempotent; this is not a silent capability downgrade.
-          console.warn("direct_doorbell_status", {
-            status: "queued-degraded",
-            reason: "direct_doorbell_delivery_failed",
-            correlationId,
-            envelopeBytes,
-            failureKind: classifyDirectDoorbellFailure(error),
-            error: String(error),
-          });
-        }
-      } else if (config.deliveryClass === "immediate-preferred" && config.enabled) {
+      const correlationId = deliveryCorrelationId(row, "fast");
+      if (directReady && !skipDirect) await this.deliverDirectRows([row]);
+      if (!directReady && config.deliveryClass === "immediate-preferred" && config.enabled) {
         console.warn("direct_doorbell_status", {
           status: "queued-degraded",
           reason: "direct_doorbell_not_ready",
@@ -3059,6 +3165,16 @@ export class TagDurableObject implements DurableObject {
       if (queue !== undefined) {
         try {
           await queue.send(row, { contentType: "json" });
+          this.scheduleDurableHop({
+            stage: "queue-send-returned",
+            serviceId,
+            eventId: row.eventId,
+            suid: row.suid,
+            attemptId: row.attemptId,
+            partitionTag: tag,
+            transport: "queue",
+            observedAt: Date.now(),
+          });
         } catch (failure) {
           // A failed source-to-sink handoff is itself source state.  Do not
           // let one poison row skip a later due row or suppress re-arming.
@@ -3066,6 +3182,12 @@ export class TagDurableObject implements DurableObject {
         }
       }
     }
+  }
+
+  /** G60 writes are observation-only and stay outside the append/drain result. */
+  private scheduleDurableHop(input: G60DurableHopObservation): void {
+    if (this.env.D1 === undefined) return;
+    this.ctx.waitUntil(recordDurableHop(this.env.D1, input).catch(() => undefined));
   }
 
   private async confirm(tag: string, body: unknown): Promise<Response> {

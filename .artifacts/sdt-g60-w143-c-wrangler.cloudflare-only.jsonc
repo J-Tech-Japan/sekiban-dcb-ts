@@ -1,0 +1,66 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "sekiban-dcb-g60-w131-c",
+  "main": "../samples/meeting-room/src/worker.cloudflare-only.ts",
+  "compatibility_date": "2026-08-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "AUTO_DRAIN_OUTBOX": "true",
+    "DOMAIN_DELIVERY_CLASS": "immediate-preferred",
+    "DIRECT_DOORBELL": "false",
+    "DIRECT_DOORBELL_ALLOWED_VIEWS": "RoomProjector,ReservationProjector",
+    "DIRECT_DOORBELL_MAX_INVOCATIONS": "32",
+    "DIRECT_DOORBELL_DEGRADATION": "queued-degraded",
+    "DIRECT_DOORBELL_RECEIVER_MODE": "separate",
+    "G26_VIEW_COUNT": "2",
+    "G32_COMPONENT": "primary",
+    "G32_CUTOVER_PHASE": "final-g32",
+    "G32_FREEZE_RELEASE": "after-new-bindings",
+    "G32_CUTOVER_FENCE_FINGERPRINT": "856d12ed5d96cf9a37f89c9d754694e20a1029e85a50a4c9fefc15a101fcad9c",
+    "SDT_SERVICE_ID": "sekiban-dcb-g60-w131-c"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "enabled": true, "persist": true, "invocation_logs": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 1, "persist": true }
+  },
+  "assets": { "directory": "../samples/meeting-room/public" },
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "D1",
+      "database_name": "sekiban-dcb-g60-w131-c-pipeline",
+      "database_id": "b03270df-9698-4a9e-94c6-c2c5726f106d",
+      "migrations_dir": "../migrations/d1/g32"
+    },
+    {
+      "binding": "D1_MV",
+      "database_name": "sekiban-dcb-g60-w131-c-mv",
+      "database_id": "616dd377-42f3-49f7-b373-a1a07cedf2b3",
+      "migrations_dir": "../migrations/mv"
+    }
+  ],
+  "queues": {
+    "producers": [{ "binding": "DOWNSTREAM_QUEUE", "queue": "sekiban-dcb-g60-w131-c-outbox" }],
+    "consumers": [{
+      "queue": "sekiban-dcb-g60-w131-c-outbox",
+      "max_batch_timeout": 1,
+      "max_retries": 3,
+      "dead_letter_queue": "sekiban-dcb-g60-w131-c-outbox-dlq"
+    }]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "ALLOCATOR", "class_name": "AllocatorDurableObject" },
+      { "name": "JOURNAL", "class_name": "JournalDurableObject" },
+      { "name": "TAG", "class_name": "TagDurableObject" },
+      { "name": "TAG_STATE", "class_name": "TagStateDurableObject" },
+      { "name": "BOOTSTRAP", "class_name": "BootstrapCoordinatorDurableObject" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AllocatorDurableObject", "JournalDurableObject", "TagDurableObject"] },
+    { "tag": "v2", "new_sqlite_classes": ["BootstrapCoordinatorDurableObject"] },
+    { "tag": "v3", "new_sqlite_classes": ["TagStateDurableObject"] }
+  ]
+}

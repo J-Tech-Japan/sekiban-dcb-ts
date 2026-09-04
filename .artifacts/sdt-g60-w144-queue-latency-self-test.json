@@ -1,0 +1,12 @@
+{
+  "guard": "SDT-G60 queue latency handoff",
+  "phase": "self-test",
+  "status": "green",
+  "redBeforeGreen": {
+    "status": "red",
+    "expectedFailure": true,
+    "reason": "old waitUntil-only zero-delay handoff remains",
+    "label": "old waitUntil-only fixture"
+  },
+  "contract": "start durable outbox drain before returning append response; retain started promise with waitUntil"
+}

@@ -12,6 +12,11 @@ import { createD1StoreProvider, D1EventStore, D1IdentityConflictError } from "..
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
 import { handleSerializedRead } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
+import {
+  recordDurableHop,
+  recordDurableHopSubstep,
+  recordDurableUnsafeWriterBoundary,
+} from "../packages/dcb-runtime/src/diagnostics/G60DurableHop";
 import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { g32EventId, g32Message, g32Suid, withG44FixtureFacts } from "./helpers/g32-fixtures";
@@ -277,6 +282,8 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_event_arrivals",
       "serialized_dcb_global_memberships",
       "serialized_dcb_global_receipts",
+      "serialized_dcb_hop_measurements",
+      "serialized_dcb_hop_submeasurements",
       "serialized_dcb_inconsistency_findings",
       "serialized_dcb_lag_estimates",
       "serialized_dcb_pending_arrivals",
@@ -284,6 +291,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_safe_lane_health",
       "serialized_dcb_safe_lane_history",
       "serialized_dcb_source_partitions",
+      "serialized_dcb_unsafe_writer_boundaries",
       "serialized_dcb_wait_target_incidents",
     ]);
     const eventSql = await database().prepare(
@@ -292,5 +300,130 @@ describe("SDT-G18 D1 PipelineStore", () => {
     expect(eventSql?.sql).toMatch(/PRIMARY KEY \("ServiceId", "Id"\)/);
     expect(eventSql?.sql).toMatch(/"SortableUniqueId" TEXT NOT NULL COLLATE BINARY/);
     expect(eventSql?.sql).not.toMatch(/UNIQUE \([^)]*SortableUniqueId/);
+  });
+
+  it("keeps G60 hop observations correlated, ordered, and idempotent without SUID uniqueness", async () => {
+    const serviceId = `d1-g60-hop-${crypto.randomUUID()}`;
+    const identity = {
+      serviceId,
+      eventId: "event-one",
+      suid: "000000000000000000000000000001",
+      attemptId: "attempt-one",
+    };
+    const observations = [
+      { stage: "command-receipt" as const, observedAt: 1000 },
+      { stage: "tag-append-committed" as const, partitionTag: "reservation:one", observedAt: 1001 },
+      { stage: "outbox-obligation-written" as const, partitionTag: "reservation:one", observedAt: 1002 },
+      { stage: "queue-send-returned" as const, partitionTag: "reservation:one", transport: "queue" as const, observedAt: 1003 },
+      { stage: "consumer-invocation-started" as const, partitionTag: "reservation:one", transport: "queue" as const, observedAt: 1004 },
+      { stage: "record-delivery-batch-committed" as const, partitionTag: "reservation:one", transport: "queue" as const, observedAt: 1005 },
+      { stage: "first-unsafe-visible-read" as const, viewId: "ReservationProjector", transport: "public-read" as const, observedAt: 1006 },
+    ];
+    for (const observation of observations) await recordDurableHop(database(), { ...identity, ...observation });
+    await recordDurableHop(database(), { ...identity, stage: "record-delivery-batch-committed", partitionTag: "reservation:one", transport: "queue", observedAt: 2000 });
+    await recordDurableHop(database(), { ...identity, stage: "record-delivery-batch-committed", partitionTag: "reservation:one", transport: "queue", observedAt: 900 });
+    await recordDurableHop(database(), { ...identity, stage: "command-receipt", observedAt: 1000, eventId: "event-two", attemptId: "attempt-two" });
+    const rows = await database().prepare(
+      `SELECT event_id, suid, stage, observed_at
+         FROM serialized_dcb_hop_measurements
+        WHERE service_id = ?
+        ORDER BY event_id COLLATE BINARY, observed_at ASC, stage COLLATE BINARY`,
+    ).bind(serviceId).all<{ event_id: string; suid: string; stage: string; observed_at: number }>();
+    expect(rows.results).toHaveLength(8);
+    expect(new Set(rows.results.filter((row) => row.event_id === "event-one").map((row) => row.stage))).toEqual(new Set(observations.map((row) => row.stage)));
+    expect(rows.results.find((row) => row.stage === "record-delivery-batch-committed")?.observed_at).toBe(900);
+    expect(rows.results.some((row) => row.event_id === "event-two" && row.suid === identity.suid)).toBe(true);
+  });
+
+  it("keeps G60 post-admission boundaries append-only and exactly correlated", async () => {
+    const serviceId = `d1-g60-substeps-${crypto.randomUUID()}`;
+    const identity = {
+      serviceId,
+      eventId: "substep-event",
+      suid: "000000000000000000000000000002",
+      attemptId: "substep-attempt",
+      partitionTag: "reservation:substep",
+      transport: "queue" as const,
+    };
+    const observations = [
+      { stage: "post-record-delivery-global-receipt-readback" as const, boundary: "start" as const, outcome: "started", observedAt: 2000 },
+      { stage: "post-record-delivery-global-receipt-readback" as const, boundary: "end" as const, outcome: "available", observedAt: 2001 },
+      { stage: "source-tag-acknowledgement" as const, boundary: "start" as const, outcome: "started", observedAt: 2002 },
+      { stage: "source-tag-acknowledgement" as const, boundary: "end" as const, outcome: "acknowledged", observedAt: 2003 },
+      { stage: "completeness-coverage" as const, boundary: "start" as const, outcome: "started", observedAt: 2004 },
+      { stage: "completeness-coverage" as const, boundary: "end" as const, outcome: "SETTLED", observedAt: 2005 },
+      { stage: "detector" as const, boundary: "start" as const, outcome: "started", observedAt: 2006 },
+      { stage: "detector" as const, boundary: "end" as const, outcome: "applied", observedAt: 2007 },
+      { stage: "unsafe-view-apply" as const, boundary: "start" as const, outcome: "started", viewId: "RoomProjector", observedAt: 2008 },
+      { stage: "unsafe-view-apply" as const, boundary: "end" as const, outcome: "applied", viewId: "RoomProjector", observedAt: 2009 },
+      { stage: "unsafe-view-apply" as const, boundary: "start" as const, outcome: "started", viewId: "ReservationProjector", observedAt: 2010 },
+      { stage: "unsafe-view-apply" as const, boundary: "end" as const, outcome: "applied", viewId: "ReservationProjector", observedAt: 2011 },
+    ];
+    for (const observation of observations) await recordDurableHopSubstep(database(), { ...identity, ...observation });
+    await recordDurableHopSubstep(database(), { ...identity, ...observations[1], outcome: "mutated", observedAt: 9999 });
+    const rows = await database().prepare(
+      `SELECT event_id, suid, attempt_id, stage, boundary, outcome, partition_tag, view_id, transport, observed_at
+         FROM serialized_dcb_hop_submeasurements
+        WHERE service_id = ?
+        ORDER BY observed_at ASC, stage COLLATE BINARY, boundary COLLATE BINARY, view_id COLLATE BINARY`,
+    ).bind(serviceId).all<{
+      event_id: string;
+      suid: string;
+      attempt_id: string;
+      stage: string;
+      boundary: string;
+      outcome: string;
+      partition_tag: string;
+      view_id: string;
+      transport: string;
+      observed_at: number;
+    }>();
+    expect(rows.results).toHaveLength(observations.length);
+    expect(rows.results.every((row) => row.event_id === identity.eventId && row.suid === identity.suid && row.attempt_id === identity.attemptId)).toBe(true);
+    expect(rows.results.find((row) => row.stage === observations[1].stage && row.boundary === observations[1].boundary)?.outcome).toBe("available");
+    expect(rows.results.filter((row) => row.stage === "unsafe-view-apply").map((row) => row.view_id)).toEqual([
+      "RoomProjector",
+      "RoomProjector",
+      "ReservationProjector",
+      "ReservationProjector",
+    ]);
+  });
+
+  it("keeps G60 unsafe writer boundaries path-labelled and exactly correlated", async () => {
+    const serviceId = `d1-g60-writer-${crypto.randomUUID()}`;
+    const identity = {
+      serviceId,
+      eventId: "writer-event",
+      suid: "000000000000000000000000000003",
+      attemptId: "writer-attempt",
+      viewId: "ReservationProjector",
+      writerPath: "inline-delivery" as const,
+      transport: "queue" as const,
+    };
+    await recordDurableUnsafeWriterBoundary(database(), { ...identity, boundary: "start", outcome: "started", observedAt: 3000 });
+    await recordDurableUnsafeWriterBoundary(database(), { ...identity, boundary: "end", outcome: "applied", observedAt: 3001 });
+    await recordDurableUnsafeWriterBoundary(database(), { ...identity, boundary: "end", outcome: "mutated", observedAt: 9999 });
+    const rows = await database().prepare(
+      `SELECT service_id, event_id, suid, attempt_id, writer_path, boundary,
+              outcome, view_id, transport, observed_at
+         FROM serialized_dcb_unsafe_writer_boundaries
+        WHERE service_id = ?
+        ORDER BY observed_at ASC, boundary COLLATE BINARY`,
+    ).bind(serviceId).all<{
+      service_id: string;
+      event_id: string;
+      suid: string;
+      attempt_id: string;
+      writer_path: string;
+      boundary: string;
+      outcome: string;
+      view_id: string;
+      transport: string;
+      observed_at: number;
+    }>();
+    expect(rows.results).toEqual([
+      { service_id: serviceId, event_id: "writer-event", suid: identity.suid, attempt_id: "writer-attempt", writer_path: "inline-delivery", boundary: "start", outcome: "started", view_id: "ReservationProjector", transport: "queue", observed_at: 3000 },
+      { service_id: serviceId, event_id: "writer-event", suid: identity.suid, attempt_id: "writer-attempt", writer_path: "inline-delivery", boundary: "end", outcome: "applied", view_id: "ReservationProjector", transport: "queue", observed_at: 3001 },
+    ]);
   });
 });
