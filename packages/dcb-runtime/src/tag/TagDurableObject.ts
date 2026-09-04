@@ -2824,7 +2824,7 @@ export class TagDurableObject implements DurableObject {
           (this.env.DOWNSTREAM_QUEUE !== undefined ||
             (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
         ) {
-          this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId, domainDeliveryClass).catch(() => undefined));
+          this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass);
         }
         return response;
       }
@@ -2944,12 +2944,7 @@ export class TagDurableObject implements DurableObject {
         (this.env.DOWNSTREAM_QUEUE !== undefined ||
           (doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined))
       ) {
-        // The append transaction is already durable. Both transports consume
-        // the full pending-outbox envelope after the response; this DO never
-        // records delivery or applies a view. Keep the handoff off the
-        // application response lifetime so transport backpressure cannot turn
-        // a committed append into a Worker timeout.
-        this.ctx.waitUntil(this.autoDrainAfterResponse(tag, serviceId, domainDeliveryClass).catch(() => undefined));
+        this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass);
       }
       return response;
     } catch (failure) {
@@ -2965,16 +2960,17 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * A DO can receive the CommitWorker's immediate /head-facts read as the next
-   * input event. Yield once before starting the awaited service binding so the
-   * append response and that authoritative state read are not serialized
-   * behind a cold receiver's first MV-generation build. The binding call is
-   * still awaited inside waitUntil, and all delivery work remains outside the
-   * Tag DO.
+   * The append transaction has durably committed the Tag event, outbox
+   * obligation, and receipt before this handoff is started. Start the drain
+   * before returning the 201 response so Queue submission overlaps the
+   * response clock; waitUntil retains the already-started promise without
+   * making transport backpressure a response dependency. Delivery remains
+   * outside the storage transaction and all existing retry/failure handling is
+   * preserved by autoDrainOutbox.
    */
-  private async autoDrainAfterResponse(tag: string, serviceId: string, domainDeliveryClass?: string): Promise<void> {
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    await this.autoDrainOutbox(tag, serviceId, domainDeliveryClass);
+  private startAutoDrainBeforeResponse(tag: string, serviceId: string, domainDeliveryClass?: string): void {
+    const drain = this.autoDrainOutbox(tag, serviceId, domainDeliveryClass).catch(() => undefined);
+    this.ctx.waitUntil(drain);
   }
 
   private async autoDrainOutbox(

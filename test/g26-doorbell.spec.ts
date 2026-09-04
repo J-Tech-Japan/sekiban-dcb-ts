@@ -58,7 +58,7 @@ function candidate(
 }
 
 describe("SDT-G26 Tag doorbell handoff", () => {
-  it("builds one complete pending envelope and hands identical bytes to doorbell and Queue after response", async () => {
+  it("builds one complete pending envelope and starts the handoff before response retention", async () => {
     const { storage } = tagStorage();
     const waits: Promise<unknown>[] = [];
     const doorbell: DownstreamOutboxMessage[] = [];
@@ -99,10 +99,9 @@ describe("SDT-G26 Tag doorbell handoff", () => {
       },
     ));
     expect(response.status).toBe(201);
-    // The service-binding call is not allowed to run as part of the append
-    // response. It is owned by the DO waitUntil lifetime.
-    expect(doorbell).toEqual([]);
-    expect(queue).toEqual([]);
+    // The durable append is complete before the handoff starts. The returned
+    // promise is still retained by the DO waitUntil lifetime while the
+    // transport work runs outside the storage transaction.
     expect(waits).toHaveLength(1);
     await Promise.all(waits);
     expect(doorbell).toHaveLength(1);
