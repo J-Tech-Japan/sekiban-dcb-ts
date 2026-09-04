@@ -1,0 +1,34 @@
+{
+  "guard": "SDT-G60 durable hop",
+  "phase": "post-change",
+  "status": "green",
+  "expectedFailure": false,
+  "green": {
+    "status": "green",
+    "stageCount": 7,
+    "identity": {
+      "serviceId": "g60-guard",
+      "eventId": "event-1",
+      "suid": "000000000000000000000000000001",
+      "attemptId": "attempt-1"
+    }
+  },
+  "redMutant": {
+    "status": "red",
+    "expectedFailure": true,
+    "reason": "hop correlation changed at tag-append-committed: eventId"
+  },
+  "sourceWiring": {
+    "ok": true,
+    "missing": []
+  },
+  "stages": [
+    "command-receipt",
+    "tag-append-committed",
+    "outbox-obligation-written",
+    "queue-send-returned",
+    "consumer-invocation-started",
+    "record-delivery-batch-committed",
+    "first-unsafe-visible-read"
+  ]
+}

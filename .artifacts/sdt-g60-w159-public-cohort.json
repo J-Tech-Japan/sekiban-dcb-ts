@@ -1,0 +1,1402 @@
+{
+  "schema": "sdt-g60-w124-public-cohort/v1",
+  "task": "SDT-G60-CLEAN-PREG53-AB-W124",
+  "status": "completed",
+  "variant": "W159-reused-W131-C-direct-doorbell",
+  "sourceCommit": "6481ddf4285b5bd71b576aee4a02e0605fb102b1",
+  "deployedVersionId": "e2c870ee-3f3d-404d-96b1-bc480a96dda5",
+  "baseUrl": "https://sekiban-dcb-g60-w131-c.ttakaoka.workers.dev",
+  "runId": "1a60e4cd-d573-4c22-a0a5-b398cb28e101",
+  "startedAt": "2026-09-04T20:12:40.820Z",
+  "contract": {
+    "publicSurfaceOnly": [
+      "POST /api/commands/create-room",
+      "POST /api/commands/reserve-room",
+      "GET /api/read/reservations"
+    ],
+    "conformanceHealthCalled": false,
+    "conformanceTokenUsed": false,
+    "roomProtocol": "G15/G16 create-room body {roomId,name:SDT-G15}",
+    "reservationProtocol": "G15/G16 reserve-room body {roomId,reservationId,userId:g15}",
+    "pacedReservationCommits": 10,
+    "minimumCommitSpacingMs": 10000,
+    "coldFirstSample": true,
+    "timing": "command response receivedAtMs to first public-list observation containing the reservation ID",
+    "unsafeCountBoundMs": 5000,
+    "observationCeilingMs": 120000,
+    "pagination": "pageSize=1000; every page declared by each scan fetched; target presence only",
+    "rawReceiptPersistence": "flushed after setup, every list scan, each accepted commit, and each completed sample"
+  },
+  "setupRoom": {
+    "roomId": "g15-room-1a60e4cdd5734c22",
+    "commit": {
+      "method": "POST",
+      "path": "/api/commands/create-room",
+      "requestBody": {
+        "roomId": "g15-room-1a60e4cdd5734c22",
+        "name": "SDT-G15"
+      },
+      "status": 200,
+      "body": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwibmFtZSI6IlNEVC1HMTUifQ==",
+              "sortableUniqueIdValue": "063924149564376000001934915222",
+              "id": "01a06e0d-5249-7adf-bf62-be849b099d97",
+              "eventMetadata": {
+                "causationId": "01a06e0d-5249-7adf-bf62-be849b099d97",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:g15-room-1a60e4cdd5734c22"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:g15-room-1a60e4cdd5734c22",
+              "version": 1,
+              "writtenAt": "2026-09-04T20:12:44.515Z"
+            }
+          ],
+          "duration": "PT5.067S"
+        }
+      },
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwibmFtZSI6IlNEVC1HMTUifQ==\",\"sortableUniqueIdValue\":\"063924149564376000001934915222\",\"id\":\"01a06e0d-5249-7adf-bf62-be849b099d97\",\"eventMetadata\":{\"causationId\":\"01a06e0d-5249-7adf-bf62-be849b099d97\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":1,\"writtenAt\":\"2026-09-04T20:12:44.515Z\"}],\"duration\":\"PT5.067S\"}}",
+      "startedAtMs": 1788552760821,
+      "receivedAtMs": 1788552767018,
+      "elapsedMs": 6197,
+      "cfRay": "a35fa683db5e2a56-SJC",
+      "suid": "063924149564376000001934915222"
+    }
+  },
+  "reservations": [
+    {
+      "ordinal": 1,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-1",
+      "suid": "063924149568195000001705026963",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-1",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTEiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149568195000001705026963",
+                "id": "01a06e0d-69fa-7715-ad1f-eaf6991bdaee",
+                "eventMetadata": {
+                  "causationId": "01a06e0d-69fa-7715-ad1f-eaf6991bdaee",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-1"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 3,
+                "writtenAt": "2026-09-04T20:12:48.182Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-1",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:12:48.242Z"
+              }
+            ],
+            "duration": "PT1.742S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTEiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149568195000001705026963\",\"id\":\"01a06e0d-69fa-7715-ad1f-eaf6991bdaee\",\"eventMetadata\":{\"causationId\":\"01a06e0d-69fa-7715-ad1f-eaf6991bdaee\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-1\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":3,\"writtenAt\":\"2026-09-04T20:12:48.182Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-1\",\"version\":1,\"writtenAt\":\"2026-09-04T20:12:48.242Z\"}],\"duration\":\"PT1.742S\"}}",
+        "startedAtMs": 1788552767018,
+        "receivedAtMs": 1788552769760,
+        "elapsedMs": 2742,
+        "cfRay": "a35fa6a9ff232a56-SJC",
+        "suid": "063924149568195000001705026963"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": null,
+        "commitStartedAtMs": 1788552767018,
+        "previousCommitToThisCommitStartMs": null,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552769958,
+          "commitToObservationMs": 198,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 1,
+          "pageItemsTotal": 1,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552769774,
+              "receivedAtMs": 1788552769958,
+              "requestMs": 184,
+              "cfRay": "a35fa6bb3a5f2a56-SJC",
+              "totalCount": 1,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 1,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":1,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149568195000001705026963\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552769958,
+        "commitToFirstVisibilityMs": 198,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-1",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552769958,
+            "commitToObservationMs": 198,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 1,
+            "pageItemsTotal": 1,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552769774,
+                "receivedAtMs": 1788552769958,
+                "requestMs": 184,
+                "cfRay": "a35fa6bb3a5f2a56-SJC",
+                "totalCount": 1,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 1,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":1,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149568195000001705026963\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-2",
+      "suid": "063924149580934000000406340974",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-2",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTIiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149580934000000406340974",
+                "id": "01a06e0d-9bbe-7105-aa78-5d5021e57b05",
+                "eventMetadata": {
+                  "causationId": "01a06e0d-9bbe-7105-aa78-5d5021e57b05",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-2"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 5,
+                "writtenAt": "2026-09-04T20:13:00.999Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-2",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:13:01.004Z"
+              }
+            ],
+            "duration": "PT1.874S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTIiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149580934000000406340974\",\"id\":\"01a06e0d-9bbe-7105-aa78-5d5021e57b05\",\"eventMetadata\":{\"causationId\":\"01a06e0d-9bbe-7105-aa78-5d5021e57b05\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-2\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":5,\"writtenAt\":\"2026-09-04T20:13:00.999Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-2\",\"version\":1,\"writtenAt\":\"2026-09-04T20:13:01.004Z\"}],\"duration\":\"PT1.874S\"}}",
+        "startedAtMs": 1788552779761,
+        "receivedAtMs": 1788552782633,
+        "elapsedMs": 2872,
+        "cfRay": "a35fa6f9eb75055e-SJC",
+        "suid": "063924149580934000000406340974"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552769760,
+        "commitStartedAtMs": 1788552779761,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552782859,
+          "commitToObservationMs": 226,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 2,
+          "pageItemsTotal": 2,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552782634,
+              "receivedAtMs": 1788552782859,
+              "requestMs": 225,
+              "cfRay": "a35fa70b9f37055e-SJC",
+              "totalCount": 2,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 2,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":2,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149580934000000406340974\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552782859,
+        "commitToFirstVisibilityMs": 226,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-2",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552782859,
+            "commitToObservationMs": 226,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 2,
+            "pageItemsTotal": 2,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552782634,
+                "receivedAtMs": 1788552782859,
+                "requestMs": 225,
+                "cfRay": "a35fa70b9f37055e-SJC",
+                "totalCount": 2,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 2,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":2,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149580934000000406340974\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-3",
+      "suid": "063924149593889000000968970887",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-3",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTMiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149593889000000968970887",
+                "id": "01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb",
+                "eventMetadata": {
+                  "causationId": "01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-3"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 7,
+                "writtenAt": "2026-09-04T20:13:13.953Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-3",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:13:13.933Z"
+              }
+            ],
+            "duration": "PT2.058S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTMiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149593889000000968970887\",\"id\":\"01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb\",\"eventMetadata\":{\"causationId\":\"01a06e0d-ce2e-7ee7-851a-2bdc9a107dbb\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-3\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":7,\"writtenAt\":\"2026-09-04T20:13:13.953Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-3\",\"version\":1,\"writtenAt\":\"2026-09-04T20:13:13.933Z\"}],\"duration\":\"PT2.058S\"}}",
+        "startedAtMs": 1788552792633,
+        "receivedAtMs": 1788552795727,
+        "elapsedMs": 3094,
+        "cfRay": "a35fa74a5d82d59a-SJC",
+        "suid": "063924149593889000000968970887"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552782633,
+        "commitStartedAtMs": 1788552792633,
+        "previousCommitToThisCommitStartMs": 10000,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552795864,
+          "commitToObservationMs": 137,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 3,
+          "pageItemsTotal": 3,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552795727,
+              "receivedAtMs": 1788552795864,
+              "requestMs": 137,
+              "cfRay": "a35fa75d6d90d59a-SJC",
+              "totalCount": 3,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 3,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":3,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149593889000000968970887\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552795864,
+        "commitToFirstVisibilityMs": 137,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-3",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552795864,
+            "commitToObservationMs": 137,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 3,
+            "pageItemsTotal": 3,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552795727,
+                "receivedAtMs": 1788552795864,
+                "requestMs": 137,
+                "cfRay": "a35fa75d6d90d59a-SJC",
+                "totalCount": 3,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 3,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":3,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149593889000000968970887\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-4",
+      "suid": "063924149607182000001635336287",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-4",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTQiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149607182000001635336287",
+                "id": "01a06e0e-020e-7907-bacf-23b27d69f537",
+                "eventMetadata": {
+                  "causationId": "01a06e0e-020e-7907-bacf-23b27d69f537",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-4"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 9,
+                "writtenAt": "2026-09-04T20:13:27.255Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-4",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:13:27.257Z"
+              }
+            ],
+            "duration": "PT1.967S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTQiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149607182000001635336287\",\"id\":\"01a06e0e-020e-7907-bacf-23b27d69f537\",\"eventMetadata\":{\"causationId\":\"01a06e0e-020e-7907-bacf-23b27d69f537\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-4\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":9,\"writtenAt\":\"2026-09-04T20:13:27.255Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-4\",\"version\":1,\"writtenAt\":\"2026-09-04T20:13:27.257Z\"}],\"duration\":\"PT1.967S\"}}",
+        "startedAtMs": 1788552805728,
+        "receivedAtMs": 1788552808920,
+        "elapsedMs": 3192,
+        "cfRay": "a35fa79c9a94eb36-SJC",
+        "suid": "063924149607182000001635336287"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552795727,
+        "commitStartedAtMs": 1788552805728,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552809088,
+          "commitToObservationMs": 168,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 4,
+          "pageItemsTotal": 4,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552808920,
+              "receivedAtMs": 1788552809088,
+              "requestMs": 168,
+              "cfRay": "a35fa7afdc5deb36-SJC",
+              "totalCount": 4,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 4,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":4,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149607182000001635336287\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552809088,
+        "commitToFirstVisibilityMs": 168,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-4",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552809088,
+            "commitToObservationMs": 168,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 4,
+            "pageItemsTotal": 4,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552808920,
+                "receivedAtMs": 1788552809088,
+                "requestMs": 168,
+                "cfRay": "a35fa7afdc5deb36-SJC",
+                "totalCount": 4,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 4,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":4,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149607182000001635336287\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-5",
+      "suid": "063924149620624000001233170953",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-5",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTUiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149620624000001233170953",
+                "id": "01a06e0e-367b-74ae-ab41-2fb4fcc905b6",
+                "eventMetadata": {
+                  "causationId": "01a06e0e-367b-74ae-ab41-2fb4fcc905b6",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-5"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 11,
+                "writtenAt": "2026-09-04T20:13:40.700Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-5",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:13:40.687Z"
+              }
+            ],
+            "duration": "PT2.443S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTUiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149620624000001233170953\",\"id\":\"01a06e0e-367b-74ae-ab41-2fb4fcc905b6\",\"eventMetadata\":{\"causationId\":\"01a06e0e-367b-74ae-ab41-2fb4fcc905b6\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-5\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":11,\"writtenAt\":\"2026-09-04T20:13:40.700Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-5\",\"version\":1,\"writtenAt\":\"2026-09-04T20:13:40.687Z\"}],\"duration\":\"PT2.443S\"}}",
+        "startedAtMs": 1788552818921,
+        "receivedAtMs": 1788552822892,
+        "elapsedMs": 3971,
+        "cfRay": "a35fa7ef4d62f9ed-SJC",
+        "suid": "063924149620624000001233170953"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552808920,
+        "commitStartedAtMs": 1788552818921,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552823058,
+          "commitToObservationMs": 166,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 5,
+          "pageItemsTotal": 5,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552822893,
+              "receivedAtMs": 1788552823058,
+              "requestMs": 165,
+              "cfRay": "a35fa8073896f9ed-SJC",
+              "totalCount": 5,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 5,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":5,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149620624000001233170953\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552823058,
+        "commitToFirstVisibilityMs": 166,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-5",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552823058,
+            "commitToObservationMs": 166,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 5,
+            "pageItemsTotal": 5,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552822893,
+                "receivedAtMs": 1788552823058,
+                "requestMs": 165,
+                "cfRay": "a35fa8073896f9ed-SJC",
+                "totalCount": 5,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 5,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":5,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149620624000001233170953\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-6",
+      "suid": "063924149634239000001916402820",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-6",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTYiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149634239000001916402820",
+                "id": "01a06e0e-6be4-7e3a-94f3-759c601982d3",
+                "eventMetadata": {
+                  "causationId": "01a06e0e-6be4-7e3a-94f3-759c601982d3",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-6"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 13,
+                "writtenAt": "2026-09-04T20:13:54.298Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-6",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:13:54.303Z"
+              }
+            ],
+            "duration": "PT2.234S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTYiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149634239000001916402820\",\"id\":\"01a06e0e-6be4-7e3a-94f3-759c601982d3\",\"eventMetadata\":{\"causationId\":\"01a06e0e-6be4-7e3a-94f3-759c601982d3\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-6\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":13,\"writtenAt\":\"2026-09-04T20:13:54.298Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-6\",\"version\":1,\"writtenAt\":\"2026-09-04T20:13:54.303Z\"}],\"duration\":\"PT2.234S\"}}",
+        "startedAtMs": 1788552832892,
+        "receivedAtMs": 1788552836335,
+        "elapsedMs": 3443,
+        "cfRay": "a35fa845fbe24b6f-SJC",
+        "suid": "063924149634239000001916402820"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552822892,
+        "commitStartedAtMs": 1788552832892,
+        "previousCommitToThisCommitStartMs": 10000,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552836524,
+          "commitToObservationMs": 189,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 6,
+          "pageItemsTotal": 6,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552836336,
+              "receivedAtMs": 1788552836524,
+              "requestMs": 188,
+              "cfRay": "a35fa85b3a004b6f-SJC",
+              "totalCount": 6,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 6,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":6,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149634239000001916402820\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552836524,
+        "commitToFirstVisibilityMs": 189,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-6",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552836524,
+            "commitToObservationMs": 189,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 6,
+            "pageItemsTotal": 6,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552836336,
+                "receivedAtMs": 1788552836524,
+                "requestMs": 188,
+                "cfRay": "a35fa85b3a004b6f-SJC",
+                "totalCount": 6,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 6,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":6,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149634239000001916402820\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-7",
+      "suid": "063924149647696000000495280147",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-7",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTciLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149647696000000495280147",
+                "id": "01a06e0e-a049-763e-944b-46c97caf7d47",
+                "eventMetadata": {
+                  "causationId": "01a06e0e-a049-763e-944b-46c97caf7d47",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-7"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 15,
+                "writtenAt": "2026-09-04T20:14:07.799Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-7",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:14:07.785Z"
+              }
+            ],
+            "duration": "PT2.364S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTciLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149647696000000495280147\",\"id\":\"01a06e0e-a049-763e-944b-46c97caf7d47\",\"eventMetadata\":{\"causationId\":\"01a06e0e-a049-763e-944b-46c97caf7d47\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-7\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":15,\"writtenAt\":\"2026-09-04T20:14:07.799Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-7\",\"version\":1,\"writtenAt\":\"2026-09-04T20:14:07.785Z\"}],\"duration\":\"PT2.364S\"}}",
+        "startedAtMs": 1788552846336,
+        "receivedAtMs": 1788552849822,
+        "elapsedMs": 3486,
+        "cfRay": "a35fa899f82260d0-SJC",
+        "suid": "063924149647696000000495280147"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552836335,
+        "commitStartedAtMs": 1788552846336,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552850159,
+          "commitToObservationMs": 337,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 7,
+          "pageItemsTotal": 7,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552849823,
+              "receivedAtMs": 1788552850159,
+              "requestMs": 336,
+              "cfRay": "a35fa8af896d60d0-SJC",
+              "totalCount": 7,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 7,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":7,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149647696000000495280147\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552850159,
+        "commitToFirstVisibilityMs": 337,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-7",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552850159,
+            "commitToObservationMs": 337,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 7,
+            "pageItemsTotal": 7,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552849823,
+                "receivedAtMs": 1788552850159,
+                "requestMs": 336,
+                "cfRay": "a35fa8af896d60d0-SJC",
+                "totalCount": 7,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 7,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":7,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149647696000000495280147\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-8",
+      "suid": "063924149661470000000226411998",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-8",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTgiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149661470000000226411998",
+                "id": "01a06e0e-d598-7edf-b26f-bffedfe6b69f",
+                "eventMetadata": {
+                  "causationId": "01a06e0e-d598-7edf-b26f-bffedfe6b69f",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-8"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 17,
+                "writtenAt": "2026-09-04T20:14:21.562Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-8",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:14:21.551Z"
+              }
+            ],
+            "duration": "PT2.291S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTgiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149661470000000226411998\",\"id\":\"01a06e0e-d598-7edf-b26f-bffedfe6b69f\",\"eventMetadata\":{\"causationId\":\"01a06e0e-d598-7edf-b26f-bffedfe6b69f\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-8\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":17,\"writtenAt\":\"2026-09-04T20:14:21.562Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-8\",\"version\":1,\"writtenAt\":\"2026-09-04T20:14:21.551Z\"}],\"duration\":\"PT2.291S\"}}",
+        "startedAtMs": 1788552859823,
+        "receivedAtMs": 1788552863386,
+        "elapsedMs": 3563,
+        "cfRay": "a35fa8eeb855cd1f-LAX",
+        "suid": "063924149661470000000226411998"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552849822,
+        "commitStartedAtMs": 1788552859823,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552863593,
+          "commitToObservationMs": 207,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 8,
+          "pageItemsTotal": 8,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552863386,
+              "receivedAtMs": 1788552863593,
+              "requestMs": 207,
+              "cfRay": "a35fa9043cffcd1f-LAX",
+              "totalCount": 8,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 8,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":8,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149661470000000226411998\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552863593,
+        "commitToFirstVisibilityMs": 207,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-8",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552863593,
+            "commitToObservationMs": 207,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 8,
+            "pageItemsTotal": 8,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552863386,
+                "receivedAtMs": 1788552863593,
+                "requestMs": 207,
+                "cfRay": "a35fa9043cffcd1f-LAX",
+                "totalCount": 8,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 8,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":8,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149661470000000226411998\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-9",
+      "suid": "063924149675073000002009964515",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-9",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTkiLCJ1c2VySWQiOiJnMTUifQ==",
+                "sortableUniqueIdValue": "063924149675073000002009964515",
+                "id": "01a06e0f-0aa3-76d7-9b37-dd382e457a92",
+                "eventMetadata": {
+                  "causationId": "01a06e0f-0aa3-76d7-9b37-dd382e457a92",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-9"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 19,
+                "writtenAt": "2026-09-04T20:14:35.146Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-9",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:14:35.139Z"
+              }
+            ],
+            "duration": "PT2.514S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTkiLCJ1c2VySWQiOiJnMTUifQ==\",\"sortableUniqueIdValue\":\"063924149675073000002009964515\",\"id\":\"01a06e0f-0aa3-76d7-9b37-dd382e457a92\",\"eventMetadata\":{\"causationId\":\"01a06e0f-0aa3-76d7-9b37-dd382e457a92\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-9\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":19,\"writtenAt\":\"2026-09-04T20:14:35.146Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-9\",\"version\":1,\"writtenAt\":\"2026-09-04T20:14:35.139Z\"}],\"duration\":\"PT2.514S\"}}",
+        "startedAtMs": 1788552873387,
+        "receivedAtMs": 1788552877231,
+        "elapsedMs": 3844,
+        "cfRay": "a35fa942ee6ef210-LAX",
+        "suid": "063924149675073000002009964515"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552863386,
+        "commitStartedAtMs": 1788552873387,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552877418,
+          "commitToObservationMs": 187,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 9,
+          "pageItemsTotal": 9,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552877233,
+              "receivedAtMs": 1788552877418,
+              "requestMs": 185,
+              "cfRay": "a35fa95ace2cf210-LAX",
+              "totalCount": 9,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 9,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-9\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":9,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149675073000002009964515\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552877418,
+        "commitToFirstVisibilityMs": 187,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-9",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552877418,
+            "commitToObservationMs": 187,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 9,
+            "pageItemsTotal": 9,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552877233,
+                "receivedAtMs": 1788552877418,
+                "requestMs": 185,
+                "cfRay": "a35fa95ace2cf210-LAX",
+                "totalCount": 9,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 9,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-9\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":9,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149675073000002009964515\"}"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g15-reservation-1a60e4cdd5734c22-10",
+      "suid": "063924149689043000002023902206",
+      "commit": {
+        "method": "POST",
+        "path": "/api/commands/reserve-room",
+        "requestBody": {
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-10",
+          "userId": "g15"
+        },
+        "status": 200,
+        "body": {
+          "kind": "committed",
+          "attempts": 1,
+          "status": 200,
+          "response": {
+            "writtenEvents": [
+              {
+                "payload": "eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTEwIiwidXNlcklkIjoiZzE1In0=",
+                "sortableUniqueIdValue": "063924149689043000002023902206",
+                "id": "01a06e0f-403c-7019-b705-abc644aaed08",
+                "eventMetadata": {
+                  "causationId": "01a06e0f-403c-7019-b705-abc644aaed08",
+                  "correlationId": "SerializedCommit",
+                  "executedUser": "SerializedSekibanExecutor"
+                },
+                "tags": [
+                  "room:g15-room-1a60e4cdd5734c22",
+                  "reservation:g15-reservation-1a60e4cdd5734c22-10"
+                ],
+                "eventPayloadName": "RoomReserved"
+              }
+            ],
+            "tagWriteResults": [
+              {
+                "tag": "room:g15-room-1a60e4cdd5734c22",
+                "version": 21,
+                "writtenAt": "2026-09-04T20:14:49.120Z"
+              },
+              {
+                "tag": "reservation:g15-reservation-1a60e4cdd5734c22-10",
+                "version": 1,
+                "writtenAt": "2026-09-04T20:14:49.115Z"
+              }
+            ],
+            "duration": "PT2.276S"
+          }
+        },
+        "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnMTUtcm9vbS0xYTYwZTRjZGQ1NzM0YzIyIiwicmVzZXJ2YXRpb25JZCI6ImcxNS1yZXNlcnZhdGlvbi0xYTYwZTRjZGQ1NzM0YzIyLTEwIiwidXNlcklkIjoiZzE1In0=\",\"sortableUniqueIdValue\":\"063924149689043000002023902206\",\"id\":\"01a06e0f-403c-7019-b705-abc644aaed08\",\"eventMetadata\":{\"causationId\":\"01a06e0f-403c-7019-b705-abc644aaed08\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g15-room-1a60e4cdd5734c22\",\"reservation:g15-reservation-1a60e4cdd5734c22-10\"],\"eventPayloadName\":\"RoomReserved\"}],\"tagWriteResults\":[{\"tag\":\"room:g15-room-1a60e4cdd5734c22\",\"version\":21,\"writtenAt\":\"2026-09-04T20:14:49.120Z\"},{\"tag\":\"reservation:g15-reservation-1a60e4cdd5734c22-10\",\"version\":1,\"writtenAt\":\"2026-09-04T20:14:49.115Z\"}],\"duration\":\"PT2.276S\"}}",
+        "startedAtMs": 1788552887232,
+        "receivedAtMs": 1788552890692,
+        "elapsedMs": 3460,
+        "cfRay": "a35fa9999fc6c487-SJC",
+        "suid": "063924149689043000002023902206"
+      },
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788552877231,
+        "commitStartedAtMs": 1788552887232,
+        "previousCommitToThisCommitStartMs": 10001,
+        "requiredMs": 10000
+      },
+      "observations": [
+        {
+          "observedAtMs": 1788552890894,
+          "commitToObservationMs": 202,
+          "containsReservation": true,
+          "pageCount": 1,
+          "totalPages": 1,
+          "totalCount": 10,
+          "pageItemsTotal": 10,
+          "pages": [
+            {
+              "pageNumber": 1,
+              "status": 200,
+              "startedAtMs": 1788552890693,
+              "receivedAtMs": 1788552890894,
+              "requestMs": 201,
+              "cfRay": "a35fa9aefdcdc487-SJC",
+              "totalCount": 10,
+              "totalPages": 1,
+              "currentPage": 1,
+              "pageSize": 1000,
+              "itemCount": 10,
+              "containsReservation": true,
+              "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-10\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-9\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":10,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149689043000002023902206\"}"
+            }
+          ]
+        }
+      ],
+      "visibility": {
+        "disposition": "within-5000ms",
+        "firstVisibleAtMs": 1788552890894,
+        "commitToFirstVisibilityMs": 202,
+        "item": {
+          "reservationId": "g15-reservation-1a60e4cdd5734c22-10",
+          "roomId": "g15-room-1a60e4cdd5734c22",
+          "status": "reserved",
+          "version": 1
+        },
+        "observations": [
+          {
+            "observedAtMs": 1788552890894,
+            "commitToObservationMs": 202,
+            "containsReservation": true,
+            "pageCount": 1,
+            "totalPages": 1,
+            "totalCount": 10,
+            "pageItemsTotal": 10,
+            "pages": [
+              {
+                "pageNumber": 1,
+                "status": 200,
+                "startedAtMs": 1788552890693,
+                "receivedAtMs": 1788552890894,
+                "requestMs": 201,
+                "cfRay": "a35fa9aefdcdc487-SJC",
+                "totalCount": 10,
+                "totalPages": 1,
+                "currentPage": 1,
+                "pageSize": 1000,
+                "itemCount": 10,
+                "containsReservation": true,
+                "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-10\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-9\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-8\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-7\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-6\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-5\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-4\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-3\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-2\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g15-reservation-1a60e4cdd5734c22-1\\\",\\\"roomId\\\":\\\"g15-room-1a60e4cdd5734c22\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":10,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924149689043000002023902206\"}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "metrics": {
+    "n": 10,
+    "observedN": 10,
+    "censoredN": 0,
+    "p50MsObservedOnly": 189,
+    "p95MsObservedOnly": 337,
+    "countOver5000MsStrict": 0,
+    "countAtOrOver5000OrMissing": 0,
+    "fullCohortPercentiles": "observed-all-samples"
+  },
+  "finishedAt": "2026-09-04T20:14:50.895Z"
+}
