@@ -209,6 +209,21 @@ The first provable relevant completeness-gating landing remains G62 commit
 `05d9d27` / PR #119. The unsafe writer originated in G26 `f7b257b`; this is a
 first-provable-history statement, not a stronger causality claim.
 
+### W161 required-CI reachability
+
+W160 identified that the G60 red-capable guards and focused behavior tests had
+only historical local invocation evidence. W161 adds the package command
+`npm run test:g60:required` to the existing required `ci-g26-g27` job. That
+command invokes, in order, the existing direct-doorbell lane (including its
+focused `g26-integration`, unsafe-writer, and post-admission Vitest tests), the
+Queue-latency guard, the durable-hop guard, the existing unsafe-writer lane,
+and the post-admission guard. Each guard retains its existing red/mutant
+assertions; no G26/G27 command or forced-red/topology probe is replaced.
+
+The W159 guard receipts above remain historical local proof. The W161 CI step
+is the required-head reachability proof and is reported separately with its
+exact workflow run and head.
+
 The W131-C arm is marked reusable and remains named/intact. Production and W130
 resources remain untouched. G56 remains held and no new downstream unit was
 started. W159 completes the deployed G60 evidence needed for issue/PR
