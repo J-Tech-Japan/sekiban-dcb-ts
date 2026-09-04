@@ -1,0 +1,2396 @@
+{
+  "schema": "sdt-g60-w152-hop-analysis/v1",
+  "task": "SDT-G60-AUTHORITY-B-RETRY-W152",
+  "status": "completed-measurement-ac3-failed",
+  "sourceCommit": "4cd0a602e51ba46d7857e8711ec3e0f92cad1bf2",
+  "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+  "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "cohortPath": ".artifacts/sdt-g60-w152-public-cohort.json",
+  "ledgerPath": ".artifacts/sdt-g60-w152-ledger.json",
+  "mvPath": ".artifacts/sdt-g60-w152-mv.json",
+  "rawLedgerRowCount": 240,
+  "rawMvRowCount": 10,
+  "publicSummary": {
+    "n": 10,
+    "observedN": 10,
+    "censoredN": 0,
+    "p50MsObservedOnly": 57681,
+    "p95MsObservedOnly": 71299,
+    "countOver5000MsStrict": 10,
+    "countMissingOrCensored": 0,
+    "valuesMs": [
+      {
+        "ordinal": 1,
+        "reservationId": "g15-reservation-3cefa826e0134adc-1",
+        "valueMs": 44230,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 2,
+        "reservationId": "g15-reservation-3cefa826e0134adc-2",
+        "valueMs": 56238,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 3,
+        "reservationId": "g15-reservation-3cefa826e0134adc-3",
+        "valueMs": 58962,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 4,
+        "reservationId": "g15-reservation-3cefa826e0134adc-4",
+        "valueMs": 65003,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 5,
+        "reservationId": "g15-reservation-3cefa826e0134adc-5",
+        "valueMs": 58879,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 6,
+        "reservationId": "g15-reservation-3cefa826e0134adc-6",
+        "valueMs": 57681,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 7,
+        "reservationId": "g15-reservation-3cefa826e0134adc-7",
+        "valueMs": 71299,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 8,
+        "reservationId": "g15-reservation-3cefa826e0134adc-8",
+        "valueMs": 45402,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 9,
+        "reservationId": "g15-reservation-3cefa826e0134adc-9",
+        "valueMs": 57639,
+        "disposition": "over-5000ms"
+      },
+      {
+        "ordinal": 10,
+        "reservationId": "g15-reservation-3cefa826e0134adc-10",
+        "valueMs": 60217,
+        "disposition": "over-5000ms"
+      }
+    ]
+  },
+  "originalStages": [
+    "command-receipt",
+    "tag-append-committed",
+    "outbox-obligation-written",
+    "queue-send-returned",
+    "consumer-invocation-started",
+    "record-delivery-batch-committed",
+    "first-unsafe-visible-read"
+  ],
+  "originalAdjacentSummaries": [
+    {
+      "from": "command-receipt",
+      "to": "tag-append-committed",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 829,
+      "p95Ms": 986,
+      "minMs": 798,
+      "maxMs": 986,
+      "valuesMs": [
+        798,
+        847,
+        986,
+        834,
+        829,
+        829,
+        808,
+        940,
+        832,
+        810
+      ]
+    },
+    {
+      "from": "tag-append-committed",
+      "to": "outbox-obligation-written",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "minMs": 0,
+      "maxMs": 0,
+      "valuesMs": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "from": "outbox-obligation-written",
+      "to": "queue-send-returned",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 205,
+      "p95Ms": 291,
+      "minMs": 120,
+      "maxMs": 291,
+      "valuesMs": [
+        120,
+        257,
+        286,
+        189,
+        272,
+        219,
+        183,
+        291,
+        194,
+        205
+      ]
+    },
+    {
+      "from": "queue-send-returned",
+      "to": "consumer-invocation-started",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 2419,
+      "p95Ms": 5635,
+      "minMs": 1676,
+      "maxMs": 5635,
+      "valuesMs": [
+        1684,
+        4456,
+        1676,
+        4654,
+        3585,
+        1712,
+        2419,
+        3547,
+        5635,
+        1737
+      ]
+    },
+    {
+      "from": "consumer-invocation-started",
+      "to": "record-delivery-batch-committed",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 451,
+      "p95Ms": 554,
+      "minMs": 419,
+      "maxMs": 554,
+      "valuesMs": [
+        451,
+        455,
+        451,
+        420,
+        554,
+        419,
+        463,
+        476,
+        443,
+        445
+      ]
+    },
+    {
+      "from": "record-delivery-batch-committed",
+      "to": "first-unsafe-visible-read",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 54687,
+      "p95Ms": 68326,
+      "minMs": 42053,
+      "maxMs": 68326,
+      "valuesMs": [
+        42053,
+        51294,
+        56673,
+        59847,
+        54687,
+        55443,
+        68326,
+        42815,
+        51540,
+        57971
+      ]
+    }
+  ],
+  "postAdmissionSummaries": [
+    {
+      "name": "record-delivery batch committed -> global receipt readback start",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "minMs": 0,
+      "maxMs": 0,
+      "valuesMs": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "global receipt readback start -> end",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 42,
+      "p95Ms": 71,
+      "minMs": 36,
+      "maxMs": 71,
+      "valuesMs": [
+        48,
+        42,
+        38,
+        36,
+        44,
+        38,
+        42,
+        71,
+        45,
+        49
+      ],
+      "outcomes": {
+        "available": 10
+      }
+    },
+    {
+      "name": "source Tag acknowledgement start -> end",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 215,
+      "p95Ms": 281,
+      "minMs": 86,
+      "maxMs": 281,
+      "valuesMs": [
+        104,
+        229,
+        281,
+        91,
+        254,
+        91,
+        86,
+        218,
+        215,
+        219
+      ],
+      "outcomes": {
+        "acknowledged": 10
+      }
+    },
+    {
+      "name": "completeness coverage start -> end",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 41,
+      "p95Ms": 50,
+      "minMs": 35,
+      "maxMs": 50,
+      "valuesMs": [
+        46,
+        41,
+        50,
+        38,
+        40,
+        35,
+        39,
+        50,
+        43,
+        43
+      ],
+      "outcomes": {
+        "BLOCK/UNSETTLED": 10
+      }
+    },
+    {
+      "name": "detector start -> end",
+      "n": 0,
+      "missingN": 10,
+      "p50Ms": null,
+      "p95Ms": null,
+      "minMs": null,
+      "maxMs": null,
+      "valuesMs": [],
+      "outcomes": {}
+    },
+    {
+      "name": "RoomProjector unsafe-view apply start -> end",
+      "n": 0,
+      "missingN": 10,
+      "p50Ms": null,
+      "p95Ms": null,
+      "minMs": null,
+      "maxMs": null,
+      "valuesMs": [],
+      "outcomes": {}
+    },
+    {
+      "name": "ReservationProjector unsafe-view apply start -> end",
+      "n": 0,
+      "missingN": 10,
+      "p50Ms": null,
+      "p95Ms": null,
+      "minMs": null,
+      "maxMs": null,
+      "valuesMs": [],
+      "outcomes": {}
+    },
+    {
+      "name": "record-delivery batch committed -> durable first unsafe-visible read",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 54687,
+      "p95Ms": 68326,
+      "minMs": 42053,
+      "maxMs": 68326,
+      "valuesMs": [
+        42053,
+        51294,
+        56673,
+        59847,
+        54687,
+        55443,
+        68326,
+        42815,
+        51540,
+        57971
+      ]
+    },
+    {
+      "name": "last completed delivery boundary -> public first visibility",
+      "n": 10,
+      "missingN": 0,
+      "p50Ms": 54700,
+      "p95Ms": 68403,
+      "minMs": 42096,
+      "maxMs": 68403,
+      "valuesMs": [
+        42096,
+        51305,
+        56696,
+        59898,
+        54700,
+        55459,
+        68403,
+        42843,
+        51553,
+        57983
+      ]
+    }
+  ],
+  "correlation": {
+    "unresolvedN": 0,
+    "ambiguousN": 0,
+    "allAttempts": [
+      "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+      "6477748f-cb37-43b1-902f-8eb121cba3e0",
+      "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+      "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+      "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+      "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+      "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+      "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+      "d748502d-7cd6-4016-9b20-16c453e00e24",
+      "5792aa46-b3a3-4ad2-a470-35e04ed41d61"
+    ],
+    "perSample": [
+      {
+        "ordinal": 1,
+        "eventId": "01a06c60-8f8e-7923-80b2-25c16da3cc09",
+        "suid": "063924121463267000000483465867",
+        "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121463267000000483465867|c78d61a2-0e6c-42e5-b858-64bebaec3756"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 2,
+        "eventId": "01a06c61-43e3-7cf4-867a-7ce31eefe54f",
+        "suid": "063924121509472000000307495840",
+        "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121509472000000307495840|6477748f-cb37-43b1-902f-8eb121cba3e0"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 3,
+        "eventId": "01a06c62-2755-772f-bce9-401514afd690",
+        "suid": "063924121567851000001316288613",
+        "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121567851000001316288613|86b5d301-8c7d-4b9f-bb1f-2e9206d73c86"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 4,
+        "eventId": "01a06c63-1728-7226-b7dd-bc7ae9787c13",
+        "suid": "063924121629095000001916233847",
+        "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121629095000001916233847|613436dc-d604-4eb7-b6a8-f40e71bb7cce"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 5,
+        "eventId": "01a06c64-1cff-78a4-a06c-c7c11a76daf3",
+        "suid": "063924121696129000001745743566",
+        "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121696129000001745743566|fe5ff008-9aca-440f-ac48-a614e7867eb3"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 6,
+        "eventId": "01a06c65-0fcd-7973-89a3-8db5e9fdbb7c",
+        "suid": "063924121758282000001381181007",
+        "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121758282000001381181007|edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 7,
+        "eventId": "01a06c65-f7ae-7058-9209-bc5319055ae6",
+        "suid": "063924121817614000002015565100",
+        "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121817614000002015565100|284a7b7d-6232-46b8-85ce-7106c7c7c056"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 8,
+        "eventId": "01a06c67-1554-73ce-ac4b-d053d6fc0a17",
+        "suid": "063924121890860000001282242838",
+        "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121890860000001282242838|c87e6790-8dea-4136-85b7-12646d1a3e0c"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 9,
+        "eventId": "01a06c67-d420-71f7-833e-7e312c8bf94a",
+        "suid": "063924121939619000001266398904",
+        "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121939619000001266398904|d748502d-7cd6-4016-9b20-16c453e00e24"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      {
+        "ordinal": 10,
+        "eventId": "01a06c68-bd5f-7c43-91d0-b35b067ad57b",
+        "suid": "063924121999302000000852513363",
+        "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+        "ledgerRows": 24,
+        "observedIdentities": [
+          "063924121999302000000852513363|5792aa46-b3a3-4ad2-a470-35e04ed41d61"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      }
+    ]
+  },
+  "mvSummary": {
+    "reservationRows": 10,
+    "unsafeReceipts": 0,
+    "unsafeRows": 0,
+    "exactReservationSuidMatches": 10
+  },
+  "perSample": [
+    {
+      "ordinal": 1,
+      "reservationId": "g15-reservation-3cefa826e0134adc-1",
+      "eventId": "01a06c60-8f8e-7923-80b2-25c16da3cc09",
+      "suid": "063924121463267000000483465867",
+      "commitStartedAtMs": 1788524661862,
+      "commitReceivedAtMs": 1788524663589,
+      "publicVisibilityMs": 44230,
+      "publicVisibleAtMs": 1788524707819,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": null,
+        "commitStartedAtMs": 1788524661862,
+        "previousCommitToThisCommitStartMs": null,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-1",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121463267000000483465867|c78d61a2-0e6c-42e5-b858-64bebaec3756"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788524662670,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788524663468,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788524663468,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788524663588,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788524665272,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788524665723,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788524707776,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "c78d61a2-0e6c-42e5-b858-64bebaec3756",
+          "suid": "063924121463267000000483465867"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788524665723,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524665771,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+            "viewId": ""
+          },
+          "durationMs": 48,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788524665771,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524665875,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+            "viewId": ""
+          },
+          "durationMs": 104,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788524665875,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524665921,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-1",
+            "viewId": ""
+          },
+          "durationMs": 46,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 42053,
+        "lastCompletedDeliveryToPublicMs": 42096
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-1",
+            "source_suid": "063924121463267000000483465867",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-1\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 42096
+      }
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g15-reservation-3cefa826e0134adc-2",
+      "eventId": "01a06c61-43e3-7cf4-867a-7ce31eefe54f",
+      "suid": "063924121509472000000307495840",
+      "commitStartedAtMs": 1788524707820,
+      "commitReceivedAtMs": 1788524709917,
+      "publicVisibilityMs": 56238,
+      "publicVisibleAtMs": 1788524766155,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788524663589,
+        "commitStartedAtMs": 1788524707820,
+        "previousCommitToThisCommitStartMs": 44231,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-2",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121509472000000307495840|6477748f-cb37-43b1-902f-8eb121cba3e0"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788524708835,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788524709682,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788524709682,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788524709939,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788524714395,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788524714850,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788524766144,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "6477748f-cb37-43b1-902f-8eb121cba3e0",
+          "suid": "063924121509472000000307495840"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788524714850,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524714892,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+            "viewId": ""
+          },
+          "durationMs": 42,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788524714892,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524715121,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+            "viewId": ""
+          },
+          "durationMs": 229,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788524715121,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524715162,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-2",
+            "viewId": ""
+          },
+          "durationMs": 41,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 51294,
+        "lastCompletedDeliveryToPublicMs": 51305
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-2",
+            "source_suid": "063924121509472000000307495840",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-2\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 51305
+      }
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g15-reservation-3cefa826e0134adc-3",
+      "eventId": "01a06c62-2755-772f-bce9-401514afd690",
+      "suid": "063924121567851000001316288613",
+      "commitStartedAtMs": 1788524766156,
+      "commitReceivedAtMs": 1788524768194,
+      "publicVisibilityMs": 58962,
+      "publicVisibleAtMs": 1788524827156,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788524709917,
+        "commitStartedAtMs": 1788524766156,
+        "previousCommitToThisCommitStartMs": 56239,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-3",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121567851000001316288613|86b5d301-8c7d-4b9f-bb1f-2e9206d73c86"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788524767061,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788524768047,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788524768047,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788524768333,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788524770009,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788524770460,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788524827133,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "86b5d301-8c7d-4b9f-bb1f-2e9206d73c86",
+          "suid": "063924121567851000001316288613"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788524770460,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524770498,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+            "viewId": ""
+          },
+          "durationMs": 38,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788524770498,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524770779,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+            "viewId": ""
+          },
+          "durationMs": 281,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788524770779,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524770829,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-3",
+            "viewId": ""
+          },
+          "durationMs": 50,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 56673,
+        "lastCompletedDeliveryToPublicMs": 56696
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-3",
+            "source_suid": "063924121567851000001316288613",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-3\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 56696
+      }
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g15-reservation-3cefa826e0134adc-4",
+      "eventId": "01a06c63-1728-7226-b7dd-bc7ae9787c13",
+      "suid": "063924121629095000001916233847",
+      "commitStartedAtMs": 1788524827158,
+      "commitReceivedAtMs": 1788524829448,
+      "publicVisibilityMs": 65003,
+      "publicVisibleAtMs": 1788524894451,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788524768194,
+        "commitStartedAtMs": 1788524827158,
+        "previousCommitToThisCommitStartMs": 58964,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-4",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121629095000001916233847|613436dc-d604-4eb7-b6a8-f40e71bb7cce"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788524828456,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788524829290,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788524829290,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788524829479,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788524834133,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788524834553,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788524894400,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "613436dc-d604-4eb7-b6a8-f40e71bb7cce",
+          "suid": "063924121629095000001916233847"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788524834553,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524834589,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+            "viewId": ""
+          },
+          "durationMs": 36,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788524834589,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524834680,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+            "viewId": ""
+          },
+          "durationMs": 91,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788524834680,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524834718,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-4",
+            "viewId": ""
+          },
+          "durationMs": 38,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 59847,
+        "lastCompletedDeliveryToPublicMs": 59898
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-4",
+            "source_suid": "063924121629095000001916233847",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-4\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 59898
+      }
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g15-reservation-3cefa826e0134adc-5",
+      "eventId": "01a06c64-1cff-78a4-a06c-c7c11a76daf3",
+      "suid": "063924121696129000001745743566",
+      "commitStartedAtMs": 1788524894454,
+      "commitReceivedAtMs": 1788524896548,
+      "publicVisibilityMs": 58879,
+      "publicVisibleAtMs": 1788524955427,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788524829448,
+        "commitStartedAtMs": 1788524894454,
+        "previousCommitToThisCommitStartMs": 65006,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-5",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121696129000001745743566|fe5ff008-9aca-440f-ac48-a614e7867eb3"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788524895487,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788524896316,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788524896316,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788524896588,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788524900173,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788524900727,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788524955414,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "fe5ff008-9aca-440f-ac48-a614e7867eb3",
+          "suid": "063924121696129000001745743566"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788524900727,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524900771,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+            "viewId": ""
+          },
+          "durationMs": 44,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788524900771,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524901025,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+            "viewId": ""
+          },
+          "durationMs": 254,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788524901025,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524901065,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-5",
+            "viewId": ""
+          },
+          "durationMs": 40,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 54687,
+        "lastCompletedDeliveryToPublicMs": 54700
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-5",
+            "source_suid": "063924121696129000001745743566",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-5\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 54700
+      }
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g15-reservation-3cefa826e0134adc-6",
+      "eventId": "01a06c65-0fcd-7973-89a3-8db5e9fdbb7c",
+      "suid": "063924121758282000001381181007",
+      "commitStartedAtMs": 1788524955432,
+      "commitReceivedAtMs": 1788524958602,
+      "publicVisibilityMs": 57681,
+      "publicVisibleAtMs": 1788525016283,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788524896548,
+        "commitStartedAtMs": 1788524955432,
+        "previousCommitToThisCommitStartMs": 58884,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-6",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121758282000001381181007|edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788524957645,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788524958474,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788524958474,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788524958693,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788524960405,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788524960824,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788525016267,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "edc1b6b7-08de-4e53-9eee-0b7eb5b7ccda",
+          "suid": "063924121758282000001381181007"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788524960824,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524960862,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+            "viewId": ""
+          },
+          "durationMs": 38,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788524960862,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524960953,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+            "viewId": ""
+          },
+          "durationMs": 91,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788524960953,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788524960988,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-6",
+            "viewId": ""
+          },
+          "durationMs": 35,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 55443,
+        "lastCompletedDeliveryToPublicMs": 55459
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-6",
+            "source_suid": "063924121758282000001381181007",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-6\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 55459
+      }
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g15-reservation-3cefa826e0134adc-7",
+      "eventId": "01a06c65-f7ae-7058-9209-bc5319055ae6",
+      "suid": "063924121817614000002015565100",
+      "commitStartedAtMs": 1788525016287,
+      "commitReceivedAtMs": 1788525017983,
+      "publicVisibilityMs": 71299,
+      "publicVisibleAtMs": 1788525089282,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788524958602,
+        "commitStartedAtMs": 1788525016287,
+        "previousCommitToThisCommitStartMs": 57685,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-7",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121817614000002015565100|284a7b7d-6232-46b8-85ce-7106c7c7c056"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788525017006,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788525017814,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788525017814,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788525017997,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788525020416,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788525020879,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788525089205,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "284a7b7d-6232-46b8-85ce-7106c7c7c056",
+          "suid": "063924121817614000002015565100"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788525020879,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525020921,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+            "viewId": ""
+          },
+          "durationMs": 42,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788525020921,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525021007,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+            "viewId": ""
+          },
+          "durationMs": 86,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788525021007,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525021046,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-7",
+            "viewId": ""
+          },
+          "durationMs": 39,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 68326,
+        "lastCompletedDeliveryToPublicMs": 68403
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-7",
+            "source_suid": "063924121817614000002015565100",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-7\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 68403
+      }
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g15-reservation-3cefa826e0134adc-8",
+      "eventId": "01a06c67-1554-73ce-ac4b-d053d6fc0a17",
+      "suid": "063924121890860000001282242838",
+      "commitStartedAtMs": 1788525089288,
+      "commitReceivedAtMs": 1788525092827,
+      "publicVisibilityMs": 45402,
+      "publicVisibleAtMs": 1788525138229,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788525017983,
+        "commitStartedAtMs": 1788525089288,
+        "previousCommitToThisCommitStartMs": 71305,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-8",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121890860000001282242838|c87e6790-8dea-4136-85b7-12646d1a3e0c"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788525090132,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788525091072,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788525091072,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788525091363,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788525094910,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788525095386,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788525138201,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "c87e6790-8dea-4136-85b7-12646d1a3e0c",
+          "suid": "063924121890860000001282242838"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788525095386,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525095457,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+            "viewId": ""
+          },
+          "durationMs": 71,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788525095457,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525095675,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+            "viewId": ""
+          },
+          "durationMs": 218,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788525095675,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525095725,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-8",
+            "viewId": ""
+          },
+          "durationMs": 50,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 42815,
+        "lastCompletedDeliveryToPublicMs": 42843
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-8",
+            "source_suid": "063924121890860000001282242838",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-8\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 42843
+      }
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g15-reservation-3cefa826e0134adc-9",
+      "eventId": "01a06c67-d420-71f7-833e-7e312c8bf94a",
+      "suid": "063924121939619000001266398904",
+      "commitStartedAtMs": 1788525138234,
+      "commitReceivedAtMs": 1788525139994,
+      "publicVisibilityMs": 57639,
+      "publicVisibleAtMs": 1788525197633,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788525092827,
+        "commitStartedAtMs": 1788525138234,
+        "previousCommitToThisCommitStartMs": 45407,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-9",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121939619000001266398904|d748502d-7cd6-4016-9b20-16c453e00e24"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788525138976,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788525139808,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788525139808,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788525140002,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788525145637,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788525146080,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788525197620,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "d748502d-7cd6-4016-9b20-16c453e00e24",
+          "suid": "063924121939619000001266398904"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788525146080,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525146125,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+            "viewId": ""
+          },
+          "durationMs": 45,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788525146125,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525146340,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+            "viewId": ""
+          },
+          "durationMs": 215,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788525146340,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525146383,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-9",
+            "viewId": ""
+          },
+          "durationMs": 43,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 51540,
+        "lastCompletedDeliveryToPublicMs": 51553
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-9",
+            "source_suid": "063924121939619000001266398904",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-9\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 51553
+      }
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g15-reservation-3cefa826e0134adc-10",
+      "eventId": "01a06c68-bd5f-7c43-91d0-b35b067ad57b",
+      "suid": "063924121999302000000852513363",
+      "commitStartedAtMs": 1788525197647,
+      "commitReceivedAtMs": 1788525199650,
+      "publicVisibilityMs": 60217,
+      "publicVisibleAtMs": 1788525259867,
+      "publicDisposition": "over-5000ms",
+      "pacing": {
+        "previousCommitReceivedAtMs": 1788525139994,
+        "commitStartedAtMs": 1788525197647,
+        "previousCommitToThisCommitStartMs": 57653,
+        "requiredMs": 10000
+      },
+      "reservationPartition": "reservation:g15-reservation-3cefa826e0134adc-10",
+      "ledgerObservedRows": 24,
+      "identity": {
+        "observedIdentities": [
+          "063924121999302000000852513363|5792aa46-b3a3-4ad2-a470-35e04ed41d61"
+        ],
+        "unresolved": false,
+        "ambiguous": false
+      },
+      "original": {
+        "command-receipt": {
+          "observedAtMs": 1788525198687,
+          "partitionTag": "",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        },
+        "tag-append-committed": {
+          "observedAtMs": 1788525199497,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        },
+        "outbox-obligation-written": {
+          "observedAtMs": 1788525199497,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+          "viewId": "",
+          "transport": "",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        },
+        "queue-send-returned": {
+          "observedAtMs": 1788525199702,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        },
+        "consumer-invocation-started": {
+          "observedAtMs": 1788525201439,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        },
+        "record-delivery-batch-committed": {
+          "observedAtMs": 1788525201884,
+          "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+          "viewId": "",
+          "transport": "queue",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        },
+        "first-unsafe-visible-read": {
+          "observedAtMs": 1788525259855,
+          "partitionTag": "",
+          "viewId": "ReservationProjector",
+          "transport": "public-read",
+          "attemptId": "5792aa46-b3a3-4ad2-a470-35e04ed41d61",
+          "suid": "063924121999302000000852513363"
+        }
+      },
+      "sub": {
+        "post-record-delivery-global-receipt-readback": {
+          "start": {
+            "observedAtMs": 1788525201884,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525201933,
+            "outcome": "available",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+            "viewId": ""
+          },
+          "durationMs": 49,
+          "outcome": "available"
+        },
+        "source-tag-acknowledgement": {
+          "start": {
+            "observedAtMs": 1788525201933,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525202152,
+            "outcome": "acknowledged",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+            "viewId": ""
+          },
+          "durationMs": 219,
+          "outcome": "acknowledged"
+        },
+        "completeness-coverage": {
+          "start": {
+            "observedAtMs": 1788525202152,
+            "outcome": "started",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+            "viewId": ""
+          },
+          "end": {
+            "observedAtMs": 1788525202195,
+            "outcome": "BLOCK/UNSETTLED",
+            "partitionTag": "reservation:g15-reservation-3cefa826e0134adc-10",
+            "viewId": ""
+          },
+          "durationMs": 43,
+          "outcome": "BLOCK/UNSETTLED"
+        },
+        "detector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "unsafeViews": {
+        "RoomProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        },
+        "ReservationProjector": {
+          "start": null,
+          "end": null,
+          "durationMs": null,
+          "outcome": null
+        }
+      },
+      "residuals": {
+        "recordToGlobalReadbackStartMs": 0,
+        "recordToDurableFirstUnsafeMs": 57971,
+        "lastCompletedDeliveryToPublicMs": 57983
+      },
+      "mvProvenance": {
+        "reservationRows": [
+          {
+            "ledger": "mv_rows",
+            "service_id": "sekiban-dcb-meeting-room-cloudflare-only",
+            "view_id": "ReservationProjector",
+            "event_id": "",
+            "suid": "",
+            "outcome": "",
+            "observed_at": 0,
+            "row_key": "g15-reservation-3cefa826e0134adc-10",
+            "source_suid": "063924121999302000000852513363",
+            "value_json": "{\"reservationId\":\"g15-reservation-3cefa826e0134adc-10\",\"roomId\":\"g15-room-3cefa826e0134adc\",\"status\":\"reserved\",\"version\":1}"
+          }
+        ],
+        "unsafeReceipts": [],
+        "unsafeRows": [],
+        "reservationRowCount": 1,
+        "unsafeReceiptCount": 0,
+        "unsafeRowCount": 0
+      },
+      "dominantCompletedInterval": {
+        "name": "last completed delivery boundary -> public first visibility",
+        "valueMs": 57983
+      }
+    }
+  ],
+  "interpretation": {
+    "strict5000Contract": "failed",
+    "observerPerturbation": "unproven: one instrumented cohort and no matched observer-free control",
+    "dominantRule": "largest non-negative completed adjacent/sub-hop or residual interval in the persisted correlated rows; missing/censored spans are not fabricated",
+    "frozenBoundaries": "5,000 ms constant, durability, ordering, fences, G53 naming, G55 reads, G58 behavior, and the outbox/Queue/global-admission path outside banked W144 were unchanged"
+  }
+}
