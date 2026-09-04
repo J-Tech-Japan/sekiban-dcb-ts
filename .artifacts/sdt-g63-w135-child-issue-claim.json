@@ -1,0 +1,19 @@
+{
+  "kind": "issue",
+  "repo": "J-Tech-Japan/sekiban-dcb-ts",
+  "number": 117,
+  "mode": "write",
+  "proceed": true,
+  "applied": true,
+  "add_labels": ["intent-issue-in-progress"],
+  "addLabels": ["intent-issue-in-progress"],
+  "remove_labels": [],
+  "removeLabels": [],
+  "current_labels": ["intent-target"],
+  "currentLabels": ["intent-target"],
+  "errors": [],
+  "warnings": [],
+  "summary": "Would add 'intent-issue-in-progress' to claim the issue.",
+  "github_only": true,
+  "githubOnly": true
+}

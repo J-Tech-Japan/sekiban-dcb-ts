@@ -100,10 +100,10 @@ function responseIdentity(response) {
   });
 }
 
-async function request(fetchImpl, baseUrl, path, init) {
-  const startedAtMs = Date.now();
+async function request(fetchImpl, baseUrl, path, init, now) {
+  const startedAtMs = now();
   const response = await fetchImpl(`${baseUrl.replace(/\/$/, "")}${path}`, { ...init, cache: "no-store" });
-  const completedAtMs = Date.now();
+  const completedAtMs = now();
   const raw = await response.text();
   let body;
   try {
@@ -136,14 +136,14 @@ function committedEvent(result, roomId) {
   return event.sortableUniqueIdValue;
 }
 
-async function createRoomCommit({ fetchImpl, baseUrl, runId, ordinal, phase, task = TASK }) {
+async function createRoomCommit({ fetchImpl, baseUrl, runId, ordinal, phase, task = TASK, now }) {
   const taskName = measurementTask(task);
   const roomId = `${taskName.toLowerCase()}-${runId.slice(0, 24)}-${String(ordinal).padStart(3, "0")}`;
   const result = await request(fetchImpl, baseUrl, "/api/commands/create-room", {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json", "user-agent": `${taskName}-commit-latency/1.0` },
     body: JSON.stringify({ roomId, name: `${taskName} ${phase} ${ordinal}` }),
-  });
+  }, now);
   const suid = committedEvent(result, roomId);
   const identity = responseIdentity(result.response);
   return Object.freeze({
@@ -211,6 +211,7 @@ export async function captureG50AppCommitLatency({
   captureTelemetry = defaultCaptureTelemetry,
   sampleIntervalMs = 0,
   sleepFor = sleepForInterval,
+  now,
   onWarmupAccepted,
   onSampleAccepted,
 }) {
@@ -224,6 +225,8 @@ export async function captureG50AppCommitLatency({
   if (typeof fetchImpl !== "function") fail("fetchImpl must be a function");
   if (typeof captureTelemetry !== "function") fail("captureTelemetry must be a function");
   if (typeof sleepFor !== "function") fail("sleepFor must be a function");
+  if (now !== undefined && typeof now !== "function") fail("now must be a function");
+  const readNow = now ?? (() => Date.now());
   if (onWarmupAccepted !== undefined && typeof onWarmupAccepted !== "function") fail("onWarmupAccepted must be a function when supplied");
   if (onSampleAccepted !== undefined && typeof onSampleAccepted !== "function") fail("onSampleAccepted must be a function when supplied");
 
@@ -234,6 +237,7 @@ export async function captureG50AppCommitLatency({
     ordinal: 0,
     phase: "discarded-warmup",
     task: measurementTaskName,
+    now: readNow,
   });
   if (onWarmupAccepted !== undefined) await onWarmupAccepted(warmup);
   const ledger = [];
@@ -249,6 +253,7 @@ export async function captureG50AppCommitLatency({
       ordinal: index + 1,
       phase: "sample",
       task: measurementTaskName,
+      now: readNow,
     });
     ledger.push(accepted);
     if (onSampleAccepted !== undefined) {

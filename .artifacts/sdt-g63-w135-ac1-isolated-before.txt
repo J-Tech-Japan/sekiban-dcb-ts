@@ -1,0 +1,26 @@
+SDT-G63-ISSUE117-W135
+receipt: AC1 pre-change isolated target pass from exact origin/main
+branch: claude/sdt-g63-issue117-w135
+head_before_edit: a41839ff8ba117244d55ffcf2ecffd4d3b8df051
+test_file: test/g52-resume-query.spec.ts
+test_title: SDT-G52 resume-only retained-log state > accepts a Worker-only snapshot root while retaining the Worker-row completeness gate
+cwd: /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g63-w135
+command: npx vitest run --config vitest.config.ts test/g52-resume-query.spec.ts -t 'accepts a Worker-only snapshot root' --reporter=verbose
+vitest_settings: pool=forks, isolation enabled, one selected file, fileParallelism enabled, maxWorkers unset, maxConcurrency 5
+environment: local-only test execution; vitest.config.ts sets CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE from POSTGRES_URL or its local default; no Wrangler, Cloudflare endpoint, deployment, or remote resource
+
+
+ RUN  v4.1.10 /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g63-w135
+
+Found a non-empty CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE variable for binding. Hyperdrive will connect to this database during local development.
+ ↓ test/g52-resume-query.spec.ts > SDT-G52 resume-only retained-log state > persists every paced acceptance before the next request and re-queries only its immutable ray ledger
+ ↓ test/g52-resume-query.spec.ts > SDT-G52 resume-only retained-log state > records the W68 fixed-window recovery honestly when the full client ray ledger is unavailable
+ ✓ test/g52-resume-query.spec.ts > SDT-G52 resume-only retained-log state > accepts a Worker-only snapshot root while retaining the Worker-row completeness gate 9ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 2 skipped (3)
+   Start at  19:12:09
+   Duration  411ms (transform 64ms, setup 0ms, import 132ms, tests 10ms, environment 0ms)
+
+
+observed_exit_code: 0

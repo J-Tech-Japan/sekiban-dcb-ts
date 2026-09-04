@@ -76,6 +76,7 @@ export function capturePacedCohort(input: {
   persist: (state: G52PacedResumeState) => Promise<void> | void;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
   sleepFor?: (milliseconds: number) => Promise<void> | void;
+  now?: () => number;
 }): Promise<G52PacedResumeState>;
 export function resumeExactRayQuery(input: {
   state: G52PacedResumeState;
