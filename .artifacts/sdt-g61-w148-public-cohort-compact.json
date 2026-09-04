@@ -1,0 +1,699 @@
+{
+  "schema": "sdt-g61-w148-public-cohort-compact/v1",
+  "task": "SDT-G61",
+  "runId": "bbfee5e4-c080-4dbe-b570-1719a9046073",
+  "sourceHead": "0eb83959732afe7b868fd24c34eadb2035fc9100",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+  "protocol": {
+    "coldFirstSampleIncluded": true,
+    "cohortSize": 10,
+    "minimumPaceMs": 10000,
+    "safeBoundMs": 180000,
+    "unsafeBoundMs": 5000,
+    "publicReservationListPageSize": 1000,
+    "publicReservationListFullyPaged": true,
+    "unsafeDisposition": "recorded only; SDT-G60 owns the 5000ms contract",
+    "projectorHeadConvergence": "measured for G61; no repair in W148",
+    "tagStateProof": "each cohort tag is read with committed version and lastSortedUniqueId"
+  },
+  "cohort": {
+    "startedAt": "2026-09-04T09:55:29.951Z",
+    "finishedAt": "2026-09-04T09:58:42.182Z",
+    "roomCommitSuid": "063924112531638000001259513391",
+    "finalCohortSuid": "063924112650792000000557068186",
+    "sampleCount": 10,
+    "healthSnapshotCount": 37,
+    "publicReadReceiptCount": 95,
+    "scheduledTickCount": 4
+  },
+  "deployment": {
+    "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+    "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+    "queueConsumerDeploymentWasPartiallyUpdated": true,
+    "queueApiErrorCode": 10013,
+    "exactWorkerVersion": "00e992de-296c-41f5-aa1c-983a7cd7f931",
+    "exactDeployment": "9caa533e-97b7-453b-8a49-ff1026c259d5",
+    "annotation": "SDT-G61 W148 exact 0eb83959732afe7b868fd24c34eadb2035fc9100",
+    "trafficPercent": 100
+  },
+  "cloudflare": {
+    "deployCommand": [
+      "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+      "deploy",
+      "--config",
+      "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+      "--message",
+      "SDT-G61 W148 exact 0eb83959732afe7b868fd24c34eadb2035fc9100"
+    ],
+    "strippedEnvironmentNames": [
+      "CLOUDFLARE_API_TOKEN",
+      "CF_API_TOKEN",
+      "CLOUDFLARE_API_KEY",
+      "CF_API_KEY",
+      "WRANGLER_API_TOKEN"
+    ],
+    "deployExitCode": 1,
+    "deploySignal": null,
+    "deployError": null,
+    "deployStdout": "\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n───────────────────────────────────────────────\n🌀 Building list of assets...\n✨ Read 7 files from the assets directory /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g61-w148/samples/meeting-room/public\n🌀 Starting asset upload...\nNo updated asset files to upload. Proceeding with deployment...\nTotal Upload: 2191.37 KiB / gzip: 365.42 KiB\nWorker Startup Time: 26 ms\nYour Worker has access to the following bindings:\nBinding                                                                                 Resource                  \nenv.ALLOCATOR (AllocatorDurableObject)                                                  Durable Object            \nenv.JOURNAL (JournalDurableObject)                                                      Durable Object            \nenv.TAG (TagDurableObject)                                                              Durable Object            \nenv.TAG_STATE (TagStateDurableObject)                                                   Durable Object            \nenv.BOOTSTRAP (BootstrapCoordinatorDurableObject)                                       Durable Object            \nenv.DOWNSTREAM_QUEUE (inherited)                                                        Queue                     \nenv.D1 (sekiban-dcb-meeting-room-cloudflare-pipeline)                                   D1 Database               \nenv.D1_MV (sekiban-dcb-meeting-room-cloudflare-mv)                                      D1 Database               \nenv.AUTO_DRAIN_OUTBOX (\"true\")                                                          Environment Variable      \nenv.DOMAIN_DELIVERY_CLASS (\"immediate-preferred\")                                       Environment Variable      \nenv.DIRECT_DOORBELL (\"false\")                                                           Environment Variable      \nenv.DIRECT_DOORBELL_ALLOWED_VIEWS (\"RoomProjector,ReservationProjector\")                Environment Variable      \nenv.DIRECT_DOORBELL_MAX_INVOCATIONS (\"32\")                                              Environment Variable      \nenv.DIRECT_DOORBELL_DEGRADATION (\"queued-degraded\")                                     Environment Variable      \nenv.DIRECT_DOORBELL_RECEIVER_MODE (\"separate\")                                          Environment Variable      \nenv.G26_VIEW_COUNT (\"2\")                                                                Environment Variable      \nenv.G32_COMPONENT (\"primary\")                                                           Environment Variable      \nenv.G32_CUTOVER_PHASE (\"final-g32\")                                                     Environment Variable      \nenv.G32_FREEZE_RELEASE (\"after-new-bindings\")                                           Environment Variable      \nenv.G32_CUTOVER_FENCE_FINGERPRINT (\"fab7cd0045f5e568c0d72cfadc9dfe6f5bc22...\")          Environment Variable      \nenv.SDT_SERVICE_ID (\"sekiban-dcb-meeting-room-cloudflare-o...\")                         Environment Variable      \n\nUploaded sekiban-dcb-meeting-room-cloudflare-only (4.70 sec)\nDeployed sekiban-dcb-meeting-room-cloudflare-only triggers (29.75 sec)\n  https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev\n  schedule: * * * * *\n  Producer for sekiban-dcb-meeting-room-cloudflare-outbox\n\n",
+    "deployStderr": "\u001b[31m✘ \u001b[41;31m[\u001b[41;97mERROR\u001b[41;31m]\u001b[0m \u001b[1mTrigger configuration for \"sekiban-dcb-meeting-room-cloudflare-only\" was only partially updated:\u001b[0m\n\n  \n    Queue consumers:\n      - A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/queues/e8c48f826758437ca4df10f61a9145ad/consumers/900fe0a6f4ff49a6a4518473dea4d230) failed.\n        - An unknown error has occurred. If this error persists, please file a report in workers-sdk (\u001b[4mhttps://github.com/cloudflare/workers-sdk/issues\u001b[0m) or reach out to your account team. [code: 10013]\n  \n  Successful trigger changes were not rolled back.\n\n\n🪵  Logs were written to \"/Users/tomohisa/Library/Preferences/.wrangler/logs/wrangler-2026-09-04_09-45-55_019.log\"\n",
+    "conformanceHealthProbeStatus": 200,
+    "conformanceHealthProbeResponseMs": 607,
+    "apiAuthorizationFailure": false,
+    "resourceCreationAttempted": false
+  },
+  "timing": {
+    "unsafeRecordedOnly": {
+      "n": 10,
+      "observedN": 10,
+      "censoredN": 0,
+      "over5000N": 9,
+      "p50Ms": 87030,
+      "p95Ms": 132641
+    },
+    "projectorHeadToFinal": {
+      "n": 10,
+      "censoredN": 0,
+      "p50Ms": 115528,
+      "p95Ms": 175538
+    }
+  },
+  "samples": [
+    {
+      "ordinal": 1,
+      "reservationId": "g61-reservation-bbfee5e4-c08-1",
+      "suid": "063924112543597000001208680050",
+      "commit": {
+        "receivedAtMs": 1788515743945,
+        "receivedAt": "2026-09-04T09:55:43.945Z",
+        "responseMs": 1788
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11816,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515749134,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515857109,
+        "firstVisibleAt": "2026-09-04T09:57:37.109Z",
+        "firstVisibleCommitToUnsafeMs": 113164,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 175538,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 112960
+      }
+    },
+    {
+      "ordinal": 2,
+      "reservationId": "g61-reservation-bbfee5e4-c08-2",
+      "suid": "063924112555649000001770011478",
+      "commit": {
+        "receivedAtMs": 1788515756130,
+        "receivedAt": "2026-09-04T09:55:56.130Z",
+        "responseMs": 1965
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12185,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515758594,
+        "censoredAtBound": false,
+        "firstVisibleAtMs": 1788515758536,
+        "firstVisibleAt": "2026-09-04T09:55:58.536Z",
+        "firstVisibleCommitToUnsafeMs": 2406,
+        "disposition": "observed-within-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 163353,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 100775
+      }
+    },
+    {
+      "ordinal": 3,
+      "reservationId": "g61-reservation-bbfee5e4-c08-3",
+      "suid": "063924112567779000000440931796",
+      "commit": {
+        "receivedAtMs": 1788515768303,
+        "receivedAt": "2026-09-04T09:56:08.303Z",
+        "responseMs": 2172
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 12173,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515773594,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515900944,
+        "firstVisibleAt": "2026-09-04T09:58:20.944Z",
+        "firstVisibleCommitToUnsafeMs": 132641,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 151180,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 88602
+      }
+    },
+    {
+      "ordinal": 4,
+      "reservationId": "g61-reservation-bbfee5e4-c08-4",
+      "suid": "063924112579651000001611189261",
+      "commit": {
+        "receivedAtMs": 1788515780175,
+        "receivedAt": "2026-09-04T09:56:20.175Z",
+        "responseMs": 1870
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11872,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515785397,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515901356,
+        "firstVisibleAt": "2026-09-04T09:58:21.356Z",
+        "firstVisibleCommitToUnsafeMs": 121181,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 139308,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 76730
+      }
+    },
+    {
+      "ordinal": 5,
+      "reservationId": "g61-reservation-bbfee5e4-c08-5",
+      "suid": "063924112591607000000979277334",
+      "commit": {
+        "receivedAtMs": 1788515792095,
+        "receivedAt": "2026-09-04T09:56:32.095Z",
+        "responseMs": 1918
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11920,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515797458,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515901831,
+        "firstVisibleAt": "2026-09-04T09:58:21.831Z",
+        "firstVisibleCommitToUnsafeMs": 109736,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 127388,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 64810
+      }
+    },
+    {
+      "ordinal": 6,
+      "reservationId": "g61-reservation-bbfee5e4-c08-6",
+      "suid": "063924112603554000001196836228",
+      "commit": {
+        "receivedAtMs": 1788515803955,
+        "receivedAt": "2026-09-04T09:56:43.955Z",
+        "responseMs": 1858
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11860,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515809266,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515902290,
+        "firstVisibleAt": "2026-09-04T09:58:22.290Z",
+        "firstVisibleCommitToUnsafeMs": 98335,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 115528,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 52950
+      }
+    },
+    {
+      "ordinal": 7,
+      "reservationId": "g61-reservation-bbfee5e4-c08-7",
+      "suid": "063924112615250000002107574174",
+      "commit": {
+        "receivedAtMs": 1788515815677,
+        "receivedAt": "2026-09-04T09:56:55.677Z",
+        "responseMs": 1719
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11722,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515821014,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515902707,
+        "firstVisibleAt": "2026-09-04T09:58:22.707Z",
+        "firstVisibleCommitToUnsafeMs": 87030,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 103806,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 41228
+      }
+    },
+    {
+      "ordinal": 8,
+      "reservationId": "g61-reservation-bbfee5e4-c08-8",
+      "suid": "063924112627164000001602293955",
+      "commit": {
+        "receivedAtMs": 1788515827545,
+        "receivedAt": "2026-09-04T09:57:07.545Z",
+        "responseMs": 1866
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11868,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515832871,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515903116,
+        "firstVisibleAt": "2026-09-04T09:58:23.116Z",
+        "firstVisibleCommitToUnsafeMs": 75571,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 91938,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 29360
+      }
+    },
+    {
+      "ordinal": 9,
+      "reservationId": "g61-reservation-bbfee5e4-c08-9",
+      "suid": "063924112638867000001602067292",
+      "commit": {
+        "receivedAtMs": 1788515839377,
+        "receivedAt": "2026-09-04T09:57:19.377Z",
+        "responseMs": 1831
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11832,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515844638,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515903570,
+        "firstVisibleAt": "2026-09-04T09:58:23.570Z",
+        "firstVisibleCommitToUnsafeMs": 64193,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 80106,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 17528
+      }
+    },
+    {
+      "ordinal": 10,
+      "reservationId": "g61-reservation-bbfee5e4-c08-10",
+      "suid": "063924112650792000000557068186",
+      "commit": {
+        "receivedAtMs": 1788515851139,
+        "receivedAt": "2026-09-04T09:57:31.139Z",
+        "responseMs": 1759
+      },
+      "pacing": {
+        "previousCommitToThisCommitMs": 11762,
+        "requiredMs": 10000,
+        "satisfied": true
+      },
+      "unsafe": {
+        "boundMs": 5000,
+        "boundCheckedAtMs": 1788515856474,
+        "censoredAtBound": true,
+        "firstVisibleAtMs": 1788515904089,
+        "firstVisibleAt": "2026-09-04T09:58:24.089Z",
+        "firstVisibleCommitToUnsafeMs": 52950,
+        "disposition": "observed-over-5000ms"
+      },
+      "projectorSafe": {
+        "reachedAtMs": 1788515919483,
+        "reachedAt": "2026-09-04T09:58:39.483Z",
+        "commitToFinalHeadMs": 68344,
+        "finalHead": {
+          "RoomProjector": "063924112650792000000557068186",
+          "ReservationProjector": "063924112650792000000557068186"
+        }
+      },
+      "tagStateSafe": {
+        "reachedAtMs": 1788515856905,
+        "reachedAt": "2026-09-04T09:57:36.905Z",
+        "commitToTagStateMs": 5766
+      }
+    }
+  ],
+  "scheduledTicks": [
+    {
+      "tickId": "scheduled:1788515706665",
+      "observedAt": 1788515706665,
+      "observedAtIso": "2026-09-04T09:55:06.665Z",
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "frontierSuid": "063924107376858000002092497585"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attempted": true,
+          "attemptedAt": 1788515713176,
+          "outcome": "no-work",
+          "rawOutcome": "invoked-but-no-work",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924107376858000002092497585",
+          "headAgeMs": 5144183
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attempted": true,
+          "attemptedAt": 1788515713176,
+          "outcome": "no-work",
+          "rawOutcome": "invoked-but-no-work",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924107376858000002092497585",
+          "headAgeMs": 5144183
+        }
+      ],
+      "everyRegisteredProjectorAttempted": true
+    },
+    {
+      "tickId": "scheduled:1788515765509",
+      "observedAt": 1788515765509,
+      "observedAtIso": "2026-09-04T09:56:05.509Z",
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g15-reservation-bf82916cac2447bb-10",
+        "frontierSuid": "063924107376858000002092497585"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attempted": true,
+          "attemptedAt": 1788515772691,
+          "outcome": "advanced",
+          "rawOutcome": "advanced",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924107376858000002092497585",
+          "headAgeMs": 5201875
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attempted": true,
+          "attemptedAt": 1788515772691,
+          "outcome": "advanced",
+          "rawOutcome": "advanced",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924107376858000002092497585",
+          "headAgeMs": 5201875
+        }
+      ],
+      "everyRegisteredProjectorAttempted": true
+    },
+    {
+      "tickId": "scheduled:1788515825961",
+      "observedAt": 1788515825961,
+      "observedAtIso": "2026-09-04T09:57:05.961Z",
+      "coverage": {
+        "kind": "BLOCK/UNSETTLED",
+        "reason": "source_partition_set_changed_during_scan",
+        "partitionTag": "reservation:g15-reservation-bf82916cac2447bb-10",
+        "frontierSuid": "063924107376858000002092497585"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attempted": true,
+          "attemptedAt": 1788515834782,
+          "outcome": "advanced",
+          "rawOutcome": "advanced",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924107376858000002092497585",
+          "headAgeMs": 5271241
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attempted": true,
+          "attemptedAt": 1788515834782,
+          "outcome": "advanced",
+          "rawOutcome": "advanced",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924107376858000002092497585",
+          "headAgeMs": 5271241
+        }
+      ],
+      "everyRegisteredProjectorAttempted": true
+    },
+    {
+      "tickId": "scheduled:1788515885707",
+      "observedAt": 1788515885707,
+      "observedAtIso": "2026-09-04T09:58:05.707Z",
+      "coverage": {
+        "kind": "SETTLED",
+        "reason": null,
+        "partitionTag": null,
+        "frontierSuid": "063924112650792000000557068186"
+      },
+      "projectors": [
+        {
+          "projectorId": "RoomProjector",
+          "attempted": true,
+          "attemptedAt": 1788515899446,
+          "outcome": "advanced",
+          "rawOutcome": "advanced",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924112650792000000557068186",
+          "headAgeMs": 19744
+        },
+        {
+          "projectorId": "ReservationProjector",
+          "attempted": true,
+          "attemptedAt": 1788515899446,
+          "outcome": "advanced",
+          "rawOutcome": "advanced",
+          "reason": "scheduled_live_poll_has_not_run",
+          "head": "063924112650792000000557068186",
+          "headAgeMs": 19744
+        }
+      ],
+      "everyRegisteredProjectorAttempted": true
+    }
+  ],
+  "tagStateReadSummary": {
+    "rawReadReceiptCount": 110,
+    "successfulRawReadCount": 110,
+    "finalProofCount": 11
+  },
+  "tagStates": [
+    {
+      "tagStateId": "room:g61-room-bbfee5e4-c08:RoomProjector",
+      "expectedSuid": "063924112531638000001259513391",
+      "lastSortedUniqueId": "063924112650792000000557068186",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-1:ReservationProjector",
+      "expectedSuid": "063924112543597000001208680050",
+      "lastSortedUniqueId": "063924112543597000001208680050",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-2:ReservationProjector",
+      "expectedSuid": "063924112555649000001770011478",
+      "lastSortedUniqueId": "063924112555649000001770011478",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-3:ReservationProjector",
+      "expectedSuid": "063924112567779000000440931796",
+      "lastSortedUniqueId": "063924112567779000000440931796",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-4:ReservationProjector",
+      "expectedSuid": "063924112579651000001611189261",
+      "lastSortedUniqueId": "063924112579651000001611189261",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-5:ReservationProjector",
+      "expectedSuid": "063924112591607000000979277334",
+      "lastSortedUniqueId": "063924112591607000000979277334",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-6:ReservationProjector",
+      "expectedSuid": "063924112603554000001196836228",
+      "lastSortedUniqueId": "063924112603554000001196836228",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-7:ReservationProjector",
+      "expectedSuid": "063924112615250000002107574174",
+      "lastSortedUniqueId": "063924112615250000002107574174",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-8:ReservationProjector",
+      "expectedSuid": "063924112627164000001602293955",
+      "lastSortedUniqueId": "063924112627164000001602293955",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-9:ReservationProjector",
+      "expectedSuid": "063924112638867000001602067292",
+      "lastSortedUniqueId": "063924112638867000001602067292",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    },
+    {
+      "tagStateId": "reservation:g61-reservation-bbfee5e4-c08-10:ReservationProjector",
+      "expectedSuid": "063924112650792000000557068186",
+      "lastSortedUniqueId": "063924112650792000000557068186",
+      "version": 1,
+      "observedAtMs": 1788515919483
+    }
+  ],
+  "proof": {
+    "status": "passed",
+    "completedAtMs": 1788515919483,
+    "completedAt": "2026-09-04T09:58:39.483Z",
+    "finalProjectorHeads": {
+      "RoomProjector": "063924112650792000000557068186",
+      "ReservationProjector": "063924112650792000000557068186"
+    },
+    "everyProjectorReachedFinalSuid": true,
+    "everyCohortTagReturnedCommittedVersion": true,
+    "within180Seconds": true
+  },
+  "failures": []
+}
