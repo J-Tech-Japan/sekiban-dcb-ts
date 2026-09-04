@@ -1,0 +1,19 @@
+{
+  "schema": "sdt-g61-retained-frontier-red-before-green/v1",
+  "status": "red-before-green",
+  "expectedFailure": true,
+  "sourceFile": "packages/dcb-runtime/src/cloudflare.ts",
+  "testFile": "test/g58-live-poll-advancement-repair.spec.ts",
+  "oracle": "G61 AC3 regression: a non-FULL reconcile advances registered projectors through its proven frontier",
+  "mutation": {
+    "from": "return scan.kind === \"FULL\" ? undefined : retainedFrontierSuid ?? null;",
+    "to": "return scan.kind === \"FULL\" ? undefined : null;",
+    "name": "omit-non-full-retained-frontier"
+  },
+  "label": "G61 retained-frontier omission red-before-green",
+  "command": "npm exec -- vitest run --config vitest.config.ts --no-cache --maxWorkers=1 test/g58-live-poll-advancement-repair.spec.ts --testNamePattern G61 AC3 regression: a non-FULL reconcile advances registered projectors through its proven frontier",
+  "exitCode": 1,
+  "signal": null,
+  "stdout": "\n RUN  v4.1.10 /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g61-w148\n\nFound a non-empty CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE variable for binding. Hyperdrive will connect to this database during local development.\n ❯ test/g58-live-poll-advancement-repair.spec.ts (2 tests | 1 failed | 1 skipped) 5ms\n     × G61 AC3 regression: a non-FULL reconcile advances registered projectors through its proven frontier 5ms\n\n Test Files  1 failed (1)\n      Tests  1 failed | 1 skipped (2)\n   Start at  03:25:48\n   Duration  732ms (transform 178ms, setup 0ms, import 343ms, tests 5ms, environment 0ms)\n\n",
+  "stderr": "\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯\n\n FAIL  test/g58-live-poll-advancement-repair.spec.ts > SDT-G58 W112 live-poll advancement > G61 AC3 regression: a non-FULL reconcile advances registered projectors through its proven frontier\nAssertionError: expected null to be '062135596800000000123997487868' // Object.is equality\n\n- Expected:\n\"062135596800000000123997487868\"\n\n+ Received:\nnull\n\n ❯ test/g58-live-poll-advancement-repair.spec.ts:116:25\n    114|     const maximumSuid = scheduledLiveProjectionMaximumSuid({ kind: \"BL…\n    115|\n    116|     expect(maximumSuid).toBe(proven.suid);\n       |                         ^\n    117|     const results = await pollLiveProjections({}, {\n    118|       store,\n\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯\n\n"
+}

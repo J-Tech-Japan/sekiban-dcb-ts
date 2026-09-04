@@ -743,6 +743,14 @@ jobs:
             echo "SDT-G62 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G61 retained-frontier projector regression lane
+        run: npm run test:g61
+      - name: Prove SDT-G61 forced-red CI reachability
+        run: |
+          if SDT_G61_FORCE_FAILURE=1 npm run test:g61:forced-red; then
+            echo "SDT-G61 forced-red probe unexpectedly passed"
+            exit 1
+          fi
 
   ci-g45:
     runs-on: ubuntu-latest
