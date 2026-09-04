@@ -12,7 +12,11 @@ import { createD1StoreProvider, D1EventStore, D1IdentityConflictError } from "..
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
 import { handleSerializedRead } from "../packages/dcb-runtime/src/read/SerializedReadWorker";
-import { recordDurableHop, recordDurableHopSubstep } from "../packages/dcb-runtime/src/diagnostics/G60DurableHop";
+import {
+  recordDurableHop,
+  recordDurableHopSubstep,
+  recordDurableUnsafeWriterBoundary,
+} from "../packages/dcb-runtime/src/diagnostics/G60DurableHop";
 import { projectionIdFor } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { g32EventId, g32Message, g32Suid, withG44FixtureFacts } from "./helpers/g32-fixtures";
@@ -287,6 +291,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_safe_lane_health",
       "serialized_dcb_safe_lane_history",
       "serialized_dcb_source_partitions",
+      "serialized_dcb_unsafe_writer_boundaries",
       "serialized_dcb_wait_target_incidents",
     ]);
     const eventSql = await database().prepare(
@@ -381,6 +386,44 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "RoomProjector",
       "ReservationProjector",
       "ReservationProjector",
+    ]);
+  });
+
+  it("keeps G60 unsafe writer boundaries path-labelled and exactly correlated", async () => {
+    const serviceId = `d1-g60-writer-${crypto.randomUUID()}`;
+    const identity = {
+      serviceId,
+      eventId: "writer-event",
+      suid: "000000000000000000000000000003",
+      attemptId: "writer-attempt",
+      viewId: "ReservationProjector",
+      writerPath: "inline-delivery" as const,
+      transport: "queue" as const,
+    };
+    await recordDurableUnsafeWriterBoundary(database(), { ...identity, boundary: "start", outcome: "started", observedAt: 3000 });
+    await recordDurableUnsafeWriterBoundary(database(), { ...identity, boundary: "end", outcome: "applied", observedAt: 3001 });
+    await recordDurableUnsafeWriterBoundary(database(), { ...identity, boundary: "end", outcome: "mutated", observedAt: 9999 });
+    const rows = await database().prepare(
+      `SELECT service_id, event_id, suid, attempt_id, writer_path, boundary,
+              outcome, view_id, transport, observed_at
+         FROM serialized_dcb_unsafe_writer_boundaries
+        WHERE service_id = ?
+        ORDER BY observed_at ASC, boundary COLLATE BINARY`,
+    ).bind(serviceId).all<{
+      service_id: string;
+      event_id: string;
+      suid: string;
+      attempt_id: string;
+      writer_path: string;
+      boundary: string;
+      outcome: string;
+      view_id: string;
+      transport: string;
+      observed_at: number;
+    }>();
+    expect(rows.results).toEqual([
+      { service_id: serviceId, event_id: "writer-event", suid: identity.suid, attempt_id: "writer-attempt", writer_path: "inline-delivery", boundary: "start", outcome: "started", view_id: "ReservationProjector", transport: "queue", observed_at: 3000 },
+      { service_id: serviceId, event_id: "writer-event", suid: identity.suid, attempt_id: "writer-attempt", writer_path: "inline-delivery", boundary: "end", outcome: "applied", view_id: "ReservationProjector", transport: "queue", observed_at: 3001 },
     ]);
   });
 });

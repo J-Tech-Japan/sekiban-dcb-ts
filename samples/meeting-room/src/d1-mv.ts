@@ -1,5 +1,13 @@
 import { defineRowMaterializer } from "@sekiban/dcb-core";
-import { envServiceIdentity, requireServiceIdentity } from "@sekiban/dcb-runtime/cloudflare";
+import {
+  envServiceIdentity,
+  observeG60UnsafeWriter,
+  requireServiceIdentity,
+} from "@sekiban/dcb-runtime/cloudflare";
+import type {
+  G60DurableHopObserver,
+  G60UnsafeWriterTransport,
+} from "@sekiban/dcb-runtime/cloudflare";
 import type {
   LiveProjectionPollObservation,
   LiveProjectionPollOutcome,
@@ -647,8 +655,11 @@ async function applyMeetingRoomUnsafeView(
   materializer: MeetingRoomMaterializer,
   serviceId: string,
   event: StoredEvent,
+  attemptId: string | undefined,
   nowMs: number,
   configuredMaterializers: readonly MeetingRoomMaterializer[] = materializers(),
+  durableHopObserver?: G60DurableHopObserver,
+  transport: G60UnsafeWriterTransport = "queue",
 ): Promise<"applied" | "duplicate-race" | void> {
   const handle = lookupMeetingRoomMaterializedView(views, materializer.id, configuredMaterializers);
   const active = await handle.store.readActive(serviceId, handle.id);
@@ -659,23 +670,48 @@ async function applyMeetingRoomUnsafeView(
   const unsafe = handle.store.unsafeWindow();
   const mutations = materializer.plan(event);
   const upsertOnly = mutations.rowUpserts.length === 1 && mutations.rowPatches.length === 0 && mutations.rowDeletes.length === 0;
+  const observeWriter = (boundary: "start" | "end", outcome: string): void => {
+    // The exceptional import helper has no message envelope. Do not invent
+    // an attempt identity for it; normal Queue/doorbell delivery always has
+    // the exact message attemptId and is the durable W153 path.
+    if (attemptId === undefined || attemptId.length === 0) return;
+    observeG60UnsafeWriter(durableHopObserver, {
+      writerPath: "inline-delivery",
+      boundary,
+      outcome,
+      serviceId,
+      eventId: event.eventId,
+      suid: event.suid,
+      attemptId,
+      viewId: handle.id,
+      transport,
+      observedAt: Date.now(),
+    });
+  };
   try {
     // Arrival observation belongs inside this view branch. It is not a
     // transport-level prelude and cannot be shared across view handlers.
     if (!upsertOnly) await unsafe.observeArrival(serviceId, handle.id, active.generation, event.eventId, event.suid);
-    const applied = await unsafe.apply({
-      serviceId,
-      viewId: handle.id,
-      generation: active.generation,
-      eventId: event.eventId,
-      suid: event.suid,
-      safeHead: active.lastSuid,
-      updatedAt: nowMs,
-      recordArrival: upsertOnly,
-      mutations,
-      targetSuid: event.suid,
-    });
-    return applied.duplicate ? "duplicate-race" : "applied";
+    observeWriter("start", "started");
+    try {
+      const applied = await unsafe.apply({
+        serviceId,
+        viewId: handle.id,
+        generation: active.generation,
+        eventId: event.eventId,
+        suid: event.suid,
+        safeHead: active.lastSuid,
+        updatedAt: nowMs,
+        recordArrival: upsertOnly,
+        mutations,
+        targetSuid: event.suid,
+      });
+      observeWriter("end", applied.duplicate ? "duplicate-race" : applied.outcome);
+      return applied.duplicate ? "duplicate-race" : "applied";
+    } catch (error) {
+      observeWriter("end", `error:${error instanceof Error && error.message.length > 0 ? error.message : String(error)}`);
+      throw error;
+    }
   } catch (error) {
     // The identity finding is retained for Queue retries/DLQ and operator
     // repair. A finding-write failure is part of the same view failure, but it
@@ -704,7 +740,10 @@ async function applyMeetingRoomUnsafeView(
 }
 
 /** Build one continuation-safe handler per configured meeting-room view. */
-export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly DeliveryViewHandler[] {
+export function meetingRoomDeliveryViews(
+  env: MeetingRoomD1Env,
+  durableHopObserver?: G60DurableHopObserver,
+): readonly DeliveryViewHandler[] {
   const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
   // Start the opted-in list view first. The branches still run concurrently
   // and every configured view is awaited, but this lets the deployed
@@ -730,9 +769,20 @@ export function meetingRoomDeliveryViews(env: MeetingRoomD1Env): readonly Delive
   };
   return deliveryOrder.map((materializer) => ({
     id: materializer.id,
-    apply: async ({ event, arrivedAt }) => {
+    admission: "independent-unsafe" as const,
+    apply: async ({ message, event, arrivedAt, source }) => {
       const value = await context();
-      return applyMeetingRoomUnsafeView(value.views, materializer, value.serviceId, event, arrivedAt, configured);
+      return applyMeetingRoomUnsafeView(
+        value.views,
+        materializer,
+        value.serviceId,
+        event,
+        message.attemptId,
+        arrivedAt,
+        configured,
+        durableHopObserver,
+        source,
+      );
     },
     classifyError: (error: unknown): DeliveryViewFailureClass => {
       const typed = error as { readonly code?: unknown; readonly retryable?: unknown; readonly failureClass?: unknown };
@@ -752,6 +802,7 @@ export async function applyMeetingRoomUnsafeArrival(
   env: MeetingRoomD1Env,
   event: StoredEvent,
   nowMs = Date.now(),
+  durableHopObserver?: G60DurableHopObserver,
 ): Promise<void> {
   const serviceId = requiredServiceId(env);
   if (event.serviceId !== serviceId) throw new Error("Stored event service identity did not match SDT_SERVICE_ID");
@@ -759,7 +810,7 @@ export async function applyMeetingRoomUnsafeArrival(
   const configured = fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT));
   await ensureSafeInstances(runtime, views, serviceId, nowMs, configured);
   for (const materializer of configured) {
-    await applyMeetingRoomUnsafeView(views, materializer, serviceId, event, nowMs, configured);
+    await applyMeetingRoomUnsafeView(views, materializer, serviceId, event, undefined, nowMs, configured, durableHopObserver, "import");
   }
 }
 

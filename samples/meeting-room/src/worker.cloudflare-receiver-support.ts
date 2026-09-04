@@ -46,8 +46,10 @@ export async function deliverMeetingRoomDoorbell(
     meetingRoomRuntimeConfig.deliveryClass,
     testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy,
   );
-  const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(env);
-  const durableHopObserver = createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
+  const durableHopObserver = env.TAG === undefined
+    ? undefined
+    : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
+  const configuredViews = testOverrides?.views ?? meetingRoomDeliveryViews(env, durableHopObserver);
   const result = await processDownstreamDoorbell(message, env, {
     ...(testOverrides?.store === undefined ? { storeProvider: createD1StoreProvider() } : { store: testOverrides.store }),
     views: selectDirectDoorbellViews(configuredViews, config),

@@ -47,17 +47,26 @@ import {
 } from "./service/ServiceIdentityProvider";
 export {
   createG60DurableHopObserver,
+  observeG60UnsafeWriter,
   recordDurableHop,
   recordDurableHopSubstep,
+  recordDurableUnsafeWriterBoundary,
   recordFirstUnsafeVisibleRead,
 } from "./diagnostics/G60DurableHop";
-export { G60_POST_ADMISSION_STAGES } from "./diagnostics/G60DurableHop";
+export {
+  G60_POST_ADMISSION_STAGES,
+  G60_UNSAFE_WRITER_PATHS,
+} from "./diagnostics/G60DurableHop";
 export type {
+  G60DurableUnsafeWriterObservation,
   G60DurablePostAdmissionObservation,
   G60DurableHopObservation,
   G60DurableHopObserver,
   G60PostAdmissionBoundary,
   G60PostAdmissionStage,
+  G60UnsafeWriterBoundary,
+  G60UnsafeWriterPath,
+  G60UnsafeWriterTransport,
   G60HopStage,
   G60HopTransport,
 } from "./diagnostics/G60DurableHop";

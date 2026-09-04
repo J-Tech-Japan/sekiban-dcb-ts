@@ -32,6 +32,12 @@ export const G60_POST_ADMISSION_STAGES = [
 export type G60PostAdmissionStage = typeof G60_POST_ADMISSION_STAGES[number];
 export type G60PostAdmissionBoundary = "start" | "end";
 
+/** Concrete observation paths for an unsafe materialized-view row write. */
+export const G60_UNSAFE_WRITER_PATHS = ["inline-delivery", "scheduled-drain"] as const;
+export type G60UnsafeWriterPath = typeof G60_UNSAFE_WRITER_PATHS[number];
+export type G60UnsafeWriterBoundary = "start" | "end";
+export type G60UnsafeWriterTransport = "" | "queue" | "fast" | "import" | "scheduled";
+
 export interface G60DurableHopObservation {
   readonly stage: G60HopStage;
   readonly serviceId: string;
@@ -47,6 +53,7 @@ export interface G60DurableHopObservation {
 export interface G60DurableHopObserver {
   observe(input: G60DurableHopObservation): void;
   observeSubstep?(input: G60DurablePostAdmissionObservation): void;
+  observeUnsafeWriter?(input: G60DurableUnsafeWriterObservation): void;
 }
 
 export interface G60DurablePostAdmissionObservation {
@@ -61,6 +68,24 @@ export interface G60DurablePostAdmissionObservation {
   readonly partitionTag?: string;
   readonly viewId?: string;
   readonly transport?: G60HopTransport;
+}
+
+/**
+ * Observation-only boundary at the concrete unsafe MV writer. This table is
+ * separate from the older seven-hop and post-admission tables so the writer
+ * path remains explicit without changing either deployed schema contract.
+ */
+export interface G60DurableUnsafeWriterObservation {
+  readonly writerPath: G60UnsafeWriterPath;
+  readonly boundary: G60UnsafeWriterBoundary;
+  readonly outcome: string;
+  readonly serviceId: string;
+  readonly eventId: string;
+  readonly suid: string;
+  readonly attemptId: string;
+  readonly viewId: string;
+  readonly observedAt: number;
+  readonly transport?: G60UnsafeWriterTransport;
 }
 
 interface D1HopRow {
@@ -170,6 +195,56 @@ export async function recordDurableHopSubstep(database: D1Database, input: G60Du
   ).run();
 }
 
+function validateUnsafeWriter(
+  input: G60DurableUnsafeWriterObservation,
+): Required<Pick<G60DurableUnsafeWriterObservation, "transport">> {
+  nonEmpty(input.serviceId, "serviceId");
+  nonEmpty(input.eventId, "eventId");
+  nonEmpty(input.suid, "suid");
+  nonEmpty(input.attemptId, "attemptId");
+  nonEmpty(input.viewId, "viewId");
+  nonEmpty(input.outcome, "outcome");
+  if (!G60_UNSAFE_WRITER_PATHS.includes(input.writerPath)) {
+    throw new Error(`G60 unknown unsafe writer path: ${input.writerPath}`);
+  }
+  if (input.boundary !== "start" && input.boundary !== "end") {
+    throw new Error(`G60 unsafe writer boundary must be start or end: ${input.boundary}`);
+  }
+  if (!Number.isSafeInteger(input.observedAt) || input.observedAt < 0) {
+    throw new Error("G60 unsafe writer observedAt must be a non-negative safe integer");
+  }
+  const transport = input.transport ?? "";
+  if (!["", "queue", "fast", "import", "scheduled"].includes(transport)) {
+    throw new Error(`G60 unsafe writer transport is invalid: ${transport}`);
+  }
+  return { transport };
+}
+
+/** Append one exact unsafe-row writer boundary; replays retain the first row. */
+export async function recordDurableUnsafeWriterBoundary(
+  database: D1Database,
+  input: G60DurableUnsafeWriterObservation,
+): Promise<void> {
+  const normalized = validateUnsafeWriter(input);
+  await database.prepare(`
+    INSERT OR IGNORE INTO serialized_dcb_unsafe_writer_boundaries
+      (service_id, event_id, suid, attempt_id, writer_path, boundary,
+       outcome, view_id, transport, observed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    input.serviceId,
+    input.eventId,
+    input.suid,
+    input.attemptId,
+    input.writerPath,
+    input.boundary,
+    input.outcome,
+    input.viewId,
+    normalized.transport,
+    input.observedAt,
+  ).run();
+}
+
 /**
  * Deliver one post-admission observation to the active waitUntil-backed
  * observer. A diagnostic observer is never allowed to change protocol flow.
@@ -182,6 +257,18 @@ export function observeG60PostAdmission(
     observer?.observeSubstep?.(input);
   } catch {
     // Observation is never allowed to affect admission, delivery, or reads.
+  }
+}
+
+/** Deliver a concrete writer observation without allowing it to affect flow. */
+export function observeG60UnsafeWriter(
+  observer: G60DurableHopObserver | undefined,
+  input: G60DurableUnsafeWriterObservation,
+): void {
+  try {
+    observer?.observeUnsafeWriter?.(input);
+  } catch {
+    // Observation is never allowed to affect the unsafe apply or its caller.
   }
 }
 
@@ -202,6 +289,10 @@ export function createG60DurableHopObserver(
     },
     observeSubstep(input: G60DurablePostAdmissionObservation): void {
       const write = recordDurableHopSubstep(database, input).catch(() => undefined);
+      waitUntil(write);
+    },
+    observeUnsafeWriter(input: G60DurableUnsafeWriterObservation): void {
+      const write = recordDurableUnsafeWriterBoundary(database, input).catch(() => undefined);
       waitUntil(write);
     },
   });
