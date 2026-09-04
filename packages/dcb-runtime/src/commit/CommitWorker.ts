@@ -405,10 +405,12 @@ export function validateCommitEnvelope(
         ),
       };
     }
-    try {
-      assertSortableUniqueId(rawTag.lastSortableUniqueId);
-    } catch {
-      return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
+    if (rawTag.lastSortableUniqueId !== "") {
+      try {
+        assertSortableUniqueId(rawTag.lastSortableUniqueId);
+      } catch {
+        return { error: error(400, "invalid_sortable_unique_id", "lastSortableUniqueId must be a 30-digit SortableUniqueId") };
+      }
     }
     if (!allTags.includes(rawTag.tag)) {
       return { error: error(400, "validation_error", "Each consistency tag must occur in an event candidate") };
@@ -820,7 +822,9 @@ export class CommitWorker {
         continue;
       }
       const reason = isObject(body) && typeof body.reason === "string" ? body.reason : "reservation provider rejected the attempt";
-      const logical = reason === "consistency_head_mismatch" || reason === "active_reservation_conflict";
+      const logical = reason === "consistency_head_mismatch" ||
+        reason === "consistency_head_mismatch_assert_empty" ||
+        reason === "active_reservation_conflict";
       failure ??= logical
         ? { outcome: "REFUSED", failureCause: "reservation-conflict", reason }
         : { outcome: "FAILED", failureCause: "reservation-timeout", reason };

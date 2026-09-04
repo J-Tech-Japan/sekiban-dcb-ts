@@ -250,9 +250,8 @@ function candidateToV1Envelope(candidate: RuntimeCommitCandidateLike): {
   const eventTags = new Set(candidate.events.flatMap((event) => event.tags.map((tag) => tag.id)));
   const claims = new Map<string, string>();
   for (const claim of candidate.readClaims) {
-    // G32 has no empty-SUID sentinel.  A first write omits the unobserved
-    // tag claim entirely; emitting an empty string would turn a valid
-    // authoring candidate into an invalid V1 request before admission.
+    // An observed empty head is the explicit V1 assert-empty sentinel. An
+    // unread/unknown claim remains null and is omitted from the wire.
     if (eventTags.has(claim.tag.id) && claim.head !== null && !claims.has(claim.tag.id)) {
       claims.set(claim.tag.id, claim.head);
     }

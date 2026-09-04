@@ -521,11 +521,9 @@ export class ClaimLedgerExecutor {
         if (candidates.length === 0) return { kind: "noop", attempts, reason: "command appended no events" };
         // Claims retain the §5.3 tag-state spelling internally, but the commit
         // envelope is a §3.1 wire value and must use lastSortableUniqueId.
-        // An empty tag head is a read-state sentinel, never a serialized
-        // SortableUniqueId. G32's only valid wire SUID is thirty digits, so a
-        // first-write claim is represented by omitting that consistency entry.
+        // An empty tag head is the explicit V1 assert-empty sentinel and must
+        // survive this adapter byte-for-byte.
         const consistency = decision.envelope?.consistency ?? context.claims
-          .filter((claim) => claim.lastSortedUniqueId.length > 0)
           .map((claim) => ({
             tag: claim.tag,
             lastSortableUniqueId: claim.lastSortedUniqueId,
