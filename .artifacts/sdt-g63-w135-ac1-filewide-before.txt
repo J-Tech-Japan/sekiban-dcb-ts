@@ -1,0 +1,117 @@
+SDT-G63-ISSUE117-W135
+receipt: AC1 pre-change file-wide G52 run from exact origin/main
+branch: claude/sdt-g63-issue117-w135
+head_before_edit: a41839ff8ba117244d55ffcf2ecffd4d3b8df051
+source: origin/main at branch creation; no product/test edit had been made before this command
+cwd: /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g63-w135
+command: npm run test:g52
+expanded_script: npm run typecheck && vitest run --config vitest.config.ts test/g52-commit-snapshot.spec.ts test/g52-trace-export.spec.ts test/g52-commit-breakdown.spec.ts test/g52-resume-query.spec.ts && node scripts/g52-commit-snapshot-guard.mjs --self-test && node scripts/g52-commit-snapshot-guard.mjs
+vitest_settings: package file order; vitest.config.ts Cloudflare Workers pool, default forks/isolation/fileParallelism, maxWorkers unset, maxConcurrency 5
+environment: local-only test execution; CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE is configured by vitest.config.ts from POSTGRES_URL or its local default; no Wrangler, Cloudflare endpoint, deployment, or remote resource
+
+
+> serialized-dcb-v1-runtime@0.1.0 test:g52
+> npm run typecheck && vitest run --config vitest.config.ts test/g52-commit-snapshot.spec.ts test/g52-trace-export.spec.ts test/g52-commit-breakdown.spec.ts test/g52-resume-query.spec.ts && node scripts/g52-commit-snapshot-guard.mjs --self-test && node scripts/g52-commit-snapshot-guard.mjs
+
+
+> serialized-dcb-v1-runtime@0.1.0 typecheck
+> npm run build:packages && tsc --noEmit
+
+
+> serialized-dcb-v1-runtime@0.1.0 build:packages
+> npm run build --workspaces --if-present
+
+
+> @sekiban/dcb-core@0.1.0 build
+> tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js
+
+
+  dist/index.js  22.1kb
+
+⚡ Done in 2ms
+
+> @sekiban/dcb-domain@0.1.0 build
+> tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --outfile=dist/testing.js
+
+
+  dist/index.js  573.9kb
+
+⚡ Done in 7ms
+
+  dist/testing.js  15.7kb
+
+⚡ Done in 3ms
+
+> @sekiban/dcb-runtime@0.1.0 build
+> tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/index.js && esbuild src/cosmos.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/cosmos.js && esbuild src/d1.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/d1.js && esbuild src/d1-mv.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/d1-mv.js && esbuild src/cloudflare.ts --bundle --format=esm --platform=neutral --external:cloudflare:workers --outfile=dist/cloudflare.js && esbuild src/mv/index.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/mv/index.js
+
+
+  dist/index.js  668.8kb
+
+⚡ Done in 9ms
+
+  dist/cosmos.js  57.5kb
+
+⚡ Done in 4ms
+
+  dist/d1.js  134.2kb
+
+⚡ Done in 4ms
+
+  dist/d1-mv.js  82.3kb
+
+⚡ Done in 3ms
+
+  dist/cloudflare.js  687.0kb
+
+⚡ Done in 9ms
+
+  dist/mv/index.js  97.3kb
+
+⚡ Done in 4ms
+
+> @sekiban/dcb-client@0.1.0 build
+> tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js
+
+
+  dist/index.js  20.2kb
+
+⚡ Done in 3ms
+
+> @sekiban/meeting-room-sample@0.1.0 build
+> tsc -p tsconfig.build.json --noEmit
+
+
+ RUN  v4.1.10 /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g63-w135
+
+Found a non-empty CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE variable for binding. Hyperdrive will connect to this database during local development.
+Found a non-empty CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE variable for binding. Hyperdrive will connect to this database during local development.
+Found a non-empty CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE variable for binding. Hyperdrive will connect to this database during local development.
+Found a non-empty CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE variable for binding. Hyperdrive will connect to this database during local development.
+ ❯ test/g52-resume-query.spec.ts (3 tests | 1 failed) 9ms
+     × accepts a Worker-only snapshot root while retaining the Worker-row completeness gate 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/g52-resume-query.spec.ts > SDT-G52 resume-only retained-log state > accepts a Worker-only snapshot root while retaining the Worker-row completeness gate
+Error: g52-resume-query:paced state has no valid persisted cohort window
+ ❯ fail scripts/deploy/g52-resume-query.mjs:68:9
+     66|
+     67| function fail(message) {
+     68|   throw new Error(`g52-resume-query:${message}`);
+       |         ^
+     69| }
+     70|
+ ❯ resumeExactRayQuery scripts/deploy/g52-resume-query.mjs:443:5
+ ❯ test/g52-resume-query.spec.ts:195:28
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 3 passed (4)
+      Tests  1 failed | 17 passed (18)
+   Start at  19:11:47
+   Duration  655ms (transform 178ms, setup 0ms, import 412ms, tests 38ms, environment 0ms)
+
+
+observed_exit_code: 1
