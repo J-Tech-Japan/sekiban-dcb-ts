@@ -4,5 +4,100 @@
 
 At the start of each reconciliation pass, the reconciler snapshots the source-partition set and each partition's upper-bound obligation sequence. It walks exactly those snapshots, enforcing the local sequence from 1 through that bound and joining every obligation to the exact global receipt. A partition registered after the snapshot is not in the pass's proof domain; therefore it is absent from that pass's cursor and will be scanned on the next pass. Its arrival cannot invalidate the completed proof for the start-of-pass set. Conversely, an existing in-scope partition whose page changes, has a missing or duplicate sequence, or is removed cannot satisfy the snapshot, page, and contiguity checks; the pass remains non-settled and no safe head may cross that gap. The frontier is therefore only the maximum SUID of receipts proven for the start-of-pass snapshots.
 
-W132 implementation and gate results are recorded in the task artifact:
+ W132 implementation and gate results are recorded in the task artifact:
 `.g62-w132/sdt-g62-local-ac1-ac3-w132.md`.
+
+## W139 deployed AC4–AC7 completion
+
+W139 resumes the preserved W138 deployment after WAKE-96 classified the HTTP 403 body from /conformance/v1/read-health as the Worker's own conformance-handler response. A fresh mode-600 token was generated outside git at /private/tmp/sdt-g62-w139-conformance-token, referenced through G53_CONFORMANCE_TOKEN_FILE, and installed once as CONFORMANCE_TOKEN. The token value was never printed, persisted in an artifact, or committed.
+
+### Exact source, existing resources, and deployment identity
+
+- Branch: claude/sdt-g62-local-ac1-ac3-w132
+- Rebased source/code checkpoint: 91687143076f2a1e5d36238bf5c0441d5011afe9
+- Base after rebase: origin/main 0730ada95757c0d01b329d41f5b01e296dbf4f70
+- Worker: sekiban-dcb-meeting-room-cloudflare-only
+- Pipeline D1: f26d1299-82d9-4a64-8647-bc2ec86326ac
+- MV D1: b416b212-4d09-413c-9b8d-7660e475772f
+- Queue/DLQ: sekiban-dcb-meeting-room-cloudflare-outbox / sekiban-dcb-meeting-room-cloudflare-outbox-dlq
+
+The initial W138 deployment was version 3635c594-a9ba-4d6b-9621-0443593ae66b, deployment f4c5dfc4-ea66-4ef6-b443-6b14acddd150, with 100% traffic and annotation SDT-G62 W138 exact 91687143076f2a1e5d36238bf5c0441d5011afe9. Secret installation published version c76918a2-93a8-4550-afd7-7881af7db370 (secret-triggered, 100%) without the exact source annotation. Per W139, one unchanged-head normal-config redeploy then published version ad4b72b3-c93c-445a-a512-d2def37f6d66, deployment 914b60c0-dfce-42f6-a0b2-5b48f5cdcac6, with 100% traffic and exact annotation:
+
+SDT-G62 W139 exact 91687143076f2a1e5d36238bf5c0441d5011afe9
+
+No resource was created and no migration, queue, outbox, global-D1 admission, G58, G60, G56, or G61 behavior was changed.
+
+### AC4 fresh paced cohort
+
+The one actual cohort ran with the cold first sample and the path-only G53_CONFORMANCE_TOKEN_FILE reference:
+
+    G53_CONFORMANCE_TOKEN_FILE=/private/tmp/sdt-g62-w139-conformance-token node scripts/deploy/g58-safe-lane-e2e.mjs --base-url https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev --service-id sekiban-dcb-meeting-room-cloudflare-only --mode paced --paced-count 10 --pace-ms 10000 --poll-ms 2000 --continue-after-unsafe --report .artifacts/sdt-g62-w139-ac4-paced-cohort.json
+
+Run 6aa8ff17-0b22-4b35-b763-ad3d2eb99de9 ran from 2026-09-04T04:03:43.267Z through 2026-09-04T04:06:35.187Z. All ten pacing intervals, including the setup-to-first-commit interval, were at least 10,000 ms; the minimum was 11,794 ms. The unchanged safe window was 20,000 ms and the unchanged safe acceptance bound was 180,000 ms.
+
+Safe convergence: n=10, p50=77,624 ms, p95=114,766 ms, max=114,766 ms, 0 over 180,000 ms.
+
+| # | reservation / SUID | commit received (UTC) | pace ms | first public visibility ms | unsafe disposition | strict >5,000 ms | safe reached (UTC) | commit-to-safe ms | MV safe head |
+| ---: | --- | --- | ---: | ---: | --- | --- | --- | ---: | --- |
+| 1 | g58-reservation-6aa8ff17-0b2-1 / 063924091440762000000482046285 | 04:04:01.345Z | 12,329 | 5,232 | pass | yes | 04:05:56.111Z | 114,766 | 063924091491148000000203472186 |
+| 2 | g58-reservation-6aa8ff17-0b2-2 / 063924091452791000001009144541 | 04:04:13.349Z | 12,004 | 2,968 | pass | no | 04:05:56.111Z | 102,762 | 063924091491148000000203472186 |
+| 3 | g58-reservation-6aa8ff17-0b2-3 / 063924091464903000000256695932 | 04:04:25.547Z | 12,198 | 89,858 (eventual) | miss | yes | 04:05:56.111Z | 90,564 | 063924091491148000000203472186 |
+| 4 | g58-reservation-6aa8ff17-0b2-4 / 063924091477632000002082963033 | 04:04:38.487Z | 12,940 | 3,880 | pass | no | 04:05:56.111Z | 77,624 | 063924091491148000000203472186 |
+| 5 | g58-reservation-6aa8ff17-0b2-5 / 063924091491148000000203472186 | 04:04:51.841Z | 13,354 | 5,272 | pass | yes | 04:05:56.111Z | 64,270 | 063924091491148000000203472186 |
+| 6 | g58-reservation-6aa8ff17-0b2-6 / 063924091503500000001688264844 | 04:05:03.971Z | 12,130 | 3,094 | pass | no | 04:06:31.235Z | 87,264 | 063924091503500000001688264844 |
+| 7 | g58-reservation-6aa8ff17-0b2-7 / 063924091515331000001399753513 | 04:05:15.852Z | 11,881 | 39,777 (eventual) | miss | yes | 04:06:33.708Z | 77,856 | 063924091551674000000134649594 |
+| 8 | g58-reservation-6aa8ff17-0b2-8 / 063924091527162000000452286746 | 04:05:27.646Z | 11,794 | 3,267 | pass | no | 04:06:33.708Z | 66,062 | 063924091551674000000134649594 |
+| 9 | g58-reservation-6aa8ff17-0b2-9 / 063924091539395000000230031794 | 04:05:39.988Z | 12,342 | 5,328 | pass | yes | 04:06:33.708Z | 53,720 | 063924091551674000000134649594 |
+| 10 | g58-reservation-6aa8ff17-0b2-10 / 063924091551674000000134649594 | 04:05:52.165Z | 12,177 | 3,002 | pass | no | 04:06:33.708Z | 41,543 | 063924091551674000000134649594 |
+
+Unsafe visibility is recorded only for SDT-G60. The harness disposition was 8 pass/2 miss with no censored rows; applying the strict actual first-public-visible time (using eventual visibility for the two misses) gives 5/10 over 5,000 ms. This is not a G62 pass/fail gate. Rows 1, 2, 3, and 6 exceeded the 80,000 ms safeWindowMs + 60 s diagnostic threshold; the persisted harness attribution for each was follow_stopping_at_unsafe_event with reason scheduled coverage advanced but the safe head remained below the target. No sample exceeded the 180-second safe bound.
+
+### AC4 per-tick persisted coverage and safe heads
+
+The receipt contains 383 historical coverage rows; the four rows below are the current run's persisted tick identities from the initial health observation through completion. reason and partitionTag were null on every current-run row. The first row is the baseline tick before the first reservation commit.
+
+| tick identity | observedAt UTC | coverage kind / reason | partitionTag | proven frontier | Room MV safe head | Reservation MV safe head |
+| --- | --- | --- | --- | --- | --- | --- |
+| scheduled:1788494580497 | 04:03:00.497Z | SETTLED / null | null | 063924068819782000000708940540 | 063924068819782000000708940540 | 063924068819782000000708940540 |
+| scheduled:1788494640568 | 04:04:00.568Z | SETTLED / null | null | 063924091428117000001182905325 | 063924091428117000001182905325 | 063924091428117000001182905325 |
+| scheduled:1788494701989 | 04:05:01.989Z | SETTLED / null | null | 063924091491148000000203472186 | 063924091491148000000203472186 | 063924091491148000000203472186 |
+| scheduled:1788494763795 | 04:06:03.795Z | SETTLED / null | null | 063924091551674000000134649594 | 063924091551674000000134649594 | 063924091551674000000134649594 |
+
+For all four lifecycle groups, allRegisteredProjectorsObserved=true. The exact per-group attempt telemetry persisted by the health receipt was:
+
+| tick | RoomProjector attempt / outcome | ReservationProjector attempt / outcome |
+| --- | --- | --- |
+| scheduled:1788494580497 | lastPollAt=1788494595662, invoked-but-no-work | lastPollAt=1788494595662, invoked-but-no-work |
+| scheduled:1788494640568 | lastPollAt=1788494662790, advanced | lastPollAt=1788494662790, advanced |
+| scheduled:1788494701989 | lastPollAt=1788494734783, advanced | lastPollAt=1788494734783, advanced |
+| scheduled:1788494763795 | lastPollAt=1788494734783, advanced | lastPollAt=1788494734783, advanced |
+
+The final health snapshot recorded both MV safe heads at the cohort final SUID 063924091551674000000134649594. The live projector heads remained at 063924091503500000001688264844 with lastPollAt=1788494734783; this is recorded-only because projector head advancement belongs to SDT-G61 and is not asserted by G62.
+
+### AC5 and local gate preservation
+
+The W132 AC1–AC3 implementation and red-capable receipts remain preserved. Post-rebase local verification passed without changing G44:
+
+- npm run test:g41
+- npm run test:g44 (8 G44 tests and four production mutants red)
+- npm run test:g49
+- npm run test:g51
+- npm run test:g52
+- npm run test:g53
+- npm run test:g54
+- npm run test:g55
+- npm run test:g58
+- npm run test:g62 (AC1/AC3 green, discard-whole-pass and sequence-gap mutants red)
+- npm run typecheck
+- npm run lint -- --max-warnings=0 (the package script already enforces --max-warnings=0)
+- git diff --check
+
+The current-run receipt independently records four coverage lifecycle groups and attempt telemetry for both registered projectors. No G61 projector-head convergence or G60 unsafe contract was used as a G62 gate.
+
+### AC6 evidence and AC7 handoff
+
+This document now contains the AC2-style deployed timing table, all current-run coverage/frontier/safe-head ticks, unsafe-only observations, and the W139 deployment identity. The raw immediately persisted cohort is .artifacts/sdt-g62-w139-ac4-paced-cohort.json; Wrangler operations and version/traffic proof are in .artifacts/sdt-g62-w139-operations.json, and the secret installation receipt is .artifacts/sdt-g62-w139-secret-put.json.
+
+WAKE-115 credential hygiene was applied to remaining Wrangler verification: CLOUDFLARE_API_TOKEN=UNSET, CF_API_TOKEN=UNSET, CLOUDFLARE_API_KEY=UNSET, CF_API_KEY=UNSET, and WRANGLER_API_TOKEN=UNSET. G50_OBSERVABILITY_TOKEN_FILE=UNSET; no observability credential was used. The wrapper records the same five API fallback names as unset, and no secret value is present in any receipt.
+
+The PR and canonical worker-completion result are recorded in the W139 task artifact after the GitHub handoff. G56 and G61 were not started.
