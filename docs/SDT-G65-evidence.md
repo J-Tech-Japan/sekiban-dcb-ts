@@ -452,3 +452,196 @@ awaits reviewer rereview; no self-approval, merge, or worker-complete
 transition is performed here. The six G60 mutants, V1 body, fence,
 Queue/outbox, G58/G62, and 5,000 ms boundaries remain unchanged. SDT-G57 is
 not touched.
+
+## W130 deployed F1/F3/F4 evidence
+
+W130 is the authorized deployed evidence continuation for PR #127 at exact
+source `557aa1b1b78328866538f3c3fb56d3d529996994` on the existing throwaway
+arm `sekiban-dcb-g60-w155-c`. No Worker, D1, Queue, DLQ, migration, or secret
+was created or changed. Every Wrangler receipt was executed through the
+stripped wrapper with `CLOUDFLARE_API_TOKEN`, `CF_API_TOKEN`,
+`CLOUDFLARE_API_KEY`, `CF_API_KEY`, and `WRANGLER_API_TOKEN` all `UNSET`, and
+`noKeepVars=true`. Conformance was referenced by path only.
+
+The first cohort was captured before the exact-source deployment while the
+arm ran the restored current-main source `ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a`:
+version `2b1dae1e-5b3d-4c48-8e64-67a8cf64b850`, deployment
+`d1b85541-6339-4f41-a3ae-10f0f260264b`, 100% traffic. The exact-source
+deployment was version `443416d2-204e-442a-af96-3400532bdcf6`, deployment
+`acff763a-7346-4fb5-af7d-e49fba5c647c`, 100% traffic, annotation
+`SDT-G65 W130 exact 557aa1b1b78328866538f3c3fb56d3d529996994`. After the
+failure proof below, the normal binding was restored without another source
+change: version `f7d3f08e-c56c-4b5c-b14a-8afe931cc2a9`, deployment
+`be0bf5d9-51f6-4c1f-9d17-f9b17eeecf53`, 100% traffic, with the same exact
+source annotation.
+
+### Observed-clock policy and cohort summary
+
+All times in the tables below come from the harness fetch/response clocks or
+the durable W125/W127 ledger `Date.now()` boundaries. The analysis never uses
+`dcb_events.authored_timestamp`, caller `received_at`, or
+`serialized_dcb_global_receipts.received_at` as a completion or visibility
+clock. The ledger's post-record-delivery global-receipt readback is reported as
+an observed operational read, not as a proven admission completion. Its
+observer persistence can occur after a public read; no ordering is inferred
+from that mismatch.
+
+| arm | n | response p50/p95 | commit→ledger readback end p50/p95 | commit→first public unsafe p50/p95 | >5,000 ms | final safe proof p50/p95 | within 180 s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| pre-deploy `ccfa0b0` | 10 | 2,063 / 2,429 ms | 3,855 / 6,037 ms | 4,548 / 116,615 ms | 3/10 | 141,066 / 202,629 ms | no |
+| exact `557aa1b` | 10 | 2,160 / 2,935 ms | 31,111 / 50,819 ms | 57,402 / 116,763 ms | 10/10 | 180,973 / 241,966 ms | no |
+
+The final safe proof is the per-sample projector/tag-state proof, not a claim
+that a separate public safe-read endpoint was observed. In both cohorts the
+two final projector heads eventually reached the cohort final SUID and all 11
+cohort tag-state reads returned committed version 1, but the safe-bound
+acceptance was not met. Pre-deploy final head:
+`063924187134766000002028023507`; exact-source final head:
+`063924187626366000000264870134`. The sampled health surface reported
+`SETTLED`; the durable per-event completeness rows are retained separately
+and include `BLOCK/UNSETTLED` outcomes.
+
+Every reservation's synchronous partition/admission attempt lasted 300 ms and
+returned `unknown`; `global_completion_observed_at` was null for all 20
+reservation rows. The internal readback and the public-read clocks are both
+preserved, but are not substituted for that missing admission completion.
+
+### Exact per-sample table
+
+`safe-final` is commit response to the final projector/tag-state proof. The
+`global-readback-end` value is the observed epoch-millisecond end of the
+post-record-delivery readback. `admission` is exact start–end epoch
+milliseconds, duration, and outcome. `header` is the caller-visible
+`x-sdt-global-admission` outcome; the valid V1 body has no admission member.
+
+#### Pre-deploy baseline
+
+| # | event id | SUID | response | global-readback-end | unsafe | safe-final | admission | header |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | `01a07048-ee2e-727c-a4b0-672a058fc677` | `063924187023565000001940658979` | 1839 | 1788590230187 | 116615 | 202629 | 1788590223773–1788590224073 / 300 / unknown | unknown |
+| 2 | `01a07049-1d0a-774f-af13-8f82625578fd` | `063924187035546000000561067412` | 1958 | 1788590239966 | 4534 | 190668 | 1788590235760–1788590236060 / 300 / unknown | unknown |
+| 3 | `01a07049-4be1-746d-8144-b5e0df499ee1` | `063924187047588000000012688801` | 2027 | 1788590252338 | 5117 | 178641 | 1788590247793–1788590248093 / 300 / unknown | unknown |
+| 4 | `01a07049-7bbe-7475-a32d-23b3018aacdc` | `063924187059927000001181918520` | 2360 | 1788590264504 | 4541 | 166279 | 1788590260138–1788590260438 / 300 / unknown | unknown |
+| 5 | `01a07049-ac95-74aa-988e-fcb9fd86d779` | `063924187072442000001826598279` | 2332 | 1788590277552 | 4431 | 153747 | 1788590272657–1788590272957 / 300 / unknown | unknown |
+| 6 | `01a07049-de98-7926-a475-ccc4d89f9579` | `063924187085086000000809079851` | 2385 | 1788590289560 | 4608 | 141066 | 1788590285300–1788590285600 / 300 / unknown | unknown |
+| 7 | `01a0704a-0f95-762a-ae18-7e13c75e9f86` | `063924187097634000000578712760` | 2429 | 1788590302329 | 4554 | 128283 | 1788590297837–1788590298137 / 300 / unknown | unknown |
+| 8 | `01a0704a-40ef-7f6e-9342-1e0dd554d2dd` | `063924187110278000000381160128` | 2063 | 1788590313994 | 4502 | 115906 | 1788590310496–1788590310796 / 300 / unknown | unknown |
+| 9 | `01a0704a-7167-71d1-8e59-d3f7b4e5001c` | `063924187122709000002034737008` | 2248 | 1788590327263 | 5158 | 103458 | 1788590322928–1788590323228 / 300 / unknown | unknown |
+| 10 | `01a0704a-a0b2-7d3d-bb6d-f7fc2d35eb99` | `063924187134766000002028023507` | 2011 | 1788590338890 | 4548 | 91445 | 1788590334981–1788590335281 / 300 / unknown | unknown |
+
+#### Exact-source healthy cohort
+
+| # | event id | SUID | response | global-readback-end | unsafe | safe-final | admission | header |
+| ---: | --- | --- | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | `01a07050-7382-71c2-9336-33efc7cf3afb` | `063924187516531000000020500422` | 2122 | 1788590733180 | 116763 | 241966 | 1788590716737–1788590717037 / 300 / unknown | unknown |
+| 2 | `01a07050-a278-70af-a259-82a85374aaf0` | `063924187528466000001633646930` | 1936 | 1788590754219 | 105067 | 230027 | 1788590728679–1788590728979 / 300 / unknown | unknown |
+| 3 | `01a07050-d119-7d9c-8bbd-7088e8ae448e` | `063924187540532000001226437948` | 2091 | 1788590774527 | 93259 | 217935 | 1788590740761–1788590741061 / 300 / unknown | unknown |
+| 4 | `01a07050-fff7-70d8-a64d-886f08cf5177` | `063924187552420000001042767609` | 1860 | 1788590784122 | 81927 | 206074 | 1788590752636–1788590752936 / 300 / unknown | unknown |
+| 5 | `01a07051-3212-7b1e-9e44-3ba35b3dd425` | `063924187565345000000082008897` | 2935 | 1788590797080 | 69275 | 193137 | 1788590765558–1788590765858 / 300 / unknown | unknown |
+| 6 | `01a07051-61b9-7dcf-86e6-f8400590933b` | `063924187577517000001581879577` | 2163 | 1788590816391 | 57402 | 180973 | 1788590777736–1788590778036 / 300 / unknown | unknown |
+| 7 | `01a07051-9134-757f-8fb7-f1f7d2c8dcf9` | `063924187589746000001994333525` | 2252 | 1788590841186 | 52142 | 168718 | 1788590789967–1788590790267 / 300 / unknown | unknown |
+| 8 | `01a07051-c18c-7c32-9053-023f15ba2fd8` | `063924187601942000001466520243` | 2160 | 1788590844906 | 45784 | 156556 | 1788590802147–1788590802447 / 300 / unknown | unknown |
+| 9 | `01a07051-f158-7e87-a6e5-b2b114fc55df` | `063924187614199000001340011423` | 2245 | 1788590844990 | 33855 | 144309 | 1788590814414–1788590814714 / 300 / unknown | unknown |
+| 10 | `01a07052-2062-7f95-a9b3-b7ccef8f102a` | `063924187626366000000264870134` | 2162 | 1788590854054 | 26936 | 132145 | 1788590826588–1788590826888 / 300 / unknown | unknown |
+
+### Durable hop and sub-hop distributions
+
+These are reservation-partition rows for the two ten-sample cohorts. The
+public-read interval uses the raw harness first-visibility clock; the ledger
+first-unsafe-read row is retained in the analysis but is not substituted for
+that public observation.
+
+| observed interval | baseline n / p50 / p95 ms | exact-source n / p50 / p95 ms |
+| --- | ---: | ---: |
+| command receipt → tag append | 10 / 879 / 1020 | 10 / 959 / 1051 |
+| tag append → outbox obligation | 10 / 0 / 0 | 10 / 0 / 0 |
+| outbox obligation → Queue send returned | 10 / 1149 / 1224 | 10 / 1099 / 1204 |
+| Queue send returned → consumer start | 10 / 2199 / 4361 | 10 / 28518 / 46357 |
+| consumer start → recordDelivery committed | 10 / 834 / 1137 | 10 / 1650 / 3531 |
+| recordDelivery → first public unsafe read | 10 / 890 / 110704 | 10 / 19157 / 100854 |
+| recordDelivery → readback start | 10 / 0 / 0 | 10 / 0 / 0 |
+| post-record-delivery readback duration | 10 / 111 / 138 | 10 / 236 / 335 |
+| source acknowledgement duration | 10 / 136 / 336 | 10 / 229 / 451 |
+| completeness coverage duration | 10 / 118 / 279 | 10 / 184 / 633 |
+| detector duration | 1 / 355 / 355 (9 missing) | 10 / 985 / 1317 |
+| RoomProjector unsafe apply | 10 / 254 / 486 | 10 / 147 / 736 |
+| ReservationProjector unsafe apply | 10 / 187 / 372 | 10 / 66 / 658 |
+| RoomProjector inline unsafe writer | 10 / 36 / 79 | 10 / 56 / 294 |
+| ReservationProjector inline unsafe writer | 10 / 32 / 86 | 10 / 40 / 50 |
+
+The exact-source failures are therefore attributed to the Queue send→consumer
+start interval first (p50 28,518 ms, p95 46,357 ms), with the residual
+recordDelivery→public-read interval also large (p50 19,157 ms, p95 100,854
+ms). The inline unsafe-writer spans are small and every observed completeness
+row remains fail-closed (`BLOCK/UNSETTLED` 8/10 and `SETTLED` 2/10); no safe
+fence was bypassed. This W130 evidence does not claim that F1/F3/F4 made the
+5,000 ms contract pass.
+
+### Real present-binding D1 failure and recovery
+
+The failure proof did not omit the D1 binding. It deployed the exact source
+with the existing MV database `2b60dbcf-0912-4bb2-93aa-77c26cd260e1` bound as
+the D1 source, so the runtime D1 schema probe/derived source-partition path
+failed against a real present binding. Version `b9c58a3e-02f2-4a7a-83e4-c0f193932723`,
+deployment `c265df4d-7d7e-43b4-99fd-42e6db044b3e`, and its exact failure
+configuration are retained. The public commit returned HTTP 200 committed in
+2,074 ms with `not-admitted`; its reservation event was
+`01a07057-79f5-7ac6-92de-bb63421d6471`, SUID
+`063924187976813000002048063354`, and it was absent from the fully paged
+5,000 ms public read. The V1 body still contained no admission field. The
+failure binding did not contain the admission telemetry table, so that
+variant has no admission row; this is recorded as an observability gap, not a
+missing commit or an inferred admission result.
+
+The normal D1 binding was then restored at exact source version
+`f7d3f08e-c56c-4b5c-b14a-8afe931cc2a9`. After restoration, the same
+reservation became visible at 108,105 ms from the original commit response.
+The read-only MV provenance query found exactly one `RoomProjector`
+`mv_unsafe_receipts` row with `no-change`, zero `mv_unsafe_rows`, and one
+`ReservationProjector` `mv_rows` row for the reservation SUID. The global
+receipt query retained one reservation obligation (plus its room obligations),
+and no duplicate/regressing unsafe row was observed. The result proves durable
+acceptance and eventual Queue/outbox recovery for this present-binding schema
+failure; it does not claim a network outage or a safe-head acceptance during
+the injected failure.
+
+### V1 body and header evidence
+
+The local real SQLite/public tests and `test:g65` guard prove the three header
+outcomes (`admitted`, `not-admitted`, `unknown`) without adding a body field and
+prove the response body byte contract. In the deployed W130 healthy cohorts,
+all 20 responses had `header=unknown` and zero bodies had an admission field.
+The failure variant had a committed `not-admitted` response. No deployed
+`admitted` sample occurred in this bounded run; it remains covered by the
+local real-path oracle rather than being fabricated from the remote data.
+
+### Lossless receipt storage
+
+The large public cohort receipts are retained as gzip-compressed lossless
+artifacts; each was verified with `gzip -dc <artifact>.gz | cmp - <expanded>`.
+The compressed SHA-256 values are:
+
+| artifact | SHA-256 |
+| --- | --- |
+| `.artifacts/sdt-g65-w130-pre-deploy-baseline.json.gz` | `ecd29335f1f027e0f2b1d7eec0726b4a910fe052734121a718a39e402398567e` |
+| `.artifacts/sdt-g65-w130-post-deploy-healthy.json.gz` | `690c35a39ee361a79bbfab7b78c777c6aa708d50181d6dcb9e698d4d292d4079` |
+| `.artifacts/sdt-g65-w130-d1-schema-failure-cohort.json.gz` | `8bf1ca3c1ece3fe23d3b4fef61ac23fea9c2e00e0c467dcc7d99a676f50a87f2` |
+| `.artifacts/sdt-g65-w130-d1-recovery-followup.json.gz` | `19754178a641fa84d8d67d582d39afdbcd959db8dba07c4ff4c5cf8a20cf7dbd` |
+
+For example, decompression is:
+`gzip -dc .artifacts/sdt-g65-w130-post-deploy-healthy.json.gz > .artifacts/sdt-g65-w130-post-deploy-healthy.json`.
+The compact observed-clock analysis is
+`.artifacts/sdt-g65-w130-analysis.json`; all raw request/page receipts remain
+available in the compressed files.
+
+### W130 gate boundary
+
+The exact local source remained unchanged during deployment evidence. The
+focused `npm run test:g65` and `npm run test:g60:required` reruns passed,
+including red-before-green and all six unchanged G60 mutants. `npm run
+typecheck`, `npm run lint`, and `git diff --check` passed; the broader G26,
+G29, G41, G44, G49, G51, G52, G53, G54, G55, G58, G61, and G62 results remain
+the exact-head local results recorded above. No PR state transition, self-review,
+merge, or worker completion was performed. W130 ends as an evidence checkpoint
+for PR #127 with the 5,000 ms and all safe-lane/fence/Queue/V1 boundaries
+unchanged.
