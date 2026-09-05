@@ -272,6 +272,10 @@ describe("SDT-G65 bounded two-lane admission", () => {
           "SELECT COUNT(*) AS count FROM tag_event WHERE service_id = ?",
           serviceId,
         ).toArray()[0]?.count).toBe(1);
+        expect(state.storage.sql.exec<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM tag_source_partition_registration WHERE service_id = ?",
+          serviceId,
+        ).toArray()[0]?.count).toBe(0);
       });
     } finally {
       await runInDurableObject(stub, (instance) => {

@@ -49,7 +49,8 @@ function sourceWiring(source) {
   if (drainCall < 0 || waitUntil < 0 || drainCall > waitUntil) {
     throw new Error("start helper does not start the drain before retaining it with waitUntil");
   }
-  if (!append.includes("appendSql(tag, input, serviceId)") || !append.includes("this.ctx.storage.transaction")) {
+  const hasSqlAppend = append.includes("appendSql(tag, input, serviceId)") || append.includes("this.appendSql(");
+  if (!hasSqlAppend || !append.includes("this.ctx.storage.transaction")) {
     throw new Error("both durable append implementations are not covered");
   }
   return {

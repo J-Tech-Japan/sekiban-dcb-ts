@@ -73,7 +73,7 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
   const admissionCalls = [...append.matchAll(/await this\.globalAdmissionBeforeResponse\(/g)];
   if (directCalls.length !== 2) missing.push(`two direct attempts (found ${directCalls.length})`);
   if (admissionCalls.length !== 2) missing.push(`two synchronous admission attempts (found ${admissionCalls.length})`);
-  if (!append.includes("const result = await this.appendSql(tag, input, serviceId);")) missing.push("durable SQLite append before derived work");
+  if (!append.includes("const result = await this.appendSql(")) missing.push("durable SQLite append before derived work");
   if (!tagSource.includes("ensureSourcePartitionBeforeFirstAppend")) missing.push("first-append source registration gate");
   if (!tagSource.includes("sourcePartitionRegistrationStatus")) missing.push("durable source-registration status lookup");
   if (!tagSource.includes("new PartitionRegistrationUnavailableError")) missing.push("typed first-registration failure");
@@ -89,8 +89,8 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     !tagSource.includes("if (!attempt.value) return \"unconfigured\";")) {
     missing.push("unconfigured completeness store keeps the pre-G65 first-append path");
   }
-  const registrationIndex = append.indexOf("await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId);");
-  const appendSqlIndex = append.indexOf("const result = await this.appendSql(tag, input, serviceId);");
+  const registrationIndex = append.indexOf("ensureSourcePartitionBeforeFirstAppend(");
+  const appendSqlIndex = append.indexOf("this.appendSql(");
   if (!(registrationIndex >= 0 && registrationIndex < appendSqlIndex)) {
     missing.push("first source registration before durable append");
   }
@@ -213,7 +213,7 @@ function sourceMutantReceipts(tagSource, commitSource, storeSource, testSource) 
     check(tagSource.replaceAll("const response = json(result.body, result.status);", "const response = await this.globalAdmissionBeforeResponse(tag, serviceId);"));
   });
   mutants.durabilityReordered = assertRed("durability-before-attempt mutant", () => {
-    check(tagSource.replace("const result = await this.appendSql(tag, input, serviceId);", "const result = await this.globalAdmissionBeforeResponse(tag, serviceId);"));
+    check(tagSource.replace("const result = await this.appendSql(", "const result = await this.globalAdmissionBeforeResponse("));
   });
   mutants.idempotenceRemoval = {
     label: "production idempotence-removal mutant",

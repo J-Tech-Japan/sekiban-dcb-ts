@@ -82,6 +82,7 @@ export const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
 type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
 /** Schema identity is immutable for the lifetime of a Worker isolate. */
 const g44GlobalArrayAuthorityByD1 = new WeakMap<D1Database, Promise<boolean>>();
+const g44GlobalArrayAuthorityResultByD1 = new WeakMap<D1Database, boolean>();
 
 type JsonObject = Record<string, unknown>;
 type SqlRow = Record<string, SqlStorageValue>;
@@ -1524,6 +1525,7 @@ export class TagDurableObject implements DurableObject {
     // authoritative. Only a binding that proves the G44 global-array schema
     // is present enters the first-partition refusal contract below.
     if (this.env.D1 === undefined) return "unconfigured";
+    if (g44GlobalArrayAuthorityResultByD1.get(this.env.D1) === false) return "unconfigured";
     const attempt = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId, 0));
     if (attempt.status !== "completed") {
       throw new PartitionRegistrationUnavailableError(
@@ -1685,7 +1687,9 @@ export class TagDurableObject implements DurableObject {
       g44GlobalArrayAuthorityByD1.set(database, authority);
     }
     try {
-      return await authority;
+      const result = await authority;
+      g44GlobalArrayAuthorityResultByD1.set(database, result);
+      return result;
     } catch (error) {
       if (g44GlobalArrayAuthorityByD1.get(database) === authority) {
         g44GlobalArrayAuthorityByD1.delete(database);
@@ -2026,6 +2030,7 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     event: TagEvent,
     artifact: { canonicalBytes: ArrayBuffer; eventDigest: string; declaredTagSet: string; localMembership: string },
+    trackSourcePartitionRegistration = true,
   ): void {
     sql.exec(`
       INSERT INTO tag_outbox_obligation (
@@ -2038,7 +2043,9 @@ export class TagDurableObject implements DurableObject {
     event.allocatorLineageId, event.eventType, event.provenance, event.timestamp,
     artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
     artifact.localMembership, Date.now());
-    this.upsertSourcePartitionRegistration(sql, serviceId, tag, event.eventId);
+    if (trackSourcePartitionRegistration) {
+      this.upsertSourcePartitionRegistration(sql, serviceId, tag, event.eventId);
+    }
   }
 
   private upsertSourcePartitionRegistration(
@@ -2118,6 +2125,7 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     input: AppendInput,
     suppliedServiceId: string | null,
+    trackSourcePartitionRegistration: boolean,
   ): Promise<OperationResult> {
     const serviceId = suppliedServiceId ?? "";
     const events: TagEvent[] = input.candidates.map((candidate) => ({
@@ -2261,7 +2269,7 @@ export class TagDurableObject implements DurableObject {
         this.writeCommittedSqlEvent(sql, serviceId, event);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
         const obligationWrittenAt = Date.now();
-        this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact);
+        this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact, trackSourcePartitionRegistration);
         hopFacts.push({
           eventId: event.eventId,
           suid: event.suid,
@@ -3047,10 +3055,15 @@ export class TagDurableObject implements DurableObject {
       // not provide `storage.sql`; it is never a second persisted record
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
-        if (serviceId !== null && serviceId.length > 0) {
-          await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId);
-        }
-        const result = await this.appendSql(tag, input, serviceId);
+        const sourcePartitionRegistration = serviceId !== null && serviceId.length > 0
+          ? await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId)
+          : "unconfigured" as const;
+        const result = await this.appendSql(
+          tag,
+          input,
+          serviceId,
+          sourcePartitionRegistration !== "unconfigured",
+        );
         for (const fact of result.hopFacts ?? []) {
           this.scheduleDurableHop({
             stage: "tag-append-committed",
@@ -3071,7 +3084,11 @@ export class TagDurableObject implements DurableObject {
             observedAt: fact.obligationWrittenAt,
           });
         }
-        if ((result.status === 201 || result.status === 200) && serviceId !== null && serviceId.length > 0) {
+        if (
+          (result.status === 201 || result.status === 200) &&
+          serviceId !== null && serviceId.length > 0 &&
+          sourcePartitionRegistration !== "unconfigured"
+        ) {
           this.scheduleSourcePartitionWatermark(tag, serviceId);
         }
         const response = json(result.body, result.status);
