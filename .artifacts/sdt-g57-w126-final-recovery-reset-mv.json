@@ -1,0 +1,31 @@
+{
+  "schema": "sdt-g60-w159-wrangler-receipt/v1",
+  "label": "w126-final-recovery-reset-mv",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g57-w126/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1_MV",
+    "--remote",
+    "--file",
+    ".artifacts/sdt-g60-w155-reset-mv-operational.sql",
+    "--config",
+    ".artifacts/sdt-g57-w126-existing-w155-c-wrangler.cloudflare-only.jsonc"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T00:20:36.423Z",
+  "finishedAt": "2026-09-05T00:20:37.827Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n───────────────────────────────────────────────\nResource location: remote \n\n🌀 Executing on remote database D1_MV (2b60dbcf-0912-4bb2-93aa-77c26cd260e1):\n🌀 To execute on your local development database, remove the --remote flag from your wrangler command.\nNote: if the execution fails to complete, your DB will return to its original state and you can safely retry.\n├ Checking if file needs uploading\n│\n🌀 File already uploaded. Processing.\n🌀 Starting import...\n🌀 Processed 13 queries.\n🚣 Executed 13 queries in 6.00ms (693 rows read, 608 rows written)\n   Database is currently at bookmark 00000007-0000021d-000050dd-2add0e99ee49d0159942d951546c9aa0.\n[\n  {\n    \"results\": [\n      {\n        \"Total queries executed\": 13,\n        \"Rows read\": 693,\n        \"Rows written\": 608,\n        \"Database size (MB)\": \"0.19\"\n      }\n    ],\n    \"success\": true,\n    \"finalBookmark\": \"00000007-0000021d-000050dd-2add0e99ee49d0159942d951546c9aa0\",\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 6.0039\n      },\n      \"duration\": 6.0039,\n      \"changes\": 609,\n      \"last_row_id\": 172,\n      \"changed_db\": true,\n      \"size_after\": 192512,\n      \"rows_read\": 693,\n      \"rows_written\": 608,\n      \"num_tables\": 16,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": "\u001b[33m▲ \u001b[43;33m[\u001b[43;30mWARNING\u001b[43;33m]\u001b[0m \u001b[1m⚠️ This process may take some time, during which your D1 database will be unavailable to serve queries.\u001b[0m\n\n\n"
+}
