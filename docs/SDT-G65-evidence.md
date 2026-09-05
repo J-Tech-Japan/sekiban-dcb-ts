@@ -208,3 +208,75 @@ unsafe misses, absent deployed direct receiver, unknown healthy admission
 outcomes, and unproven configured-store typed refusal make this checkpoint
 blocked before rereview/completion. No PR review state, merge, resource
 operation, or additional cohort was performed.
+
+## W138 direct-doorbell repair continuation
+
+The scoped local configuration repair is pushed at `ff65602` on
+`claude/sdt-g65-local-wake-w128`. It retains `DIRECT_DOORBELL=true` and adds
+the actual existing receiver service binding:
+
+```json
+{
+  "binding": "DOWNSTREAM_DOORBELL",
+  "service": "sekiban-dcb-meeting-room-doorbell",
+  "entrypoint": "MeetingRoomDownstreamDoorbell"
+}
+```
+
+The local guard was red before the binding was added and green afterward; the
+focused G65/G60/G58/G62/G61 gates and the relevant G41/G42/G44/G45/G46/G49/
+G53/G54/G55/G56 checks passed. The aggregate `npm run check` reached the G32
+real-parity runner, whose default GitHub clone remained alive, so that known
+environment/network process was stopped; the prior npm-cache permission issue
+was removed by using a private cache and the other aggregate lanes passed.
+
+The authorized W155-C continuation did not reach deployment. The five
+Wrangler credential names were all `UNSET`, and the wrapper stripped them from
+both calls. The first exact reset write was:
+
+```sh
+wrangler d1 execute D1 --remote --json --yes \
+  --config .artifacts/wrangler.g65-w155-c.jsonc \
+  --file .artifacts/sdt-g65-w138-direct-reset-pipeline.sql
+```
+
+It failed at the existing pipeline D1 import endpoint with Cloudflare API
+code `10000` (`Authentication error`). Per the single-classifier rule, no
+write was retried. The one same-family read-only classifier was:
+
+```sh
+wrangler d1 execute D1 --remote --json --yes \
+  --config .artifacts/wrangler.g65-w155-c.jsonc \
+  --command "SELECT COUNT(*) AS dcb_events FROM dcb_events"
+```
+
+It succeeded with `dcb_events=15`. This proves the read path was reachable but
+does not authorize or prove the rejected reset write. Consequently no reset,
+deployment, deployed binding verification, matched pre/post cohort, or new
+direct-doorbell ledger exists in this continuation. The arm was not altered
+by this failed attempt; the final deployed arm remains the prior W138 source
+without the receiver binding, so the repair is not deployed proof.
+
+The retained W138 post cohort still has the real 180-second miss: sample 1
+safe-visible at `186687 ms` and `9/10` samples over the unchanged 5000 ms
+unsafe bound. The configured-store first-write typed
+`503 partition_registration_unavailable` with zero event writes remains
+unproven; the prior bound-MV probe was classified explicitly unconfigured and
+returned a committed/not-admitted write. No new evidence changes either
+classification.
+
+Fresh continuation receipts are committed without secrets:
+
+- `.artifacts/sdt-g65-w138-direct-pre-reset-pipeline.json` — exact failed
+  reset command, code `10000`, stdout and stderr.
+- `.artifacts/sdt-g65-w138-direct-auth-classifier-d1-read.json` — the one
+  successful read-only classifier and result.
+- `.artifacts/sdt-g65-w138-direct-reset-pipeline.sql` and
+  `.artifacts/sdt-g65-w138-direct-reset-mv.sql` — the schema-preserving reset
+  statements that were authorized but not completed.
+
+Disposition remains **blocked** on the Cloudflare API authentication failure.
+No resource, migration, production worker, PR review state, fixture, or gate
+was changed. A later continuation must re-establish the W155-C write window,
+verify the repaired binding from the deployed version view, then run the
+fresh matched cohorts before claiming direct-doorbell acceptance.
