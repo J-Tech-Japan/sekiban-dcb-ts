@@ -1521,13 +1521,48 @@ export class TagDurableObject implements DurableObject {
     let lastFailure: string | undefined;
     for (let attempt = 1; attempt <= G65_SOURCE_REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
       const result = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId));
-      if (result.status === "completed") return;
+      if (result.status === "completed") {
+        await this.markSourcePartitionRegistration(tag, serviceId, "registered");
+        return;
+      }
       lastFailure = result.status === "timeout" ? "timeout" : String(result.error);
       if (attempt < G65_SOURCE_REGISTRATION_MAX_ATTEMPTS) {
         await new Promise<void>((resolve) => setTimeout(resolve, G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * attempt));
       }
     }
+    await this.markSourcePartitionRegistration(
+      tag,
+      serviceId,
+      "pending",
+      lastFailure ?? "unknown",
+      Date.now() + G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
+    );
     throw new Error(`source_partition_registration_failed:${lastFailure ?? "unknown"}`);
+  }
+
+  private async markSourcePartitionRegistration(
+    tag: string,
+    serviceId: string,
+    status: "pending" | "registered",
+    lastError?: string,
+    nextAttemptAt?: number,
+  ): Promise<void> {
+    await this.ctx.storage.transaction(async (txn) => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) return;
+      sql.exec(`
+        UPDATE tag_source_partition_registration
+           SET status = ?,
+               next_attempt_at = ?,
+               attempt_count = CASE WHEN ? = 'registered' THEN 0 ELSE attempt_count + 1 END,
+               last_error = ?
+         WHERE service_id = ? AND partition_tag = ?
+      `, status, status === "pending" ? (nextAttemptAt ?? Date.now()) : null,
+      status, status === "pending" ? (lastError ?? null) : null, serviceId, tag);
+      const dueAt = this.nextSqlAlarmDue();
+      if (dueAt === null) await txn.deleteAlarm();
+      else await txn.setAlarm(dueAt);
+    });
   }
 
   private async registerSourcePartition(tag: string, serviceId: string): Promise<void> {
@@ -1542,7 +1577,10 @@ export class TagDurableObject implements DurableObject {
     if (sql === undefined) {
       throw new Error("g44_source_partition_registry_requires_sql_tag");
     }
-    const max = sql.exec<SqlRow>("SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation").toArray()[0];
+    const max = sql.exec<SqlRow>(
+      "SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation WHERE service_id = ?",
+      serviceId,
+    ).toArray()[0];
     const sequence = max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence");
     if (sequence === undefined) return;
     await database.prepare(
@@ -1905,6 +1943,7 @@ export class TagDurableObject implements DurableObject {
   private writeCommittedSqlObligation(
     sql: SqlStorage,
     serviceId: string,
+    tag: string,
     event: TagEvent,
     artifact: { canonicalBytes: ArrayBuffer; eventDigest: string; declaredTagSet: string; localMembership: string },
   ): void {
@@ -1919,6 +1958,37 @@ export class TagDurableObject implements DurableObject {
     event.allocatorLineageId, event.eventType, event.provenance, event.timestamp,
     artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
     artifact.localMembership, Date.now());
+    this.upsertSourcePartitionRegistration(sql, serviceId, tag, event.eventId);
+  }
+
+  private upsertSourcePartitionRegistration(
+    sql: SqlStorage,
+    serviceId: string,
+    tag: string,
+    eventId: string,
+  ): void {
+    const obligation = sql.exec<SqlRow>(`
+      SELECT obligation_sequence
+        FROM tag_outbox_obligation
+       WHERE service_id = ? AND event_id = ?
+       ORDER BY obligation_sequence DESC
+       LIMIT 1
+    `, serviceId, eventId).one();
+    const sequence = sqlNumber(obligation.obligation_sequence, "tag_outbox_obligation.obligation_sequence");
+    sql.exec(`
+      INSERT INTO tag_source_partition_registration
+        (service_id, partition_tag, last_obligation_sequence, status, next_attempt_at, attempt_count, last_error)
+      VALUES (?, ?, ?, 'pending', ?, 0, NULL)
+      ON CONFLICT (service_id, partition_tag) DO UPDATE SET
+        last_obligation_sequence = MAX(
+          tag_source_partition_registration.last_obligation_sequence,
+          excluded.last_obligation_sequence
+        ),
+        status = 'pending',
+        next_attempt_at = excluded.next_attempt_at,
+        attempt_count = 0,
+        last_error = NULL
+    `, serviceId, tag, sequence, Date.now());
   }
 
   private writeCommittedSqlHead(sql: SqlStorage, serviceId: string, head: string, version: number, committedAt: string): void {
@@ -2099,7 +2169,7 @@ export class TagDurableObject implements DurableObject {
         this.writeCommittedSqlEvent(sql, serviceId, event);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
         const obligationWrittenAt = Date.now();
-        this.writeCommittedSqlObligation(sql, serviceId, event, artifact);
+        this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact);
         hopFacts.push({
           eventId: event.eventId,
           suid: event.suid,
@@ -2507,6 +2577,7 @@ export class TagDurableObject implements DurableObject {
       outbox.allocatorLineageId, outbox.eventType, outbox.provenance, outbox.timestamp,
       artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
       artifact.localMembership, Date.now());
+      this.upsertSourcePartitionRegistration(sql, eventServiceId, record.tag, outbox.eventId);
     }
     for (const confirmation of record.confirmations) {
       sql.exec(`
@@ -2527,6 +2598,9 @@ export class TagDurableObject implements DurableObject {
         SELECT alarm_due_at AS due_at FROM tag_reservation
         UNION ALL
         SELECT next_attempt_at AS due_at FROM tag_outbox_obligation
+        WHERE status = 'pending'
+        UNION ALL
+        SELECT next_attempt_at AS due_at FROM tag_source_partition_registration
         WHERE status = 'pending'
       )
     `).toArray()[0];
@@ -4285,6 +4359,7 @@ export class TagDurableObject implements DurableObject {
       tag?: string;
       serviceId?: string;
       retryDue: boolean;
+      sourceRegistrationDue?: { readonly tag: string; readonly serviceId: string };
     }> => {
       const sql = this.sqlStorage();
       if (sql === undefined) {
@@ -4319,14 +4394,31 @@ export class TagDurableObject implements DurableObject {
         SELECT COUNT(*) AS count FROM tag_outbox_obligation
         WHERE status = 'pending' AND next_attempt_at <= ?
       `, Date.now()).one().count, "tag_outbox_obligation.count") > 0;
+      const sourceRegistration = sql.exec<SqlRow>(`
+        SELECT service_id, partition_tag
+          FROM tag_source_partition_registration
+         WHERE status = 'pending' AND next_attempt_at <= ?
+         ORDER BY next_attempt_at ASC, service_id COLLATE BINARY ASC, partition_tag COLLATE BINARY ASC
+         LIMIT 1
+      `, Date.now()).toArray()[0];
       await this.rearmScheduler(txn);
       return {
         record: this.readStoredRecord(tag),
         tag,
         serviceId: service === undefined ? undefined : sqlString(service.service_id, "tag_head.service_id"),
         retryDue,
+        sourceRegistrationDue: sourceRegistration === undefined ? undefined : {
+          serviceId: sqlString(sourceRegistration.service_id, "tag_source_partition_registration.service_id"),
+          tag: sqlString(sourceRegistration.partition_tag, "tag_source_partition_registration.partition_tag"),
+        },
       };
     });
+    if (due.sourceRegistrationDue !== undefined) {
+      await this.retrySourcePartitionRegistration(
+        due.sourceRegistrationDue.tag,
+        due.sourceRegistrationDue.serviceId,
+      ).catch(() => undefined);
+    }
     if (
       due.retryDue &&
       this.env.AUTO_DRAIN_OUTBOX === "true" &&

@@ -123,6 +123,19 @@ export const TAG_SQL_SCHEMA_DDL = `
   CREATE INDEX IF NOT EXISTS tag_outbox_obligation_due_idx
     ON tag_outbox_obligation(status, next_attempt_at, obligation_sequence);
 
+  CREATE TABLE IF NOT EXISTS tag_source_partition_registration (
+    service_id TEXT NOT NULL,
+    partition_tag TEXT NOT NULL,
+    last_obligation_sequence INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'registered')),
+    next_attempt_at INTEGER,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    PRIMARY KEY (service_id, partition_tag)
+  );
+  CREATE INDEX IF NOT EXISTS tag_source_partition_registration_due_idx
+    ON tag_source_partition_registration(status, next_attempt_at, service_id, partition_tag);
+
   CREATE TABLE IF NOT EXISTS tag_commit_receipt (
     attempt_id TEXT NOT NULL,
     epoch INTEGER NOT NULL,

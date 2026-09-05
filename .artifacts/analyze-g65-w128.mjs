@@ -93,6 +93,7 @@ const samples = events.map(({ sample, eventId, suid }) => {
   const unsafeAt = minAt(stageRows(hops, "first-unsafe-visible-read"));
   const responseAt = sample.commit.receivedAtMs;
   const admission = admissions[0];
+  const globalCompletionAt = admission?.global_completion_observed_at ?? null;
   const admissionDuration = admission === undefined
     ? null
     : Number(admission.admission_finished_at) - Number(admission.admission_started_at);
@@ -141,7 +142,14 @@ const samples = events.map(({ sample, eventId, suid }) => {
     commitReceivedAtMs: responseAt,
     globalDcbEventVisibility: {
       rowObserved: eventRow !== undefined,
-      timing: "not-measured-from-authored-event-row",
+      completionObservedAt: globalCompletionAt,
+      responseToCompletionMs: globalCompletionAt === null || !Number.isFinite(responseAt)
+        ? null
+        : Number(globalCompletionAt) - Number(responseAt),
+      clockOrigin: admission?.clock_origin ?? null,
+      timing: globalCompletionAt === null
+        ? "not-observed"
+        : "Date.now epoch ms after D1EventStore.recordDelivery returned",
     },
     publicUnsafeMs: sample.unsafe.firstVisibleCommitToUnsafeMs,
     publicUnsafeDisposition: sample.unsafe.disposition,
@@ -188,7 +196,10 @@ const analysis = {
       globalDcbEventVisibility: {
         n: samples.length,
         rowObservedN: samples.filter((sample) => sample.globalDcbEventVisibility.rowObserved).length,
-        timing: "not-measured-from-authored-event-row",
+        observedCompletionN: samples.filter((sample) => sample.globalDcbEventVisibility.completionObservedAt !== null).length,
+        responseToCompletion: metrics(samples.map((sample) => sample.globalDcbEventVisibility.responseToCompletionMs)),
+        clockOrigin: "Date.now epoch ms",
+        timing: "only correlated admission-ledger completion observations; authored dcb_events.Timestamp and receipt received_at excluded",
       },
       publicUnsafeRecordedOnly: metrics(samples.map((sample) => sample.publicUnsafeMs)),
       safe: metrics(samples.map((sample) => sample.safeMs), 180000),

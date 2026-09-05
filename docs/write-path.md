@@ -42,10 +42,21 @@ admission. A successful `recordDelivery` D1 batch upserts the source partition
 alongside the global event, membership, and receipt. The append-time D1
 schema-probe/insert is a post-commit, non-blocking derived obligation with
 three bounded attempts, each using the existing 300 ms derived-write budget
-and short backoff. If D1 is missing, fails, or hangs, the local SQLite commit
-still returns; until the atomic global batch or the bounded registration retry
-succeeds, there is no source authority for G44 to certify and the safe lane
-remains fail-closed. The durable outbox and Queue remain the recovery path.
+and short backoff. The Tag SQLite transaction also persists a
+`tag_source_partition_registration` obligation, and the Tag alarm retries that
+registration independently of Queue delivery or global admission after a
+crash/exhaustion. If D1 is missing, fails, or hangs, the local SQLite commit
+still returns.
+
+The current two-store topology has an explicit remaining design boundary: an
+independent scanner can enumerate only the global D1 source-partition table.
+While a brand-new partition's registration is absent, that scanner cannot
+distinguish “no partition exists” from “a committed source is not yet
+discoverable.” This checkpoint does not claim that the absence is itself a
+fail-closed proof; the unrelated-partition gap case is routed for the required
+source-universe design ruling. Delivery/admission must not manufacture or
+silently substitute that source authority. Until that ruling/proof exists, G44
+safe-lane acceptance is not claimed for the missing-partition case.
 
 ## Ordering and safety invariants
 

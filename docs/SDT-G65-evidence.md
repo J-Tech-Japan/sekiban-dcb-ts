@@ -54,7 +54,7 @@ The W129 normal deployment was version
 `SDT-G65 W129 repair exact ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a` and the
 expected pipeline/MV bindings. No secret publication was needed, so no
 secret-created version intervened. The exact receipts are
-[`sdt-g65-w129-deploy-normal.log`](.artifacts/sdt-g65-w129-deploy-normal.log),
+[`sdt-g65-w129-deploy-normal.log.gz`](.artifacts/sdt-g65-w129-deploy-normal.log.gz),
 [`sdt-g65-w129-versions-normal.json`](.artifacts/sdt-g65-w129-versions-normal.json),
 and [`sdt-g65-w129-deployments-normal.json`](.artifacts/sdt-g65-w129-deployments-normal.json).
 
@@ -68,7 +68,7 @@ The normal binding was restored afterward with version
 `d1b85541-6339-4f41-a3ae-10f0f260264b`, 100% traffic, annotation
 `SDT-G65 W129 restore normal D1 exact ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a`.
 The unavailable and restore receipts are
-[`sdt-g65-w129-deploy-d1-unavailable.log`](.artifacts/sdt-g65-w129-deploy-d1-unavailable.log),
+[`sdt-g65-w129-deploy-d1-unavailable.log.gz`](.artifacts/sdt-g65-w129-deploy-d1-unavailable.log.gz),
 [`sdt-g65-w129-deployments-d1-unavailable.json`](.artifacts/sdt-g65-w129-deployments-d1-unavailable.json),
 and [`sdt-g65-w129-deployments-final.json`](.artifacts/sdt-g65-w129-deployments-final.json).
 
@@ -237,7 +237,7 @@ regressing active row.
 ### W129 admission ledger
 
 The W129 ledger query is preserved in
-[`sdt-g65-w129-ledger-query.log`](.artifacts/sdt-g65-w129-ledger-query.log).
+[`sdt-g65-w129-ledger-query.log.gz`](.artifacts/sdt-g65-w129-ledger-query.log.gz).
 It contains 36 rows for 11 distinct event identities/attempt identities after
 the setup row and cohort reservations are correlated. Every row has
 `clock_origin = Date.now epoch ms`, a 300 ms start-to-finish bounded attempt,
@@ -335,8 +335,8 @@ binding, the arm was left on the normal exact-source deployment recorded above.
 
 Receipt: [`sdt-g65-w129-d1-unavailable.json`](.artifacts/sdt-g65-w129-d1-unavailable.json).
 The deployment and restoration receipts are
-[`sdt-g65-w129-deploy-d1-unavailable.log`](.artifacts/sdt-g65-w129-deploy-d1-unavailable.log)
-and [`sdt-g65-w129-deploy-restore-normal.log`](.artifacts/sdt-g65-w129-deploy-restore-normal.log).
+[`sdt-g65-w129-deploy-d1-unavailable.log.gz`](.artifacts/sdt-g65-w129-deploy-d1-unavailable.log.gz)
+and [`sdt-g65-w129-deploy-restore-normal.log.gz`](.artifacts/sdt-g65-w129-deploy-restore-normal.log.gz).
 
 ## W129 local repair evidence (F1–F4)
 
@@ -645,3 +645,63 @@ the exact-head local results recorded above. No PR state transition, self-review
 merge, or worker completion was performed. W130 ends as an evidence checkpoint
 for PR #127 with the 5,000 ms and all safe-lane/fence/Queue/V1 boundaries
 unchanged.
+
+## WAKE-131 local rerepair checkpoint
+
+This section is local-only and is not a deployed or historical W128 result.
+The reviewed PR head was `d6b89c7f55171e1dd4233c4e8c043b6e3992b969`; no
+Wrangler, deployment, resource, or remote operation was performed.
+
+The W155-C arm configuration now restores the authorized direct lane with
+`DIRECT_DOORBELL=true`. The focused G65 budget test still proves a
+never-resolving receiver cannot hold the response beyond the documented
+300 ms derived-write budget, while the existing Queue fallback and all six
+G60 mutants remain untouched. No historical W128 measurement is used as a
+direct-lane diagnosis in this checkpoint.
+
+The source-registration repair adds durable Tag-local
+`tag_source_partition_registration` state and alarm-driven retry after the
+three bounded post-commit attempts. The real SQLite/public test
+`retries source discoverability from durable Tag state after registration
+exhaustion without delivery` captures exhaustion, restores the D1 binding,
+recovers the source registry, and scans the un-delivered obligation as
+`BLOCK`. The test does not seed the source registry. A remaining limitation is
+intentional and blocks rereview: if a brand-new partition has no global D1
+registry row while an unrelated partition advances, the independent scanner's
+current D1-only universe cannot observe that missing identity. No code in this
+checkpoint claims that absence is fail-closed; a source-universe design ruling
+is required before asserting the requested no-gap proof. This is not resolved
+by Queue delivery or admission.
+
+The G65 duplicate/idempotence guard now delegates to a real production source
+mutation runner. It removes the `D1EventStore` stored-identity rejection and
+changes the event conflict action from `DO NOTHING` to an overwrite, then runs
+the real direct-first/Queue-first duplicate/conflict oracle. The mutant exits
+red; the unmutated oracle is green. The six G60 mutants remain unchanged.
+
+The W128 analyzer now reports only correlated observed clocks: the admission
+ledger's `Date.now()` start/end and the completion observation captured after
+`D1EventStore.recordDelivery` returns. Authored `dcb_events.Timestamp`, D1
+receipt `received_at`, and caller `received_at` are explicitly excluded from
+global-visibility timing. No new before/after deployed distribution is claimed
+in this local task. The existing header-only admission contract and
+byte-identical V1 bodies remain unchanged.
+
+The six expanded W129 Wrangler/ledger receipts that carried terminal-column
+whitespace are retained losslessly as gzip artifacts so the full PR-range
+`git diff --check` can remain clean without rewriting raw output. Their
+compressed SHA-256 values are:
+
+| artifact | SHA-256 |
+| --- | --- |
+| `.artifacts/sdt-g65-w129-deploy-d1-unavailable.log.gz` | `2e8109c1ef2b8cc8850d083a200a31ba865c982280b88ce1fbabe3ccb0b2ae9f` |
+| `.artifacts/sdt-g65-w129-deploy-normal.log.gz` | `10559268824643cc4d530355f6a834ff1ec555a42ba0d7ee11db91cd00bc6ee8` |
+| `.artifacts/sdt-g65-w129-deploy-restore-normal.log.gz` | `338691d93d61595ea4267d68c1f5d80c0803578459cd9cf47ff5faf1d9039f52` |
+| `.artifacts/sdt-g65-w129-ledger-query.log.gz` | `28d7bf4ec34cd5f6616be8a28d85f8c4b5b2d50c4456168feaaf2bdde816b82a` |
+| `.artifacts/sdt-g65-w129-migrations-apply.log.gz` | `c82217cf8d05da4aac74259df6a01a09dd0d1f93ed9614da7734b74340eac622` |
+| `.artifacts/sdt-g65-w129-migrations-list.log.gz` | `0660836cf76216945a86d26716dae9ca6acdc516984184e4d635f37e9cce57c9` |
+
+Each is verified with `gzip -dc <artifact>.log.gz > <artifact>.log` (or
+`gzip -dc <artifact>.log.gz | cmp - <original-bytes>` when the original is
+available). The expanded copies are intentionally not committed; no raw
+receipt bytes were edited.

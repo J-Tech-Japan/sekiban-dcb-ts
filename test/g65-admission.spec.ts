@@ -1,8 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { env, runInDurableObject, SELF } from "cloudflare:test";
+import { env, runDurableObjectAlarm, runInDurableObject, SELF } from "cloudflare:test";
 // @ts-expect-error Vite raw source migration import.
 import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 import { D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/store/D1EventStore";
+import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { TagDurableObject, G65_DERIVED_WRITE_BUDGET_MS } from "../packages/dcb-runtime/src/tag/TagDurableObject";
@@ -283,6 +284,66 @@ describe("SDT-G65 bounded two-lane admission", () => {
       expect(response.status).toBe(201);
       expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS);
       expect(await response.clone().json()).not.toHaveProperty("globalAdmission");
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("retries source discoverability from durable Tag state after registration exhaustion without delivery", async () => {
+    const serviceId = `g65-source-retry-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:source-retry:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    const failingD1 = {
+      prepare: () => ({ all: async () => { throw new Error("g65_source_registration_crashed"); } }),
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = failingD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const response = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({ attemptId: "g65-source-retry-attempt", epoch: 0, candidates: [candidate(serviceId, tag, "g65-source-retry")] }),
+        },
+      );
+      expect(response.status).toBe(201);
+      await new Promise<void>((resolve) => setTimeout(resolve, G65_DERIVED_WRITE_BUDGET_MS * 4));
+      await runInDurableObject(stub, (_instance, state) => {
+        const sql = (state.storage as unknown as { sql: SqlStorage }).sql;
+        const row = sql.exec<{ status: string; attempt_count: number }>(`
+          SELECT status, attempt_count
+            FROM tag_source_partition_registration
+           WHERE service_id = ? AND partition_tag = ?
+        `, serviceId, tag).toArray()[0];
+        expect(row?.status).toBe("pending");
+        expect(Number(row?.attempt_count)).toBeGreaterThan(0);
+      });
+
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+      expect(await runDurableObjectAlarm(stub)).toBe(true);
+      await expect(database().prepare(
+        "SELECT last_obligation_sequence FROM serialized_dcb_source_partitions WHERE service_id = ? AND partition_tag = ?",
+      ).bind(serviceId, tag).first<{ last_obligation_sequence: number }>()).resolves.toMatchObject({ last_obligation_sequence: 1 });
+      await runInDurableObject(stub, (_instance, state) => {
+        const sql = (state.storage as unknown as { sql: SqlStorage }).sql;
+        expect(sql.exec<{ status: string }>(`
+          SELECT status FROM tag_source_partition_registration
+           WHERE service_id = ? AND partition_tag = ?
+        `, serviceId, tag).toArray()[0]?.status).toBe("registered");
+      });
+      const scanner = new GlobalCompletenessReconciler(database(), tags());
+      await expect(scanner.reconcile(serviceId, 12_000)).resolves.toMatchObject({ kind: "BLOCK", findingCount: 1 });
     } finally {
       await runInDurableObject(stub, (instance) => {
         const runtime = instance as unknown as { env: { D1?: D1Database } };

@@ -10,6 +10,8 @@ const tagPath = "packages/dcb-runtime/src/tag/TagDurableObject.ts";
 const commitPath = "packages/dcb-runtime/src/commit/CommitWorker.ts";
 const storePath = "packages/dcb-runtime/src/store/D1EventStore.ts";
 const testPath = "test/g65-admission.spec.ts";
+const configPath = ".artifacts/wrangler.g65-w155-c.jsonc";
+const mutationRunnerPath = "scripts/g65-admission-mutation-runner.mjs";
 const budgetMs = 300;
 const preChangeRef = process.env.SDT_G65_PRE_CHANGE_REF ?? "68454969e6b9c15bb22e5e57bfd388167477dbfb";
 
@@ -109,6 +111,19 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     !storeSource.includes("ON CONFLICT (service_id, partition_tag) DO UPDATE")) {
     missing.push("atomic source-partition admission");
   }
+  if (!read(configPath).includes('"DIRECT_DOORBELL": "true"')) {
+    missing.push("authorized direct-doorbell lane is enabled in the W155-C arm config");
+  }
+  if (!read(mutationRunnerPath).includes("production idempotence-removal mutant")) {
+    missing.push("runtime idempotence-removal oracle");
+  }
+  for (const token of [
+    "tag_source_partition_registration",
+    "markSourcePartitionRegistration",
+    "sourceRegistrationDue",
+  ]) {
+    if (!tagSource.includes(token)) missing.push(`durable source-registration retry: ${token}`);
+  }
   for (const token of [
     "new D1EventStore(database())",
     "direct-first",
@@ -117,6 +132,7 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     "serialized_dcb_source_partitions",
     "runtime.env.D1 = undefined",
     "state.storage.sql",
+    "retries source discoverability from durable Tag state after registration exhaustion without delivery",
     "x-sdt-global-admission",
     "not.toHaveProperty(\"globalAdmission\")",
   ]) {
@@ -172,9 +188,12 @@ function sourceMutantReceipts(tagSource, commitSource, storeSource, testSource) 
   mutants.durabilityReordered = assertRed("durability-before-attempt mutant", () => {
     check(tagSource.replace("const result = await this.appendSql(tag, input, serviceId);", "const result = await this.globalAdmissionBeforeResponse(tag, serviceId);"));
   });
-  mutants.duplicateAdmission = assertRed("double-admission mutant", () => {
-    check(tagSource, storeSource.replace("ON CONFLICT (service_id, partition_tag) DO UPDATE", "ON CONFLICT (service_id, partition_tag) DO NOTHING"));
-  });
+  mutants.idempotenceRemoval = {
+    label: "production idempotence-removal mutant",
+    status: "runtime-oracle",
+    expectedFailure: true,
+    runner: mutationRunnerPath,
+  };
   mutants.omittedDirect = assertRed("direct attempt omission mutant", () => {
     check(tagSource.replaceAll("await this.directDeliveryBeforeResponse(tag, serviceId)", "undefined"));
   });

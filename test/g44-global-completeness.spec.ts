@@ -324,11 +324,6 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     const value = scope();
     await configureG44Source(value);
     expect((await append(value, "zero-delivery")).status).toBe(201);
-    // With no delivery, the production D1 registry is not created by the
-    // atomic receiver batch. Seed the source authority through the explicit
-    // scanner fixture seam so this test still exercises a real enumerable
-    // zero-delivery obligation and its fail-closed finding.
-    await registerSnapshot(value, 1);
     const scanner = new GlobalCompletenessReconciler(database(), tags());
 
     await expect(scanner.reconcile(value.serviceId, 5_000)).resolves.toMatchObject({ kind: "BLOCK", findingCount: 1 });
@@ -548,7 +543,6 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     const value = scope();
     await configureG44Source(value);
     expect((await append(value, "dlq")).status).toBe(201);
-    await registerSnapshot(value, 1);
     const restoreQueue = await replaceG44Queue(value, async () => {
       throw new Error("fixture Queue delivery reaches terminal DLQ handling");
     });
