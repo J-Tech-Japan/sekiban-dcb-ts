@@ -33,6 +33,12 @@ function positiveInteger(name, value, maximum = Number.MAX_SAFE_INTEGER) {
   return parsed;
 }
 
+function nonNegativeInteger(name, value) {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) throw new Error(`${name} must be a non-negative integer`);
+  return parsed;
+}
+
 function sourceCommit(value) {
   if (!/^[0-9a-f]{40}$/.test(value)) throw new Error("--source-commit must be a 40-character lowercase SHA");
   return value;
@@ -121,27 +127,40 @@ function flush(output, state) {
   writeFileSync(output, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
-async function captureMode({ baseUrl, mode, sampleCount, runIdValue, output, state, task }) {
-  const warmupRoomId = `${task.toLowerCase()}-${mode}-warmup-${runIdValue.slice(0, 20)}`;
-  const warmupName = `${task} ${mode} warmup`;
-  const warmupStartedAtMs = Date.now();
-  const warmup = await request(baseUrl, "/api/commands/create-room", {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json", "user-agent": `${task}-${mode}/1.0` },
-    body: JSON.stringify(commandBody(mode, warmupRoomId, warmupName)),
-  });
-  const warmupSuid = committedSuid(warmup, warmupRoomId);
-  state.warmup = Object.freeze({
-    phase: "discarded-warmup",
-    roomId: warmupRoomId,
-    suid: warmupSuid,
-    ...warmup,
-    startedAtMs: warmupStartedAtMs,
-  });
-  flush(output, state);
+async function waitForResponseSpacing(previousCompletedAtMs, minimumInterSampleMs) {
+  const remainingMs = minimumInterSampleMs - (Date.now() - previousCompletedAtMs);
+  if (remainingMs > 0) await new Promise((resolveDelay) => setTimeout(resolveDelay, remainingMs));
+}
+
+async function captureMode({ baseUrl, mode, sampleCount, runIdValue, output, state, rootState, task, minimumInterSampleMs, coldFirst }) {
+  let previousCompletedAtMs = null;
+  if (coldFirst) {
+    state.warmup = null;
+    flush(output, rootState);
+  } else {
+    const warmupRoomId = `${task.toLowerCase()}-${mode}-warmup-${runIdValue.slice(0, 20)}`;
+    const warmupName = `${task} ${mode} warmup`;
+    const warmupStartedAtMs = Date.now();
+    const warmup = await request(baseUrl, "/api/commands/create-room", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json", "user-agent": `${task}-${mode}/1.0` },
+      body: JSON.stringify(commandBody(mode, warmupRoomId, warmupName)),
+    });
+    const warmupSuid = committedSuid(warmup, warmupRoomId);
+    state.warmup = Object.freeze({
+      phase: "discarded-warmup",
+      roomId: warmupRoomId,
+      suid: warmupSuid,
+      ...warmup,
+      startedAtMs: warmupStartedAtMs,
+    });
+    previousCompletedAtMs = warmup.completedAtMs;
+    flush(output, rootState);
+  }
 
   for (let ordinal = 1; ordinal <= sampleCount; ordinal += 1) {
     const roomId = `${task.toLowerCase()}-${mode}-${runIdValue.slice(0, 20)}-${String(ordinal).padStart(3, "0")}`;
+    if (ordinal > 1 && previousCompletedAtMs !== null) await waitForResponseSpacing(previousCompletedAtMs, minimumInterSampleMs);
     const startedAtMs = Date.now();
     const receipt = await request(baseUrl, "/api/commands/create-room", {
       method: "POST",
@@ -164,8 +183,9 @@ async function captureMode({ baseUrl, mode, sampleCount, runIdValue, output, sta
       ...receipt,
       clientLatencyMs: receipt.completedAtMs - startedAtMs,
     }));
+    previousCompletedAtMs = receipt.completedAtMs;
     state.client = summary(state.ledger.map((entry) => entry.clientLatencyMs));
-    flush(output, state);
+    flush(output, rootState);
   }
   state.client = summary(state.ledger.map((entry) => entry.clientLatencyMs));
   return state;
@@ -207,6 +227,8 @@ async function main() {
   const serviceId = required("--service-id", argument("--service-id", process.env.SDT_SERVICE_ID));
   const accountId = argument("--account-id", process.env.CLOUDFLARE_ACCOUNT_ID);
   const sampleCount = positiveInteger("--samples", argument("--samples", String(DEFAULT_SAMPLE_COUNT)), MAX_SAMPLE_COUNT);
+  const minimumInterSampleMs = nonNegativeInteger("--min-inter-sample-ms", argument("--min-inter-sample-ms", "0"));
+  const coldFirst = process.argv.includes("--cold-first");
   const output = resolve(argument("--output", ".artifacts/sdt-g57-w126-g50-executor-comparison.json"));
   const runIdValue = runId(argument("--run-id", randomUUID().replaceAll("-", "")));
   const task = "SDT-G57";
@@ -223,8 +245,11 @@ async function main() {
       modes: MODES,
       sameCommandShape: true,
       sampleCountPerMode: sampleCount,
-      discardedWarmupPerMode: 1,
+      discardedWarmupPerMode: coldFirst ? 0 : 1,
       coldFirstSampleIncluded: true,
+      coldFirst,
+      minimumInterSampleMs,
+      pacingDefinition: "each sample starts at least minimumInterSampleMs after the preceding sample response",
       rawReceiptPersistence: "flush after warmup and every accepted sample",
       expectedReadAccounting: "read-through create-room reads one RoomProjector tag state; snapshot-only supplies the portable empty snapshot and reads zero tag state",
     },
@@ -236,7 +261,7 @@ async function main() {
     const modeStateValue = modeState(mode, sampleCount);
     state.modes.push(modeStateValue);
     flush(output, state);
-    await captureMode({ baseUrl, mode, sampleCount, runIdValue, output, state: modeStateValue, task });
+    await captureMode({ baseUrl, mode, sampleCount, runIdValue, output, state: modeStateValue, rootState: state, task, minimumInterSampleMs, coldFirst });
     if (typeof accountId === "string" && accountId.length > 0) {
       await captureTelemetryIfConfigured({
         state: modeStateValue,

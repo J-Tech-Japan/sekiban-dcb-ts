@@ -109,3 +109,52 @@ measurement.
 No runtime wire member, commit semantics, trace schema, outbox/Queue/global
 admission path, projector advancement, G58 health/coverage/lag/live-poll
 surface, SafeWindow, ordering, fence, timeout, or existing gate was weakened.
+
+## W127 paced AC6 continuation
+
+W127 preserved all W126 unpaced partial receipts and first queried the persisted
+G58 history on the existing W155-C pipeline for
+`2026-09-05T00:17:43Z..00:27:43Z`. The exact receipt is
+`.artifacts/sdt-g57-w127-g58-history-window.json`; the compact classification
+is `.artifacts/sdt-g57-w127-g58-history-classification.json`.
+
+| tick | UTC | kind | reason | partitionTag | proven frontier |
+| --- | --- | --- | --- | --- | --- |
+| `scheduled:1788567562422` | 00:19:22.422 | BLOCK/UNSETTLED | source present/global receipt absent | `room:sdt-g57-read-through-sdtg57w126g50b-004` | empty |
+| `scheduled:1788567627452` | 00:20:27.452 | BLOCK/UNSETTLED | source_partition_set_changed_during_scan | same `...g50b-004` | empty |
+| `scheduled:1788567679968` | 00:21:19.968 | BLOCK/UNSETTLED | source_partition_set_changed_during_scan | `room:sdt-g57-read-through-sdtg57w126g50c-002` | empty |
+| `scheduled:1788567743243` | 00:22:23.243 | SETTLED | null | null | `063924164535707000000596266472` |
+| `scheduled:1788567800982` | 00:23:20.982 | SETTLED | null | null | `063924164535707000000596266472` |
+| `scheduled:1788567883762` | 00:24:43.762 | SETTLED | null | null | `063924164535707000000596266472` |
+| `scheduled:1788567942121` | 00:25:42.121 | SETTLED | null | null | `063924164535707000000596266472` |
+| `scheduled:1788568005340` | 00:26:45.340 | SETTLED | null | null | `063924164535707000000596266472` |
+
+The W126 final 504 at `00:22:43.000Z` did **not** coincide with a persisted
+scheduled tick: the nearest prior tick was 19,757ms earlier and the next was
+37,982ms later. This records correlation only; it does not repair or alter
+scheduled maintenance.
+
+The W127 harness then used unique room IDs on the same existing arm, with no
+discarded warmup and a minimum 10,000ms from each prior sample response to the
+next sample start. Reset receipts, clean-count attempts, and the one stripped
+environment read retry are under `.artifacts/sdt-g57-w127-*`. Three delayed
+W126 request identities remained after reset (`...g50-007`, `...g50b-028`, and
+`...g50c-027`); they were recorded as pre-existing contamination and not
+reused.
+
+The paced receipt is
+`.artifacts/sdt-g57-w127-paced-executor-comparison-aborted-http504-snapshot-006.json`.
+The snapshot-only mode preserved 5 cold-first accepted samples (p50 `2700ms`,
+p95 `2960ms`) and failed at ordinal 6 with HTTP 504
+`{code:"unknown_outcome",kind:"timeout",attempts:1}`. The exact command and
+body are in the paired `...snapshot-006-error.json` receipt. The harness had
+entered snapshot-only after the read-through arm, but its mode-state flush
+replaced the root receipt before the failure; consequently the read-through
+raw rows and p50/p95 are not durable and are intentionally reported as
+unavailable. No snapshot-only comparison, saved-read statistic, or AC6 pass
+can be claimed. No further cohort, repair, PR, or worker completion was run.
+
+The immediate post-reset D1 read once returned code 7403 with all five
+credential variables stripped; the authorized read retry after approximately
+5 seconds succeeded. Both receipts are retained. No write authorization
+failure occurred and no resource or migration operation was attempted.

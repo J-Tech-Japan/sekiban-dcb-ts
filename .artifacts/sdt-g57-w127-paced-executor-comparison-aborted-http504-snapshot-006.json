@@ -1,0 +1,615 @@
+{
+  "mode": "snapshot-only",
+  "expectedTagStateReadsPerCommit": 0,
+  "expectedTagStateReadsSavedPerCommit": 1,
+  "sampleCount": 10,
+  "warmup": null,
+  "ledger": [
+    {
+      "ordinal": 1,
+      "phase": "sample",
+      "mode": "snapshot-only",
+      "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-001",
+      "suid": "063924165942325000001334033232",
+      "command": {
+        "method": "POST",
+        "path": "/api/commands/create-room",
+        "body": {
+          "input": {
+            "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-001",
+            "name": "SDT-G57 snapshot-only 1"
+          },
+          "executor": {
+            "readMode": "snapshot-only",
+            "snapshots": [
+              {
+                "projectorId": "RoomProjector",
+                "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-001",
+                "head": null,
+                "exists": false,
+                "state": {
+                  "status": "empty",
+                  "version": 0,
+                  "roomId": null,
+                  "name": ""
+                }
+              }
+            ]
+          }
+        }
+      },
+      "startedAtMs": 1788569141333,
+      "completedAtMs": 1788569143258,
+      "elapsedMs": 1925,
+      "status": 200,
+      "headers": {
+        "alt-svc": "h3=\":443\"; ma=86400",
+        "cf-ray": "a361366d68fdf0af-SJC",
+        "connection": "keep-alive",
+        "content-encoding": "br",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sat, 05 Sep 2026 00:45:43 GMT",
+        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=zQpAHeoa%2Fy3L%2Blf1S5QGGR4rCcLwDwvDQO7U%2BtCuiyGUfcNrL%2Fluf71SrOV0DP4Ur91rVpim53CfP%2BCzU1R9IG%2FcFa0NtPiDJaB8OLAwANOHnslhPQq82GpaspkoJ7heBW20dTjap6DVWwYM6YTr3tO4yEuOXOAOmqISKHWN\"}]}",
+        "server": "cloudflare",
+        "transfer-encoding": "chunked"
+      },
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMSJ9\",\"sortableUniqueIdValue\":\"063924165942325000001334033232\",\"id\":\"01a06f07-4069-7464-b4c4-156a4964f606\",\"eventMetadata\":{\"causationId\":\"01a06f07-4069-7464-b4c4-156a4964f606\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-001\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-001\",\"version\":1,\"writtenAt\":\"2026-09-05T00:45:42.535Z\"}],\"duration\":\"PT1.8S\"},\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMSJ9\",\"sortableUniqueIdValue\":\"063924165942325000001334033232\",\"id\":\"01a06f07-4069-7464-b4c4-156a4964f606\",\"eventMetadata\":{\"causationId\":\"01a06f07-4069-7464-b4c4-156a4964f606\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-001\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-001\",\"version\":1,\"writtenAt\":\"2026-09-05T00:45:42.535Z\"}],\"head\":\"063924165942325000001334033232\",\"heads\":[{\"tag\":{\"family\":\"room\",\"group\":\"room\",\"value\":\"sdt-g57-snapshot-only-sdtg57w127paced-001\",\"content\":\"sdt-g57-snapshot-only-sdtg57w127paced-001\",\"id\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-001\",\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-001\"},\"head\":\"063924165942325000001334033232\"}]}",
+      "body": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMSJ9",
+              "sortableUniqueIdValue": "063924165942325000001334033232",
+              "id": "01a06f07-4069-7464-b4c4-156a4964f606",
+              "eventMetadata": {
+                "causationId": "01a06f07-4069-7464-b4c4-156a4964f606",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:sdt-g57-snapshot-only-sdtg57w127paced-001"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-001",
+              "version": 1,
+              "writtenAt": "2026-09-05T00:45:42.535Z"
+            }
+          ],
+          "duration": "PT1.8S"
+        },
+        "writtenEvents": [
+          {
+            "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMSJ9",
+            "sortableUniqueIdValue": "063924165942325000001334033232",
+            "id": "01a06f07-4069-7464-b4c4-156a4964f606",
+            "eventMetadata": {
+              "causationId": "01a06f07-4069-7464-b4c4-156a4964f606",
+              "correlationId": "SerializedCommit",
+              "executedUser": "SerializedSekibanExecutor"
+            },
+            "tags": [
+              "room:sdt-g57-snapshot-only-sdtg57w127paced-001"
+            ],
+            "eventPayloadName": "RoomCreated"
+          }
+        ],
+        "tagWriteResults": [
+          {
+            "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-001",
+            "version": 1,
+            "writtenAt": "2026-09-05T00:45:42.535Z"
+          }
+        ],
+        "head": "063924165942325000001334033232",
+        "heads": [
+          {
+            "tag": {
+              "family": "room",
+              "group": "room",
+              "value": "sdt-g57-snapshot-only-sdtg57w127paced-001",
+              "content": "sdt-g57-snapshot-only-sdtg57w127paced-001",
+              "id": "room:sdt-g57-snapshot-only-sdtg57w127paced-001",
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-001"
+            },
+            "head": "063924165942325000001334033232"
+          }
+        ]
+      },
+      "clientLatencyMs": 1925
+    },
+    {
+      "ordinal": 2,
+      "phase": "sample",
+      "mode": "snapshot-only",
+      "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-002",
+      "suid": "063924165954389000001594402316",
+      "command": {
+        "method": "POST",
+        "path": "/api/commands/create-room",
+        "body": {
+          "input": {
+            "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-002",
+            "name": "SDT-G57 snapshot-only 2"
+          },
+          "executor": {
+            "readMode": "snapshot-only",
+            "snapshots": [
+              {
+                "projectorId": "RoomProjector",
+                "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-002",
+                "head": null,
+                "exists": false,
+                "state": {
+                  "status": "empty",
+                  "version": 0,
+                  "roomId": null,
+                  "name": ""
+                }
+              }
+            ]
+          }
+        }
+      },
+      "startedAtMs": 1788569153259,
+      "completedAtMs": 1788569156008,
+      "elapsedMs": 2749,
+      "status": 200,
+      "headers": {
+        "alt-svc": "h3=\":443\"; ma=86400",
+        "cf-ray": "a36136b84a941b51-SJC",
+        "connection": "keep-alive",
+        "content-encoding": "br",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sat, 05 Sep 2026 00:45:55 GMT",
+        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=Reqmdezw3DOWkM1ZYb8mc3cuBo7EdCqzgIi1cfgUhbkpE%2FohmOpusWDlvrG%2FOjWBArr0bbR9%2FCf0j5B5x6klFmrWfxAhI909h9T9rvUm9OptKuikBZ8iaDP1Ponw8I4lE3YhAzL2PxuCMj%2BEKGp%2FVNVM%2FAvZqg0YPrs8tmc4\"}]}",
+        "server": "cloudflare",
+        "transfer-encoding": "chunked"
+      },
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMiIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMiJ9\",\"sortableUniqueIdValue\":\"063924165954389000001594402316\",\"id\":\"01a06f07-6f3b-7c1b-bbd1-6dd469a2714e\",\"eventMetadata\":{\"causationId\":\"01a06f07-6f3b-7c1b-bbd1-6dd469a2714e\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-002\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-002\",\"version\":1,\"writtenAt\":\"2026-09-05T00:45:54.603Z\"}],\"duration\":\"PT2.645S\"},\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMiIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMiJ9\",\"sortableUniqueIdValue\":\"063924165954389000001594402316\",\"id\":\"01a06f07-6f3b-7c1b-bbd1-6dd469a2714e\",\"eventMetadata\":{\"causationId\":\"01a06f07-6f3b-7c1b-bbd1-6dd469a2714e\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-002\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-002\",\"version\":1,\"writtenAt\":\"2026-09-05T00:45:54.603Z\"}],\"head\":\"063924165954389000001594402316\",\"heads\":[{\"tag\":{\"family\":\"room\",\"group\":\"room\",\"value\":\"sdt-g57-snapshot-only-sdtg57w127paced-002\",\"content\":\"sdt-g57-snapshot-only-sdtg57w127paced-002\",\"id\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-002\",\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-002\"},\"head\":\"063924165954389000001594402316\"}]}",
+      "body": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMiIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMiJ9",
+              "sortableUniqueIdValue": "063924165954389000001594402316",
+              "id": "01a06f07-6f3b-7c1b-bbd1-6dd469a2714e",
+              "eventMetadata": {
+                "causationId": "01a06f07-6f3b-7c1b-bbd1-6dd469a2714e",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:sdt-g57-snapshot-only-sdtg57w127paced-002"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-002",
+              "version": 1,
+              "writtenAt": "2026-09-05T00:45:54.603Z"
+            }
+          ],
+          "duration": "PT2.645S"
+        },
+        "writtenEvents": [
+          {
+            "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMiIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMiJ9",
+            "sortableUniqueIdValue": "063924165954389000001594402316",
+            "id": "01a06f07-6f3b-7c1b-bbd1-6dd469a2714e",
+            "eventMetadata": {
+              "causationId": "01a06f07-6f3b-7c1b-bbd1-6dd469a2714e",
+              "correlationId": "SerializedCommit",
+              "executedUser": "SerializedSekibanExecutor"
+            },
+            "tags": [
+              "room:sdt-g57-snapshot-only-sdtg57w127paced-002"
+            ],
+            "eventPayloadName": "RoomCreated"
+          }
+        ],
+        "tagWriteResults": [
+          {
+            "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-002",
+            "version": 1,
+            "writtenAt": "2026-09-05T00:45:54.603Z"
+          }
+        ],
+        "head": "063924165954389000001594402316",
+        "heads": [
+          {
+            "tag": {
+              "family": "room",
+              "group": "room",
+              "value": "sdt-g57-snapshot-only-sdtg57w127paced-002",
+              "content": "sdt-g57-snapshot-only-sdtg57w127paced-002",
+              "id": "room:sdt-g57-snapshot-only-sdtg57w127paced-002",
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-002"
+            },
+            "head": "063924165954389000001594402316"
+          }
+        ]
+      },
+      "clientLatencyMs": 2749
+    },
+    {
+      "ordinal": 3,
+      "phase": "sample",
+      "mode": "snapshot-only",
+      "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-003",
+      "suid": "063924165967211000001711325220",
+      "command": {
+        "method": "POST",
+        "path": "/api/commands/create-room",
+        "body": {
+          "input": {
+            "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-003",
+            "name": "SDT-G57 snapshot-only 3"
+          },
+          "executor": {
+            "readMode": "snapshot-only",
+            "snapshots": [
+              {
+                "projectorId": "RoomProjector",
+                "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-003",
+                "head": null,
+                "exists": false,
+                "state": {
+                  "status": "empty",
+                  "version": 0,
+                  "roomId": null,
+                  "name": ""
+                }
+              }
+            ]
+          }
+        }
+      },
+      "startedAtMs": 1788569166010,
+      "completedAtMs": 1788569168263,
+      "elapsedMs": 2253,
+      "status": 200,
+      "headers": {
+        "alt-svc": "h3=\":443\"; ma=86400",
+        "cf-ray": "a3613707ce298901-LAX",
+        "connection": "keep-alive",
+        "content-encoding": "br",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sat, 05 Sep 2026 00:46:08 GMT",
+        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=cjkDUTmqgwGucCXBxIG6Ohy%2BnIuY%2FYlMaIaFMebMSvKOq8Ww%2FdvXyxfvBJvqAKc4wDMIKcScNYyCvGKLwfGymz7N6nj7DJORY6EYpSw5rsn5OyJsj%2FAYxdr4ck%2B5e2VxkKR8%2BF3yfJpTBz5aIg1eJh5%2Boo5shavSvjH5H3HO\"}]}",
+        "server": "cloudflare",
+        "transfer-encoding": "chunked"
+      },
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMyIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMyJ9\",\"sortableUniqueIdValue\":\"063924165967211000001711325220\",\"id\":\"01a06f07-a0f5-7a01-8206-112af9a98d75\",\"eventMetadata\":{\"causationId\":\"01a06f07-a0f5-7a01-8206-112af9a98d75\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-003\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-003\",\"version\":1,\"writtenAt\":\"2026-09-05T00:46:07.417Z\"}],\"duration\":\"PT2.176S\"},\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMyIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMyJ9\",\"sortableUniqueIdValue\":\"063924165967211000001711325220\",\"id\":\"01a06f07-a0f5-7a01-8206-112af9a98d75\",\"eventMetadata\":{\"causationId\":\"01a06f07-a0f5-7a01-8206-112af9a98d75\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-003\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-003\",\"version\":1,\"writtenAt\":\"2026-09-05T00:46:07.417Z\"}],\"head\":\"063924165967211000001711325220\",\"heads\":[{\"tag\":{\"family\":\"room\",\"group\":\"room\",\"value\":\"sdt-g57-snapshot-only-sdtg57w127paced-003\",\"content\":\"sdt-g57-snapshot-only-sdtg57w127paced-003\",\"id\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-003\",\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-003\"},\"head\":\"063924165967211000001711325220\"}]}",
+      "body": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMyIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMyJ9",
+              "sortableUniqueIdValue": "063924165967211000001711325220",
+              "id": "01a06f07-a0f5-7a01-8206-112af9a98d75",
+              "eventMetadata": {
+                "causationId": "01a06f07-a0f5-7a01-8206-112af9a98d75",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:sdt-g57-snapshot-only-sdtg57w127paced-003"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-003",
+              "version": 1,
+              "writtenAt": "2026-09-05T00:46:07.417Z"
+            }
+          ],
+          "duration": "PT2.176S"
+        },
+        "writtenEvents": [
+          {
+            "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwMyIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgMyJ9",
+            "sortableUniqueIdValue": "063924165967211000001711325220",
+            "id": "01a06f07-a0f5-7a01-8206-112af9a98d75",
+            "eventMetadata": {
+              "causationId": "01a06f07-a0f5-7a01-8206-112af9a98d75",
+              "correlationId": "SerializedCommit",
+              "executedUser": "SerializedSekibanExecutor"
+            },
+            "tags": [
+              "room:sdt-g57-snapshot-only-sdtg57w127paced-003"
+            ],
+            "eventPayloadName": "RoomCreated"
+          }
+        ],
+        "tagWriteResults": [
+          {
+            "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-003",
+            "version": 1,
+            "writtenAt": "2026-09-05T00:46:07.417Z"
+          }
+        ],
+        "head": "063924165967211000001711325220",
+        "heads": [
+          {
+            "tag": {
+              "family": "room",
+              "group": "room",
+              "value": "sdt-g57-snapshot-only-sdtg57w127paced-003",
+              "content": "sdt-g57-snapshot-only-sdtg57w127paced-003",
+              "id": "room:sdt-g57-snapshot-only-sdtg57w127paced-003",
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-003"
+            },
+            "head": "063924165967211000001711325220"
+          }
+        ]
+      },
+      "clientLatencyMs": 2253
+    },
+    {
+      "ordinal": 4,
+      "phase": "sample",
+      "mode": "snapshot-only",
+      "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-004",
+      "suid": "063924165979399000001274303717",
+      "command": {
+        "method": "POST",
+        "path": "/api/commands/create-room",
+        "body": {
+          "input": {
+            "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-004",
+            "name": "SDT-G57 snapshot-only 4"
+          },
+          "executor": {
+            "readMode": "snapshot-only",
+            "snapshots": [
+              {
+                "projectorId": "RoomProjector",
+                "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-004",
+                "head": null,
+                "exists": false,
+                "state": {
+                  "status": "empty",
+                  "version": 0,
+                  "roomId": null,
+                  "name": ""
+                }
+              }
+            ]
+          }
+        }
+      },
+      "startedAtMs": 1788569178264,
+      "completedAtMs": 1788569181224,
+      "elapsedMs": 2960,
+      "status": 200,
+      "headers": {
+        "alt-svc": "h3=\":443\"; ma=86400",
+        "cf-ray": "a3613754fd6c8a19-SJC",
+        "connection": "keep-alive",
+        "content-encoding": "br",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sat, 05 Sep 2026 00:46:21 GMT",
+        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=1AC5Ep3bknCrd7hr%2BMPwAzaK3TQ%2FhlTIkbl8lBHa6LvdW0deihuD13FXKfgTwLHYh0ey%2BFG8YGimhxyYKeUWlvwg0k7uhh7Anfpiv2bNCJwIQnVPl6oONVtkK%2FM57a0PmGDrdReJU4wFe6foye41n9jqfSJQ4JF3oNVHlK2C\"}]}",
+        "server": "cloudflare",
+        "transfer-encoding": "chunked"
+      },
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNCIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNCJ9\",\"sortableUniqueIdValue\":\"063924165979399000001274303717\",\"id\":\"01a06f07-d121-73df-8a6f-9131331dddd8\",\"eventMetadata\":{\"causationId\":\"01a06f07-d121-73df-8a6f-9131331dddd8\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-004\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-004\",\"version\":1,\"writtenAt\":\"2026-09-05T00:46:19.599Z\"}],\"duration\":\"PT2.803S\"},\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNCIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNCJ9\",\"sortableUniqueIdValue\":\"063924165979399000001274303717\",\"id\":\"01a06f07-d121-73df-8a6f-9131331dddd8\",\"eventMetadata\":{\"causationId\":\"01a06f07-d121-73df-8a6f-9131331dddd8\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-004\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-004\",\"version\":1,\"writtenAt\":\"2026-09-05T00:46:19.599Z\"}],\"head\":\"063924165979399000001274303717\",\"heads\":[{\"tag\":{\"family\":\"room\",\"group\":\"room\",\"value\":\"sdt-g57-snapshot-only-sdtg57w127paced-004\",\"content\":\"sdt-g57-snapshot-only-sdtg57w127paced-004\",\"id\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-004\",\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-004\"},\"head\":\"063924165979399000001274303717\"}]}",
+      "body": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNCIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNCJ9",
+              "sortableUniqueIdValue": "063924165979399000001274303717",
+              "id": "01a06f07-d121-73df-8a6f-9131331dddd8",
+              "eventMetadata": {
+                "causationId": "01a06f07-d121-73df-8a6f-9131331dddd8",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:sdt-g57-snapshot-only-sdtg57w127paced-004"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-004",
+              "version": 1,
+              "writtenAt": "2026-09-05T00:46:19.599Z"
+            }
+          ],
+          "duration": "PT2.803S"
+        },
+        "writtenEvents": [
+          {
+            "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNCIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNCJ9",
+            "sortableUniqueIdValue": "063924165979399000001274303717",
+            "id": "01a06f07-d121-73df-8a6f-9131331dddd8",
+            "eventMetadata": {
+              "causationId": "01a06f07-d121-73df-8a6f-9131331dddd8",
+              "correlationId": "SerializedCommit",
+              "executedUser": "SerializedSekibanExecutor"
+            },
+            "tags": [
+              "room:sdt-g57-snapshot-only-sdtg57w127paced-004"
+            ],
+            "eventPayloadName": "RoomCreated"
+          }
+        ],
+        "tagWriteResults": [
+          {
+            "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-004",
+            "version": 1,
+            "writtenAt": "2026-09-05T00:46:19.599Z"
+          }
+        ],
+        "head": "063924165979399000001274303717",
+        "heads": [
+          {
+            "tag": {
+              "family": "room",
+              "group": "room",
+              "value": "sdt-g57-snapshot-only-sdtg57w127paced-004",
+              "content": "sdt-g57-snapshot-only-sdtg57w127paced-004",
+              "id": "room:sdt-g57-snapshot-only-sdtg57w127paced-004",
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-004"
+            },
+            "head": "063924165979399000001274303717"
+          }
+        ]
+      },
+      "clientLatencyMs": 2960
+    },
+    {
+      "ordinal": 5,
+      "phase": "sample",
+      "mode": "snapshot-only",
+      "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-005",
+      "suid": "063924165992350000000653910117",
+      "command": {
+        "method": "POST",
+        "path": "/api/commands/create-room",
+        "body": {
+          "input": {
+            "roomId": "sdt-g57-snapshot-only-sdtg57w127paced-005",
+            "name": "SDT-G57 snapshot-only 5"
+          },
+          "executor": {
+            "readMode": "snapshot-only",
+            "snapshots": [
+              {
+                "projectorId": "RoomProjector",
+                "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-005",
+                "head": null,
+                "exists": false,
+                "state": {
+                  "status": "empty",
+                  "version": 0,
+                  "roomId": null,
+                  "name": ""
+                }
+              }
+            ]
+          }
+        }
+      },
+      "startedAtMs": 1788569191225,
+      "completedAtMs": 1788569193925,
+      "elapsedMs": 2700,
+      "status": 200,
+      "headers": {
+        "alt-svc": "h3=\":443\"; ma=86400",
+        "cf-ray": "a36137a57f3bddff-SJC",
+        "connection": "keep-alive",
+        "content-encoding": "br",
+        "content-type": "application/json; charset=utf-8",
+        "date": "Sat, 05 Sep 2026 00:46:33 GMT",
+        "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+        "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=zSnUzHeOnBOdsjz3MsNJKh2g8FHeE5Q4%2FQtFrbWvCLP1KsjpdRrzjxmgZ3UIzdHkS5MvtXt8Whv3izPGYdGO2PMKGzNUEmEKl%2BtMaeAh7EUalvICDgxjjhD98pTk6lgSIYHrY1EL5HVtuxvpmRjZwor4cCYrguA15mz3tsvG\"}]}",
+        "server": "cloudflare",
+        "transfer-encoding": "chunked"
+      },
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNSJ9\",\"sortableUniqueIdValue\":\"063924165992350000000653910117\",\"id\":\"01a06f08-037e-78e0-8f66-832d00b396d3\",\"eventMetadata\":{\"causationId\":\"01a06f08-037e-78e0-8f66-832d00b396d3\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-005\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-005\",\"version\":1,\"writtenAt\":\"2026-09-05T00:46:32.562Z\"}],\"duration\":\"PT2.612S\"},\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNSJ9\",\"sortableUniqueIdValue\":\"063924165992350000000653910117\",\"id\":\"01a06f08-037e-78e0-8f66-832d00b396d3\",\"eventMetadata\":{\"causationId\":\"01a06f08-037e-78e0-8f66-832d00b396d3\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:sdt-g57-snapshot-only-sdtg57w127paced-005\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-005\",\"version\":1,\"writtenAt\":\"2026-09-05T00:46:32.562Z\"}],\"head\":\"063924165992350000000653910117\",\"heads\":[{\"tag\":{\"family\":\"room\",\"group\":\"room\",\"value\":\"sdt-g57-snapshot-only-sdtg57w127paced-005\",\"content\":\"sdt-g57-snapshot-only-sdtg57w127paced-005\",\"id\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-005\",\"tag\":\"room:sdt-g57-snapshot-only-sdtg57w127paced-005\"},\"head\":\"063924165992350000000653910117\"}]}",
+      "body": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNSJ9",
+              "sortableUniqueIdValue": "063924165992350000000653910117",
+              "id": "01a06f08-037e-78e0-8f66-832d00b396d3",
+              "eventMetadata": {
+                "causationId": "01a06f08-037e-78e0-8f66-832d00b396d3",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:sdt-g57-snapshot-only-sdtg57w127paced-005"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-005",
+              "version": 1,
+              "writtenAt": "2026-09-05T00:46:32.562Z"
+            }
+          ],
+          "duration": "PT2.612S"
+        },
+        "writtenEvents": [
+          {
+            "payload": "eyJyb29tSWQiOiJzZHQtZzU3LXNuYXBzaG90LW9ubHktc2R0ZzU3dzEyN3BhY2VkLTAwNSIsIm5hbWUiOiJTRFQtRzU3IHNuYXBzaG90LW9ubHkgNSJ9",
+            "sortableUniqueIdValue": "063924165992350000000653910117",
+            "id": "01a06f08-037e-78e0-8f66-832d00b396d3",
+            "eventMetadata": {
+              "causationId": "01a06f08-037e-78e0-8f66-832d00b396d3",
+              "correlationId": "SerializedCommit",
+              "executedUser": "SerializedSekibanExecutor"
+            },
+            "tags": [
+              "room:sdt-g57-snapshot-only-sdtg57w127paced-005"
+            ],
+            "eventPayloadName": "RoomCreated"
+          }
+        ],
+        "tagWriteResults": [
+          {
+            "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-005",
+            "version": 1,
+            "writtenAt": "2026-09-05T00:46:32.562Z"
+          }
+        ],
+        "head": "063924165992350000000653910117",
+        "heads": [
+          {
+            "tag": {
+              "family": "room",
+              "group": "room",
+              "value": "sdt-g57-snapshot-only-sdtg57w127paced-005",
+              "content": "sdt-g57-snapshot-only-sdtg57w127paced-005",
+              "id": "room:sdt-g57-snapshot-only-sdtg57w127paced-005",
+              "tag": "room:sdt-g57-snapshot-only-sdtg57w127paced-005"
+            },
+            "head": "063924165992350000000653910117"
+          }
+        ]
+      },
+      "clientLatencyMs": 2700
+    }
+  ],
+  "client": {
+    "count": 5,
+    "p50": 2700,
+    "p95": 2960
+  },
+  "telemetry": null
+}

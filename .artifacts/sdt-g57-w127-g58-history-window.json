@@ -1,0 +1,32 @@
+{
+  "schema": "sdt-g60-w159-wrangler-receipt/v1",
+  "label": "w127-g58-history-window",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g57-w126/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1",
+    "--remote",
+    "--command",
+    "SELECT 'history' AS row_kind, tick_id, coverage_kind, coverage_reason, coverage_partition_tag, settled_frontier_suid, observed_at, NULL AS extra_a, NULL AS extra_b FROM serialized_dcb_safe_lane_history WHERE service_id = 'sekiban-dcb-g60-w155-c' AND observed_at BETWEEN 1788567463000 AND 1788568063000 UNION ALL SELECT 'health' AS row_kind, service_id AS tick_id, coverage_kind, coverage_reason, coverage_partition_tag, settled_frontier_suid, observed_at, NULL AS extra_a, NULL AS extra_b FROM serialized_dcb_safe_lane_health WHERE service_id = 'sekiban-dcb-g60-w155-c' AND observed_at BETWEEN 1788567463000 AND 1788568063000 UNION ALL SELECT 'scanner' AS row_kind, service_id AS tick_id, status AS coverage_kind, last_error AS coverage_reason, NULL AS coverage_partition_tag, NULL AS settled_frontier_suid, updated_at AS observed_at, scanner_version AS extra_a, cursor_json AS extra_b FROM serialized_dcb_completeness_scanner_health WHERE service_id = 'sekiban-dcb-g60-w155-c' AND updated_at BETWEEN 1788567463000 AND 1788568063000 ORDER BY observed_at ASC, row_kind ASC, tick_id ASC",
+    "--json",
+    "--config",
+    ".g57-w126/.artifacts/sdt-g57-w126-existing-w155-c-wrangler.cloudflare-only.jsonc"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T00:33:49.013Z",
+  "finishedAt": "2026-09-05T00:33:50.873Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"results\": [\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567562422\",\n        \"coverage_kind\": \"BLOCK/UNSETTLED\",\n        \"coverage_reason\": \"source present/global receipt absent\",\n        \"coverage_partition_tag\": \"room:sdt-g57-read-through-sdtg57w126g50b-004\",\n        \"settled_frontier_suid\": \"\",\n        \"observed_at\": 1788567562422,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567627452\",\n        \"coverage_kind\": \"BLOCK/UNSETTLED\",\n        \"coverage_reason\": \"source_partition_set_changed_during_scan\",\n        \"coverage_partition_tag\": \"room:sdt-g57-read-through-sdtg57w126g50b-004\",\n        \"settled_frontier_suid\": \"\",\n        \"observed_at\": 1788567627452,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567679968\",\n        \"coverage_kind\": \"BLOCK/UNSETTLED\",\n        \"coverage_reason\": \"source_partition_set_changed_during_scan\",\n        \"coverage_partition_tag\": \"room:sdt-g57-read-through-sdtg57w126g50c-002\",\n        \"settled_frontier_suid\": \"\",\n        \"observed_at\": 1788567679968,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567743243\",\n        \"coverage_kind\": \"SETTLED\",\n        \"coverage_reason\": null,\n        \"coverage_partition_tag\": null,\n        \"settled_frontier_suid\": \"063924164535707000000596266472\",\n        \"observed_at\": 1788567743243,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567800982\",\n        \"coverage_kind\": \"SETTLED\",\n        \"coverage_reason\": null,\n        \"coverage_partition_tag\": null,\n        \"settled_frontier_suid\": \"063924164535707000000596266472\",\n        \"observed_at\": 1788567800982,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567883762\",\n        \"coverage_kind\": \"SETTLED\",\n        \"coverage_reason\": null,\n        \"coverage_partition_tag\": null,\n        \"settled_frontier_suid\": \"063924164535707000000596266472\",\n        \"observed_at\": 1788567883762,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788567942121\",\n        \"coverage_kind\": \"SETTLED\",\n        \"coverage_reason\": null,\n        \"coverage_partition_tag\": null,\n        \"settled_frontier_suid\": \"063924164535707000000596266472\",\n        \"observed_at\": 1788567942121,\n        \"extra_a\": null,\n        \"extra_b\": null\n      },\n      {\n        \"row_kind\": \"history\",\n        \"tick_id\": \"scheduled:1788568005340\",\n        \"coverage_kind\": \"SETTLED\",\n        \"coverage_reason\": null,\n        \"coverage_partition_tag\": null,\n        \"settled_frontier_suid\": \"063924164535707000000596266472\",\n        \"observed_at\": 1788568005340,\n        \"extra_a\": null,\n        \"extra_b\": null\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.9995\n      },\n      \"duration\": 0.9995,\n      \"changes\": 0,\n      \"last_row_id\": 12,\n      \"changed_db\": false,\n      \"size_after\": 1744896,\n      \"rows_read\": 11,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

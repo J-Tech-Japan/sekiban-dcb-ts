@@ -1,0 +1,30 @@
+{
+  "schema": "sdt-g57-w127-paced-aborted-receipt/v1",
+  "runId": "sdtg57w127paced",
+  "deployed": {
+    "worker": "sekiban-dcb-g60-w155-c",
+    "baseUrl": "https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev",
+    "versionId": "63f57044-8e42-4820-a100-3325dc2848b2",
+    "sourceCommit": "fbeb4df01cbd804b7d1d8f90703cdab1d744a06c"
+  },
+  "command": "node scripts/deploy/g57-executor-measure.mjs --base-url https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev --source-commit fbeb4df01cbd804b7d1d8f90703cdab1d744a06c --version-id 63f57044-8e42-4820-a100-3325dc2848b2 --service-id sekiban-dcb-g60-w155-c --account-id 3ede2188f4cf39a28e0aa3722d3d02c5 --samples 10 --min-inter-sample-ms 10000 --cold-first --output .artifacts/sdt-g57-w127-paced-executor-comparison.json --run-id sdtg57w127paced --observability-token-file /Users/tomohisa/.config/sekiban-dcb/observability-token",
+  "mode": "snapshot-only",
+  "failedOrdinal": 6,
+  "completedSamplesInPreservedModeReceipt": 5,
+  "observedAt": "2026-09-05T00:47:34Z",
+  "exitCode": 1,
+  "httpStatus": 504,
+  "response": {
+    "error": "[object Object]",
+    "code": "unknown_outcome",
+    "kind": "timeout",
+    "attempts": 1
+  },
+  "rawBody": "{\"error\":\"[object Object]\",\"code\":\"unknown_outcome\",\"kind\":\"timeout\",\"attempts\":1}",
+  "pacing": {
+    "minimumInterSampleMs": 10000,
+    "definition": "sample starts at least 10000ms after preceding sample response",
+    "coldFirst": true
+  },
+  "interpretation": "Public application timeout; not a Cloudflare API authorization failure. No further cohort retry was run."
+}

@@ -18,12 +18,13 @@ function percentile(values, fraction) {
   return ordered[Math.min(ordered.length - 1, Math.ceil(ordered.length * fraction) - 1)] ?? null;
 }
 
-function validateMode(mode) {
+function validateMode(mode, minimumSamples, allowColdFirst) {
   assert(MODES.includes(mode?.mode), "unexpected mode");
-  assert(Number.isSafeInteger(mode?.sampleCount) && mode.sampleCount >= 50, `${mode?.mode} has fewer than 50 samples`);
+  assert(Number.isSafeInteger(mode?.sampleCount) && mode.sampleCount >= minimumSamples, `${mode?.mode} has fewer than ${minimumSamples} samples`);
   assert(mode?.expectedTagStateReadsPerCommit === (mode.mode === "snapshot-only" ? 0 : 1), `${mode?.mode} read accounting drifted`);
   assert(mode?.expectedTagStateReadsSavedPerCommit === (mode.mode === "snapshot-only" ? 1 : 0), `${mode?.mode} saved-read accounting drifted`);
-  assert(mode?.warmup?.phase === "discarded-warmup" && mode.warmup.status === 200, `${mode?.mode} warmup is invalid`);
+  if (allowColdFirst) assert(mode?.warmup === null, `${mode?.mode} unexpectedly sent a warmup`);
+  else assert(mode?.warmup?.phase === "discarded-warmup" && mode.warmup.status === 200, `${mode?.mode} warmup is invalid`);
   assert(Array.isArray(mode?.ledger) && mode.ledger.length === mode.sampleCount, `${mode?.mode} ledger count is invalid`);
   for (const [index, row] of mode.ledger.entries()) {
     assert(row.ordinal === index + 1 && row.phase === "sample" && row.mode === mode.mode, `${mode.mode} row ${index + 1} identity is invalid`);
@@ -43,14 +44,15 @@ function validateMode(mode) {
   assert(mode.client?.p95 === percentile(latencies, 0.95), `${mode.mode} p95 summary is invalid`);
 }
 
-export function validateMeasurement(sample) {
+export function validateMeasurement(sample, { minimumSamples = 50, allowColdFirst = false } = {}) {
   assert(sample?.schema === "sdt-g57-executor-g50-comparison/v1", "schema is invalid");
   assert(sample?.task === "SDT-G57", "task is invalid");
   assert(typeof sample?.deployed?.baseUrl === "string" && typeof sample?.deployed?.versionId === "string", "deployed identity is incomplete");
   assert(/^[0-9a-f]{40}$/.test(sample?.deployed?.sourceCommit ?? ""), "source identity is invalid");
   assert(JSON.stringify(sample?.protocol?.modes) === JSON.stringify(MODES), "mode protocol is invalid");
   assert(Array.isArray(sample?.modes) && sample.modes.length === 2, "both mode receipts are required");
-  for (const mode of sample.modes) validateMode(mode);
+  if (allowColdFirst) assert(sample?.protocol?.coldFirst === true && sample.protocol.discardedWarmupPerMode === 0, "cold-first protocol is not recorded");
+  for (const mode of sample.modes) validateMode(mode, minimumSamples, allowColdFirst);
   assert(sample.modes[0].mode === "read-through" && sample.modes[1].mode === "snapshot-only", "mode order is invalid");
   assert(sample.comparison?.expectedTagStateReadsSavedPerCommit === 1, "saved-read comparison is invalid");
   return {
@@ -76,7 +78,10 @@ function assertMutantRed(sample, mutate, label) {
 const samplePath = process.argv[process.argv.indexOf("--sample") + 1];
 if (typeof samplePath !== "string" || samplePath.startsWith("--")) fail("--sample is required");
 const sample = JSON.parse(readFileSync(resolve(samplePath), "utf8"));
-const result = validateMeasurement(sample);
+const minimumSamplesIndex = process.argv.indexOf("--min-samples");
+const minimumSamples = Number(minimumSamplesIndex === -1 ? "50" : process.argv[minimumSamplesIndex + 1]);
+if (!Number.isSafeInteger(minimumSamples) || minimumSamples < 1) fail("--min-samples must be a positive integer");
+const result = validateMeasurement(sample, { minimumSamples, allowColdFirst: process.argv.includes("--allow-cold-first") });
 if (process.argv.includes("--self-test")) {
   result.modeMutant = assertMutantRed(sample, (mutant) => { mutant.modes[1].ledger[0].command.body.executor.readMode = "read-through"; }, "mode");
   result.percentileMutant = assertMutantRed(sample, (mutant) => { mutant.modes[0].client.p95 += 1; }, "percentile");
