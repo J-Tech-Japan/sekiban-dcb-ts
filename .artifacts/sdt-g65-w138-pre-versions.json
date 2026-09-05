@@ -1,0 +1,30 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w138-pre-versions",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "versions",
+    "list",
+    "--name",
+    "sekiban-dcb-g60-w155-c",
+    "--json",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T19:06:34.732Z",
+  "finishedAt": "2026-09-05T19:06:36.674Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"id\": \"2b1dae1e-5b3d-4c48-8e64-67a8cf64b850\",\n    \"number\": 12,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T04:17:11.434668Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W129 restore normal D1 exact ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"443416d2-204e-442a-af96-3400532bdcf6\",\n    \"number\": 13,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T06:44:14.317451Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W130 exact 557aa1b1b78328866538f3c3fb56d3d529996994\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"b9c58a3e-02f2-4a7a-83e4-c0f193932723\",\n    \"number\": 14,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T06:52:12.585211Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W130 present-D1-schema-failure exact 557aa1b1b78328866538f3c3fb56d3d529996994\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"f7d3f08e-c56c-4b5c-b14a-8afe931cc2a9\",\n    \"number\": 15,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T06:53:35.113432Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W130 restore normal D1 exact 557aa1b1b78328866538f3c3fb56d3d529996994\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"2cff62eb-a97e-42b7-a6de-9e539cc50807\",\n    \"number\": 16,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T13:04:53.173768Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W136 pre-change exact 96482c288127ee082751d3beebcd36708f9d9561 DIRECT_DOORBELL=true\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"999ec75d-6993-4155-a639-620cd9554696\",\n    \"number\": 17,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T13:06:12.005508Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    }\n  },\n  {\n    \"id\": \"f1837521-395b-40d2-a39f-947687139064\",\n    \"number\": 18,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T13:06:53.767355Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W136 pre-change exact 96482c288127ee082751d3beebcd36708f9d9561 DIRECT_DOORBELL=true after conformance secret\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"1f4a0966-81b4-42fc-8489-49c2ec7b854e\",\n    \"number\": 19,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T13:16:20.506367Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W136 post-change exact a8bb1bd493591081c24a52239c1b0e2dce2c42e1 DIRECT_DOORBELL=true\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"2967f040-e1d4-46d2-8f66-636f68ca391b\",\n    \"number\": 20,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T13:20:26.837023Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W136 C-0 D1-unavailable exact a8bb1bd493591081c24a52239c1b0e2dce2c42e1 DIRECT_DOORBELL=true\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  },\n  {\n    \"id\": \"7c2a8b6e-1866-4f70-b611-0c892abf45b3\",\n    \"number\": 21,\n    \"metadata\": {\n      \"created_on\": \"2026-09-05T13:21:56.230637Z\",\n      \"source\": \"wrangler\",\n      \"author_id\": \"63b0568d4591a207cb1df473d0abd97c\",\n      \"author_email\": \"ttakaoka@jtechs.com\",\n      \"has_preview\": false\n    },\n    \"annotations\": {\n      \"workers/message\": \"SDT-G65 W136 restore normal D1 exact a8bb1bd493591081c24a52239c1b0e2dce2c42e1 DIRECT_DOORBELL=true after C-0\",\n      \"workers/triggered_by\": \"version_upload\"\n    }\n  }\n]\n",
+  "stderr": ""
+}

@@ -1,39 +1,19 @@
-# SDT-G65 deployed repair evidence (W136)
+# SDT-G65 deployed acceptance evidence (W138)
 
-Task: `SDT-G65-PR127-PUBLIC-REFUSAL-DEPLOYED-REPAIR-WAKE-136`
+Task: `SDT-G65-PR127-DEPLOYED-ACCEPTANCE-REPAIR-WAKE-138`
 Issue: [J-Tech-Japan/sekiban-dcb-ts#126](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/126)
 PR: [#127](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/127)
 Branch: `claude/sdt-g65-local-wake-w128`
-Local/deployed repair head: `a8bb1bd493591081c24a52239c1b0e2dce2c42e1`
+Exact requested source: `4e952e1d8af4a62c42f911eff1d8b8829b929544`
 
-This document is regenerated from W136 receipts only. It does not claim
-SDT-G65 completion: the required ten-sample post-change cohort stopped at
-sample 7 on an application `504 unknown_outcome`, and the configured-store
-first-partition refusal was not reproduced by the authorized deployed
-unconfigured-binding check.
+Disposition: **blocked**. This document contains only the fresh W138 deployed
+receipts. It does not claim SDT-G65 completion.
 
-## Evidence classification and boundaries
+## Deployment boundaries and identity
 
-- W128 measurements are historical and superseded; their old admission
-  figures are not current W136 evidence.
-- W130 was a failed/superseded cohort line, not deployed proof for this task.
-- W131-W134 are local repair/checkpoint evidence only.
-- W136 is the current deployed evidence below. The only product change in
-  this checkpoint is the public serialization of the already-local,
-  configured first-partition registration refusal from `a8bb1bd`.
-- Existing W155-C resources were reused. No Cloudflare resource was created or
-  deleted, and no migration was run in W136.
-- The five recognized Wrangler credential variable names were `UNSET` for
-  every W136 Wrangler invocation: `CLOUDFLARE_API_TOKEN`, `CF_API_TOKEN`,
-  `CLOUDFLARE_API_KEY`, `CF_API_KEY`, and `WRANGLER_API_TOKEN`. Commands used
-  the receipt wrapper with all five removed; no `--keep-vars` was used.
-  Conformance was passed by private file path only. The initial application
-  403 was `{code: unauthorized, error: Conformance authentication required}`;
-  it was the application handler, so a fresh private conformance secret was
-  installed and the exact source was redeployed afterward. No secret value is
-  present in this repository.
-
-## Existing arm and deployed identities
+The existing throwaway W155-C arm was reused. No Cloudflare resource was
+created or deleted, no migration was run, and no production or other arm was
+touched.
 
 | Resource | Identity |
 | --- | --- |
@@ -42,186 +22,189 @@ unconfigured-binding check.
 | MV D1 | `2b60dbcf-0912-4bb2-93aa-77c26cd260e1` |
 | Queue / DLQ | `sekiban-dcb-g60-w155-c-outbox` / `sekiban-dcb-g60-w155-c-outbox-dlq` |
 
-The pre-change source was exact `96482c288127ee082751d3beebcd36708f9d9561`.
-After secret publication, exact identity and `DIRECT_DOORBELL=true` were
-restored in version `f1837521-395b-40d2-a39f-947687139064`, deployment
-`dd1bef66-2d5d-45c2-bb0e-3ef1ae48f8ee`, at 100% traffic.
+The five Wrangler credential names were `UNSET` in the seat environment and
+were stripped from every Wrangler invocation: `CLOUDFLARE_API_TOKEN`,
+`CF_API_TOKEN`, `CLOUDFLARE_API_KEY`, `CF_API_KEY`, and
+`WRANGLER_API_TOKEN`. No `--keep-vars` was used. Conformance was passed by
+private file path only; no secret value is recorded.
 
-The post-change source was exact `a8bb1bd493591081c24a52239c1b0e2dce2c42e1`.
-Version `1f4a0966-81b4-42fc-8489-49c2ec7b854e`, deployment
-`2ae6ea08-df5e-4a45-890e-608bbb3c4e10`, was 100% traffic with annotation
-`SDT-G65 W136 post-change exact a8bb1bd493591081c24a52239c1b0e2dce2c42e1 DIRECT_DOORBELL=true`.
+The exact post-change version was
+`0a1642b4-db1b-4a7f-8212-f3c204fe1482`, deployment
+`214bb3fa-68c7-41e0-9c34-9b66e34695ba`, at 100%, with annotation
+`SDT-G65 W138 post-change exact 4e952e1d8af4a62c42f911eff1d8b8829b929544 DIRECT_DOORBELL=true`.
+The final restored version is
+`6a1f331a-cbcf-40a7-b50b-02edb427a9b8`, deployment
+`c6885b62-ae56-488f-a3dc-968c55d528af`, at 100%, with annotation
+`SDT-G65 W138 final restore exact 4e952e1d8af4a62c42f911eff1d8b8829b929544 DIRECT_DOORBELL=true`.
+The deployed version view proves `DIRECT_DOORBELL=true`, the normal D1/MV
+bindings, and the existing Queue binding.
 
-For C-0, the runtime-D1-unavailable variant was version
-`2967f040-e1d4-46d2-8f66-636f68ca391b`, with `DIRECT_DOORBELL=true` and no
-`D1` binding. The normal configuration was restored at 100% in version
-`7c2a8b6e-1866-4f70-b611-0c892abf45b3`, deployment
-`2e8f0e2d-743e-4d91-8cf3-5ae2e498dc72`, exact source `a8bb1bd` and
-`DIRECT_DOORBELL=true`.
+The version view has `DOWNSTREAM_QUEUE` but no `DOWNSTREAM_DOORBELL` binding.
+Thus the Boolean variable was true, but the direct receiver lane was not
+available on W155-C. Every durable unsafe-writer row in both cohorts is
+`transport=queue`, so a non-positive direct-doorbell contribution and a
+healthy direct-admission success were not proven.
 
-## F1 local public API proof
+## Fresh same-arm cohorts
 
-`npm run test:g65` passed before deployment. The added public CommitWorker
-tests are:
+Both cohorts included the cold first sample, n=10, ten-second minimum pacing
+after each preceding commit response, and fully paged
+`GET /api/read/reservations`. Every commit response was HTTP 200
+`committed`; no 504 was returned.
 
-- configured first-partition registration failure: HTTP 503,
-  `partition_registration_unavailable`, `retryable: true`, bounded response,
-  and zero authoritative `tag_event` rows;
-- configured first-partition registration hang: the same typed 503 and bounded
-  response, with zero `tag_event` rows;
-- mixed envelope: the existing partition is written while the new partition
-  remains refused; the public response is the existing typed HTTP 500
-  `partial_write` shape, with the new partition having zero authoritative
-  event rows.
+| Arm | Source / version / deployment | Window | Safe-bound result |
+| --- | --- | --- | --- |
+| Pre-change | `a8bb1bd493591081c24a52239c1b0e0dce2c42e1` / `8089e932-68b0-409e-88e1-e7835553db62` / `e20479c3-53d4-49e0-ba5e-b1f7a72a2620` | 19:19:19.954Z–19:22:36.341Z | 10/10 safe within 180 s |
+| Post-change | `4e952e1d8af4a62c42f911eff1d8b8829b929544` / `0a1642b4-db1b-4a7f-8212-f3c204fe1482` / `214bb3fa-68c7-41e0-9c34-9b66e34695ba` | 19:25:11.359Z–19:30:20.731Z | 9/10 safe within 180 s; sample 1 at 186,687 ms |
 
-The focused file `test/g65-admission.spec.ts` passed all 14 tests. The local
-implementation therefore proves the configured failure/hang contract. The
-deployed C-0 check below intentionally uses an absent binding, which is the
-explicitly unconfigured case and must not be relabeled as configured-store
-failure.
+The post cohort is a real 180-second acceptance miss. All ten samples
+eventually had the final projector heads and committed tag-state reads, but
+the harness correctly reported `within180Seconds:false` because sample 1
+exceeded 180,000 ms. Unsafe first visibility was also 9/10 strictly over the
+unchanged 5,000 ms bound.
 
-## W136 public cohorts
-
-Both cohorts used the public create-room/reserve-room surface, cold first
-sample, ten-second minimum spacing after the preceding commit response, and
-fully paged reservation reads. Timing uses observed fetch receipt clocks and
-durable observed ledger clocks only. It does not derive latency from authored
-`dcb_events.Timestamp` or caller `received_at`.
-
-| Metric | Pre-change (`96482c2`, n=10) | Post-change (`a8bb1bd`, n=6 accepted) |
+| Metric | Pre-change | Post-change |
 | --- | ---: | ---: |
-| Client send-to-response p50 / p95 | 2,344 / 3,259 ms | 2,246 / 2,396 ms |
-| Unsafe first visibility p50 / p95 | 35,896 / 119,427 ms (10/10 observed over 5,000 ms) | 4,800 / 5,301 ms for 4 observed; 2/6 censored at 5,000 ms |
-| Strict observed count over 5,000 ms | 10/10 | 1/4 observed; 3/6 over-or-censored |
-| Safe final projector head p50 / p95 | 145,229 / 207,599 ms; 7/10 <=180 s | not established; cohort stopped |
-| Header `x-sdt-global-admission` | `unknown` 10/10 | `unknown` 6/6 |
+| Client response p50 / p95 | 2,309 / 2,574 ms | 2,284 / 2,640 ms |
+| Response p95 delta | — | +66 ms, within +150 ms |
+| Response p50 delta | — | -25 ms, within 300 ms budget +100 ms |
+| Admission attempt p50 / p95 | 300 / 300 ms | 300 / 300 ms |
+| Admission outcome | `unknown` 10/10 | `unknown` 10/10 |
+| `global_completion_observed_at` | 0/10 | 0/10 |
+| Header `x-sdt-global-admission` | `unknown` 10/10 | `unknown` 10/10 |
+| Unsafe p50 / p95 | 4,583 / 116,931 ms | 57,145 / 117,933 ms |
+| Strict unsafe count over 5,000 ms | 4/10 | 9/10 |
+| Safe final-head p50 / p95 | 117,435 / 179,888 ms | 124,847 / 186,687 ms |
 
-The pre-change cohort ended after the 180-second safe-bound check with all ten
-projector/tag targets eventually observed, but seven of ten were within the
-180-second line. The post-change cohort accepted six reservations; reservation
-7 returned HTTP 504 `unknown_outcome` after 2,359 ms and the harness stopped.
-No post-change ten-sample acceptance or safe-bound claim is made.
+The durable event and global-receipt rows exist for all samples, but no
+admission attempt observed a global completion timestamp. Healthy configured
+store direct admission is therefore not established.
 
-### Per-sample observed results
+### Per-sample table
 
-`queue->consumer` and `delivery->public-unsafe` are milliseconds. A blank
-value is censored or unavailable. Negative delivery/read values are retained
-as cross-observer ordering observations from direct delivery, not interpreted
-as negative causal work.
+`global` is `outcome / attempt duration / global completion clock`; `safe` is
+commit response to final projector-head proof; the two hop columns are durable
+observed intervals. Negative values retain cross-observer ordering; they are
+not interpreted as negative work.
 
-| Arm/# | Response | Unsafe | Safe | Queue->consumer | Delivery->public unsafe | Inline Room / Reservation writer |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Pre/1 | 2,332 | 119,427 | 207,599 | 6,329 | 111,533 | 85 / 74 |
-| Pre/2 | 2,329 | 5,001 | 195,268 | 3,235 | 126 | 75 / 61 |
-| Pre/3 | 2,344 | 95,439 | 182,923 | 5,086 | 88,395 | 78 / 105 |
-| Pre/4 | 2,795 | 83,359 | 170,126 | 7,634 | 73,825 | 159 / 81 |
-| Pre/5 | 2,332 | 71,670 | 157,792 | 4,419 | 65,613 | 54 / 54 |
-| Pre/6 | 2,561 | 60,054 | 145,229 | 4,893 | 53,608 | 57 / 56 |
-| Pre/7 | 2,348 | 5,573 | 132,881 | 3,908 | -125 | 82 / 73 |
-| Pre/8 | 2,594 | 35,896 | 120,285 | 4,249 | 29,913 | 76 / 65 |
-| Pre/9 | 2,261 | 5,532 | 108,024 | 2,024 | 1,736 | 58 / 77 |
-| Pre/10 | 3,259 | 11,205 | 94,763 | 5,356 | 4,033 | 63 / 62 |
-| Post/1 | 2,380 | 4,919 | — | 3,542 | 44 | 50 / 55 |
-| Post/2 | 2,254 | 4,612 | — | 3,567 | -771 | 72 / 76 |
-| Post/3 | 2,110 | 5,301 | — | 4,581 | -1,247 | 57 / 69 |
-| Post/4 | 2,246 | 4,800 | — | 3,215 | 205 | 57 / 53 |
-| Post/5 | 2,396 | censored | — | 5,169 | — | 110 / 74 |
-| Post/6 | 2,230 | censored | — | 4,515 | — | 74 / 63 |
+| Arm/# | Response | Global | Unsafe | Safe | Queue->consumer | Delivery->unsafe |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Pre/1 | 2,503 | unknown / 300 / — | 116,931 | 179,888 | 5,660 | 109,878 |
+| Pre/2 | 2,366 | unknown / 300 / — | 4,492 | 167,306 | 3,280 | -148 |
+| Pre/3 | 2,351 | unknown / 300 / — | 4,612 | 154,953 | 3,121 | 15 |
+| Pre/4 | 2,285 | unknown / 300 / — | 79,901 | 142,666 | 5,195 | 73,095 |
+| Pre/5 | 2,294 | unknown / 300 / — | 5,174 | 130,011 | 4,544 | -1,015 |
+| Pre/6 | 2,574 | unknown / 300 / — | 55,002 | 117,435 | 5,557 | 47,744 |
+| Pre/7 | 2,249 | unknown / 300 / — | 4,462 | 105,184 | 2,247 | 601 |
+| Pre/8 | 2,473 | unknown / 300 / — | 4,583 | 92,483 | 3,109 | 103 |
+| Pre/9 | 2,309 | unknown / 300 / — | 4,457 | 80,172 | 2,589 | 490 |
+| Pre/10 | 2,179 | unknown / 300 / — | 4,399 | 67,990 | 2,133 | 745 |
+| Post/1 | 2,397 | unknown / 300 / — | 117,933 | 186,687 | 4,896 | 111,766 |
+| Post/2 | 2,094 | unknown / 300 / — | 105,946 | 174,558 | 20,560 | 83,871 |
+| Post/3 | 2,284 | unknown / 300 / — | 93,655 | 162,075 | 22,518 | 69,630 |
+| Post/4 | 2,392 | unknown / 300 / — | 81,452 | 149,681 | 23,285 | 56,256 |
+| Post/5 | 2,438 | unknown / 300 / — | 69,013 | 136,907 | 16,597 | 50,805 |
+| Post/6 | 1,935 | unknown / 300 / — | 57,145 | 124,847 | 16,022 | 39,124 |
+| Post/7 | 2,195 | unknown / 300 / — | 45,304 | 112,651 | 9,349 | 33,993 |
+| Post/8 | 2,640 | unknown / 300 / — | 5,145 | 100,009 | 3,159 | 491 |
+| Post/9 | 2,590 | unknown / 300 / — | 4,621 | 87,417 | 3,568 | -1,271 |
+| Post/10 | 2,274 | unknown / 300 / — | 5,220 | 74,686 | 4,481 | -2,294 |
 
-## Durable hop/sub-hop distributions
+For post samples 1–7, the dominant observed interval is the residual from
+recordDelivery to the public read. Sample 8 has no single interval above 5 s;
+its total overlaps the 3,159 ms Queue dispatch interval and the 2,640 ms
+response clock. Sample 10 likewise has no positive delivery residual; its
+total overlaps the 4,481 ms Queue interval and the response clock.
 
-The following are n / p50 / p95 in milliseconds. `global dcb_events
-visibility` has no valid observed completion/read clock in this run: the D1
-rows and global receipt rows are present, but the admission ledger's
-`global_completion_observed_at` is null for all sampled attempts. The
-post-record global-receipt readback span is a separate observed measurement.
+### Durable sub-hop distributions (n / p50 / p95, ms)
 
 | Boundary | Pre | Post |
 | --- | ---: | ---: |
-| command receipt -> Tag append | 10 / 1,131 / 2,131 | 6 / 1,067 / 1,131 |
-| Tag append -> outbox obligation | 10 / 0 / 0 | 6 / 0 / 0 |
-| outbox obligation -> Queue send | 10 / 1,114 / 1,184 | 6 / 1,084 / 1,112 |
-| Queue send -> consumer start | 10 / 4,419 / 7,634 | 6 / 3,567 / 5,169 |
-| consumer start -> recordDelivery commit | 10 / 991 / 1,194 | 6 / 847 / 1,384 |
-| recordDelivery -> public unsafe read | 10 / 29,913 / 111,533 | 4 / -771 / 205 |
-| post-record global-receipt readback duration | 10 / 91 / 139 | 6 / 64 / 148 |
-| source Tag acknowledgement duration | 10 / 172 / 549 | 6 / 153 / 236 |
-| completeness coverage duration | 10 / 128 / 284 | 6 / 95 / 165; all `BLOCK/UNSETTLED` |
-| detector duration | 0 / — / — | 0 / — / — |
-| Room unsafe-view apply | 10 / 136 / 371 | 6 / 57 / 284 |
-| Reservation unsafe-view apply | 10 / 72 / 336 | 6 / 46 / 250 |
-| inline unsafe Room writer | 10 / 75 / 159 | 6 / 57 / 110 |
-| inline unsafe Reservation writer | 10 / 65 / 105 | 6 / 63 / 76 |
-| recordDelivery -> ledger unsafe read | 10 / 3,069 / 6,740 | 5 / -43 / 5,651 |
-| residual delivery -> public read | 10 / 29,913 / 111,533 | 4 / -771 / 205 |
+| command receipt -> Tag append | 10 / 1,028 / 1,139 | 10 / 1,050 / 1,350 |
+| Tag append -> outbox obligation | 10 / 0 / 0 | 10 / 0 / 0 |
+| outbox obligation -> Queue send | 10 / 1,108 / 1,195 | 10 / 1,097 / 1,159 |
+| Queue send -> consumer start | 10 / 3,121 / 5,660 | 10 / 9,349 / 23,285 |
+| consumer start -> recordDelivery | 10 / 760 / 931 | 10 / 1,205 / 2,332 |
+| recordDelivery -> ledger unsafe read | 10 / 474 / 5,962 | 10 / 1,230 / 6,908 |
+| recordDelivery -> public unsafe read | 10 / 490 / 109,878 | 10 / 39,124 / 111,766 |
+| global receipt readback | 10 / 129 / 154 | 10 / 128 / 270 |
+| source Tag acknowledgement | 10 / 163 / 310 | 10 / 164 / 427 |
+| completeness coverage | 10 / 85 / 157; all `BLOCK/UNSETTLED` | 10 / 120 / 298; 8 `BLOCK/UNSETTLED`, 2 `SETTLED` |
+| detector | 4 / 286 / 440 | 8 / 432 / 865 |
+| Room unsafe-view apply | 10 / 128 / 305 | 10 / 229 / 877 |
+| Reservation unsafe-view apply | 10 / 89 / 269 | 10 / 200 / 539 |
+| inline Room / Reservation writer | 10 / 85 / 142 / 66 / 105 | 10 / 75 / 231 / 65 / 108 |
 
-The post-change direct unsafe boundaries are short and public visibility was
-observed before or near recordDelivery in several rows, consistent with the
-independent direct writer. This does not rescue the incomplete cohort: one
-observed sample exceeded 5,000 ms, two were censored, and the seventh commit
-returned `unknown_outcome`.
+All unsafe-writer rows were `transport=queue`, `writer_path=inline-delivery`.
+The direct receiver was not available on this arm, so no direct-doorbell
+latency contribution can be attributed.
 
-## C-0 runtime-D1-unavailable proof
+## AC1/AC5 D1-unavailable proof
 
-The existing-tag operation was `cancel-reservation` on the already registered
-tag `reservation:g65-reservation-65defd04-76a-1`. Under the absent `D1`
-binding it returned HTTP 200 with header `not-admitted`. After normal D1
-restoration, the public list reached `{status: cancelled, version: 2}` after
-84 fully paged reads; the D1 ledger contains its global receipt. The recovery
-receipt records 84 observations over about 102 seconds. The polling helper
-exited nonzero only after writing the complete receipt because its final
-console summary referenced an undefined local `final`; the durable receipt's
-`recoveredExactlyOnce: true` and final row are authoritative for this
-measurement, and the helper was not retried.
+The unconfigured-D1 version was
+`88ecfb3c-42cd-4e04-bc36-223c263b5448`, with `DIRECT_DOORBELL=true` and no
+`D1` binding. An existing registered reservation cancellation returned HTTP
+200 `committed` with `x-sdt-global-admission: not-admitted`. After restoring
+normal D1, the recovery ledger contained event
+`01a0730f-d43b-7ba4-8724-61dbbe3eed0c` and a global receipt at
+`1788636930502`, obligation sequence 2. This proves existing-partition
+commit/not-admitted followed by Queue admission.
 
-The brand-new room tag was `room:g65-w136-new-first-da855b66-4b9`. It returned
-HTTP 200 with `not-admitted`, not the required configured-store HTTP 503
-`partition_registration_unavailable`. D1 readback shows event
-`01a071bb-6f65-795d-984a-02c4fba48363`, SUID
-`063924211304954000001191258191`, and one global receipt. This is the expected
-unconfigured-store behavior under the narrow AC1 scope, so deployed configured
-first-partition refusal remains unproven in W136. The local public tests are
-the configured failure/hang proof; a later task must supply a real configured
-store failure/hang deployment if required.
+The new room `g65-w138-unconfigured-new-u1` returned HTTP 200
+`committed`/`not-admitted`, event
+`01a0730f-dcca-7b9a-b6ef-e978aa3c2940`, and later a global receipt. It is the
+WAKE-134 unconfigured-store behavior, not a typed refusal.
+
+An additional existing-resource variant bound D1 to the existing MV ID and
+used version `3427a406-a1f1-4900-b601-66261f884526` with
+`DIRECT_DOORBELL=true`. Its existing-partition operation again returned
+200/not-admitted. Its new room `g65-w138-configured-failure-new-c1` also
+returned 200/not-admitted and wrote event
+`01a07310-8518-7245-af65-ef28e49fcd37`; the recovery query later found a
+global receipt. The bound MV database lacks the G44 authority schema, so the
+runtime classified it as explicitly unconfigured. It did not reproduce a
+configured-store registration failure.
+
+Therefore the deployed HTTP 503 `partition_registration_unavailable` with no
+event for a configured failing/hanging first partition remains unproven. No
+authorized operation could manufacture that configured runtime failure without
+altering a schema/resource or applying another repair. This limitation is
+reported rather than relabeled as a pass.
 
 ## Receipts and lossless verification
 
-Large raw JSON receipts are retained as gzip artifacts; expanded copies remain
-ignored working files and are not committed as duplicates. For each compressed
-receipt, `gzip -dc <file>.gz > <file>` followed by `cmp -s <file> <file>.gz`
-decompression verification was run. SHA-256 values:
+Fresh expanded receipts are retained in ignored `.artifacts/` files and were
+gzip-compressed. Gzip SHA-256 values:
 
-| Raw receipt | Raw SHA-256 | Gzip SHA-256 |
-| --- | --- | --- |
-| `sdt-g65-w136-pre-cohort-final.json` | `34f48072ee0bf6c9a390feb3c0e27652c9948e7f156262793b53d2c6cc5c9386` | `b9ccd9b0761c9ee57d667c4367513b30812ea30df25b01c6dba7028e5722171d` |
-| `sdt-g65-w136-post-cohort.json` | `ef63de3394158bf18ff79bd866152bf1f68d20e5b06a976eaf12d84750b8d3d1` | `3f0646692f3ac8a0e4da097a43f6985e65bd7e14f087b3ceb48b0542682c9cf5` |
-| `sdt-g65-w136-pre-ledger.json` | `f2125a659429b818d4c5d2caba60eb1e92a3a6c37c262cbadaa2e262b438a1a3` | `21783b44d80f687093697951be6d373d5450ca74fa893f3ac5d410d7b9fd6e85` |
-| `sdt-g65-w136-post-ledger.json` | `45c94f5c83b0830ef9229854c23f661ea1a30371dcfeb1847da3be483aede8c8` | `e6a16556dae1ed934a858b58190fb2cb17f30370cac90aa94d3a817b8c471028` |
-| `sdt-g65-w136-d1-recovery.json` | `07592fc414d2911aab4b0c1501a4a198e11d0f058232b066b03ed83721281e1b` | `339a7ca68da8ddd49c1515421770e1559966f1f753caf212ff196706ff66c1ab` |
-| `sdt-g65-w136-d1-unavailable-public.json` | `6c47e738ba27ec2baa36c36d21ade395b7a8b1da255178443dd95e8f02e0da65` | `dc50b4b01a9ca8efb975a3290f710b83d787267f0949ea59405f9e6731bb9f4a` |
-| `sdt-g65-w136-d1-unavailable-ledger.json` | `76ebf8d767cefcaf74c6448c7bd97cfa2b640a8329daf2c82f54b26e94ebb586` | `d2a9b848958124527f6a12711b9bb7c2acd0362dddd3a60f765fab897b6ea200` |
+| Receipt | SHA-256 |
+| --- | --- |
+| `sdt-g65-w138-pre-change-cohort.json.gz` | `e8612b9b3d26e05467d58dd749a5f99e8cd6088c60cda1e1954613f87ab470c9` |
+| `sdt-g65-w138-post-change-cohort.json.gz` | `568ed6ff88f1c8ca81616d6c2f40bd19fc4affa0ccbdcc9852c36b906f6fee9d` |
+| `sdt-g65-w138-pre-change-ledger.json.gz` | `ac3ff93917b194faefa698610afa6d7c02d5e1d76f010c0aaf0aae4d4fb66d34` |
+| `sdt-g65-w138-post-change-ledger.json.gz` | `b72aa968f49458f7fb276ede10eb4cccb68238cd93072f1d4c6a004b00ea8298` |
+| `sdt-g65-w138-d1-unconfigured-public.json.gz` | `d919594741bc607ee8298cd7f48bf1353c6261469bd5224e2694a4c781f17d9b` |
+| `sdt-g65-w138-d1-configured-failure-public.json.gz` | `b12ed39969bf96f0d79c4d6dcd94693dd4c8254d452646b4c09443db87b21664` |
+| `sdt-g65-w138-d1-recovery-ledger.json.gz` | `95e168d885ac6cce39e43bdcd7e0172dd7f91f514bf9166495c1ad9815ed123b` |
+| `sdt-g65-w138-analysis.json.gz` | `b869217056f966c3c6d88675e060793ff64073854b5b6c382860c7c0c874de37` |
 
-Example:
+Round-trip verification passed:
 
 ```sh
-gzip -dc .artifacts/sdt-g65-w136-pre-cohort-final.json.gz > /tmp/sdt-g65-w136-pre-cohort-final.json
-cmp -s /tmp/sdt-g65-w136-pre-cohort-final.json .artifacts/sdt-g65-w136-pre-cohort-final.json
+gzip -dc .artifacts/sdt-g65-w138-post-change-cohort.json.gz > /tmp/sdt-g65-w138-post-change-cohort.json
+cmp -s /tmp/sdt-g65-w138-post-change-cohort.json .artifacts/sdt-g65-w138-post-change-cohort.json
 ```
 
-Compact review data is in `sdt-g65-w136-analysis.json` and
-`sdt-g65-w136-sample-detail.json`. Deployment/version/traffic receipts are the
-`sdt-g65-w136-*.json` files in `.artifacts/`.
+The complete raw receipts, deployment/version views, reset counts, and compact
+analysis are the corresponding `.artifacts/sdt-g65-w138-*.json` and `.json.gz`
+files. The handoff artifact
+`sdt-g65-pr127-deployed-acceptance-repair-wake-138.md` contains the same
+classification and complete per-sample table.
 
-## Local gates and disposition
+## Gates and disposition
 
-Before deployment, the local checkpoint passed the focused F1 public tests and
-the required G44, G53, G55, G58, G60, G62, G61, G41, G26, typecheck, lint and
-diff checks. The existing G60 mutants remained red as designed; no gate was
-weakened. The complete local command/result list is recorded in the W136 task
-artifact.
-
-Disposition: **blocked before rereview/completion**. The deployed evidence is
-not an AC5/AC1 pass: the post-change cohort is incomplete and contains an
-observed 5-second miss, and the absent-binding arm cannot prove the configured
-new-partition typed refusal. No further cohort, tuning, resource operation,
-merge, or issue closure was performed.
+This continuation made no product or fixture change. `git diff --check`
+passes for the evidence-only changes. The post-change 180-second miss, 9/10
+unsafe misses, absent deployed direct receiver, unknown healthy admission
+outcomes, and unproven configured-store typed refusal make this checkpoint
+blocked before rereview/completion. No PR review state, merge, resource
+operation, or additional cohort was performed.
