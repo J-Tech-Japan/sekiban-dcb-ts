@@ -301,6 +301,14 @@ jobs:
           fi
       - name: Run SDT-G60 required red-capable guards and focused behavior tests
         run: npm run test:g60:required
+      - name: Run SDT-G65 bounded two-lane admission guards and focused behavior tests
+        run: npm run test:g65:required
+      - name: Prove SDT-G65 forced-red CI reachability
+        run: |
+          if SDT_G65_FORCE_FAILURE=1 npm run test:g65:forced-red; then
+            echo "SDT-G65 forced-red probe unexpectedly passed"
+            exit 1
+          fi
 
   ci-g29:
     runs-on: ubuntu-latest

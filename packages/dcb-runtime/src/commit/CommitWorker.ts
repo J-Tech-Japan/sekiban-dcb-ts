@@ -104,7 +104,12 @@ interface ReservationAttempt {
 interface AppendAttempt {
   readonly committedTags: ReadonlySet<string>;
   readonly pendingTags: readonly string[];
+  /** Internal Tag response header; the V1 JSON body remains unchanged. */
+  readonly globalAdmission: GlobalAdmissionStatus;
 }
+
+type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
+const GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
 
 interface CommitTraceRequestState {
   readonly trace: CommitTrace;
@@ -134,6 +139,23 @@ function json(body: unknown, status = 200, headers?: HeadersInit): Response {
 
 function error(status: number, code: string, message: string): Response {
   return json({ error: message, code }, status);
+}
+
+function readGlobalAdmission(response: Response): GlobalAdmissionStatus {
+  const value = response.headers.get(GLOBAL_ADMISSION_HEADER);
+  return value === "admitted" || value === "not-admitted" || value === "unknown" ? value : "unknown";
+}
+
+function mergeGlobalAdmission(left: GlobalAdmissionStatus, right: GlobalAdmissionStatus): GlobalAdmissionStatus {
+  if (left === "unknown" || right === "unknown") return "unknown";
+  if (left === "not-admitted" || right === "not-admitted") return "not-admitted";
+  return "admitted";
+}
+
+function withGlobalAdmission(response: Response, status: GlobalAdmissionStatus): Response {
+  const headers = new Headers(response.headers);
+  headers.set(GLOBAL_ADMISSION_HEADER, status);
+  return new Response(response.body, { status: response.status, headers });
 }
 
 function isObject(value: unknown): value is JsonObject {
@@ -668,7 +690,11 @@ export class CommitWorker {
     }
     try {
       const success = await this.successResponse(input, allocatedCandidates, attemptId, startedAt, fault, traceState?.scope);
-      return responseWithAttempt(json(success, 200), attemptId, fault !== undefined);
+      return responseWithAttempt(
+        withGlobalAdmission(json(success, 200), writes.globalAdmission),
+        attemptId,
+        fault !== undefined,
+      );
     } catch {
       return responseWithAttempt(
         error(500, "internal_error", "Committed records could not be read while preparing the response"),
@@ -933,6 +959,7 @@ export class CommitWorker {
   ): Promise<AppendAttempt> {
     let pending = [...input.allTags];
     const committedTags = new Set<string>();
+    let globalAdmission: GlobalAdmissionStatus = "admitted";
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS && pending.length > 0; attempt += 1) {
       const append = (stageScope?: CommitTraceScope) => Promise.allSettled(
         pending.map(async (tag) => {
@@ -965,7 +992,11 @@ export class CommitWorker {
             retryIndex: attempt,
             attemptId,
           });
-          return { tag, success: response.status >= 200 && response.status < 300 };
+          return {
+            tag,
+            success: response.status >= 200 && response.status < 300,
+            globalAdmission: readGlobalAdmission(response),
+          };
         }),
       );
       const results = traceScope === undefined
@@ -976,13 +1007,14 @@ export class CommitWorker {
         const tag = pending[index]!;
         if (result.status === "fulfilled" && result.value.success) {
           committedTags.add(tag);
+          globalAdmission = mergeGlobalAdmission(globalAdmission, result.value.globalAdmission);
         } else {
           nextPending.push(tag);
         }
       }
       pending = nextPending;
     }
-    return { committedTags, pendingTags: pending };
+    return { committedTags, pendingTags: pending, globalAdmission };
   }
 
   /**

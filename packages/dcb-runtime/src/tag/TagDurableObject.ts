@@ -54,6 +54,7 @@ import {
 } from "./TagSqlSchema";
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
 import { recordDurableHop, type G60DurableHopObservation } from "../diagnostics/G60DurableHop";
+import { D1EventStore } from "../store/D1EventStore";
 
 const REPAIR_FACTS_KEY = "repair-facts";
 /**
@@ -68,6 +69,14 @@ const MAX_REPAIR_LEASE_MS = 5 * 60_000;
 const OBLIGATION_RETRY_MS = 1_000;
 const OBLIGATION_MAX_ATTEMPTS = 3;
 const OBLIGATION_ALARM_BATCH_LIMIT = 32;
+/**
+ * G65 bounds derived writes, not the durable Tag commit.  The value is short
+ * enough to keep the commit root near the G52 baseline while still allowing a
+ * healthy same-colo D1/doorbell attempt to complete before the response.
+ */
+export const G65_DERIVED_WRITE_BUDGET_MS = 300;
+export const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
+type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
 /** Schema identity is immutable for the lifetime of a Worker isolate. */
 const g44GlobalArrayAuthorityByD1 = new WeakMap<D1Database, Promise<boolean>>();
 
@@ -230,6 +239,14 @@ function json(body: unknown, status = 200): Response {
 
 function error(status: number, code: string, message: string): Response {
   return json({ error: message, code }, status);
+}
+
+function withGlobalAdmission(response: Response, status: GlobalAdmissionStatus): Response {
+  // `json()` creates this Response locally, so its Headers are mutable. Keep
+  // the original object so the existing G60 response-order guard remains a
+  // direct assertion over the same response returned by the Tag DO.
+  response.headers.set(G65_GLOBAL_ADMISSION_HEADER, status);
+  return response;
 }
 
 function rejected(reason: string, status = 409): OperationResult {
@@ -2871,6 +2888,10 @@ export class TagDurableObject implements DurableObject {
           const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
             ? await this.directDeliveryBeforeResponse(tag, serviceId)
             : undefined;
+          withGlobalAdmission(
+            response,
+            await this.globalAdmissionBeforeResponse(tag, serviceId, directRows),
+          );
           this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
         }
         return response;
@@ -2994,6 +3015,10 @@ export class TagDurableObject implements DurableObject {
         const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
           ? await this.directDeliveryBeforeResponse(tag, serviceId)
           : undefined;
+        withGlobalAdmission(
+          response,
+          await this.globalAdmissionBeforeResponse(tag, serviceId, directRows),
+        );
         this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
       }
       return response;
@@ -3023,23 +3048,108 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     serviceId: string,
   ): Promise<readonly DownstreamOutboxMessage[] | undefined> {
-    try {
+    let rows: readonly DownstreamOutboxMessage[] | undefined;
+    const attempt = await this.boundedDerivedWrite(async () => {
       const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
       if (!pending.ok) throw new Error(`direct outbox pending read failed with ${pending.status}`);
       const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
-      const rows = body.rows ?? [];
+      rows = body.rows ?? [];
       await this.deliverDirectRows(rows);
+    });
+    if (attempt.status === "timeout") {
+      // Rows already claimed by pendingOutbox are handed to the Queue without
+      // another direct attempt.  If the pending read itself hung, rows stays
+      // undefined and the unchanged scheduler-backed drain rereads it later.
+      console.warn("direct_doorbell_before_response", {
+        status: "queued-degraded",
+        reason: "direct_doorbell_before_response_timeout",
+        budgetMs: G65_DERIVED_WRITE_BUDGET_MS,
+      });
       return rows;
-    } catch (error) {
-      // The durable Queue is the fallback for a direct capability/read/attempt
-      // failure. The already committed event, obligation, and local receipt
-      // remain authoritative and are never rolled back here.
+    }
+    if (attempt.status === "failed") {
       console.warn("direct_doorbell_before_response", {
         status: "queued-degraded",
         reason: "direct_doorbell_before_response_failed",
-        error: String(error),
+        error: String(attempt.error),
       });
-      return undefined;
+      return rows;
+    }
+    return rows;
+  }
+
+  /**
+   * Attempt the same idempotent D1 admission used by the Queue consumer.
+   * This is a derived write only: the Tag event, outbox obligation, and local
+   * receipt are already durable, and the Queue remains the guarantee.
+   */
+  private async globalAdmissionBeforeResponse(
+    tag: string,
+    serviceId: string,
+    preloadedRows?: readonly DownstreamOutboxMessage[],
+  ): Promise<GlobalAdmissionStatus> {
+    let rows = preloadedRows;
+    const attempt = await this.boundedDerivedWrite(async () => {
+      if (rows === undefined) {
+        const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
+        if (!pending.ok) throw new Error(`global admission pending read failed with ${pending.status}`);
+        const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+        rows = body.rows ?? [];
+      }
+      if (rows.length === 0) return;
+      if (this.env.D1 === undefined) throw new Error("global admission D1 binding is unavailable");
+      const store = new D1EventStore(this.env.D1);
+      await store.initialize();
+      for (const row of rows) {
+        const outcome = await store.recordDelivery(row, Date.now(), "fast");
+        if (outcome.outcome !== "stored") {
+          throw new Error(`global admission rejected:${outcome.outcome}`);
+        }
+      }
+    });
+    if (attempt.status === "timeout") {
+      console.warn("global_admission_before_response", {
+        status: "unknown",
+        reason: "global_admission_before_response_timeout",
+        budgetMs: G65_DERIVED_WRITE_BUDGET_MS,
+      });
+      return "unknown";
+    }
+    if (attempt.status === "failed") {
+      console.warn("global_admission_before_response", {
+        status: "not-admitted",
+        reason: "global_admission_before_response_failed",
+        error: String(attempt.error),
+      });
+      return "not-admitted";
+    }
+    return "admitted";
+  }
+
+  /**
+   * Bound a derived attempt without cancelling or making its eventual result
+   * part of commit semantics.  The rejection branch is attached immediately
+   * so a late D1/doorbell failure cannot become an unhandled rejection.
+   */
+  private async boundedDerivedWrite<T>(operation: () => Promise<T>): Promise<
+    | { readonly status: "completed"; readonly value: T }
+    | { readonly status: "failed"; readonly error: unknown }
+    | { readonly status: "timeout" }
+  > {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const operationResult = Promise.resolve()
+      .then(operation)
+      .then(
+        (value): { readonly status: "completed"; readonly value: T } => ({ status: "completed", value }),
+        (error): { readonly status: "failed"; readonly error: unknown } => ({ status: "failed", error }),
+      );
+    const timeout = new Promise<{ readonly status: "timeout" }>((resolve) => {
+      timer = setTimeout(() => resolve({ status: "timeout" }), G65_DERIVED_WRITE_BUDGET_MS);
+    });
+    try {
+      return await Promise.race([operationResult, timeout]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
