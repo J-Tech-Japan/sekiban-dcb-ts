@@ -15,6 +15,8 @@ import g60PostAdmissionMigration from "../../migrations/d1/g32/0007_g60_post_adm
 import g60UnsafeWriterMigration from "../../migrations/d1/g32/0008_g60_unsafe_writer_boundaries.sql?raw";
 // @ts-expect-error Vite raw asset import.
 import g65AdmissionMigration from "../../migrations/d1/g32/0009_g65_admission_attempts.sql?raw";
+// @ts-expect-error Vite raw asset import.
+import g65DirectRingMigration from "../../migrations/d1/g32/0010_g65_direct_rings.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -65,5 +67,11 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).first<{ name: string }>();
   if (admissionAttempts === null || admissionAttempts === undefined) {
     await database.batch(statements(database, g65AdmissionMigration as string));
+  }
+  const directRings = await database.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_g65_direct_rings'",
+  ).first<{ name: string }>();
+  if (directRings === null || directRings === undefined) {
+    await database.batch(statements(database, g65DirectRingMigration as string));
   }
 }

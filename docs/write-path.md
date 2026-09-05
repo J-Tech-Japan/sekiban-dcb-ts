@@ -17,14 +17,22 @@ succeeds, all derived delivery work starts only after the local durable
 mutation. The commit response is therefore an acknowledgement of durable
 acceptance, not proof that every downstream view is already visible.
 
-The existing direct unsafe doorbell remains the low-latency lane. SDT-G65 bounds
-the direct attempt with the named `G65_DERIVED_WRITE_BUDGET_MS = 300` constant.
-If the receiver throws or does not resolve before the budget, the response is
-returned and the unchanged durable Queue fallback is retained. The late direct
-operation is an unknown outcome for the derived write only; it cannot turn a
-durable commit into a failure and it cannot delay the commit indefinitely. The
-Queue continues to own durable global admission, ordering, retries, and DLQ
-recovery.
+The existing direct unsafe doorbell is split into a receiver RING and an
+asynchronous receiver APPLY. The Tag Durable Object still starts the handoff
+only after the event, outbox obligation, and local receipt are durable. The
+receiver first persists the exact immutable envelope in
+`serialized_dcb_g65_direct_rings` and returns a ring result under the named
+`G65_DIRECT_RING_BUDGET_MS = 100` constant. The receiver then reads those
+retained bytes in its own execution context and runs the existing
+`processDownstreamDoorbell`/idempotent unsafe-view apply through `waitUntil`.
+The ring ledger records ring start/finish/outcome and apply start/finish/outcome
+for the stable service/event/SUID/attempt identity. The commit path never
+awaits the receiver's D1 unsafe apply. If the ring throws or its budget expires,
+the response remains a durable acceptance and the unchanged Queue fallback is
+retained; the derived ring outcome is degraded/unknown rather than a commit
+failure. The Queue continues to own durable global admission, ordering,
+retries, and DLQ recovery, and later Queue delivery is a no-op for an already
+applied identity.
 
 The same source envelope is also admitted through the shared
 `D1EventStore.recordDelivery(..., "fast")` path before the response when the
@@ -77,8 +85,9 @@ The required order is:
    no local event; an unconfigured composition follows the ordinary local
    append path;
 2. durable Tag event, outbox obligation, and local receipt;
-3. bounded direct unsafe attempt and bounded shared D1 admission attempt for an
-   accepted append;
+3. bounded durable receiver ring (100 ms) for the direct unsafe lane, with the
+   receiver's D1 APPLY scheduled asynchronously, plus the existing bounded
+   shared D1 admission attempt for an accepted append;
 4. the Queue drain is started before the handler returns, but its send,
    acknowledgement, retry, and DLQ work is not awaited by the response;
 5. commit response;
@@ -134,8 +143,11 @@ unchanged 5,000 ms unsafe-visible contract and the client-response target.
 
 The local guard and focused test cover these classes:
 
-- a never-resolving doorbell cannot hold the response beyond the 300 ms direct
-  budget plus ordinary scheduling tolerance;
+- a never-resolving receiver ring cannot hold the response beyond the 100 ms
+  ring budget; the legacy non-ring direct seam retains the 300 ms derived-write
+  bound plus ordinary scheduling tolerance;
+- the receiver ring returns while a held D1 unsafe APPLY remains incomplete;
+- replacing the receiver's waitUntil APPLY with an awaited APPLY is red;
 - omission of the synchronous admission attempt is red;
 - restoring an unbounded direct wait is red;
 - gating the response on a hanging D1 admission is red;
@@ -168,3 +180,16 @@ the registered-tag outage case are accepted local
 durability with downstream admission deferred; it must not be misreported as a
 registration failure. All safe-lane/G44, Queue ordering, reservation/fence,
 V1-body, and 5,000 ms contracts remain unchanged.
+
+## Local Queue/DLQ configuration diagnosis
+
+No Wrangler or Cloudflare call is part of this local checkpoint. The retained
+W155-C arm configuration was inspected read-only at
+`.artifacts/wrangler.g65-w155-c.jsonc`: the primary uses the existing
+`DOWNSTREAM_QUEUE` producer and the consumer retains `max_batch_timeout: 1`,
+`max_retries: 3`, and DLQ `sekiban-dcb-g60-w155-c-outbox-dlq`; its
+`DOWNSTREAM_DOORBELL` service binding remains the existing receiver. The
+canonical production-shaped config is
+`samples/meeting-room/wrangler.cloudflare-only.jsonc`, whose migration path is
+`../../migrations/d1/g32`. This inspection establishes the local Queue/DLQ
+check path without changing the arm, queue, receiver, or deployment state.

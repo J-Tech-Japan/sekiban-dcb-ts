@@ -1,6 +1,11 @@
 import {
   observeFaultBarrier,
   createG60DurableHopObserver,
+  G65_DIRECT_RING_BUDGET_MS,
+  markG65DirectApplyFinished,
+  markG65DirectApplyStarted,
+  readG65DirectRing,
+  recordG65DirectRing,
   processDownstreamDoorbell,
   readDirectDoorbellConfig,
   selectDirectDoorbellViews,
@@ -46,6 +51,30 @@ export async function deliverMeetingRoomDoorbell(
     meetingRoomRuntimeConfig.deliveryClass,
     testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy,
   );
+  // The local receiver-only fixtures do not bind D1. The deployed G38
+  // receiver does, and that binding is the durable RING authority for AC0.
+  // Keeping the fixture fallback preserves the existing transport-only G29/G38
+  // tests without pretending their in-memory store is a durable ring.
+  if (env.D1 !== undefined) {
+    return ringMeetingRoomDoorbell(env, ctx, message, config);
+  }
+  return applyMeetingRoomDoorbell(env, ctx, message, config);
+}
+
+async function applyMeetingRoomDoorbell(
+  env: MeetingRoomCloudflareEnv,
+  ctx: ExecutionContext,
+  message: unknown,
+  config = readDirectDoorbellConfig(
+    env as unknown as Record<string, unknown>,
+    meetingRoomRuntimeConfig.deliveryClass,
+    env.__G29_DOORBELL_TEST__?.deliveryPolicy ?? meetingRoomDeliveryPolicy,
+  ),
+) {
+  const testOverrides = env.__G29_DOORBELL_TEST__;
+  const attemptId = message !== null && typeof message === "object" && typeof (message as { attemptId?: unknown }).attemptId === "string"
+    ? (message as { attemptId: string }).attemptId
+    : undefined;
   const durableHopObserver = env.TAG === undefined
     ? undefined
     : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise));
@@ -74,6 +103,91 @@ export async function deliverMeetingRoomDoorbell(
     });
   }
   return result;
+}
+
+/**
+ * Persist the immutable receiver obligation, return the ring result, and run
+ * the existing DeliveryCore in this receiver invocation's waitUntil context.
+ * The caller can therefore observe a durable ring without waiting for D1 MV
+ * apply. Queue delivery remains the durable global guarantee and replay-safe
+ * apply owner.
+ */
+async function ringMeetingRoomDoorbell(
+  env: MeetingRoomCloudflareEnv,
+  ctx: ExecutionContext,
+  rawMessage: unknown,
+  config: ReturnType<typeof readDirectDoorbellConfig>,
+) {
+  if (rawMessage === null || typeof rawMessage !== "object") {
+    throw new Error("Doorbell contained an invalid outbox message");
+  }
+  const message = rawMessage as Parameters<typeof recordG65DirectRing>[1];
+  const ringStartedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const ringOperation = recordG65DirectRing(env.D1!, message, ringStartedAt)
+    .then((ringOutcome) => ({ status: "completed" as const, ringOutcome }))
+    .catch((error) => ({ status: "failed" as const, error }));
+  const timeout = new Promise<{ readonly status: "timeout" }>((resolve) => {
+    timer = setTimeout(() => resolve({ status: "timeout" }), G65_DIRECT_RING_BUDGET_MS);
+  });
+  let ring: Awaited<typeof ringOperation> | { readonly status: "timeout" };
+  try {
+    ring = await Promise.race([ringOperation, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+  const ringFinishedAt = Date.now();
+  if (ring.status !== "completed") {
+    console.warn("direct_doorbell_ring", {
+      status: ring.status === "timeout" ? "budget-expired" : "failed",
+      budgetMs: G65_DIRECT_RING_BUDGET_MS,
+      ringStartedAt,
+      ringFinishedAt,
+    });
+    return {
+      fastDisposition: "failed" as const,
+      ringOutcome: ring.status === "timeout" ? "budget-expired" : "failed",
+      ringDurationMs: Math.max(0, ringFinishedAt - ringStartedAt),
+    };
+  }
+  const apply = applyG65DirectRing(env, ctx, message, config);
+  ctx.waitUntil(apply.catch((error) => {
+    console.warn("direct_doorbell_apply", {
+      status: "failed",
+      error: String(error),
+      eventId: message.eventId,
+      attemptId: message.attemptId,
+    });
+  }));
+  return {
+    fastDisposition: "completed" as const,
+    ringOutcome: ring.ringOutcome,
+    ringDurationMs: Math.max(0, ringFinishedAt - ringStartedAt),
+    applyOutcome: "scheduled" as const,
+  };
+}
+
+async function applyG65DirectRing(
+  env: MeetingRoomCloudflareEnv,
+  ctx: ExecutionContext,
+  fallbackMessage: Parameters<typeof recordG65DirectRing>[1],
+  config: ReturnType<typeof readDirectDoorbellConfig>,
+): Promise<void> {
+  const message = await readG65DirectRing(env.D1!, fallbackMessage) ?? fallbackMessage;
+  const applyStartedAt = Date.now();
+  await markG65DirectApplyStarted(env.D1!, message, applyStartedAt);
+  try {
+    const result = await applyMeetingRoomDoorbell(env, ctx, message, config);
+    const outcome = result.fastDisposition === "failed"
+      ? "failed"
+      : result.views.length > 0 && result.views.every((view) => view.status === "duplicate-race")
+        ? "duplicate"
+        : "applied";
+    await markG65DirectApplyFinished(env.D1!, message, Date.now(), outcome);
+  } catch (error) {
+    await markG65DirectApplyFinished(env.D1!, message, Date.now(), "failed", String(error));
+    throw error;
+  }
 }
 
 /**
