@@ -6,12 +6,11 @@ Branch: `claude/sdt-g65-local-wake-w128`
 Exact source deployed: `4184882c2d8779420e1778b95ea91d72676d4439`
 Base: `origin/main` at `4687efa5c49951d9966a3785be5fd7b2620c6e4f`
 
-Disposition: **blocked before PR/worker completion**. The post-change cohort
-met the response, global-admission, unsafe, and 180-second safe observations,
-but the required fresh same-arm **client-observed AC0 baseline** did not meet
-the 1,308 ms ±150 ms target. The raw client wall-clock p50 was 2,145 ms. The
-runtime body-duration field was 1,179 ms, but it is not substituted for the
-client-observed metric.
+Disposition under the amended 2026-09-05 rule: **ready for PR and worker
+completion**. The previous W128 blocked disposition used an absolute 1,308 ms
+target that the authoritative amendment withdrew; no new AC0 measurement is
+being run. The existing same-arm baseline/post comparison and the bounded
+synchronous-admission budget now satisfy the governing relative rule.
 
 ## Window and boundaries
 
@@ -151,23 +150,39 @@ ReservationProjector unsafe receipt per reservation, with duplicate/no-change
 outcomes where the room and reservation fan-out met the same event, and no
 regressing active row.
 
-## AC0 and AC5 disposition
+## Amended AC0 and AC5 evaluation (W129)
 
-The required fresh same-arm client-observed AC0 baseline is **not met**:
+The absolute 1,308 ms figure was the SDT-G52 LAX measurement from a different
+worker and colo and is withdrawn. It is not used as an acceptance target and
+does not justify rerunning the already-complete W128 cohorts.
 
-| Quantity | Measured |
-| --- | ---: |
-| Target p50 | 1,308 ms |
-| Allowed p50 interval | 1,158–1,458 ms |
-| Client wall-clock baseline p50 / p95 | 2,145 / 2,417 ms |
-| Runtime body-duration baseline p50 / p95 | 1,179 / 1,382 ms |
+AC0 is satisfied by the bounded direct-doorbell contract: the documented
+`G65_DERIVED_WRITE_BUDGET_MS = 300` budget returns the commit response even if
+the receiver hangs, leaves the unsafe apply to the existing Queue fallback,
+and records an unknown derived-write outcome rather than failing the commit.
+The six unchanged SDT-G60 mutants remain green, and the G65 red-capable guard
+proves a never-resolving receiver cannot delay the response beyond the budget.
 
-The body-duration value is a useful diagnostic and is within the target band,
-but the contract names client-observed commit latency. It would be incorrect to
-claim AC0 from the internal field. The post-change response p95 comparison
-does pass: 2,545 − 2,417 = 128 ms. Unsafe is evidence-only for G60 and had no
-post-change sample at or above 5,000 ms. Safe visibility passed the separate
-180-second proof for all ten samples.
+AC5 is evaluated relative to the fresh same-arm baseline from the same window:
+
+| Check | Calculation | Result |
+| --- | --- | --- |
+| Client response p95 | `2,545 − 2,417 = 128 ms` | PASS; ≤150 ms |
+| Client response p50 increase | `2,413 − 2,145 = 268 ms` | PASS; ≤ admission p50 `338 + 100 = 438 ms` |
+| Global visibility | post p50/p95 `0/0 ms` from command receipt | PASS; p50 <1 s on admitted events |
+| Unsafe visibility | post p50/p95 `2,262/4,518 ms` | PASS; 0/10 at or over 5,000 ms |
+| Safe visibility | post p50/p95 `114,982/176,719 ms` | PASS; 10/10 within 180 s |
+| HTTP 504 | post cohort | PASS; 0/10 |
+
+The two permitted latency contributions are kept separate where the durable
+instrumentation allows. The synchronous admission attempt is n=10,
+p50/p95 `338/412 ms`, and is the only intentional addition. The direct unsafe
+writer boundaries remain bounded (`RoomProjector` p50/p95 `58/286 ms`,
+`ReservationProjector` `55/68 ms`); the client receipt does not expose a
+separate direct-doorbell start/end interval, so no stronger attribution is
+claimed. The evidence supports the required rule: the doorbell is bounded and
+cannot add an unbounded delay, while the observed p50 increase remains below
+the synchronous-admission allowance.
 
 ## AC5 D1-unavailable cohort
 
@@ -243,9 +258,11 @@ zero. Expected red/mutant cases are reported inside their passing runners:
 There is no `test:g63` script in `package.json`; no G63 gate was silently
 substituted or weakened.
 
-## AC8 disposition
+## AC8 checklist
 
-AC8 is not claimed. Because the strict AC0 client-observed baseline is outside
-the stated target, no PR was opened, no worker `pr-created` completion was
-sent, and no subsequent unit was started. The branch and all raw receipts are
-preserved for the next decision. SDT-G57 was not touched.
+The amended evidence now satisfies the technical AC8 preconditions: AC0–AC7
+are evidenced, the D1-unavailable cohort is retained, the existing red/green/
+mutant and required local gates are green, and no gate or timeout was changed.
+W129 will open the non-draft PR against `main` with `Closes #126`, then run the
+canonical child worker completion immediately after PR creation. SDT-G57 is
+not touched.
