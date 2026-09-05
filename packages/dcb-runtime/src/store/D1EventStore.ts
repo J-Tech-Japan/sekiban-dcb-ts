@@ -463,6 +463,36 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.suid,
         message.eventId,
       ),
+      // Source discoverability is part of the same atomic global admission
+      // batch as the event, membership, and receipt.  A local Tag commit can
+      // therefore return without a D1 registry probe; until this batch
+      // succeeds, G44 has no source authority for the obligation and remains
+      // fail-closed.  Import delivery deliberately does not manufacture a
+      // Tag source partition.
+      this.database.prepare(
+        `INSERT INTO serialized_dcb_source_partitions
+           (service_id, partition_tag, last_obligation_sequence, registered_at)
+         SELECT ?, ?, ?, ?
+          WHERE ? = 1 AND EXISTS (
+            SELECT 1 FROM dcb_events
+             WHERE "ServiceId" = ? AND "Id" = ? AND "EventDigest" = ?
+          )
+         ON CONFLICT (service_id, partition_tag) DO UPDATE
+           SET last_obligation_sequence = MAX(
+                 serialized_dcb_source_partitions.last_obligation_sequence,
+                 excluded.last_obligation_sequence
+               ),
+               registered_at = excluded.registered_at`,
+      ).bind(
+        message.serviceId,
+        message.tag,
+        message.completeness.obligationSequence,
+        arrivedAt,
+        requiresGlobalReceipt ? 1 : 0,
+        message.serviceId,
+        message.eventId,
+        message.completeness.eventDigest,
+      ),
       // The global declared event, this tag-side committed membership, and
       // the source-obligation receipt are one D1 atomic batch. A Queue ack or
       // a receipt without this join never becomes source acknowledgement.

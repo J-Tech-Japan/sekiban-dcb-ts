@@ -1,16 +1,16 @@
-# SDT-G65 deployed evidence (W128)
+# SDT-G65 repair evidence (W129; W128 deployed baseline preserved)
 
 Task: `SDT-G65-DEPLOYED-WAKE-128`
 Issue: [J-Tech-Japan/sekiban-dcb-ts#126](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/126)
 Branch: `claude/sdt-g65-local-wake-w128`
 Exact source deployed: `4184882c2d8779420e1778b95ea91d72676d4439`
+Reviewed PR head: `68454969e6b9c15bb22e5e57bfd388167477dbfb`
 Base: `origin/main` at `4687efa5c49951d9966a3785be5fd7b2620c6e4f`
 
-Disposition under the amended 2026-09-05 rule: **ready for PR and worker
-completion**. The previous W128 blocked disposition used an absolute 1,308 ms
-target that the authoritative amendment withdrew; no new AC0 measurement is
-being run. The existing same-arm baseline/post comparison and the bounded
-synchronous-admission budget now satisfy the governing relative rule.
+W128 remains the preserved deployed baseline. This W129 checkpoint repairs the
+four review findings and records the new local gates; it is **not** a claim that
+the repaired source has deployed evidence yet. PR #127 remains in review and no
+worker-complete, self-approval, or merge transition is performed here.
 
 ## Window and boundaries
 
@@ -68,7 +68,7 @@ version `53ba7465-60e6-4773-ba69-e94bc29c2130`, deployment
 `00dc3aba-dd45-4b84-b682-341eba6f4a64`, 100% traffic, and the exact annotation
 `SDT-G65 W128 restore normal D1 exact 4184882c2d8779420e1778b95ea91d72676d4439`.
 
-## AC5 — before/after cohorts
+## AC5 — before/after cohorts (W128 preserved; repaired measurement required)
 
 Both public cohorts were cold-first, n=10, paced at least ten seconds after the
 preceding response, and used fully paged `GET /api/read/reservations`. The
@@ -79,16 +79,16 @@ recorded evidence; the unchanged 5,000 ms contract is checked separately.
 | --- | ---: | ---: | --- |
 | Client send-to-response n / p50 / p95 | 10 / 2,145 / 2,417 ms | 10 / 2,413 / 2,545 ms | p95 delta +128 ms; within 150 ms |
 | Runtime body duration n / p50 / p95 | 10 / 1,179 / 1,382 ms | 10 / 1,499 / 1,600 ms | diagnostic only |
-| Global `dcb_events` visibility | not independently queried for baseline | 10 / 0 / 0 ms from command receipt | post p50 <1 s |
+| Global `dcb_events` visibility | not measured with a completion clock | not validly measured in W128 | no timing claim |
 | Unsafe first visibility | 10 / 4,529 / 4,778 ms | 10 / 2,262 / 4,518 ms | 0/10 over 5,000 ms in both |
 | Safe/projector proof | 10 / 86,165 / 147,019 ms | 10 / 114,982 / 176,719 ms | 10/10 within 180 s |
 
 For the post-change cohort, the durable ledger contains 11 `dcb_events` rows
-(room plus ten reservations), 21 global-receipt rows, and every reservation
-event's `dcb_events` observation was at 0 ms from its command-receipt
-observation. The public adapter did not expose the internal admission header;
-the admission result below is therefore derived from the durable receipt
-timestamps, not from a missing header.
+(room plus ten reservations) and 21 global-receipt rows. Row presence and the
+authored `dcb_events.Timestamp`/receipt `received_at` values do not establish a
+global completion time. The W128 public adapter also did not expose the
+admission header. Those fields are therefore not used to claim a global
+visibility latency or a synchronous-admission duration.
 
 ### Post-change per-sample table
 
@@ -108,11 +108,10 @@ final projector/tag-state proof measured from the commit response receipt.
 | 9 | `063924170135495000000098441838` | 2,472 | 1,562 | 2,237 | 77,591 | 14,983 |
 | 10 | `063924170147866000001751334201` | 2,303 | 1,499 | 2,240 | 65,287 | 2,679 |
 
-Times are milliseconds. The G65 post-change durable global-admission result
-was `admitted-before-response` for all ten samples: synchronous admission
-n=10, p50=338 ms, p95=412 ms, min=272 ms, max=412 ms. Each reservation had
-its durable receipt before the public response; the later Queue delivery was
-not required for global admission.
+Times are milliseconds. The old `338/412 ms` synchronous-admission figures
+were derived from `received_at`/outbox observations and are withdrawn as
+timing claims. W128 did not have the new correlated admission ledger or the
+public outcome header, so no global completion distribution is claimed here.
 
 ### Durable hop and sub-hop measurements
 
@@ -150,7 +149,7 @@ ReservationProjector unsafe receipt per reservation, with duplicate/no-change
 outcomes where the room and reservation fan-out met the same event, and no
 regressing active row.
 
-## Amended AC0 and AC5 evaluation (W129)
+## Amended AC0 and AC5 evaluation (W128 baseline; W129 repair pending)
 
 The absolute 1,308 ms figure was the SDT-G52 LAX measurement from a different
 worker and colo and is withdrawn. It is not used as an acceptance target and
@@ -163,26 +162,28 @@ and records an unknown derived-write outcome rather than failing the commit.
 The six unchanged SDT-G60 mutants remain green, and the G65 red-capable guard
 proves a never-resolving receiver cannot delay the response beyond the budget.
 
-AC5 is evaluated relative to the fresh same-arm baseline from the same window:
+The following is the W128 evaluation only. It is retained for comparison, but
+the repaired source must produce a new healthy and unavailable measurement
+before these values can be used as W129 acceptance evidence:
 
 | Check | Calculation | Result |
 | --- | --- | --- |
 | Client response p95 | `2,545 − 2,417 = 128 ms` | PASS; ≤150 ms |
-| Client response p50 increase | `2,413 − 2,145 = 268 ms` | PASS; ≤ admission p50 `338 + 100 = 438 ms` |
-| Global visibility | post p50/p95 `0/0 ms` from command receipt | PASS; p50 <1 s on admitted events |
+| Client response p50 increase | `2,413 − 2,145 = 268 ms` | W128 historical only; no W129 claim |
+| Global visibility | no valid W128 completion/read clock | OPEN; not claimed |
 | Unsafe visibility | post p50/p95 `2,262/4,518 ms` | PASS; 0/10 at or over 5,000 ms |
 | Safe visibility | post p50/p95 `114,982/176,719 ms` | PASS; 10/10 within 180 s |
 | HTTP 504 | post cohort | PASS; 0/10 |
 
-The two permitted latency contributions are kept separate where the durable
-instrumentation allows. The synchronous admission attempt is n=10,
-p50/p95 `338/412 ms`, and is the only intentional addition. The direct unsafe
-writer boundaries remain bounded (`RoomProjector` p50/p95 `58/286 ms`,
-`ReservationProjector` `55/68 ms`); the client receipt does not expose a
-separate direct-doorbell start/end interval, so no stronger attribution is
-claimed. The evidence supports the required rule: the doorbell is bounded and
-cannot add an unbounded delay, while the observed p50 increase remains below
-the synchronous-admission allowance.
+The direct unsafe-writer boundaries remain bounded (`RoomProjector` p50/p95
+`58/286 ms`, `ReservationProjector` `55/68 ms`), but W128 did not record a
+correlated admission start/end/outcome ledger or a valid global completion
+clock. The repair adds `serialized_dcb_g65_admission_attempts`, whose
+timestamps are `Date.now()` epoch milliseconds captured at the real bounded
+attempt and whose successful completion means the shared `recordDelivery`
+read-back returned. A fresh deployed repair measurement is required before
+claiming the global/admission distributions or separating the doorbell and
+synchronous contributions.
 
 ## AC5 D1-unavailable cohort
 
@@ -193,11 +194,11 @@ raw script inherited the string `missing-by-120000ms`; the actual command bound
 was 5,000 ms, so this report calls the result **missing at 5 s**, not censored
 at 120 s.
 
-| # | SUID | Commit response | Body duration | Public read at 5 s | After D1 restore |
+| # | SUID | Commit response | Body duration | Public read at 5 s | W128 header | After D1 restore |
 | ---: | --- | ---: | ---: | --- | ---: |
-| 1 | `063924170522202000000609209965` | 2,267 ms | 1,034 ms | missing | visible once at 110,803 ms |
-| 2 | `063924170534358000000800833193` | 2,106 ms | 1,008 ms | missing | visible once at 98,858 ms |
-| 3 | `063924170546383000001678223877` | 1,987 ms | 928 ms | missing | visible once at 87,014 ms |
+| 1 | `063924170522202000000609209965` | 2,267 ms | 1,034 ms | missing | absent | visible once at 110,803 ms |
+| 2 | `063924170534358000000800833193` | 2,106 ms | 1,008 ms | missing | absent | visible once at 98,858 ms |
+| 3 | `063924170546383000001678223877` | 1,987 ms | 928 ms | missing | absent | visible once at 87,014 ms |
 
 After the normal D1 binding was restored, the three pending events were
 admitted by Queue processing and each reservation became visible exactly once.
@@ -210,6 +211,38 @@ reservation row. The relevant receipts are
 [`wrangler-043-query-unavailable-hops-corrected.json`](.artifacts/wrangler-043-query-unavailable-hops-corrected.json),
 [`wrangler-044-query-unavailable-mv-receipts-corrected.json`](.artifacts/wrangler-044-query-unavailable-mv-receipts-corrected.json),
 and [`wrangler-046-query-unavailable-mv-unsafe-rows.json`](.artifacts/wrangler-046-query-unavailable-mv-unsafe-rows.json).
+
+## W129 local repair evidence (F1–F4)
+
+F1 removes the request-path dependency on the source-partition registration
+probe. The public SQL append now schedules that post-commit observation without
+turning its failure or hang into a 503. The D1 `recordDelivery` batch atomically
+upserts the source partition together with the event, global membership, and
+receipt, so a successful global admission has precise G44 source authority;
+the safe fence remains fail-closed when that batch is absent or fails. The new
+SQLite/public test uses an unavailable runtime D1 binding and still receives a
+committed response, while the D1 batch failure test proves no partial global
+admission rows are left behind.
+
+F2 replaces the private in-memory admission map with real D1/shared-path
+coverage: direct-first and Queue-first order, duplicate replay, conflicting
+identity, and atomic batch failure are exercised. The guard's omission,
+unbounded wait, response-gating, durability-order, duplicate, and direct-path
+mutants all produce red receipts; no G60 mutant was changed.
+
+F3 withdraws authored `Timestamp` and caller/outbox `received_at` values as
+global timing claims. The new `serialized_dcb_g65_admission_attempts` ledger
+correlates event/SUID/attempt identity, records `Date.now()` epoch-ms start/end,
+outcome, completion observation, and clock origin through `waitUntil`; it never
+controls admission or response. A fresh deployment is required for its
+distributions and for separating the bounded doorbell contribution from the
+explicit synchronous-admission attempt.
+
+F4 preserves the V1 JSON body and exposes the actual admission outcome through
+the additive `x-sdt-global-admission` header (`admitted`, `not-admitted`, or
+`unknown`). The transport now retains response headers; unit coverage asserts
+both the header and unchanged JSON shape. The write-path evidence describes the
+G35 inheritance boundary and Queue ordering explicitly.
 
 ## AC6 and AC7 local evidence
 
@@ -227,7 +260,7 @@ completeness semantics, G58/G62 maintenance behavior, and the unchanged
 
 ## Gate results
 
-The following commands were rerun on the deployed-evidence branch and exited
+The following commands were rerun on the W129 repair checkpoint and exited
 zero. Expected red/mutant cases are reported inside their passing runners:
 
 | Gate | Result |
@@ -258,11 +291,11 @@ zero. Expected red/mutant cases are reported inside their passing runners:
 There is no `test:g63` script in `package.json`; no G63 gate was silently
 substituted or weakened.
 
-## AC8 checklist
+## W129 rereview boundary
 
-The amended evidence now satisfies the technical AC8 preconditions: AC0–AC7
-are evidenced, the D1-unavailable cohort is retained, the existing red/green/
-mutant and required local gates are green, and no gate or timeout was changed.
-W129 will open the non-draft PR against `main` with `Closes #126`, then run the
-canonical child worker completion immediately after PR creation. SDT-G57 is
-not touched.
+The local repair checkpoint satisfies the code/test portion of F1–F4 and
+preserves the W128 deployed receipts, but AC5/F1/F3/F4 fresh deployed proof is
+still required before PR #127 can be marked rereview-ready. No new Cloudflare
+operation is included in this local evidence update. The six G60 mutants, V1
+body, fence, Queue/outbox, G58/G62, and 5,000 ms boundaries remain unchanged.
+SDT-G57 is not touched.

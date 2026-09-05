@@ -37,20 +37,53 @@ durable event and outbox remain the recovery authority, so a crash after the
 response or a partial downstream fan-out is recovered by the existing Queue
 path and existing idempotent delivery logic.
 
+Source-partition discoverability has the same failure boundary as global
+admission. A successful `recordDelivery` D1 batch upserts the source partition
+alongside the global event, membership, and receipt. The old append-time D1
+probe/insert is only a post-commit, non-blocking registration attempt. If D1 is
+missing, fails, or hangs, the local SQLite commit still returns; until the
+atomic global batch (or a later retry) succeeds, there is no source authority
+for G44 to certify and the safe lane remains fail-closed.
+
 ## Ordering and safety invariants
 
 The required order is:
 
 1. durable Tag event, outbox obligation, and local receipt;
 2. bounded direct unsafe attempt and bounded shared D1 admission attempt;
-3. commit response;
-4. retained Queue submission and later Queue acknowledgement/retry.
+3. the Queue drain is started before the handler returns, but its send,
+   acknowledgement, retry, and DLQ work is not awaited by the response;
+4. commit response;
+5. later Queue acknowledgement/retry remains the recovery path.
 
 The direct unsafe lane never advances a safe checkpoint. G44 completeness
 coverage and the SAFE fence remain unchanged: a missing or unproven source
 partition cannot be certified merely because a direct unsafe view was applied.
 `lastSuid`/upsert idempotence means a duplicate direct/Queue delivery is a
 no-op and a later lower SUID cannot regress a materialized row.
+
+## Caller-visible admission outcome and ownership boundary
+
+The meeting-room public command route exposes the actual derived-admission
+outcome in the additive `x-sdt-global-admission` response header. Its values
+are `admitted`, `not-admitted`, or `unknown`; the V1 JSON body is unchanged and
+does not treat the header as a durable commit acknowledgement. The header is
+propagated by the V1 adapter from the runtime response, so healthy and
+runtime-D1-unavailable cohorts can record the outcome without inventing it from
+an authored event timestamp.
+
+The G35 write-path boundary is explicit: the shared serialized runtime owns
+the durable Tag event, local outbox/receipt, bounded derived attempts, Queue
+handoff, and V1-compatible status/header; the meeting-room sample owns only
+the public command facade, header propagation, and its domain/UI mapping.
+Cloudflare D1/Queue delivery timing and provider retry/DLQ behavior remain
+operational observations, not promises authored by the sample facade.
+
+All admission ledger timestamps use `Date.now()` epoch milliseconds captured at
+the actual attempt boundary. `received_at` in
+`serialized_dcb_global_receipts` and `Timestamp` in `dcb_events` are
+authored/arrival fields, not completion observations, and are not used as
+global-visibility timing.
 
 ## Measured context carried into G65
 

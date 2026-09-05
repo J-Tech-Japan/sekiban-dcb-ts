@@ -10,6 +10,7 @@ const pipelineFiles = JSON.parse(args.get("--pipeline"));
 const mvFiles = JSON.parse(args.get("--mv"));
 const restoredPath = resolve(args.get("--restored"));
 const unavailablePath = resolve(args.get("--unavailable"));
+const admissionPath = args.get("--admission") === undefined ? undefined : resolve(args.get("--admission"));
 
 function jsonFile(path) { return JSON.parse(readFileSync(resolve(path), "utf8")); }
 function rowsFromWrangler(path) {
@@ -65,6 +66,7 @@ const hopRows = rowsFromWrangler(pipelineFiles.hop);
 const subRows = rowsFromWrangler(pipelineFiles.sub);
 const writerRows = rowsFromWrangler(pipelineFiles.writer);
 const globalReceiptRows = rowsFromWrangler(pipelineFiles.receipts);
+const admissionRows = admissionPath === undefined ? [] : rowsFromWrangler(admissionPath);
 const dcbEvents = rowsFromWrangler(pipelineFiles.events);
 const mvUnsafeReceipts = rowsFromWrangler(mvFiles.unsafeReceipts);
 const mvUnsafeRows = rowsFromWrangler(mvFiles.unsafeRows);
@@ -73,12 +75,14 @@ const subsByEvent = group(subRows, "event_id");
 const writersByEvent = group(writerRows, "event_id");
 const receiptsByEvent = group(globalReceiptRows, "event_id");
 const mvReceiptsByEvent = group(mvUnsafeReceipts, "event_id");
+const admissionsByEvent = group(admissionRows, "event_id");
 
 const samples = events.map(({ sample, eventId, suid }) => {
   const hops = hopsByEvent.get(eventId) ?? [];
   const subs = subsByEvent.get(eventId) ?? [];
   const writers = writersByEvent.get(eventId) ?? [];
   const receipts = receiptsByEvent.get(eventId) ?? [];
+  const admissions = admissionsByEvent.get(eventId) ?? [];
   const eventRow = dcbEvents.find((row) => row.Id === eventId);
   const commandAt = minAt(stageRows(hops, "command-receipt"));
   const tagAt = minAt(stageRows(hops, "tag-append-committed"));
@@ -87,14 +91,21 @@ const samples = events.map(({ sample, eventId, suid }) => {
   const consumerAt = maxAt(stageRows(hops, "consumer-invocation-started"));
   const deliveryAt = maxAt(stageRows(hops, "record-delivery-batch-committed"));
   const unsafeAt = minAt(stageRows(hops, "first-unsafe-visible-read"));
-  const globalAt = receipts.length ? maxAt(receipts.map((row) => ({ observed_at: row.received_at }))) : null;
   const responseAt = sample.commit.receivedAtMs;
-  const dcbEventAt = eventRow?.Timestamp === undefined ? null : Date.parse(eventRow.Timestamp);
+  const admission = admissions[0];
+  const admissionDuration = admission === undefined
+    ? null
+    : Number(admission.admission_finished_at) - Number(admission.admission_started_at);
   const synchronousAdmission = {
-    outcome: globalAt !== null && globalAt <= responseAt ? "admitted-before-response" : "not-proven-before-response",
-    firstGlobalReceiptAt: globalAt,
-    receiptToResponseMs: globalAt === null ? null : responseAt - globalAt,
-    fromOutboxToLastReceiptMs: globalAt === null || outboxAt === null ? null : globalAt - outboxAt,
+    outcome: admission?.outcome ?? "not-measured",
+    clockOrigin: admission?.clock_origin ?? null,
+    admissionStartedAt: admission?.admission_started_at ?? null,
+    admissionFinishedAt: admission?.admission_finished_at ?? null,
+    admissionDurationMs: admissionDuration,
+    globalCompletionObservedAt: admission?.global_completion_observed_at ?? null,
+    completionObservedBeforeResponse: admission?.global_completion_observed_at === undefined || admission.global_completion_observed_at === null
+      ? null
+      : admission.global_completion_observed_at <= responseAt,
     globalReceiptCount: receipts.length,
   };
   const adjacent = {
@@ -129,10 +140,8 @@ const samples = events.map(({ sample, eventId, suid }) => {
     commitResponseMs: sample.commit.responseMs,
     commitReceivedAtMs: responseAt,
     globalDcbEventVisibility: {
-      eventAt: Number.isFinite(dcbEventAt) ? dcbEventAt : null,
-      commandReceiptToEventMs: commandAt === null || !Number.isFinite(dcbEventAt) ? null : dcbEventAt - commandAt,
-      responseToEventMs: !Number.isFinite(dcbEventAt) ? null : dcbEventAt - responseAt,
-      beforeResponse: Number.isFinite(dcbEventAt) && dcbEventAt <= responseAt,
+      rowObserved: eventRow !== undefined,
+      timing: "not-measured-from-authored-event-row",
     },
     publicUnsafeMs: sample.unsafe.firstVisibleCommitToUnsafeMs,
     publicUnsafeDisposition: sample.unsafe.disposition,
@@ -158,7 +167,7 @@ const subhopMetrics = {
   unsafeWriterRoomProjector: metrics(samples.map((sample) => sample.unsafeWriter.RoomProjector.durationMs)),
   unsafeWriterReservationProjector: metrics(samples.map((sample) => sample.unsafeWriter.ReservationProjector.durationMs)),
 };
-const admissionDurations = samples.map((sample) => sample.synchronousAdmission.fromOutboxToLastReceiptMs);
+const admissionDurations = samples.map((sample) => sample.synchronousAdmission.admissionDurationMs);
 const admissionOutcomes = outcomeCounts(samples.map((sample) => ({ outcome: sample.synchronousAdmission.outcome })));
 const stageCounts = outcomeCounts(hopRows.map((row) => ({ outcome: row.stage })));
 const subhopOutcomes = outcomeCounts(subRows.map((row) => ({ outcome: `${row.stage}:${row.outcome}` })));
@@ -176,16 +185,20 @@ const analysis = {
     proof: cohort.proof,
     metrics: {
       commitResponse: metrics(samples.map((sample) => sample.commitResponseMs)),
-      globalDcbEventVisibility: metrics(samples.map((sample) => sample.globalDcbEventVisibility.commandReceiptToEventMs), 1000),
+      globalDcbEventVisibility: {
+        n: samples.length,
+        rowObservedN: samples.filter((sample) => sample.globalDcbEventVisibility.rowObserved).length,
+        timing: "not-measured-from-authored-event-row",
+      },
       publicUnsafeRecordedOnly: metrics(samples.map((sample) => sample.publicUnsafeMs)),
       safe: metrics(samples.map((sample) => sample.safeMs), 180000),
       synchronousAdmissionDuration: metrics(admissionDurations, 300),
       adjacent: adjacentMetrics,
       subhops: subhopMetrics,
     },
-    synchronousAdmission: { outcomes: admissionOutcomes, maxReceiptToResponseMs: Math.max(...samples.map((sample) => sample.synchronousAdmission.receiptToResponseMs ?? -1)) },
+    synchronousAdmission: { outcomes: admissionOutcomes, measuredRows: admissionRows.length },
     outcomeCounts: { originalStages: stageCounts, postAdmission: subhopOutcomes, unsafeWriters: writerOutcomes },
-    d1Rows: { events: dcbEvents.length, globalReceipts: globalReceiptRows.length, hopMeasurements: hopRows.length, hopSubmeasurements: subRows.length, unsafeWriterBoundaries: writerRows.length, mvUnsafeReceipts: mvUnsafeReceipts.length, mvUnsafeRows: mvUnsafeRows.length },
+    d1Rows: { events: dcbEvents.length, globalReceipts: globalReceiptRows.length, admissionAttempts: admissionRows.length, hopMeasurements: hopRows.length, hopSubmeasurements: subRows.length, unsafeWriterBoundaries: writerRows.length, mvUnsafeReceipts: mvUnsafeReceipts.length, mvUnsafeRows: mvUnsafeRows.length },
     allRequiredStagesPresent: samples.every((sample) => sample.missingStages.length === 0),
     samples,
   },

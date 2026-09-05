@@ -184,28 +184,39 @@ function optionalServiceIdentity(env: MeetingRoomCloudflareEnv): string | null {
 function resultBody(result: ExecuteResult): Record<string, unknown> {
   const body = { ...result } as Record<string, unknown>;
   delete body.cause;
+  delete body.globalAdmission;
   return body;
 }
 
 function resultResponse(result: ExecuteResult): Response {
   const body = resultBody(result);
+  const admission = (result as ExecuteResult & { readonly globalAdmission?: string }).globalAdmission;
+  let response: Response;
   switch (result.kind) {
     case "committed":
     case "noop":
-      return json(body, 200);
+      response = json(body, 200);
+      break;
     case "rejected":
     case "invalid":
     case "conflict":
-      return json({ error: result.error ?? "Command was rejected", code: result.code ?? result.kind, ...body }, result.kind === "conflict" ? 409 : 400);
+      response = json({ error: result.error ?? "Command was rejected", code: result.code ?? result.kind, ...body }, result.kind === "conflict" ? 409 : 400);
+      break;
     case "partial":
-      return json({ error: result.error ?? "Commit was partial", code: result.code ?? "partial_write", ...body }, 500);
+      response = json({ error: result.error ?? "Commit was partial", code: result.code ?? "partial_write", ...body }, 500);
+      break;
     case "timeout":
-      return json({ error: result.error ?? "Command outcome is undetermined", code: result.code ?? "timeout", ...body }, 504);
+      response = json({ error: result.error ?? "Command outcome is undetermined", code: result.code ?? "timeout", ...body }, 504);
+      break;
     case "unavailable":
-      return json({ error: result.error ?? "Projection is unavailable", code: result.code ?? "projection_unavailable", ...body }, 503);
+      response = json({ error: result.error ?? "Projection is unavailable", code: result.code ?? "projection_unavailable", ...body }, 503);
+      break;
     case "transport":
-      return json({ error: result.error ?? "Command transport failed", code: result.code ?? "transport", ...body }, 502);
+      response = json({ error: result.error ?? "Command transport failed", code: result.code ?? "transport", ...body }, 502);
+      break;
   }
+  response.headers.set("x-sdt-global-admission", admission === "admitted" || admission === "not-admitted" || admission === "unknown" ? admission : "unknown");
+  return response;
 }
 
 function decodeProjectionPayload(value: unknown): unknown {

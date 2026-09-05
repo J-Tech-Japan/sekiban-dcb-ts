@@ -67,7 +67,7 @@ describe("SDT-G14 meeting-room consumer", () => {
         captured = new Request(input, init);
         return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), {
           status: 200,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-sdt-global-admission": "admitted" },
         });
       },
     }, "g11-meeting-room-test-12345678");
@@ -103,7 +103,7 @@ describe("SDT-G14 meeting-room consumer", () => {
         }
         return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), {
           status: 200,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-sdt-global-admission": "admitted" },
         });
       },
     };
@@ -118,6 +118,8 @@ describe("SDT-G14 meeting-room consumer", () => {
       body: JSON.stringify({ roomId: "r-unauthenticated", name: "Room" }),
     }), { RUNTIME: runtimeFetcher } as unknown as MeetingRoomEnv, {} as ExecutionContext);
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-sdt-global-admission")).toBe("admitted");
+    expect(await response.clone().json()).not.toHaveProperty("globalAdmission");
     expect(calls.length).toBe(2);
     expect(calls.every((request) => !request.headers.has("x-sdt-g11-service-id"))).toBe(true);
   });

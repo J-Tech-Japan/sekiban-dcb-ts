@@ -8,6 +8,8 @@ import process from "node:process";
 const root = process.cwd();
 const tagPath = "packages/dcb-runtime/src/tag/TagDurableObject.ts";
 const commitPath = "packages/dcb-runtime/src/commit/CommitWorker.ts";
+const storePath = "packages/dcb-runtime/src/store/D1EventStore.ts";
+const testPath = "test/g65-admission.spec.ts";
 const budgetMs = 300;
 
 function argument(name) {
@@ -48,7 +50,7 @@ function between(source, startNeedle, endNeedle) {
   return start < 0 ? "" : source.slice(start, end < 0 ? source.length : end);
 }
 
-function sourceWiring(tagSource, commitSource) {
+function sourceWiring(tagSource, commitSource, storeSource, testSource) {
   const missing = [];
   const append = between(tagSource, "private async append(", "private async directDeliveryBeforeResponse(");
   const direct = between(tagSource, "private async directDeliveryBeforeResponse(", "private async globalAdmissionBeforeResponse(");
@@ -68,6 +70,8 @@ function sourceWiring(tagSource, commitSource) {
   const admissionCalls = [...append.matchAll(/await this\.globalAdmissionBeforeResponse\(/g)];
   if (directCalls.length !== 2) missing.push(`two direct attempts (found ${directCalls.length})`);
   if (admissionCalls.length !== 2) missing.push(`two synchronous admission attempts (found ${admissionCalls.length})`);
+  if (!append.includes("const result = await this.appendSql(tag, input, serviceId);")) missing.push("durable SQLite append before derived work");
+  if (append.includes("await this.registerSourcePartition(tag, serviceId)")) missing.push("synchronous source registry dependency");
   if (!append.includes("const response = json(result.body, result.status);")) missing.push("durable response construction");
   if (!append.includes("return response;")) missing.push("response returned after derived attempts");
   if (!append.includes("this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows)")) {
@@ -92,6 +96,24 @@ function sourceWiring(tagSource, commitSource) {
   }
   if (!commitSource.includes("GLOBAL_ADMISSION_HEADER") || !commitSource.includes("mergeGlobalAdmission")) {
     missing.push("CommitWorker propagates admission state");
+  }
+  if (!storeSource.includes("INSERT INTO serialized_dcb_source_partitions") ||
+    !storeSource.includes("requiresGlobalReceipt ? 1 : 0") ||
+    !storeSource.includes("ON CONFLICT (service_id, partition_tag) DO UPDATE")) {
+    missing.push("atomic source-partition admission");
+  }
+  for (const token of [
+    "new D1EventStore(database())",
+    "direct-first",
+    "queue-first",
+    "D1IdentityConflictError",
+    "serialized_dcb_source_partitions",
+    "runtime.env.D1 = undefined",
+    "state.storage.sql",
+    "x-sdt-global-admission",
+    "not.toHaveProperty(\"globalAdmission\")",
+  ]) {
+    if (!testSource.includes(token)) missing.push(`real G65 oracle: ${token}`);
   }
 
   const responseIndex = append.indexOf("const response = json(result.body, result.status);");
@@ -119,71 +141,36 @@ function assertRed(label, operation) {
   throw new Error(`${label} unexpectedly passed`);
 }
 
-function assertAdmissionModel(mode = "current") {
-  const state = {
-    eventCommitted: false,
-    outboxWritten: false,
-    localReceiptCommitted: false,
-    directAttempted: false,
-    admissionAttempted: false,
-    responseReturned: false,
-    queueScheduled: false,
-    admissions: 0,
-    identities: new Set(),
+function sourceMutantReceipts(tagSource, commitSource, storeSource, testSource) {
+  const check = (tag, store = storeSource) => {
+    const wiring = sourceWiring(tag, commitSource, store, testSource);
+    if (wiring.ok) throw new Error("mutant was not detected");
+    throw new Error(`detected: ${wiring.missing.join(", ")}`);
   };
-  const identity = "service|event|obligation-1";
-
-  state.eventCommitted = true;
-  state.outboxWritten = true;
-  state.localReceiptCommitted = true;
-  if (mode !== "omit-direct") state.directAttempted = true;
-  if (mode !== "omit-admission") {
-    state.admissionAttempted = true;
-    if (mode !== "duplicate-admission") {
-      if (!state.identities.has(identity)) {
-        state.identities.add(identity);
-        state.admissions += 1;
-      }
-    } else {
-      state.admissions += 2;
-    }
-  }
-  state.queueScheduled = true;
-  state.responseReturned = mode !== "response-gated-on-d1";
-
-  if (!state.eventCommitted || !state.outboxWritten || !state.localReceiptCommitted) {
-    throw new Error("durable acceptance did not precede derived work");
-  }
-  if (!state.directAttempted) throw new Error("direct unsafe attempt was omitted");
-  if (!state.admissionAttempted) throw new Error("synchronous global admission was omitted");
-  if (!state.responseReturned) throw new Error("commit response was gated on derived D1 work");
-  if (!state.queueScheduled) throw new Error("Queue fallback/global admission path was removed");
-  if (state.admissions !== 1) throw new Error(`expected one idempotent admission, got ${state.admissions}`);
-  return state;
-}
-
-function sourceMutantReceipts(tagSource, commitSource) {
   const mutants = {};
   mutants.omittedAdmission = assertRed("synchronous admission omission mutant", () => {
     const mutant = tagSource.replaceAll("await this.globalAdmissionBeforeResponse(tag, serviceId, directRows)", "undefined");
-    if (sourceWiring(mutant, commitSource).ok) throw new Error("admission omission was not detected");
-    throw new Error("detected: global admission call removed");
+    check(mutant);
   });
   mutants.unboundedDoorbell = assertRed("unbounded doorbell mutant", () => {
     const directStart = tagSource.indexOf("private async directDeliveryBeforeResponse(");
     const directEnd = tagSource.indexOf("private async globalAdmissionBeforeResponse(", directStart);
     const direct = tagSource.slice(directStart, directEnd).replace("this.boundedDerivedWrite", "this.unboundedDerivedWrite");
     const mutant = `${tagSource.slice(0, directStart)}${direct}${tagSource.slice(directEnd)}`;
-    if (sourceWiring(mutant, commitSource).ok) throw new Error("direct timeout was not detected");
-    throw new Error("detected: old unbounded direct path restored");
+    check(mutant);
   });
-  mutants.responseGatedOnD1 = assertRed("response-gated-on-D1 mutant", () => assertAdmissionModel("response-gated-on-d1"));
+  mutants.responseGatedOnD1 = assertRed("response-gated-on-D1 mutant", () => {
+    check(tagSource.replaceAll("const response = json(result.body, result.status);", "const response = await this.globalAdmissionBeforeResponse(tag, serviceId);"));
+  });
   mutants.durabilityReordered = assertRed("durability-before-attempt mutant", () => {
-    const state = { eventCommitted: false, outboxWritten: false, localReceiptCommitted: false, directAttempted: true };
-    if (!state.eventCommitted || !state.outboxWritten || !state.localReceiptCommitted) throw new Error("direct attempt preceded durable acceptance");
+    check(tagSource.replace("const result = await this.appendSql(tag, input, serviceId);", "const result = await this.globalAdmissionBeforeResponse(tag, serviceId);"));
   });
-  mutants.duplicateAdmission = assertRed("double-admission mutant", () => assertAdmissionModel("duplicate-admission"));
-  mutants.omittedDirect = assertRed("direct attempt omission mutant", () => assertAdmissionModel("omit-direct"));
+  mutants.duplicateAdmission = assertRed("double-admission mutant", () => {
+    check(tagSource, storeSource.replace("ON CONFLICT (service_id, partition_tag) DO UPDATE", "ON CONFLICT (service_id, partition_tag) DO NOTHING"));
+  });
+  mutants.omittedDirect = assertRed("direct attempt omission mutant", () => {
+    check(tagSource.replaceAll("await this.directDeliveryBeforeResponse(tag, serviceId)", "undefined"));
+  });
   return mutants;
 }
 
@@ -194,7 +181,9 @@ const selfTest = process.argv.includes("--self-test");
 if (preChange) {
   const tagSource = sourceAtHead(tagPath);
   const commitSource = sourceAtHead(commitPath);
-  const wiring = sourceWiring(tagSource, commitSource);
+  const storeSource = sourceAtHead(storePath);
+  const testSource = sourceAtHead(testPath);
+  const wiring = sourceWiring(tagSource, commitSource, storeSource, testSource);
   const red = assertRed("pre-G65 source", () => {
     if (!wiring.ok) throw new Error(`G65 bounded two-lane admission is absent: ${wiring.missing.join(", ")}`);
     throw new Error("pre-G65 source unexpectedly satisfies the G65 contract");
@@ -205,7 +194,7 @@ if (preChange) {
     status: "red",
     expectedFailure: true,
     sourceRevision: currentRevision(),
-    sourcePaths: [tagPath, commitPath],
+    sourcePaths: [tagPath, commitPath, storePath, testPath],
     red,
   };
   writeReceipt(receiptFile, receipt);
@@ -214,7 +203,9 @@ if (preChange) {
 } else {
   const tagSource = read(tagPath);
   const commitSource = read(commitPath);
-  const wiring = sourceWiring(tagSource, commitSource);
+  const storeSource = read(storePath);
+  const testSource = read(testPath);
+  const wiring = sourceWiring(tagSource, commitSource, storeSource, testSource);
   if (!wiring.ok) {
     const receipt = {
       guard: "SDT-G65 bounded two-lane admission",
@@ -228,8 +219,11 @@ if (preChange) {
     console.error(JSON.stringify(receipt));
     process.exitCode = 1;
   } else {
-    const green = assertAdmissionModel();
-    const redMutants = sourceMutantReceipts(tagSource, commitSource);
+    const green = {
+      status: "green",
+      oracle: "real D1EventStore, real SQLite-backed Tag append, and public header tests",
+    };
+    const redMutants = sourceMutantReceipts(tagSource, commitSource, storeSource, testSource);
     const receipt = {
       guard: "SDT-G65 bounded two-lane admission",
       phase: selfTest ? "self-test" : "post-change",

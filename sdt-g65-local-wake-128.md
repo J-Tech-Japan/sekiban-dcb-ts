@@ -1,10 +1,10 @@
 # SDT-G65 local wake W128
 
-Task: `SDT-G65-LOCAL-WAKE-128`  
-Issue: [J-Tech-Japan/sekiban-dcb-ts#126](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/126)  
-Branch: `claude/sdt-g65-local-wake-w128`  
-Base: `origin/main` at `4687efa5c49951d9966a3785be5fd7b2620c6e4f`  
-Implementation checkpoint: `164f97521c53b530c2dd99800ba7277bdf85182a`  
+Task: `SDT-G65-LOCAL-WAKE-128`
+Issue: [J-Tech-Japan/sekiban-dcb-ts#126](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/126)
+Branch: `claude/sdt-g65-local-wake-w128`
+Base: `origin/main` at `4687efa5c49951d9966a3785be5fd7b2620c6e4f`
+Implementation checkpoint: `164f97521c53b530c2dd99800ba7277bdf85182a`
 Evidence checkpoint before this report commit: `b5eaf23b79e366cab7c07a2215493327be05300b`
 
 This is the deploy-free half only. The branch is pushed. No Wrangler,

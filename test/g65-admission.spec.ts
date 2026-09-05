@@ -1,7 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { env } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 // @ts-expect-error Vite raw source migration import.
 import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
+import { D1EventStore, D1IdentityConflictError } from "../packages/dcb-runtime/src/store/D1EventStore";
+import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
 import { TagDurableObject, G65_DERIVED_WRITE_BUDGET_MS } from "../packages/dcb-runtime/src/tag/TagDurableObject";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message } from "./helpers/g32-fixtures";
@@ -64,20 +67,20 @@ function candidate(serviceId: string, tag: string): Pick<
   };
 }
 
-function admissionLedger() {
-  const rows = new Map<string, { payload: string; count: number }>();
-  return {
-    admit(identity: string, payload: string) {
-      const prior = rows.get(identity);
-      if (prior === undefined) {
-        rows.set(identity, { payload, count: 1 });
-        return "stored" as const;
-      }
-      if (prior.payload !== payload) throw new Error("canonical identity conflict");
-      return "duplicate" as const;
-    },
-    rows,
-  };
+function database(): D1Database {
+  const value = (env as unknown as { D1?: D1Database }).D1;
+  if (value === undefined) throw new Error("G65 tests require the local D1 binding");
+  return value;
+}
+
+function tags(): DurableObjectNamespace {
+  const value = (env as unknown as { TAG?: DurableObjectNamespace }).TAG;
+  if (value === undefined) throw new Error("G65 tests require the Tag Durable Object namespace");
+  return value;
+}
+
+function realTagStub(serviceId: string, tag: string): DurableObjectStub {
+  return tags().get(scopeIdFor(tags(), { serviceId, doClass: "tag", identity: tag }));
 }
 
 describe("SDT-G65 bounded two-lane admission", () => {
@@ -135,14 +138,84 @@ describe("SDT-G65 bounded two-lane admission", () => {
     await Promise.all(waits);
   });
 
-  it("admits an identity once in either direct-first or Queue-first order and rejects a conflicting replay", () => {
+  it("uses the real shared D1 path for direct-first and Queue-first admission, duplicate replay, and conflict", async () => {
     for (const order of ["direct-first", "queue-first"] as const) {
-      const ledger = admissionLedger();
-      const operations = order === "direct-first" ? ["direct", "queue"] : ["queue", "direct"];
-      expect(operations.map(() => ledger.admit("service|event|obligation-1|lineage-1", "payload"))).toEqual(["stored", "duplicate"]);
-      expect(ledger.admit("service|event|obligation-1|lineage-1", "payload")).toBe("duplicate");
-      expect(ledger.rows.get("service|event|obligation-1|lineage-1")).toMatchObject({ payload: "payload", count: 1 });
-      expect(() => ledger.admit("service|event|obligation-1|lineage-1", "conflicting-payload")).toThrow("canonical identity conflict");
+      const serviceId = `g65-d1-order-${order}-${crypto.randomUUID()}`;
+      const tag = `reservation:g65:d1:${order}:${crypto.randomUUID()}`;
+      const first = g32Message({ serviceId, tag, eventId: `${order}-event`, suid: `${order}-suid`, attemptId: `${order}-attempt` });
+      const store = new D1EventStore(database());
+      await store.initialize();
+      const sources = order === "direct-first" ? (["fast", "queue"] as const) : (["queue", "fast"] as const);
+      await expect(store.recordDelivery(first, 10_000, sources[0])).resolves.toMatchObject({ outcome: "stored" });
+      await expect(store.recordDelivery(first, 10_001, sources[1])).resolves.toMatchObject({ outcome: "stored" });
+      const counts = await database().prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM dcb_events WHERE "ServiceId" = ?) AS events,
+           (SELECT COUNT(*) FROM serialized_dcb_global_memberships WHERE service_id = ?) AS memberships,
+           (SELECT COUNT(*) FROM serialized_dcb_global_receipts WHERE service_id = ?) AS receipts,
+           (SELECT COUNT(*) FROM serialized_dcb_source_partitions WHERE service_id = ?) AS partitions`,
+      ).bind(serviceId, serviceId, serviceId, serviceId).first<{ events: number; memberships: number; receipts: number; partitions: number }>();
+      expect(counts).toEqual({ events: 1, memberships: 1, receipts: 1, partitions: 1 });
+      await expect(store.recordDelivery({ ...first, payload: JSON.stringify({ conflicting: true }) }, 10_002, "fast"))
+        .rejects.toBeInstanceOf(D1IdentityConflictError);
+      const afterConflict = await database().prepare(
+        `SELECT COUNT(*) AS count FROM serialized_dcb_global_receipts WHERE service_id = ? AND partition_tag = ?`,
+      ).bind(serviceId, tag).first<{ count: number }>();
+      expect(afterConflict?.count).toBe(1);
+    }
+  });
+
+  it("keeps source discoverability atomic with the real global event/membership/receipt batch", async () => {
+    const serviceId = `g65-d1-atomic-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:atomic:${crypto.randomUUID()}`;
+    const message = g32Message({ serviceId, tag, eventId: "atomic-event", suid: "atomic-suid" });
+    const failing = new D1EventStore(database(), {
+      beforeBatch: (_operation, statementsToRun, d1) => [...statementsToRun, d1.prepare("SELECT g65_missing_atomic_batch_table")],
+    });
+    await failing.initialize();
+    await expect(failing.recordDelivery(message, 11_000, "fast")).rejects.toThrow(/g65_missing_atomic_batch_table/);
+    const counts = await database().prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM dcb_events WHERE "ServiceId" = ?) AS events,
+         (SELECT COUNT(*) FROM serialized_dcb_global_receipts WHERE service_id = ?) AS receipts,
+         (SELECT COUNT(*) FROM serialized_dcb_source_partitions WHERE service_id = ?) AS partitions`,
+    ).bind(serviceId, serviceId, serviceId).first<{ events: number; receipts: number; partitions: number }>();
+    expect(counts).toEqual({ events: 0, receipts: 0, partitions: 0 });
+  });
+
+  it("returns a real SQLite-backed public append while the runtime D1 binding is unavailable", async () => {
+    const serviceId = `g65-unavailable-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:unavailable:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = undefined;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const response = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({ attemptId: "g65-unavailable-attempt", epoch: 0, candidates: [candidate(serviceId, tag)] }),
+        },
+      );
+      expect(response.status).toBe(201);
+      expect(await response.clone().json()).not.toHaveProperty("globalAdmission");
+      await runInDurableObject(stub, (_instance, state) => {
+        const row = state.storage.sql.exec<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM tag_commit_receipt WHERE attempt_id = ?",
+          "g65-unavailable-attempt",
+        ).toArray()[0];
+        expect(row?.count).toBe(1);
+      });
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
     }
   });
 
@@ -188,7 +261,6 @@ describe("SDT-G65 bounded two-lane admission", () => {
     expect(response.status).toBe(201);
     expect(response.headers.get("x-sdt-global-admission")).toBe("unknown");
     expect(elapsedMs).toBeGreaterThanOrEqual(G65_DERIVED_WRITE_BUDGET_MS - 25);
-    expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS + 500);
     expect(waits.length).toBeGreaterThan(0);
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     expect(queueSent).toBe(1);

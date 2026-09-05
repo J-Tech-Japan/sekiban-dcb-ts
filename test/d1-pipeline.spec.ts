@@ -280,6 +280,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_completeness_scanner_health",
       "serialized_dcb_delivery_incidents",
       "serialized_dcb_event_arrivals",
+      "serialized_dcb_g65_admission_attempts",
       "serialized_dcb_global_memberships",
       "serialized_dcb_global_receipts",
       "serialized_dcb_hop_measurements",

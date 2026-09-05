@@ -54,6 +54,7 @@ import {
 } from "./TagSqlSchema";
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
 import { recordDurableHop, type G60DurableHopObservation } from "../diagnostics/G60DurableHop";
+import { recordG65AdmissionAttempt, type G65AdmissionOutcome } from "../diagnostics/G65Admission";
 import { D1EventStore } from "../store/D1EventStore";
 
 const REPAIR_FACTS_KEY = "repair-facts";
@@ -1495,10 +1496,17 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * Registers the enumerable source partition from the append path, before
-   * any transport handoff. Queue arrivals, sink receipts, and test schedules
-   * are intentionally not inputs to this authority.
+   * Registers the enumerable source partition as an observation-only
+   * post-commit task. Queue arrivals, sink receipts, and test schedules are
+   * intentionally not inputs to this authority. The successful D1 admission
+   * batch also upserts this row atomically with the event/membership/receipt;
+   * that is the recovery path when this best-effort post-commit task fails.
    */
+  private scheduleSourcePartitionRegistration(tag: string, serviceId: string): void {
+    const registration = this.registerSourcePartition(tag, serviceId).catch(() => undefined);
+    this.ctx.waitUntil(registration);
+  }
+
   private async registerSourcePartition(tag: string, serviceId: string): Promise<void> {
     // G44 is the D1 global-array implementation, not a rollout or
     // mixed-version mode. A non-G32 D1 harness has no global `dcb_events`
@@ -2868,14 +2876,12 @@ export class TagDurableObject implements DurableObject {
           (result.status === 201 || result.status === 200) &&
           serviceId !== null && serviceId.length > 0
         ) {
-          try {
-            await this.registerSourcePartition(tag, serviceId);
-          } catch {
-            // The local append is durable, so a caller can replay its exact
-            // attempt to converge registration. Do not report it as globally
-            // enumerable before this source-side authority write succeeds.
-            return error(503, "source_partition_registry_unavailable", "Source partition registration is unavailable");
-          }
+          // Source discoverability must not turn a durable local acceptance
+          // into a D1-dependent response. The post-commit registration is
+          // retried by the existing Queue/global admission path when it fails;
+          // G44 remains fail-closed until a source obligation is registered
+          // and has a joined global receipt.
+          this.scheduleSourcePartitionRegistration(tag, serviceId);
         }
         const response = json(result.body, result.status);
         if (
@@ -3089,6 +3095,8 @@ export class TagDurableObject implements DurableObject {
     preloadedRows?: readonly DownstreamOutboxMessage[],
   ): Promise<GlobalAdmissionStatus> {
     let rows = preloadedRows;
+    const admissionStartedAt = Date.now();
+    const completedAtByEventId = new Map<string, number>();
     const attempt = await this.boundedDerivedWrite(async () => {
       if (rows === undefined) {
         const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
@@ -3105,8 +3113,29 @@ export class TagDurableObject implements DurableObject {
         if (outcome.outcome !== "stored") {
           throw new Error(`global admission rejected:${outcome.outcome}`);
         }
+        completedAtByEventId.set(row.eventId, Date.now());
       }
     });
+    const admissionFinishedAt = Date.now();
+    const admissionOutcome: G65AdmissionOutcome = attempt.status === "timeout"
+      ? "unknown"
+      : attempt.status === "failed"
+        ? "not-admitted"
+        : "admitted";
+    for (const row of rows ?? []) {
+      this.scheduleG65AdmissionAttempt({
+        serviceId: row.serviceId,
+        eventId: row.eventId,
+        suid: row.suid,
+        attemptId: row.attemptId,
+        partitionTag: row.tag,
+        deliverySource: "fast",
+        admissionStartedAt,
+        admissionFinishedAt,
+        outcome: completedAtByEventId.has(row.eventId) ? "admitted" : admissionOutcome,
+        globalCompletionObservedAt: completedAtByEventId.get(row.eventId) ?? null,
+      });
+    }
     if (attempt.status === "timeout") {
       console.warn("global_admission_before_response", {
         status: "unknown",
@@ -3124,6 +3153,12 @@ export class TagDurableObject implements DurableObject {
       return "not-admitted";
     }
     return "admitted";
+  }
+
+  private scheduleG65AdmissionAttempt(input: Parameters<typeof recordG65AdmissionAttempt>[1]): void {
+    const database = this.env.D1;
+    if (database === undefined) return;
+    this.ctx.waitUntil(recordG65AdmissionAttempt(database, input).catch(() => undefined));
   }
 
   /**
