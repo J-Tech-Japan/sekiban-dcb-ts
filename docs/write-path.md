@@ -7,10 +7,13 @@ contract, or the G44 safe-lane fence.
 
 ## Durable acceptance and derived work
 
-The Tag Durable Object first commits the event, its outbox obligation, and the
-local receipt in the same durable mutation. Only after that commit may derived
-work start. The commit response is therefore an acknowledgement of durable
-acceptance, not proof that every downstream view is already visible.
+For an accepted append, the Tag Durable Object commits the event, its outbox
+obligation, and the local receipt in the same durable mutation. The only
+pre-append exception is the new-partition registration described below; once
+that bounded authority check succeeds, all derived delivery work starts only
+after the local durable mutation. The commit response is therefore an
+acknowledgement of durable acceptance, not proof that every downstream view is
+already visible.
 
 The existing direct unsafe doorbell remains the low-latency lane. SDT-G65 bounds
 the direct attempt with the named `G65_DERIVED_WRITE_BUDGET_MS = 300` constant.
@@ -37,34 +40,38 @@ durable event and outbox remain the recovery authority, so a crash after the
 response or a partial downstream fan-out is recovered by the existing Queue
 path and existing idempotent delivery logic.
 
-Source-partition discoverability has the same failure boundary as global
-admission. A successful `recordDelivery` D1 batch upserts the source partition
-alongside the global event, membership, and receipt. The append-time D1
-schema-probe/insert is a post-commit, non-blocking derived obligation with
-three bounded attempts, each using the existing 300 ms derived-write budget
-and short backoff. The Tag SQLite transaction also persists a
-`tag_source_partition_registration` obligation, and the Tag alarm retries that
-registration independently of Queue delivery or global admission after a
-crash/exhaustion. If D1 is missing, fails, or hangs, the local SQLite commit
-still returns.
+Source-partition discoverability has one explicit first-write carve-out. Before
+the first durable append on a brand-new `(serviceId, tag)` partition, the Tag
+Durable Object runs `registerSourcePartition` under the same documented 300 ms
+derived-write budget. This is the only derived write allowed to gate a commit
+response, because the G44 completeness domain cannot safely certify a source it
+has never been told about. If registration fails, throws, or hangs, the append
+returns HTTP 503 with code `partition_registration_unavailable` and
+`retryable: true`; no Tag event, outbox obligation, or local receipt is written,
+and the caller must retry. It is never represented as the 504
+`unknown_outcome` admission result.
 
-The current two-store topology has an explicit remaining design boundary: an
-independent scanner can enumerate only the global D1 source-partition table.
-While a brand-new partition's registration is absent, that scanner cannot
-distinguish “no partition exists” from “a committed source is not yet
-discoverable.” This checkpoint does not claim that the absence is itself a
-fail-closed proof; the unrelated-partition gap case is routed for the required
-source-universe design ruling. Delivery/admission must not manufacture or
-silently substitute that source authority. Until that ruling/proof exists, G44
-safe-lane acceptance is not claimed for the missing-partition case.
+After the local durable registration marker is established, every later append
+on that partition treats registration as an idempotent no-op and never awaits or
+consults D1 for that fact. Therefore a registered-tag commit succeeds even when
+the runtime D1 binding is entirely unavailable; its durable local response has
+the unchanged V1 body and reports `x-sdt-global-admission: not-admitted` when
+the bounded shared admission attempt cannot run. The existing outbox obligation
+and Queue remain the recovery path, and Queue delivery later advances the
+registered partition's obligation sequence through the shared
+`recordDelivery` transaction. G44 still requires the global source registry,
+membership, receipt, and completeness proof; this carve-out does not weaken or
+substitute that fence.
 
 ## Ordering and safety invariants
 
 The required order is:
 
-1. durable Tag event, outbox obligation, and local receipt;
-2. schedule the bounded source-partition registration after the durable commit;
-3. bounded direct unsafe attempt and bounded shared D1 admission attempt;
+1. for a brand-new partition only, bounded source registration before the first
+   durable append; refusal writes no local event;
+2. durable Tag event, outbox obligation, and local receipt;
+3. bounded direct unsafe attempt and bounded shared D1 admission attempt for an
+   accepted append;
 4. the Queue drain is started before the handler returns, but its send,
    acknowledgement, retry, and DLQ work is not awaited by the response;
 5. commit response;
@@ -135,3 +142,20 @@ SDT-G65. It is not a claim that D1, the receiver, or the platform will always
 finish within the budget. Crash, duplicate, partial-fanout, D1-outage, and
 sustained-write cases must retain the durable outbox/Queue recovery path and
 must not weaken ordering, reservation/fence, or G44 proof obligations.
+
+## AC5 deployed cohort plan for the source-universe carve-out
+
+The later same-arm AC5 cohort must record both D1-unavailable behaviors as
+distinct cases rather than treating them as one generic outage:
+
+| Case | Expected public result | Required evidence |
+| --- | --- | --- |
+| Brand-new tag, registration binding unavailable or hanging | Typed retryable `503 partition_registration_unavailable`; no event/obligation/receipt | bounded refusal duration, response body, and zero local event rows |
+| Already-registered tag, D1 unavailable during commit | Durable commit succeeds with unchanged V1 body and `x-sdt-global-admission: not-admitted` (or `unknown` only for a bounded admission timeout) | commit response timing, header, persisted local event/outbox/receipt, explicit RYOW miss, and Queue-after-restore exactly-once recovery |
+
+The cohort must preserve the cold first sample, save raw receipts immediately,
+and report the two rows separately. The first case is a refused write that the
+caller may retry; it is not a censored 504. The second case is accepted local
+durability with downstream admission deferred; it must not be misreported as a
+registration failure. All safe-lane/G44, Queue ordering, reservation/fence,
+V1-body, and 5,000 ms contracts remain unchanged.

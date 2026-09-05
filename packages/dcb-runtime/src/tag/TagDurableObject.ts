@@ -225,6 +225,16 @@ interface FenceGateObservation {
 
 class AppendTransactionFault extends Error {}
 
+class PartitionRegistrationUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("partition_registration_unavailable");
+    this.name = "PartitionRegistrationUnavailableError";
+    this.cause = cause;
+  }
+
+  readonly cause: unknown;
+}
+
 /** A mismatched immutable tag identity is a typed 409, not an internal error. */
 export class TagIdentityConflict extends Error {
   constructor() {
@@ -240,8 +250,8 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function error(status: number, code: string, message: string): Response {
-  return json({ error: message, code }, status);
+function error(status: number, code: string, message: string, retryable = false): Response {
+  return json(retryable ? { error: message, code, retryable: true } : { error: message, code }, status);
 }
 
 function withGlobalAdmission(response: Response, status: GlobalAdmissionStatus): Response {
@@ -1498,26 +1508,54 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * Registers the enumerable source partition as an observation-only
-   * post-commit task. Queue arrivals, sink receipts, and test schedules are
-   * intentionally not inputs to this authority. The successful D1 admission
-   * batch also upserts this row atomically with the event/membership/receipt;
-   * that is the recovery path when this bounded best-effort post-commit task
-   * exhausts its retries.
+   * The first append on a Tag must make its source partition enumerable before
+   * the local event transaction starts. Once the local marker is registered,
+   * later appends never consult or await D1 for this fact; Queue admission is
+   * responsible for advancing the registered obligation sequence.
    */
-  private scheduleSourcePartitionRegistration(tag: string, serviceId: string): void {
-    const registration = this.retrySourcePartitionRegistration(tag, serviceId).catch((error) => {
+  private async ensureSourcePartitionBeforeFirstAppend(tag: string, serviceId: string): Promise<"existing" | "newly-registered"> {
+    if (this.sourcePartitionRegistrationStatus(tag, serviceId) === "registered") return "existing";
+    const attempt = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId, 0, true));
+    if (attempt.status !== "completed") {
+      throw new PartitionRegistrationUnavailableError(
+        attempt.status === "timeout" ? "timeout" : attempt.error,
+      );
+    }
+    await this.markSourcePartitionRegistration(tag, serviceId, "registered", undefined, undefined, 0);
+    return "newly-registered";
+  }
+
+  private sourcePartitionRegistrationStatus(tag: string, serviceId: string): string | undefined {
+    const sql = this.sqlStorage();
+    if (sql === undefined) return undefined;
+    const row = sql.exec<SqlRow>(`
+      SELECT status
+        FROM tag_source_partition_registration
+       WHERE service_id = ? AND partition_tag = ?
+    `, serviceId, tag).toArray()[0];
+    return row === undefined ? undefined : sqlString(row.status, "tag_source_partition_registration.status");
+  }
+
+  /**
+   * Refreshes the already-authorized source row with the committed local
+   * obligation sequence without putting D1 back on the response path. The
+   * first-append authority check above is the only registration operation that
+   * may refuse a commit; this post-append watermark is Queue/retry recovery
+   * work and is deliberately handed to waitUntil.
+   */
+  private scheduleSourcePartitionWatermark(tag: string, serviceId: string): void {
+    const refresh = this.retrySourcePartitionRegistration(tag, serviceId, true).catch((failure) => {
       console.warn("source_partition_registration", {
         status: "degraded",
         reason: "source_partition_registration_exhausted",
         attempts: G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
-        error: String(error),
+        error: String(failure),
       });
     });
-    this.ctx.waitUntil(registration);
+    this.ctx.waitUntil(refresh);
   }
 
-  private async retrySourcePartitionRegistration(tag: string, serviceId: string): Promise<void> {
+  private async retrySourcePartitionRegistration(tag: string, serviceId: string, preserveRegistered = false): Promise<void> {
     let lastFailure: string | undefined;
     for (let attempt = 1; attempt <= G65_SOURCE_REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
       const result = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId));
@@ -1530,13 +1568,15 @@ export class TagDurableObject implements DurableObject {
         await new Promise<void>((resolve) => setTimeout(resolve, G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * attempt));
       }
     }
-    await this.markSourcePartitionRegistration(
-      tag,
-      serviceId,
-      "pending",
-      lastFailure ?? "unknown",
-      Date.now() + G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
-    );
+    if (!preserveRegistered || this.sourcePartitionRegistrationStatus(tag, serviceId) !== "registered") {
+      await this.markSourcePartitionRegistration(
+        tag,
+        serviceId,
+        "pending",
+        lastFailure ?? "unknown",
+        Date.now() + G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
+      );
+    }
     throw new Error(`source_partition_registration_failed:${lastFailure ?? "unknown"}`);
   }
 
@@ -1546,42 +1586,64 @@ export class TagDurableObject implements DurableObject {
     status: "pending" | "registered",
     lastError?: string,
     nextAttemptAt?: number,
+    lastObligationSequence = 0,
   ): Promise<void> {
     await this.ctx.storage.transaction(async (txn) => {
       const sql = this.sqlStorage();
       if (sql === undefined) return;
       sql.exec(`
-        UPDATE tag_source_partition_registration
-           SET status = ?,
-               next_attempt_at = ?,
-               attempt_count = CASE WHEN ? = 'registered' THEN 0 ELSE attempt_count + 1 END,
-               last_error = ?
-         WHERE service_id = ? AND partition_tag = ?
-      `, status, status === "pending" ? (nextAttemptAt ?? Date.now()) : null,
-      status, status === "pending" ? (lastError ?? null) : null, serviceId, tag);
+        INSERT INTO tag_source_partition_registration
+          (service_id, partition_tag, last_obligation_sequence, status, next_attempt_at, attempt_count, last_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (service_id, partition_tag) DO UPDATE SET
+          last_obligation_sequence = MAX(
+            tag_source_partition_registration.last_obligation_sequence,
+            excluded.last_obligation_sequence
+          ),
+          status = excluded.status,
+          next_attempt_at = excluded.next_attempt_at,
+          attempt_count = excluded.attempt_count,
+          last_error = excluded.last_error
+      `, serviceId, tag, lastObligationSequence, status,
+      status === "pending" ? (nextAttemptAt ?? Date.now()) : null,
+      status === "pending" ? 1 : 0,
+      status === "pending" ? (lastError ?? null) : null);
       const dueAt = this.nextSqlAlarmDue();
       if (dueAt === null) await txn.deleteAlarm();
       else await txn.setAlarm(dueAt);
     });
   }
 
-  private async registerSourcePartition(tag: string, serviceId: string): Promise<void> {
+  private async registerSourcePartition(
+    tag: string,
+    serviceId: string,
+    requestedSequence?: number,
+    requireAuthority = false,
+  ): Promise<void> {
     // G44 is the D1 global-array implementation, not a rollout or
     // mixed-version mode. A non-G32 D1 harness has no global `dcb_events`
     // array at all; every actual G32/G44 D1-backed Tag commit registers its
     // partition, and a partially migrated G32 array fails closed below.
-    if (!(await this.hasG44GlobalArrayAuthority())) return;
     const database = this.env.D1;
-    if (database === undefined) throw new Error("g44_source_partition_registry_binding_lost");
+    if (database === undefined) {
+      throw new Error("g44_source_partition_registry_binding_lost");
+    }
+    if (!(await this.hasG44GlobalArrayAuthority())) {
+      if (requireAuthority) throw new Error("g44_source_partition_registry_requires_global_array");
+      return;
+    }
     const sql = this.sqlStorage();
     if (sql === undefined) {
       throw new Error("g44_source_partition_registry_requires_sql_tag");
     }
-    const max = sql.exec<SqlRow>(
-      "SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation WHERE service_id = ?",
-      serviceId,
-    ).toArray()[0];
-    const sequence = max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence");
+    const max = requestedSequence === undefined
+      ? sql.exec<SqlRow>(
+        "SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation WHERE service_id = ?",
+        serviceId,
+      ).toArray()[0]
+      : undefined;
+    const sequence = requestedSequence ??
+      (max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence"));
     if (sequence === undefined) return;
     await database.prepare(
       `INSERT INTO serialized_dcb_source_partitions
@@ -1984,10 +2046,22 @@ export class TagDurableObject implements DurableObject {
           tag_source_partition_registration.last_obligation_sequence,
           excluded.last_obligation_sequence
         ),
-        status = 'pending',
-        next_attempt_at = excluded.next_attempt_at,
-        attempt_count = 0,
-        last_error = NULL
+        status = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN 'registered'
+          ELSE 'pending'
+        END,
+        next_attempt_at = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN NULL
+          ELSE excluded.next_attempt_at
+        END,
+        attempt_count = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN 0
+          ELSE 0
+        END,
+        last_error = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN NULL
+          ELSE NULL
+        END
     `, serviceId, tag, sequence, Date.now());
   }
 
@@ -2955,6 +3029,9 @@ export class TagDurableObject implements DurableObject {
       // not provide `storage.sql`; it is never a second persisted record
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
+        if (serviceId !== null && serviceId.length > 0) {
+          await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId);
+        }
         const result = await this.appendSql(tag, input, serviceId);
         for (const fact of result.hopFacts ?? []) {
           this.scheduleDurableHop({
@@ -2976,17 +3053,8 @@ export class TagDurableObject implements DurableObject {
             observedAt: fact.obligationWrittenAt,
           });
         }
-        if (
-          (result.status === 201 || result.status === 200) &&
-          serviceId !== null && serviceId.length > 0
-        ) {
-          // Source discoverability must not turn a durable local acceptance
-          // into a D1-dependent response. The post-commit registration is
-          // The bounded post-commit registration is observation-only. If it
-          // exhausts, the durable Queue/global admission path remains the
-          // recovery authority; G44 stays fail-closed until a source
-          // obligation is registered and has a joined global receipt.
-          this.scheduleSourcePartitionRegistration(tag, serviceId);
+        if ((result.status === 201 || result.status === 200) && serviceId !== null && serviceId.length > 0) {
+          this.scheduleSourcePartitionWatermark(tag, serviceId);
         }
         const response = json(result.body, result.status);
         if (
@@ -3134,6 +3202,9 @@ export class TagDurableObject implements DurableObject {
       }
       return response;
     } catch (failure) {
+      if (failure instanceof PartitionRegistrationUnavailableError) {
+        return error(503, "partition_registration_unavailable", "Source partition registration is unavailable; retry the commit.", true);
+      }
       if (failure instanceof AppendTransactionFault) {
         return error(
           503,

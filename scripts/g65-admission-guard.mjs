@@ -74,17 +74,30 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
   if (directCalls.length !== 2) missing.push(`two direct attempts (found ${directCalls.length})`);
   if (admissionCalls.length !== 2) missing.push(`two synchronous admission attempts (found ${admissionCalls.length})`);
   if (!append.includes("const result = await this.appendSql(tag, input, serviceId);")) missing.push("durable SQLite append before derived work");
-  if (!append.includes("this.scheduleSourcePartitionRegistration(tag, serviceId)")) missing.push("post-commit source registry scheduling");
-  if (!tagSource.includes(`G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3`)) missing.push("bounded source registry retries");
-  if (!tagSource.includes("retrySourcePartitionRegistration") ||
-    !tagSource.includes("this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId))")) {
-    missing.push("bounded source registry attempt");
+  if (!tagSource.includes("ensureSourcePartitionBeforeFirstAppend")) missing.push("first-append source registration gate");
+  if (!tagSource.includes("sourcePartitionRegistrationStatus")) missing.push("durable source-registration status lookup");
+  if (!tagSource.includes("new PartitionRegistrationUnavailableError")) missing.push("typed first-registration failure");
+  if (!tagSource.includes('error(503, "partition_registration_unavailable"') || !tagSource.includes("true)")) {
+    missing.push("retryable partition-registration response");
   }
-  if (append.includes("await this.registerSourcePartition(tag, serviceId)")) missing.push("synchronous source registry dependency");
+  if (!tagSource.includes("G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3") ||
+    !tagSource.includes("retrySourcePartitionRegistration") ||
+    !tagSource.includes("this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId))")) {
+    missing.push("bounded source registry recovery retry");
+  }
+  const registrationIndex = append.indexOf("await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId);");
+  const appendSqlIndex = append.indexOf("const result = await this.appendSql(tag, input, serviceId);");
+  if (!(registrationIndex >= 0 && registrationIndex < appendSqlIndex)) {
+    missing.push("first source registration before durable append");
+  }
+  if (append.includes("await this.registerSourcePartition(tag, serviceId)")) missing.push("unbounded direct source registry dependency");
   if (!append.includes("const response = json(result.body, result.status);")) missing.push("durable response construction");
   if (!append.includes("return response;")) missing.push("response returned after derived attempts");
   if (!append.includes("this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows)")) {
     missing.push("Queue fallback retained after derived attempts");
+  }
+  if (!append.includes("this.scheduleSourcePartitionWatermark(tag, serviceId)")) {
+    missing.push("post-append source watermark is scheduled without gating response");
   }
 
   if (!direct.includes("this.boundedDerivedWrite") || !direct.includes("this.deliverDirectRows(rows)")) {
@@ -121,6 +134,9 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     "tag_source_partition_registration",
     "markSourcePartitionRegistration",
     "sourceRegistrationDue",
+    "requestedSequence",
+    "requireAuthority",
+    "g44_source_partition_registry_binding_lost",
   ]) {
     if (!tagSource.includes(token)) missing.push(`durable source-registration retry: ${token}`);
   }
@@ -132,9 +148,13 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     "serialized_dcb_source_partitions",
     "runtime.env.D1 = undefined",
     "state.storage.sql",
-    "retries source discoverability from durable Tag state after registration exhaustion without delivery",
+    "partition_registration_unavailable",
+    "refuses a first append when source-partition registration hangs",
+    "commits a registered tag with D1 unavailable and reports not-admitted",
+    "does not await registration again for an already-registered tag",
+    "expect(rows).toEqual({ events: 0, receipts: 0 })",
     "x-sdt-global-admission",
-    "not.toHaveProperty(\"globalAdmission\")",
+    "expect(failed.body).toEqual(admitted.body)",
   ]) {
     if (!testSource.includes(token)) missing.push(`real G65 oracle: ${token}`);
   }
