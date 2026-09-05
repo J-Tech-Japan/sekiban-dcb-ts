@@ -3055,6 +3055,8 @@ export class TagDurableObject implements DurableObject {
       // not provide `storage.sql`; it is never a second persisted record
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
+        const sourcePartitionWasRegistered = serviceId !== null && serviceId.length > 0 &&
+          this.sourcePartitionRegistrationStatus(tag, serviceId) === "registered";
         const sourcePartitionRegistration = serviceId !== null && serviceId.length > 0
           ? await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId)
           : "unconfigured" as const;
@@ -3102,10 +3104,19 @@ export class TagDurableObject implements DurableObject {
           const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
             ? await this.directDeliveryBeforeResponse(tag, serviceId)
             : undefined;
-          withGlobalAdmission(
-            response,
-            await this.globalAdmissionBeforeResponse(tag, serviceId, directRows),
-          );
+          // An explicitly unconfigured completeness store is the pre-G65
+          // local composition: it has no global-admission authority to
+          // consult. Keep the committed response and the ordinary Queue
+          // fallback on that path without introducing a synchronous D1
+          // attempt merely because a non-authoritative local D1 binding is
+          // present. Configured G44 stores retain the bounded admission
+          // attempt and header contract above.
+          if (sourcePartitionRegistration !== "unconfigured" || sourcePartitionWasRegistered) {
+            withGlobalAdmission(
+              response,
+              await this.globalAdmissionBeforeResponse(tag, serviceId, directRows),
+            );
+          }
           this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
         }
         return response;

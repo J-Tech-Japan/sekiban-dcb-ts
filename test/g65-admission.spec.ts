@@ -285,6 +285,86 @@ describe("SDT-G65 bounded two-lane admission", () => {
     }
   });
 
+  it("does not synchronously probe global admission for an unconfigured store", async () => {
+    const serviceId = `g65-unconfigured-admission-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:unconfigured-admission:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    let originalQueue: Queue<DownstreamOutboxMessage> | undefined;
+    let originalAutoDrain: string | undefined;
+    let originalDirectDoorbell: string | undefined;
+    let originalDoorbell: unknown;
+    let admissionInitializeCalls = 0;
+    let queueSends = 0;
+    const unconfiguredD1 = {
+      prepare: (sql: string) => {
+        if (sql.includes("SELECT 1 AS migration_binding")) admissionInitializeCalls += 1;
+        if (sql.includes('SELECT "EventDigest" FROM dcb_events')) {
+          return { all: async () => { throw new Error("no such table: dcb_events"); } };
+        }
+        throw new Error("unconfigured completeness store must not be used for admission");
+      },
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as {
+        env: {
+          D1?: D1Database;
+          AUTO_DRAIN_OUTBOX?: string;
+          DIRECT_DOORBELL?: string;
+          DOWNSTREAM_DOORBELL?: unknown;
+          DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>;
+        };
+      };
+      originalQueue = runtime.env.DOWNSTREAM_QUEUE;
+      originalAutoDrain = runtime.env.AUTO_DRAIN_OUTBOX;
+      originalDirectDoorbell = runtime.env.DIRECT_DOORBELL;
+      originalDoorbell = runtime.env.DOWNSTREAM_DOORBELL;
+      runtime.env.D1 = unconfiguredD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "true";
+      runtime.env.DIRECT_DOORBELL = "false";
+      runtime.env.DOWNSTREAM_DOORBELL = undefined;
+      runtime.env.DOWNSTREAM_QUEUE = {
+        send: async () => { queueSends += 1; },
+      } as unknown as Queue<DownstreamOutboxMessage>;
+    });
+    try {
+      const response = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({
+            attemptId: "g65-unconfigured-admission-attempt",
+            epoch: 0,
+            candidates: [candidate(serviceId, tag, "g65-unconfigured-admission")],
+          }),
+        },
+      );
+      expect(response.status).toBe(201);
+      expect(response.headers.get("x-sdt-global-admission")).toBeNull();
+      expect(admissionInitializeCalls).toBe(0);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(queueSends).toBeGreaterThan(0);
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as {
+          env: {
+            D1?: D1Database;
+            AUTO_DRAIN_OUTBOX?: string;
+            DIRECT_DOORBELL?: string;
+            DOWNSTREAM_DOORBELL?: unknown;
+            DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>;
+          };
+        };
+        runtime.env.D1 = originalD1;
+        runtime.env.AUTO_DRAIN_OUTBOX = originalAutoDrain;
+        runtime.env.DIRECT_DOORBELL = originalDirectDoorbell;
+        runtime.env.DOWNSTREAM_DOORBELL = originalDoorbell;
+        runtime.env.DOWNSTREAM_QUEUE = originalQueue;
+      });
+    }
+  });
+
   it("refuses a first append when source-partition registration hangs", async () => {
     const serviceId = `g65-source-probe-hang-${crypto.randomUUID()}`;
     const tag = `reservation:g65:source-probe-hang:${crypto.randomUUID()}`;
