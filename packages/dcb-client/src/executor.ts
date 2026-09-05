@@ -534,15 +534,19 @@ export function createSekibanExecutor(
       }
       if (result.status === "discarded") {
         if (result.decision.kind === "none") return { kind: "noop", attempts: result.attempts, reason: result.decision.reason };
+        const details = result.decision.kind === "reject" && typeof result.decision.details === "string"
+          ? result.decision.details
+          : undefined;
         return {
           kind: "rejected",
           attempts: result.attempts,
           error: result.decision.kind === "reject" ? result.decision.reason : "Command was rejected",
-          code: result.decision.kind === "reject" ? result.decision.code : "command_rejected",
+          code: result.decision.kind === "reject" ? details ?? result.decision.code : "command_rejected",
         };
       }
-      if (result.status === "rejected" && result.error !== undefined) {
-        const conflict = lastResponse !== undefined && isHttpResult(lastResponse) && (lastResponse.status === 409 || stringField(lastResponse.body, "code") === "consistency_conflict");
+      if (result.status === "rejected") {
+        const conflict = result.error !== undefined && lastResponse !== undefined && isHttpResult(lastResponse)
+          && (lastResponse.status === 409 || stringField(lastResponse.body, "code") === "consistency_conflict");
         if (conflict) {
           return {
             kind: "conflict",
@@ -553,7 +557,18 @@ export function createSekibanExecutor(
             conflicts: conflictDetails(lastResponse),
           };
         }
-        return { kind: "rejected", attempts: result.attempts, error: errorText(result.error), code: stringField(result.error, "code") };
+        if (result.error !== undefined) {
+          return { kind: "rejected", attempts: result.attempts, error: errorText(result.error), code: stringField(result.error, "code") };
+        }
+        const details = result.decision.kind === "reject" && typeof result.decision.details === "string"
+          ? result.decision.details
+          : undefined;
+        return {
+          kind: "rejected",
+          attempts: result.attempts,
+          error: result.decision.kind === "reject" ? result.decision.reason : "Command was rejected",
+          code: result.decision.kind === "reject" ? details ?? result.decision.code : "command_rejected",
+        };
       }
       if (result.status === "unknown") return { kind: "timeout", attempts: result.attempts, code: "unknown_outcome", error: errorText(result.error) };
       return { kind: "rejected", attempts: result.attempts, error: `Command ${command.id} was rejected`, code: "command_rejected" };

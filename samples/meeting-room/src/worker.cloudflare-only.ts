@@ -22,7 +22,7 @@ import {
   type GlobalCompletenessCoverage,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
-import { executeMeetingRoomCommand } from "./transport";
+import { executeMeetingRoomCommand, parseMeetingRoomCommandRequest } from "./transport";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import {
   catchUpMeetingRoomMaterializedViews,
@@ -334,8 +334,14 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
   }
   if (request.method !== "POST") return json({ error: "Command route requires POST", code: "validation_error" }, 400);
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
-  let input: unknown;
-  try { input = await request.json(); } catch { return json({ error: "Command request must be JSON", code: "validation_error" }, 400); }
+  let body: unknown;
+  try { body = await request.json(); } catch { return json({ error: "Command request must be JSON", code: "validation_error" }, 400); }
+  let commandRequest: ReturnType<typeof parseMeetingRoomCommandRequest>;
+  try {
+    commandRequest = parseMeetingRoomCommandRequest(body);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Command executor options were invalid", code: "validation_error" }, 400);
+  }
   // `runtimeFetch` is an in-isolate call, so its synthetic Request does not
   // inherit the public ingress CF-Ray.  Preserve that provider-owned identity
   // only for observation: CommitWorker uses it to emit the existing
@@ -347,7 +353,11 @@ async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: Exe
     fetch: (inputValue: RequestInfo | URL, init?: RequestInit) =>
       runtimeFetch(runtimeRequestWithIngressRay(inputValue, init, ingressRay), env, ctx),
   };
-  const result = await executeMeetingRoomCommand(commandId, input, { RUNTIME: commandRuntime, localRuntime: commandRuntime });
+  const result = await executeMeetingRoomCommand(commandId, commandRequest.input, {
+    RUNTIME: commandRuntime,
+    localRuntime: commandRuntime,
+    serviceId: serviceIdentity(env),
+  }, commandRequest.options);
   return resultResponse(result);
 }
 

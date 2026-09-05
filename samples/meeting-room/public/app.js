@@ -26,6 +26,72 @@ const roomQueryState = document.querySelector("#room-query-state");
 const roomQueryHead = document.querySelector("#room-query-head");
 const roomQueryResult = document.querySelector("#room-query-result");
 
+// The browser keeps only portable, JSON-safe projector snapshots.  A commit
+// response is authoritative for its per-tag heads; a list/query read head is
+// the fallback observed head when the UI learned the state through a read.
+const portableSnapshots = new Map();
+
+function snapshotKey(projectorId, tag) {
+  return `${projectorId}:${tag}`;
+}
+
+function rememberSnapshot(snapshot) {
+  if (typeof snapshot?.projectorId !== "string" || typeof snapshot?.tag !== "string") return;
+  if (typeof snapshot.head !== "string" && snapshot.head !== null) return;
+  if (typeof snapshot.exists !== "boolean" || typeof snapshot.state !== "object" || snapshot.state === null) return;
+  portableSnapshots.set(snapshotKey(snapshot.projectorId, snapshot.tag), Object.freeze({ ...snapshot }));
+}
+
+function knownSnapshot(projectorId, tag) {
+  return portableSnapshots.get(snapshotKey(projectorId, tag));
+}
+
+function emptySnapshot(projectorId, tag) {
+  return {
+    projectorId,
+    tag,
+    head: null,
+    exists: false,
+    state: projectorId === "RoomProjector"
+      ? { status: "empty", version: 0, roomId: null, name: "" }
+      : { status: "empty", version: 0, reservationId: null, roomId: null },
+  };
+}
+
+function inputValue(input, key) {
+  return typeof input?.[key] === "string" ? input[key] : undefined;
+}
+
+function commandSnapshots(commandId, input) {
+  const roomId = inputValue(input, "roomId");
+  const reservationId = inputValue(input, "reservationId");
+  const room = roomId === undefined ? undefined : knownSnapshot("RoomProjector", `room:${roomId}`);
+  const reservation = reservationId === undefined ? undefined : knownSnapshot("ReservationProjector", `reservation:${reservationId}`);
+  if (commandId === "create-room" && roomId !== undefined) {
+    return { snapshots: [room ?? emptySnapshot("RoomProjector", `room:${roomId}`)], readMode: "snapshot-only" };
+  }
+  if (commandId === "reserve-room" && roomId !== undefined && reservationId !== undefined) {
+    // A new reservation is known to be empty even when the room snapshot was
+    // learned by the preceding list/query read.
+    return {
+      snapshots: [room, reservation ?? emptySnapshot("ReservationProjector", `reservation:${reservationId}`)].filter(Boolean),
+      readMode: room === undefined ? "read-through" : "snapshot-only",
+    };
+  }
+  if (commandId === "cancel-reservation" && reservation !== undefined) {
+    return { snapshots: [reservation], readMode: "snapshot-only" };
+  }
+  if (commandId === "release-room" && room !== undefined) {
+    return { snapshots: [room], readMode: "snapshot-only" };
+  }
+  return { snapshots: [], readMode: "read-through" };
+}
+
+function executorCommandBody(commandId, input) {
+  const executor = commandSnapshots(commandId, input);
+  return { input, executor };
+}
+
 function setStatus(message, kind = "info") {
   statusElement.textContent = message;
   statusElement.dataset.kind = kind;
@@ -46,9 +112,68 @@ async function responseBody(response) {
 
 function commitSortableUniqueId(body) {
   const response = body && typeof body.response === "object" && body.response !== null ? body.response : body;
-  const events = response && Array.isArray(response.writtenEvents) ? response.writtenEvents : [];
+  const events = Array.isArray(body?.writtenEvents) ? body.writtenEvents : response && Array.isArray(response.writtenEvents) ? response.writtenEvents : [];
   const first = events[0];
   return first && typeof first.sortableUniqueIdValue === "string" ? first.sortableUniqueIdValue : undefined;
+}
+
+function committedHead(body, tag, fallback) {
+  const heads = Array.isArray(body?.heads) ? body.heads : [];
+  const match = heads.find((entry) => {
+    const entryTag = typeof entry?.tag === "string" ? entry.tag : entry?.tag?.id;
+    return entryTag === tag;
+  });
+  return typeof match?.head === "string" ? match.head : fallback;
+}
+
+function rememberCommittedSnapshots(commandId, input, body) {
+  if (body?.kind !== "committed") return;
+  const suid = commitSortableUniqueId(body);
+  const roomId = inputValue(input, "roomId");
+  const reservationId = inputValue(input, "reservationId");
+  if (commandId === "create-room" && roomId !== undefined && suid !== undefined) {
+    const tag = `room:${roomId}`;
+    rememberSnapshot({
+      projectorId: "RoomProjector",
+      tag,
+      head: committedHead(body, tag, suid),
+      exists: true,
+      state: { status: "created", version: 1, roomId, name: inputValue(input, "name") ?? "" },
+    });
+  }
+  if (commandId === "reserve-room" && roomId !== undefined && reservationId !== undefined && suid !== undefined) {
+    const roomTag = `room:${roomId}`;
+    const reservationTag = `reservation:${reservationId}`;
+    const previousRoom = knownSnapshot("RoomProjector", roomTag);
+    if (previousRoom !== undefined) {
+      rememberSnapshot({ ...previousRoom, head: committedHead(body, roomTag, suid) });
+    }
+    rememberSnapshot({
+      projectorId: "ReservationProjector",
+      tag: reservationTag,
+      head: committedHead(body, reservationTag, suid),
+      exists: true,
+      state: { status: "reserved", version: 1, reservationId, roomId },
+    });
+  }
+  if (commandId === "cancel-reservation" && reservationId !== undefined && suid !== undefined) {
+    const tag = `reservation:${reservationId}`;
+    const previous = knownSnapshot("ReservationProjector", tag);
+    if (previous !== undefined) {
+      rememberSnapshot({
+        ...previous,
+        head: committedHead(body, tag, suid),
+        state: { ...previous.state, status: "cancelled" },
+      });
+    }
+  }
+  if (commandId === "release-room" && roomId !== undefined && suid !== undefined) {
+    const tag = `room:${roomId}`;
+    const previous = knownSnapshot("RoomProjector", tag);
+    if (previous !== undefined) {
+      rememberSnapshot({ ...previous, head: committedHead(body, tag, suid), state: { ...previous.state, status: "released" } });
+    }
+  }
 }
 
 function describeOutcome(status, body) {
@@ -113,7 +238,7 @@ async function sendCommand(commandId, input, projection, options = {}) {
   const response = await fetch(`/api/commands/${commandId}`, {
     method: "POST",
     headers: { "content-type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify(executorCommandBody(commandId, input)),
   });
   const body = await responseBody(response);
   const [kind, message] = describeOutcome(response.status, body);
@@ -122,6 +247,7 @@ async function sendCommand(commandId, input, projection, options = {}) {
     showProjection(body, kind);
     return;
   }
+  rememberCommittedSnapshots(commandId, input, body);
   showProjection(body, "committed");
   const suid = commitSortableUniqueId(body);
   if (suid !== undefined) setStatus(`Committed (${suid})`, "success");
@@ -169,7 +295,20 @@ async function fetchReservationPage(pageNumber, options = {}) {
       { headers: { Accept: "application/json" } },
     )
     : await requestPostCommitReservationList(fetch, options.waitForSortableUniqueId);
-  return reservationListView(response.status, await responseBody(response));
+  const view = reservationListView(response.status, await responseBody(response));
+  if (typeof view.readHead === "string" && Array.isArray(view.rows)) {
+    for (const row of view.rows) {
+      if (typeof row?.reservationId !== "string" || typeof row.roomId !== "string") continue;
+      rememberSnapshot({
+        projectorId: "ReservationProjector",
+        tag: `reservation:${row.reservationId}`,
+        head: view.readHead,
+        exists: true,
+        state: row,
+      });
+    }
+  }
+  return view;
 }
 
 /**
@@ -273,6 +412,15 @@ async function queryRoom(roomId) {
       return;
     }
     roomQueryResult.textContent = JSON.stringify(view.result, null, 2);
+    if (typeof view.readHead === "string" && view.result && typeof view.result === "object" && view.result.status !== "empty") {
+      rememberSnapshot({
+        projectorId: "RoomProjector",
+        tag: `room:${roomId}`,
+        head: view.readHead,
+        exists: true,
+        state: view.result,
+      });
+    }
     setQueryState(roomQueryState, "Room query ready", "ready");
   } catch (error) {
     roomQueryResult.textContent = "No room result.";

@@ -7,7 +7,7 @@ import {
   TagStateDurableObject,
   type Env as RuntimeEnv,
 } from "@sekiban/dcb-runtime";
-import { executeMeetingRoomCommand } from "./transport";
+import { executeMeetingRoomCommand, parseMeetingRoomCommandRequest } from "./transport";
 import {
   meetingRoomDomain,
   meetingRoomRuntimeConfig,
@@ -223,20 +223,26 @@ async function readApplicationQuery(
 async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): Promise<Response> {
   if (request.method !== "POST") return json({ error: "Command route requires POST", code: "validation_error" }, 400);
   const commandId = new URL(request.url).pathname.slice("/api/commands/".length);
-  let input: unknown;
+  let body: unknown;
   try {
-    input = await request.json();
+    body = await request.json();
   } catch {
     return json({ error: "Command request must be JSON", code: "validation_error" }, 400);
+  }
+  let commandRequest: ReturnType<typeof parseMeetingRoomCommandRequest>;
+  try {
+    commandRequest = parseMeetingRoomCommandRequest(body);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : "Command executor options were invalid", code: "validation_error" }, 400);
   }
   const runtime = runtimeFetcher(env, ctx, runtimeHandler);
   const commandRuntime: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> } = {
     fetch: async (inputValue, init) => runtime.fetch(inputValue, init),
   };
-  const result = await executeMeetingRoomCommand(commandId, input, {
+  const result = await executeMeetingRoomCommand(commandId, commandRequest.input, {
     RUNTIME: commandRuntime,
     localRuntime: commandRuntime,
-  });
+  }, commandRequest.options);
   return resultResponse(result);
 }
 
