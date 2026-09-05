@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w128-query-unavailable-mv-unsafe-rows",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1_MV",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--command",
+    "SELECT service_id, view_id, row_key, row_version, source_suid FROM mv_unsafe_rows WHERE row_key LIKE 'g65-unavailable%';"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T02:05:50.488Z",
+  "finishedAt": "2026-09-05T02:05:51.399Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"results\": [\n      {\n        \"service_id\": \"sekiban-dcb-g60-w155-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"row_key\": \"g65-unavailable-reservation-d4a6ee1f22b54a50-2\",\n        \"row_version\": 1,\n        \"source_suid\": \"063924170534358000000800833193\"\n      },\n      {\n        \"service_id\": \"sekiban-dcb-g60-w155-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"row_key\": \"g65-unavailable-reservation-d4a6ee1f22b54a50-3\",\n        \"row_version\": 1,\n        \"source_suid\": \"063924170546383000001678223877\"\n      },\n      {\n        \"service_id\": \"sekiban-dcb-g60-w155-c\",\n        \"view_id\": \"ReservationProjector\",\n        \"row_key\": \"g65-unavailable-reservation-d4a6ee1f22b54a50-1\",\n        \"row_version\": 1,\n        \"source_suid\": \"063924170522202000000609209965\"\n      },\n      {\n        \"service_id\": \"sekiban-dcb-g60-w155-c\",\n        \"view_id\": \"RoomProjector\",\n        \"row_key\": \"g65-unavailable-room-d4a6ee1f22b54a50\",\n        \"row_version\": 1,\n        \"source_suid\": \"063924170519991000001079230629\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1393\n      },\n      \"duration\": 0.1393,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 192512,\n      \"rows_read\": 4,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

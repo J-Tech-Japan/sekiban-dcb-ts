@@ -1,0 +1,2147 @@
+{
+  "schema": "sdt-g65-w128-analysis/v1",
+  "task": "SDT-G65-DEPLOYED-WAKE-128",
+  "post": {
+    "runId": "1d20b683-1aa0-4837-88eb-1ef1ffa5d016",
+    "sourceHead": "4184882c2d8779420e1778b95ea91d72676d4439",
+    "deployedVersionId": "ee161e62-528f-4caa-98a6-943134b2d26c",
+    "deploymentId": "710638c8-84a2-4696-bc51-254b0c365570",
+    "proof": {
+      "status": "passed",
+      "completedAtMs": 1788573414004,
+      "completedAt": "2026-09-05T01:56:54.004Z",
+      "finalProjectorHeads": {
+        "RoomProjector": "063924170147866000001751334201",
+        "ReservationProjector": "063924170147866000001751334201"
+      },
+      "finalTagStates": [
+        {
+          "tagStateId": "room:g65-room-1d20b683-1aa:RoomProjector",
+          "expectedSuid": "063924170023996000000535386572",
+          "lastSortedUniqueId": "063924170147866000001751334201",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414020,
+            "startedAt": "2026-09-05T01:56:54.020Z",
+            "receivedAtMs": 1788573414068,
+            "receivedAt": "2026-09-05T01:56:54.068Z",
+            "responseMs": 48,
+            "cfRay": "a3619ebdb900fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJjcmVhdGVkIiwidmVyc2lvbiI6MSwicm9vbUlkIjoiZzY1LXJvb20tMWQyMGI2ODMtMWFhIiwibmFtZSI6IlNEVC1HNjUgVzEyOCAxZDIwYjY4MyJ9",
+              "version": 1,
+              "lastSortedUniqueId": "063924170147866000001751334201",
+              "tagGroup": "room",
+              "tagContent": "g65-room-1d20b683-1aa",
+              "tagProjector": "RoomProjector",
+              "tagPayloadName": "RoomState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJjcmVhdGVkIiwidmVyc2lvbiI6MSwicm9vbUlkIjoiZzY1LXJvb20tMWQyMGI2ODMtMWFhIiwibmFtZSI6IlNEVC1HNjUgVzEyOCAxZDIwYjY4MyJ9\",\"version\":1,\"lastSortedUniqueId\":\"063924170147866000001751334201\",\"tagGroup\":\"room\",\"tagContent\":\"g65-room-1d20b683-1aa\",\"tagProjector\":\"RoomProjector\",\"tagPayloadName\":\"RoomState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-1:ReservationProjector",
+          "expectedSuid": "063924170036450000001601242872",
+          "lastSortedUniqueId": "063924170036450000001601242872",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414079,
+            "startedAt": "2026-09-05T01:56:54.079Z",
+            "receivedAtMs": 1788573414127,
+            "receivedAt": "2026-09-05T01:56:54.127Z",
+            "responseMs": 48,
+            "cfRay": "a3619ebe19b5fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTEiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170036450000001601242872",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-1",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTEiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170036450000001601242872\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-1\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-2:ReservationProjector",
+          "expectedSuid": "063924170048651000000943085258",
+          "lastSortedUniqueId": "063924170048651000000943085258",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414139,
+            "startedAt": "2026-09-05T01:56:54.139Z",
+            "receivedAtMs": 1788573414187,
+            "receivedAt": "2026-09-05T01:56:54.187Z",
+            "responseMs": 48,
+            "cfRay": "a3619ebe7a47fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTIiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170048651000000943085258",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-2",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTIiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170048651000000943085258\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-2\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-3:ReservationProjector",
+          "expectedSuid": "063924170060926000000751541386",
+          "lastSortedUniqueId": "063924170060926000000751541386",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414204,
+            "startedAt": "2026-09-05T01:56:54.204Z",
+            "receivedAtMs": 1788573414263,
+            "receivedAt": "2026-09-05T01:56:54.263Z",
+            "responseMs": 59,
+            "cfRay": "a3619ebedb0ffc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTMiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170060926000000751541386",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-3",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTMiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170060926000000751541386\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-3\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-4:ReservationProjector",
+          "expectedSuid": "063924170073209000001265182147",
+          "lastSortedUniqueId": "063924170073209000001265182147",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414280,
+            "startedAt": "2026-09-05T01:56:54.280Z",
+            "receivedAtMs": 1788573414341,
+            "receivedAt": "2026-09-05T01:56:54.341Z",
+            "responseMs": 61,
+            "cfRay": "a3619ebf5c02fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTQiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170073209000001265182147",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-4",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTQiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170073209000001265182147\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-4\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-5:ReservationProjector",
+          "expectedSuid": "063924170085685000000958948325",
+          "lastSortedUniqueId": "063924170085685000000958948325",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414356,
+            "startedAt": "2026-09-05T01:56:54.356Z",
+            "receivedAtMs": 1788573414487,
+            "receivedAt": "2026-09-05T01:56:54.487Z",
+            "responseMs": 131,
+            "cfRay": "a3619ebfccedfc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTUiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170085685000000958948325",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-5",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTUiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170085685000000958948325\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-5\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-6:ReservationProjector",
+          "expectedSuid": "063924170098131000001782981253",
+          "lastSortedUniqueId": "063924170098131000001782981253",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414507,
+            "startedAt": "2026-09-05T01:56:54.507Z",
+            "receivedAtMs": 1788573414589,
+            "receivedAt": "2026-09-05T01:56:54.589Z",
+            "responseMs": 82,
+            "cfRay": "a3619ec0bf1ffc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTYiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170098131000001782981253",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-6",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTYiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170098131000001782981253\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-6\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-7:ReservationProjector",
+          "expectedSuid": "063924170110698000000502397285",
+          "lastSortedUniqueId": "063924170110698000000502397285",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414600,
+            "startedAt": "2026-09-05T01:56:54.600Z",
+            "receivedAtMs": 1788573414648,
+            "receivedAt": "2026-09-05T01:56:54.648Z",
+            "responseMs": 48,
+            "cfRay": "a3619ec1588afc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTciLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170110698000000502397285",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-7",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTciLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170110698000000502397285\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-7\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-8:ReservationProjector",
+          "expectedSuid": "063924170123043000000823932601",
+          "lastSortedUniqueId": "063924170123043000000823932601",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414653,
+            "startedAt": "2026-09-05T01:56:54.653Z",
+            "receivedAtMs": 1788573414703,
+            "receivedAt": "2026-09-05T01:56:54.703Z",
+            "responseMs": 50,
+            "cfRay": "a3619ec1a918fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTgiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170123043000000823932601",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-8",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTgiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170123043000000823932601\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-8\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-9:ReservationProjector",
+          "expectedSuid": "063924170135495000000098441838",
+          "lastSortedUniqueId": "063924170135495000000098441838",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414713,
+            "startedAt": "2026-09-05T01:56:54.713Z",
+            "receivedAtMs": 1788573414777,
+            "receivedAt": "2026-09-05T01:56:54.777Z",
+            "responseMs": 64,
+            "cfRay": "a3619ec209c4fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTkiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==",
+              "version": 1,
+              "lastSortedUniqueId": "063924170135495000000098441838",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-9",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTkiLCJyb29tSWQiOiJnNjUtcm9vbS0xZDIwYjY4My0xYWEifQ==\",\"version\":1,\"lastSortedUniqueId\":\"063924170135495000000098441838\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-9\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        },
+        {
+          "tagStateId": "reservation:g65-reservation-1d20b683-1aa-10:ReservationProjector",
+          "expectedSuid": "063924170147866000001751334201",
+          "lastSortedUniqueId": "063924170147866000001751334201",
+          "version": 1,
+          "observedAtMs": 1788573414004,
+          "response": {
+            "status": 200,
+            "startedAtMs": 1788573414794,
+            "startedAt": "2026-09-05T01:56:54.794Z",
+            "receivedAtMs": 1788573414858,
+            "receivedAt": "2026-09-05T01:56:54.858Z",
+            "responseMs": 64,
+            "cfRay": "a3619ec28a96fc54-SJC",
+            "globalAdmission": null,
+            "body": {
+              "payload": "eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTEwIiwicm9vbUlkIjoiZzY1LXJvb20tMWQyMGI2ODMtMWFhIn0=",
+              "version": 1,
+              "lastSortedUniqueId": "063924170147866000001751334201",
+              "tagGroup": "reservation",
+              "tagContent": "g65-reservation-1d20b683-1aa-10",
+              "tagProjector": "ReservationProjector",
+              "tagPayloadName": "ReservationState",
+              "projectorVersion": "1"
+            },
+            "rawBody": "{\"payload\":\"eyJzdGF0dXMiOiJyZXNlcnZlZCIsInZlcnNpb24iOjEsInJlc2VydmF0aW9uSWQiOiJnNjUtcmVzZXJ2YXRpb24tMWQyMGI2ODMtMWFhLTEwIiwicm9vbUlkIjoiZzY1LXJvb20tMWQyMGI2ODMtMWFhIn0=\",\"version\":1,\"lastSortedUniqueId\":\"063924170147866000001751334201\",\"tagGroup\":\"reservation\",\"tagContent\":\"g65-reservation-1d20b683-1aa-10\",\"tagProjector\":\"ReservationProjector\",\"tagPayloadName\":\"ReservationState\",\"projectorVersion\":\"1\"}"
+          }
+        }
+      ],
+      "everyProjectorReachedFinalSuid": true,
+      "everyCohortTagReturnedCommittedVersion": true,
+      "within180Seconds": true
+    },
+    "metrics": {
+      "commitResponse": {
+        "n": 10,
+        "observedN": 10,
+        "censoredN": 0,
+        "p50Ms": 2413,
+        "p95Ms": 2545,
+        "minMs": 2191,
+        "maxMs": 2545,
+        "over5000MsStrict": 0
+      },
+      "globalDcbEventVisibility": {
+        "n": 10,
+        "observedN": 10,
+        "censoredN": 0,
+        "p50Ms": 0,
+        "p95Ms": 0,
+        "minMs": 0,
+        "maxMs": 0,
+        "over5000MsStrict": 0
+      },
+      "publicUnsafeRecordedOnly": {
+        "n": 10,
+        "observedN": 10,
+        "censoredN": 0,
+        "p50Ms": 2262,
+        "p95Ms": 4518,
+        "minMs": 2223,
+        "maxMs": 4518,
+        "over5000MsStrict": 0
+      },
+      "safe": {
+        "n": 10,
+        "observedN": 10,
+        "censoredN": 0,
+        "p50Ms": 114982,
+        "p95Ms": 176719,
+        "minMs": 65287,
+        "maxMs": 176719,
+        "over5000MsStrict": 0
+      },
+      "synchronousAdmissionDuration": {
+        "n": 10,
+        "observedN": 10,
+        "censoredN": 0,
+        "p50Ms": 338,
+        "p95Ms": 412,
+        "minMs": 272,
+        "maxMs": 412,
+        "over5000MsStrict": 8
+      },
+      "adjacent": {
+        "commandToTagAppendMs": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 879,
+          "p95Ms": 976,
+          "minMs": 851,
+          "maxMs": 976,
+          "over5000MsStrict": 0
+        },
+        "tagAppendToOutboxMs": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 2,
+          "p95Ms": 11,
+          "minMs": 0,
+          "maxMs": 11,
+          "over5000MsStrict": 0
+        },
+        "outboxToQueueSendMs": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 224,
+          "p95Ms": 315,
+          "minMs": 206,
+          "maxMs": 315,
+          "over5000MsStrict": 0
+        },
+        "queueSendToConsumerStartMs": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 2519,
+          "p95Ms": 4259,
+          "minMs": 2249,
+          "maxMs": 4259,
+          "over5000MsStrict": 0
+        },
+        "consumerStartToRecordDeliveryMs": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 690,
+          "p95Ms": 856,
+          "minMs": 583,
+          "maxMs": 856,
+          "over5000MsStrict": 0
+        },
+        "recordDeliveryToFirstUnsafeMs": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": -276,
+          "p95Ms": 1271,
+          "minMs": -826,
+          "maxMs": 1271,
+          "over5000MsStrict": 0
+        }
+      },
+      "subhops": {
+        "postRecordDeliveryGlobalReceiptReadback": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 58,
+          "p95Ms": 134,
+          "minMs": 36,
+          "maxMs": 134,
+          "over5000MsStrict": 0
+        },
+        "sourceTagAcknowledgement": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 144,
+          "p95Ms": 196,
+          "minMs": 113,
+          "maxMs": 196,
+          "over5000MsStrict": 0
+        },
+        "completenessCoverage": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 98,
+          "p95Ms": 159,
+          "minMs": 72,
+          "maxMs": 159,
+          "over5000MsStrict": 0
+        },
+        "detector": {
+          "n": 10,
+          "observedN": 2,
+          "censoredN": 8,
+          "p50Ms": 224,
+          "p95Ms": 260,
+          "minMs": 224,
+          "maxMs": 260,
+          "over5000MsStrict": 0
+        },
+        "unsafeRoomProjector": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 279,
+          "p95Ms": 597,
+          "minMs": 152,
+          "maxMs": 597,
+          "over5000MsStrict": 0
+        },
+        "unsafeReservationProjector": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 168,
+          "p95Ms": 244,
+          "minMs": 69,
+          "maxMs": 244,
+          "over5000MsStrict": 0
+        },
+        "unsafeWriterRoomProjector": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 58,
+          "p95Ms": 286,
+          "minMs": 50,
+          "maxMs": 286,
+          "over5000MsStrict": 0
+        },
+        "unsafeWriterReservationProjector": {
+          "n": 10,
+          "observedN": 10,
+          "censoredN": 0,
+          "p50Ms": 55,
+          "p95Ms": 68,
+          "minMs": 45,
+          "maxMs": 68,
+          "over5000MsStrict": 0
+        }
+      }
+    },
+    "synchronousAdmission": {
+      "outcomes": {
+        "admitted-before-response": 10
+      },
+      "maxReceiptToResponseMs": 343
+    },
+    "outcomeCounts": {
+      "originalStages": {
+        "command-receipt": 11,
+        "tag-append-committed": 21,
+        "outbox-obligation-written": 21,
+        "queue-send-returned": 21,
+        "consumer-invocation-started": 21,
+        "record-delivery-batch-committed": 21,
+        "first-unsafe-visible-read": 10
+      },
+      "postAdmission": {
+        "post-record-delivery-global-receipt-readback:started": 21,
+        "source-tag-acknowledgement:started": 21,
+        "post-record-delivery-global-receipt-readback:available": 21,
+        "source-tag-acknowledgement:acknowledged": 21,
+        "unsafe-view-apply:started": 42,
+        "unsafe-view-apply:applied": 22,
+        "completeness-coverage:started": 21,
+        "completeness-coverage:BLOCK/UNSETTLED": 21,
+        "unsafe-view-apply:duplicate-race": 20,
+        "detector:started": 3,
+        "detector:applied": 3
+      },
+      "unsafeWriters": {
+        "inline-delivery:RoomProjector:started": 11,
+        "inline-delivery:RoomProjector:applied": 1,
+        "inline-delivery:ReservationProjector:started": 11,
+        "inline-delivery:ReservationProjector:no-change": 1,
+        "inline-delivery:ReservationProjector:applied": 10,
+        "inline-delivery:RoomProjector:no-change": 10
+      }
+    },
+    "d1Rows": {
+      "events": 11,
+      "globalReceipts": 21,
+      "hopMeasurements": 126,
+      "hopSubmeasurements": 216,
+      "unsafeWriterBoundaries": 44,
+      "mvUnsafeReceipts": 11,
+      "mvUnsafeRows": 0
+    },
+    "allRequiredStagesPresent": true,
+    "samples": [
+      {
+        "ordinal": 1,
+        "reservationId": "g65-reservation-1d20b683-1aa-1",
+        "eventId": "01a06f45-ba36-7bf9-95bb-1c0773fd1707",
+        "suid": "063924170036450000001601242872",
+        "attemptId": "56caa2a3-8adf-479f-8217-c4506530d0e3",
+        "commitResponseMs": 2425,
+        "commitReceivedAtMs": 1788573237285,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573235766,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1519,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 4455,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 176719,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573236969,
+          "receiptToResponseMs": 316,
+          "fromOutboxToLastReceiptMs": 286,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 909,
+          "tagAppendToOutboxMs": 8,
+          "outboxToQueueSendMs": 315,
+          "queueSendToConsumerStartMs": 2849,
+          "consumerStartToRecordDeliveryMs": 583,
+          "recordDeliveryToFirstUnsafeMs": 1271
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573239173,
+            "endAt": 1788573239218,
+            "durationMs": 45,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573239218,
+            "endAt": 1788573239363,
+            "durationMs": 145,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573239688,
+            "endAt": 1788573239847,
+            "durationMs": 159,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": 1788573264022,
+            "endAt": 1788573264246,
+            "durationMs": 224,
+            "outcomes": [
+              "applied"
+            ]
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573239363,
+              "endAt": 1788573239688,
+              "durationMs": 325,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573239363,
+              "endAt": 1788573239602,
+              "durationMs": 239,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573239627,
+            "endAt": 1788573239688,
+            "durationMs": 61,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573239549,
+            "endAt": 1788573239602,
+            "durationMs": 53,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "tag-append-committed",
+          "outbox-obligation-written",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 2,
+        "reservationId": "g65-reservation-1d20b683-1aa-2",
+        "eventId": "01a06f45-e9eb-7708-a269-b4975c74c2b4",
+        "suid": "063924170048651000000943085258",
+        "attemptId": "5b01295e-5d95-41a1-92f4-d1876f6766e8",
+        "commitResponseMs": 2213,
+        "commitReceivedAtMs": 1788573249500,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573247979,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1521,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 4402,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 164504,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573249273,
+          "receiptToResponseMs": 227,
+          "fromOutboxToLastReceiptMs": 412,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 879,
+          "tagAppendToOutboxMs": 3,
+          "outboxToQueueSendMs": 245,
+          "queueSendToConsumerStartMs": 3022,
+          "consumerStartToRecordDeliveryMs": 618,
+          "recordDeliveryToFirstUnsafeMs": 1117
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573251633,
+            "endAt": 1788573251714,
+            "durationMs": 81,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573251714,
+            "endAt": 1788573251885,
+            "durationMs": 171,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573252043,
+            "endAt": 1788573252128,
+            "durationMs": 85,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": 1788573263818,
+            "endAt": 1788573264078,
+            "durationMs": 260,
+            "outcomes": [
+              "applied"
+            ]
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573251885,
+              "endAt": 1788573252043,
+              "durationMs": 158,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573251885,
+              "endAt": 1788573251956,
+              "durationMs": 71,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573251982,
+            "endAt": 1788573252043,
+            "durationMs": 61,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573251899,
+            "endAt": 1788573251956,
+            "durationMs": 57,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "outbox-obligation-written",
+          "tag-append-committed",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 3,
+        "reservationId": "g65-reservation-1d20b683-1aa-3",
+        "eventId": "01a06f46-19ec-7958-bee8-b625fd5aea10",
+        "suid": "063924170060926000000751541386",
+        "attemptId": "ae60a292-c9de-4681-8a91-aab6a82d3fb7",
+        "commitResponseMs": 2191,
+        "commitReceivedAtMs": 1788573261692,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573260268,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1424,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 2223,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 152312,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573261419,
+          "receiptToResponseMs": 273,
+          "fromOutboxToLastReceiptMs": 272,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 877,
+          "tagAppendToOutboxMs": 2,
+          "outboxToQueueSendMs": 237,
+          "queueSendToConsumerStartMs": 2519,
+          "consumerStartToRecordDeliveryMs": 816,
+          "recordDeliveryToFirstUnsafeMs": -826
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573263305,
+            "endAt": 1788573263363,
+            "durationMs": 58,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573263363,
+            "endAt": 1788573263480,
+            "durationMs": 117,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573263797,
+            "endAt": 1788573263903,
+            "durationMs": 106,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573263480,
+              "endAt": 1788573263797,
+              "durationMs": 317,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573263480,
+              "endAt": 1788573263715,
+              "durationMs": 235,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573263740,
+            "endAt": 1788573263797,
+            "durationMs": 57,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573263660,
+            "endAt": 1788573263715,
+            "durationMs": 55,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "tag-append-committed",
+          "outbox-obligation-written",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 4,
+        "reservationId": "g65-reservation-1d20b683-1aa-4",
+        "eventId": "01a06f46-49c0-7a4f-8b14-523a67ecda1c",
+        "suid": "063924170073209000001265182147",
+        "attemptId": "41817064-ed24-428f-9f09-cebc8710bfcf",
+        "commitResponseMs": 2340,
+        "commitReceivedAtMs": 1788573274035,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573272512,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1523,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 4351,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 139969,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573273756,
+          "receiptToResponseMs": 279,
+          "fromOutboxToLastReceiptMs": 338,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 906,
+          "tagAppendToOutboxMs": 0,
+          "outboxToQueueSendMs": 206,
+          "queueSendToConsumerStartMs": 4259,
+          "consumerStartToRecordDeliveryMs": 693,
+          "recordDeliveryToFirstUnsafeMs": -221
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573277392,
+            "endAt": 1788573277428,
+            "durationMs": 36,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573277428,
+            "endAt": 1788573277543,
+            "durationMs": 115,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573277774,
+            "endAt": 1788573277883,
+            "durationMs": 109,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573277543,
+              "endAt": 1788573277774,
+              "durationMs": 231,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573277543,
+              "endAt": 1788573277673,
+              "durationMs": 130,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573277714,
+            "endAt": 1788573277774,
+            "durationMs": 60,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573277626,
+            "endAt": 1788573277673,
+            "durationMs": 47,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "tag-append-committed",
+          "outbox-obligation-written",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 5,
+        "reservationId": "g65-reservation-1d20b683-1aa-5",
+        "eventId": "01a06f46-7a44-7265-81f4-75253182188e",
+        "suid": "063924170085685000000958948325",
+        "attemptId": "85449a4a-bb65-49a0-9c12-98a8cc8751bf",
+        "commitResponseMs": 2437,
+        "commitReceivedAtMs": 1788573286474,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573284932,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1542,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 4433,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 127530,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573286241,
+          "receiptToResponseMs": 233,
+          "fromOutboxToLastReceiptMs": 333,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 976,
+          "tagAppendToOutboxMs": 0,
+          "outboxToQueueSendMs": 213,
+          "queueSendToConsumerStartMs": 3704,
+          "consumerStartToRecordDeliveryMs": 689,
+          "recordDeliveryToFirstUnsafeMs": 365
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573288841,
+            "endAt": 1788573288963,
+            "durationMs": 122,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573288963,
+            "endAt": 1788573289110,
+            "durationMs": 147,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573289707,
+            "endAt": 1788573289825,
+            "durationMs": 118,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573289110,
+              "endAt": 1788573289707,
+              "durationMs": 597,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573289110,
+              "endAt": 1788573289278,
+              "durationMs": 168,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573289421,
+            "endAt": 1788573289707,
+            "durationMs": 286,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573289210,
+            "endAt": 1788573289278,
+            "durationMs": 68,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "outbox-obligation-written",
+          "tag-append-committed",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 6,
+        "reservationId": "g65-reservation-1d20b683-1aa-6",
+        "eventId": "01a06f46-aafe-776b-8f94-a0f8ff8f7f6d",
+        "suid": "063924170098131000001782981253",
+        "attemptId": "f1db4520-b048-4d79-a80f-5edbeecad1bd",
+        "commitResponseMs": 2545,
+        "commitReceivedAtMs": 1788573299022,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573297406,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1616,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 2262,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 114982,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573298748,
+          "receiptToResponseMs": 274,
+          "fromOutboxToLastReceiptMs": 402,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 932,
+          "tagAppendToOutboxMs": 8,
+          "outboxToQueueSendMs": 224,
+          "queueSendToConsumerStartMs": 2327,
+          "consumerStartToRecordDeliveryMs": 856,
+          "recordDeliveryToFirstUnsafeMs": -494
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573300257,
+            "endAt": 1788573300391,
+            "durationMs": 134,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573300391,
+            "endAt": 1788573300587,
+            "durationMs": 196,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573300800,
+            "endAt": 1788573300897,
+            "durationMs": 97,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573300587,
+              "endAt": 1788573300800,
+              "durationMs": 213,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573300587,
+              "endAt": 1788573300706,
+              "durationMs": 119,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573300746,
+            "endAt": 1788573300800,
+            "durationMs": 54,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573300661,
+            "endAt": 1788573300706,
+            "durationMs": 45,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "tag-append-committed",
+          "outbox-obligation-written",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 7,
+        "reservationId": "g65-reservation-1d20b683-1aa-7",
+        "eventId": "01a06f46-dc5c-7802-9a10-606c9fdbd9f1",
+        "suid": "063924170110698000000502397285",
+        "attemptId": "180b1c86-c204-488c-bd0c-ec140a5b6b12",
+        "commitResponseMs": 2501,
+        "commitReceivedAtMs": 1788573311526,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573310044,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1482,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 4518,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 102478,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573311280,
+          "receiptToResponseMs": 246,
+          "fromOutboxToLastReceiptMs": 383,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 851,
+          "tagAppendToOutboxMs": 2,
+          "outboxToQueueSendMs": 247,
+          "queueSendToConsumerStartMs": 3617,
+          "consumerStartToRecordDeliveryMs": 655,
+          "recordDeliveryToFirstUnsafeMs": 596
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573314109,
+            "endAt": 1788573314149,
+            "durationMs": 40,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573314149,
+            "endAt": 1788573314322,
+            "durationMs": 173,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573314663,
+            "endAt": 1788573314761,
+            "durationMs": 98,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573314322,
+              "endAt": 1788573314663,
+              "durationMs": 341,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573314322,
+              "endAt": 1788573314566,
+              "durationMs": 244,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573314605,
+            "endAt": 1788573314663,
+            "durationMs": 58,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573314498,
+            "endAt": 1788573314566,
+            "durationMs": 68,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "tag-append-committed",
+          "outbox-obligation-written",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 8,
+        "reservationId": "g65-reservation-1d20b683-1aa-8",
+        "eventId": "01a06f47-0c79-71fb-a766-1af15a1826e5",
+        "suid": "063924170123043000000823932601",
+        "attemptId": "e6f1c21a-c93a-4b01-9003-e3ad3432ce88",
+        "commitResponseMs": 2413,
+        "commitReceivedAtMs": 1788573323941,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573322361,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1580,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 2223,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 90063,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573323639,
+          "receiptToResponseMs": 302,
+          "fromOutboxToLastReceiptMs": 381,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 890,
+          "tagAppendToOutboxMs": 7,
+          "outboxToQueueSendMs": 240,
+          "queueSendToConsumerStartMs": 2449,
+          "consumerStartToRecordDeliveryMs": 690,
+          "recordDeliveryToFirstUnsafeMs": -500
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573325385,
+            "endAt": 1788573325467,
+            "durationMs": 82,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573325467,
+            "endAt": 1788573325583,
+            "durationMs": 116,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573325862,
+            "endAt": 1788573325947,
+            "durationMs": 85,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573325583,
+              "endAt": 1788573325862,
+              "durationMs": 279,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573325583,
+              "endAt": 1788573325774,
+              "durationMs": 191,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573325812,
+            "endAt": 1788573325862,
+            "durationMs": 50,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573325722,
+            "endAt": 1788573325774,
+            "durationMs": 52,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "outbox-obligation-written",
+          "tag-append-committed",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 9,
+        "reservationId": "g65-reservation-1d20b683-1aa-9",
+        "eventId": "01a06f47-3d32-7b37-9ad8-e310240140d4",
+        "suid": "063924170135495000000098441838",
+        "attemptId": "0ec5766f-1dba-45a8-bf75-8acb95908081",
+        "commitResponseMs": 2472,
+        "commitReceivedAtMs": 1788573336413,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573334834,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1579,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 2237,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 77591,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573336070,
+          "receiptToResponseMs": 343,
+          "fromOutboxToLastReceiptMs": 373,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 862,
+          "tagAppendToOutboxMs": 1,
+          "outboxToQueueSendMs": 211,
+          "queueSendToConsumerStartMs": 2249,
+          "consumerStartToRecordDeliveryMs": 742,
+          "recordDeliveryToFirstUnsafeMs": -276
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573337535,
+            "endAt": 1788573337593,
+            "durationMs": 58,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573337593,
+            "endAt": 1788573337706,
+            "durationMs": 113,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573338030,
+            "endAt": 1788573338157,
+            "durationMs": 127,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573337706,
+              "endAt": 1788573338030,
+              "durationMs": 324,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573337706,
+              "endAt": 1788573337945,
+              "durationMs": 239,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573337972,
+            "endAt": 1788573338030,
+            "durationMs": 58,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573337883,
+            "endAt": 1788573337945,
+            "durationMs": 62,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "outbox-obligation-written",
+          "tag-append-committed",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      },
+      {
+        "ordinal": 10,
+        "reservationId": "g65-reservation-1d20b683-1aa-10",
+        "eventId": "01a06f47-6d84-75f0-83a7-d10207f0bad3",
+        "suid": "063924170147866000001751334201",
+        "attemptId": "11eac9ff-c3f2-4597-afd6-f4f86703a7a2",
+        "commitResponseMs": 2303,
+        "commitReceivedAtMs": 1788573348717,
+        "globalDcbEventVisibility": {
+          "eventAt": 1788573347204,
+          "commandReceiptToEventMs": 0,
+          "responseToEventMs": -1513,
+          "beforeResponse": true
+        },
+        "publicUnsafeMs": 2240,
+        "publicUnsafeDisposition": "observed-within-5000ms",
+        "safeMs": 65287,
+        "synchronousAdmission": {
+          "outcome": "admitted-before-response",
+          "firstGlobalReceiptAt": 1788573348394,
+          "receiptToResponseMs": 323,
+          "fromOutboxToLastReceiptMs": 305,
+          "globalReceiptCount": 2
+        },
+        "adjacent": {
+          "commandToTagAppendMs": 874,
+          "tagAppendToOutboxMs": 11,
+          "outboxToQueueSendMs": 207,
+          "queueSendToConsumerStartMs": 2417,
+          "consumerStartToRecordDeliveryMs": 729,
+          "recordDeliveryToFirstUnsafeMs": -512
+        },
+        "postAdmission": {
+          "globalReceiptReadback": {
+            "startAt": 1788573350288,
+            "endAt": 1788573350345,
+            "durationMs": 57,
+            "outcomes": [
+              "available"
+            ]
+          },
+          "sourceTagAcknowledgement": {
+            "startAt": 1788573350345,
+            "endAt": 1788573350489,
+            "durationMs": 144,
+            "outcomes": [
+              "acknowledged"
+            ]
+          },
+          "completenessCoverage": {
+            "startAt": 1788573350641,
+            "endAt": 1788573350713,
+            "durationMs": 72,
+            "outcomes": [
+              "BLOCK/UNSETTLED"
+            ]
+          },
+          "detector": {
+            "startAt": null,
+            "endAt": null,
+            "durationMs": null,
+            "outcomes": []
+          },
+          "unsafeViewApply": {
+            "RoomProjector": {
+              "startAt": 1788573350489,
+              "endAt": 1788573350641,
+              "durationMs": 152,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            },
+            "ReservationProjector": {
+              "startAt": 1788573350489,
+              "endAt": 1788573350558,
+              "durationMs": 69,
+              "outcomes": [
+                "applied",
+                "duplicate-race"
+              ]
+            }
+          }
+        },
+        "unsafeWriter": {
+          "RoomProjector": {
+            "startAt": 1788573350584,
+            "endAt": 1788573350641,
+            "durationMs": 57,
+            "outcomes": {
+              "no-change": 1
+            }
+          },
+          "ReservationProjector": {
+            "startAt": 1788573350502,
+            "endAt": 1788573350558,
+            "durationMs": 56,
+            "outcomes": {
+              "applied": 1
+            }
+          }
+        },
+        "mvUnsafeReceiptOutcomes": {
+          "no-change": 1
+        },
+        "recordedStages": [
+          "command-receipt",
+          "outbox-obligation-written",
+          "tag-append-committed",
+          "queue-send-returned",
+          "consumer-invocation-started",
+          "record-delivery-batch-committed",
+          "first-unsafe-visible-read"
+        ],
+        "missingStages": []
+      }
+    ]
+  },
+  "d1Unavailable": {
+    "runId": "d4a6ee1f-22b5-4a50-923a-a7ea521734a8",
+    "sourceHead": "4184882c2d8779420e1778b95ea91d72676d4439",
+    "deployedVersionId": "4665c82b-186a-4122-a8be-5ac8120b457e",
+    "n": 3,
+    "allCommitted": true,
+    "ryowMissesAtBound": 3,
+    "rows": [
+      {
+        "ordinal": 1,
+        "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-1",
+        "suid": "063924170522202000000609209965",
+        "responseMs": 2267,
+        "disposition": "missing-by-120000ms",
+        "globalAdmissionHeader": null
+      },
+      {
+        "ordinal": 2,
+        "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-2",
+        "suid": "063924170534358000000800833193",
+        "responseMs": 2106,
+        "disposition": "missing-by-120000ms",
+        "globalAdmissionHeader": null
+      },
+      {
+        "ordinal": 3,
+        "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-3",
+        "suid": "063924170546383000001678223877",
+        "responseMs": 1987,
+        "disposition": "missing-by-120000ms",
+        "globalAdmissionHeader": null
+      }
+    ],
+    "restored": {
+      "schema": "sdt-g65-w128-restored-queue-followup/v1",
+      "task": "SDT-G65-W128",
+      "sourceInput": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/.artifacts/sdt-g65-w128-d1-unavailable.json",
+      "baseUrl": "https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev",
+      "boundMs": 120000,
+      "pollMs": 1000,
+      "pageSize": 1000,
+      "samples": [
+        {
+          "ordinal": 1,
+          "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-1",
+          "suid": "063924170522202000000609209965",
+          "commitReceivedAtMs": 1788573722582,
+          "observations": [
+            {
+              "observedAtMs": 1788573833385,
+              "pages": [
+                {
+                  "status": 200,
+                  "startedAtMs": 1788573832955,
+                  "receivedAtMs": 1788573833385,
+                  "responseMs": 430,
+                  "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-10\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-9\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-8\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-7\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-6\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-5\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-4\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-3\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-2\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-1\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":13,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924170546383000001678223877\"}",
+                  "body": {
+                    "itemsJson": "[{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-10\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-9\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-8\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-7\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-6\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-5\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-4\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-3\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-2\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-1\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1}]",
+                    "totalCount": 13,
+                    "totalPages": 1,
+                    "currentPage": 1,
+                    "pageSize": 1000,
+                    "readHead": "063924170546383000001678223877"
+                  },
+                  "items": [
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-3",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-2",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-1",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-10",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-9",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-8",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-7",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-6",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-5",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-4",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-3",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-2",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-1",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    }
+                  ],
+                  "pageNumber": 1
+                }
+              ],
+              "visible": true,
+              "item": {
+                "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-1",
+                "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                "status": "reserved",
+                "version": 1
+              }
+            }
+          ],
+          "firstVisibleAtMs": 1788573833385,
+          "disposition": "visible-after-restore",
+          "commitToFirstVisibleMs": 110803
+        },
+        {
+          "ordinal": 2,
+          "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-2",
+          "suid": "063924170534358000000800833193",
+          "commitReceivedAtMs": 1788573734689,
+          "observations": [
+            {
+              "observedAtMs": 1788573833547,
+              "pages": [
+                {
+                  "status": 200,
+                  "startedAtMs": 1788573833385,
+                  "receivedAtMs": 1788573833547,
+                  "responseMs": 162,
+                  "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-10\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-9\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-8\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-7\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-6\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-5\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-4\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-3\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-2\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-1\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":13,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924170546383000001678223877\"}",
+                  "body": {
+                    "itemsJson": "[{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-10\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-9\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-8\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-7\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-6\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-5\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-4\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-3\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-2\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-1\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1}]",
+                    "totalCount": 13,
+                    "totalPages": 1,
+                    "currentPage": 1,
+                    "pageSize": 1000,
+                    "readHead": "063924170546383000001678223877"
+                  },
+                  "items": [
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-3",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-2",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-1",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-10",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-9",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-8",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-7",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-6",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-5",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-4",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-3",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-2",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-1",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    }
+                  ],
+                  "pageNumber": 1
+                }
+              ],
+              "visible": true,
+              "item": {
+                "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-2",
+                "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                "status": "reserved",
+                "version": 1
+              }
+            }
+          ],
+          "firstVisibleAtMs": 1788573833547,
+          "disposition": "visible-after-restore",
+          "commitToFirstVisibleMs": 98858
+        },
+        {
+          "ordinal": 3,
+          "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-3",
+          "suid": "063924170546383000001678223877",
+          "commitReceivedAtMs": 1788573746677,
+          "observations": [
+            {
+              "observedAtMs": 1788573833691,
+              "pages": [
+                {
+                  "status": 200,
+                  "startedAtMs": 1788573833548,
+                  "receivedAtMs": 1788573833691,
+                  "responseMs": 143,
+                  "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-10\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-9\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-8\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-7\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-6\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-5\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-4\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-3\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-2\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-1\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":13,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924170546383000001678223877\"}",
+                  "body": {
+                    "itemsJson": "[{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\",\"roomId\":\"g65-unavailable-room-d4a6ee1f22b54a50\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-10\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-9\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-8\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-7\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-6\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-5\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-4\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-3\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-2\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1},{\"reservationId\":\"g65-reservation-1d20b683-1aa-1\",\"roomId\":\"g65-room-1d20b683-1aa\",\"status\":\"reserved\",\"version\":1}]",
+                    "totalCount": 13,
+                    "totalPages": 1,
+                    "currentPage": 1,
+                    "pageSize": 1000,
+                    "readHead": "063924170546383000001678223877"
+                  },
+                  "items": [
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-3",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-2",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-1",
+                      "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-10",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-9",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-8",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-7",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-6",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-5",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-4",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-3",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-2",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    },
+                    {
+                      "reservationId": "g65-reservation-1d20b683-1aa-1",
+                      "roomId": "g65-room-1d20b683-1aa",
+                      "status": "reserved",
+                      "version": 1
+                    }
+                  ],
+                  "pageNumber": 1
+                }
+              ],
+              "visible": true,
+              "item": {
+                "reservationId": "g65-unavailable-reservation-d4a6ee1f22b54a50-3",
+                "roomId": "g65-unavailable-room-d4a6ee1f22b54a50",
+                "status": "reserved",
+                "version": 1
+              }
+            }
+          ],
+          "firstVisibleAtMs": 1788573833691,
+          "disposition": "visible-after-restore",
+          "commitToFirstVisibleMs": 87014
+        }
+      ],
+      "status": "completed",
+      "startedAt": "2026-09-05T02:03:52.954Z",
+      "finishedAt": "2026-09-05T02:03:53.692Z"
+    }
+  }
+}
