@@ -26,6 +26,13 @@
   },
   "assets": { "directory": "../samples/meeting-room/public" },
   "triggers": { "crons": ["* * * * *"] },
+  "services": [
+    {
+      "binding": "DOWNSTREAM_DOORBELL",
+      "service": "sekiban-dcb-meeting-room-doorbell",
+      "entrypoint": "MeetingRoomDownstreamDoorbell"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "D1",

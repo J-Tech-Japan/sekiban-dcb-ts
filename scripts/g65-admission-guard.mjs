@@ -10,7 +10,7 @@ const tagPath = "packages/dcb-runtime/src/tag/TagDurableObject.ts";
 const commitPath = "packages/dcb-runtime/src/commit/CommitWorker.ts";
 const storePath = "packages/dcb-runtime/src/store/D1EventStore.ts";
 const testPath = "test/g65-admission.spec.ts";
-const configPath = ".artifacts/wrangler.g65-w155-c.jsonc";
+const configPath = process.env.SDT_G65_CONFIG_PATH ?? ".artifacts/wrangler.g65-w155-c.jsonc";
 const mutationRunnerPath = "scripts/g65-admission-mutation-runner.mjs";
 const budgetMs = 300;
 const preChangeRef = process.env.SDT_G65_PRE_CHANGE_REF ?? "68454969e6b9c15bb22e5e57bfd388167477dbfb";
@@ -22,6 +22,31 @@ function argument(name) {
 
 function read(relativePath) {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
+}
+
+function configWiring(configText) {
+  let config;
+  try {
+    config = JSON.parse(configText);
+  } catch (error) {
+    return { ok: false, missing: [`valid JSON config: ${String(error)}`] };
+  }
+  const binding = Array.isArray(config.services)
+    ? config.services.find((entry) => entry && entry.binding === "DOWNSTREAM_DOORBELL")
+    : undefined;
+  const expected = {
+    binding: "DOWNSTREAM_DOORBELL",
+    service: "sekiban-dcb-meeting-room-doorbell",
+    entrypoint: "MeetingRoomDownstreamDoorbell",
+  };
+  if (binding === undefined) {
+    return { ok: false, missing: ["DOWNSTREAM_DOORBELL service binding"] };
+  }
+  const missing = [];
+  for (const [key, value] of Object.entries(expected)) {
+    if (binding[key] !== value) missing.push(`DOWNSTREAM_DOORBELL ${key}=${value}`);
+  }
+  return { ok: missing.length === 0, missing };
 }
 
 function writeReceipt(relativePath, receipt) {
@@ -258,6 +283,11 @@ if (preChange) {
   const storeSource = read(storePath);
   const testSource = read(testPath);
   const wiring = sourceWiring(tagSource, commitSource, storeSource, testSource);
+  const config = configWiring(read(configPath));
+  if (!config.ok) {
+    wiring.missing.push(...config.missing);
+    wiring.ok = false;
+  }
   if (!wiring.ok) {
     const receipt = {
       guard: "SDT-G65 bounded two-lane admission",
