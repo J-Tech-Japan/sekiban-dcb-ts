@@ -39,22 +39,25 @@ path and existing idempotent delivery logic.
 
 Source-partition discoverability has the same failure boundary as global
 admission. A successful `recordDelivery` D1 batch upserts the source partition
-alongside the global event, membership, and receipt. The old append-time D1
-probe/insert is only a post-commit, non-blocking registration attempt. If D1 is
-missing, fails, or hangs, the local SQLite commit still returns; until the
-atomic global batch (or a later retry) succeeds, there is no source authority
-for G44 to certify and the safe lane remains fail-closed.
+alongside the global event, membership, and receipt. The append-time D1
+schema-probe/insert is a post-commit, non-blocking derived obligation with
+three bounded attempts, each using the existing 300 ms derived-write budget
+and short backoff. If D1 is missing, fails, or hangs, the local SQLite commit
+still returns; until the atomic global batch or the bounded registration retry
+succeeds, there is no source authority for G44 to certify and the safe lane
+remains fail-closed. The durable outbox and Queue remain the recovery path.
 
 ## Ordering and safety invariants
 
 The required order is:
 
 1. durable Tag event, outbox obligation, and local receipt;
-2. bounded direct unsafe attempt and bounded shared D1 admission attempt;
-3. the Queue drain is started before the handler returns, but its send,
+2. schedule the bounded source-partition registration after the durable commit;
+3. bounded direct unsafe attempt and bounded shared D1 admission attempt;
+4. the Queue drain is started before the handler returns, but its send,
    acknowledgement, retry, and DLQ work is not awaited by the response;
-4. commit response;
-5. later Queue acknowledgement/retry remains the recovery path.
+5. commit response;
+6. later Queue acknowledgement/retry remains the recovery path.
 
 The direct unsafe lane never advances a safe checkpoint. G44 completeness
 coverage and the SAFE fence remain unchanged: a missing or unproven source

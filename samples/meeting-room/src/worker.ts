@@ -7,7 +7,7 @@ import {
   TagStateDurableObject,
   type Env as RuntimeEnv,
 } from "@sekiban/dcb-runtime";
-import { executeMeetingRoomCommand } from "./transport";
+import { executeMeetingRoomCommand, globalAdmissionStatusFromResult } from "./transport";
 import {
   meetingRoomDomain,
   meetingRoomRuntimeConfig,
@@ -69,13 +69,12 @@ function json(body: unknown, status = 200): Response {
 function resultBody(result: ExecuteResult): Record<string, unknown> {
   const body = { ...result } as Record<string, unknown>;
   delete body.cause;
-  delete body.globalAdmission;
   return body;
 }
 
 function resultResponse(result: ExecuteResult): Response {
   const body = resultBody(result);
-  const admission = (result as ExecuteResult & { readonly globalAdmission?: string }).globalAdmission;
+  const admission = globalAdmissionStatusFromResult(result);
   let response: Response;
   switch (result.kind) {
     case "committed":

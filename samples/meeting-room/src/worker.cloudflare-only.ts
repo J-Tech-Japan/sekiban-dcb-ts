@@ -22,7 +22,7 @@ import {
   type GlobalCompletenessCoverage,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
-import { executeMeetingRoomCommand } from "./transport";
+import { executeMeetingRoomCommand, globalAdmissionStatusFromResult } from "./transport";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import {
   catchUpMeetingRoomMaterializedViews,
@@ -184,13 +184,12 @@ function optionalServiceIdentity(env: MeetingRoomCloudflareEnv): string | null {
 function resultBody(result: ExecuteResult): Record<string, unknown> {
   const body = { ...result } as Record<string, unknown>;
   delete body.cause;
-  delete body.globalAdmission;
   return body;
 }
 
 function resultResponse(result: ExecuteResult): Response {
   const body = resultBody(result);
-  const admission = (result as ExecuteResult & { readonly globalAdmission?: string }).globalAdmission;
+  const admission = globalAdmissionStatusFromResult(result);
   let response: Response;
   switch (result.kind) {
     case "committed":

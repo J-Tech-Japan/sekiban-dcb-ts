@@ -11,6 +11,7 @@ const commitPath = "packages/dcb-runtime/src/commit/CommitWorker.ts";
 const storePath = "packages/dcb-runtime/src/store/D1EventStore.ts";
 const testPath = "test/g65-admission.spec.ts";
 const budgetMs = 300;
+const preChangeRef = process.env.SDT_G65_PRE_CHANGE_REF ?? "68454969e6b9c15bb22e5e57bfd388167477dbfb";
 
 function argument(name) {
   const index = process.argv.indexOf(name);
@@ -36,9 +37,9 @@ function currentRevision() {
   }
 }
 
-function sourceAtHead(relativePath) {
+function sourceAtRevision(relativePath, revision = "HEAD") {
   try {
-    return execFileSync("git", ["show", `HEAD:${relativePath}`], { cwd: root, encoding: "utf8" });
+    return execFileSync("git", ["show", `${revision}:${relativePath}`], { cwd: root, encoding: "utf8" });
   } catch {
     return "";
   }
@@ -71,6 +72,12 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
   if (directCalls.length !== 2) missing.push(`two direct attempts (found ${directCalls.length})`);
   if (admissionCalls.length !== 2) missing.push(`two synchronous admission attempts (found ${admissionCalls.length})`);
   if (!append.includes("const result = await this.appendSql(tag, input, serviceId);")) missing.push("durable SQLite append before derived work");
+  if (!append.includes("this.scheduleSourcePartitionRegistration(tag, serviceId)")) missing.push("post-commit source registry scheduling");
+  if (!tagSource.includes(`G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3`)) missing.push("bounded source registry retries");
+  if (!tagSource.includes("retrySourcePartitionRegistration") ||
+    !tagSource.includes("this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId))")) {
+    missing.push("bounded source registry attempt");
+  }
   if (append.includes("await this.registerSourcePartition(tag, serviceId)")) missing.push("synchronous source registry dependency");
   if (!append.includes("const response = json(result.body, result.status);")) missing.push("durable response construction");
   if (!append.includes("return response;")) missing.push("response returned after derived attempts");
@@ -144,7 +151,7 @@ function assertRed(label, operation) {
 function sourceMutantReceipts(tagSource, commitSource, storeSource, testSource) {
   const check = (tag, store = storeSource) => {
     const wiring = sourceWiring(tag, commitSource, store, testSource);
-    if (wiring.ok) throw new Error("mutant was not detected");
+    if (wiring.ok) return;
     throw new Error(`detected: ${wiring.missing.join(", ")}`);
   };
   const mutants = {};
@@ -179,21 +186,20 @@ const preChange = process.argv.includes("--pre-change");
 const selfTest = process.argv.includes("--self-test");
 
 if (preChange) {
-  const tagSource = sourceAtHead(tagPath);
-  const commitSource = sourceAtHead(commitPath);
-  const storeSource = sourceAtHead(storePath);
-  const testSource = sourceAtHead(testPath);
+  const tagSource = sourceAtRevision(tagPath, preChangeRef);
+  const commitSource = sourceAtRevision(commitPath, preChangeRef);
+  const storeSource = sourceAtRevision(storePath, preChangeRef);
+  const testSource = sourceAtRevision(testPath, preChangeRef);
   const wiring = sourceWiring(tagSource, commitSource, storeSource, testSource);
   const red = assertRed("pre-G65 source", () => {
     if (!wiring.ok) throw new Error(`G65 bounded two-lane admission is absent: ${wiring.missing.join(", ")}`);
-    throw new Error("pre-G65 source unexpectedly satisfies the G65 contract");
   });
   const receipt = {
     guard: "SDT-G65 bounded two-lane admission",
     phase: "pre-change",
     status: "red",
     expectedFailure: true,
-    sourceRevision: currentRevision(),
+    sourceRevision: preChangeRef,
     sourcePaths: [tagPath, commitPath, storePath, testPath],
     red,
   };

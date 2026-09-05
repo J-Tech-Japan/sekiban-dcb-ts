@@ -40,16 +40,16 @@ function tagStorage(): DurableObjectStorage {
   } as unknown as DurableObjectStorage;
 }
 
-function candidate(serviceId: string, tag: string): Pick<
+function candidate(serviceId: string, tag: string, identity = "g65"): Pick<
   DownstreamOutboxMessage,
   "eventId" | "suid" | "payload" | "eventTags" | "eventType" | "provenance" | "timestamp" | "allocatorLineageId"
 > {
   const envelope = g32Message({
     serviceId,
     tag,
-    attemptId: "g65-attempt",
-    eventId: "g65-event",
-    suid: "g65-suid",
+    attemptId: `${identity}-attempt`,
+    eventId: `${identity}-event`,
+    suid: `${identity}-suid`,
     payload: JSON.stringify({ eventType: "G65" }),
     eventTags: [tag],
     eventType: "G65",
@@ -211,6 +211,78 @@ describe("SDT-G65 bounded two-lane admission", () => {
         ).toArray()[0];
         expect(row?.count).toBe(1);
       });
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("keeps a public SQLite commit independent of a hanging source-partition schema probe", async () => {
+    const serviceId = `g65-source-probe-hang-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:source-probe-hang:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    const hangingD1 = {
+      prepare: () => ({ all: () => new Promise<never>(() => {}) }),
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = hangingD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const started = performance.now();
+      const response = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({ attemptId: "g65-source-probe-hang-attempt", epoch: 0, candidates: [candidate(serviceId, tag, "g65-source-probe-hang")] }),
+        },
+      );
+      const elapsedMs = performance.now() - started;
+      expect(response.status).toBe(201);
+      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS);
+      expect(await response.clone().json()).not.toHaveProperty("globalAdmission");
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("keeps a public SQLite commit independent of a source-partition INSERT failure", async () => {
+    const serviceId = `g65-source-insert-failure-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:source-insert-failure:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    const failingD1 = {
+      prepare: (sql: string) => sql.includes('SELECT "EventDigest" FROM dcb_events')
+        ? { all: async () => ({ results: [{}] }) }
+        : { bind: () => ({ run: async () => { throw new Error("g65_source_partition_insert_failed"); } }) },
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = failingD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const started = performance.now();
+      const response = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({ attemptId: "g65-source-insert-failure-attempt", epoch: 0, candidates: [candidate(serviceId, tag, "g65-source-insert-failure")] }),
+        },
+      );
+      const elapsedMs = performance.now() - started;
+      expect(response.status).toBe(201);
+      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS);
+      expect(await response.clone().json()).not.toHaveProperty("globalAdmission");
     } finally {
       await runInDurableObject(stub, (instance) => {
         const runtime = instance as unknown as { env: { D1?: D1Database } };

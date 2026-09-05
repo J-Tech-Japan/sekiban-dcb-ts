@@ -37,8 +37,17 @@ export interface MeetingRoomCommandEnvironment {
 
 const G11_SERVICE_ID_HEADER = "x-sdt-g11-service-id";
 const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
-type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
-type MeetingRoomExecuteResult = ExecuteResult & { readonly globalAdmission?: GlobalAdmissionStatus };
+export type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
+const globalAdmissionByResult = new WeakMap<object, GlobalAdmissionStatus>();
+
+/**
+ * Admission is an HTTP response-header concern. Keep the transport metadata
+ * out of the ExecuteResult object so V1 JSON serialization cannot acquire a
+ * sample-only body member.
+ */
+export function globalAdmissionStatusFromResult(result: ExecuteResult): GlobalAdmissionStatus {
+  return globalAdmissionByResult.get(result) ?? "unknown";
+}
 
 function jsonBytes(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -224,8 +233,9 @@ function mergeAdmission(
   return "admitted";
 }
 
-function withAdmission(result: ExecuteResult, globalAdmission: GlobalAdmissionStatus): MeetingRoomExecuteResult {
-  return { ...result, globalAdmission };
+function withAdmission(result: ExecuteResult, globalAdmission: GlobalAdmissionStatus): ExecuteResult {
+  globalAdmissionByResult.set(result, globalAdmission);
+  return result;
 }
 
 function publicResult(

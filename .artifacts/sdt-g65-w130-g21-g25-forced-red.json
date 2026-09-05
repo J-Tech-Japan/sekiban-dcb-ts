@@ -1,0 +1,39 @@
+{
+  "task": "SDT-G65-PR127-LOCAL-REPAIR-WAKE-130",
+  "sourceHead": "62c1272a3edc8e1f8833e2af73a910c9a4010f4f",
+  "classification": "expected-red",
+  "commands": [
+    {
+      "command": "SDT_G21_FORCE_FAILURE=1 npm run test:g21:forced-red",
+      "exitCode": 1,
+      "normalTests": "12 passed",
+      "forcedFailure": "Error: SDT-G21 forced-red CI wiring proof"
+    },
+    {
+      "command": "SDT_G22_FORCE_FAILURE=1 npm run test:g22:forced-red",
+      "exitCode": 1,
+      "normalTests": "7 passed",
+      "forcedFailure": "Error: SDT-G22 forced-red CI wiring proof"
+    },
+    {
+      "command": "SDT_G23_FORCE_FAILURE=1 npm run test:g23:forced-red",
+      "exitCode": 1,
+      "normalTests": "27 passed",
+      "forcedFailure": "Error: SDT-G23 forced-red CI wiring proof"
+    },
+    {
+      "command": "SDT_G24_FORCE_FAILURE=1 npm run test:g24:forced-red",
+      "exitCode": 1,
+      "normalTests": "2 passed",
+      "forcedFailure": "Error: SDT-G24 forced-red CI wiring proof"
+    },
+    {
+      "command": "SDT_G25_FORCE_FAILURE=1 npm run test:g25:forced-red",
+      "exitCode": 1,
+      "normalTests": "3 passed",
+      "forcedFailure": "Error: SDT-G25 forced-red CI wiring proof"
+    }
+  ],
+  "workflow": ".github/workflows/ci.yml ci-g21-g25",
+  "note": "Each normal lane completed before the deliberate forced failure; exit 1 is the required guard result."
+}

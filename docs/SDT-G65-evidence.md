@@ -341,14 +341,15 @@ and [`sdt-g65-w129-deploy-restore-normal.log`](.artifacts/sdt-g65-w129-deploy-re
 ## W129 local repair evidence (F1–F4)
 
 F1 removes the request-path dependency on the source-partition registration
-probe. The public SQL append now schedules that post-commit observation without
-turning its failure or hang into a 503. The D1 `recordDelivery` batch atomically
+probe. The public SQL append now schedules that post-commit derived obligation
+with three bounded attempts; a schema-probe or INSERT failure/hang cannot turn
+the durable local commit into a 503. The D1 `recordDelivery` batch atomically
 upserts the source partition together with the event, global membership, and
 receipt, so a successful global admission has precise G44 source authority;
-the safe fence remains fail-closed when that batch is absent or fails. The new
-SQLite/public test uses an unavailable runtime D1 binding and still receives a
-committed response, while the D1 batch failure test proves no partial global
-admission rows are left behind.
+the safe fence remains fail-closed when that batch is absent or fails. Real
+SQLite/public tests cover an unavailable runtime D1 binding, a hanging schema
+probe, and an INSERT failure, and all return the committed response; the D1
+batch failure test proves no partial global-admission rows are left behind.
 
 F2 replaces the private in-memory admission map with real D1/shared-path
 coverage: direct-first and Queue-first order, duplicate replay, conflicting
@@ -367,9 +368,34 @@ causal timing claim is made.
 
 F4 preserves the V1 JSON body and exposes the actual admission outcome through
 the additive `x-sdt-global-admission` header (`admitted`, `not-admitted`, or
-`unknown`). The transport now retains response headers; unit coverage asserts
-both the header and unchanged JSON shape. The write-path evidence describes the
-G35 inheritance boundary and Queue ordering explicitly.
+`unknown`). The transport retains response headers, while its internal
+admission association is a non-enumerable WeakMap entry rather than an
+`ExecuteResult` body field. Unit coverage asserts all three header outcomes and
+the unchanged JSON shape. The write-path evidence describes the G35
+inheritance boundary and Queue ordering explicitly.
+
+## W130 local repair and forced-red classification
+
+W130 starts from PR #127 head `62c1272a3edc8e1f8833e2af73a910c9a4010f4f` and
+is local-only. The G21–G25 package scripts and required CI steps were already
+present on that exact head and were verified rather than duplicated or
+weakened. Each `SDT_G2x_FORCE_FAILURE=1 npm run test:g2x:forced-red` probe
+returned exit 1 after its normal lane completed, as required. The pinned CI
+run's actual step records likewise showed all five forced-red steps succeeding
+as guards; its failure was the unrelated G54 one-millisecond duration flake,
+not an absent G21–G25 step. A forced-red probe that exits 0 remains a failed
+guard by contract.
+
+The corrected G65 guard retains a pre-change red receipt against
+`68454969e6b9c15bb22e5e57bfd388167477dbfb`, fixes the mutant helper so a
+detected mutant is red while an undetected mutant fails the guard, and records
+the bounded source-registration wiring. Its green receipt covers the real D1
+shared path, public SQLite append, header/body surface, and all six unchanged
+G60 mutation classes. No G21–G25 gate, timeout, or unrelated G54 assertion was
+changed. The durable receipts are
+[`sdt-g65-w130-pre-change-red.json`](.artifacts/sdt-g65-w130-pre-change-red.json),
+[`sdt-g65-w130-green-and-mutants.json`](.artifacts/sdt-g65-w130-green-and-mutants.json),
+and [`sdt-g65-w130-g21-g25-forced-red.json`](.artifacts/sdt-g65-w130-g21-g25-forced-red.json).
 
 ## AC6 and AC7 local evidence
 
@@ -392,7 +418,7 @@ zero. Expected red/mutant cases are reported inside their passing runners:
 
 | Gate | Result |
 | --- | --- |
-| `npm run test:g65` | PASS; 4 focused tests and six red mutants |
+| `npm run test:g65` | PASS; 8 focused tests and six red mutants |
 | `npm run test:g60:required` | PASS; unchanged G60 guards/mutants |
 | `npm run test:g26` | PASS; 32 tests |
 | `npm run test:g29:mapping` | PASS; 92 tests and mapping runner |

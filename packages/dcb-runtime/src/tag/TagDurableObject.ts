@@ -76,6 +76,8 @@ const OBLIGATION_ALARM_BATCH_LIMIT = 32;
  * healthy same-colo D1/doorbell attempt to complete before the response.
  */
 export const G65_DERIVED_WRITE_BUDGET_MS = 300;
+export const G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3;
+export const G65_SOURCE_REGISTRATION_RETRY_DELAY_MS = 25;
 export const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
 type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
 /** Schema identity is immutable for the lifetime of a Worker isolate. */
@@ -1500,11 +1502,32 @@ export class TagDurableObject implements DurableObject {
    * post-commit task. Queue arrivals, sink receipts, and test schedules are
    * intentionally not inputs to this authority. The successful D1 admission
    * batch also upserts this row atomically with the event/membership/receipt;
-   * that is the recovery path when this best-effort post-commit task fails.
+   * that is the recovery path when this bounded best-effort post-commit task
+   * exhausts its retries.
    */
   private scheduleSourcePartitionRegistration(tag: string, serviceId: string): void {
-    const registration = this.registerSourcePartition(tag, serviceId).catch(() => undefined);
+    const registration = this.retrySourcePartitionRegistration(tag, serviceId).catch((error) => {
+      console.warn("source_partition_registration", {
+        status: "degraded",
+        reason: "source_partition_registration_exhausted",
+        attempts: G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
+        error: String(error),
+      });
+    });
     this.ctx.waitUntil(registration);
+  }
+
+  private async retrySourcePartitionRegistration(tag: string, serviceId: string): Promise<void> {
+    let lastFailure: string | undefined;
+    for (let attempt = 1; attempt <= G65_SOURCE_REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
+      const result = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId));
+      if (result.status === "completed") return;
+      lastFailure = result.status === "timeout" ? "timeout" : String(result.error);
+      if (attempt < G65_SOURCE_REGISTRATION_MAX_ATTEMPTS) {
+        await new Promise<void>((resolve) => setTimeout(resolve, G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * attempt));
+      }
+    }
+    throw new Error(`source_partition_registration_failed:${lastFailure ?? "unknown"}`);
   }
 
   private async registerSourcePartition(tag: string, serviceId: string): Promise<void> {
@@ -1546,7 +1569,14 @@ export class TagDurableObject implements DurableObject {
       authority = this.readG44GlobalArrayAuthority(database);
       g44GlobalArrayAuthorityByD1.set(database, authority);
     }
-    return authority;
+    try {
+      return await authority;
+    } catch (error) {
+      if (g44GlobalArrayAuthorityByD1.get(database) === authority) {
+        g44GlobalArrayAuthorityByD1.delete(database);
+      }
+      throw error;
+    }
   }
 
   private async readG44GlobalArrayAuthority(database: D1Database): Promise<boolean> {
@@ -2878,9 +2908,10 @@ export class TagDurableObject implements DurableObject {
         ) {
           // Source discoverability must not turn a durable local acceptance
           // into a D1-dependent response. The post-commit registration is
-          // retried by the existing Queue/global admission path when it fails;
-          // G44 remains fail-closed until a source obligation is registered
-          // and has a joined global receipt.
+          // The bounded post-commit registration is observation-only. If it
+          // exhausts, the durable Queue/global admission path remains the
+          // recovery authority; G44 stays fail-closed until a source
+          // obligation is registered and has a joined global receipt.
           this.scheduleSourcePartitionRegistration(tag, serviceId);
         }
         const response = json(result.body, result.status);
