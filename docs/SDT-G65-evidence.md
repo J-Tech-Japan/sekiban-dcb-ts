@@ -1,16 +1,17 @@
-# SDT-G65 repair evidence (W129; W128 deployed baseline preserved)
+# SDT-G65 repair evidence (W129; W128 baseline and W129 repair deployment)
 
-Task: `SDT-G65-DEPLOYED-WAKE-128`
+Task: `SDT-G65-PR127-REPAIR-WAKE-129`
 Issue: [J-Tech-Japan/sekiban-dcb-ts#126](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/126)
 Branch: `claude/sdt-g65-local-wake-w128`
-Exact source deployed: `4184882c2d8779420e1778b95ea91d72676d4439`
+Exact source deployed for W129: `ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a`
 Reviewed PR head: `68454969e6b9c15bb22e5e57bfd388167477dbfb`
 Base: `origin/main` at `4687efa5c49951d9966a3785be5fd7b2620c6e4f`
 
-W128 remains the preserved deployed baseline. This W129 checkpoint repairs the
-four review findings and records the new local gates; it is **not** a claim that
-the repaired source has deployed evidence yet. PR #127 remains in review and no
-worker-complete, self-approval, or merge transition is performed here.
+W128 remains the preserved deployed baseline. W129 repairs the four review
+findings, records the local red/green/mutant gates, and deploys the exact repair
+to the existing W155-C arm for the required healthy and runtime-D1-unavailable
+proofs. PR #127 remains in review; no worker-complete, self-approval, or merge
+transition is performed here.
 
 ## Window and boundaries
 
@@ -24,8 +25,12 @@ The run reused the existing throwaway W155-C arm only:
 | Queue | `sekiban-dcb-g60-w155-c-outbox` |
 | Dead-letter Queue | `sekiban-dcb-g60-w155-c-outbox-dlq` |
 
-No resource was created and no migration was applied. The normal config shape
-was adapted only for this already-existing arm. All Wrangler calls were made
+No resource was created. Migration `0009_g65_admission_attempts.sql` was
+applied exactly once to the existing pipeline D1; the first stripped
+`migrations list` read returned Cloudflare code 7403, and the permitted
+idempotent read retry after approximately five seconds succeeded before the
+single apply. The normal config shape was adapted only for this already-existing
+arm. All Wrangler calls were made
 through the receipt-producing wrapper with these five credential variables
 stripped; the seat state was `UNSET` for each: `CLOUDFLARE_API_TOKEN`,
 `CF_API_TOKEN`, `CLOUDFLARE_API_KEY`, `CF_API_KEY`, and
@@ -34,13 +39,55 @@ by file path only. No token value was printed, logged, or committed, and no
 `--keep-vars` invocation was used.
 
 The receipts are retained under [`.artifacts/`](.artifacts/). The important
-remote operation receipts are `wrangler-001` through `wrangler-046`; the two
+remote operation receipts are `wrangler-001` through `wrangler-046` plus the
+W129 receipts listed below; the two
 cohorts are [`sdt-g65-w128-baseline.json`](.artifacts/sdt-g65-w128-baseline.json),
 [`sdt-g65-w128-post.json`](.artifacts/sdt-g65-w128-post.json), and the C-0
 fault cohort/follow-up are [`sdt-g65-w128-d1-unavailable.json`](.artifacts/sdt-g65-w128-d1-unavailable.json)
 and [`sdt-g65-w128-restored-followup.json`](.artifacts/sdt-g65-w128-restored-followup.json).
 
-## Deployment identity
+## W129 deployment identity
+
+The W129 normal deployment was version
+`0be239ed-5553-4f0b-b29a-1c344b082de1`, deployment
+`46d79582-80c9-49c2-852d-2585021b6f8f`, 100% traffic, with annotation
+`SDT-G65 W129 repair exact ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a` and the
+expected pipeline/MV bindings. No secret publication was needed, so no
+secret-created version intervened. The exact receipts are
+[`sdt-g65-w129-deploy-normal.log`](.artifacts/sdt-g65-w129-deploy-normal.log),
+[`sdt-g65-w129-versions-normal.json`](.artifacts/sdt-g65-w129-versions-normal.json),
+and [`sdt-g65-w129-deployments-normal.json`](.artifacts/sdt-g65-w129-deployments-normal.json).
+
+The runtime-D1-unavailable proof deployed the same exact source with only the
+runtime `D1` binding removed: version
+`51b6a2a6-968b-475d-b679-cb519e84d0fc`, deployment
+`9be2e34d-75f9-4881-8b6d-5432522f3975`, 100% traffic, annotation
+`SDT-G65 W129 F1 unavailable-D1 exact ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a`.
+The normal binding was restored afterward with version
+`2b1dae1e-5b3d-4c48-8e64-67a8cf64b850`, deployment
+`d1b85541-6339-4f41-a3ae-10f0f260264b`, 100% traffic, annotation
+`SDT-G65 W129 restore normal D1 exact ccfa0b0c2ea7a9f42f61bd241c5fa52e3ef2676a`.
+The unavailable and restore receipts are
+[`sdt-g65-w129-deploy-d1-unavailable.log`](.artifacts/sdt-g65-w129-deploy-d1-unavailable.log),
+[`sdt-g65-w129-deployments-d1-unavailable.json`](.artifacts/sdt-g65-w129-deployments-d1-unavailable.json),
+and [`sdt-g65-w129-deployments-final.json`](.artifacts/sdt-g65-w129-deployments-final.json).
+
+The W129 healthy public receipt is preserved losslessly as
+[`sdt-g65-w129-healthy-cohort.json.gz`](.artifacts/sdt-g65-w129-healthy-cohort.json.gz).
+Its SHA-256 is
+`691257836b8e5cb9e1d3d78df6f6c589f079eafd000f973a953d65b9cb626667`; the
+lossless decompression command is
+`gzip -dc .artifacts/sdt-g65-w129-healthy-cohort.json.gz > .artifacts/sdt-g65-w129-healthy-cohort.json`.
+The decompressed stream was verified byte-for-byte against the locally retained
+expanded receipt. The unavailable public receipt is
+[`sdt-g65-w129-d1-unavailable.json`](.artifacts/sdt-g65-w129-d1-unavailable.json).
+
+The five recognized Wrangler credential variables were `UNSET` for every
+W129 invocation: `CLOUDFLARE_API_TOKEN`, `CF_API_TOKEN`,
+`CLOUDFLARE_API_KEY`, `CF_API_KEY`, and `WRANGLER_API_TOKEN`. The conformance
+credential was path-only; no token value was printed, logged, or committed.
+
+## Deployment identity (W128 historical baseline)
 
 The pre-change baseline was collected before the exact G65 deployment. The
 active secret-only version was `67e00b28-ecec-45e9-bb1d-6845464ecce3`; it had
@@ -68,7 +115,7 @@ version `53ba7465-60e6-4773-ba69-e94bc29c2130`, deployment
 `00dc3aba-dd45-4b84-b682-341eba6f4a64`, 100% traffic, and the exact annotation
 `SDT-G65 W128 restore normal D1 exact 4184882c2d8779420e1778b95ea91d72676d4439`.
 
-## AC5 — before/after cohorts (W128 preserved; repaired measurement required)
+## AC5 — before/after cohorts (W128 preserved; W129 repair measurement)
 
 Both public cohorts were cold-first, n=10, paced at least ten seconds after the
 preceding response, and used fully paged `GET /api/read/reservations`. The
@@ -113,6 +160,44 @@ were derived from `received_at`/outbox observations and are withdrawn as
 timing claims. W128 did not have the new correlated admission ledger or the
 public outcome header, so no global completion distribution is claimed here.
 
+### W129 deployed healthy cohort
+
+The exact W129 repair ran one cold-first, ten-sample public cohort on the same
+W155-C arm. Samples were paced at least ten seconds after the preceding commit
+response. The public body remained V1-compatible; the additive
+`x-sdt-global-admission` header was `unknown` for all ten samples. The durable
+ledger explains that result: all 11 command-associated attempts (setup room plus
+ten reservations) finished at the 300 ms bounded deadline with outcome
+`unknown` and no `global_completion_observed_at`. This is recorded evidence,
+not a false admission pass.
+
+| Metric | W129 result | Interpretation |
+| --- | ---: | --- |
+| Client response n / p50 / p95 | 10 / 2,197 / 3,356 ms | response distribution |
+| Unsafe first visibility n / p50 / p95 | 10 / 56,642 / 118,113 ms | evidence only; 10/10 over 5,000 ms |
+| Safe/projector head n / p50 / p95 | 10 / 172,470 / 235,238 ms | 5/10 within 180 s; 5/10 after the bound |
+| Cohort tag-state reads | 11/11 version 1 | committed tag state |
+| Final Room/Reservation heads | both `063924178322440000001456939849` | reached after the 180 s bound |
+
+| # | SUID | Response | Unsafe | Safe/head | Tag state |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | `063924178210984000001726691723` | 2,518 | 118,113 | 235,238 | 117,926 |
+| 2 | `063924178224722000000360555581` | 3,356 | 104,403 | 221,303 | 103,991 |
+| 3 | `063924178237013000002045136300` | 2,066 | 92,575 | 209,236 | 91,924 |
+| 4 | `063924178249243000000862815092` | 2,235 | 80,542 | 196,992 | 79,680 |
+| 5 | `063924178261468000000443208851` | 2,197 | 68,721 | 184,794 | 67,482 |
+| 6 | `063924178273513000001618644650` | 2,323 | 56,642 | 172,470 | 55,158 |
+| 7 | `063924178285821000001542062552` | 2,017 | 44,898 | 160,452 | 43,140 |
+| 8 | `063924178298169000001652676251` | 2,356 | 32,874 | 148,094 | 30,782 |
+| 9 | `063924178310280000000037521988` | 2,089 | 36,310 | 136,004 | 18,692 |
+| 10 | `063924178322440000001456939849` | 2,194 | 24,294 | 123,809 | 6,497 |
+
+The W129 raw receipt is compressed and retained above. It records 68 health
+snapshots, per-sample public paging, tag-state reads, scheduled polls, and the
+final projector-head proof. Because this repair task does not authorize a
+further latency repair, the W129 5 s/180 s misses remain honest platform
+evidence; they do not get relabeled as a G65 pass.
+
 ### Durable hop and sub-hop measurements
 
 The post-change raw and analyzed receipts are
@@ -149,7 +234,22 @@ ReservationProjector unsafe receipt per reservation, with duplicate/no-change
 outcomes where the room and reservation fan-out met the same event, and no
 regressing active row.
 
-## Amended AC0 and AC5 evaluation (W128 baseline; W129 repair pending)
+### W129 admission ledger
+
+The W129 ledger query is preserved in
+[`sdt-g65-w129-ledger-query.log`](.artifacts/sdt-g65-w129-ledger-query.log).
+It contains 36 rows for 11 distinct event identities/attempt identities after
+the setup row and cohort reservations are correlated. Every row has
+`clock_origin = Date.now epoch ms`, a 300 ms start-to-finish bounded attempt,
+`outcome = unknown`, and a null global-completion observation. Therefore the
+W129 admission distribution is n=11, p50=300 ms, p95=300 ms for the bounded
+attempt itself, with admitted=0, not-admitted=0, unknown=11. The public healthy
+cohort independently records the same `unknown` outcome header for 10/10
+reservations. The runtime-D1-unavailable proof records `not-admitted` on its
+public reservation response, while the commit body remains HTTP 200 and
+`kind=committed`; its raw receipt is retained below.
+
+## Amended AC0 and AC5 evaluation (W128 baseline plus W129 evidence)
 
 The absolute 1,308 ms figure was the SDT-G52 LAX measurement from a different
 worker and colo and is withdrawn. It is not used as an acceptance target and
@@ -162,18 +262,23 @@ and records an unknown derived-write outcome rather than failing the commit.
 The six unchanged SDT-G60 mutants remain green, and the G65 red-capable guard
 proves a never-resolving receiver cannot delay the response beyond the budget.
 
-The following is the W128 evaluation only. It is retained for comparison, but
-the repaired source must produce a new healthy and unavailable measurement
-before these values can be used as W129 acceptance evidence:
+The following W128 evaluation is retained for comparison only:
 
 | Check | Calculation | Result |
 | --- | --- | --- |
 | Client response p95 | `2,545 − 2,417 = 128 ms` | PASS; ≤150 ms |
 | Client response p50 increase | `2,413 − 2,145 = 268 ms` | W128 historical only; no W129 claim |
-| Global visibility | no valid W128 completion/read clock | OPEN; not claimed |
+| Global visibility | no valid W128 completion/read clock | W128 OPEN; not claimed |
 | Unsafe visibility | post p50/p95 `2,262/4,518 ms` | PASS; 0/10 at or over 5,000 ms |
 | Safe visibility | post p50/p95 `114,982/176,719 ms` | PASS; 10/10 within 180 s |
 | HTTP 504 | post cohort | PASS; 0/10 |
+
+For W129, the actual admission outcome is exposed through the documented V1
+compatible response header. Healthy arm: `unknown` 10/10, because the bounded
+attempt exhausted before a global completion read-back. Runtime D1 unavailable:
+`not-admitted` on the one reservation, while the local SQLite commit stayed
+HTTP 200/`committed`. This distinguishes response acceptance from global
+admission and does not swallow the G44 obligation.
 
 The direct unsafe-writer boundaries remain bounded (`RoomProjector` p50/p95
 `58/286 ms`, `ReservationProjector` `55/68 ms`), but W128 did not record a
@@ -185,7 +290,7 @@ read-back returned. A fresh deployed repair measurement is required before
 claiming the global/admission distributions or separating the doorbell and
 synchronous contributions.
 
-## AC5 D1-unavailable cohort
+## W128 historical AC5 D1-unavailable cohort
 
 Under C-0 only the runtime `D1` binding was removed. The three commits remained
 HTTP 200 `kind=committed`; no commit was rejected. The public RYOW/list read
@@ -212,6 +317,27 @@ reservation row. The relevant receipts are
 [`wrangler-044-query-unavailable-mv-receipts-corrected.json`](.artifacts/wrangler-044-query-unavailable-mv-receipts-corrected.json),
 and [`wrangler-046-query-unavailable-mv-unsafe-rows.json`](.artifacts/wrangler-046-query-unavailable-mv-unsafe-rows.json).
 
+## W129 F1 runtime-D1-unavailable proof
+
+W129 repeated the unavailable-binding proof against the exact repair source with
+one cold-first public reservation (the setup room is separate). The runtime D1
+binding was absent, while local SQLite remained available. The commit returned
+HTTP 200 with body `kind=committed`, the additive admission header was
+`not-admitted`, and the fully paged public reservation list did not contain the
+new reservation at the 5,000 ms observation bound. The raw receipt records
+`n=1`, observed `0`, censored `1`, and `countAtOrOver5000OrMissing=1`; no
+percentile is claimed from this one censored row. After restoring the normal D1
+binding, the arm was left on the normal exact-source deployment recorded above.
+
+| Sample | Commit response | Admission header | Public read | Interpretation |
+| ---: | ---: | --- | --- | --- |
+| 1 | HTTP 200, `committed`, 1,939 ms | `not-admitted` | missing at 5 s | local durable acceptance is independent of the unavailable D1 probe; global admission is explicit |
+
+Receipt: [`sdt-g65-w129-d1-unavailable.json`](.artifacts/sdt-g65-w129-d1-unavailable.json).
+The deployment and restoration receipts are
+[`sdt-g65-w129-deploy-d1-unavailable.log`](.artifacts/sdt-g65-w129-deploy-d1-unavailable.log)
+and [`sdt-g65-w129-deploy-restore-normal.log`](.artifacts/sdt-g65-w129-deploy-restore-normal.log).
+
 ## W129 local repair evidence (F1–F4)
 
 F1 removes the request-path dependency on the source-partition registration
@@ -234,9 +360,10 @@ F3 withdraws authored `Timestamp` and caller/outbox `received_at` values as
 global timing claims. The new `serialized_dcb_g65_admission_attempts` ledger
 correlates event/SUID/attempt identity, records `Date.now()` epoch-ms start/end,
 outcome, completion observation, and clock origin through `waitUntil`; it never
-controls admission or response. A fresh deployment is required for its
-distributions and for separating the bounded doorbell contribution from the
-explicit synchronous-admission attempt.
+controls admission or response. W129 deployed evidence records the bounded
+attempt distribution above. It also keeps the bounded direct-doorbell and the
+explicit synchronous-admission attempt as separate concepts; no unsupported
+causal timing claim is made.
 
 F4 preserves the V1 JSON body and exposes the actual admission outcome through
 the additive `x-sdt-global-admission` header (`admitted`, `not-admitted`, or
@@ -253,7 +380,7 @@ durability, duplicate admission, and omitted direct delivery. The existing
 G60 red-capable guards remained unmodified and green, including direct-doorbell,
 Queue-latency, durable-hop, unsafe-writer, and post-admission guards.
 
-The deployed observations preserve the V1 response body, event/tag ordering,
+The W129 deployed observations preserve the V1 response body, event/tag ordering,
 reservation and fence protocol, Queue durability/retry/DLQ ownership, safe-lane
 completeness semantics, G58/G62 maintenance behavior, and the unchanged
 5,000 ms constant. No gate was weakened, skipped, or timeout-inflated.
@@ -293,9 +420,9 @@ substituted or weakened.
 
 ## W129 rereview boundary
 
-The local repair checkpoint satisfies the code/test portion of F1–F4 and
-preserves the W128 deployed receipts, but AC5/F1/F3/F4 fresh deployed proof is
-still required before PR #127 can be marked rereview-ready. No new Cloudflare
-operation is included in this local evidence update. The six G60 mutants, V1
-body, fence, Queue/outbox, G58/G62, and 5,000 ms boundaries remain unchanged.
-SDT-G57 is not touched.
+The repair checkpoint satisfies the code/test portion of F1–F4 and the W129
+deployed evidence is now preserved. PR #127 is pushed at the repair head and
+awaits reviewer rereview; no self-approval, merge, or worker-complete
+transition is performed here. The six G60 mutants, V1 body, fence,
+Queue/outbox, G58/G62, and 5,000 ms boundaries remain unchanged. SDT-G57 is
+not touched.

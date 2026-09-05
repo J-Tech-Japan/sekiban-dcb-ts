@@ -1,0 +1,40 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+🌀 Building list of assets...
+✨ Read 7 files from the assets directory /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/samples/meeting-room/public
+🌀 Starting asset upload...
+No updated asset files to upload. Proceeding with deployment...
+Total Upload: 2230.23 KiB / gzip: 373.24 KiB
+Worker Startup Time: 26 ms
+Your Worker has access to the following bindings:
+Binding                                                                               Resource                  
+env.ALLOCATOR (AllocatorDurableObject)                                                Durable Object            
+env.JOURNAL (JournalDurableObject)                                                    Durable Object            
+env.TAG (TagDurableObject)                                                            Durable Object            
+env.TAG_STATE (TagStateDurableObject)                                                 Durable Object            
+env.BOOTSTRAP (BootstrapCoordinatorDurableObject)                                     Durable Object            
+env.DOWNSTREAM_QUEUE (inherited)                                                      Queue                     
+env.D1 (sekiban-dcb-g60-w155-c-pipeline)                                              D1 Database               
+env.D1_MV (sekiban-dcb-g60-w155-c-mv)                                                 D1 Database               
+env.AUTO_DRAIN_OUTBOX ("true")                                                        Environment Variable      
+env.DOMAIN_DELIVERY_CLASS ("immediate-preferred")                                     Environment Variable      
+env.DIRECT_DOORBELL ("false")                                                         Environment Variable      
+env.DIRECT_DOORBELL_ALLOWED_VIEWS ("RoomProjector,ReservationProjector")              Environment Variable      
+env.DIRECT_DOORBELL_MAX_INVOCATIONS ("32")                                            Environment Variable      
+env.DIRECT_DOORBELL_DEGRADATION ("queued-degraded")                                   Environment Variable      
+env.DIRECT_DOORBELL_RECEIVER_MODE ("separate")                                        Environment Variable      
+env.G26_VIEW_COUNT ("2")                                                              Environment Variable      
+env.G32_COMPONENT ("primary")                                                         Environment Variable      
+env.G32_CUTOVER_PHASE ("final-g32")                                                   Environment Variable      
+env.G32_FREEZE_RELEASE ("after-new-bindings")                                         Environment Variable      
+env.G32_CUTOVER_FENCE_FINGERPRINT ("6e1cf1c9454d5eb7a184265b56fcd2a369cf5...")        Environment Variable      
+env.SDT_SERVICE_ID ("sekiban-dcb-g60-w155-c")                                         Environment Variable      
+
+Uploaded sekiban-dcb-g60-w155-c (3.68 sec)
+Deployed sekiban-dcb-g60-w155-c triggers (3.54 sec)
+  https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev
+  schedule: * * * * *
+  Producer for sekiban-dcb-g60-w155-c-outbox
+  Consumer for sekiban-dcb-g60-w155-c-outbox
+Current Version ID: 2b1dae1e-5b3d-4c48-8e64-67a8cf64b850

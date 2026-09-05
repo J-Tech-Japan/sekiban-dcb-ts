@@ -1,0 +1,22 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+Migrations to be applied:
+┌─────────────────────────────────┐
+│ name                            │
+├─────────────────────────────────┤
+│ 0009_g65_admission_attempts.sql │
+└─────────────────────────────────┘
+? About to apply 1 migration(s)
+Your database may not be available to serve requests during the migration, continue?
+🤖 Using fallback value in non-interactive context: yes
+🌀 Executing on remote database D1 (ac751211-fde8-4587-9d56-1e9fd8051bc3):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 3 commands in 0.79ms
+┌─────────────────────────────────┬────────┐
+│ name                            │ status │
+├─────────────────────────────────┼────────┤
+│ 0009_g65_admission_attempts.sql │ ✅     │
+└─────────────────────────────────┴────────┘
