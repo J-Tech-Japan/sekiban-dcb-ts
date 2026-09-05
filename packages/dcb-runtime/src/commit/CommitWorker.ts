@@ -104,6 +104,12 @@ interface ReservationAttempt {
 interface AppendAttempt {
   readonly committedTags: ReadonlySet<string>;
   readonly pendingTags: readonly string[];
+  /**
+   * A first-partition registration refusal is a typed retryable outcome only
+   * when every pending participant returned that same refusal.  Mixed writes
+   * remain the existing durable partial-write/fence outcome below.
+   */
+  readonly registrationUnavailableTags: readonly string[];
   /** Internal Tag response header; the V1 JSON body remains unchanged. */
   readonly globalAdmission: GlobalAdmissionStatus;
 }
@@ -137,8 +143,8 @@ function json(body: unknown, status = 200, headers?: HeadersInit): Response {
   return new Response(JSON.stringify(body), { status, headers: responseHeaders });
 }
 
-function error(status: number, code: string, message: string): Response {
-  return json({ error: message, code }, status);
+function error(status: number, code: string, message: string, retryable = false): Response {
+  return json(retryable ? { error: message, code, retryable: true } : { error: message, code }, status);
 }
 
 function readGlobalAdmission(response: Response): GlobalAdmissionStatus {
@@ -679,6 +685,21 @@ export class CommitWorker {
       if (!await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope)) {
         return this.noApplicationOutcome(attemptId, true);
       }
+      if (
+        writes.committedTags.size === 0 &&
+        writes.registrationUnavailableTags.length === writes.pendingTags.length
+      ) {
+        return responseWithAttempt(
+          error(
+            503,
+            "partition_registration_unavailable",
+            "Source partition registration is unavailable; retry the commit.",
+            true,
+          ),
+          attemptId,
+          fault !== undefined,
+        );
+      }
       return this.partialWriteOutcome(input, allocatedCandidates, writes, attemptId, fault !== undefined);
     }
     await this.retiredJournalMilestone("S05d", traceState?.scope, 3);
@@ -959,6 +980,7 @@ export class CommitWorker {
   ): Promise<AppendAttempt> {
     let pending = [...input.allTags];
     const committedTags = new Set<string>();
+    const lastFailureCodeByTag = new Map<string, string | undefined>();
     let globalAdmission: GlobalAdmissionStatus = "admitted";
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS && pending.length > 0; attempt += 1) {
       const append = (stageScope?: CommitTraceScope) => Promise.allSettled(
@@ -992,10 +1014,14 @@ export class CommitWorker {
             retryIndex: attempt,
             attemptId,
           });
+          const body = response.status === 503
+            ? await response.clone().json().catch(() => undefined) as unknown
+            : undefined;
           return {
             tag,
             success: response.status >= 200 && response.status < 300,
             globalAdmission: readGlobalAdmission(response),
+            code: isObject(body) && typeof body.code === "string" ? body.code : undefined,
           };
         }),
       );
@@ -1007,14 +1033,26 @@ export class CommitWorker {
         const tag = pending[index]!;
         if (result.status === "fulfilled" && result.value.success) {
           committedTags.add(tag);
+          lastFailureCodeByTag.delete(tag);
           globalAdmission = mergeGlobalAdmission(globalAdmission, result.value.globalAdmission);
         } else {
+          lastFailureCodeByTag.set(
+            tag,
+            result.status === "fulfilled" ? result.value.code : undefined,
+          );
           nextPending.push(tag);
         }
       }
       pending = nextPending;
     }
-    return { committedTags, pendingTags: pending, globalAdmission };
+    return {
+      committedTags,
+      pendingTags: pending,
+      registrationUnavailableTags: pending.filter(
+        (tag) => lastFailureCodeByTag.get(tag) === "partition_registration_unavailable",
+      ),
+      globalAdmission,
+    };
   }
 
   /**

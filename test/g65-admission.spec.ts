@@ -83,6 +83,27 @@ function realTagStub(serviceId: string, tag: string): DurableObjectStub {
   return tags().get(scopeIdFor(tags(), { serviceId, doClass: "tag", identity: tag }));
 }
 
+const PUBLIC_COMMIT_SERVICE_ID = "local-test-runtime";
+
+function publicCandidate(tag: string, identity: string): Record<string, unknown> {
+  return {
+    payload: btoa(JSON.stringify({ value: identity })),
+    eventPayloadName: "G65PublicCommitEvent",
+    tags: [tag],
+  };
+}
+
+async function publicCommit(
+  eventCandidates: readonly Record<string, unknown>[],
+  consistencyTags: readonly Record<string, unknown>[],
+): Promise<Response> {
+  return SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ version: 1, eventCandidates, consistencyTags }),
+  });
+}
+
 describe("SDT-G65 bounded two-lane admission", () => {
   beforeAll(async () => {
     const database = (env as unknown as { D1?: D1Database }).D1;
@@ -349,6 +370,152 @@ describe("SDT-G65 bounded two-lane admission", () => {
       });
     } finally {
       await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("serializes a configured first-partition registration failure as a retryable public refusal", async () => {
+    const serviceId = PUBLIC_COMMIT_SERVICE_ID;
+    const tag = `reservation:g65:public-registration-failure:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    const failingD1 = {
+      prepare: (sql: string) => sql.includes('SELECT "EventDigest" FROM dcb_events')
+        ? { all: async () => ({ results: [{}] }) }
+        : { bind: () => ({ run: async () => { throw new Error("g65_public_source_partition_insert_failed"); } }) },
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = failingD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const started = performance.now();
+      const response = await publicCommit(
+        [publicCandidate(tag, "public-registration-failure")],
+        [{ tag, lastSortableUniqueId: "" }],
+      );
+      const elapsedMs = performance.now() - started;
+      expect(response.status).toBe(503);
+      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS * 2 + 500);
+      expect(await response.clone().json()).toMatchObject({
+        code: "partition_registration_unavailable",
+        retryable: true,
+      });
+      await runInDurableObject(stub, (_instance, state) => {
+        expect(state.storage.sql.exec<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM tag_event WHERE service_id = ?",
+          serviceId,
+        ).toArray()[0]?.count).toBe(0);
+      });
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("serializes a configured first-partition registration hang as a bounded public refusal", async () => {
+    const serviceId = PUBLIC_COMMIT_SERVICE_ID;
+    const tag = `reservation:g65:public-registration-hang:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    const hangingD1 = {
+      prepare: (sql: string) => sql.includes('SELECT "EventDigest" FROM dcb_events')
+        ? { all: async () => ({ results: [{}] }) }
+        : { bind: () => ({ run: () => new Promise<never>(() => {}) }) },
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = hangingD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const started = performance.now();
+      const response = await publicCommit(
+        [publicCandidate(tag, "public-registration-hang")],
+        [{ tag, lastSortableUniqueId: "" }],
+      );
+      const elapsedMs = performance.now() - started;
+      expect(response.status).toBe(503);
+      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS * 2 + 900);
+      expect(await response.clone().json()).toMatchObject({
+        code: "partition_registration_unavailable",
+        retryable: true,
+      });
+      await runInDurableObject(stub, (_instance, state) => {
+        expect(state.storage.sql.exec<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM tag_event WHERE service_id = ?",
+          serviceId,
+        ).toArray()[0]?.count).toBe(0);
+      });
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("keeps mixed public commits as partial writes while refusing only the new partition", async () => {
+    const serviceId = PUBLIC_COMMIT_SERVICE_ID;
+    const existingTag = `reservation:g65:public-mixed-existing:${crypto.randomUUID()}`;
+    const newTag = `reservation:g65:public-mixed-new:${crypto.randomUUID()}`;
+    const first = await publicCommit(
+      [publicCandidate(existingTag, "public-mixed-seed")],
+      [{ tag: existingTag, lastSortableUniqueId: "" }],
+    );
+    expect(first.status).toBe(200);
+    const firstBody = await first.clone().json() as { writtenEvents?: Array<{ sortableUniqueIdValue?: string }> };
+    const existingHead = firstBody.writtenEvents?.[0]?.sortableUniqueIdValue;
+    expect(existingHead).toMatch(/^\d{30}$/);
+
+    const newStub = realTagStub(serviceId, newTag);
+    const originalD1 = database();
+    const failingD1 = {
+      prepare: (sql: string) => sql.includes('SELECT "EventDigest" FROM dcb_events')
+        ? { all: async () => ({ results: [{}] }) }
+        : { bind: () => ({ run: async () => { throw new Error("g65_public_mixed_source_partition_insert_failed"); } }) },
+    } as unknown as D1Database;
+    await runInDurableObject(newStub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = failingD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const started = performance.now();
+      const response = await publicCommit(
+        [
+          publicCandidate(existingTag, "public-mixed-existing"),
+          publicCandidate(newTag, "public-mixed-new"),
+        ],
+        [
+          { tag: existingTag, lastSortableUniqueId: existingHead },
+          { tag: newTag, lastSortableUniqueId: "" },
+        ],
+      );
+      const elapsedMs = performance.now() - started;
+      expect(response.status).toBe(500);
+      expect(elapsedMs).toBeLessThan(G65_DERIVED_WRITE_BUDGET_MS * 2 + 500);
+      expect(await response.clone().json()).toMatchObject({
+        code: "partial_write",
+        partial: {
+          retryable: false,
+          writtenTags: [existingTag],
+          missingTags: [newTag],
+        },
+      });
+      await runInDurableObject(newStub, (_instance, state) => {
+        expect(state.storage.sql.exec<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM tag_event WHERE service_id = ?",
+          serviceId,
+        ).toArray()[0]?.count).toBe(0);
+      });
+    } finally {
+      await runInDurableObject(newStub, (instance) => {
         const runtime = instance as unknown as { env: { D1?: D1Database } };
         runtime.env.D1 = originalD1;
       });
