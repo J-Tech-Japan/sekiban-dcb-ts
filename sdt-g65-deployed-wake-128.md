@@ -3,7 +3,8 @@
 Task: `SDT-G65-DEPLOYED-WAKE-128`
 Issue: [J-Tech-Japan/sekiban-dcb-ts#126](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/126)
 Branch: `claude/sdt-g65-local-wake-w128`
-Head: `4184882c2d8779420e1778b95ea91d72676d4439`
+Deployed source head: `4184882c2d8779420e1778b95ea91d72676d4439`
+Evidence checkpoint: `2addf8c10a7d75a478f33a220601a268061fd87e`
 
 Status: **blocked**. The existing W155-C arm was reused without resource
 creation or migrations. The exact G65 version was deployed at 100% as
