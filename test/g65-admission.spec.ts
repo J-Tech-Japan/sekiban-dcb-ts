@@ -183,7 +183,7 @@ describe("SDT-G65 bounded two-lane admission", () => {
     expect(counts).toEqual({ events: 0, receipts: 0, partitions: 0 });
   });
 
-  it("refuses a first append when the runtime D1 registration binding is unavailable", async () => {
+  it("keeps the pre-G65 first-append path when the completeness binding is unavailable", async () => {
     const serviceId = `g65-unavailable-${crypto.randomUUID()}`;
     const tag = `reservation:g65:unavailable:${crypto.randomUUID()}`;
     const stub = realTagStub(serviceId, tag);
@@ -202,18 +202,55 @@ describe("SDT-G65 bounded two-lane admission", () => {
           body: JSON.stringify({ attemptId: "g65-unavailable-attempt", epoch: 0, candidates: [candidate(serviceId, tag)] }),
         },
       );
-      expect(response.status).toBe(503);
-      expect(await response.clone().json()).toMatchObject({
-        code: "partition_registration_unavailable",
-        retryable: true,
-      });
+      expect(response.status).toBe(201);
+      expect(await response.clone().json()).toMatchObject({ status: "appended" });
       await runInDurableObject(stub, (_instance, state) => {
         const rows = state.storage.sql.exec<{ events: number; receipts: number }>(`
           SELECT
             (SELECT COUNT(*) FROM tag_event WHERE service_id = ?) AS events,
             (SELECT COUNT(*) FROM tag_commit_receipt WHERE attempt_id = ?) AS receipts
         `, serviceId, "g65-unavailable-attempt").toArray()[0];
-        expect(rows).toEqual({ events: 0, receipts: 0 });
+        expect(rows).toEqual({ events: 1, receipts: 1 });
+      });
+    } finally {
+      await runInDurableObject(stub, (instance) => {
+        const runtime = instance as unknown as { env: { D1?: D1Database } };
+        runtime.env.D1 = originalD1;
+      });
+    }
+  });
+
+  it("keeps the pre-G65 first-append path when D1 has no configured G44 store", async () => {
+    const serviceId = `g65-unconfigured-${crypto.randomUUID()}`;
+    const tag = `reservation:g65:unconfigured:${crypto.randomUUID()}`;
+    const stub = realTagStub(serviceId, tag);
+    const originalD1 = database();
+    const unconfiguredD1 = {
+      prepare: () => ({
+        all: async () => { throw new Error("no such table: dcb_events"); },
+      }),
+    } as unknown as D1Database;
+    await runInDurableObject(stub, (instance) => {
+      const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };
+      runtime.env.D1 = unconfiguredD1;
+      runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    });
+    try {
+      const response = await SELF.fetch(
+        `https://tag.test/tags/${encodeURIComponent(serviceId)}/${encodeURIComponent(tag)}/append`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({ attemptId: "g65-unconfigured-attempt", epoch: 0, candidates: [candidate(serviceId, tag, "g65-unconfigured")] }),
+        },
+      );
+      expect(response.status).toBe(201);
+      expect(await response.clone().json()).toMatchObject({ status: "appended" });
+      await runInDurableObject(stub, (_instance, state) => {
+        expect(state.storage.sql.exec<{ count: number }>(
+          "SELECT COUNT(*) AS count FROM tag_event WHERE service_id = ?",
+          serviceId,
+        ).toArray()[0]?.count).toBe(1);
       });
     } finally {
       await runInDurableObject(stub, (instance) => {
@@ -229,7 +266,9 @@ describe("SDT-G65 bounded two-lane admission", () => {
     const stub = realTagStub(serviceId, tag);
     const originalD1 = database();
     const hangingD1 = {
-      prepare: () => ({ all: () => new Promise<never>(() => {}) }),
+      prepare: (sql: string) => sql.includes('SELECT "EventDigest" FROM dcb_events')
+        ? { all: async () => ({ results: [{}] }) }
+        : { bind: () => ({ run: () => new Promise<never>(() => {}) }) },
     } as unknown as D1Database;
     await runInDurableObject(stub, (instance) => {
       const runtime = instance as unknown as { env: { D1?: D1Database; AUTO_DRAIN_OUTBOX?: string } };

@@ -18,7 +18,7 @@ const oracleTitle = "AC2/AC3: commits event, head, membership, obligation, and r
 export const G43_COMMIT_FACT_MUTATIONS = Object.freeze([
   { fact: "event", from: "this.writeCommittedSqlEvent(sql, serviceId, event);", to: "void 0; // G43 mutant: omit event fact" },
   { fact: "committedMembership", from: "this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);", to: "void 0; // G43 mutant: omit membership fact" },
-  { fact: "outbox_obligation", from: "this.writeCommittedSqlObligation(sql, serviceId, event, artifact);", to: "void 0; // G43 mutant: omit obligation fact" },
+  { fact: "outbox_obligation", from: "this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact);", to: "void 0; // G43 mutant: omit obligation fact" },
   { fact: "head", from: "this.writeCommittedSqlHead(sql, serviceId, head, version + 1, committedAt);", to: "void 0; // G43 mutant: omit head fact" },
   { fact: "commit_receipt", from: "this.writeCommittedSqlReceipt(sql, input, committedAt, events.length, head, confirmsReservation);", to: "void 0; // G43 mutant: omit receipt fact" },
 ]);

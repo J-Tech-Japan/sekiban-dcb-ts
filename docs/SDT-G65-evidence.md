@@ -720,18 +720,54 @@ The binding AC1 text is:
 > AC1 (synchronous admission attempt, response never gated): after the durable Tag append and the SDT-G60 direct doorbell, and before returning the commit response, attempt global D1 admission through the same recordDelivery path the queue consumer uses, under a bounded time budget (a documented constant, on the order of a few hundred milliseconds, chosen so the commit root stays near the SDT-G52 baseline). If the attempt succeeds, the event is admitted before the response; if it fails, times out or throws, the response is returned unchanged and nothing else changes - the outbox obligation is already durable and the queue delivery admits the event later. A timeout is an UNKNOWN outcome, not a failure: the same immutable event, SUID and obligation identity is retried by the queue path, and conflicting payloads under the same identity are rejected. The response distinguishes committed from globally admitted (a documented field or header; the commit semantics are unchanged). A counting fake D1 proves the response is returned with identical commit status whether the attempt succeeded, failed, timed out or hung, with only the admitted indicator differing. CARVE-OUT, ruled 2026-09-05 for frontier soundness (the source-universe question): the ONE derived write that may gate a response is the registration of a brand-new source partition, and only for the FIRST commit on that tag. The completeness reconciler can only walk partitions it knows, so a committed event in a partition the completeness domain has never heard of would let the frontier certify past it and the safe view would silently miss it. Therefore: before the first durable append on a tag, the Tag Durable Object registers the partition under a bounded budget; if that registration fails or times out, that first commit is REFUSED with a typed, retryable error (for example 503 partition_registration_unavailable, never 504 unknown_outcome), no event is written, and the caller retries. Every later commit on a registered tag treats registration as a no-op that is never awaited and never gates the response. So the contract reads: the response never depends on D1 for an existing partition; the first write of a new partition requires its registration to be durably known, bounded and typed. Tests: a brand-new tag with a hanging registration is refused within the budget with no event written; a registered tags commit succeeds with D1 entirely unavailable and reports not-admitted; registration on an already-registered tag is idempotent and not awaited.
 
 The implementation records a local `tag_source_partition_registration` marker as
-`registered` only after the bounded global source-registration write succeeds.
-The first append tests cover the missing-binding, hanging, and failed-insert
-cases and prove typed 503 refusal with zero Tag events/receipts. A registered
-tag test removes the runtime D1 binding and proves the second commit remains
-201 with `x-sdt-global-admission: not-admitted`; the idempotent-registration
-test replaces D1 with a never-resolving binding and proves the later commit
-does not await it. The unchanged direct/admission tests retain the
+`registered` after the bounded global source-registration write succeeds, or
+after the durable append for an explicitly unconfigured composition. In the
+latter case the marker is only local scheduler bookkeeping; it is not a D1
+registration, is not awaited before the response, and does not authorize the
+G44 safe frontier.
+The historical W133 first-append tests included a missing-binding refusal
+expectation; WAKE-134 supersedes that expectation with the narrower
+unconfigured-store behavior recorded below. The configured hanging and
+failed-insert cases still prove typed 503 refusal with zero Tag events/receipts.
+A registered-tag test removes the runtime D1 binding and proves the second
+commit remains 201 with `x-sdt-global-admission: not-admitted`; the
+idempotent-registration test replaces D1 with a never-resolving binding and
+proves the later commit does not await it. The unchanged direct/admission tests retain the
 byte-identical V1 body and the existing `admitted`/`not-admitted`/`unknown`
 header outcomes.
 
 The deployed AC5 plan is recorded in `docs/write-path.md`: a brand-new tag
-under unavailable registration is a bounded typed refusal with no event, while
-an already-registered tag under unavailable D1 is a durable local commit with
-not-admitted and later Queue exactly-once recovery. The required deployed
+under a configured G44 registration store is a bounded typed refusal with no
+event, while an unconfigured composition follows the pre-G65 local append path
+and an already-registered tag under unavailable D1 is a durable local commit
+with not-admitted and later Queue exactly-once recovery. The required deployed
 cohort is not run in this local continuation.
+
+## WAKE-134 narrow AC1 scope repair
+
+The exact failed PR head for this checkpoint was
+`a9a3d9bd05cf383da32ffd95a19dc9f6fc7e5a0a`. Its first-write gate entered
+`ensureSourcePartitionBeforeFirstAppend` for every SQL-backed composition with
+a service id, then treated either a missing D1 binding or a D1 binding without
+the G44 `dcb_events.EventDigest` schema as a registration failure. That was the
+cause of the broad local/CI failures: generic foundation, G21/G25, G28, G29,
+G30, G32, G43, G46, and local-e2e compositions received 503/504 or rejected
+outcomes even though they do not configure the G44 completeness store. This was
+a benign-condition misclassification, not a completeness-registration timeout.
+
+The repair first returns to the unchanged pre-G65 local append behavior when
+`D1` is absent. When a D1 binding exists, the bounded schema probe classifies
+`dcb_events`/`EventDigest` absence as an explicitly unconfigured completeness
+store and also allows the local append. Only a successful G44 schema probe
+enters the bounded source-partition INSERT; a failed, thrown, or hanging INSERT
+still returns typed retryable 503 `partition_registration_unavailable` without
+writing a Tag event, outbox obligation, or local receipt. The 300 ms budget is
+unchanged. The post-append watermark retry treats an unconfigured store as a
+no-op and never creates pending retry state.
+
+The hanging-registration fixture was corrected to prove the intended case: its
+G44 schema probe succeeds, while the source-partition INSERT itself never
+resolves. The no-D1 and no-G44-schema fixtures now prove 201 local durability
+with one event/receipt rather than refusal. This distinguishes an early
+schema/init probe hang from a configured-store registration hang without
+weakening G44's fail-closed fence.

@@ -8,12 +8,14 @@ contract, or the G44 safe-lane fence.
 ## Durable acceptance and derived work
 
 For an accepted append, the Tag Durable Object commits the event, its outbox
-obligation, and the local receipt in the same durable mutation. The only
-pre-append exception is the new-partition registration described below; once
-that bounded authority check succeeds, all derived delivery work starts only
-after the local durable mutation. The commit response is therefore an
-acknowledgement of durable acceptance, not proof that every downstream view is
-already visible.
+obligation, and the local receipt in the same durable mutation. A composition
+without a configured G44 completeness store keeps the pre-G65 local-append
+path: no registration probe, wait, or refusal is introduced. The only
+pre-append exception for a composition that does configure that store is the
+new-partition registration described below; once that bounded authority check
+succeeds, all derived delivery work starts only after the local durable
+mutation. The commit response is therefore an acknowledgement of durable
+acceptance, not proof that every downstream view is already visible.
 
 The existing direct unsafe doorbell remains the low-latency lane. SDT-G65 bounds
 the direct attempt with the named `G65_DERIVED_WRITE_BUDGET_MS = 300` constant.
@@ -40,16 +42,19 @@ durable event and outbox remain the recovery authority, so a crash after the
 response or a partial downstream fan-out is recovered by the existing Queue
 path and existing idempotent delivery logic.
 
-Source-partition discoverability has one explicit first-write carve-out. Before
+Source-partition discoverability has one explicit first-write carve-out. Only
+when a composition has a configured G44 completeness store, and only before
 the first durable append on a brand-new `(serviceId, tag)` partition, the Tag
 Durable Object runs `registerSourcePartition` under the same documented 300 ms
 derived-write budget. This is the only derived write allowed to gate a commit
 response, because the G44 completeness domain cannot safely certify a source it
-has never been told about. If registration fails, throws, or hangs, the append
-returns HTTP 503 with code `partition_registration_unavailable` and
-`retryable: true`; no Tag event, outbox obligation, or local receipt is written,
-and the caller must retry. It is never represented as the 504
-`unknown_outcome` admission result.
+has never been told about. If that configured-store registration fails, throws,
+or hangs, the append returns HTTP 503 with code
+`partition_registration_unavailable` and `retryable: true`; no Tag event,
+outbox obligation, or local receipt is written, and the caller must retry. It
+is never represented as the 504 `unknown_outcome` admission result. A missing
+D1 binding or a D1 binding without the G44 global-array schema is explicitly
+unconfigured and therefore does not enter this refusal path.
 
 After the local durable registration marker is established, every later append
 on that partition treats registration as an idempotent no-op and never awaits or
@@ -67,8 +72,10 @@ substitute that fence.
 
 The required order is:
 
-1. for a brand-new partition only, bounded source registration before the first
-   durable append; refusal writes no local event;
+1. for a configured G44 completeness store and a brand-new partition only,
+   bounded source registration before the first durable append; refusal writes
+   no local event; an unconfigured composition follows the ordinary local
+   append path;
 2. durable Tag event, outbox obligation, and local receipt;
 3. bounded direct unsafe attempt and bounded shared D1 admission attempt for an
    accepted append;
@@ -150,12 +157,14 @@ distinct cases rather than treating them as one generic outage:
 
 | Case | Expected public result | Required evidence |
 | --- | --- | --- |
-| Brand-new tag, registration binding unavailable or hanging | Typed retryable `503 partition_registration_unavailable`; no event/obligation/receipt | bounded refusal duration, response body, and zero local event rows |
+| Brand-new tag, configured G44 registration unavailable or hanging | Typed retryable `503 partition_registration_unavailable`; no event/obligation/receipt | bounded refusal duration, response body, and zero local event rows |
+| Brand-new tag, no D1 binding or no configured G44 store | Ordinary pre-G65 durable local commit; no registration wait/refusal | response timing/body, persisted local event/outbox/receipt, and explicit absence of a registration attempt |
 | Already-registered tag, D1 unavailable during commit | Durable commit succeeds with unchanged V1 body and `x-sdt-global-admission: not-admitted` (or `unknown` only for a bounded admission timeout) | commit response timing, header, persisted local event/outbox/receipt, explicit RYOW miss, and Queue-after-restore exactly-once recovery |
 
 The cohort must preserve the cold first sample, save raw receipts immediately,
-and report the two rows separately. The first case is a refused write that the
-caller may retry; it is not a censored 504. The second case is accepted local
+and report the rows separately. The configured-store case is a refused write
+that the caller may retry; it is not a censored 504. The unconfigured case and
+the registered-tag outage case are accepted local
 durability with downstream admission deferred; it must not be misreported as a
 registration failure. All safe-lane/G44, Queue ordering, reservation/fence,
 V1-body, and 5,000 ms contracts remain unchanged.

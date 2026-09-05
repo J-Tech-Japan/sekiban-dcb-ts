@@ -1513,14 +1513,24 @@ export class TagDurableObject implements DurableObject {
    * later appends never consult or await D1 for this fact; Queue admission is
    * responsible for advancing the registered obligation sequence.
    */
-  private async ensureSourcePartitionBeforeFirstAppend(tag: string, serviceId: string): Promise<"existing" | "newly-registered"> {
+  private async ensureSourcePartitionBeforeFirstAppend(
+    tag: string,
+    serviceId: string,
+  ): Promise<"existing" | "newly-registered" | "unconfigured"> {
     if (this.sourcePartitionRegistrationStatus(tag, serviceId) === "registered") return "existing";
-    const attempt = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId, 0, true));
+    // A generic/local composition can use the SQL-backed Tag without wiring
+    // the G44 completeness store. That is the pre-G65 path: there is no
+    // registration work to wait for, and the durable local append remains
+    // authoritative. Only a binding that proves the G44 global-array schema
+    // is present enters the first-partition refusal contract below.
+    if (this.env.D1 === undefined) return "unconfigured";
+    const attempt = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId, 0));
     if (attempt.status !== "completed") {
       throw new PartitionRegistrationUnavailableError(
         attempt.status === "timeout" ? "timeout" : attempt.error,
       );
     }
+    if (!attempt.value) return "unconfigured";
     await this.markSourcePartitionRegistration(tag, serviceId, "registered", undefined, undefined, 0);
     return "newly-registered";
   }
@@ -1560,6 +1570,16 @@ export class TagDurableObject implements DurableObject {
     for (let attempt = 1; attempt <= G65_SOURCE_REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
       const result = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId));
       if (result.status === "completed") {
+        // A D1 binding without the G44 global-array schema is an explicitly
+        // unconfigured completeness store, not a failed registration. Do not
+        // create pending retry state for that composition. The local marker is
+        // still recorded after the durable append so the scheduler retains its
+        // pre-G65 source bookkeeping; it is not a D1 registration or a
+        // response-path wait.
+        if (!result.value) {
+          await this.markSourcePartitionRegistration(tag, serviceId, "registered");
+          return;
+        }
         await this.markSourcePartitionRegistration(tag, serviceId, "registered");
         return;
       }
@@ -1618,20 +1638,14 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     serviceId: string,
     requestedSequence?: number,
-    requireAuthority = false,
-  ): Promise<void> {
+  ): Promise<boolean> {
     // G44 is the D1 global-array implementation, not a rollout or
     // mixed-version mode. A non-G32 D1 harness has no global `dcb_events`
     // array at all; every actual G32/G44 D1-backed Tag commit registers its
     // partition, and a partially migrated G32 array fails closed below.
     const database = this.env.D1;
-    if (database === undefined) {
-      throw new Error("g44_source_partition_registry_binding_lost");
-    }
-    if (!(await this.hasG44GlobalArrayAuthority())) {
-      if (requireAuthority) throw new Error("g44_source_partition_registry_requires_global_array");
-      return;
-    }
+    if (database === undefined) return false;
+    if (!(await this.hasG44GlobalArrayAuthority())) return false;
     const sql = this.sqlStorage();
     if (sql === undefined) {
       throw new Error("g44_source_partition_registry_requires_sql_tag");
@@ -1644,7 +1658,7 @@ export class TagDurableObject implements DurableObject {
       : undefined;
     const sequence = requestedSequence ??
       (max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence"));
-    if (sequence === undefined) return;
+    if (sequence === undefined) return true;
     await database.prepare(
       `INSERT INTO serialized_dcb_source_partitions
          (service_id, partition_tag, last_obligation_sequence, registered_at)
@@ -1656,6 +1670,7 @@ export class TagDurableObject implements DurableObject {
              ),
              registered_at = excluded.registered_at`,
     ).bind(serviceId, tag, sequence, Date.now()).run();
+    return true;
   }
 
   private async hasG44GlobalArrayAuthority(): Promise<boolean> {
@@ -1683,13 +1698,16 @@ export class TagDurableObject implements DurableObject {
     try {
       // `dcb_events.EventDigest` is introduced by G44's ordinary migration.
       // The root unit-test Worker has a distinct pre-G32 D1 schema and no
-      // `dcb_events` table; it is not a global-array source. Any other error,
-      // including a G32 table without EventDigest, is deliberately surfaced.
+      // global-array completeness store; it is not a configured source
+      // registry. A missing table or column therefore selects the unchanged
+      // local-append path. Any other error, including a configured store that
+      // hangs or fails, is deliberately surfaced to the bounded first-write
+      // refusal path.
       await database.prepare('SELECT "EventDigest" FROM dcb_events WHERE 1 = 0').all();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/no such table:\s*dcb_events/i.test(message)) return false;
+      if (/no such (?:table|column):\s*(?:dcb_events|EventDigest)/i.test(message)) return false;
       throw error;
     }
   }

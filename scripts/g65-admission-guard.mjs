@@ -85,6 +85,10 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     !tagSource.includes("this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId))")) {
     missing.push("bounded source registry recovery retry");
   }
+  if (!tagSource.includes("if (this.env.D1 === undefined) return \"unconfigured\";") ||
+    !tagSource.includes("if (!attempt.value) return \"unconfigured\";")) {
+    missing.push("unconfigured completeness store keeps the pre-G65 first-append path");
+  }
   const registrationIndex = append.indexOf("await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId);");
   const appendSqlIndex = append.indexOf("const result = await this.appendSql(tag, input, serviceId);");
   if (!(registrationIndex >= 0 && registrationIndex < appendSqlIndex)) {
@@ -135,8 +139,9 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     "markSourcePartitionRegistration",
     "sourceRegistrationDue",
     "requestedSequence",
-    "requireAuthority",
-    "g44_source_partition_registry_binding_lost",
+    "if (database === undefined) return false",
+    "if (!(await this.hasG44GlobalArrayAuthority()))",
+    "Promise<boolean>",
   ]) {
     if (!tagSource.includes(token)) missing.push(`durable source-registration retry: ${token}`);
   }
@@ -149,10 +154,12 @@ function sourceWiring(tagSource, commitSource, storeSource, testSource) {
     "runtime.env.D1 = undefined",
     "state.storage.sql",
     "partition_registration_unavailable",
+    "keeps the pre-G65 first-append path when the completeness binding is unavailable",
+    "keeps the pre-G65 first-append path when D1 has no configured G44 store",
     "refuses a first append when source-partition registration hangs",
     "commits a registered tag with D1 unavailable and reports not-admitted",
     "does not await registration again for an already-registered tag",
-    "expect(rows).toEqual({ events: 0, receipts: 0 })",
+    "expect(rows).toEqual({ events: 1, receipts: 1 })",
     "x-sdt-global-admission",
     "expect(failed.body).toEqual(admitted.body)",
   ]) {
