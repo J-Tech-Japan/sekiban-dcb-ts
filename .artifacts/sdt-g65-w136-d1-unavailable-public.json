@@ -1,0 +1,119 @@
+{
+  "schema": "sdt-g65-w136-d1-unavailable-public/v1",
+  "variant": "runtime-D1-binding-absent",
+  "sourceHead": "a8bb1bd493591081c24a52239c1b0e2dce2c42e1",
+  "deployedVersionId": "2967f040-e1d4-46d2-8f66-636f68ca391b",
+  "directDoorbell": true,
+  "startedAtMs": 1788614501723,
+  "existingPartition": {
+    "operation": "cancel-reservation on previously registered reservation tag",
+    "reservationId": "g65-reservation-65defd04-76a-1",
+    "response": {
+      "path": "/api/commands/cancel-reservation",
+      "body": {
+        "reservationId": "g65-reservation-65defd04-76a-1"
+      },
+      "status": 200,
+      "startedAtMs": 1788614501723,
+      "receivedAtMs": 1788614503444,
+      "responseMs": 1721,
+      "globalAdmission": "not-admitted",
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyZXNlcnZhdGlvbklkIjoiZzY1LXJlc2VydmF0aW9uLTY1ZGVmZDA0LTc2YS0xIiwicm9vbUlkIjoiZzY1LXJvb20tNjVkZWZkMDQtNzZhIn0=\",\"sortableUniqueIdValue\":\"063924211303091000001441635589\",\"id\":\"01a071bb-678c-788b-86b2-e51ca56c3db3\",\"eventMetadata\":{\"causationId\":\"01a071bb-678c-788b-86b2-e51ca56c3db3\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"reservation:g65-reservation-65defd04-76a-1\"],\"eventPayloadName\":\"ReservationCancelled\"}],\"tagWriteResults\":[{\"tag\":\"reservation:g65-reservation-65defd04-76a-1\",\"version\":3,\"writtenAt\":\"2026-09-05T13:21:43.329Z\"}],\"duration\":\"PT1.148S\"}}",
+      "parsed": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyZXNlcnZhdGlvbklkIjoiZzY1LXJlc2VydmF0aW9uLTY1ZGVmZDA0LTc2YS0xIiwicm9vbUlkIjoiZzY1LXJvb20tNjVkZWZkMDQtNzZhIn0=",
+              "sortableUniqueIdValue": "063924211303091000001441635589",
+              "id": "01a071bb-678c-788b-86b2-e51ca56c3db3",
+              "eventMetadata": {
+                "causationId": "01a071bb-678c-788b-86b2-e51ca56c3db3",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "reservation:g65-reservation-65defd04-76a-1"
+              ],
+              "eventPayloadName": "ReservationCancelled"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "reservation:g65-reservation-65defd04-76a-1",
+              "version": 3,
+              "writtenAt": "2026-09-05T13:21:43.329Z"
+            }
+          ],
+          "duration": "PT1.148S"
+        }
+      }
+    },
+    "listDuringUnavailable": {
+      "reservationId": "g65-reservation-65defd04-76a-1",
+      "status": 200,
+      "startedAtMs": 1788614505261,
+      "receivedAtMs": 1788614505461,
+      "responseMs": 200,
+      "found": {
+        "reservationId": "g65-reservation-65defd04-76a-1",
+        "roomId": "g65-room-65defd04-76a",
+        "status": "reserved",
+        "version": 1
+      },
+      "rawBody": "{\"itemsJson\":\"[{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-7\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-6\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-5\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-4\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-3\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-2\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1ae0ee2f-199-1\\\",\\\"roomId\\\":\\\"g65-room-1ae0ee2f-199\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-10\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-9\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-8\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-7\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-6\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-5\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-4\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-3\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-2\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-65defd04-76a-1\\\",\\\"roomId\\\":\\\"g65-room-65defd04-76a\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-b7ab0a0f2ccb4cc6-1\\\",\\\"roomId\\\":\\\"g65-unavailable-room-b7ab0a0f2ccb4cc6\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-10\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-9\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-8\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-7\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-6\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-5\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-4\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-3\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-2\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-39bb238c-503-1\\\",\\\"roomId\\\":\\\"g65-room-39bb238c-503\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-10\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-9\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-8\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-7\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-6\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-5\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-4\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-3\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-2\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-ddaefd4d-c24-1\\\",\\\"roomId\\\":\\\"g65-room-ddaefd4d-c24\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-2da45d31c3d749e5-1\\\",\\\"roomId\\\":\\\"g65-unavailable-room-2da45d31c3d749e5\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-10\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-9\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-8\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-7\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-6\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-5\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-4\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-3\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-2\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-b5135223-4ca-1\\\",\\\"roomId\\\":\\\"g65-room-b5135223-4ca\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-3\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-2\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-unavailable-reservation-d4a6ee1f22b54a50-1\\\",\\\"roomId\\\":\\\"g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-10\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-9\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-8\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-7\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-6\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-5\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-4\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-3\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-2\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1},{\\\"reservationId\\\":\\\"g65-reservation-1d20b683-1aa-1\\\",\\\"roomId\\\":\\\"g65-room-1d20b683-1aa\\\",\\\"status\\\":\\\"reserved\\\",\\\"version\\\":1}]\",\"totalCount\":62,\"totalPages\":1,\"currentPage\":1,\"pageSize\":1000,\"readHead\":\"063924211106047000001728766570\"}"
+    }
+  },
+  "newFirstPartition": {
+    "operation": "create-room on brand-new room tag",
+    "roomId": "g65-w136-new-first-da855b66-4b9",
+    "response": {
+      "path": "/api/commands/create-room",
+      "body": {
+        "roomId": "g65-w136-new-first-da855b66-4b9",
+        "name": "SDT-G65 W136 new first partition under D1 unavailable"
+      },
+      "status": 200,
+      "startedAtMs": 1788614503444,
+      "receivedAtMs": 1788614505261,
+      "responseMs": 1817,
+      "globalAdmission": "not-admitted",
+      "rawBody": "{\"kind\":\"committed\",\"attempts\":1,\"status\":200,\"response\":{\"writtenEvents\":[{\"payload\":\"eyJyb29tSWQiOiJnNjUtdzEzNi1uZXctZmlyc3QtZGE4NTViNjYtNGI5IiwibmFtZSI6IlNEVC1HNjUgVzEzNiBuZXcgZmlyc3QgcGFydGl0aW9uIHVuZGVyIEQxIHVuYXZhaWxhYmxlIn0=\",\"sortableUniqueIdValue\":\"063924211304954000001191258191\",\"id\":\"01a071bb-6f65-795d-984a-02c4fba48363\",\"eventMetadata\":{\"causationId\":\"01a071bb-6f65-795d-984a-02c4fba48363\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:g65-w136-new-first-da855b66-4b9\"],\"eventPayloadName\":\"RoomCreated\"}],\"tagWriteResults\":[{\"tag\":\"room:g65-w136-new-first-da855b66-4b9\",\"version\":1,\"writtenAt\":\"2026-09-05T13:21:45.166Z\"}],\"duration\":\"PT0.978S\"}}",
+      "parsed": {
+        "kind": "committed",
+        "attempts": 1,
+        "status": 200,
+        "response": {
+          "writtenEvents": [
+            {
+              "payload": "eyJyb29tSWQiOiJnNjUtdzEzNi1uZXctZmlyc3QtZGE4NTViNjYtNGI5IiwibmFtZSI6IlNEVC1HNjUgVzEzNiBuZXcgZmlyc3QgcGFydGl0aW9uIHVuZGVyIEQxIHVuYXZhaWxhYmxlIn0=",
+              "sortableUniqueIdValue": "063924211304954000001191258191",
+              "id": "01a071bb-6f65-795d-984a-02c4fba48363",
+              "eventMetadata": {
+                "causationId": "01a071bb-6f65-795d-984a-02c4fba48363",
+                "correlationId": "SerializedCommit",
+                "executedUser": "SerializedSekibanExecutor"
+              },
+              "tags": [
+                "room:g65-w136-new-first-da855b66-4b9"
+              ],
+              "eventPayloadName": "RoomCreated"
+            }
+          ],
+          "tagWriteResults": [
+            {
+              "tag": "room:g65-w136-new-first-da855b66-4b9",
+              "version": 1,
+              "writtenAt": "2026-09-05T13:21:45.166Z"
+            }
+          ],
+          "duration": "PT0.978S"
+        }
+      }
+    }
+  },
+  "interpretation": "The no-D1 binding is explicitly unconfigured; existing-tag write was accepted with application admission indication, while the new first partition was also accepted rather than typed partition_registration_unavailable. This is the specified pre-G65 unconfigured-store behavior, not configured-store registration failure proof.",
+  "finishedAtMs": 1788614505461
+}
