@@ -5,6 +5,7 @@ Issue: `J-Tech-Japan/sekiban-dcb-ts#126`
 PR: `https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/127`
 Branch: `claude/sdt-g65-local-wake-w128`
 Repair/evidence head: `a8bb1bd493591081c24a52239c1b0e2dce2c42e1`
+Pushed evidence checkpoint: `af88baaee009a44c86fddf8271eb58bb72b851b8`
 Disposition: **blocked before rereview/completion**
 
 The local F1 public CommitWorker contract is green: configured first-partition
