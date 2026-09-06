@@ -1,4 +1,4 @@
-# SDT-G65 deployed acceptance evidence — W138-2
+# SDT-G65 deployed acceptance evidence — W138-2 / W141
 
 Task: `SDT-G65-PR127-DEPLOYED-ACCEPTANCE-2-WAKE-138`
 PR: `J-Tech-Japan/sekiban-dcb-ts#127`
@@ -8,14 +8,20 @@ Arm: `sekiban-dcb-g60-w155-c`
 
 ## Disposition
 
-**Blocked.** The fresh matched same-arm cohorts completed, but each had one
-safe-bound miss and one unsafe sample over the unchanged 5,000 ms contract.
-The deployed version view proved the actual `DOWNSTREAM_DOORBELL` service
-binding and `DIRECT_DOORBELL=true`; nevertheless all post-cohort unsafe-writer
-rows were `transport=queue`, so direct transport and healthy direct admission
-were not proven. The configured-store first-write typed refusal remains
-unproven because the safe existing-resource failure shapes were classified as
+**Evidence published; code acceptance is unchanged.** The W138-2 receipt
+records one observation beyond the 180-second safe reporting line and one
+unsafe observation over the unchanged 5,000 ms contract. The safe value is
+measured and reported by AC5; 180 seconds is not a G65 pass/fail target. The
+deployed version view proved the actual `DOWNSTREAM_DOORBELL` service binding
+and `DIRECT_DOORBELL=true`; nevertheless all post-cohort unsafe-writer rows
+were `transport=queue`, so direct transport and healthy direct admission were
+not proven. The configured-store first-write typed refusal remains unproven
+because the safe existing-resource failure shapes were classified as
 explicitly unconfigured and committed the new event.
+
+W136 is historical/superseded evidence. Its incomplete post cohort and
+unconfigured D1 observations are retained as history and are not reused as
+current proof or described as a current AC5 blocker.
 
 No source, fixture, workflow, gate, PR state, issue claim, resource, migration,
 or production worker outside the authorized W155-C arm was changed. The final
@@ -85,7 +91,9 @@ caller `received_at` are excluded.
 All ten post samples eventually reached both final projector heads and all 11
 cohort tag-state reads returned committed version 1. Sample 1 reached its
 final head at 187,018 ms; the baseline sample 1 reached its final head at
-191,178 ms. Both are real safe-bound misses.
+191,178 ms. These are measured observations beyond the reporting line; AC5
+requires publishing the safe timing and does not make 180 seconds a G65
+pass/fail target.
 
 | # | Baseline response / unsafe / safe (ms) | Post response / unsafe / safe (ms) |
 | ---: | --- | --- |
@@ -270,9 +278,9 @@ complete per-sample post table is:
 | 10 | 2656 | 4666 | 99761 | within |
 
 Both deployed projectors eventually reached the post cohort final SUID, and
-all ten cohort tag-state reads returned committed version 1, but the safe
-180-second bound was missed for samples 1–4. The post cohort is therefore a
-failed AC0/AC5 receipt, not a pass.
+all ten cohort tag-state reads returned committed version 1. Samples 1–4 were
+observed beyond 180 seconds; this is a published AC5 measurement, not an AC5
+pass/fail result or a G65 blocker.
 
 ### Durable RING/APPLY result
 
@@ -294,11 +302,12 @@ RING/APPLY observations.
 
 The response p95 change was `3633 - 3602 = +31 ms`, and the p50 change was
 `2786 - 3154 = -368 ms`; those response comparisons alone satisfy the
-same-window response deltas. AC0 nevertheless fails because the real direct
-ring was never observed, unsafe visibility exceeded 5000 ms in 3/10, and the
-post unsafe p50 was 4521 ms rather than the 189 ms target. AC5 fails because
-4/10 safe samples exceeded 180 seconds. No configured-store outage was
-attempted; the local typed-refusal proof remains the only AC1 evidence.
+same-window response deltas. AC0 remains unproven because the real direct ring
+was never observed and unsafe visibility exceeded 5000 ms in 3/10; the post
+unsafe p50 was 4521 ms rather than the 189 ms reference measurement. The 4/10
+observations beyond 180 seconds are reported for AC5 and are not an AC5
+failure criterion. No configured-store outage was attempted; the local
+typed-refusal proof remains the only AC1 evidence.
 
 ### Raw receipts and boundaries
 
@@ -395,6 +404,80 @@ The following are preserved exceptions, not weakened gates:
 
 No source behavior outside the scoped guard/config, no fixture, workflow,
 timeout, receiver, production resource, PR, or review state was changed. The
-later deployed window must use both cold-first paced W155-C cohorts with this
-self configuration; W139 separate-receiver receipts remain failed stop
-evidence and are not substituted for that measurement.
+W141 is the later deployed window and publishes both fresh cold-first paced
+W155-C cohorts with this self configuration; W139 separate-receiver receipts
+remain failed stop evidence and are not substituted for that measurement.
+
+## W141 exact self-mode RING/APPLY verification
+
+W141 publishes the exact self-mode parent/candidate receipts from the existing
+W155-C arm. W136 is historical/superseded evidence and is not substituted for
+this current publication.
+
+### Deployed identity
+
+| Role | Source | Deployment | Version | Traffic | Annotation |
+| --- | --- | --- | ---: | ---: | --- |
+| Parent baseline | `4687efa5c49951d9966a3785be5fd7b2620c6e4f` | `5923305e-2b27-4341-85c2-98c9b92e7009` | `fb05d31e-d027-4d10-b179-383d1c242624` | 100% | `SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after conformance secret` |
+| Exact candidate | `5b59e372f70b0682315f2344e5baae30fdde94b8` | `961525ac-ec77-4c6d-a35b-1bec202144b7` | `fdf35a19-4b85-4a97-baa6-2ee019daef4f` | 100% | `SDT-G65 W141 candidate 5b59e372f70b0682315f2344e5baae30fdde94b8 W155-C self mode` |
+
+The candidate version view proved `DIRECT_DOORBELL=true`,
+`DIRECT_DOORBELL_RECEIVER_MODE=self`, `DIRECT_DOORBELL_SELF_BINDING_PROOF=true`,
+`DIRECT_DOORBELL_DEGRADATION=queued-degraded`,
+`DIRECT_DOORBELL_MAX_INVOCATIONS=32`, and
+`DOWNSTREAM_DOORBELL=sekiban-dcb-g60-w155-c#MeetingRoomDownstreamDoorbell`.
+It also proved pipeline D1 `ac751211-fde8-4587-9d56-1e9fd8051bc3`, MV D1
+`2b60dbcf-0912-4bb2-93aa-77c26cd260e1`, and the W155-C Queue binding. The
+read-only Queue consumer receipt proves the worker consumer is attached to
+`sekiban-dcb-g60-w155-c-outbox` with DLQ
+`sekiban-dcb-g60-w155-c-outbox-dlq`, batch size 10, max wait 1000 ms, and three
+retries. All Wrangler receipts stripped the five standing credential variable
+names; each was `UNSET`, and no `--keep-vars` was used.
+
+### Matched cohorts
+
+Both cohorts were fresh, cold-first, non-stitched, n=10, and paced at least ten
+seconds after the preceding commit response. Unsafe visibility was recorded
+only; all samples were observed and none exceeded 5,000 ms.
+
+| Cohort | Run ID | Response p50/p95 (ms) | Unsafe p50/p95 (ms) | Unsafe >5000/censored | Safe p50/p95 (ms) | Observed >180s/censored |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Parent baseline | `3f7d7bad-ca9d-468a-812a-ef052f64d0ff` | 4108 / 4677 | 178 / 287 | 0 / 0 | 118035 / 190053 | 1 / 0 |
+| Candidate | `ffa53bd9-f4c8-4958-a5c5-5bc5046c5425` | 2671 / 2971 | 2417 / 4551 | 0 / 0 | 129995 / 193834 | 2 / 0 |
+
+The candidate response p95 was 2971 ms versus the parent 4677 ms, and unsafe
+p95 was 4551 ms with every sample under 5,000 ms. The parent’s one and the
+candidate’s two observations beyond 180 seconds are published measurements;
+AC5 requires that safe timing be measured and reported, not that 180 seconds
+be treated as a G65 target or blocker. Both cohorts eventually reached their
+final projector heads and all 11 tag-state reads returned committed version 1.
+
+### Candidate RING/APPLY and failure attribution
+
+For the ten candidate reservation events, the durable ledger recorded 10/10
+rings `rung`, with APPLY `applied=9` and idempotent `duplicate=1`; every
+`apply_error` was null. Ring timestamps were 0 ms at millisecond resolution;
+APPLY p50/p95 was 1655/2299 ms. Unsafe-writer rows included both fast and Queue
+transport, and the Queue replay rows were duplicate/no-change or one applied
+row rather than a second logical write. Admission attempts were all
+`unknown` at 300 ms, while the independent completeness rows remained
+`BLOCK/UNSETTLED`. No `DeliveryCoreResult.failures` ID/class is persisted by
+the queried ring schema, so no failure class is invented here.
+
+The parent cohort’s event-identity-scoped ledger contains the seven-hop and
+unsafe-writer rows but no matching G65 admission/direct-ring rows; stale rows
+for other event IDs were excluded. Parent RING/APPLY is therefore unproven,
+not inferred from final MV state. The candidate raw receipts and filtered
+ledger are retained at:
+
+- `.artifacts/sdt-g65-wake141-parent-cohort.json`
+- `.artifacts/sdt-g65-wake141-candidate-cohort.json`
+- `.artifacts/sdt-g65-wake141-candidate-ledger-filtered.json`
+- `.artifacts/sdt-g65-wake141-candidate-mv-ledger-corrected.json`
+- `.artifacts/sdt-g65-wake141-analysis-filtered.json`
+
+The W141 exact self-mode receipt is
+`sdt-g65-w155-self-ring-apply-verify-wake-141.md`. The local public
+configured-store typed-refusal proof and the C-0/unconfigured evidence remain
+the applicable AC1 evidence; W141 did not manufacture a configured-store D1
+outage.
