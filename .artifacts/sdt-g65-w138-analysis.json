@@ -1,0 +1,1553 @@
+{
+  "schema": "sdt-g65-w138-observed-clock-analysis-v1",
+  "generatedAt": "2026-09-05T19:32:06.443Z",
+  "pre": {
+    "label": "W138-pre-change",
+    "cohort": {
+      "path": ".artifacts/sdt-g65-w138-pre-change-cohort.json",
+      "runId": "dcd94ead-8613-4348-a3e7-fb646c77835d",
+      "startedAt": "2026-09-05T19:19:19.954Z",
+      "finishedAt": "2026-09-05T19:22:36.341Z",
+      "status": "completed",
+      "count": 10
+    },
+    "clockPolicy": "Observed fetch/ledger Date.now epoch milliseconds only; excludes authored event Timestamp and caller received_at from timing.",
+    "metrics": {
+      "response": {
+        "n": 10,
+        "p50Ms": 2309,
+        "p95Ms": 2574
+      },
+      "commitToUnsafe": {
+        "n": 10,
+        "p50Ms": 4583,
+        "p95Ms": 116931
+      },
+      "commitToSafeFinalHead": {
+        "n": 10,
+        "p50Ms": 117435,
+        "p95Ms": 179888
+      },
+      "commandReceiptToTagAppend": {
+        "n": 10,
+        "p50Ms": 1028,
+        "p95Ms": 1139
+      },
+      "tagAppendToOutbox": {
+        "n": 10,
+        "p50Ms": 0,
+        "p95Ms": 0
+      },
+      "outboxToQueueSend": {
+        "n": 10,
+        "p50Ms": 1108,
+        "p95Ms": 1195
+      },
+      "queueSendToConsumerStart": {
+        "n": 10,
+        "p50Ms": 3121,
+        "p95Ms": 5660
+      },
+      "consumerStartToRecordDelivery": {
+        "n": 10,
+        "p50Ms": 760,
+        "p95Ms": 931
+      },
+      "recordDeliveryToUnsafeRead": {
+        "n": 10,
+        "p50Ms": 490,
+        "p95Ms": 109878
+      },
+      "recordDeliveryToGlobalReadbackStart": {
+        "n": 10,
+        "p50Ms": 0,
+        "p95Ms": 0
+      },
+      "globalReadbackDuration": {
+        "n": 10,
+        "p50Ms": 129,
+        "p95Ms": 154
+      },
+      "sourceAcknowledgementDuration": {
+        "n": 10,
+        "p50Ms": 163,
+        "p95Ms": 310
+      },
+      "completenessDuration": {
+        "n": 10,
+        "p50Ms": 85,
+        "p95Ms": 157
+      },
+      "detectorDuration": {
+        "n": 4,
+        "p50Ms": 286,
+        "p95Ms": 440
+      },
+      "roomUnsafeApplyDuration": {
+        "n": 10,
+        "p50Ms": 128,
+        "p95Ms": 305
+      },
+      "reservationUnsafeApplyDuration": {
+        "n": 10,
+        "p50Ms": 89,
+        "p95Ms": 269
+      },
+      "roomInlineWriterDuration": {
+        "n": 10,
+        "p50Ms": 85,
+        "p95Ms": 142
+      },
+      "reservationInlineWriterDuration": {
+        "n": 10,
+        "p50Ms": 66,
+        "p95Ms": 105
+      },
+      "recordDeliveryToLedgerUnsafeRead": {
+        "n": 10,
+        "p50Ms": 474,
+        "p95Ms": 5962
+      },
+      "residualFromDeliveryToPublicRead": {
+        "n": 10,
+        "p50Ms": 490,
+        "p95Ms": 109878
+      },
+      "over5000": 4,
+      "responseHeaders": {
+        "unknown": 10
+      },
+      "completenessOutcomes": {
+        "BLOCK/UNSETTLED": 10
+      },
+      "detectorOutcomes": {
+        "applied": 4
+      },
+      "roomUnsafeOutcomes": {
+        "duplicate-race": 10
+      },
+      "reservationUnsafeOutcomes": {
+        "duplicate-race": 10
+      },
+      "bodyAdmissionFieldCount": 0
+    },
+    "samples": [
+      {
+        "ordinal": 1,
+        "reservationId": "g65-reservation-dcd94ead-861-1",
+        "eventId": "01a07303-097e-78d8-a613-82e0b1312588",
+        "suid": "063924232774810000000705583758",
+        "commitResponseMs": 2503,
+        "commitReceivedAtMs": 1788635975534,
+        "unsafeFirstVisibleAtMs": 1788636092465,
+        "commitToUnsafeMs": 116931,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 179888,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788635974014,
+          "tagAppendAtMs": 1788635975153,
+          "outboxAtMs": 1788635975153,
+          "queueSendAtMs": 1788635976264,
+          "consumerStartAtMs": 1788635981924,
+          "recordDeliveryAtMs": 1788635982587,
+          "ledgerFirstUnsafeReadAtMs": 1788635988233,
+          "publicFirstUnsafeReadAtMs": 1788636092465
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1139,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1111,
+          "queueSendToConsumerStart": 5660,
+          "consumerStartToRecordDelivery": 663,
+          "recordDeliveryToUnsafeRead": 109878,
+          "responseToUnsafeRead": 116931
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 134,
+          "sourceAcknowledgementDuration": 180,
+          "completenessDuration": 72,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 286,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 105,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 86,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 142,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 73,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 5646,
+          "residualFromDeliveryToPublicRead": 109878
+        },
+        "admission": [
+          {
+            "attemptId": "33357dc6-6885-402b-84f4-5ccc20e46fb6",
+            "startedAtMs": 1788635975153,
+            "finishedAtMs": 1788635975453,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 2,
+        "reservationId": "g65-reservation-dcd94ead-861-2",
+        "eventId": "01a07303-3afc-7148-b762-2fd2eff36278",
+        "suid": "063924232787337000000011819065",
+        "commitResponseMs": 2366,
+        "commitReceivedAtMs": 1788635988116,
+        "unsafeFirstVisibleAtMs": 1788635992608,
+        "commitToUnsafeMs": 4492,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 167306,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788635986684,
+          "tagAppendAtMs": 1788635987669,
+          "outboxAtMs": 1788635987669,
+          "queueSendAtMs": 1788635988778,
+          "consumerStartAtMs": 1788635992058,
+          "recordDeliveryAtMs": 1788635992756,
+          "ledgerFirstUnsafeReadAtMs": 1788635992608,
+          "publicFirstUnsafeReadAtMs": 1788635992608
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 985,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1109,
+          "queueSendToConsumerStart": 3280,
+          "consumerStartToRecordDelivery": 698,
+          "recordDeliveryToUnsafeRead": -148,
+          "responseToUnsafeRead": 4492
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 106,
+          "sourceAcknowledgementDuration": 183,
+          "completenessDuration": 98,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 375,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 95,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 66,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 91,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 105,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": -148,
+          "residualFromDeliveryToPublicRead": -148
+        },
+        "admission": [
+          {
+            "attemptId": "542b402b-250b-4119-90cd-46dab72d23b7",
+            "startedAtMs": 1788635987669,
+            "finishedAtMs": 1788635987969,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 3,
+        "reservationId": "g65-reservation-dcd94ead-861-3",
+        "eventId": "01a07303-6b26-7589-a8e4-8b9b549e542f",
+        "suid": "063924232799671000000759609206",
+        "commitResponseMs": 2351,
+        "commitReceivedAtMs": 1788636000469,
+        "unsafeFirstVisibleAtMs": 1788636005081,
+        "commitToUnsafeMs": 4612,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 154953,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788635999014,
+          "tagAppendAtMs": 1788636000077,
+          "outboxAtMs": 1788636000077,
+          "queueSendAtMs": 1788636001185,
+          "consumerStartAtMs": 1788636004306,
+          "recordDeliveryAtMs": 1788636005066,
+          "ledgerFirstUnsafeReadAtMs": 1788636005035,
+          "publicFirstUnsafeReadAtMs": 1788636005081
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1063,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1108,
+          "queueSendToConsumerStart": 3121,
+          "consumerStartToRecordDelivery": 760,
+          "recordDeliveryToUnsafeRead": 15,
+          "responseToUnsafeRead": 4612
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 149,
+          "sourceAcknowledgementDuration": 151,
+          "completenessDuration": 128,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 130,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 89,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 88,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 78,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": -31,
+          "residualFromDeliveryToPublicRead": 15
+        },
+        "admission": [
+          {
+            "attemptId": "9c7cbd21-6c2d-440a-b253-ee747e4722d5",
+            "startedAtMs": 1788636000077,
+            "finishedAtMs": 1788636000377,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 4,
+        "reservationId": "g65-reservation-dcd94ead-861-4",
+        "eventId": "01a07303-9b33-7d79-98e8-a377fc1a545c",
+        "suid": "063924232811978000001635761302",
+        "commitResponseMs": 2285,
+        "commitReceivedAtMs": 1788636012756,
+        "unsafeFirstVisibleAtMs": 1788636092657,
+        "commitToUnsafeMs": 79901,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 142666,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636011315,
+          "tagAppendAtMs": 1788636012339,
+          "outboxAtMs": 1788636012339,
+          "queueSendAtMs": 1788636013436,
+          "consumerStartAtMs": 1788636018631,
+          "recordDeliveryAtMs": 1788636019562,
+          "ledgerFirstUnsafeReadAtMs": 1788636025524,
+          "publicFirstUnsafeReadAtMs": 1788636092657
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1024,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1097,
+          "queueSendToConsumerStart": 5195,
+          "consumerStartToRecordDelivery": 931,
+          "recordDeliveryToUnsafeRead": 73095,
+          "responseToUnsafeRead": 79901
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 136,
+          "sourceAcknowledgementDuration": 191,
+          "completenessDuration": 85,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 305,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 269,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 88,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 74,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 5962,
+          "residualFromDeliveryToPublicRead": 73095
+        },
+        "admission": [
+          {
+            "attemptId": "76eaa998-db61-4881-a4d9-c23d76710f7e",
+            "startedAtMs": 1788636012339,
+            "finishedAtMs": 1788636012639,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 5,
+        "reservationId": "g65-reservation-dcd94ead-861-5",
+        "eventId": "01a07303-ccaf-7fc6-8268-d5f10299444d",
+        "suid": "063924232824731000001904267676",
+        "commitResponseMs": 2294,
+        "commitReceivedAtMs": 1788636025411,
+        "unsafeFirstVisibleAtMs": 1788636030585,
+        "commitToUnsafeMs": 5174,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 130011,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636023983,
+          "tagAppendAtMs": 1788636025084,
+          "outboxAtMs": 1788636025084,
+          "queueSendAtMs": 1788636026170,
+          "consumerStartAtMs": 1788636030714,
+          "recordDeliveryAtMs": 1788636031600,
+          "ledgerFirstUnsafeReadAtMs": 1788636030583,
+          "publicFirstUnsafeReadAtMs": 1788636030585
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1101,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1086,
+          "queueSendToConsumerStart": 4544,
+          "consumerStartToRecordDelivery": 886,
+          "recordDeliveryToUnsafeRead": -1015,
+          "responseToUnsafeRead": 5174
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 129,
+          "sourceAcknowledgementDuration": 160,
+          "completenessDuration": 68,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 128,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 108,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 104,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 66,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": -1017,
+          "residualFromDeliveryToPublicRead": -1015
+        },
+        "admission": [
+          {
+            "attemptId": "ae0b9c5a-0eb3-477c-b9f2-d5db20289901",
+            "startedAtMs": 1788636025084,
+            "finishedAtMs": 1788636025384,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 6,
+        "reservationId": "g65-reservation-dcd94ead-861-6",
+        "eventId": "01a07303-fddb-7d43-90d5-dc571dacb3a4",
+        "suid": "063924232837217000001366751701",
+        "commitResponseMs": 2574,
+        "commitReceivedAtMs": 1788636037987,
+        "unsafeFirstVisibleAtMs": 1788636092989,
+        "commitToUnsafeMs": 55002,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 117435,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636036571,
+          "tagAppendAtMs": 1788636037604,
+          "outboxAtMs": 1788636037604,
+          "queueSendAtMs": 1788636038799,
+          "consumerStartAtMs": 1788636044356,
+          "recordDeliveryAtMs": 1788636045245,
+          "ledgerFirstUnsafeReadAtMs": 1788636050356,
+          "publicFirstUnsafeReadAtMs": 1788636092989
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1033,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1195,
+          "queueSendToConsumerStart": 5557,
+          "consumerStartToRecordDelivery": 889,
+          "recordDeliveryToUnsafeRead": 47744,
+          "responseToUnsafeRead": 55002
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 125,
+          "sourceAcknowledgementDuration": 310,
+          "completenessDuration": 77,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 253,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 111,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 74,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 85,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 62,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 5111,
+          "residualFromDeliveryToPublicRead": 47744
+        },
+        "admission": [
+          {
+            "attemptId": "c9639b2f-1def-4de2-b3f5-51733d0cb987",
+            "startedAtMs": 1788636037604,
+            "finishedAtMs": 1788636037904,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 7,
+        "reservationId": "g65-reservation-dcd94ead-861-7",
+        "eventId": "01a07304-2dd0-7b43-8fe2-84138d6fea05",
+        "suid": "063924232849486000001862673704",
+        "commitResponseMs": 2249,
+        "commitReceivedAtMs": 1788636050238,
+        "unsafeFirstVisibleAtMs": 1788636054700,
+        "commitToUnsafeMs": 4462,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 105184,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636048848,
+          "tagAppendAtMs": 1788636049876,
+          "outboxAtMs": 1788636049876,
+          "queueSendAtMs": 1788636050987,
+          "consumerStartAtMs": 1788636053234,
+          "recordDeliveryAtMs": 1788636054099,
+          "ledgerFirstUnsafeReadAtMs": 1788636054628,
+          "publicFirstUnsafeReadAtMs": 1788636054700
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1028,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1111,
+          "queueSendToConsumerStart": 2247,
+          "consumerStartToRecordDelivery": 865,
+          "recordDeliveryToUnsafeRead": 601,
+          "responseToUnsafeRead": 4462
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 154,
+          "sourceAcknowledgementDuration": 163,
+          "completenessDuration": 157,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 440,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 233,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 216,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 79,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 68,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 529,
+          "residualFromDeliveryToPublicRead": 601
+        },
+        "admission": [
+          {
+            "attemptId": "fccb345c-f508-461b-a931-30211a6de835",
+            "startedAtMs": 1788636049876,
+            "finishedAtMs": 1788636050176,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 8,
+        "reservationId": "g65-reservation-dcd94ead-861-8",
+        "eventId": "01a07304-5f36-7131-81c2-7b6db29d8405",
+        "suid": "063924232862151000000387638949",
+        "commitResponseMs": 2473,
+        "commitReceivedAtMs": 1788636062939,
+        "unsafeFirstVisibleAtMs": 1788636067522,
+        "commitToUnsafeMs": 4583,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 92483,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636061494,
+          "tagAppendAtMs": 1788636062559,
+          "outboxAtMs": 1788636062559,
+          "queueSendAtMs": 1788636063659,
+          "consumerStartAtMs": 1788636066768,
+          "recordDeliveryAtMs": 1788636067419,
+          "ledgerFirstUnsafeReadAtMs": 1788636067515,
+          "publicFirstUnsafeReadAtMs": 1788636067522
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1065,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1100,
+          "queueSendToConsumerStart": 3109,
+          "consumerStartToRecordDelivery": 651,
+          "recordDeliveryToUnsafeRead": 103,
+          "responseToUnsafeRead": 4583
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 34,
+          "sourceAcknowledgementDuration": 115,
+          "completenessDuration": 120,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 256,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 240,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 75,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 66,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 96,
+          "residualFromDeliveryToPublicRead": 103
+        },
+        "admission": [
+          {
+            "attemptId": "199c42eb-066f-4ff1-9d98-cf4e85d79bcc",
+            "startedAtMs": 1788636062559,
+            "finishedAtMs": 1788636062859,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 9,
+        "reservationId": "g65-reservation-dcd94ead-861-9",
+        "eventId": "01a07304-8f78-7b85-9229-4b03da7488dc",
+        "suid": "063924232874505000001271879441",
+        "commitResponseMs": 2309,
+        "commitReceivedAtMs": 1788636075250,
+        "unsafeFirstVisibleAtMs": 1788636079707,
+        "commitToUnsafeMs": 4457,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 80172,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636073848,
+          "tagAppendAtMs": 1788636074874,
+          "outboxAtMs": 1788636074874,
+          "queueSendAtMs": 1788636075983,
+          "consumerStartAtMs": 1788636078572,
+          "recordDeliveryAtMs": 1788636079217,
+          "ledgerFirstUnsafeReadAtMs": 1788636079691,
+          "publicFirstUnsafeReadAtMs": 1788636079707
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1026,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1109,
+          "queueSendToConsumerStart": 2589,
+          "consumerStartToRecordDelivery": 645,
+          "recordDeliveryToUnsafeRead": 490,
+          "responseToUnsafeRead": 4457
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 132,
+          "sourceAcknowledgementDuration": 158,
+          "completenessDuration": 115,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 61,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 50,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 62,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 61,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 474,
+          "residualFromDeliveryToPublicRead": 490
+        },
+        "admission": [
+          {
+            "attemptId": "01622080-fd24-4f8e-a67a-a1b7e352fb4f",
+            "startedAtMs": 1788636074874,
+            "finishedAtMs": 1788636075174,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 10,
+        "reservationId": "g65-reservation-dcd94ead-861-10",
+        "eventId": "01a07304-bf31-79b3-977a-4444fe23c93b",
+        "suid": "063924232886731000001436441517",
+        "commitResponseMs": 2179,
+        "commitReceivedAtMs": 1788636087432,
+        "unsafeFirstVisibleAtMs": 1788636091831,
+        "commitToUnsafeMs": 4399,
+        "safeFinalHeadAtMs": 1788636155422,
+        "commitToSafeFinalHeadMs": 67990,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636086065,
+          "tagAppendAtMs": 1788636087090,
+          "outboxAtMs": 1788636087090,
+          "queueSendAtMs": 1788636088173,
+          "consumerStartAtMs": 1788636090306,
+          "recordDeliveryAtMs": 1788636091086,
+          "ledgerFirstUnsafeReadAtMs": 1788636091803,
+          "publicFirstUnsafeReadAtMs": 1788636091831
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1025,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1083,
+          "queueSendToConsumerStart": 2133,
+          "consumerStartToRecordDelivery": 780,
+          "recordDeliveryToUnsafeRead": 745,
+          "responseToUnsafeRead": 4399
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 112,
+          "sourceAcknowledgementDuration": 267,
+          "completenessDuration": 65,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 218,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 193,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 58,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 66,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 717,
+          "residualFromDeliveryToPublicRead": 745
+        },
+        "admission": [
+          {
+            "attemptId": "dcc06406-f001-4a13-a869-47beed73a8ae",
+            "startedAtMs": 1788636087090,
+            "finishedAtMs": 1788636087390,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      }
+    ]
+  },
+  "post": {
+    "label": "W138-post-change",
+    "cohort": {
+      "path": ".artifacts/sdt-g65-w138-post-change-cohort.json",
+      "runId": "9a3356fb-854a-46d4-ac07-047598f179d1",
+      "startedAt": "2026-09-05T19:25:11.359Z",
+      "finishedAt": "2026-09-05T19:30:20.731Z",
+      "status": "failed",
+      "count": 10
+    },
+    "clockPolicy": "Observed fetch/ledger Date.now epoch milliseconds only; excludes authored event Timestamp and caller received_at from timing.",
+    "metrics": {
+      "response": {
+        "n": 10,
+        "p50Ms": 2284,
+        "p95Ms": 2640
+      },
+      "commitToUnsafe": {
+        "n": 10,
+        "p50Ms": 57145,
+        "p95Ms": 117933
+      },
+      "commitToSafeFinalHead": {
+        "n": 10,
+        "p50Ms": 124847,
+        "p95Ms": 186687
+      },
+      "commandReceiptToTagAppend": {
+        "n": 10,
+        "p50Ms": 1050,
+        "p95Ms": 1350
+      },
+      "tagAppendToOutbox": {
+        "n": 10,
+        "p50Ms": 0,
+        "p95Ms": 0
+      },
+      "outboxToQueueSend": {
+        "n": 10,
+        "p50Ms": 1097,
+        "p95Ms": 1159
+      },
+      "queueSendToConsumerStart": {
+        "n": 10,
+        "p50Ms": 9349,
+        "p95Ms": 23285
+      },
+      "consumerStartToRecordDelivery": {
+        "n": 10,
+        "p50Ms": 1205,
+        "p95Ms": 2332
+      },
+      "recordDeliveryToUnsafeRead": {
+        "n": 10,
+        "p50Ms": 39124,
+        "p95Ms": 111766
+      },
+      "recordDeliveryToGlobalReadbackStart": {
+        "n": 10,
+        "p50Ms": 0,
+        "p95Ms": 0
+      },
+      "globalReadbackDuration": {
+        "n": 10,
+        "p50Ms": 128,
+        "p95Ms": 270
+      },
+      "sourceAcknowledgementDuration": {
+        "n": 10,
+        "p50Ms": 164,
+        "p95Ms": 427
+      },
+      "completenessDuration": {
+        "n": 10,
+        "p50Ms": 120,
+        "p95Ms": 298
+      },
+      "detectorDuration": {
+        "n": 8,
+        "p50Ms": 432,
+        "p95Ms": 865
+      },
+      "roomUnsafeApplyDuration": {
+        "n": 10,
+        "p50Ms": 229,
+        "p95Ms": 877
+      },
+      "reservationUnsafeApplyDuration": {
+        "n": 10,
+        "p50Ms": 200,
+        "p95Ms": 539
+      },
+      "roomInlineWriterDuration": {
+        "n": 10,
+        "p50Ms": 75,
+        "p95Ms": 231
+      },
+      "reservationInlineWriterDuration": {
+        "n": 10,
+        "p50Ms": 65,
+        "p95Ms": 108
+      },
+      "recordDeliveryToLedgerUnsafeRead": {
+        "n": 10,
+        "p50Ms": 1230,
+        "p95Ms": 6908
+      },
+      "residualFromDeliveryToPublicRead": {
+        "n": 10,
+        "p50Ms": 39124,
+        "p95Ms": 111766
+      },
+      "over5000": 9,
+      "responseHeaders": {
+        "unknown": 10
+      },
+      "completenessOutcomes": {
+        "BLOCK/UNSETTLED": 8,
+        "SETTLED": 2
+      },
+      "detectorOutcomes": {
+        "applied": 8
+      },
+      "roomUnsafeOutcomes": {
+        "applied": 5,
+        "duplicate-race": 5
+      },
+      "reservationUnsafeOutcomes": {
+        "applied": 5,
+        "duplicate-race": 5
+      },
+      "bodyAdmissionFieldCount": 0
+    },
+    "samples": [
+      {
+        "ordinal": 1,
+        "reservationId": "g65-reservation-9a3356fb-854-1",
+        "eventId": "01a07308-6524-7522-ba24-c67ea7210aac",
+        "suid": "063924233125785000001375118450",
+        "commitResponseMs": 2397,
+        "commitReceivedAtMs": 1788636326510,
+        "unsafeFirstVisibleAtMs": 1788636444443,
+        "commitToUnsafeMs": 117933,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 186687,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636325156,
+          "tagAppendAtMs": 1788636326115,
+          "outboxAtMs": 1788636326115,
+          "queueSendAtMs": 1788636327215,
+          "consumerStartAtMs": 1788636332111,
+          "recordDeliveryAtMs": 1788636332677,
+          "ledgerFirstUnsafeReadAtMs": 1788636338719,
+          "publicFirstUnsafeReadAtMs": 1788636444443
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 959,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1100,
+          "queueSendToConsumerStart": 4896,
+          "consumerStartToRecordDelivery": 566,
+          "recordDeliveryToUnsafeRead": 111766,
+          "responseToUnsafeRead": 117933
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 128,
+          "sourceAcknowledgementDuration": 164,
+          "completenessDuration": 45,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 388,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 161,
+          "roomUnsafeApplyOutcome": "applied",
+          "reservationUnsafeApplyDuration": 77,
+          "reservationUnsafeApplyOutcome": "applied",
+          "roomInlineWriterDuration": 59,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 60,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 6042,
+          "residualFromDeliveryToPublicRead": 111766
+        },
+        "admission": [
+          {
+            "attemptId": "88e83c42-ee91-4ac0-b341-f93a571608ee",
+            "startedAtMs": 1788636326115,
+            "finishedAtMs": 1788636326415,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 2,
+        "reservationId": "g65-reservation-9a3356fb-854-2",
+        "eventId": "01a07308-9491-7c99-8612-60aadfda8fba",
+        "suid": "063924233137945000001388296417",
+        "commitResponseMs": 2094,
+        "commitReceivedAtMs": 1788636338639,
+        "unsafeFirstVisibleAtMs": 1788636444585,
+        "commitToUnsafeMs": 105946,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 174558,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636337297,
+          "tagAppendAtMs": 1788636338274,
+          "outboxAtMs": 1788636338274,
+          "queueSendAtMs": 1788636339433,
+          "consumerStartAtMs": 1788636359993,
+          "recordDeliveryAtMs": 1788636360714,
+          "ledgerFirstUnsafeReadAtMs": 1788636363605,
+          "publicFirstUnsafeReadAtMs": 1788636444585
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 977,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1159,
+          "queueSendToConsumerStart": 20560,
+          "consumerStartToRecordDelivery": 721,
+          "recordDeliveryToUnsafeRead": 83871,
+          "responseToUnsafeRead": 105946
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 90,
+          "sourceAcknowledgementDuration": 143,
+          "completenessDuration": 116,
+          "completenessOutcome": "SETTLED",
+          "detectorDuration": 405,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 88,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 75,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 60,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 60,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 2891,
+          "residualFromDeliveryToPublicRead": 83871
+        },
+        "admission": [
+          {
+            "attemptId": "a2355f52-bb03-47c5-9c32-88be90800cb4",
+            "startedAtMs": 1788636338274,
+            "finishedAtMs": 1788636338574,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 3,
+        "reservationId": "g65-reservation-9a3356fb-854-3",
+        "eventId": "01a07308-c4cd-724c-b228-1681c241a8b0",
+        "suid": "063924233150415000001096124586",
+        "commitResponseMs": 2284,
+        "commitReceivedAtMs": 1788636351122,
+        "unsafeFirstVisibleAtMs": 1788636444777,
+        "commitToUnsafeMs": 93655,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 162075,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636349645,
+          "tagAppendAtMs": 1788636350727,
+          "outboxAtMs": 1788636350727,
+          "queueSendAtMs": 1788636351824,
+          "consumerStartAtMs": 1788636374342,
+          "recordDeliveryAtMs": 1788636375147,
+          "ledgerFirstUnsafeReadAtMs": 1788636376377,
+          "publicFirstUnsafeReadAtMs": 1788636444777
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1082,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1097,
+          "queueSendToConsumerStart": 22518,
+          "consumerStartToRecordDelivery": 805,
+          "recordDeliveryToUnsafeRead": 69630,
+          "responseToUnsafeRead": 93655
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 92,
+          "sourceAcknowledgementDuration": 165,
+          "completenessDuration": 89,
+          "completenessOutcome": "SETTLED",
+          "detectorDuration": 277,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 337,
+          "roomUnsafeApplyOutcome": "applied",
+          "reservationUnsafeApplyDuration": 240,
+          "reservationUnsafeApplyOutcome": "applied",
+          "roomInlineWriterDuration": 55,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 65,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 1230,
+          "residualFromDeliveryToPublicRead": 69630
+        },
+        "admission": [
+          {
+            "attemptId": "988a6ebb-fc80-43ca-b920-3a135ebff852",
+            "startedAtMs": 1788636350727,
+            "finishedAtMs": 1788636351027,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 4,
+        "reservationId": "g65-reservation-9a3356fb-854-4",
+        "eventId": "01a07308-f483-7733-8bb6-546345ecbf26",
+        "suid": "063924233162741000000252351616",
+        "commitResponseMs": 2392,
+        "commitReceivedAtMs": 1788636363516,
+        "unsafeFirstVisibleAtMs": 1788636444968,
+        "commitToUnsafeMs": 81452,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 149681,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636361859,
+          "tagAppendAtMs": 1788636363125,
+          "outboxAtMs": 1788636363125,
+          "queueSendAtMs": 1788636364222,
+          "consumerStartAtMs": 1788636387507,
+          "recordDeliveryAtMs": 1788636388712,
+          "ledgerFirstUnsafeReadAtMs": 1788636388506,
+          "publicFirstUnsafeReadAtMs": 1788636444968
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1266,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1097,
+          "queueSendToConsumerStart": 23285,
+          "consumerStartToRecordDelivery": 1205,
+          "recordDeliveryToUnsafeRead": 56256,
+          "responseToUnsafeRead": 81452
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 142,
+          "sourceAcknowledgementDuration": 68,
+          "completenessDuration": 120,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 581,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 229,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 200,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 75,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 64,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": -206,
+          "residualFromDeliveryToPublicRead": 56256
+        },
+        "admission": [
+          {
+            "attemptId": "f7d12bf2-f118-42af-ba1d-e36b31c935ab",
+            "startedAtMs": 1788636363125,
+            "finishedAtMs": 1788636363425,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 5,
+        "reservationId": "g65-reservation-9a3356fb-854-5",
+        "eventId": "01a07309-273b-7c22-9854-4a76fc1538ae",
+        "suid": "063924233175471000000837998324",
+        "commitResponseMs": 2438,
+        "commitReceivedAtMs": 1788636376290,
+        "unsafeFirstVisibleAtMs": 1788636445303,
+        "commitToUnsafeMs": 69013,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 136907,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636374843,
+          "tagAppendAtMs": 1788636375891,
+          "outboxAtMs": 1788636375891,
+          "queueSendAtMs": 1788636376978,
+          "consumerStartAtMs": 1788636393575,
+          "recordDeliveryAtMs": 1788636394498,
+          "ledgerFirstUnsafeReadAtMs": 1788636400633,
+          "publicFirstUnsafeReadAtMs": 1788636445303
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1048,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1087,
+          "queueSendToConsumerStart": 16597,
+          "consumerStartToRecordDelivery": 923,
+          "recordDeliveryToUnsafeRead": 50805,
+          "responseToUnsafeRead": 69013
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 133,
+          "sourceAcknowledgementDuration": 160,
+          "completenessDuration": 157,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 844,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 384,
+          "roomUnsafeApplyOutcome": "applied",
+          "reservationUnsafeApplyDuration": 268,
+          "reservationUnsafeApplyOutcome": "applied",
+          "roomInlineWriterDuration": 81,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 61,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 6135,
+          "residualFromDeliveryToPublicRead": 50805
+        },
+        "admission": [
+          {
+            "attemptId": "e1e3bdbe-e0cb-4935-8bf3-69fd30a3c278",
+            "startedAtMs": 1788636375891,
+            "finishedAtMs": 1788636376191,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 6,
+        "reservationId": "g65-reservation-9a3356fb-854-6",
+        "eventId": "01a07309-5659-749a-9d2f-c12b005d659a",
+        "suid": "063924233187539000000449909370",
+        "commitResponseMs": 1935,
+        "commitReceivedAtMs": 1788636388350,
+        "unsafeFirstVisibleAtMs": 1788636445495,
+        "commitToUnsafeMs": 57145,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 124847,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636386905,
+          "tagAppendAtMs": 1788636387955,
+          "outboxAtMs": 1788636387955,
+          "queueSendAtMs": 1788636389053,
+          "consumerStartAtMs": 1788636405075,
+          "recordDeliveryAtMs": 1788636406371,
+          "ledgerFirstUnsafeReadAtMs": 1788636413279,
+          "publicFirstUnsafeReadAtMs": 1788636445495
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1050,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1098,
+          "queueSendToConsumerStart": 16022,
+          "consumerStartToRecordDelivery": 1296,
+          "recordDeliveryToUnsafeRead": 39124,
+          "responseToUnsafeRead": 57145
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 121,
+          "sourceAcknowledgementDuration": 92,
+          "completenessDuration": 130,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 865,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 471,
+          "roomUnsafeApplyOutcome": "applied",
+          "reservationUnsafeApplyDuration": 379,
+          "reservationUnsafeApplyOutcome": "applied",
+          "roomInlineWriterDuration": 66,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 79,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 6908,
+          "residualFromDeliveryToPublicRead": 39124
+        },
+        "admission": [
+          {
+            "attemptId": "9cd7a8c1-1267-4d65-9eaa-056d3a02cfe2",
+            "startedAtMs": 1788636387955,
+            "finishedAtMs": 1788636388255,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 7,
+        "reservationId": "g65-reservation-9a3356fb-854-7",
+        "eventId": "01a07309-8626-7f18-bb35-5c63fb67a583",
+        "suid": "063924233199793000001937919854",
+        "commitResponseMs": 2195,
+        "commitReceivedAtMs": 1788636400546,
+        "unsafeFirstVisibleAtMs": 1788636445850,
+        "commitToUnsafeMs": 45304,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 112651,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636399142,
+          "tagAppendAtMs": 1788636400163,
+          "outboxAtMs": 1788636400163,
+          "queueSendAtMs": 1788636401268,
+          "consumerStartAtMs": 1788636410617,
+          "recordDeliveryAtMs": 1788636411857,
+          "ledgerFirstUnsafeReadAtMs": 1788636413279,
+          "publicFirstUnsafeReadAtMs": 1788636445850
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1021,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1105,
+          "queueSendToConsumerStart": 9349,
+          "consumerStartToRecordDelivery": 1240,
+          "recordDeliveryToUnsafeRead": 33993,
+          "responseToUnsafeRead": 45304
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 225,
+          "sourceAcknowledgementDuration": 185,
+          "completenessDuration": 210,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 605,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 877,
+          "roomUnsafeApplyOutcome": "applied",
+          "reservationUnsafeApplyDuration": 539,
+          "reservationUnsafeApplyOutcome": "applied",
+          "roomInlineWriterDuration": 231,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 107,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 1422,
+          "residualFromDeliveryToPublicRead": 33993
+        },
+        "admission": [
+          {
+            "attemptId": "43d9a86e-ab47-406f-af77-7ada2582ee3f",
+            "startedAtMs": 1788636400163,
+            "finishedAtMs": 1788636400463,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 8,
+        "reservationId": "g65-reservation-9a3356fb-854-8",
+        "eventId": "01a07309-b542-755f-8732-cfd6d3b2c93a",
+        "suid": "063924233211843000000211667888",
+        "commitResponseMs": 2640,
+        "commitReceivedAtMs": 1788636413188,
+        "unsafeFirstVisibleAtMs": 1788636418333,
+        "commitToUnsafeMs": 5145,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 100009,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636411202,
+          "tagAppendAtMs": 1788636412352,
+          "outboxAtMs": 1788636412352,
+          "queueSendAtMs": 1788636413445,
+          "consumerStartAtMs": 1788636416604,
+          "recordDeliveryAtMs": 1788636417842,
+          "ledgerFirstUnsafeReadAtMs": 1788636418309,
+          "publicFirstUnsafeReadAtMs": 1788636418333
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1150,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1093,
+          "queueSendToConsumerStart": 3159,
+          "consumerStartToRecordDelivery": 1238,
+          "recordDeliveryToUnsafeRead": 491,
+          "responseToUnsafeRead": 5145
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 117,
+          "sourceAcknowledgementDuration": 242,
+          "completenessDuration": 136,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": 432,
+          "detectorOutcome": "applied",
+          "roomUnsafeApplyDuration": 409,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 380,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 89,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 76,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": 467,
+          "residualFromDeliveryToPublicRead": 491
+        },
+        "admission": [
+          {
+            "attemptId": "2540a0cb-36a3-422b-b88d-209324cdcf9f",
+            "startedAtMs": 1788636412352,
+            "finishedAtMs": 1788636412652,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 9,
+        "reservationId": "g65-reservation-9a3356fb-854-9",
+        "eventId": "01a07309-e77b-7cde-b947-066244b91c08",
+        "suid": "063924233224694000000841392922",
+        "commitResponseMs": 2590,
+        "commitReceivedAtMs": 1788636425780,
+        "unsafeFirstVisibleAtMs": 1788636430401,
+        "commitToUnsafeMs": 4621,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 87417,
+        "unsafeDisposition": "observed-within-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636424059,
+          "tagAppendAtMs": 1788636425409,
+          "outboxAtMs": 1788636425409,
+          "queueSendAtMs": 1788636426485,
+          "consumerStartAtMs": 1788636430053,
+          "recordDeliveryAtMs": 1788636431672,
+          "ledgerFirstUnsafeReadAtMs": 1788636430369,
+          "publicFirstUnsafeReadAtMs": 1788636430401
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1350,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1076,
+          "queueSendToConsumerStart": 3568,
+          "consumerStartToRecordDelivery": 1619,
+          "recordDeliveryToUnsafeRead": -1271,
+          "responseToUnsafeRead": 4621
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 137,
+          "sourceAcknowledgementDuration": 427,
+          "completenessDuration": 79,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 150,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 84,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 112,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 108,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": -1303,
+          "residualFromDeliveryToPublicRead": -1271
+        },
+        "admission": [
+          {
+            "attemptId": "69bedd9e-adf9-40d8-9361-713711399e6c",
+            "startedAtMs": 1788636425409,
+            "finishedAtMs": 1788636425709,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      },
+      {
+        "ordinal": 10,
+        "reservationId": "g65-reservation-9a3356fb-854-10",
+        "eventId": "01a0730a-19fd-79cd-98e2-88048939d53a",
+        "suid": "063924233237642000000950318736",
+        "commitResponseMs": 2274,
+        "commitReceivedAtMs": 1788636438511,
+        "unsafeFirstVisibleAtMs": 1788636443731,
+        "commitToUnsafeMs": 5220,
+        "safeFinalHeadAtMs": 1788636513197,
+        "commitToSafeFinalHeadMs": 74686,
+        "unsafeDisposition": "observed-over-5000ms",
+        "headerOutcome": "unknown",
+        "bodyHasAdmissionField": false,
+        "observed": {
+          "commandReceiptAtMs": 1788636436989,
+          "tagAppendAtMs": 1788636438129,
+          "outboxAtMs": 1788636438129,
+          "queueSendAtMs": 1788636439212,
+          "consumerStartAtMs": 1788636443693,
+          "recordDeliveryAtMs": 1788636446025,
+          "ledgerFirstUnsafeReadAtMs": 1788636443643,
+          "publicFirstUnsafeReadAtMs": 1788636443731
+        },
+        "hopMs": {
+          "commandReceiptToTagAppend": 1140,
+          "tagAppendToOutbox": 0,
+          "outboxToQueueSend": 1083,
+          "queueSendToConsumerStart": 4481,
+          "consumerStartToRecordDelivery": 2332,
+          "recordDeliveryToUnsafeRead": -2294,
+          "responseToUnsafeRead": 5220
+        },
+        "subhops": {
+          "recordDeliveryToGlobalReadbackStart": 0,
+          "globalReadbackDuration": 270,
+          "sourceAcknowledgementDuration": 209,
+          "completenessDuration": 298,
+          "completenessOutcome": "BLOCK/UNSETTLED",
+          "detectorDuration": null,
+          "detectorOutcome": null,
+          "roomUnsafeApplyDuration": 94,
+          "roomUnsafeApplyOutcome": "duplicate-race",
+          "reservationUnsafeApplyDuration": 83,
+          "reservationUnsafeApplyOutcome": "duplicate-race",
+          "roomInlineWriterDuration": 109,
+          "roomInlineWriterOutcome": "no-change",
+          "reservationInlineWriterDuration": 70,
+          "reservationInlineWriterOutcome": "applied",
+          "recordDeliveryToLedgerUnsafeRead": -2382,
+          "residualFromDeliveryToPublicRead": -2294
+        },
+        "admission": [
+          {
+            "attemptId": "4e8f3387-e711-4914-8ce5-09ec90aab23a",
+            "startedAtMs": 1788636438129,
+            "finishedAtMs": 1788636438429,
+            "durationMs": 300,
+            "outcome": "unknown",
+            "globalCompletionObservedAtMs": null,
+            "clockOrigin": "Date.now epoch ms"
+          }
+        ]
+      }
+    ]
+  }
+}

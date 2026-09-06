@@ -421,7 +421,13 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
         // rather than whether the newly inserted source row is retained and
         // re-armed for the next alarm.
         control.disableAutoDrain();
-        expect((await append(value, "insert-2")).status).toBe(201);
+        const nestedAppend = await append(value, "insert-2");
+        expect(nestedAppend.status).toBe(201);
+        // The Worker response headers are observable before the response body
+        // has drained in the parallel foundation pool. Consume the body so the
+        // nested append's handler turn and durable SQL commit are complete
+        // before the outer alarm resumes its source scan.
+        await nestedAppend.arrayBuffer();
         return;
       }
       throw new Error("fixture keeps newly inserted obligation pending");

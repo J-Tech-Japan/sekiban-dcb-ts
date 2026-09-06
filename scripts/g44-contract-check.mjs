@@ -87,13 +87,15 @@ export function assertG44Contract(value) {
   ]) requireContains(recordDelivery, token, "atomic D1 receipt admission");
   requireContains(store, "JOIN serialized_dcb_global_memberships AS membership", "D1 receipt readback");
 
-  // AC2/AC3: only a receipt join can acknowledge a source obligation; its
-  // universe is registered on source commit, never observed Queue arrivals.
-  const registration = between(tag, "private async registerSourcePartition", "private async appendSql", "source partition registration");
-  requireContains(registration, "serialized_dcb_source_partitions", "source registry");
-  requireContains(registration, "MAX(obligation_sequence)", "source registry upper bound");
-  for (const forbidden of ["DOWNSTREAM_QUEUE", "global_receipts", "planned", "arrival"]) requireAbsent(registration, forbidden, "source registry derivation");
-  const sourceAck = between(tag, "private async globalReceiptMatches", "private async registerSourcePartition", "source acknowledgement");
+  // AC2/AC3: only a receipt join can acknowledge a source obligation. Source
+  // discoverability is written in the same D1 batch as the global event,
+  // membership, and receipt; the local Tag append may not make a D1 probe a
+  // prerequisite for durable acceptance.
+  requireContains(recordDelivery, "INSERT INTO serialized_dcb_source_partitions", "atomic source registry");
+  requireContains(recordDelivery, "requiresGlobalReceipt ? 1 : 0", "atomic source registry import boundary");
+  requireContains(recordDelivery, "ON CONFLICT (service_id, partition_tag) DO UPDATE", "atomic source registry idempotence");
+  requireAbsent(tag, "await this.registerSourcePartition(tag, serviceId)", "synchronous source registry dependency");
+  const sourceAck = between(tag, "private async globalReceiptMatches", "private async appendSql", "source acknowledgement");
   requireContains(sourceAck, "serialized_dcb_global_receipts", "source receipt readback");
   const mark = between(tag, "async markOutboxDelivered", "private async markSqlOutboxDelivered", "source mark delivered");
   requireContains(mark, "this.globalReceiptMatches", "source mark receipt guard");

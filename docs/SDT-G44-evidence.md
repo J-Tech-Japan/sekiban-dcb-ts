@@ -26,9 +26,10 @@ unit rather than being fabricated from a downstream record.
 
 ```
 source Tag transaction
-  -> durable obligation + source-partition registry (source authority)
+  -> durable obligation + local receipt
+  -> bounded/post-commit source registration attempt
   -> Queue handoff                         (not source acknowledgement)
-  -> one D1 batch: event + membership + receipt
+  -> one D1 batch: event + source partition + membership + receipt
   -> D1 event/membership/receipt joined read-back
   -> Tag obligation acknowledgement
 ```
@@ -40,8 +41,9 @@ The receiver cannot acknowledge the source merely because Queue accepted a
 message, transport returned success, or a receipt exists without a matching
 event and membership row.
 
-The source partition registry is written by the successful Tag commit path,
-not by Queue arrival, sink arrival, or a runner’s planned count. The scanner
+The source partition registry is written by the successful atomic D1 admission
+batch (with a non-blocking post-commit registration attempt retained for
+discoverability), not by Queue arrival, sink arrival, or a runner’s planned count. The scanner
 captures a snapshot of `partition_tag × obligation_sequence upper bound`,
 fetches obligations from the corresponding private Tag DO storage seam, and
 requires a contiguous exact range through each upper bound. Changed partition

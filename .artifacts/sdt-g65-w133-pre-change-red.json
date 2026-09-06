@@ -1,0 +1,19 @@
+{
+  "guard": "SDT-G65 bounded two-lane admission",
+  "phase": "pre-change",
+  "status": "red",
+  "expectedFailure": true,
+  "sourceRevision": "68454969e6b9c15bb22e5e57bfd388167477dbfb",
+  "sourcePaths": [
+    "packages/dcb-runtime/src/tag/TagDurableObject.ts",
+    "packages/dcb-runtime/src/commit/CommitWorker.ts",
+    "packages/dcb-runtime/src/store/D1EventStore.ts",
+    "test/g65-admission.spec.ts"
+  ],
+  "red": {
+    "label": "pre-G65 source",
+    "status": "red",
+    "expectedFailure": true,
+    "reason": "G65 bounded two-lane admission is absent: first-append source registration gate, durable source-registration status lookup, typed first-registration failure, retryable partition-registration response, bounded source registry recovery retry, first source registration before durable append, unbounded direct source registry dependency, post-append source watermark is scheduled without gating response, atomic source-partition admission, durable source-registration retry: tag_source_partition_registration, durable source-registration retry: markSourcePartitionRegistration, durable source-registration retry: sourceRegistrationDue, durable source-registration retry: requestedSequence, durable source-registration retry: requireAuthority, real G65 oracle: new D1EventStore(database()), real G65 oracle: D1IdentityConflictError, real G65 oracle: serialized_dcb_source_partitions, real G65 oracle: runtime.env.D1 = undefined, real G65 oracle: state.storage.sql, real G65 oracle: partition_registration_unavailable, real G65 oracle: refuses a first append when source-partition registration hangs, real G65 oracle: commits a registered tag with D1 unavailable and reports not-admitted, real G65 oracle: does not await registration again for an already-registered tag, real G65 oracle: expect(rows).toEqual({ events: 0, receipts: 0 })"
+  }
+}

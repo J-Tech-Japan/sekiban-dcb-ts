@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w138-d1-recovery-ledger",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "ac751211-fde8-4587-9d56-1e9fd8051bc3",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--command",
+    "SELECT 'event' AS record_kind, \"Id\" AS event_id, \"SortableUniqueId\" AS suid, \"Tags\" AS tags FROM dcb_events WHERE \"Id\" IN ('01a0730f-d43b-7ba4-8724-61dbbe3eed0c','01a0730f-dcca-7b9a-b6ef-e978aa3c2940','01a07310-7b31-7626-911e-d57667f3a346','01a07310-8518-7245-af65-ef28e49fcd37') ORDER BY \"SortableUniqueId\"; SELECT 'receipt' AS record_kind, event_id, membership_tag, obligation_sequence, received_at FROM serialized_dcb_global_receipts WHERE event_id IN ('01a0730f-d43b-7ba4-8724-61dbbe3eed0c','01a0730f-dcca-7b9a-b6ef-e978aa3c2940','01a07310-7b31-7626-911e-d57667f3a346','01a07310-8518-7245-af65-ef28e49fcd37') ORDER BY received_at; SELECT 'admission' AS record_kind, event_id, partition_tag, admission_started_at, admission_finished_at, outcome, global_completion_observed_at, clock_origin FROM serialized_dcb_g65_admission_attempts WHERE event_id IN ('01a0730f-d43b-7ba4-8724-61dbbe3eed0c','01a0730f-dcca-7b9a-b6ef-e978aa3c2940','01a07310-7b31-7626-911e-d57667f3a346','01a07310-8518-7245-af65-ef28e49fcd37') ORDER BY admission_started_at;"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T19:36:22.559Z",
+  "finishedAt": "2026-09-05T19:36:23.798Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"event\",\n        \"event_id\": \"01a0730f-d43b-7ba4-8724-61dbbe3eed0c\",\n        \"suid\": \"063924233613279000000420170940\",\n        \"tags\": \"[\\\"reservation:g65-reservation-9a3356fb-854-1\\\"]\"\n      },\n      {\n        \"record_kind\": \"event\",\n        \"event_id\": \"01a0730f-dcca-7b9a-b6ef-e978aa3c2940\",\n        \"suid\": \"063924233615512000000834365420\",\n        \"tags\": \"[\\\"room:g65-w138-unconfigured-new-u1\\\"]\"\n      },\n      {\n        \"record_kind\": \"event\",\n        \"event_id\": \"01a07310-7b31-7626-911e-d57667f3a346\",\n        \"suid\": \"063924233656209000000312404835\",\n        \"tags\": \"[\\\"reservation:g65-reservation-9a3356fb-854-2\\\"]\"\n      },\n      {\n        \"record_kind\": \"event\",\n        \"event_id\": \"01a07310-8518-7245-af65-ef28e49fcd37\",\n        \"suid\": \"063924233658253000001924885542\",\n        \"tags\": \"[\\\"room:g65-w138-configured-failure-new-c1\\\"]\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.3616\n      },\n      \"duration\": 0.3616,\n      \"changes\": 0,\n      \"last_row_id\": 9,\n      \"changed_db\": false,\n      \"size_after\": 716800,\n      \"rows_read\": 19,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"record_kind\": \"receipt\",\n        \"event_id\": \"01a07310-7b31-7626-911e-d57667f3a346\",\n        \"membership_tag\": \"reservation:g65-reservation-9a3356fb-854-2\",\n        \"obligation_sequence\": 2,\n        \"received_at\": 1788636927936\n      },\n      {\n        \"record_kind\": \"receipt\",\n        \"event_id\": \"01a07310-8518-7245-af65-ef28e49fcd37\",\n        \"membership_tag\": \"room:g65-w138-configured-failure-new-c1\",\n        \"obligation_sequence\": 1,\n        \"received_at\": 1788636929376\n      },\n      {\n        \"record_kind\": \"receipt\",\n        \"event_id\": \"01a0730f-d43b-7ba4-8724-61dbbe3eed0c\",\n        \"membership_tag\": \"reservation:g65-reservation-9a3356fb-854-1\",\n        \"obligation_sequence\": 2,\n        \"received_at\": 1788636930502\n      },\n      {\n        \"record_kind\": \"receipt\",\n        \"event_id\": \"01a0730f-dcca-7b9a-b6ef-e978aa3c2940\",\n        \"membership_tag\": \"room:g65-w138-unconfigured-new-u1\",\n        \"obligation_sequence\": 1,\n        \"received_at\": 1788636931598\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2031\n      },\n      \"duration\": 0.2031,\n      \"changes\": 0,\n      \"last_row_id\": 9,\n      \"changed_db\": false,\n      \"size_after\": 716800,\n      \"rows_read\": 29,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2515\n      },\n      \"duration\": 0.2515,\n      \"changes\": 0,\n      \"last_row_id\": 9,\n      \"changed_db\": false,\n      \"size_after\": 716800,\n      \"rows_read\": 185,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

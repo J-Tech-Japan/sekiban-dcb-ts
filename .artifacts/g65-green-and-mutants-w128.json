@@ -1,0 +1,61 @@
+{
+  "guard": "SDT-G65 bounded two-lane admission",
+  "phase": "post-change",
+  "status": "green",
+  "sourceRevision": "164f97521c53b530c2dd99800ba7277bdf85182a",
+  "budgetMs": 300,
+  "sourceWiring": {
+    "ok": true,
+    "missing": []
+  },
+  "redMutants": {
+    "omittedAdmission": {
+      "label": "synchronous admission omission mutant",
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "detected: global admission call removed"
+    },
+    "unboundedDoorbell": {
+      "label": "unbounded doorbell mutant",
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "detected: old unbounded direct path restored"
+    },
+    "responseGatedOnD1": {
+      "label": "response-gated-on-D1 mutant",
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "commit response was gated on derived D1 work"
+    },
+    "durabilityReordered": {
+      "label": "durability-before-attempt mutant",
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "direct attempt preceded durable acceptance"
+    },
+    "duplicateAdmission": {
+      "label": "double-admission mutant",
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "expected one idempotent admission, got 2"
+    },
+    "omittedDirect": {
+      "label": "direct attempt omission mutant",
+      "status": "red",
+      "expectedFailure": true,
+      "reason": "direct unsafe attempt was omitted"
+    }
+  },
+  "green": {
+    "eventCommitted": true,
+    "outboxWritten": true,
+    "localReceiptCommitted": true,
+    "directAttempted": true,
+    "admissionAttempted": true,
+    "responseReturned": true,
+    "queueScheduled": true,
+    "admissions": 1,
+    "identities": {}
+  },
+  "contract": "Tag event, outbox obligation and local receipt precede bounded direct unsafe delivery and bounded shared D1 admission; the response is never gated indefinitely and Queue remains the durable fallback/global owner."
+}

@@ -145,6 +145,7 @@ export function auditG32LegacyIngress() {
     // negative. Keeping it in this explicit inventory prevents a future
     // fixture from silently turning the production retirement branch green.
     "test/g32-suid-rows.spec.ts",
+    "test/g65-admission.spec.ts",
     "test/meeting-room.spec.ts",
     "test/mv.spec.ts",
     "test/projection.spec.ts",

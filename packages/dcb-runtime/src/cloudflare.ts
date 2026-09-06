@@ -57,6 +57,19 @@ export {
   G60_POST_ADMISSION_STAGES,
   G60_UNSAFE_WRITER_PATHS,
 } from "./diagnostics/G60DurableHop";
+export {
+  G65_DIRECT_RING_BUDGET_MS,
+  G65_DIRECT_RING_CLOCK_ORIGIN,
+  recordG65DirectRing,
+  readG65DirectRing,
+  markG65DirectApplyStarted,
+  markG65DirectApplyFinished,
+} from "./diagnostics/G65DirectRing";
+export type {
+  G65DirectApplyOutcome,
+  G65DirectRingOutcome,
+  G65DirectRingRecord,
+} from "./diagnostics/G65DirectRing";
 export type {
   G60DurableUnsafeWriterObservation,
   G60DurablePostAdmissionObservation,

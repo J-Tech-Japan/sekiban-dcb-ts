@@ -67,13 +67,18 @@ describe("SDT-G14 meeting-room consumer", () => {
         captured = new Request(input, init);
         return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), {
           status: 200,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-sdt-global-admission": "admitted" },
         });
       },
     }, "g11-meeting-room-test-12345678");
-    await transport.commit({
+    const result = await transport.commit({
       candidates: [{ eventId: "event-1", eventPayloadName: "RoomCreated", payload: { eventType: "RoomCreated" }, tags: ["room:r-1"] }],
       consistency: [{ tag: "room:r-1", lastSortableUniqueId: "suid-1" }],
+    });
+    expect(result).toMatchObject({
+      status: 200,
+      headers: { "x-sdt-global-admission": "admitted" },
+      body: { writtenEvents: [], tagWriteResults: [] },
     });
     const body = await captured!.json<Record<string, unknown>>();
     expect(body).toMatchObject({ version: 1 });
@@ -81,6 +86,26 @@ describe("SDT-G14 meeting-room consumer", () => {
     expect(body.eventCandidates).toEqual([
       expect.objectContaining({ eventPayloadName: "RoomCreated", tags: ["room:r-1"], payload: expect.any(String) }),
     ]);
+  });
+
+  it("forwards each admission outcome as a header without adding a V1 body member", async () => {
+    for (const status of ["admitted", "not-admitted", "unknown"] as const) {
+      const transport = createV1Transport({
+        fetch: async () => new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json", "x-sdt-global-admission": status },
+        }),
+      });
+      const result = await transport.commit({
+        candidates: [{ eventId: `event-${status}`, eventPayloadName: "RoomCreated", payload: { eventType: "RoomCreated" }, tags: ["room:r-1"] }],
+        consistency: [],
+      });
+      expect(result).toMatchObject({
+        headers: { "x-sdt-global-admission": status },
+        body: { writtenEvents: [], tagWriteResults: [] },
+      });
+      expect(result).not.toHaveProperty("globalAdmission");
+    }
   });
 
   it("does not forward a client g11 namespace from the unauthenticated command API", async () => {
@@ -103,7 +128,7 @@ describe("SDT-G14 meeting-room consumer", () => {
         }
         return new Response(JSON.stringify({ writtenEvents: [], tagWriteResults: [] }), {
           status: 200,
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", "x-sdt-global-admission": "admitted" },
         });
       },
     };
@@ -118,6 +143,8 @@ describe("SDT-G14 meeting-room consumer", () => {
       body: JSON.stringify({ roomId: "r-unauthenticated", name: "Room" }),
     }), { RUNTIME: runtimeFetcher } as unknown as MeetingRoomEnv, {} as ExecutionContext);
     expect(response.status).toBe(200);
+    expect(response.headers.get("x-sdt-global-admission")).toBe("admitted");
+    expect(await response.clone().json()).not.toHaveProperty("globalAdmission");
     expect(calls.length).toBe(2);
     expect(calls.every((request) => !request.headers.has("x-sdt-g11-service-id"))).toBe(true);
   });

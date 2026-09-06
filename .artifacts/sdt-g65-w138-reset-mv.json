@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w138-reset-mv",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1_MV",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--file",
+    ".artifacts/sdt-g60-w155-reset-mv-operational.sql"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T19:07:53.984Z",
+  "finishedAt": "2026-09-05T19:07:56.193Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "├ Checking if file needs uploading\n│\n├ 🌀 Uploading 2b60dbcf-0912-4bb2-93aa-77c26cd260e1.9404b2a071db5230.sql\n│ 🌀 Uploading complete.\n│\n[\n  {\n    \"results\": [\n      {\n        \"Total queries executed\": 13,\n        \"Rows read\": 442,\n        \"Rows written\": 299,\n        \"Database size (MB)\": \"0.19\"\n      }\n    ],\n    \"success\": true,\n    \"finalBookmark\": \"0000000f-00000009-000050dd-0c3ab3b367c457613eab132a5a00649b\",\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SJC\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 5.792\n      },\n      \"duration\": 5.792,\n      \"changes\": 300,\n      \"last_row_id\": 0,\n      \"changed_db\": true,\n      \"size_after\": 192512,\n      \"rows_read\": 442,\n      \"rows_written\": 299,\n      \"num_tables\": 16,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

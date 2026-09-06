@@ -36,6 +36,18 @@ export interface MeetingRoomCommandEnvironment {
 }
 
 const G11_SERVICE_ID_HEADER = "x-sdt-g11-service-id";
+const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
+export type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
+const globalAdmissionByResult = new WeakMap<object, GlobalAdmissionStatus>();
+
+/**
+ * Admission is an HTTP response-header concern. Keep the transport metadata
+ * out of the ExecuteResult object so V1 JSON serialization cannot acquire a
+ * sample-only body member.
+ */
+export function globalAdmissionStatusFromResult(result: ExecuteResult): GlobalAdmissionStatus {
+  return globalAdmissionByResult.get(result) ?? "unknown";
+}
 
 function jsonBytes(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -78,7 +90,13 @@ export function createV1Transport(fetcher: InternalRuntimeFetcher, serviceId?: s
       body: JSON.stringify(body),
       signal,
     });
-    return { status: response.status, body: await readBody(response) };
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => { headers[key] = value; });
+    return {
+      status: response.status,
+      headers,
+      body: await readBody(response),
+    };
   };
   return {
     async readTagState(request, signal) {
@@ -197,6 +215,29 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+function admissionFrom(response: unknown): GlobalAdmissionStatus {
+  const headers = isRecord(response) && isRecord(response.headers) ? response.headers : undefined;
+  const value = typeof headers?.[G65_GLOBAL_ADMISSION_HEADER] === "string"
+    ? headers[G65_GLOBAL_ADMISSION_HEADER]
+    : undefined;
+  return value === "admitted" || value === "not-admitted" || value === "unknown" ? value : "unknown";
+}
+
+function mergeAdmission(
+  current: GlobalAdmissionStatus | undefined,
+  incoming: GlobalAdmissionStatus,
+): GlobalAdmissionStatus {
+  if (current === undefined) return incoming;
+  if (current === "not-admitted" || incoming === "not-admitted") return "not-admitted";
+  if (current === "unknown" || incoming === "unknown") return "unknown";
+  return "admitted";
+}
+
+function withAdmission(result: ExecuteResult, globalAdmission: GlobalAdmissionStatus): ExecuteResult {
+  globalAdmissionByResult.set(result, globalAdmission);
+  return result;
+}
+
 function publicResult(
   commandId: string,
   result: Awaited<ReturnType<typeof executeCommand>>,
@@ -251,9 +292,10 @@ export function commandExecutor(environment: MeetingRoomCommandEnvironment): Mee
   return {
     async execute(commandId, input) {
       const command = commandFor(commandId);
-      if (command === undefined) return { kind: "invalid", attempts: 0, error: "Unknown meeting-room command", code: "command_not_found" };
+      if (command === undefined) return withAdmission({ kind: "invalid", attempts: 0, error: "Unknown meeting-room command", code: "command_not_found" }, "unknown");
       try {
         let commitResponseBody: unknown;
+        let globalAdmission: GlobalAdmissionStatus | undefined;
         const result = await executeCommand(command, input, {
           maxConflictRetries: 1,
           snapshots: snapshotReader(transport),
@@ -261,18 +303,19 @@ export function commandExecutor(environment: MeetingRoomCommandEnvironment): Mee
           commit: async (envelope) => {
             const response = await transport.commit(v1CandidateEnvelope(envelope));
             if (isRecord(response) && isRecord(response.body)) commitResponseBody = response.body;
+            globalAdmission = mergeAdmission(globalAdmission, admissionFrom(response));
             return commitOutcome(response);
           },
         });
-        return publicResult(commandId, result, commitResponseBody);
+        return withAdmission(publicResult(commandId, result, commitResponseBody), globalAdmission ?? "unknown");
       } catch (error) {
         const code = errorCode(error);
-        return {
+        return withAdmission({
           kind: "invalid",
           attempts: 1,
           error: errorMessage(error),
           code: code === "COMMAND_INPUT_INVALID" ? "invalid_command_input" : code ?? "invalid_command_input",
-        };
+        }, "unknown");
       }
     },
   };

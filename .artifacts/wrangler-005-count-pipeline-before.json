@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w128-count-pipeline-before-reset",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--file",
+    ".artifacts/w128-count-operational.sql"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T01:47:39.266Z",
+  "finishedAt": "2026-09-05T01:47:43.242Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "├ Checking if file needs uploading\n│\n├ 🌀 Uploading ac751211-fde8-4587-9d56-1e9fd8051bc3.3c5756413b040600.sql\n│ 🌀 Uploading complete.\n│\n\n{\n  \"error\": {\n    \"text\": \"too many terms in compound SELECT: SQLITE_ERROR\"\n  }\n}\n",
+  "stderr": ""
+}
