@@ -1,0 +1,221 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database ac751211-fde8-4587-9d56-1e9fd8051bc3 (ac751211-fde8-4587-9d56-1e9fd8051bc3):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.35ms
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 1,
+        "event_id": "01a07655-7da4-7c1c-b7c1-a0ce9a10906d",
+        "event_digest": "e85fa30283a80b10529046e0f3b756062c7402c21be3fb1625c4701f79d2e22b",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691710837
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 2,
+        "event_id": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "event_digest": "89f2058fd3603a1b2a6cacc18433c9b69803ba4238b07e8d0d3a6fa7b7f360b4",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691723035
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-1",
+        "obligation_sequence": 1,
+        "event_id": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "event_digest": "89f2058fd3603a1b2a6cacc18433c9b69803ba4238b07e8d0d3a6fa7b7f360b4",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-1",
+        "received_at": 1788691723213
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 3,
+        "event_id": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "event_digest": "421ce375fdfc7db471f1490e07882b4f518ef30767698471ab2f4d9edaf52bf2",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691735425
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-2",
+        "obligation_sequence": 1,
+        "event_id": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "event_digest": "421ce375fdfc7db471f1490e07882b4f518ef30767698471ab2f4d9edaf52bf2",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-2",
+        "received_at": 1788691735715
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 4,
+        "event_id": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "event_digest": "99ad3b2c8a79ccabfaefafc62257cb06769f5720a1b6b582f7303a069a1d9847",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691747639
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-3",
+        "obligation_sequence": 1,
+        "event_id": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "event_digest": "99ad3b2c8a79ccabfaefafc62257cb06769f5720a1b6b582f7303a069a1d9847",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-3",
+        "received_at": 1788691747857
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 5,
+        "event_id": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "event_digest": "3150c8f9526ede7f0d2b9116e841bbd4ac574b87656e00e72d5f1adec820acb0",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691760257
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-4",
+        "obligation_sequence": 1,
+        "event_id": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "event_digest": "3150c8f9526ede7f0d2b9116e841bbd4ac574b87656e00e72d5f1adec820acb0",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-4",
+        "received_at": 1788691760736
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 6,
+        "event_id": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "event_digest": "207a09498abfa0086ce8e01d55297cacb5749cb941665eae817a44ad2c30fdb4",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691773296
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-5",
+        "obligation_sequence": 1,
+        "event_id": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "event_digest": "207a09498abfa0086ce8e01d55297cacb5749cb941665eae817a44ad2c30fdb4",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-5",
+        "received_at": 1788691773643
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 7,
+        "event_id": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "event_digest": "54bf62e655ea56645cd49416f76da01659c01eb7554f9112650c7136bed1e437",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691786731
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-6",
+        "obligation_sequence": 1,
+        "event_id": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "event_digest": "54bf62e655ea56645cd49416f76da01659c01eb7554f9112650c7136bed1e437",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-6",
+        "received_at": 1788691787241
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 8,
+        "event_id": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "event_digest": "563e9eaacf3a4a2ffd9bc343a35673c1340910c5c197746f8874b69f2b3470ef",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691799364
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-7",
+        "obligation_sequence": 1,
+        "event_id": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "event_digest": "563e9eaacf3a4a2ffd9bc343a35673c1340910c5c197746f8874b69f2b3470ef",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-7",
+        "received_at": 1788691799603
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 9,
+        "event_id": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "event_digest": "bffbf504229f392824dae547846db83b347376bc76adbcf5855a6401db28d40b",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691812091
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-8",
+        "obligation_sequence": 1,
+        "event_id": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "event_digest": "bffbf504229f392824dae547846db83b347376bc76adbcf5855a6401db28d40b",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-8",
+        "received_at": 1788691812446
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 10,
+        "event_id": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "event_digest": "331dd48cd39e06e5e7c16e81a6c6722de88f32b29870d9edcda5a8be80614987",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691824619
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-9",
+        "obligation_sequence": 1,
+        "event_id": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "event_digest": "331dd48cd39e06e5e7c16e81a6c6722de88f32b29870d9edcda5a8be80614987",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-9",
+        "received_at": 1788691824872
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "obligation_sequence": 11,
+        "event_id": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "event_digest": "d259467c95519b7afa69276fcacd3d1276bf4e5296139b8ff5cdb408e9e3fcea",
+        "membership_tag": "room:g58-room-3147d381-f03",
+        "received_at": 1788691837207
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-10",
+        "obligation_sequence": 1,
+        "event_id": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "event_digest": "d259467c95519b7afa69276fcacd3d1276bf4e5296139b8ff5cdb408e9e3fcea",
+        "membership_tag": "reservation:g58-reservation-3147d381-f03-10",
+        "received_at": 1788691837525
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3536
+      },
+      "duration": 0.3536,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 733184,
+      "rows_read": 21,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

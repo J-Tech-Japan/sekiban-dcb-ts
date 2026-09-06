@@ -1,0 +1,34 @@
+├ Checking if file needs uploading
+│
+[
+  {
+    "results": [
+      {
+        "Total queries executed": 3,
+        "Rows read": 25,
+        "Rows written": 0,
+        "Database size (MB)": "0.19"
+      }
+    ],
+    "success": true,
+    "finalBookmark": "00000012-000000c6-000050de-144c0383ee00581da8d86794532e3dba",
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SJC",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 3.7321
+      },
+      "duration": 3.7321,
+      "changes": 1,
+      "last_row_id": 0,
+      "changed_db": true,
+      "size_after": 192512,
+      "rows_read": 25,
+      "rows_written": 0,
+      "num_tables": 16,
+      "total_attempts": 1
+    }
+  }
+]

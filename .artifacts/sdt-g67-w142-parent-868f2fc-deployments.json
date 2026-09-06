@@ -1,0 +1,170 @@
+[
+  {
+    "id": "520d74ba-3bfd-4e89-936b-dbc2bc776a9b",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/triggered_by": "secret"
+    },
+    "versions": [
+      {
+        "version_id": "29c9fc6e-e6b8-406e-8ddf-b1fbb2b9c521",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T01:48:29.152769Z"
+  },
+  {
+    "id": "59b77c35-4338-4713-b339-9faf613bb176",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after token rotation",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "9f1acea2-cc0c-4cac-9638-cb5c36f8d3e7",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T01:49:10.722655Z"
+  },
+  {
+    "id": "548a1c40-4278-42fd-8a2a-7e1d7c87c4e2",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G65 W141 candidate df77a01b2fe95186bbf2baeba2d0408167992b53 W155-C self mode",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "3e2861d8-35d7-4721-933e-a4cec9389ca0",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T01:58:05.944834Z"
+  },
+  {
+    "id": "2ecba1d3-6e95-42d2-9faa-bd37a1ec8670",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "7948e3fa-f997-455e-8ffe-9f770a5c44c1",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T03:32:41.027157Z"
+  },
+  {
+    "id": "c5d22909-6971-43b9-a11d-03b56e56d719",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/triggered_by": "secret"
+    },
+    "versions": [
+      {
+        "version_id": "13fa6021-fc2c-4433-8da0-37ab20ade656",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T03:35:04.00236Z"
+  },
+  {
+    "id": "5923305e-2b27-4341-85c2-98c9b92e7009",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after conformance secret",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "fb05d31e-d027-4d10-b179-383d1c242624",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T03:35:38.643929Z"
+  },
+  {
+    "id": "961525ac-ec77-4c6d-a35b-1bec202144b7",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G65 W141 candidate 5b59e372f70b0682315f2344e5baae30fdde94b8 W155-C self mode",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "fdf35a19-4b85-4a97-baa6-2ee019daef4f",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T03:45:38.886553Z"
+  },
+  {
+    "id": "5fc2dfe1-b4dd-4f79-9984-f32095d795b8",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G57 W142 exact 23a0e5c06ab4b75c94461ddea28f2da4e254df04",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "b040a282-54d5-41d6-8a84-c0b75c10aa75",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T05:22:18.332395Z"
+  },
+  {
+    "id": "aea63906-cd3c-488c-9e18-3743147eb7dd",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G67 W142 parent exact f5b2212ad90cdf5c760ff4f43b8a3ef8f7a8954f W155-C normal arm",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "2ac59226-1c50-425e-9a7f-122c2cc330fa",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T10:34:42.236062Z"
+  },
+  {
+    "id": "3b114dd3-65b9-41d8-a271-c4641296a61f",
+    "source": "wrangler",
+    "strategy": "percentage",
+    "author_email": "ttakaoka@jtechs.com",
+    "annotations": {
+      "workers/message": "SDT-G67 W142 true parent exact 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C normal arm",
+      "workers/triggered_by": "deployment"
+    },
+    "versions": [
+      {
+        "version_id": "5961d52f-4627-4498-978a-687ad13b3f5f",
+        "percentage": 100
+      }
+    ],
+    "created_on": "2026-09-06T10:35:21.197584Z"
+  }
+]
