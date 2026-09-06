@@ -152,6 +152,10 @@ function allRelativeNamedImports(source, label) {
 
 function namedExports(source, label) {
   const exports = new Map();
+  const classExpression = /^export\s+class\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/gm;
+  for (const match of source.matchAll(classExpression)) {
+    exports.set(match[1], match[1]);
+  }
   const expression = /^export\s*\{([^}]*)\}\s*;$/gm;
   for (const match of source.matchAll(expression)) {
     const specifiers = parseNamedSpecifiers(match[1], label);
@@ -237,6 +241,13 @@ export function deriveBindingPairs() {
   const entryImports = namedImportFrom(entrypoint, runtimeModule, "meeting-room worker");
   const entryExports = namedExports(entrypoint, "meeting-room worker");
   const wrappers = runtimeWrapperClasses(runtime);
+  const entrypointWrappers = new Map();
+  const entrypointClassExpression = /^export class ([A-Za-z_$][A-Za-z0-9_$]*) extends ([A-Za-z_$][A-Za-z0-9_$]*)\s*\{/gm;
+  for (const match of entrypoint.matchAll(entrypointClassExpression)) {
+    const importedName = entryImports.get(match[2]);
+    const runtimeWrapper = importedName === undefined ? undefined : wrappers.get(importedName);
+    if (runtimeWrapper !== undefined) entrypointWrappers.set(match[1], runtimeWrapper);
+  }
   const namespaceBindings = runtimeNamespaceBindings(runtime);
   const pairs = [];
   for (const [localName, importedName] of entryImports) {
@@ -248,6 +259,16 @@ export function deriveBindingPairs() {
       runtimeClass: importedName,
       implementationClass: wrappers.get(importedName).implementationClass,
       implementationPath: wrappers.get(importedName).implementationPath,
+    });
+  }
+  for (const [className, wrapper] of entrypointWrappers) {
+    if (pairs.some((pair) => pair.className === className)) continue;
+    pairs.push({
+      binding: bindingForClass(className, namespaceBindings),
+      className,
+      runtimeClass: wrapper.implementationClass,
+      implementationClass: wrapper.implementationClass,
+      implementationPath: wrapper.implementationPath,
     });
   }
   if (pairs.length === 0) fail("meeting-room worker exports no runtime Durable Object classes");

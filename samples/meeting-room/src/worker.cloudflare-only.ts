@@ -3,7 +3,7 @@ import {
   createCloudflareOnlyRuntimeWorker,
   createG60DurableHopObserver,
   AllocatorDurableObject,
-  BootstrapCoordinatorDurableObject,
+  BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject,
   cleanupG42JournalProbeTrial,
   envServiceIdentity,
   GlobalCompletenessReconciler,
@@ -16,6 +16,7 @@ import {
   readDirectDoorbellConfig,
   requireServiceIdentity,
   runG42JournalProbeTrial,
+  scopeIdFor,
   TagDurableObject,
   TagStateDurableObject,
   type G42JournalProbeRequest,
@@ -40,14 +41,78 @@ import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 import { runtimeRequestWithIngressRay } from "./ingress-observation";
-import { createSafeLaneKickScheduler, type SafeLaneKickOwner, type SafeLaneKickRequest } from "./safe-lane-kick";
+import {
+  createSafeLaneKickScheduler,
+  type SafeLaneKickOwner,
+  type SafeLaneKickRequest,
+  type SafeLanePassTrigger,
+} from "./safe-lane-kick";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
+export { AllocatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
 
 const safeLaneKickSchedulers = new Map<string, (request: SafeLaneKickRequest) => Promise<void>>();
+const SAFE_LANE_ALARM_KEY = "sdt-g67-safe-lane-alarm";
+const SAFE_LANE_RETRY_BASE_MS = 1_000;
+const SAFE_LANE_RETRY_MAX_MS = 30_000;
+
+interface SafeLaneAlarmState {
+  readonly serviceId: string;
+  readonly dueAt: number;
+  readonly trigger: "fence-expiry" | "coverage-retry";
+  readonly retryCount: number;
+  readonly owner?: SafeLaneKickOwner;
+}
+
+interface SafeLaneFollowUp {
+  readonly trigger: "fence-expiry" | "coverage-retry";
+  readonly dueAt: number;
+  readonly retryCount: number;
+  readonly reason: string;
+  readonly owner?: SafeLaneKickOwner;
+}
+
+function safeLaneRetryDelayMs(retryCount: number): number {
+  const exponent = Math.min(Math.max(retryCount, 0), 5);
+  return Math.min(SAFE_LANE_RETRY_MAX_MS, SAFE_LANE_RETRY_BASE_MS * (2 ** exponent));
+}
+
+async function scheduleMeetingRoomSafeLaneFollowUp(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+  followUp: SafeLaneFollowUp,
+): Promise<void> {
+  if (serviceId.length === 0 || env.BOOTSTRAP === undefined) {
+    console.warn("safe_lane_alarm", {
+      status: "not-scheduled",
+      reason: "bootstrap_binding_or_service_identity_missing",
+      trigger: followUp.trigger,
+      dueAt: followUp.dueAt,
+    });
+    return;
+  }
+  const coordinator = env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+    serviceId,
+    doClass: "bootstrap",
+    identity: "coordinator",
+  }));
+  const response = await coordinator.fetch(new Request(
+    `https://safe-lane.internal/safe-lane/schedule?__serviceId=${encodeURIComponent(serviceId)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        dueAt: followUp.dueAt,
+        trigger: followUp.trigger,
+        retryCount: followUp.retryCount,
+        ...(followUp.owner === undefined ? {} : { owner: followUp.owner }),
+      }),
+    },
+  ));
+  if (!response.ok) throw new Error(`safe_lane_alarm_schedule_failed:${response.status}`);
+}
 
 async function bestEffortSafeLanePassObservation(
   env: MeetingRoomCloudflareEnv,
@@ -94,19 +159,20 @@ async function bestEffortSafeLaneHeads(
 export async function runMeetingRoomSafeLanePass(
   env: MeetingRoomCloudflareEnv,
   serviceId: string,
-  trigger: "kick" | "cron",
+  trigger: SafeLanePassTrigger,
   existingCoverage?: GlobalCompletenessCoverage,
   request?: SafeLaneKickRequest,
 ): Promise<void> {
   if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
   const startedAt = Date.now();
-  const passId = request?.passId ?? `${trigger}:${String(startedAt)}:${crypto.randomUUID()}`;
+  const effectiveTrigger = request?.trigger ?? trigger;
+  const passId = request?.passId ?? `${effectiveTrigger}:${String(startedAt)}:${crypto.randomUUID()}`;
   const scheduledAt = request?.scheduledAt ?? startedAt;
   const deliveryOwner = request?.owner;
   await bestEffortSafeLanePassObservation(env, {
     serviceId,
     passId,
-    trigger,
+    trigger: effectiveTrigger,
     status: "scheduled",
     scheduledAt,
     deliveryOwner,
@@ -114,7 +180,7 @@ export async function runMeetingRoomSafeLanePass(
   await bestEffortSafeLanePassObservation(env, {
     serviceId,
     passId,
-    trigger,
+    trigger: effectiveTrigger,
     status: "running",
     scheduledAt,
     startedAt,
@@ -127,6 +193,7 @@ export async function runMeetingRoomSafeLanePass(
   let catchUpOutcome: string | null = null;
   let catchUpResultJson: string | null = null;
   let catchUpError: string | null = null;
+  let catchUpObservations: Awaited<ReturnType<typeof catchUpMeetingRoomMaterializedViews>> = [];
   try {
     const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
     const computedCoverage = existingCoverage ?? await (async () => {
@@ -139,6 +206,7 @@ export async function runMeetingRoomSafeLanePass(
       catchUpStartedAt = Date.now();
       try {
         const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44
         // coverage decision. A completed pass may legitimately advance zero
         // rows when the first source event is still inside SafeWindow; that
@@ -158,15 +226,57 @@ export async function runMeetingRoomSafeLanePass(
       catchUp: effectiveCatchUp,
       drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
       runGenericScheduledWork: async () => {},
-      ...(trigger === "cron"
+      ...(effectiveTrigger === "cron"
         ? { recordCoverage: (safeLaneCoverage: MeetingRoomSafeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage) }
         : {}),
     });
+    const deferred = catchUpObservations
+      .filter((observation) => observation.deferredDeadlineAt !== null)
+      .sort((left, right) => (left.deferredDeadlineAt ?? Number.MAX_SAFE_INTEGER) - (right.deferredDeadlineAt ?? Number.MAX_SAFE_INTEGER))[0];
+    const nonFenceStop = catchUpObservations.find((observation) => observation.stopReason !== null && observation.stopReason !== "safe_window_fence");
+    let followUp: SafeLaneFollowUp | undefined;
+    let stopDeadlineAt: number | null = null;
+    let stopReason: string | null = null;
+    if (coverage?.kind !== "SETTLED") {
+      const retryCount = (request?.retryCount ?? 0) + 1;
+      stopDeadlineAt = Date.now() + safeLaneRetryDelayMs(retryCount);
+      stopReason = `coverage_retry:${coverage?.reason ?? "not_settled"}`;
+      followUp = {
+        trigger: "coverage-retry",
+        dueAt: stopDeadlineAt,
+        retryCount,
+        reason: stopReason,
+        owner: deliveryOwner,
+      };
+    } else if (deferred?.deferredDeadlineAt !== null && deferred?.deferredDeadlineAt !== undefined) {
+      stopDeadlineAt = deferred.deferredDeadlineAt;
+      stopReason = "safe_window_fence";
+      followUp = {
+        trigger: "fence-expiry",
+        dueAt: stopDeadlineAt,
+        retryCount: 0,
+        reason: stopReason,
+        owner: deliveryOwner,
+      };
+    } else if (nonFenceStop !== undefined || catchUpOutcome !== "completed") {
+      const retryCount = (request?.retryCount ?? 0) + 1;
+      stopDeadlineAt = Date.now() + safeLaneRetryDelayMs(retryCount);
+      stopReason = nonFenceStop?.stopReason ?? "catch_up_retry";
+      followUp = {
+        trigger: "coverage-retry",
+        dueAt: stopDeadlineAt,
+        retryCount,
+        reason: stopReason,
+        owner: deliveryOwner,
+      };
+    } else {
+      stopReason = "advanced_or_caught_up";
+    }
     const safeHeadsAfterJson = await bestEffortSafeLaneHeads(env, serviceId);
     await bestEffortSafeLanePassObservation(env, {
       serviceId,
       passId,
-      trigger,
+      trigger: effectiveTrigger,
       status: "completed",
       scheduledAt,
       startedAt,
@@ -180,25 +290,43 @@ export async function runMeetingRoomSafeLanePass(
       catchUpOutcome,
       catchUpResultJson,
       catchUpError,
+      stopDeadlineAt,
+      stopReason,
     });
+    if (followUp !== undefined) {
+      try {
+        await scheduleMeetingRoomSafeLaneFollowUp(env, serviceId, followUp);
+      } catch (error) {
+        console.warn("safe_lane_alarm", {
+          status: "failed-to-schedule",
+          serviceId,
+          trigger: followUp.trigger,
+          dueAt: followUp.dueAt,
+          reason: followUp.reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     console.log("safe_lane_pass", {
       passId,
       scheduledAt,
       startedAt,
       completedAt: Date.now(),
-      trigger,
+      trigger: effectiveTrigger,
       status: "completed",
       serviceId,
       coverage: coverage.kind,
       reason: coverage.reason,
       frontierSuid: coverage.frontierSuid,
+      stopDeadlineAt,
+      stopReason,
       durationMs: Math.max(0, Date.now() - startedAt),
     });
   } catch (error) {
     await bestEffortSafeLanePassObservation(env, {
       serviceId,
       passId,
-      trigger,
+      trigger: effectiveTrigger,
       status: "failed",
       scheduledAt,
       startedAt,
@@ -211,19 +339,118 @@ export async function runMeetingRoomSafeLanePass(
       catchUpOutcome,
       catchUpResultJson,
       catchUpError,
+      stopDeadlineAt: Date.now() + safeLaneRetryDelayMs((request?.retryCount ?? 0) + 1),
+      stopReason: "pass_failed",
       error: error instanceof Error ? error.message : String(error),
     });
+    try {
+      await scheduleMeetingRoomSafeLaneFollowUp(env, serviceId, {
+        trigger: "coverage-retry",
+        dueAt: Date.now() + safeLaneRetryDelayMs((request?.retryCount ?? 0) + 1),
+        retryCount: (request?.retryCount ?? 0) + 1,
+        reason: "pass_failed",
+        owner: deliveryOwner,
+      });
+    } catch (scheduleError) {
+      console.warn("safe_lane_alarm", {
+        status: "failed-to-schedule",
+        serviceId,
+        trigger: "coverage-retry",
+        error: scheduleError instanceof Error ? scheduleError.message : String(scheduleError),
+      });
+    }
     console.warn("safe_lane_pass", {
       passId,
       scheduledAt,
       startedAt,
-      trigger,
+      trigger: effectiveTrigger,
       status: "failed",
       serviceId,
       error: error instanceof Error ? error.message : String(error),
       durationMs: Math.max(0, Date.now() - startedAt),
     });
     throw error;
+  }
+}
+
+/**
+ * The existing service-scoped BOOTSTRAP object owns the one delayed safe-lane
+ * alarm.  Keeping this state beside the existing coordinator avoids a new
+ * Cloudflare resource/binding while giving fence expiry a durable trigger.
+ * Normal bootstrap routes remain delegated unchanged to the runtime class.
+ */
+export class BootstrapCoordinatorDurableObject extends RuntimeBootstrapCoordinatorDurableObject {
+  constructor(
+    private readonly safeLaneContext: DurableObjectState,
+    private readonly safeLaneEnvironment: MeetingRoomCloudflareEnv,
+  ) {
+    super(safeLaneContext, safeLaneEnvironment);
+  }
+
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/safe-lane/schedule") {
+      return this.scheduleSafeLaneAlarm(url, request);
+    }
+    return super.fetch(request);
+  }
+
+  async alarm(): Promise<void> {
+    const pending = await this.safeLaneContext.storage.transaction(async (txn) => {
+      const state = await txn.get<SafeLaneAlarmState>(SAFE_LANE_ALARM_KEY);
+      if (state === undefined) return undefined;
+      if (state.dueAt > Date.now()) {
+        await txn.setAlarm(state.dueAt);
+        return undefined;
+      }
+      await txn.delete(SAFE_LANE_ALARM_KEY);
+      return state;
+    });
+    if (pending === undefined) return;
+
+    const waiters: Promise<void>[] = [];
+    scheduleMeetingRoomSafeLaneKick(
+      this.safeLaneEnvironment,
+      pending.serviceId,
+      { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as unknown as ExecutionContext,
+      undefined,
+      pending.owner,
+      pending.trigger,
+      pending.retryCount,
+    );
+    await Promise.all(waiters);
+  }
+
+  private async scheduleSafeLaneAlarm(url: URL, request: Request): Promise<Response> {
+    const serviceId = url.searchParams.get("__serviceId");
+    if (serviceId === null || serviceId.length === 0) return json({ code: "safe_lane_service_required" }, 400);
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ code: "safe_lane_alarm_body_invalid" }, 400);
+    }
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ code: "safe_lane_alarm_body_invalid" }, 400);
+    const input = body as Record<string, unknown>;
+    const dueAt = typeof input.dueAt === "number" && Number.isSafeInteger(input.dueAt) && input.dueAt >= 0 ? input.dueAt : undefined;
+    const trigger = input.trigger === "fence-expiry" || input.trigger === "coverage-retry" ? input.trigger : undefined;
+    const retryCount = typeof input.retryCount === "number" && Number.isSafeInteger(input.retryCount) && input.retryCount >= 0 ? input.retryCount : 0;
+    if (dueAt === undefined || trigger === undefined) return json({ code: "safe_lane_alarm_body_invalid" }, 400);
+    const owner = typeof input.owner === "object" && input.owner !== null && !Array.isArray(input.owner)
+      ? input.owner as SafeLaneKickOwner
+      : undefined;
+    const next: SafeLaneAlarmState = { serviceId, dueAt, trigger, retryCount, owner };
+    const result = await this.safeLaneContext.storage.transaction(async (txn) => {
+      const current = await txn.get<SafeLaneAlarmState>(SAFE_LANE_ALARM_KEY);
+      if (current !== undefined && current.dueAt <= next.dueAt) {
+        await txn.setAlarm(current.dueAt);
+        return { coalesced: true, dueAt: current.dueAt, trigger: current.trigger };
+      }
+      await txn.put(SAFE_LANE_ALARM_KEY, next);
+      await txn.setAlarm(next.dueAt);
+      return { coalesced: false, dueAt: next.dueAt, trigger: next.trigger };
+    });
+    return json(result, 202);
   }
 }
 
@@ -239,6 +466,8 @@ export function scheduleMeetingRoomSafeLaneKick(
   ctx: ExecutionContext,
   pass: (env: MeetingRoomCloudflareEnv, serviceId: string, request?: SafeLaneKickRequest) => Promise<void> = (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "kick", undefined, request),
   owner?: SafeLaneKickOwner,
+  trigger: SafeLanePassTrigger = owner === undefined ? "kick" : "delivery",
+  retryCount = 0,
 ): void {
   let scheduler = safeLaneKickSchedulers.get(serviceId);
   if (scheduler === undefined) {
@@ -251,7 +480,7 @@ export function scheduleMeetingRoomSafeLaneKick(
         ctx.waitUntil(bestEffortSafeLanePassObservation(env, {
           serviceId,
           passId: request.passId,
-          trigger: "kick",
+          trigger: request.trigger ?? "kick",
           status: "coalesced",
           scheduledAt: request.scheduledAt,
           deliveryOwner: request.owner,
@@ -262,8 +491,10 @@ export function scheduleMeetingRoomSafeLaneKick(
   }
   const scheduledAt = Date.now();
   const request: SafeLaneKickRequest = {
-    passId: `kick:${String(scheduledAt)}:${crypto.randomUUID()}`,
+    passId: `${trigger}:${String(scheduledAt)}:${crypto.randomUUID()}`,
     scheduledAt,
+    trigger,
+    retryCount,
     owner,
   };
   // Defer even the observer write and scheduler invocation until after the
@@ -273,7 +504,7 @@ export function scheduleMeetingRoomSafeLaneKick(
     await bestEffortSafeLanePassObservation(env, {
       serviceId,
       passId: request.passId,
-      trigger: "kick",
+      trigger: request.trigger ?? "kick",
       status: "scheduled",
       scheduledAt: request.scheduledAt,
       deliveryOwner: request.owner,

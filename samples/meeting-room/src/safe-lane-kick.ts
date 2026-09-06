@@ -53,8 +53,13 @@ export function createSafeLaneKickScheduler(
 export interface SafeLaneKickRequest {
   readonly passId: string;
   readonly scheduledAt: number;
+  readonly trigger?: SafeLanePassTrigger;
+  readonly retryCount?: number;
   readonly owner?: SafeLaneKickOwner;
 }
+
+/** Durable provenance for one safe-lane execution request. */
+export type SafeLanePassTrigger = "kick" | "delivery" | "fence-expiry" | "coverage-retry" | "cron";
 
 /** Source identity carried by a Queue delivery into pass attribution. */
 export interface SafeLaneKickOwner {

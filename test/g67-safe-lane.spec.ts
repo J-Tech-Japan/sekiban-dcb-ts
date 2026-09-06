@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 // @ts-expect-error Vite raw migration import.
 import pipelineMigration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 // @ts-expect-error Vite raw migration import.
@@ -21,6 +21,8 @@ import type { DeliveryOutcome, PipelineStore, StoredEvent } from "../packages/dc
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { D1EventStore, D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1";
 import {
+  BootstrapCoordinatorDurableObject,
+  runMeetingRoomSafeLanePass,
   runMeetingRoomScheduledMaintenance,
   scheduleMeetingRoomSafeLaneKick,
 } from "../samples/meeting-room/src/worker.cloudflare-only";
@@ -138,6 +140,36 @@ function sourceNamespace(messageValue: DownstreamOutboxMessage): DurableObjectNa
     idFromName: (name: string) => name as unknown as DurableObjectId,
     get: () => source as unknown as DurableObjectStub,
   } as unknown as DurableObjectNamespace;
+}
+
+function safeLaneCoordinatorNamespace(scheduled: Array<Record<string, unknown>>): DurableObjectNamespace {
+  const stub = {
+    fetch: async (request: Request): Promise<Response> => {
+      scheduled.push(await request.json<Record<string, unknown>>());
+      return new Response(JSON.stringify({ coalesced: false }), { status: 202 });
+    },
+  };
+  return {
+    idFromName: (name: string) => name as unknown as DurableObjectId,
+    get: () => stub as unknown as DurableObjectStub,
+  } as unknown as DurableObjectNamespace;
+}
+
+function alarmStateStorage(): {
+  readonly storage: DurableObjectStorage;
+  readonly read: () => unknown;
+  readonly alarm: () => number | undefined;
+} {
+  let value: unknown;
+  let alarmAt: number | undefined;
+  const storage = {
+    transaction: async <T>(callback: (txn: DurableObjectStorage) => Promise<T>): Promise<T> => callback(storage),
+    get: async () => value,
+    put: async (_key: string, next: unknown) => { value = next; },
+    delete: async () => { value = undefined; },
+    setAlarm: async (at: number) => { alarmAt = at; },
+  } as unknown as DurableObjectStorage;
+  return { storage, read: () => value, alarm: () => alarmAt };
 }
 
 function reservationDelivery(serviceId: string, arrivedAt: number): DownstreamOutboxMessage {
@@ -348,6 +380,89 @@ describe("SDT-G67 event-driven safe lane", () => {
     expect(passCount).toBe(2);
     expect(heads).toEqual(["proven-head", "proven-head"]);
     expect(ownerEvents).toEqual(["event-1", "event-3"]);
+  });
+
+  it("AC1: coalesces the earliest fence deadline", async () => {
+    const state = alarmStateStorage();
+    const coordinator = new BootstrapCoordinatorDurableObject(
+      { storage: state.storage } as unknown as DurableObjectState,
+      {} as never,
+    );
+    const schedule = async (dueAt: number, trigger: "fence-expiry" | "coverage-retry") => coordinator.fetch(new Request(
+      `https://g67.test/safe-lane/schedule?__serviceId=g67-alarm-service`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ dueAt, trigger, retryCount: 0 }),
+      },
+    ));
+    await expect(schedule(50_000, "fence-expiry")).resolves.toHaveProperty("status", 202);
+    await expect(schedule(60_000, "coverage-retry")).resolves.toHaveProperty("status", 202);
+    await expect(schedule(40_000, "fence-expiry")).resolves.toHaveProperty("status", 202);
+    expect((state.read() as { dueAt: number }).dueAt).toBe(40_000);
+    expect(state.alarm()).toBe(40_000);
+  });
+
+  it("AC4: recent Queue delivery is retried at fence expiry", async () => {
+    const database = (env as unknown as { D1?: D1Database }).D1;
+    if (database === undefined) throw new Error("G67 requires the D1 pipeline binding");
+    const serviceId = `g67-fence-expiry-${crypto.randomUUID()}`;
+    const now = Date.now();
+    const queued = reservationDelivery(serviceId, now);
+    const source = new D1EventStore(database);
+    await source.initialize();
+    await expect(source.recordDelivery(queued, now, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    const scheduled: Array<Record<string, unknown>> = [];
+    const passEnvironment = {
+      D1: database,
+      D1_MV: mvDatabase(),
+      TAG: sourceNamespace(queued),
+      BOOTSTRAP: safeLaneCoordinatorNamespace(scheduled),
+      SDT_SERVICE_ID: serviceId,
+    } as never;
+    const owner = {
+      eventId: queued.eventId,
+      suid: queued.suid,
+      attemptId: queued.attemptId,
+      partitionTag: queued.tag,
+      obligationSequence: queued.completeness.obligationSequence,
+    };
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    let fenceDeadline = 0;
+    try {
+      await runMeetingRoomSafeLanePass(passEnvironment, serviceId, "delivery", undefined, {
+        passId: `delivery:${crypto.randomUUID()}`,
+        scheduledAt: now,
+        trigger: "delivery",
+        owner,
+      });
+      expect(scheduled).toEqual([expect.objectContaining({ trigger: "fence-expiry", dueAt: expect.any(Number) })]);
+      fenceDeadline = Number(scheduled[0]?.dueAt);
+      expect(fenceDeadline).toBeGreaterThan(now);
+      clock.mockReturnValue(fenceDeadline + 1);
+      await runMeetingRoomSafeLanePass(passEnvironment, serviceId, "fence-expiry", undefined, {
+        passId: `fence-expiry:${crypto.randomUUID()}`,
+        scheduledAt: fenceDeadline,
+        trigger: "fence-expiry",
+        owner,
+      });
+    } finally {
+      clock.mockRestore();
+    }
+    const views = new D1MaterializedViewStore(mvDatabase());
+    await views.initialize();
+    const safePage = await views.readListPage(serviceId, "ReservationProjector", { consistency: "safe", limit: null });
+    expect(safePage.rows).toEqual([expect.objectContaining({ sourceSuid: queued.suid })]);
+    const rows = await database.prepare(
+      `SELECT trigger_kind, stop_deadline_at, stop_reason
+         FROM serialized_dcb_safe_lane_passes
+        WHERE service_id = ?
+        ORDER BY scheduled_at ASC, pass_id ASC`,
+    ).bind(serviceId).all<Record<string, unknown>>();
+    expect(rows.results.map((row) => row.trigger_kind)).toEqual(["delivery", "fence-expiry"]);
+    expect(rows.results[0]?.stop_deadline_at).toBe(fenceDeadline);
+    expect(rows.results[0]?.stop_reason).toBe("safe_window_fence");
+    expect(rows.results[1]?.stop_reason).toBe("advanced_or_caught_up");
   });
 
   it("AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader", async () => {

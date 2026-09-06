@@ -25,6 +25,7 @@ import {
 import type { MaterializedViewCatchUpResult } from "@sekiban/dcb-runtime/mv";
 import type { DeliveryViewFailureClass, DeliveryViewHandler } from "@sekiban/dcb-runtime/d1-mv";
 import type { StoredEvent } from "@sekiban/dcb-runtime/d1-mv";
+import type { SafeLanePassTrigger } from "./safe-lane-kick";
 
 interface MeetingRoomD1Env {
   readonly D1?: D1Database;
@@ -75,12 +76,16 @@ export interface MeetingRoomSafeLaneCatchUpObservation {
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
   readonly indeterminate: boolean;
+  readonly deferredEventSuid: string | null;
+  readonly deferredEventLastArrivedAt: number | null;
+  readonly deferredDeadlineAt: number | null;
+  readonly stopReason: string | null;
 }
 
 /** Durable lifecycle evidence for one cron pass or event-driven kick. */
 export interface MeetingRoomSafeLanePassEntry {
   readonly passId: string;
-  readonly trigger: "kick" | "cron";
+  readonly trigger: SafeLanePassTrigger;
   readonly status: MeetingRoomSafeLanePassStatus;
   readonly scheduledAt: number;
   readonly startedAt: number | null;
@@ -102,6 +107,8 @@ export interface MeetingRoomSafeLanePassEntry {
   readonly catchUpOutcome: string | null;
   readonly catchUpResultJson: string | null;
   readonly catchUpError: string | null;
+  readonly stopDeadlineAt: number | null;
+  readonly stopReason: string | null;
   readonly error: string | null;
 }
 
@@ -172,7 +179,7 @@ export function meetingRoomSafeLaneTickId(observedAt: number): string {
 export interface MeetingRoomSafeLanePassWrite {
   readonly serviceId: string;
   readonly passId: string;
-  readonly trigger: "kick" | "cron";
+  readonly trigger: SafeLanePassTrigger;
   readonly status: MeetingRoomSafeLanePassStatus;
   readonly scheduledAt: number;
   readonly startedAt?: number | null;
@@ -186,6 +193,8 @@ export interface MeetingRoomSafeLanePassWrite {
   readonly catchUpOutcome?: string | null;
   readonly catchUpResultJson?: string | null;
   readonly catchUpError?: string | null;
+  readonly stopDeadlineAt?: number | null;
+  readonly stopReason?: string | null;
   readonly error?: string | null;
 }
 
@@ -203,14 +212,15 @@ export async function recordMeetingRoomSafeLanePass(
   if (input.status === "scheduled") {
     await env.D1.prepare(
       `INSERT INTO serialized_dcb_safe_lane_passes
-         (service_id, pass_id, trigger, status, scheduled_at,
+         (service_id, pass_id, trigger, trigger_kind, status, scheduled_at,
           delivery_event_id, delivery_suid, delivery_attempt_id, delivery_partition_tag,
           delivery_obligation_sequence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (service_id, pass_id) DO NOTHING`,
     ).bind(
       input.serviceId,
       input.passId,
+      input.trigger === "cron" ? "cron" : "kick",
       input.trigger,
       input.status,
       input.scheduledAt,
@@ -246,7 +256,7 @@ export async function recordMeetingRoomSafeLanePass(
             safe_heads_after_json = ?, catch_up_started_at = ?,
             catch_up_completed_at = ?, catch_up_outcome = ?,
             catch_up_result_json = ?,
-            catch_up_error = ?, error = ?
+            catch_up_error = ?, stop_deadline_at = ?, stop_reason = ?, error = ?
       WHERE service_id = ? AND pass_id = ?`,
   ).bind(
     input.status,
@@ -262,6 +272,8 @@ export async function recordMeetingRoomSafeLanePass(
     input.catchUpOutcome ?? null,
     input.catchUpResultJson ?? null,
     input.catchUpError ?? null,
+    input.stopDeadlineAt ?? null,
+    input.stopReason ?? null,
     input.error ?? null,
     input.serviceId,
     input.passId,
@@ -693,7 +705,7 @@ export async function readMeetingRoomHealth(
     (async () => {
       try {
         return await env.D1!.prepare(
-          `SELECT pass_id, trigger, status, scheduled_at, started_at,
+                  `SELECT pass_id, trigger, trigger_kind, status, scheduled_at, started_at,
                   completed_at, coverage_kind, coverage_reason,
                   coverage_partition_tag, settled_frontier_suid,
                   safe_heads_before_json, safe_heads_after_json,
@@ -701,7 +713,7 @@ export async function readMeetingRoomHealth(
                   delivery_partition_tag, delivery_obligation_sequence,
                   catch_up_started_at, catch_up_completed_at,
                   catch_up_outcome, catch_up_result_json,
-                  catch_up_error, error
+                  catch_up_error, stop_deadline_at, stop_reason, error
              FROM serialized_dcb_safe_lane_passes
             WHERE service_id = ?
             ORDER BY scheduled_at COLLATE BINARY ASC, pass_id COLLATE BINARY ASC`,
@@ -791,7 +803,10 @@ export async function readMeetingRoomHealth(
   const safeLanePasses = safeLanePassRows.results.map((row) => {
     const passId = typeof row.pass_id === "string" ? row.pass_id : "";
     if (passId.length === 0) throw new Error("safe-lane pass row omitted pass_id");
-    const trigger = row.trigger === "kick" || row.trigger === "cron" ? row.trigger : "cron";
+    const rawTrigger = row.trigger_kind ?? row.trigger;
+    const trigger = rawTrigger === "delivery" || rawTrigger === "fence-expiry" || rawTrigger === "coverage-retry" || rawTrigger === "cron" || rawTrigger === "kick"
+      ? rawTrigger
+      : "cron";
     const status: MeetingRoomSafeLanePassStatus = row.status === "scheduled"
       || row.status === "running"
       || row.status === "completed"
@@ -830,6 +845,10 @@ export async function readMeetingRoomHealth(
       catchUpOutcome: row.catch_up_outcome === null || row.catch_up_outcome === undefined ? null : String(row.catch_up_outcome),
       catchUpResultJson: row.catch_up_result_json === null || row.catch_up_result_json === undefined ? null : String(row.catch_up_result_json),
       catchUpError: row.catch_up_error === null || row.catch_up_error === undefined ? null : String(row.catch_up_error),
+      stopDeadlineAt: row.stop_deadline_at === null || row.stop_deadline_at === undefined
+        ? null
+        : asCount(row.stop_deadline_at, "safe_lane_pass.stop_deadline_at"),
+      stopReason: row.stop_reason === null || row.stop_reason === undefined ? null : String(row.stop_reason),
       error: row.error === null || row.error === undefined ? null : String(row.error),
     } satisfies MeetingRoomSafeLanePassEntry;
   });
@@ -902,6 +921,10 @@ export async function catchUpMeetingRoomMaterializedViews(
       advancedSourceEvents: result.advancedSourceEvents,
       appliedEvents: result.appliedEvents,
       indeterminate: result.indeterminate,
+      deferredEventSuid: result.deferredEventSuid,
+      deferredEventLastArrivedAt: result.deferredEventLastArrivedAt,
+      deferredDeadlineAt: result.deferredDeadlineAt,
+      stopReason: result.stopReason,
     });
   }
   return observations;

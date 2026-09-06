@@ -12,6 +12,7 @@ const runtimeFile = "packages/dcb-runtime/src/cloudflare.ts";
 const schedulerFile = "samples/meeting-room/src/safe-lane-kick.ts";
 const testFile = "test/g67-safe-lane.spec.ts";
 const observationMigrationFile = "migrations/d1/g32/0013_g67_safe_lane_catch_up_observations.sql";
+const fenceExpiryMigrationFile = "migrations/d1/g32/0014_g67_safe_lane_fence_expiry.sql";
 const redReceipt = "test/fixtures/g67-red-before-green.json";
 const greenReceipt = "test/fixtures/g67-green.json";
 const mutantReceipt = "test/fixtures/g67-mutants-red.json";
@@ -56,6 +57,14 @@ const mutations = Object.freeze([
     to: "    // The caller has just completed this tick's scanner. A FULL/SETTLED\n    // frontier is therefore immediately eligible; a BLOCK frontier is the\n    // last proven cursor retained by the reconciler and remains fenced.\n    await input.drainUnsafeKicks(coverage.frontierSuid);\n    await input.drainUnsafeKicks(coverage.frontierSuid);",
     pattern: "AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader",
     reason: "Queue delivery must invoke the effective SafeWindow-fenced MV catch-up before the cron backstop",
+  },
+  {
+    name: "omit-fence-expiry-trigger",
+    file: workerFile,
+    from: "        await scheduleMeetingRoomSafeLaneFollowUp(env, serviceId, followUp);",
+    to: "        await Promise.resolve();",
+    pattern: "AC4: recent Queue delivery is retried at fence expiry",
+    reason: "a recent delivery must schedule the bounded fence-expiry trigger",
   },
 ]);
 
@@ -116,6 +125,7 @@ function sourceSnapshot() {
     scheduler: read(schedulerFile),
     test: read(testFile),
     migration: read(observationMigrationFile),
+    fenceExpiryMigration: read(fenceExpiryMigrationFile),
   };
 }
 
@@ -128,7 +138,7 @@ function assertContract(value) {
   requireContains(value.runtime, "afterStoredQueueDelivery", "runtime Queue hook option");
   requireContains(value.worker, "scheduleMeetingRoomSafeLaneKick", "sample Queue kick");
   requireContains(value.worker, "ctx.waitUntil", "non-blocking waitUntil boundary");
-  requireContains(value.worker, 'trigger: "kick"', "kick pass trigger");
+  requireContains(value.worker, 'owner === undefined ? "kick" : "delivery"', "default delivery pass trigger");
   requireContains(value.worker, "new GlobalCompletenessReconciler(env.D1, env.TAG)", "fresh G44 reconciler");
   requireContains(value.worker, "reconciler.reconcile(serviceId", "kick scanner evaluation");
   requireContains(value.worker, "runMeetingRoomScheduledMaintenance", "shared cron/kick pass body");
@@ -136,6 +146,10 @@ function assertContract(value) {
   requireContains(value.worker, "catchUpStartedAt", "catch-up start attribution");
   requireContains(value.worker, "catchUpOutcome", "catch-up outcome attribution");
   requireContains(value.worker, "catchUpResultJson", "catch-up result attribution");
+  requireContains(value.worker, "scheduleMeetingRoomSafeLaneFollowUp", "durable fence-expiry scheduling");
+  requireContains(value.worker, "setAlarm", "Durable Object alarm");
+  requireContains(value.worker, "stopDeadlineAt", "stop deadline attribution");
+  requireContains(value.worker, "stopReason", "stop reason attribution");
   requireContains(value.worker, "suid: message.suid", "exact Queue delivery SUID attribution");
   requireContains(value.worker, "status: \"scheduled\"", "durable kick scheduling receipt");
   requireContains(value.worker, "status: \"completed\"", "durable kick completion receipt");
@@ -150,8 +164,12 @@ function assertContract(value) {
   requireContains(value.test, "AC3: ten paced commits converge through kicks", "cron-disabled local proof");
   requireContains(value.test, "AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader", "end-to-end safe handoff oracle");
   requireContains(value.test, "AC4: cron-disabled Queue kick records the SafeWindow stop", "SafeWindow delay oracle");
+  requireContains(value.test, "AC4: recent Queue delivery is retried at fence expiry", "fence-expiry oracle");
+  requireContains(value.test, "coalesces the earliest fence deadline", "alarm coalescing oracle");
   requireContains(value.migration, "delivery_suid", "exact delivery SUID observation column");
   requireContains(value.migration, "catch_up_result_json", "catch-up result observation column");
+  requireContains(value.fenceExpiryMigration, "stop_deadline_at", "stop deadline observation column");
+  requireContains(value.fenceExpiryMigration, "trigger_kind", "trigger provenance observation column");
 }
 
 function requirePass(result) {

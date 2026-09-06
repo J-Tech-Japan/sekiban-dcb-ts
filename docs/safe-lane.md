@@ -16,12 +16,24 @@ catch-up body used by cron; it changes when the pass runs, not what a proven
 frontier certifies. `BLOCK/UNSETTLED` therefore remains bounded by the last
 proven frontier and never advances a safe head across an unproven gap.
 
-The additive `serialized_dcb_safe_lane_passes` ledger records each kick or
-cron request as `scheduled`, `running`, `completed`, `failed`, or `coalesced`,
-with observed lifecycle times, the coverage decision/frontier, and safe-head
-snapshots before and after the pass. Ledger writes and head snapshots are
-best-effort observations: a missing observer table cannot change Queue
-acknowledgement, G44 certification, or safe catch-up. The Queue callback is a
+If the pass reaches the first event still inside the existing SafeWindow, it
+records that event's SUID, `lastArrivedAt + SafeWindow` deadline, and
+`safe_window_fence` stop reason. The service-scoped Bootstrap Durable Object
+coalesces the earliest outstanding deadline and owns a Durable Object alarm.
+The alarm re-enters the same single-flight pass with `fence-expiry`; it is a
+bounded delayed trigger, not a polling loop. A non-SETTLED coverage decision
+or another retryable catch-up stop schedules a bounded exponential
+`coverage-retry` alarm instead. Alarm state is observation/scheduling state
+only: G44 frontier proof, SafeWindow, Queue disposition, MV ordering, and the
+cron backstop semantics are unchanged.
+
+The additive `serialized_dcb_safe_lane_passes` ledger records each delivery,
+fence-expiry, coverage-retry, or cron request as `scheduled`, `running`,
+`completed`, `failed`, or `coalesced`, with observed lifecycle times, the
+coverage decision/frontier, stop deadline/reason, and safe-head snapshots
+before and after the pass. Ledger writes and head snapshots are best-effort
+observations: a missing observer table cannot change Queue acknowledgement,
+G44 certification, or safe catch-up. The Queue callback is a
 notification-only hook and defers both the observer write and scheduler start
 through `waitUntil`; the commit and Queue disposition never await the safe
 pass.
