@@ -2,10 +2,24 @@ import { env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error Vite raw migration import.
 import pipelineMigration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import mvMigration from "../migrations/mv/0001_materialized_views.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import unsafeMvMigration from "../migrations/mv/0002_unsafe_window_materialized_views.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import hardeningMvMigration from "../migrations/mv/0003_checkpoint_ahead_hardening.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import unsafeFailureMvMigration from "../migrations/mv/0004_unsafe_window_failure_findings.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import type { GlobalCompletenessCoverage } from "../packages/dcb-runtime/src/completeness/types";
+import { createCloudflareOnlyRuntimeWorker, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DeliveryOutcome, PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
+import { D1EventStore, D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1";
 import {
   runMeetingRoomScheduledMaintenance,
   scheduleMeetingRoomSafeLaneKick,
@@ -13,8 +27,9 @@ import {
 import {
   recordMeetingRoomSafeLanePass,
 } from "../samples/meeting-room/src/d1-mv";
+import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
-import { g32Message, g32StoredEvent, g32Suid } from "./helpers/g32-fixtures";
+import { g32Message, g32StoredEvent, g32Suid, g32SuidAt } from "./helpers/g32-fixtures";
 
 function settled(frontierSuid: string, observedAt: number): GlobalCompletenessCoverage {
   return {
@@ -89,11 +104,72 @@ function statements(database: D1Database, sql: string): D1PreparedStatement[] {
     .map((statement) => database.prepare(statement));
 }
 
+function mvDatabase(): D1Database {
+  const database = (env as unknown as { D1_MV?: D1Database }).D1_MV;
+  if (database === undefined) throw new Error("G67 requires the D1_MV binding");
+  return database;
+}
+
+function sourceNamespace(messageValue: DownstreamOutboxMessage): DurableObjectNamespace {
+  const source = {
+    async fetch(request: Request): Promise<Response> {
+      const input = await request.json<{
+        readonly afterSequence: number;
+        readonly upperBoundSequence: number;
+      }>();
+      const obligation = {
+        ...messageValue.completeness,
+        eventId: messageValue.eventId,
+        status: "acknowledged" as const,
+      };
+      const rows = input.afterSequence < 1 && input.upperBoundSequence >= 1 ? [obligation] : [];
+      return new Response(JSON.stringify({
+        serviceId: messageValue.serviceId,
+        tag: messageValue.tag,
+        upperBoundSequence: input.upperBoundSequence,
+        observedMaxSequence: input.upperBoundSequence,
+        afterSequence: input.afterSequence,
+        rows,
+        hasMore: false,
+      }), { headers: { "content-type": "application/json" } });
+    },
+  };
+  return {
+    idFromName: (name: string) => name as unknown as DurableObjectId,
+    get: () => source as unknown as DurableObjectStub,
+  } as unknown as DurableObjectNamespace;
+}
+
+function reservationDelivery(serviceId: string, arrivedAt: number): DownstreamOutboxMessage {
+  const suffix = crypto.randomUUID();
+  const room = `room:g67-safe-${suffix}`;
+  const reservation = `reservation:g67-safe-${suffix}`;
+  return g32Message({
+    serviceId,
+    tag: room,
+    attemptId: `g67-queue-attempt-${suffix}`,
+    eventId: `g67-queue-event-${suffix}`,
+    suid: g32SuidAt(arrivedAt, `g67-queue-suid-${suffix}`),
+    payload: JSON.stringify({
+      roomId: room,
+      reservationId: reservation,
+      userId: "g67-local-user",
+    }),
+    eventTags: [room, reservation],
+    eventType: "RoomReserved",
+    enqueuedAt: arrivedAt,
+    obligationSequence: 1,
+  });
+}
+
 beforeAll(async () => {
   const database = (env as unknown as { D1?: D1Database }).D1;
   if (database === undefined) throw new Error("G67 requires the D1 pipeline binding");
   await database.batch(statements(database, pipelineMigration as string));
   await applyG44D1Migration(database);
+  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
+    await mvDatabase().batch(statements(mvDatabase(), migration as string));
+  }
 });
 
 describe("SDT-G67 event-driven safe lane", () => {
@@ -161,6 +237,7 @@ describe("SDT-G67 event-driven safe lane", () => {
     const passEnv = { D1: database };
     const deliveryOwner = {
       eventId: "g67-event-7",
+      suid: g32Suid(7),
       attemptId: "g67-attempt-7",
       partitionTag: "room:g67-7",
       obligationSequence: 7,
@@ -202,7 +279,7 @@ describe("SDT-G67 event-driven safe lane", () => {
       `SELECT trigger, status, scheduled_at, started_at, completed_at,
               coverage_kind, settled_frontier_suid, safe_heads_before_json,
               safe_heads_after_json, delivery_event_id, delivery_attempt_id,
-              delivery_partition_tag, delivery_obligation_sequence,
+              delivery_suid, delivery_partition_tag, delivery_obligation_sequence,
               catch_up_started_at, catch_up_completed_at, catch_up_outcome
          FROM serialized_dcb_safe_lane_passes
         WHERE service_id = ? AND pass_id = ?`,
@@ -216,6 +293,7 @@ describe("SDT-G67 event-driven safe lane", () => {
       coverage_kind: "SETTLED",
       settled_frontier_suid: coverage.frontierSuid,
       delivery_event_id: "g67-event-7",
+      delivery_suid: g32Suid(7),
       delivery_attempt_id: "g67-attempt-7",
       delivery_partition_tag: "room:g67-7",
       delivery_obligation_sequence: 7,
@@ -250,6 +328,7 @@ describe("SDT-G67 event-driven safe lane", () => {
     const context = { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as never;
     const owner = (eventId: string) => ({
       eventId,
+      suid: g32Suid(eventId),
       attemptId: `${eventId}-attempt`,
       partitionTag: `${eventId}-partition`,
       obligationSequence: 1,
@@ -269,6 +348,149 @@ describe("SDT-G67 event-driven safe lane", () => {
     expect(passCount).toBe(2);
     expect(heads).toEqual(["proven-head", "proven-head"]);
     expect(ownerEvents).toEqual(["event-1", "event-3"]);
+  });
+
+  it("AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader", async () => {
+    const database = (env as unknown as { D1?: D1Database }).D1;
+    if (database === undefined) throw new Error("G67 requires the D1 pipeline binding");
+    const serviceId = `g67-handoff-${crypto.randomUUID()}`;
+    const arrivedAt = Date.now() - 60_000;
+    const queued = reservationDelivery(serviceId, arrivedAt);
+    const source = new D1EventStore(database);
+    await source.initialize();
+    await expect(source.recordDelivery(queued, arrivedAt, "queue")).resolves.toMatchObject({ outcome: "stored" });
+
+    const passEnvironment = {
+      D1: database,
+      D1_MV: mvDatabase(),
+      TAG: sourceNamespace(queued),
+      SDT_SERVICE_ID: serviceId,
+    } as never;
+    const waiters: Promise<void>[] = [];
+    const context = {
+      waitUntil: (promise: Promise<void>) => { waiters.push(promise); },
+    } as never;
+    scheduleMeetingRoomSafeLaneKick(passEnvironment, serviceId, context, undefined, {
+      eventId: queued.eventId,
+      suid: queued.suid,
+      attemptId: queued.attemptId,
+      partitionTag: queued.tag,
+      obligationSequence: queued.completeness.obligationSequence,
+    });
+    await Promise.all(waiters);
+
+    const views = new D1MaterializedViewStore(mvDatabase());
+    await views.initialize();
+    const safePage = await views.readListPage(serviceId, "ReservationProjector", { consistency: "safe", limit: null });
+    expect(safePage.rows).toEqual([expect.objectContaining({ sourceSuid: queued.suid })]);
+    const publicRuntime = createCloudflareOnlyRuntimeWorker({ domain: meetingRoomDomain, config: meetingRoomRuntimeConfig });
+    const publicFetch = publicRuntime.fetch as unknown as (request: Request, requestEnv: unknown, requestContext: ExecutionContext) => Promise<Response>;
+    const publicResponse = await publicFetch(new Request("https://g67.test/api/sekiban/serialized/list-query", {
+      method: "POST",
+      headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+      body: JSON.stringify({
+        queryType: "GetReservationListQuery",
+        queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "safe" }),
+      }),
+    }), passEnvironment, context);
+    expect(publicResponse.status).toBe(200);
+    const publicBody = await publicResponse.json<{ itemsJson: string; readHead?: string }>();
+    expect(JSON.parse(publicBody.itemsJson)).toEqual([expect.objectContaining({ status: "reserved" })]);
+    expect(publicBody.readHead).toBe(queued.suid);
+
+    const pass = await database.prepare(
+      `SELECT status, coverage_kind, settled_frontier_suid,
+              delivery_event_id, delivery_suid, delivery_attempt_id,
+              catch_up_outcome, catch_up_result_json,
+              safe_heads_before_json, safe_heads_after_json
+         FROM serialized_dcb_safe_lane_passes
+        WHERE service_id = ? AND trigger = 'kick' AND status = 'completed'
+        ORDER BY scheduled_at DESC, pass_id DESC LIMIT 1`,
+    ).bind(serviceId).first<Record<string, unknown>>();
+    expect(pass).toMatchObject({
+      status: "completed",
+      coverage_kind: "SETTLED",
+      settled_frontier_suid: queued.suid,
+      delivery_event_id: queued.eventId,
+      delivery_suid: queued.suid,
+      delivery_attempt_id: queued.attemptId,
+      catch_up_outcome: "completed",
+    });
+    expect(pass?.safe_heads_before_json).toBe("[]");
+    expect(pass?.safe_heads_after_json).toContain(queued.suid);
+    const observations = JSON.parse(String(pass?.catch_up_result_json)) as Array<{
+      viewId: string;
+      beforeSuid: string;
+      afterSuid: string;
+      safeWindowMs: number;
+      advancedSourceEvents: number;
+      appliedEvents: number;
+      indeterminate: boolean;
+    }>;
+    expect(observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        viewId: "ReservationProjector",
+        beforeSuid: "",
+        afterSuid: queued.suid,
+        advancedSourceEvents: 1,
+        appliedEvents: 1,
+        indeterminate: false,
+      }),
+    ]));
+    expect(observations.every((observation) => observation.safeWindowMs >= 20_000)).toBe(true);
+  });
+
+  it("AC4: cron-disabled Queue kick records the SafeWindow stop instead of claiming safe advancement", async () => {
+    const database = (env as unknown as { D1?: D1Database }).D1;
+    if (database === undefined) throw new Error("G67 requires the D1 pipeline binding");
+    const serviceId = `g67-safewindow-${crypto.randomUUID()}`;
+    const arrivedAt = Date.now();
+    const queued = reservationDelivery(serviceId, arrivedAt);
+    const source = new D1EventStore(database);
+    await source.initialize();
+    await expect(source.recordDelivery(queued, arrivedAt, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    const passEnvironment = {
+      D1: database,
+      D1_MV: mvDatabase(),
+      TAG: sourceNamespace(queued),
+      SDT_SERVICE_ID: serviceId,
+    } as never;
+    const waiters: Promise<void>[] = [];
+    const context = { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as never;
+    scheduleMeetingRoomSafeLaneKick(passEnvironment, serviceId, context, undefined, {
+      eventId: queued.eventId,
+      suid: queued.suid,
+      attemptId: queued.attemptId,
+      partitionTag: queued.tag,
+      obligationSequence: queued.completeness.obligationSequence,
+    });
+    await Promise.all(waiters);
+
+    const views = new D1MaterializedViewStore(mvDatabase());
+    await views.initialize();
+    const safePage = await views.readListPage(serviceId, "ReservationProjector", { consistency: "safe", limit: null });
+    expect(safePage.rows).toEqual([]);
+    const pass = await database.prepare(
+      `SELECT delivery_suid, catch_up_result_json, safe_heads_before_json,
+              safe_heads_after_json
+         FROM serialized_dcb_safe_lane_passes
+        WHERE service_id = ? AND trigger = 'kick' AND status = 'completed'
+        ORDER BY scheduled_at DESC, pass_id DESC LIMIT 1`,
+    ).bind(serviceId).first<Record<string, unknown>>();
+    expect(pass?.delivery_suid).toBe(queued.suid);
+    expect(pass?.safe_heads_before_json).toBe("[]");
+    expect(pass?.safe_heads_after_json).toContain('"head":""');
+    const observations = JSON.parse(String(pass?.catch_up_result_json)) as Array<{
+      afterSuid: string;
+      safeWindowMs: number;
+      advancedSourceEvents: number;
+      appliedEvents: number;
+      indeterminate: boolean;
+    }>;
+    expect(observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ afterSuid: "", advancedSourceEvents: 0, appliedEvents: 0, indeterminate: false }),
+    ]));
+    expect(observations.every((observation) => observation.safeWindowMs >= 20_000)).toBe(true);
   });
 
   it("AC2: a kicked BLOCK/UNSETTLED pass uses only the retained proven frontier", async () => {

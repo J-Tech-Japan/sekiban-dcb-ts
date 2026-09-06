@@ -125,6 +125,7 @@ export async function runMeetingRoomSafeLanePass(
   let catchUpStartedAt: number | null = null;
   let catchUpCompletedAt: number | null = null;
   let catchUpOutcome: string | null = null;
+  let catchUpResultJson: string | null = null;
   let catchUpError: string | null = null;
   try {
     const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
@@ -137,7 +138,12 @@ export async function runMeetingRoomSafeLanePass(
     const effectiveCatchUp = async (frontierSuid?: string | null): Promise<void> => {
       catchUpStartedAt = Date.now();
       try {
-        await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        // Persist the actual SafeWindow/MV result separately from the G44
+        // coverage decision. A completed pass may legitimately advance zero
+        // rows when the first source event is still inside SafeWindow; that
+        // is evidence, not permission to widen the safe lane.
+        catchUpResultJson = JSON.stringify(observations);
         catchUpCompletedAt = Date.now();
         catchUpOutcome = "completed";
       } catch (error) {
@@ -172,6 +178,7 @@ export async function runMeetingRoomSafeLanePass(
       catchUpStartedAt,
       catchUpCompletedAt,
       catchUpOutcome,
+      catchUpResultJson,
       catchUpError,
     });
     console.log("safe_lane_pass", {
@@ -202,6 +209,7 @@ export async function runMeetingRoomSafeLanePass(
       catchUpStartedAt,
       catchUpCompletedAt,
       catchUpOutcome,
+      catchUpResultJson,
       catchUpError,
       error: error instanceof Error ? error.message : String(error),
     });
@@ -288,7 +296,9 @@ export function scheduleMeetingRoomSafeLaneKick(
 const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
   config: meetingRoomRuntimeConfig,
-  afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
+  afterBootstrapVerify: async ({ serviceId, env }) => {
+    await catchUpMeetingRoomMaterializedViews(env, serviceId);
+  },
   deliveryViews: ({ env, ctx }) => meetingRoomDeliveryViews(
     env,
     env.TAG === undefined ? undefined : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise)),
@@ -299,7 +309,9 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     // always bind TAG and take the fresh-reconcile path below.
     if (env.TAG === undefined) {
       await runMeetingRoomScheduledMaintenance({
-        catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+        catchUp: async (frontierSuid) => {
+          await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        },
         drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
         runGenericScheduledWork: async () => {},
       });
@@ -316,6 +328,7 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
     scheduleMeetingRoomSafeLaneKick(env as MeetingRoomCloudflareEnv, message.serviceId, ctx, undefined, {
       eventId: message.eventId,
+      suid: message.suid,
       attemptId: message.attemptId,
       partitionTag: message.tag,
       obligationSequence: message.completeness.obligationSequence,

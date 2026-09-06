@@ -59,6 +59,7 @@ export interface SafeLaneKickRequest {
 /** Source identity carried by a Queue delivery into pass attribution. */
 export interface SafeLaneKickOwner {
   readonly eventId: string;
+  readonly suid: string;
   readonly attemptId: string;
   readonly partitionTag: string;
   readonly obligationSequence: number | null;

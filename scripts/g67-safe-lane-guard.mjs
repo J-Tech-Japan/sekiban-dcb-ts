@@ -11,6 +11,7 @@ const adapterFile = "packages/dcb-runtime/src/downstream/DownstreamAdapter.ts";
 const runtimeFile = "packages/dcb-runtime/src/cloudflare.ts";
 const schedulerFile = "samples/meeting-room/src/safe-lane-kick.ts";
 const testFile = "test/g67-safe-lane.spec.ts";
+const observationMigrationFile = "migrations/d1/g32/0013_g67_safe_lane_catch_up_observations.sql";
 const redReceipt = "test/fixtures/g67-red-before-green.json";
 const greenReceipt = "test/fixtures/g67-green.json";
 const mutantReceipt = "test/fixtures/g67-mutants-red.json";
@@ -47,6 +48,14 @@ const mutations = Object.freeze([
     to: "            await options.afterStoredQueueDelivery?.({ message: queued.body, result: outcome });",
     pattern: "AC1: Queue kick hook is notification-only",
     reason: "Queue acknowledgement and the public commit path must not await safe-lane work",
+  },
+  {
+    name: "omit-effective-queue-safe-catch-up",
+    file: workerFile,
+    from: "    // The caller has just completed this tick's scanner. A FULL/SETTLED\n    // frontier is therefore immediately eligible; a BLOCK frontier is the\n    // last proven cursor retained by the reconciler and remains fenced.\n    await input.catchUp(coverage.frontierSuid);\n    await input.drainUnsafeKicks(coverage.frontierSuid);",
+    to: "    // The caller has just completed this tick's scanner. A FULL/SETTLED\n    // frontier is therefore immediately eligible; a BLOCK frontier is the\n    // last proven cursor retained by the reconciler and remains fenced.\n    await input.drainUnsafeKicks(coverage.frontierSuid);\n    await input.drainUnsafeKicks(coverage.frontierSuid);",
+    pattern: "AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader",
+    reason: "Queue delivery must invoke the effective SafeWindow-fenced MV catch-up before the cron backstop",
   },
 ]);
 
@@ -106,6 +115,7 @@ function sourceSnapshot() {
     runtime: read(runtimeFile),
     scheduler: read(schedulerFile),
     test: read(testFile),
+    migration: read(observationMigrationFile),
   };
 }
 
@@ -125,6 +135,8 @@ function assertContract(value) {
   requireContains(value.worker, "catchUp: effectiveCatchUp", "effective kicked catch-up callback");
   requireContains(value.worker, "catchUpStartedAt", "catch-up start attribution");
   requireContains(value.worker, "catchUpOutcome", "catch-up outcome attribution");
+  requireContains(value.worker, "catchUpResultJson", "catch-up result attribution");
+  requireContains(value.worker, "suid: message.suid", "exact Queue delivery SUID attribution");
   requireContains(value.worker, "status: \"scheduled\"", "durable kick scheduling receipt");
   requireContains(value.worker, "status: \"completed\"", "durable kick completion receipt");
   requireContains(value.worker, "Promise.resolve().then", "deferred waitUntil kick start");
@@ -136,6 +148,10 @@ function assertContract(value) {
   requireContains(value.test, "AC1: concurrent kicks", "concurrent single-flight oracle");
   requireContains(value.test, "AC2: a kicked BLOCK/UNSETTLED pass", "frontier fence oracle");
   requireContains(value.test, "AC3: ten paced commits converge through kicks", "cron-disabled local proof");
+  requireContains(value.test, "AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader", "end-to-end safe handoff oracle");
+  requireContains(value.test, "AC4: cron-disabled Queue kick records the SafeWindow stop", "SafeWindow delay oracle");
+  requireContains(value.migration, "delivery_suid", "exact delivery SUID observation column");
+  requireContains(value.migration, "catch_up_result_json", "catch-up result observation column");
 }
 
 function requirePass(result) {
@@ -176,7 +192,7 @@ function green() {
   if (prior.status !== "red-before-green" || prior.expectedFailure !== true) fail(`invalid red receipt ${redReceipt}`);
   const value = sourceSnapshot();
   assertContract(value);
-  const greenResult = runVitest("AC1: invokes the kick hook|AC1: concurrent kicks|AC2: a kicked BLOCK/UNSETTLED pass|AC3: ten paced commits converge through kicks", "G67 local green oracles");
+  const greenResult = runVitest("AC1: invokes the kick hook|AC1: concurrent kicks|AC2: a kicked BLOCK/UNSETTLED pass|AC3: ten paced commits converge through kicks|AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader|AC4: cron-disabled Queue kick records the SafeWindow stop", "G67 local green oracles");
   requirePass(greenResult);
   const rows = mutations.map(runMutation);
   writeReceipt(greenReceipt, {

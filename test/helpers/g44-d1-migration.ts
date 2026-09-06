@@ -21,6 +21,8 @@ import g65DirectRingMigration from "../../migrations/d1/g32/0010_g65_direct_ring
 import g67SafeLanePassMigration from "../../migrations/d1/g32/0011_g67_safe_lane_passes.sql?raw";
 // @ts-expect-error Vite raw asset import.
 import g67SafeLanePassOwnershipMigration from "../../migrations/d1/g32/0012_g67_safe_lane_pass_ownership.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g67SafeLaneCatchUpObservationsMigration from "../../migrations/d1/g32/0013_g67_safe_lane_catch_up_observations.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -89,5 +91,11 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).all<{ name: string }>();
   if (!safeLanePassColumns.results.some((row) => row.name === "delivery_event_id")) {
     await database.batch(statements(database, g67SafeLanePassOwnershipMigration as string));
+  }
+  const safeLanePassObservationColumns = await database.prepare(
+    "PRAGMA table_info(serialized_dcb_safe_lane_passes)",
+  ).all<{ name: string }>();
+  if (!safeLanePassObservationColumns.results.some((row) => row.name === "delivery_suid")) {
+    await database.batch(statements(database, g67SafeLaneCatchUpObservationsMigration as string));
   }
 }

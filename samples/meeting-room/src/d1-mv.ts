@@ -22,6 +22,7 @@ import {
   D1MaterializedViewStore,
   MaterializedViewCatchUpRuntime,
 } from "@sekiban/dcb-runtime/d1-mv";
+import type { MaterializedViewCatchUpResult } from "@sekiban/dcb-runtime/mv";
 import type { DeliveryViewFailureClass, DeliveryViewHandler } from "@sekiban/dcb-runtime/d1-mv";
 import type { StoredEvent } from "@sekiban/dcb-runtime/d1-mv";
 
@@ -58,9 +59,22 @@ export type MeetingRoomSafeLanePassStatus = "scheduled" | "running" | "completed
 /** Exact Queue delivery identity that requested an event-driven pass. */
 export interface MeetingRoomSafeLaneDeliveryOwner {
   readonly eventId: string;
+  readonly suid: string;
   readonly attemptId: string;
   readonly partitionTag: string;
   readonly obligationSequence: number | null;
+}
+
+/** One observed result per configured materialized view in a safe-lane pass. */
+export interface MeetingRoomSafeLaneCatchUpObservation {
+  readonly viewId: string;
+  readonly beforeSuid: string;
+  readonly afterSuid: string;
+  readonly dynamicLagBoundMs: number;
+  readonly safeWindowMs: number;
+  readonly advancedSourceEvents: number;
+  readonly appliedEvents: number;
+  readonly indeterminate: boolean;
 }
 
 /** Durable lifecycle evidence for one cron pass or event-driven kick. */
@@ -79,12 +93,14 @@ export interface MeetingRoomSafeLanePassEntry {
   readonly safeHeadsBeforeJson: string | null;
   readonly safeHeadsAfterJson: string | null;
   readonly deliveryEventId: string | null;
+  readonly deliverySuid: string | null;
   readonly deliveryAttemptId: string | null;
   readonly deliveryPartitionTag: string | null;
   readonly deliveryObligationSequence: number | null;
   readonly catchUpStartedAt: number | null;
   readonly catchUpCompletedAt: number | null;
   readonly catchUpOutcome: string | null;
+  readonly catchUpResultJson: string | null;
   readonly catchUpError: string | null;
   readonly error: string | null;
 }
@@ -168,6 +184,7 @@ export interface MeetingRoomSafeLanePassWrite {
   readonly catchUpStartedAt?: number | null;
   readonly catchUpCompletedAt?: number | null;
   readonly catchUpOutcome?: string | null;
+  readonly catchUpResultJson?: string | null;
   readonly catchUpError?: string | null;
   readonly error?: string | null;
 }
@@ -187,9 +204,9 @@ export async function recordMeetingRoomSafeLanePass(
     await env.D1.prepare(
       `INSERT INTO serialized_dcb_safe_lane_passes
          (service_id, pass_id, trigger, status, scheduled_at,
-          delivery_event_id, delivery_attempt_id, delivery_partition_tag,
+          delivery_event_id, delivery_suid, delivery_attempt_id, delivery_partition_tag,
           delivery_obligation_sequence)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (service_id, pass_id) DO NOTHING`,
     ).bind(
       input.serviceId,
@@ -198,6 +215,7 @@ export async function recordMeetingRoomSafeLanePass(
       input.status,
       input.scheduledAt,
       input.deliveryOwner?.eventId ?? null,
+      input.deliveryOwner?.suid ?? null,
       input.deliveryOwner?.attemptId ?? null,
       input.deliveryOwner?.partitionTag ?? null,
       input.deliveryOwner?.obligationSequence ?? null,
@@ -227,6 +245,7 @@ export async function recordMeetingRoomSafeLanePass(
             settled_frontier_suid = ?, safe_heads_before_json = ?,
             safe_heads_after_json = ?, catch_up_started_at = ?,
             catch_up_completed_at = ?, catch_up_outcome = ?,
+            catch_up_result_json = ?,
             catch_up_error = ?, error = ?
       WHERE service_id = ? AND pass_id = ?`,
   ).bind(
@@ -241,6 +260,7 @@ export async function recordMeetingRoomSafeLanePass(
     input.catchUpStartedAt ?? null,
     input.catchUpCompletedAt ?? null,
     input.catchUpOutcome ?? null,
+    input.catchUpResultJson ?? null,
     input.catchUpError ?? null,
     input.error ?? null,
     input.serviceId,
@@ -677,10 +697,11 @@ export async function readMeetingRoomHealth(
                   completed_at, coverage_kind, coverage_reason,
                   coverage_partition_tag, settled_frontier_suid,
                   safe_heads_before_json, safe_heads_after_json,
-                  delivery_event_id, delivery_attempt_id,
+                  delivery_event_id, delivery_suid, delivery_attempt_id,
                   delivery_partition_tag, delivery_obligation_sequence,
                   catch_up_started_at, catch_up_completed_at,
-                  catch_up_outcome, catch_up_error, error
+                  catch_up_outcome, catch_up_result_json,
+                  catch_up_error, error
              FROM serialized_dcb_safe_lane_passes
             WHERE service_id = ?
             ORDER BY scheduled_at COLLATE BINARY ASC, pass_id COLLATE BINARY ASC`,
@@ -794,6 +815,7 @@ export async function readMeetingRoomHealth(
       safeHeadsBeforeJson: row.safe_heads_before_json === null || row.safe_heads_before_json === undefined ? null : String(row.safe_heads_before_json),
       safeHeadsAfterJson: row.safe_heads_after_json === null || row.safe_heads_after_json === undefined ? null : String(row.safe_heads_after_json),
       deliveryEventId: row.delivery_event_id === null || row.delivery_event_id === undefined ? null : String(row.delivery_event_id),
+      deliverySuid: row.delivery_suid === null || row.delivery_suid === undefined ? null : String(row.delivery_suid),
       deliveryAttemptId: row.delivery_attempt_id === null || row.delivery_attempt_id === undefined ? null : String(row.delivery_attempt_id),
       deliveryPartitionTag: row.delivery_partition_tag === null || row.delivery_partition_tag === undefined ? null : String(row.delivery_partition_tag),
       deliveryObligationSequence: row.delivery_obligation_sequence === null || row.delivery_obligation_sequence === undefined
@@ -806,6 +828,7 @@ export async function readMeetingRoomHealth(
         ? null
         : asCount(row.catch_up_completed_at, "safe_lane_pass.catch_up_completed_at"),
       catchUpOutcome: row.catch_up_outcome === null || row.catch_up_outcome === undefined ? null : String(row.catch_up_outcome),
+      catchUpResultJson: row.catch_up_result_json === null || row.catch_up_result_json === undefined ? null : String(row.catch_up_result_json),
       catchUpError: row.catch_up_error === null || row.catch_up_error === undefined ? null : String(row.catch_up_error),
       error: row.error === null || row.error === undefined ? null : String(row.error),
     } satisfies MeetingRoomSafeLanePassEntry;
@@ -859,16 +882,29 @@ export async function catchUpMeetingRoomMaterializedViews(
   env: MeetingRoomD1Env,
   serviceId = requiredServiceId(env),
   frontierSuid: string | null | undefined = undefined,
-): Promise<void> {
+): Promise<readonly MeetingRoomSafeLaneCatchUpObservation[]> {
   const { runtime, views } = await openMaterializedViews(env);
+  const observations: MeetingRoomSafeLaneCatchUpObservation[] = [];
   for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const active = await views.readActive(serviceId, materializer.id);
+    let result: MaterializedViewCatchUpResult;
     if (active === undefined) {
-      await runtime.build(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
+      result = await runtime.build(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
     } else {
-      await runtime.follow(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
+      result = await runtime.follow(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
     }
+    observations.push({
+      viewId: materializer.id,
+      beforeSuid: active?.lastSuid ?? "",
+      afterSuid: result.instance.lastSuid,
+      dynamicLagBoundMs: result.dynamicLagBoundMs,
+      safeWindowMs: result.safeWindowMs,
+      advancedSourceEvents: result.advancedSourceEvents,
+      appliedEvents: result.appliedEvents,
+      indeterminate: result.indeterminate,
+    });
   }
+  return observations;
 }
 
 async function applyMeetingRoomUnsafeView(
