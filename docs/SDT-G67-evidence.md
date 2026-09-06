@@ -66,13 +66,17 @@ Queue path present. The W155-C and production raw cohort receipts, durable
 query receipts, and corrected attribution JSON are retained under the
 `sdt-g67-w150-*` prefixes in `.artifacts/` in the implementation worktree.
 
-The corrected evidence is blocked for acceptance: W155-C corrected scheduling
-p95 was 6600 ms and applying-pass p95 was 8761 ms; production corrected
-scheduling p95 was 12774 ms, applying-pass p95 was 11593 ms, and strict unsafe
-visibility missed in 9/10 rows. Production safe visibility was 10/10 below
-180 seconds. The historical W146 `1608 ms` invocation-delay claim is
-superseded and must not be used to turn these results into a pass. No further
-repair or cohort was run in W150.
+At the W150 checkpoint the evidence was conservatively classified blocked
+because the corrected scheduling/applying attribution was outside the then
+current packet gates: W155-C scheduling p95 was 6600 ms and applying-pass p95
+was 8761 ms; production scheduling p95 was 12774 ms, applying-pass p95 was
+11593 ms, and strict unsafe visibility missed in 9/10 rows. Production safe
+visibility was 10/10 below 180 seconds. Under the final amended AC4/AC5
+disposition, those scheduling, pass-latency, and unsafe values are retained as
+reported attribution rather than acceptance gates. The historical W146
+`1608 ms` invocation-delay claim is superseded and must not be used to turn
+the current source into a pass. The W151 reconciliation below supersedes the
+W150 checkpoint classification without rerunning a cohort.
 
 ## Final amended AC4/AC5 reconciliation — W145/W146
 
@@ -172,7 +176,7 @@ fence-expiry row for sample 7 applied zero events while an overlapping delivery
 pass applied. The source now records event-level MV apply observations in each
 catch-up result: exact `suid`, observed `lastArrivedAt`, derived
 `fenceEligibleAt = lastArrivedAt + safeWindowMs`, and observed `appliedAt`.
-The later deployed cohort must join each sample to the pass containing its
+At the W149 checkpoint, a later deployed cohort was required to join each sample to the pass containing its
 exact applied-event detail; no W149 document value treats a non-applying row as
 the sample's scheduling attribution. The old W146 16,983 ms pass value remains
 historical attribution only: its selected pass left 11,866 ms unexplained by
@@ -209,8 +213,8 @@ The exact W146 production version view is documented as
 `DOWNSTREAM_DOORBELL` service binding. This is the deployed configuration
 fact; the old “absent/unconfigured” wording was incorrect and is superseded.
 No W149 deployment, cohort, resource operation, or acceptance-criteria change
-was performed. A later deployed cohort is required to produce corrected F1
-scheduling attribution.
+was performed. The W149 request for a later deployed cohort is superseded by
+the W151 retained-receipt publication below; W151 did not rerun a cohort.
 
 ## Source and process
 
@@ -297,8 +301,9 @@ focused test and the seven-mutation receipt preserves the red proof.
 
 The old synthetic `committedHead`/callback-only proof is no longer the AC3
 oracle. The existing G44/G62 frontier and public safe-reader semantics are
-unchanged. A later deployed cohort remains necessary for production timing and
-for F1's applying-pass scheduling attribution.
+unchanged. The W149 request for a later deployed cohort is superseded for this
+documentation repair by the W151 retained-receipt publication; W151 did not
+rerun a cohort.
 
 ## Historical W142 AC3 local proof
 
@@ -626,3 +631,48 @@ mutants remain red. The three local G67 mutations are omitted kick,
 advance-under-BLOCK, and awaited Queue hook. No deployment, reset, Wrangler,
 Cloudflare, production, PR, or acceptance-bound change is part of this
 checkpoint.
+
+## W151 amended-acceptance publication — retained W150 receipts only
+
+W151 is an evidence-publication repair for review `5126770145`. It performed
+no cohort, deployment, reset, Wrangler, Cloudflare, source, or resource
+operation. The complete sanitized W150 per-event tables are published in
+[`sdt-g67-pr132-amended-evidence-repair-wake-151.md`](../sdt-g67-pr132-amended-evidence-repair-wake-151.md),
+including event ID, SUID, observed response/safe clocks, `lastArrivedAt`,
+`fenceEligibleAt`, the actual applying pass, trigger, applied time, stop
+deadline/reason, update count, and moving-deadline fields. The retained table
+contains all ten W155-C rows and all ten production rows; credentials and
+secret values are absent.
+
+The final amended acceptance interpretation is: response p50 is compared with
+the same-window baseline, response p95 is reported and must be within 10%, and
+all ten safe observations must be below 180 seconds. Fence-expiry or an
+accurately evidenced moving-deadline explanation is required. Scheduling wait,
+pass latency, fence wait, ring arrival, Queue arrival, and safe p95 are
+attribution measurements, not separate gates. The W150 exact-source candidate
+response distributions are W155-C `n=10`, p50/p95 `2809/3626 ms`, and
+production `n=10`, p50/p95 `2428/2789 ms`; both have 10/10 safe observations
+below 180 seconds. W155-C and production safe p50/p95 are `61657/120646 ms`
+and `73009/121185 ms`, respectively.
+
+The valid retained same-window response comparison is the historical W145
+pair, not a current-source acceptance comparison: parent
+`91c36df5434895cccbbe03beeb5d7f8b5639857f` was `n=10`, p50/p95
+`2979/4359 ms`; candidate `d596192f3b0ddb0ab6b70d10ed8b8c04cd5489ae` was
+`n=10`, p50/p95 `2829/3535 ms`, giving p50 delta `-150 ms`, p95 delta
+`-824 ms`, and p95 percentage `-18.9%`. W150 retained no pre-change cohort
+for exact source `766f5d328a6615582338ce52965f5017702182eb`, so its current
+source p50 delta and p95 percentage cannot be computed without inventing a
+baseline. W151 therefore supersedes stale W150 blocked wording about
+scheduling/pass/unsafe tails and the stale PR statement that a later cohort
+was required, but does not claim current-source response-gate completion.
+
+W155-C has `DIRECT_DOORBELL=true` with the self binding
+`sekiban-dcb-g60-w155-c#MeetingRoomDownstreamDoorbell`; production has
+`DIRECT_DOORBELL=false`, receiver mode `separate`, and no
+`DOWNSTREAM_DOORBELL` service binding. The production direct-ring population
+is consequently zero. The retained W155-C sample includes a fence-expiry
+applying row (sample 10); production includes fence-expiry applying rows
+(samples 3, 8, 9, and 10). The exact event-to-pass joins and the moving
+deadline explanation are in the linked artifact; no delivery or cron row is
+relabelled as fence-expiry.
