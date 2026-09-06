@@ -676,3 +676,42 @@ applying row (sample 10); production includes fence-expiry applying rows
 (samples 3, 8, 9, and 10). The exact event-to-pass joins and the moving
 deadline explanation are in the linked artifact; no delivery or cron row is
 relabelled as fence-expiry.
+
+## W152 W142-to-W150 request-path audit
+
+On 2026-09-06, the exact range
+`8e8f13d9cb14d547193dc642d9038e5b80d7444a..766f5d328a6615582338ce52965f5017702182eb`
+was audited file-by-file. The later range contains G67 safe-lane scheduling,
+fence-expiry, pass-observation, and guard changes, plus retained evidence and
+documentation. It does **not** change the public serialized commit path from
+receipt to response: the commit route and CommitWorker invocation are
+unchanged in this range. `packages/dcb-runtime/src/downstream/DownstreamAdapter.ts`
+changes the Queue consumer after `recordDelivery`; `samples/meeting-room/src/worker.cloudflare-only.ts`
+changes Queue/scheduled/alarm safe-lane scheduling; and
+`samples/meeting-room/src/d1-mv.ts`/`MaterializedViewCatchUp.ts` add safe-lane
+observation and catch-up boundaries. None is called by the commit request
+before its response. The complete per-commit/path inventory and the exact
+source-symbol classification are in
+[`sdt-g67-w142-w150-request-path-audit-wake-152.md`](../sdt-g67-w142-w150-request-path-audit-wake-152.md).
+
+The request-path gate is therefore **satisfied** for this audit: no later
+W142-to-W150 request-path change invalidates the retained W142 same-window
+comparison, and no short W155-C parent baseline or deployment is required by
+this audit. The W142 comparison is valid amended-AC4 response evidence for the
+unchanged request path, while the later W150 receipt remains authoritative for
+current per-event fence/applying-pass attribution and the final deployed
+configuration.
+
+| W142 arm | source | n | response p50 | response p95 |
+|---|---|---:|---:|---:|
+| parent | `868f2fc63bb02fb2c127e750c1d22516cc0fcff6` | 10 | 2,606 ms | 2,866 ms |
+| candidate | `8e8f13d9cb14d547193dc642d9038e5b80d7444a` | 10 | 2,585 ms | 3,072 ms |
+
+Candidate p50 delta was `-21 ms`; candidate p95 delta was `+206 ms`, or
+`+7.19%` relative to the parent p95 (`(3072 - 2866) / 2866`). The p95
+percentage is within the amended 10% response comparison. Both W142 cohorts
+were n=10 and all ten safe observations were below 180 seconds; the W142
+absolute 60-second safe-p95 and +150 ms p95 rules are superseded by the
+amended interpretation. The W142 candidate's incomplete trigger provenance
+(`kick requested; winner not persisted`) is retained as historical evidence;
+it is not substituted for W150's actual applying-pass/fence-expiry evidence.
