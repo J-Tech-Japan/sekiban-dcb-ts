@@ -1,9 +1,93 @@
-# SDT-G67 local checkpoint
+# SDT-G67 evidence — final amended AC4/AC5 disposition
 
-This document is the deploy-free AC1–AC3/local-AC6 checkpoint for issue #129.
-It does not claim the same-arm AC4 or production AC5 deployment proof; those
-remain for the separately delegated continuation. No Wrangler, Cloudflare,
-reset, deployment, resource, or PR operation was used here.
+This document retains the local AC1–AC3 proof and the W145/W146 deployed
+receipts for issue #129. The final amended AC4/AC5 ownership is the
+fence-expiry scheduling result: production scheduling-wait p95 is at or below
+5,000 ms and all ten production samples became safe within 180,000 ms. Safe
+first visibility is measured and attributed, not a target. Pass latency,
+fence wait, ring arrival, Queue arrival, and strict unsafe misses are reported
+as attribution facts and are not G67 gates. No cohort was rerun for this
+amendment.
+
+## Final amended AC4/AC5 reconciliation — W145/W146
+
+The retained W145 arm receipts were sufficient to derive the required
+attribution columns, so neither the arm nor production cohort was repeated.
+W145 recorded 56 fence stops, 9 completed fence-expiry passes, and
+`SafeWindow=20000 ms`. Its candidate residual scheduling-wait p95 was 936 ms;
+its pass-latency p95 was 27598 ms. Those rows remain intact as arm evidence.
+
+W146 production used the existing sample Worker
+`sekiban-dcb-meeting-room-cloudflare-only` after the C-0 reset and the exact
+candidate source `d596192f3b0ddb0ab6b70d10ed8b8c04cd5489ae`. The final deployed
+version was `11c907ff-dde3-44c3-928e-550303d47aac` at 100% with the exact-source
+annotation recorded in the W146 receipts. The deployed production
+configuration was `DIRECT_DOORBELL=false`, receiver mode absent/unconfigured,
+and no `DOWNSTREAM_DOORBELL` service binding. Consequently the production
+ring-arrival population is zero and direct-ring/unsafe rows are non-gated in
+G67; the strict unsafe observation misses remain recorded honestly.
+
+The production run was cold-first and paced at ten seconds, with `n=10`, run
+ID `7b5cdd0f-ed47-46a2-8f7c-b2d04e9aff20`. The owned gates passed:
+scheduling-wait p95 `1608 ms <= 5000 ms`, and safe first visibility `10/10 <
+180000 ms`. All ten strict 5000 ms unsafe observations missed, while all ten
+eventually became visible. The production pass-latency p95 was `16983 ms`;
+this is broader than the arm catch-up cost because it includes production
+Queue-arrival, fence, and deferred-pass timing rather than only catch-up
+execution. It is reported attribution, not an amended G67 gate.
+
+`Queue arrival` below is the maximum, across the room and reservation
+obligations for the exact sample, of `consumer-invocation-started -
+queue-send-returned`. `Fence wait` is `stop_deadline_at - command-receipt` for
+the selected completed pass row. `Scheduling wait` is
+`started_at - scheduled_at`; `pass` is `completed_at - started_at`. The
+selected row is the last completed row for the exact delivery SUID, preferring
+a completed fence-expiry row. Ring arrival is `—` for every sample because
+the deployed direct ring is disabled. The raw batch-level ledger remains the
+authoritative record.
+
+| # | exact SUID | response | unsafe eventual | safe | ring arrival | Queue arrival | fence wait | scheduling wait | pass | trigger | stop reason |
+|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---|---|
+| 1 | `063924305177989000001699136368` | 1944 | 115342 | 116916 | — | 9028 | 41655 | 203 | 9939 | fence-expiry | safe_window_fence |
+| 2 | `063924305189942000001445738364` | 1929 | 103481 | 104975 | — | 10548 | 54995 | 219 | 11713 | fence-expiry | safe_window_fence |
+| 3 | `063924305202088000000186107726` | 2172 | 91401 | 92801 | — | 15044 | 60760 | 230 | 13617 | fence-expiry | safe_window_fence |
+| 4 | `063924305214231000001842017430` | 2000 | 79493 | 80735 | — | 16868 | 48694 | 270 | 4982 | delivery | safe_window_fence |
+| 5 | `063924305226385000001467339264` | 2092 | 67331 | 76684 | — | 22375 | 60230 | 257 | 15760 | fence-expiry | safe_window_fence |
+| 6 | `063924305238640000001842031745` | 2388 | 55070 | 66724 | — | 15452 | 59003 | 216 | 15086 | fence-expiry | safe_window_fence |
+| 7 | `063924305251043000001307772868` | 2059 | 42968 | 59204 | — | 11860 | 57528 | 213 | 16983 | fence-expiry | safe_window_fence |
+| 8 | `063924305263164000001063677243` | 2152 | 30920 | 80210 | — | 22514 | 62698 | 1608 | 3312 | delivery | safe_window_fence |
+| 9 | `063924305275242000000197541936` | 2022 | 19008 | 68186 | — | 12205 | 33351 | 119 | 4825 | delivery | safe_window_fence |
+| 10 | `063924305287381000001223743116` | 2284 | 9535 | 55900 | — | 6998 | 38388 | 1032 | 5365 | delivery | safe_window_fence |
+
+All values are milliseconds from observed clocks. Production distributions:
+
+| measure | n | p50 | p95 | disposition |
+|---|---:|---:|---:|---|
+| command response | 10 | 2059 | 2388 | measured |
+| Queue arrival | 10 | 12205 | 22514 | reported attribution |
+| fence wait | 10 | 54995 | 62698 | reported attribution |
+| scheduling wait | 10 | 219 | 1608 | **owned gate passed** |
+| pass latency | 10 | 9939 | 16983 | reported attribution, not a gate |
+| safe first visibility | 10 | 76684 | 116916 | measured; 10/10 under 180 s |
+| unsafe eventual visibility | 10 | 55070 | 115342 | strict 5 s observation missed 10/10 |
+
+The production durable receipts contain 126 seven-hop rows, 252 post-admission
+rows, and 320 safe-pass rows. The final safe-pass receipt records delivery,
+fence-expiry, and cron triggers, with 55 `safe_window_fence` stops and 8
+`advanced_or_caught_up` completions. The safe history ends SETTLED at
+`063924305287381000001223743116`. Raw W145 and W146 receipts remain under
+`.artifacts/` with the task-specific prefixes.
+
+### Authorized W147 cleanup
+
+After read-only target resolution, W147 found W131-C outbox with one consumer
+and its DLQ with zero consumers. It removed only the W131-C outbox consumer,
+then deleted Worker `sekiban-dcb-g60-w131-c`, pipeline D1
+`b03270df-9698-4a9e-94c6-c2c5726f106d`, MV D1
+`616dd377-42f3-49f7-b373-a1a07cedf2b3`, outbox Queue, and DLQ in the required
+order. Final inventories show those W131-C resources absent while W155-C and
+the production D1/Queue resources remain. No production, W155-C, G32, G26, or
+doorbell resource was touched.
 
 ## Source and process
 
@@ -116,18 +200,19 @@ log is preserved at `/private/tmp/sdt-g67-w142-check-serial.log` for local
 diagnosis and is not a repository artifact. No G67 assertion, timeout, or
 gate was changed to obtain these classifications.
 
-## Remaining boundary
+## Former local boundary (historical W142 checkpoint)
 
-This checkpoint intentionally stops before AC4/AC5. It does not deploy to the
-reused `sekiban-dcb-g60-w155-c` arm, reset operational data, or use the
-production sample. A later continuation must run the same-arm baseline/post
-cohorts and then the production cohort with observed clocks and pass triggers.
+The original deploy-free checkpoint intentionally stopped before AC4/AC5 and
+did not deploy to the reused `sekiban-dcb-g60-w155-c` arm or use the
+production sample. W145/W146 later supplied the retained arm and production
+receipts reconciled in the final amended section above; no cohort was rerun for
+the amendment.
 
 ## W142 deployed arm measurement (blocked before production)
 
-This section records the single W142 arm window. It is measurement evidence,
-not an AC4/AC5 pass. The arm gate failed, so the production sample was not
-reset or deployed.
+This section records the single W142 arm window. It is historical measurement
+evidence, not the final amended AC4/AC5 disposition. The original arm gate
+failed, so the production sample was not reset or deployed in W142.
 
 ### Source identities and deployment correction
 
@@ -295,11 +380,12 @@ retain every intermediate health snapshot and per-projector safe head.
 
 ### W142 disposition and retained raw receipts
 
-W142 is **BLOCKED** at the isolated-arm gate. The exact candidate response
+W142 was **BLOCKED** at the isolated-arm gate. The exact candidate response
 p95 miss (+206 ms versus the parent, over the +150 ms allowance) and safe p95
-miss (117,661 ms versus 60,000 ms) prevent the authorized production sample.
-No production resource was reset, deployed, or sampled. No code or
-configuration change was made in this continuation. The earlier f5b2212
+miss (117,661 ms versus 60,000 ms) prevented production work in that
+continuation. W146 later performed the separately authorized production proof
+under the amended ownership. No code or configuration change was made in
+W142. The earlier f5b2212
 deployment is retained only as a discarded identity receipt and is never used
 to calculate a baseline.
 
