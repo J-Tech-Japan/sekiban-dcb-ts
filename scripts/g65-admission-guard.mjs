@@ -36,7 +36,7 @@ function configWiring(configText) {
     : undefined;
   const expected = {
     binding: "DOWNSTREAM_DOORBELL",
-    service: "sekiban-dcb-meeting-room-doorbell",
+    service: "sekiban-dcb-g60-w155-c",
     entrypoint: "MeetingRoomDownstreamDoorbell",
   };
   if (binding === undefined) {
@@ -45,6 +45,32 @@ function configWiring(configText) {
   const missing = [];
   for (const [key, value] of Object.entries(expected)) {
     if (binding[key] !== value) missing.push(`DOWNSTREAM_DOORBELL ${key}=${value}`);
+  }
+  const expectedVars = {
+    DIRECT_DOORBELL: "true",
+    DIRECT_DOORBELL_RECEIVER_MODE: "self",
+    DIRECT_DOORBELL_SELF_BINDING_PROOF: "true",
+    DIRECT_DOORBELL_DEGRADATION: "queued-degraded",
+    DIRECT_DOORBELL_MAX_INVOCATIONS: "32",
+    SDT_SERVICE_ID: "sekiban-dcb-g60-w155-c",
+  };
+  for (const [key, value] of Object.entries(expectedVars)) {
+    if (config.vars?.[key] !== value) missing.push(`vars ${key}=${value}`);
+  }
+  const d1 = new Map((config.d1_databases ?? []).map((entry) => [entry.binding, entry]));
+  if (d1.get("D1")?.database_id !== "ac751211-fde8-4587-9d56-1e9fd8051bc3") {
+    missing.push("D1 database_id=ac751211-fde8-4587-9d56-1e9fd8051bc3");
+  }
+  if (d1.get("D1_MV")?.database_id !== "2b60dbcf-0912-4bb2-93aa-77c26cd260e1") {
+    missing.push("D1_MV database_id=2b60dbcf-0912-4bb2-93aa-77c26cd260e1");
+  }
+  const queues = config.queues ?? {};
+  if (queues.producers?.find((entry) => entry.binding === "DOWNSTREAM_QUEUE")?.queue !== "sekiban-dcb-g60-w155-c-outbox") {
+    missing.push("DOWNSTREAM_QUEUE queue=sekiban-dcb-g60-w155-c-outbox");
+  }
+  const consumer = queues.consumers?.find((entry) => entry.queue === "sekiban-dcb-g60-w155-c-outbox");
+  if (consumer?.dead_letter_queue !== "sekiban-dcb-g60-w155-c-outbox-dlq") {
+    missing.push("consumer dead_letter_queue=sekiban-dcb-g60-w155-c-outbox-dlq");
   }
   return { ok: missing.length === 0, missing };
 }

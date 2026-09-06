@@ -318,3 +318,83 @@ retained under `.artifacts/sdt-g65-w139-*`. The W155-C primary configuration
 was left on the exact candidate source; the stale shared receiver was left
 untouched. No source, fixture, workflow, gate, PR, or review state was changed
 in this evidence-only continuation.
+
+## W140 W155-C self-binding local checkpoint
+
+W140 is the deploy-free, local/self-binding configuration half of the
+SDT-G65 continuation. No Wrangler, Cloudflare, deployment, resource, PR, or
+review-state operation was performed. The child branch started at
+`abecf9df201ce3bd845a11dbad9476b1cf770810`; all unrelated dirty files and
+ignored receipts were preserved.
+
+### Exact-head CI classification
+
+The exact-head workflow was
+[`34000676089`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34000676089)
+and the `ci-g21-g25` job was
+[`101398855200`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34000676089/job/101398855200).
+The G21, G22, G23, G24, and G25 steps passed. The only failed step was the
+existing G54 envelope-boundary assertion at
+`test/g54-envelope-boundary.spec.ts:136`: it expected duration `PT0S` and
+observed `PT0.001S`. This is the known 1 ms wall-clock timing flake and is
+unrelated to the W155-C self-binding configuration; no CI gate, timeout, test,
+or fixture was changed. The lossless hosted log is
+`.artifacts/sdt-g65-w140-ci-g21-g25-job.log` (SHA-256
+`5080f88af7db761e8884d8231a1087115dcfe8849f381f15dd2bd21c3433c555`). The
+captured workflow-status receipt is
+`.artifacts/sdt-g65-w140-ci-run-status.json` (SHA-256
+`3c58245775775fadc49a7b1f1f92e9ab6bd1b9e3fa22ce3a17810e817117d17f`).
+
+### Reproducible W155-C self configuration
+
+The tracked local configuration is
+`.artifacts/wrangler.g65-w155-c.jsonc`. Its exact self-binding values are:
+
+| Setting | Value |
+| --- | --- |
+| `name` / `SDT_SERVICE_ID` | `sekiban-dcb-g60-w155-c` |
+| `DIRECT_DOORBELL` | `true` |
+| `DIRECT_DOORBELL_RECEIVER_MODE` | `self` |
+| `DIRECT_DOORBELL_SELF_BINDING_PROOF` | `true` |
+| `DIRECT_DOORBELL_DEGRADATION` | `queued-degraded` |
+| `DIRECT_DOORBELL_MAX_INVOCATIONS` | `32` |
+| `DOWNSTREAM_DOORBELL.service` | `sekiban-dcb-g60-w155-c` |
+| `DOWNSTREAM_DOORBELL.entrypoint` | `MeetingRoomDownstreamDoorbell` |
+| `D1` pipeline ID | `ac751211-fde8-4587-9d56-1e9fd8051bc3` |
+| `D1_MV` ID | `2b60dbcf-0912-4bb2-93aa-77c26cd260e1` |
+| outbox Queue | `sekiban-dcb-g60-w155-c-outbox` |
+| DLQ | `sekiban-dcb-g60-w155-c-outbox-dlq` |
+
+`scripts/g65-w155-self-config-guard.mjs --self-test` passed the real
+configuration and returned `red-as-expected` for the mutant that changed the
+mode to `separate` and the service back to the stale shared receiver.
+The existing `scripts/g65-admission-guard.mjs` was extended only to make this
+exact self-binding/arm-resource shape an enforced expectation. Its omission,
+unbounded-doorbell, response-gated-on-D1, reordered-durability,
+idempotence-removal, omitted-direct, and awaited-apply mutants remained red;
+`npm run test:g65:required` passed.
+
+### Local lane record and exceptions
+
+The full command receipt is `.artifacts/sdt-g65-w140-ci-equivalent.log`
+(SHA-256
+`243395de52a5c1416475c8548e02157ebfbab6a291baf0453ba8968769cca598`). The
+affected G26/G27, G29, G31, G51, G53, G55, G58, G60, G61, G62, G65, G38,
+G41--G49, G20, candidate/coverage, store/D1/MV/boundary/consumer/build,
+typecheck, lint, diff-check, and forced-red probes completed as recorded.
+The following are preserved exceptions, not weakened gates:
+
+| Check | Result and receipt |
+| --- | --- |
+| `npm test` | 5 unrelated failures: G32 non-UTF8 status, G43 alarm wait, G54 R3 error kind, and repair vertical-slice timeout; 85 files passed and 1 skipped. |
+| `npm run test:g32` | Same non-UTF8 400-versus-500 failure in `test/g32-payload-admission.spec.ts:140`. |
+| `npm run test:g54` | Same local R3 `invalid_payload_utf8` versus `invalid_payload_json` mismatch; separate from the hosted 1 ms timing flake. |
+| G28 package boundary checks | `npm pack` could not write `/Users/tomohisa/.npm/_logs`; source/negative probes passed. |
+| `npm run test:g30` | `.artifacts/sdt-g65-w140-g30-core.log` (SHA-256 `da5079e3d71a74b6929dfdedc94f43d3a1440f4de23b16d907fcd6776dc34bef`) advanced through `all-production-config-mutants-red` and then stalled for 60 seconds; only that runner was terminated. G30 is not claimed green, while G30 candidate and G51 passed. |
+| local e2e / emulator provisioning | Not run because W140 explicitly forbids Wrangler/Cloudflare/deployment/resource operations; `test:cosmos-wiring` passed. |
+
+No source behavior outside the scoped guard/config, no fixture, workflow,
+timeout, receiver, production resource, PR, or review state was changed. The
+later deployed window must use both cold-first paced W155-C cohorts with this
+self configuration; W139 separate-receiver receipts remain failed stop
+evidence and are not substituted for that measurement.
