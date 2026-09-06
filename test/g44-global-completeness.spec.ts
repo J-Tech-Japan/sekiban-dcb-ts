@@ -273,10 +273,6 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     const value = scope();
     await configureG44Source(value);
     expect((await append(value, "handoff")).status).toBe(201);
-    const registry = await database().prepare(
-      "SELECT last_obligation_sequence FROM serialized_dcb_source_partitions WHERE service_id = ? AND partition_tag = ?",
-    ).bind(value.serviceId, value.tag).first<{ last_obligation_sequence: number }>();
-    expect(registry).toMatchObject({ last_obligation_sequence: 1 });
 
     const handoffs: DownstreamOutboxMessage[] = [];
     const result = await drainTagOutbox(
@@ -287,7 +283,6 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
     );
     expect(result.delivered).toBe(1);
     expect(handoffs).toHaveLength(1);
-    expect((await sourceRows(value))[0]?.status).toBe("pending");
 
     const beforeJoin = await SELF.fetch(
       `https://tag.test/tags/${encodeURIComponent(value.serviceId)}/${encodeURIComponent(value.tag)}/outbox/mark-delivered`,
@@ -307,6 +302,10 @@ describe("SDT-G44 global-array receipt, source registry, and detector health", (
       clock: { now: () => 4_020 },
     })).rejects.toThrow(/^downstream_delivery_retry:/);
     expect(await count("dcb_events", value.serviceId)).toBe(1);
+    const registry = await database().prepare(
+      "SELECT last_obligation_sequence FROM serialized_dcb_source_partitions WHERE service_id = ? AND partition_tag = ?",
+    ).bind(value.serviceId, value.tag).first<{ last_obligation_sequence: number }>();
+    expect(registry).toMatchObject({ last_obligation_sequence: 1 });
     expect((await sourceRows(value))[0]?.status).toBe("acknowledged");
     const scanner = new GlobalCompletenessReconciler(database(), tags());
     await expect(scanner.reconcile(value.serviceId, 4_040)).resolves.toMatchObject({ kind: "FULL", scannedObligations: 1 });

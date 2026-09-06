@@ -26,7 +26,7 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   /** Declares that this deployed component serves the direct doorbell entrypoint. */
   readonly G38_DOORBELL_DELIVERY_ROLE?: string;
   /** In-process integration seam; never configured by a deployed Worker. */
-  readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery"> & {
+  readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery" | "beforeViews"> & {
     readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
     /** Existing in-process test seam only; no deployed binding can enable it. */
     readonly faultBarrier?: Readonly<{

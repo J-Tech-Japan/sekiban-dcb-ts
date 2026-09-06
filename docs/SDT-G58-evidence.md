@@ -561,8 +561,9 @@ hook caused the admission delay.
 The exact existing handoff is:
 
 1. `TagDurableObject.appendSql` durably writes the Tag event, outbox
-   obligation, and local receipt. `registerSourcePartition` runs after that
-   append and before the response.
+   obligation, and local receipt. Source registration is a non-blocking
+   post-commit attempt; the atomic D1 admission batch also upserts the source
+   partition with the global event, membership, and receipt.
 2. After the 201 response, `TagDurableObject.append` schedules
    `autoDrainAfterResponse` through `ctx.waitUntil(...)`; the command response
    does not await Queue-to-D1 delivery. `autoDrainOutbox` sends the complete

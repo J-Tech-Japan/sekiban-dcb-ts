@@ -32,6 +32,18 @@ export interface MeetingRoomCommandEnvironment {
 }
 
 const G11_SERVICE_ID_HEADER = "x-sdt-g11-service-id";
+const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
+export type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
+const globalAdmissionByResult = new WeakMap<object, GlobalAdmissionStatus>();
+
+/**
+ * Admission is an HTTP response-header concern. Keep the transport metadata
+ * out of the ExecuteResult object so V1 JSON serialization cannot acquire a
+ * sample-only body member.
+ */
+export function globalAdmissionStatusFromResult(result: object): GlobalAdmissionStatus {
+  return globalAdmissionByResult.get(result) ?? "unknown";
+}
 
 function jsonBytes(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -77,7 +89,13 @@ export function createV1Transport(fetcher: InternalRuntimeFetcher, serviceId?: s
       body: JSON.stringify(body),
       signal,
     });
-    return { status: response.status, body: await readBody(response) };
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => { headers[key] = value; });
+    return {
+      status: response.status,
+      headers,
+      body: await readBody(response),
+    };
   };
   return {
     serviceId,
@@ -189,14 +207,49 @@ export function parseMeetingRoomCommandRequest(body: unknown): MeetingRoomComman
   };
 }
 
+function admissionFrom(response: unknown): GlobalAdmissionStatus {
+  const headers = isRecord(response) && isRecord(response.headers) ? response.headers : undefined;
+  const value = typeof headers?.[G65_GLOBAL_ADMISSION_HEADER] === "string"
+    ? headers[G65_GLOBAL_ADMISSION_HEADER]
+    : undefined;
+  return value === "admitted" || value === "not-admitted" || value === "unknown" ? value : "unknown";
+}
+
+function mergeAdmission(
+  current: GlobalAdmissionStatus | undefined,
+  incoming: GlobalAdmissionStatus,
+): GlobalAdmissionStatus {
+  if (current === undefined) return incoming;
+  if (current === "not-admitted" || incoming === "not-admitted") return "not-admitted";
+  if (current === "unknown" || incoming === "unknown") return "unknown";
+  return "admitted";
+}
+
+function withAdmission<T extends object>(result: T, globalAdmission: GlobalAdmissionStatus): T {
+  globalAdmissionByResult.set(result, globalAdmission);
+  return result;
+}
+
 export function commandExecutor(environment: MeetingRoomCommandEnvironment): MeetingRoomCommandExecutor {
   const transport = createInProcessTransport({ RUNTIME: runtimeFetcher(environment) }, { serviceId: environment.serviceId });
-  const executor = createSekibanExecutor(transport, { serviceId: environment.serviceId });
   return {
     async execute(commandId, input, options) {
       const command = commandFor(commandId);
-      if (command === undefined) return { kind: "invalid", attempts: 0, error: "Unknown meeting-room command", code: "command_not_found" };
-      return executor.execute(command, input as never, options);
+      if (command === undefined) {
+        return withAdmission({ kind: "invalid", attempts: 0, error: "Unknown meeting-room command", code: "command_not_found" }, "unknown");
+      }
+      let globalAdmission: GlobalAdmissionStatus | undefined;
+      const trackedTransport: SerializedDcbTransport = {
+        ...transport,
+        commit: async (envelope, signal) => {
+          const response = await transport.commit(envelope, signal);
+          globalAdmission = mergeAdmission(globalAdmission, admissionFrom(response));
+          return response;
+        },
+      };
+      const executor = createSekibanExecutor(trackedTransport, { serviceId: environment.serviceId });
+      const result = await executor.execute(command, input as never, options);
+      return withAdmission(result, globalAdmission ?? "unknown");
     },
   };
 }

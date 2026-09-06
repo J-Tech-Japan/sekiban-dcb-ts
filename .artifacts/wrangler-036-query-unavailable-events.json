@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w128-query-unavailable-events",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--command",
+    "SELECT Id, SortableUniqueId, Tags, Timestamp FROM dcb_events WHERE Tags LIKE %g65-unavailable%;"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T02:04:48.749Z",
+  "finishedAt": "2026-09-05T02:04:49.666Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/ac751211-fde8-4587-9d56-1e9fd8051bc3/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"near \\\"%\\\": syntax error at offset 77: SQLITE_ERROR [code: 7500]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 7500,\n    \"accountTag\": \"3ede2188f4cf39a28e0aa3722d3d02c5\"\n  }\n}\n",
+  "stderr": ""
+}

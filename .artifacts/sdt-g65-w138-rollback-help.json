@@ -1,0 +1,25 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w138-rollback-help",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "rollback",
+    "--help"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T19:10:38.799Z",
+  "finishedAt": "2026-09-05T19:10:39.250Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "wrangler rollback [version-id]\n\n🔙 Rollback a deployment for a Worker\n\nPOSITIONALS\n  version-id  The ID of the Worker Version to rollback to  [string]\n\nGLOBAL FLAGS\n  -c, --config          Path to Wrangler configuration file  [string]\n      --cwd             Run as if Wrangler was started in the specified directory instead of the current working directory  [string]\n  -e, --env             Environment to use for operations, and for selecting .env and .dev.vars files  [string]\n      --env-file        Path to an .env file to load - can be specified multiple times - values from earlier files are overridden by values in later files  [array]\n  -h, --help            Show help  [boolean]\n      --install-skills  Install Cloudflare skills for detected AI coding agents before running the command  [boolean] [default: false]\n      --profile         Use a specific auth profile  [string]\n  -v, --version         Show version number  [boolean]\n\nOPTIONS\n      --name     The name of your Worker  [string]\n  -m, --message  The reason for this rollback  [string]\n  -y, --yes      Automatically accept defaults to prompts  [boolean] [default: false]\n",
+  "stderr": ""
+}

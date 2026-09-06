@@ -153,7 +153,9 @@ async function responseResult(response: Response): Promise<CommitHttpResult> {
   } catch {
     body = { code: "transport", error: `HTTP ${response.status}` };
   }
-  return { status: response.status, body };
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, key) => { headers[key] = value; });
+  return { status: response.status, headers, body };
 }
 
 function v1Envelope(request: CommitEnvelope): Record<string, unknown> {

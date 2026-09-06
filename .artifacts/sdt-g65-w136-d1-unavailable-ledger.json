@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w136-d1-unavailable-ledger-read",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--command",
+    "SELECT 'event' AS kind, \"Id\" AS event_id, \"SortableUniqueId\" AS suid, \"Tags\" AS tags FROM dcb_events WHERE \"ServiceId\"='sekiban-dcb-g60-w155-c' AND \"Id\" IN ('01a071bb-678c-788b-86b2-e51ca56c3db3','01a071bb-6f65-795d-984a-02c4fba48363'); SELECT 'receipt' AS kind, event_id, membership_tag, obligation_sequence, received_at FROM serialized_dcb_global_receipts WHERE service_id='sekiban-dcb-g60-w155-c' AND event_id IN ('01a071bb-678c-788b-86b2-e51ca56c3db3','01a071bb-6f65-795d-984a-02c4fba48363') ORDER BY event_id, membership_tag, obligation_sequence; SELECT 'attempt' AS kind, event_id, partition_tag, outcome, admission_started_at, admission_finished_at FROM serialized_dcb_g65_admission_attempts WHERE service_id='sekiban-dcb-g60-w155-c' AND event_id IN ('01a071bb-678c-788b-86b2-e51ca56c3db3','01a071bb-6f65-795d-984a-02c4fba48363') ORDER BY event_id, admission_started_at;"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T13:24:56.023Z",
+  "finishedAt": "2026-09-05T13:24:56.875Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"results\": [\n      {\n        \"kind\": \"event\",\n        \"event_id\": \"01a071bb-678c-788b-86b2-e51ca56c3db3\",\n        \"suid\": \"063924211303091000001441635589\",\n        \"tags\": \"[\\\"reservation:g65-reservation-65defd04-76a-1\\\"]\"\n      },\n      {\n        \"kind\": \"event\",\n        \"event_id\": \"01a071bb-6f65-795d-984a-02c4fba48363\",\n        \"suid\": \"063924211304954000001191258191\",\n        \"tags\": \"[\\\"room:g65-w136-new-first-da855b66-4b9\\\"]\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.3609\n      },\n      \"duration\": 0.3609,\n      \"changes\": 0,\n      \"last_row_id\": 765,\n      \"changed_db\": false,\n      \"size_after\": 2277376,\n      \"rows_read\": 4,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [\n      {\n        \"kind\": \"receipt\",\n        \"event_id\": \"01a071bb-678c-788b-86b2-e51ca56c3db3\",\n        \"membership_tag\": \"reservation:g65-reservation-65defd04-76a-1\",\n        \"obligation_sequence\": 2,\n        \"received_at\": 1788614520050\n      },\n      {\n        \"kind\": \"receipt\",\n        \"event_id\": \"01a071bb-6f65-795d-984a-02c4fba48363\",\n        \"membership_tag\": \"room:g65-w136-new-first-da855b66-4b9\",\n        \"obligation_sequence\": 1,\n        \"received_at\": 1788614518548\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.2084\n      },\n      \"duration\": 0.2084,\n      \"changes\": 0,\n      \"last_row_id\": 765,\n      \"changed_db\": false,\n      \"size_after\": 2277376,\n      \"rows_read\": 7,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  },\n  {\n    \"results\": [],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.1211\n      },\n      \"duration\": 0.1211,\n      \"changes\": 0,\n      \"last_row_id\": 765,\n      \"changed_db\": false,\n      \"size_after\": 2277376,\n      \"rows_read\": 3,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

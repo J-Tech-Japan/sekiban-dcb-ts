@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w128-query-unavailable-events-corrected",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--command",
+    "SELECT Id, SortableUniqueId, Tags, Timestamp FROM dcb_events WHERE Tags LIKE '%g65-unavailable%';"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T02:05:20.509Z",
+  "finishedAt": "2026-09-05T02:05:21.492Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"results\": [\n      {\n        \"Id\": \"01a06f4d-5321-7625-bb2c-6301bc2d4ed6\",\n        \"SortableUniqueId\": \"063924170534358000000800833193\",\n        \"Tags\": \"[\\\"room:g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"reservation:g65-unavailable-reservation-d4a6ee1f22b54a50-2\\\"]\",\n        \"Timestamp\": \"2026-09-05T02:02:13.665Z\"\n      },\n      {\n        \"Id\": \"01a06f4d-8251-7270-9bec-670ff16ff4f7\",\n        \"SortableUniqueId\": \"063924170546383000001678223877\",\n        \"Tags\": \"[\\\"room:g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"reservation:g65-unavailable-reservation-d4a6ee1f22b54a50-3\\\"]\",\n        \"Timestamp\": \"2026-09-05T02:02:25.745Z\"\n      },\n      {\n        \"Id\": \"01a06f4d-23c1-726e-80af-54ff65525826\",\n        \"SortableUniqueId\": \"063924170522202000000609209965\",\n        \"Tags\": \"[\\\"room:g65-unavailable-room-d4a6ee1f22b54a50\\\",\\\"reservation:g65-unavailable-reservation-d4a6ee1f22b54a50-1\\\"]\",\n        \"Timestamp\": \"2026-09-05T02:02:01.537Z\"\n      },\n      {\n        \"Id\": \"01a06f4d-19c7-74fb-93e1-cea89c02aed2\",\n        \"SortableUniqueId\": \"063924170519991000001079230629\",\n        \"Tags\": \"[\\\"room:g65-unavailable-room-d4a6ee1f22b54a50\\\"]\",\n        \"Timestamp\": \"2026-09-05T02:01:58.983Z\"\n      }\n    ],\n    \"success\": true,\n    \"meta\": {\n      \"served_by\": \"v3-prod\",\n      \"served_by_region\": \"WNAM\",\n      \"served_by_colo\": \"SEA\",\n      \"served_by_primary\": true,\n      \"timings\": {\n        \"sql_duration_ms\": 0.266\n      },\n      \"duration\": 0.266,\n      \"changes\": 0,\n      \"last_row_id\": 0,\n      \"changed_db\": false,\n      \"size_after\": 638976,\n      \"rows_read\": 15,\n      \"rows_written\": 0,\n      \"total_attempts\": 1\n    }\n  }\n]\n",
+  "stderr": ""
+}

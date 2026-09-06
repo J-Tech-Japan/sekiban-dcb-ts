@@ -54,6 +54,8 @@ import {
 } from "./TagSqlSchema";
 import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasurement";
 import { recordDurableHop, type G60DurableHopObservation } from "../diagnostics/G60DurableHop";
+import { recordG65AdmissionAttempt, type G65AdmissionOutcome } from "../diagnostics/G65Admission";
+import { D1EventStore } from "../store/D1EventStore";
 
 const REPAIR_FACTS_KEY = "repair-facts";
 /**
@@ -68,8 +70,19 @@ const MAX_REPAIR_LEASE_MS = 5 * 60_000;
 const OBLIGATION_RETRY_MS = 1_000;
 const OBLIGATION_MAX_ATTEMPTS = 3;
 const OBLIGATION_ALARM_BATCH_LIMIT = 32;
+/**
+ * G65 bounds derived writes, not the durable Tag commit.  The value is short
+ * enough to keep the commit root near the G52 baseline while still allowing a
+ * healthy same-colo D1/doorbell attempt to complete before the response.
+ */
+export const G65_DERIVED_WRITE_BUDGET_MS = 300;
+export const G65_SOURCE_REGISTRATION_MAX_ATTEMPTS = 3;
+export const G65_SOURCE_REGISTRATION_RETRY_DELAY_MS = 25;
+export const G65_GLOBAL_ADMISSION_HEADER = "x-sdt-global-admission";
+type GlobalAdmissionStatus = "admitted" | "not-admitted" | "unknown";
 /** Schema identity is immutable for the lifetime of a Worker isolate. */
 const g44GlobalArrayAuthorityByD1 = new WeakMap<D1Database, Promise<boolean>>();
+const g44GlobalArrayAuthorityResultByD1 = new WeakMap<D1Database, boolean>();
 
 type JsonObject = Record<string, unknown>;
 type SqlRow = Record<string, SqlStorageValue>;
@@ -213,6 +226,16 @@ interface FenceGateObservation {
 
 class AppendTransactionFault extends Error {}
 
+class PartitionRegistrationUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("partition_registration_unavailable");
+    this.name = "PartitionRegistrationUnavailableError";
+    this.cause = cause;
+  }
+
+  readonly cause: unknown;
+}
+
 /** A mismatched immutable tag identity is a typed 409, not an internal error. */
 export class TagIdentityConflict extends Error {
   constructor() {
@@ -228,8 +251,16 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function error(status: number, code: string, message: string): Response {
-  return json({ error: message, code }, status);
+function error(status: number, code: string, message: string, retryable = false): Response {
+  return json(retryable ? { error: message, code, retryable: true } : { error: message, code }, status);
+}
+
+function withGlobalAdmission(response: Response, status: GlobalAdmissionStatus): Response {
+  // `json()` creates this Response locally, so its Headers are mutable. Keep
+  // the original object so the existing G60 response-order guard remains a
+  // direct assertion over the same response returned by the Tag DO.
+  response.headers.set(G65_GLOBAL_ADMISSION_HEADER, status);
+  return response;
 }
 
 function rejected(reason: string, status = 409): OperationResult {
@@ -1478,25 +1509,158 @@ export class TagDurableObject implements DurableObject {
   }
 
   /**
-   * Registers the enumerable source partition from the append path, before
-   * any transport handoff. Queue arrivals, sink receipts, and test schedules
-   * are intentionally not inputs to this authority.
+   * The first append on a Tag must make its source partition enumerable before
+   * the local event transaction starts. Once the local marker is registered,
+   * later appends never consult or await D1 for this fact; Queue admission is
+   * responsible for advancing the registered obligation sequence.
    */
-  private async registerSourcePartition(tag: string, serviceId: string): Promise<void> {
+  private async ensureSourcePartitionBeforeFirstAppend(
+    tag: string,
+    serviceId: string,
+  ): Promise<"existing" | "newly-registered" | "unconfigured"> {
+    if (this.sourcePartitionRegistrationStatus(tag, serviceId) === "registered") return "existing";
+    // A generic/local composition can use the SQL-backed Tag without wiring
+    // the G44 completeness store. That is the pre-G65 path: there is no
+    // registration work to wait for, and the durable local append remains
+    // authoritative. Only a binding that proves the G44 global-array schema
+    // is present enters the first-partition refusal contract below.
+    if (this.env.D1 === undefined) return "unconfigured";
+    if (g44GlobalArrayAuthorityResultByD1.get(this.env.D1) === false) return "unconfigured";
+    const attempt = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId, 0));
+    if (attempt.status !== "completed") {
+      throw new PartitionRegistrationUnavailableError(
+        attempt.status === "timeout" ? "timeout" : attempt.error,
+      );
+    }
+    if (!attempt.value) return "unconfigured";
+    await this.markSourcePartitionRegistration(tag, serviceId, "registered", undefined, undefined, 0);
+    return "newly-registered";
+  }
+
+  private sourcePartitionRegistrationStatus(tag: string, serviceId: string): string | undefined {
+    const sql = this.sqlStorage();
+    if (sql === undefined) return undefined;
+    const row = sql.exec<SqlRow>(`
+      SELECT status
+        FROM tag_source_partition_registration
+       WHERE service_id = ? AND partition_tag = ?
+    `, serviceId, tag).toArray()[0];
+    return row === undefined ? undefined : sqlString(row.status, "tag_source_partition_registration.status");
+  }
+
+  /**
+   * Refreshes the already-authorized source row with the committed local
+   * obligation sequence without putting D1 back on the response path. The
+   * first-append authority check above is the only registration operation that
+   * may refuse a commit; this post-append watermark is Queue/retry recovery
+   * work and is deliberately handed to waitUntil.
+   */
+  private scheduleSourcePartitionWatermark(tag: string, serviceId: string): void {
+    const refresh = this.retrySourcePartitionRegistration(tag, serviceId, true).catch((failure) => {
+      console.warn("source_partition_registration", {
+        status: "degraded",
+        reason: "source_partition_registration_exhausted",
+        attempts: G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
+        error: String(failure),
+      });
+    });
+    this.ctx.waitUntil(refresh);
+  }
+
+  private async retrySourcePartitionRegistration(tag: string, serviceId: string, preserveRegistered = false): Promise<void> {
+    let lastFailure: string | undefined;
+    for (let attempt = 1; attempt <= G65_SOURCE_REGISTRATION_MAX_ATTEMPTS; attempt += 1) {
+      const result = await this.boundedDerivedWrite(() => this.registerSourcePartition(tag, serviceId));
+      if (result.status === "completed") {
+        // A D1 binding without the G44 global-array schema is an explicitly
+        // unconfigured completeness store, not a failed registration. Do not
+        // create pending retry state for that composition. The local marker is
+        // still recorded after the durable append so the scheduler retains its
+        // pre-G65 source bookkeeping; it is not a D1 registration or a
+        // response-path wait.
+        if (!result.value) {
+          await this.markSourcePartitionRegistration(tag, serviceId, "registered");
+          return;
+        }
+        await this.markSourcePartitionRegistration(tag, serviceId, "registered");
+        return;
+      }
+      lastFailure = result.status === "timeout" ? "timeout" : String(result.error);
+      if (attempt < G65_SOURCE_REGISTRATION_MAX_ATTEMPTS) {
+        await new Promise<void>((resolve) => setTimeout(resolve, G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * attempt));
+      }
+    }
+    if (!preserveRegistered || this.sourcePartitionRegistrationStatus(tag, serviceId) !== "registered") {
+      await this.markSourcePartitionRegistration(
+        tag,
+        serviceId,
+        "pending",
+        lastFailure ?? "unknown",
+        Date.now() + G65_SOURCE_REGISTRATION_RETRY_DELAY_MS * G65_SOURCE_REGISTRATION_MAX_ATTEMPTS,
+      );
+    }
+    throw new Error(`source_partition_registration_failed:${lastFailure ?? "unknown"}`);
+  }
+
+  private async markSourcePartitionRegistration(
+    tag: string,
+    serviceId: string,
+    status: "pending" | "registered",
+    lastError?: string,
+    nextAttemptAt?: number,
+    lastObligationSequence = 0,
+  ): Promise<void> {
+    await this.ctx.storage.transaction(async (txn) => {
+      const sql = this.sqlStorage();
+      if (sql === undefined) return;
+      sql.exec(`
+        INSERT INTO tag_source_partition_registration
+          (service_id, partition_tag, last_obligation_sequence, status, next_attempt_at, attempt_count, last_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (service_id, partition_tag) DO UPDATE SET
+          last_obligation_sequence = MAX(
+            tag_source_partition_registration.last_obligation_sequence,
+            excluded.last_obligation_sequence
+          ),
+          status = excluded.status,
+          next_attempt_at = excluded.next_attempt_at,
+          attempt_count = excluded.attempt_count,
+          last_error = excluded.last_error
+      `, serviceId, tag, lastObligationSequence, status,
+      status === "pending" ? (nextAttemptAt ?? Date.now()) : null,
+      status === "pending" ? 1 : 0,
+      status === "pending" ? (lastError ?? null) : null);
+      const dueAt = this.nextSqlAlarmDue();
+      if (dueAt === null) await txn.deleteAlarm();
+      else await txn.setAlarm(dueAt);
+    });
+  }
+
+  private async registerSourcePartition(
+    tag: string,
+    serviceId: string,
+    requestedSequence?: number,
+  ): Promise<boolean> {
     // G44 is the D1 global-array implementation, not a rollout or
     // mixed-version mode. A non-G32 D1 harness has no global `dcb_events`
     // array at all; every actual G32/G44 D1-backed Tag commit registers its
     // partition, and a partially migrated G32 array fails closed below.
-    if (!(await this.hasG44GlobalArrayAuthority())) return;
     const database = this.env.D1;
-    if (database === undefined) throw new Error("g44_source_partition_registry_binding_lost");
+    if (database === undefined) return false;
+    if (!(await this.hasG44GlobalArrayAuthority())) return false;
     const sql = this.sqlStorage();
     if (sql === undefined) {
       throw new Error("g44_source_partition_registry_requires_sql_tag");
     }
-    const max = sql.exec<SqlRow>("SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation").toArray()[0];
-    const sequence = max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence");
-    if (sequence === undefined) return;
+    const max = requestedSequence === undefined
+      ? sql.exec<SqlRow>(
+        "SELECT MAX(obligation_sequence) AS sequence FROM tag_outbox_obligation WHERE service_id = ?",
+        serviceId,
+      ).toArray()[0]
+      : undefined;
+    const sequence = requestedSequence ??
+      (max === undefined || max.sequence === null ? undefined : sqlNumber(max.sequence, "tag_outbox_obligation.max_sequence"));
+    if (sequence === undefined) return true;
     await database.prepare(
       `INSERT INTO serialized_dcb_source_partitions
          (service_id, partition_tag, last_obligation_sequence, registered_at)
@@ -1508,6 +1672,7 @@ export class TagDurableObject implements DurableObject {
              ),
              registered_at = excluded.registered_at`,
     ).bind(serviceId, tag, sequence, Date.now()).run();
+    return true;
   }
 
   private async hasG44GlobalArrayAuthority(): Promise<boolean> {
@@ -1521,20 +1686,32 @@ export class TagDurableObject implements DurableObject {
       authority = this.readG44GlobalArrayAuthority(database);
       g44GlobalArrayAuthorityByD1.set(database, authority);
     }
-    return authority;
+    try {
+      const result = await authority;
+      g44GlobalArrayAuthorityResultByD1.set(database, result);
+      return result;
+    } catch (error) {
+      if (g44GlobalArrayAuthorityByD1.get(database) === authority) {
+        g44GlobalArrayAuthorityByD1.delete(database);
+      }
+      throw error;
+    }
   }
 
   private async readG44GlobalArrayAuthority(database: D1Database): Promise<boolean> {
     try {
       // `dcb_events.EventDigest` is introduced by G44's ordinary migration.
       // The root unit-test Worker has a distinct pre-G32 D1 schema and no
-      // `dcb_events` table; it is not a global-array source. Any other error,
-      // including a G32 table without EventDigest, is deliberately surfaced.
+      // global-array completeness store; it is not a configured source
+      // registry. A missing table or column therefore selects the unchanged
+      // local-append path. Any other error, including a configured store that
+      // hangs or fails, is deliberately surfaced to the bounded first-write
+      // refusal path.
       await database.prepare('SELECT "EventDigest" FROM dcb_events WHERE 1 = 0').all();
       return true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (/no such table:\s*dcb_events/i.test(message)) return false;
+      if (/no such (?:table|column):\s*(?:dcb_events|EventDigest)/i.test(message)) return false;
       throw error;
     }
   }
@@ -1850,8 +2027,10 @@ export class TagDurableObject implements DurableObject {
   private writeCommittedSqlObligation(
     sql: SqlStorage,
     serviceId: string,
+    tag: string,
     event: TagEvent,
     artifact: { canonicalBytes: ArrayBuffer; eventDigest: string; declaredTagSet: string; localMembership: string },
+    trackSourcePartitionRegistration = true,
   ): void {
     sql.exec(`
       INSERT INTO tag_outbox_obligation (
@@ -1864,6 +2043,51 @@ export class TagDurableObject implements DurableObject {
     event.allocatorLineageId, event.eventType, event.provenance, event.timestamp,
     artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
     artifact.localMembership, Date.now());
+    if (trackSourcePartitionRegistration) {
+      this.upsertSourcePartitionRegistration(sql, serviceId, tag, event.eventId);
+    }
+  }
+
+  private upsertSourcePartitionRegistration(
+    sql: SqlStorage,
+    serviceId: string,
+    tag: string,
+    eventId: string,
+  ): void {
+    const obligation = sql.exec<SqlRow>(`
+      SELECT obligation_sequence
+        FROM tag_outbox_obligation
+       WHERE service_id = ? AND event_id = ?
+       ORDER BY obligation_sequence DESC
+       LIMIT 1
+    `, serviceId, eventId).one();
+    const sequence = sqlNumber(obligation.obligation_sequence, "tag_outbox_obligation.obligation_sequence");
+    sql.exec(`
+      INSERT INTO tag_source_partition_registration
+        (service_id, partition_tag, last_obligation_sequence, status, next_attempt_at, attempt_count, last_error)
+      VALUES (?, ?, ?, 'pending', ?, 0, NULL)
+      ON CONFLICT (service_id, partition_tag) DO UPDATE SET
+        last_obligation_sequence = MAX(
+          tag_source_partition_registration.last_obligation_sequence,
+          excluded.last_obligation_sequence
+        ),
+        status = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN 'registered'
+          ELSE 'pending'
+        END,
+        next_attempt_at = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN NULL
+          ELSE excluded.next_attempt_at
+        END,
+        attempt_count = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN 0
+          ELSE 0
+        END,
+        last_error = CASE
+          WHEN tag_source_partition_registration.status = 'registered' THEN NULL
+          ELSE NULL
+        END
+    `, serviceId, tag, sequence, Date.now());
   }
 
   private writeCommittedSqlHead(sql: SqlStorage, serviceId: string, head: string, version: number, committedAt: string): void {
@@ -1901,6 +2125,7 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     input: AppendInput,
     suppliedServiceId: string | null,
+    trackSourcePartitionRegistration: boolean,
   ): Promise<OperationResult> {
     const serviceId = suppliedServiceId ?? "";
     const events: TagEvent[] = input.candidates.map((candidate) => ({
@@ -2044,7 +2269,7 @@ export class TagDurableObject implements DurableObject {
         this.writeCommittedSqlEvent(sql, serviceId, event);
         this.writeCommittedSqlMembership(sql, serviceId, event.eventId, tag, committedAt);
         const obligationWrittenAt = Date.now();
-        this.writeCommittedSqlObligation(sql, serviceId, event, artifact);
+        this.writeCommittedSqlObligation(sql, serviceId, tag, event, artifact, trackSourcePartitionRegistration);
         hopFacts.push({
           eventId: event.eventId,
           suid: event.suid,
@@ -2452,6 +2677,7 @@ export class TagDurableObject implements DurableObject {
       outbox.allocatorLineageId, outbox.eventType, outbox.provenance, outbox.timestamp,
       artifact.canonicalBytes, artifact.eventDigest, artifact.declaredTagSet,
       artifact.localMembership, Date.now());
+      this.upsertSourcePartitionRegistration(sql, eventServiceId, record.tag, outbox.eventId);
     }
     for (const confirmation of record.confirmations) {
       sql.exec(`
@@ -2472,6 +2698,9 @@ export class TagDurableObject implements DurableObject {
         SELECT alarm_due_at AS due_at FROM tag_reservation
         UNION ALL
         SELECT next_attempt_at AS due_at FROM tag_outbox_obligation
+        WHERE status = 'pending'
+        UNION ALL
+        SELECT next_attempt_at AS due_at FROM tag_source_partition_registration
         WHERE status = 'pending'
       )
     `).toArray()[0];
@@ -2826,7 +3055,17 @@ export class TagDurableObject implements DurableObject {
       // not provide `storage.sql`; it is never a second persisted record
       // format in a deployed Tag DO.
       if (this.sqlStorage() !== undefined) {
-        const result = await this.appendSql(tag, input, serviceId);
+        const sourcePartitionWasRegistered = serviceId !== null && serviceId.length > 0 &&
+          this.sourcePartitionRegistrationStatus(tag, serviceId) === "registered";
+        const sourcePartitionRegistration = serviceId !== null && serviceId.length > 0
+          ? await this.ensureSourcePartitionBeforeFirstAppend(tag, serviceId)
+          : "unconfigured" as const;
+        const result = await this.appendSql(
+          tag,
+          input,
+          serviceId,
+          sourcePartitionRegistration !== "unconfigured",
+        );
         for (const fact of result.hopFacts ?? []) {
           this.scheduleDurableHop({
             stage: "tag-append-committed",
@@ -2849,16 +3088,10 @@ export class TagDurableObject implements DurableObject {
         }
         if (
           (result.status === 201 || result.status === 200) &&
-          serviceId !== null && serviceId.length > 0
+          serviceId !== null && serviceId.length > 0 &&
+          sourcePartitionRegistration !== "unconfigured"
         ) {
-          try {
-            await this.registerSourcePartition(tag, serviceId);
-          } catch {
-            // The local append is durable, so a caller can replay its exact
-            // attempt to converge registration. Do not report it as globally
-            // enumerable before this source-side authority write succeeds.
-            return error(503, "source_partition_registry_unavailable", "Source partition registration is unavailable");
-          }
+          this.scheduleSourcePartitionWatermark(tag, serviceId);
         }
         const response = json(result.body, result.status);
         if (
@@ -2871,6 +3104,19 @@ export class TagDurableObject implements DurableObject {
           const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
             ? await this.directDeliveryBeforeResponse(tag, serviceId)
             : undefined;
+          // An explicitly unconfigured completeness store is the pre-G65
+          // local composition: it has no global-admission authority to
+          // consult. Keep the committed response and the ordinary Queue
+          // fallback on that path without introducing a synchronous D1
+          // attempt merely because a non-authoritative local D1 binding is
+          // present. Configured G44 stores retain the bounded admission
+          // attempt and header contract above.
+          if (sourcePartitionRegistration !== "unconfigured" || sourcePartitionWasRegistered) {
+            withGlobalAdmission(
+              response,
+              await this.globalAdmissionBeforeResponse(tag, serviceId, directRows),
+            );
+          }
           this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
         }
         return response;
@@ -2994,10 +3240,17 @@ export class TagDurableObject implements DurableObject {
         const directRows = doorbellPreflight.status === "ready" && this.env.DOWNSTREAM_DOORBELL !== undefined
           ? await this.directDeliveryBeforeResponse(tag, serviceId)
           : undefined;
+        withGlobalAdmission(
+          response,
+          await this.globalAdmissionBeforeResponse(tag, serviceId, directRows),
+        );
         this.startAutoDrainBeforeResponse(tag, serviceId, domainDeliveryClass, directRows);
       }
       return response;
     } catch (failure) {
+      if (failure instanceof PartitionRegistrationUnavailableError) {
+        return error(503, "partition_registration_unavailable", "Source partition registration is unavailable; retry the commit.", true);
+      }
       if (failure instanceof AppendTransactionFault) {
         return error(
           503,
@@ -3023,23 +3276,137 @@ export class TagDurableObject implements DurableObject {
     tag: string,
     serviceId: string,
   ): Promise<readonly DownstreamOutboxMessage[] | undefined> {
-    try {
+    let rows: readonly DownstreamOutboxMessage[] | undefined;
+    const attempt = await this.boundedDerivedWrite(async () => {
       const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
       if (!pending.ok) throw new Error(`direct outbox pending read failed with ${pending.status}`);
       const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
-      const rows = body.rows ?? [];
+      rows = body.rows ?? [];
       await this.deliverDirectRows(rows);
+    });
+    if (attempt.status === "timeout") {
+      // Rows already claimed by pendingOutbox are handed to the Queue without
+      // another direct attempt.  If the pending read itself hung, rows stays
+      // undefined and the unchanged scheduler-backed drain rereads it later.
+      console.warn("direct_doorbell_before_response", {
+        status: "queued-degraded",
+        reason: "direct_doorbell_before_response_timeout",
+        budgetMs: G65_DERIVED_WRITE_BUDGET_MS,
+      });
       return rows;
-    } catch (error) {
-      // The durable Queue is the fallback for a direct capability/read/attempt
-      // failure. The already committed event, obligation, and local receipt
-      // remain authoritative and are never rolled back here.
+    }
+    if (attempt.status === "failed") {
       console.warn("direct_doorbell_before_response", {
         status: "queued-degraded",
         reason: "direct_doorbell_before_response_failed",
-        error: String(error),
+        error: String(attempt.error),
       });
-      return undefined;
+      return rows;
+    }
+    return rows;
+  }
+
+  /**
+   * Attempt the same idempotent D1 admission used by the Queue consumer.
+   * This is a derived write only: the Tag event, outbox obligation, and local
+   * receipt are already durable, and the Queue remains the guarantee.
+   */
+  private async globalAdmissionBeforeResponse(
+    tag: string,
+    serviceId: string,
+    preloadedRows?: readonly DownstreamOutboxMessage[],
+  ): Promise<GlobalAdmissionStatus> {
+    let rows = preloadedRows;
+    const admissionStartedAt = Date.now();
+    const completedAtByEventId = new Map<string, number>();
+    const attempt = await this.boundedDerivedWrite(async () => {
+      if (rows === undefined) {
+        const pending = await this.pendingOutbox(tag, serviceId, { nowMs: Date.now(), force: true });
+        if (!pending.ok) throw new Error(`global admission pending read failed with ${pending.status}`);
+        const body = await pending.json<{ rows?: DownstreamOutboxMessage[] }>();
+        rows = body.rows ?? [];
+      }
+      if (rows.length === 0) return;
+      if (this.env.D1 === undefined) throw new Error("global admission D1 binding is unavailable");
+      const store = new D1EventStore(this.env.D1);
+      await store.initialize();
+      for (const row of rows) {
+        const outcome = await store.recordDelivery(row, Date.now(), "fast");
+        if (outcome.outcome !== "stored") {
+          throw new Error(`global admission rejected:${outcome.outcome}`);
+        }
+        completedAtByEventId.set(row.eventId, Date.now());
+      }
+    });
+    const admissionFinishedAt = Date.now();
+    const admissionOutcome: G65AdmissionOutcome = attempt.status === "timeout"
+      ? "unknown"
+      : attempt.status === "failed"
+        ? "not-admitted"
+        : "admitted";
+    for (const row of rows ?? []) {
+      this.scheduleG65AdmissionAttempt({
+        serviceId: row.serviceId,
+        eventId: row.eventId,
+        suid: row.suid,
+        attemptId: row.attemptId,
+        partitionTag: row.tag,
+        deliverySource: "fast",
+        admissionStartedAt,
+        admissionFinishedAt,
+        outcome: completedAtByEventId.has(row.eventId) ? "admitted" : admissionOutcome,
+        globalCompletionObservedAt: completedAtByEventId.get(row.eventId) ?? null,
+      });
+    }
+    if (attempt.status === "timeout") {
+      console.warn("global_admission_before_response", {
+        status: "unknown",
+        reason: "global_admission_before_response_timeout",
+        budgetMs: G65_DERIVED_WRITE_BUDGET_MS,
+      });
+      return "unknown";
+    }
+    if (attempt.status === "failed") {
+      console.warn("global_admission_before_response", {
+        status: "not-admitted",
+        reason: "global_admission_before_response_failed",
+        error: String(attempt.error),
+      });
+      return "not-admitted";
+    }
+    return "admitted";
+  }
+
+  private scheduleG65AdmissionAttempt(input: Parameters<typeof recordG65AdmissionAttempt>[1]): void {
+    const database = this.env.D1;
+    if (database === undefined) return;
+    this.ctx.waitUntil(recordG65AdmissionAttempt(database, input).catch(() => undefined));
+  }
+
+  /**
+   * Bound a derived attempt without cancelling or making its eventual result
+   * part of commit semantics.  The rejection branch is attached immediately
+   * so a late D1/doorbell failure cannot become an unhandled rejection.
+   */
+  private async boundedDerivedWrite<T>(operation: () => Promise<T>): Promise<
+    | { readonly status: "completed"; readonly value: T }
+    | { readonly status: "failed"; readonly error: unknown }
+    | { readonly status: "timeout" }
+  > {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const operationResult = Promise.resolve()
+      .then(operation)
+      .then(
+        (value): { readonly status: "completed"; readonly value: T } => ({ status: "completed", value }),
+        (error): { readonly status: "failed"; readonly error: unknown } => ({ status: "failed", error }),
+      );
+    const timeout = new Promise<{ readonly status: "timeout" }>((resolve) => {
+      timer = setTimeout(() => resolve({ status: "timeout" }), G65_DERIVED_WRITE_BUDGET_MS);
+    });
+    try {
+      return await Promise.race([operationResult, timeout]);
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
 
@@ -4109,6 +4476,7 @@ export class TagDurableObject implements DurableObject {
       tag?: string;
       serviceId?: string;
       retryDue: boolean;
+      sourceRegistrationDue?: { readonly tag: string; readonly serviceId: string };
     }> => {
       const sql = this.sqlStorage();
       if (sql === undefined) {
@@ -4143,14 +4511,31 @@ export class TagDurableObject implements DurableObject {
         SELECT COUNT(*) AS count FROM tag_outbox_obligation
         WHERE status = 'pending' AND next_attempt_at <= ?
       `, Date.now()).one().count, "tag_outbox_obligation.count") > 0;
+      const sourceRegistration = sql.exec<SqlRow>(`
+        SELECT service_id, partition_tag
+          FROM tag_source_partition_registration
+         WHERE status = 'pending' AND next_attempt_at <= ?
+         ORDER BY next_attempt_at ASC, service_id COLLATE BINARY ASC, partition_tag COLLATE BINARY ASC
+         LIMIT 1
+      `, Date.now()).toArray()[0];
       await this.rearmScheduler(txn);
       return {
         record: this.readStoredRecord(tag),
         tag,
         serviceId: service === undefined ? undefined : sqlString(service.service_id, "tag_head.service_id"),
         retryDue,
+        sourceRegistrationDue: sourceRegistration === undefined ? undefined : {
+          serviceId: sqlString(sourceRegistration.service_id, "tag_source_partition_registration.service_id"),
+          tag: sqlString(sourceRegistration.partition_tag, "tag_source_partition_registration.partition_tag"),
+        },
       };
     });
+    if (due.sourceRegistrationDue !== undefined) {
+      await this.retrySourcePartitionRegistration(
+        due.sourceRegistrationDue.tag,
+        due.sourceRegistrationDue.serviceId,
+      ).catch(() => undefined);
+    }
     if (
       due.retryDue &&
       this.env.AUTO_DRAIN_OUTBOX === "true" &&

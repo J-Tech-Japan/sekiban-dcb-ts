@@ -11,7 +11,10 @@ import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEv
 import type { ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
 import { g32Message, g32Suid, g32SuidAt } from "./helpers/g32-fixtures";
 
-const SERVICE_ID = "local-test-runtime";
+// This file exercises the PostgreSQL allocator binding. Keep its service
+// namespace private so another file's fixed fixture cannot bind a different
+// allocator lineage before the G8 delivery is recorded.
+const SERVICE_ID = "projection-test-runtime";
 
 function unique(prefix: string): string {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -330,7 +333,7 @@ describe("SDT-G8 live projection", () => {
     });
 
     const response = await SELF.fetch(
-      `https://projection.test/internal/projection/lag?tagStateId=${encodeURIComponent(`${tag}:${TEST_TAG_STATE_PROJECTOR}`)}`,
+      `https://projection.test/internal/projection/lag?tagStateId=${encodeURIComponent(`${tag}:${TEST_TAG_STATE_PROJECTOR}`)}&serviceId=${encodeURIComponent(serviceId)}`,
     );
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("application/json; charset=utf-8");

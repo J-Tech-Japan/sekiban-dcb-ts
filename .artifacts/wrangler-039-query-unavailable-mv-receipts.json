@@ -1,0 +1,33 @@
+{
+  "schema": "sdt-g60-w155-wrangler-receipt/v1",
+  "label": "w128-query-unavailable-mv-receipts",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g65-w128/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "d1",
+    "execute",
+    "D1_MV",
+    "--remote",
+    "--json",
+    "--yes",
+    "--config",
+    ".artifacts/wrangler.g65-w155-c.jsonc",
+    "--command",
+    "SELECT event_id, view_id, outcome, COUNT(*) AS row_count FROM mv_unsafe_receipts WHERE event_id IN (01a06f4d-23c1-726e-80af-54ff65525826,01a06f4d-5321-7625-bb2c-6301bc2d4ed6,01a06f4d-8251-7270-9bec-670ff16ff4f7) GROUP BY event_id, view_id, outcome;"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-05T02:04:48.745Z",
+  "finishedAt": "2026-09-05T02:04:49.632Z",
+  "exitCode": 1,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/2b60dbcf-0912-4bb2-93aa-77c26cd260e1/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"unrecognized token: \\\"01a06f4d\\\" at offset 100: SQLITE_ERROR [code: 7500]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 7500,\n    \"accountTag\": \"3ede2188f4cf39a28e0aa3722d3d02c5\"\n  }\n}\n",
+  "stderr": ""
+}
