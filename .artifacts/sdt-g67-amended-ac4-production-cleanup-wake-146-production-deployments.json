@@ -1,0 +1,27 @@
+{
+  "schema": "sdt-g60-w159-wrangler-receipt/v1",
+  "label": "production candidate deployments list",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g67-w142/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "--config",
+    "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+    "deployments",
+    "list"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-06T15:23:33.232Z",
+  "finishedAt": "2026-09-06T15:23:34.356Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n───────────────────────────────────────────────\nCreated:     2026-09-04T03:56:13.444Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G62 W138 exact 91687143076f2a1e5d36238bf5c0441d5011afe9\nVersion(s):  (100%) 3635c594-a9ba-4d6b-9621-0443593ae66b\n                 Created:  2026-09-04T03:56:12.490Z\n                     Tag:  -\n                 Message:  SDT-G62 W138 exact 91687143076f2a1e5d36238bf5c0441d5011afe9\n\nCreated:     2026-09-04T04:02:45.779Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Secret Change\nMessage:     -\nVersion(s):  (100%) c76918a2-93a8-4550-afd7-7881af7db370\n                 Created:  2026-09-04T04:02:45.779Z\n                     Tag:  -\n                 Message:  -\n\nCreated:     2026-09-04T04:03:15.060Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G62 W139 exact 91687143076f2a1e5d36238bf5c0441d5011afe9\nVersion(s):  (100%) ad4b72b3-c93c-445a-a512-d2def37f6d66\n                 Created:  2026-09-04T04:03:14.274Z\n                     Tag:  -\n                 Message:  SDT-G62 W139 exact 91687143076f2a1e5d36238bf5c0441d5011afe9\n\nCreated:     2026-09-04T06:00:30.343Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G62 W141 exact 05d9d27cf77dda090da36bfb46e578a8e5841120\nVersion(s):  (100%) d414765c-3303-42b5-8da2-b38889b4ecdc\n                 Created:  2026-09-04T06:00:29.281Z\n                     Tag:  -\n                 Message:  SDT-G62 W141 exact 05d9d27cf77dda090da36bfb46e578a8e5841120\n\nCreated:     2026-09-04T08:24:39.978Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G56 W146 exact 3936a18 rebased AC1-AC5\nVersion(s):  (100%) 686b893e-3658-43be-8dd6-63f0e17d9290\n                 Created:  2026-09-04T08:24:39.025Z\n                     Tag:  -\n                 Message:  SDT-G56 W146 exact 3936a18 rebased AC1-AC5\n\nCreated:     2026-09-04T08:27:18.765Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Secret Change\nMessage:     -\nVersion(s):  (100%) 8d7a873e-f54b-4ecb-b712-aaac82065a47\n                 Created:  2026-09-04T08:27:18.765Z\n                     Tag:  -\n                 Message:  -\n\nCreated:     2026-09-04T08:27:46.999Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G56 W146 exact 3936a18 rebased AC1-AC5 after conformance secret\nVersion(s):  (100%) 46176718-ef7b-4d90-b349-03ad26a9ea2e\n                 Created:  2026-09-04T08:27:46.070Z\n                     Tag:  -\n                 Message:  SDT-G56 W146 exact 3936a18 rebased AC1-AC5 after conformance secret\n\nCreated:     2026-09-04T09:46:00.191Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G61 W148 exact 0eb83959732afe7b868fd24c34eadb2035fc9100\nVersion(s):  (100%) 00e992de-296c-41f5-aa1c-983a7cd7f931\n                 Created:  2026-09-04T09:45:59.171Z\n                     Tag:  -\n                 Message:  SDT-G61 W148 exact 0eb83959732afe7b868fd24c34eadb2035fc9100\n\nCreated:     2026-09-04T12:24:00.004Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G60 W126 durable hop 4cd0a602e51ba46d7857e8711ec3e0f92cad1bf2\nVersion(s):  (100%) a1834409-5352-4c03-9010-f6bcc94911d6\n                 Created:  2026-09-04T12:23:59.090Z\n                     Tag:  -\n                 Message:  SDT-G60 W126 durable hop 4cd0a602e51ba46d7857e8711ec3e0f92cad1bf2\n\nCreated:     2026-09-06T15:22:58.639Z\nAuthor:      ttakaoka@jtechs.com\nSource:      Unknown (deployment)\nMessage:     SDT-G67 W146 production candidate exact d596192f3b0ddb0ab6b70d10ed8b8c04cd5489ae amended AC4\nVersion(s):  (100%) 5236f5e9-3043-40a3-8af2-d30ad6bc4467\n                 Created:  2026-09-06T15:22:57.487Z\n                     Tag:  -\n                 Message:  SDT-G67 W146 production candidate exact d596192f3b0ddb0ab6b70d10ed8b8c04cd5489ae amended AC4\n",
+  "stderr": ""
+}

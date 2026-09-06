@@ -1,0 +1,25 @@
+{
+  "schema": "sdt-g58-safe-lane-e2e/v1",
+  "task": "SDT-G58",
+  "mode": "paced",
+  "runId": "5f6cce37-155c-421b-a3ea-1174f57102d2",
+  "baseUrl": "https://sekiban-dcb-meeting-room-cloudflare-only.ttakaoka.workers.dev",
+  "serviceId": "sekiban-dcb-meeting-room-cloudflare-only",
+  "startedAt": "2026-09-06T15:24:04.484Z",
+  "contract": {
+    "pacedReservationCommits": 10,
+    "paceMs": 10000,
+    "unsafeBoundMs": 5000,
+    "unsafeProof": "delegated to SDT-G60: retain each 5000ms pass/miss and observe eventual visibility without reclassification",
+    "safeDeadline": "health.safeWindowMs + 120000ms",
+    "pacedSafeAcceptanceMs": 180000,
+    "liveProjectionProof": "observed only; head advancement and committed tag-state belong to SDT-G61",
+    "conformanceAuthorization": "Bearer supplied from protected G53_CONFORMANCE_TOKEN_FILE; value not persisted"
+  },
+  "healthSnapshots": [],
+  "reservations": [],
+  "scheduledPollLifecycle": [],
+  "finishedAt": "2026-09-06T15:24:04.781Z",
+  "status": "failed",
+  "failure": "read-health failed HTTP 403"
+}
