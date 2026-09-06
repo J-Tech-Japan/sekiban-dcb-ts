@@ -72,10 +72,10 @@ function fixtureTransport(overrides: Partial<SerializedDcbTransport> = {}): Seri
   };
 }
 
-function response(status: number, body: unknown): Response {
+function response(status: number, body: unknown, headers: Record<string, string> = { "content-type": "application/json" }): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers,
   });
 }
 
@@ -392,11 +392,26 @@ describe("SDT-G57 executor facade deploy-free contract", () => {
       ServiceId: "service-a",
       CredentialId: "credential-a",
       CredentialSecret: secret,
-      fetch: async () => response(500, { code: "upstream_failure", error: secret, detail: secret }),
+      fetch: async () => response(500, { code: secret, error: secret, detail: secret }, {
+        "content-type": "application/json",
+        "x-cloud-credential": secret,
+      }),
     });
     const rawFailure = await cloudFailure.commit({ candidates: [], consistency: [] });
-    expect(rawFailure).toMatchObject({ status: 500, body: { code: "upstream_failure", error: "SekibanCloud request failed" } });
+    expect(rawFailure).toMatchObject({ status: 500, headers: {}, body: { code: "transport", error: "SekibanCloud request failed" } });
     expect(JSON.stringify(rawFailure)).not.toContain(secret);
+
+    const classifiedCloud = createSekibanCloudTransport({
+      BaseUrl: "https://cloud.test",
+      ServiceId: "service-a",
+      CredentialId: "credential-a",
+      CredentialSecret: secret,
+      fetch: async () => response(409, { code: "consistency_conflict", error: secret }, { "x-cloud-credential": secret }),
+    });
+    const classifiedFailure = await classifiedCloud.commit({ candidates: [], consistency: [] });
+    expect(classifiedFailure).toMatchObject({ status: 409, headers: {}, body: { code: "consistency_conflict", error: "SekibanCloud request failed" } });
+    expect(JSON.stringify(classifiedFailure)).not.toContain(secret);
+
     const failureResult = await createSekibanExecutor(cloudFailure).execute(createRoomCommand, { roomId: "room-1", name: "Room" }, {
       snapshots: [snapshot(roomProjector, roomTag("room-1"), { status: "empty", version: 0, roomId: null, name: "" }, null, false)],
       readMode: "snapshot-only",

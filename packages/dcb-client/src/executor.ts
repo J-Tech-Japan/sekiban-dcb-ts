@@ -232,16 +232,20 @@ export function createHttpTransport(options: {
   return makeHttpTransport(options);
 }
 
-function cloudResult<T>(value: T | CommitHttpResult): T | CommitHttpResult {
+function cloudResult<T>(value: T | CommitHttpResult, credentials: readonly string[] = []): T | CommitHttpResult {
   if (isHttpResult(value) && (value.status === 401 || value.status === 403)) {
     throw new ClientError("credential.rejected", "SekibanCloud credential was rejected", { status: value.status });
   }
   if (isHttpResult(value) && (value.status < 200 || value.status >= 300)) {
     const body = value.body;
     const candidateCode = isRecord(body) && typeof body.code === "string" ? body.code : undefined;
-    const code = candidateCode !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(candidateCode) ? candidateCode : "transport";
+    const code = candidateCode !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(candidateCode) &&
+      !credentials.some((credential) => credential.length > 0 && candidateCode.includes(credential))
+      ? candidateCode
+      : "transport";
     return {
       ...value,
+      headers: {},
       body: { code, error: "SekibanCloud request failed" },
     };
   }
@@ -261,7 +265,7 @@ export function createSekibanCloudTransport(options: SekibanCloudTransportOption
   });
   const protect = async <T>(operation: () => Promise<T | CommitHttpResult>): Promise<T | CommitHttpResult> => {
     try {
-      return cloudResult(await operation());
+      return cloudResult(await operation(), [options.CredentialId, options.CredentialSecret]);
     } catch (error) {
       if (error instanceof ClientError && error.code === "credential.rejected") throw error;
       throw new ClientError("transport", "SekibanCloud request failed");
