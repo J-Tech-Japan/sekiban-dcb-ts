@@ -292,6 +292,7 @@ describe("SDT-G18 D1 PipelineStore", () => {
       "serialized_dcb_projection_checkpoints",
       "serialized_dcb_safe_lane_health",
       "serialized_dcb_safe_lane_history",
+      "serialized_dcb_safe_lane_passes",
       "serialized_dcb_source_partitions",
       "serialized_dcb_unsafe_writer_boundaries",
       "serialized_dcb_wait_target_incidents",

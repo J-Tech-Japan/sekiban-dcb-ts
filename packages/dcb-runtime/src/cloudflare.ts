@@ -196,7 +196,7 @@ export interface CloudflareOnlyWorkerOptions {
     readonly result: DeliveryCoreResult;
     readonly env: CloudflareOnlyEnv;
     readonly ctx: ExecutionContext;
-  }) => Promise<void> | void;
+  }) => void;
 }
 
 /**

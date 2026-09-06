@@ -8,14 +8,16 @@
  * waitUntil boundary; this helper only provides the single-flight promise.
  */
 export function createSafeLaneKickScheduler(
-  pass: () => Promise<void>,
+  pass: (request: SafeLaneKickRequest) => Promise<void>,
   onIdle?: () => void,
-): () => Promise<void> {
+  onCoalesced?: (request: SafeLaneKickRequest) => void,
+): (request: SafeLaneKickRequest) => Promise<void> {
   let active: { rerun: boolean; promise: Promise<void> } | undefined;
 
-  return () => {
+  return (request) => {
     if (active !== undefined) {
       active.rerun = true;
+      onCoalesced?.(request);
       return active.promise;
     }
 
@@ -23,7 +25,7 @@ export function createSafeLaneKickScheduler(
     state.promise = (async () => {
       do {
         state.rerun = false;
-        await pass();
+        await pass(request);
       } while (state.rerun);
     })().finally(() => {
       if (active?.promise === state.promise) active = undefined;
@@ -32,4 +34,10 @@ export function createSafeLaneKickScheduler(
     active = state;
     return state.promise;
   };
+}
+
+/** Identity for one requested kick, persisted independently of the runner. */
+export interface SafeLaneKickRequest {
+  readonly passId: string;
+  readonly scheduledAt: number;
 }

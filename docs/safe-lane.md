@@ -15,3 +15,13 @@ kick calls the same fresh coverage, retained-frontier and materialized-view
 catch-up body used by cron; it changes when the pass runs, not what a proven
 frontier certifies. `BLOCK/UNSETTLED` therefore remains bounded by the last
 proven frontier and never advances a safe head across an unproven gap.
+
+The additive `serialized_dcb_safe_lane_passes` ledger records each kick or
+cron request as `scheduled`, `running`, `completed`, `failed`, or `coalesced`,
+with observed lifecycle times, the coverage decision/frontier, and safe-head
+snapshots before and after the pass. Ledger writes and head snapshots are
+best-effort observations: a missing observer table cannot change Queue
+acknowledgement, G44 certification, or safe catch-up. The Queue callback is a
+notification-only hook and defers both the observer write and scheduler start
+through `waitUntil`; the commit and Queue disposition never await the safe
+pass.

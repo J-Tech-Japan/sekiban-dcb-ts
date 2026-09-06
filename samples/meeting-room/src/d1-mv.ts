@@ -53,6 +53,26 @@ export interface MeetingRoomSafeLaneHistoryEntry {
   readonly observedAt: number;
 }
 
+export type MeetingRoomSafeLanePassStatus = "scheduled" | "running" | "completed" | "failed" | "coalesced";
+
+/** Durable lifecycle evidence for one cron pass or event-driven kick. */
+export interface MeetingRoomSafeLanePassEntry {
+  readonly passId: string;
+  readonly trigger: "kick" | "cron";
+  readonly status: MeetingRoomSafeLanePassStatus;
+  readonly scheduledAt: number;
+  readonly startedAt: number | null;
+  readonly completedAt: number | null;
+  readonly kind: "SETTLED" | "BLOCK/UNSETTLED" | null;
+  readonly reason: string | null;
+  readonly partitionTag: string | null;
+  readonly frontierSuid: string | null;
+  /** JSON objects keyed by projector id, retained as observed pass evidence. */
+  readonly safeHeadsBeforeJson: string | null;
+  readonly safeHeadsAfterJson: string | null;
+  readonly error: string | null;
+}
+
 export interface MeetingRoomReadHealth {
   readonly serviceId: string;
   readonly materializedViews: readonly Readonly<{
@@ -71,6 +91,7 @@ export interface MeetingRoomReadHealth {
     observedAt: number | null;
   }>;
   readonly coverageHistory: readonly MeetingRoomSafeLaneHistoryEntry[];
+  readonly safeLanePasses: readonly MeetingRoomSafeLanePassEntry[];
   readonly lag: Readonly<{
     estimateMs: number | null;
     observedAt: number | null;
@@ -114,6 +135,96 @@ export function meetingRoomSafeLaneTickId(observedAt: number): string {
     throw new Error("Meeting-room safe-lane tick observedAt must be a non-negative integer");
   }
   return `scheduled:${String(observedAt)}`;
+}
+
+export interface MeetingRoomSafeLanePassWrite {
+  readonly serviceId: string;
+  readonly passId: string;
+  readonly trigger: "kick" | "cron";
+  readonly status: MeetingRoomSafeLanePassStatus;
+  readonly scheduledAt: number;
+  readonly startedAt?: number | null;
+  readonly completedAt?: number | null;
+  readonly coverage?: MeetingRoomSafeLaneCoverage;
+  readonly safeHeadsBeforeJson?: string | null;
+  readonly safeHeadsAfterJson?: string | null;
+  readonly error?: string | null;
+}
+
+/**
+ * Observation-only pass lifecycle persistence.  Callers deliberately wrap
+ * this function in a best-effort boundary: safe-lane certification and
+ * catch-up never depend on the observer table being available.
+ */
+export async function recordMeetingRoomSafeLanePass(
+  env: MeetingRoomD1Env,
+  input: MeetingRoomSafeLanePassWrite,
+): Promise<void> {
+  if (env.D1 === undefined) return;
+  const coverage = input.coverage;
+  if (input.status === "scheduled") {
+    await env.D1.prepare(
+      `INSERT INTO serialized_dcb_safe_lane_passes
+         (service_id, pass_id, trigger, status, scheduled_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (service_id, pass_id) DO NOTHING`,
+    ).bind(input.serviceId, input.passId, input.trigger, input.status, input.scheduledAt).run();
+    return;
+  }
+  if (input.status === "running") {
+    await env.D1.prepare(
+      `UPDATE serialized_dcb_safe_lane_passes
+          SET status = 'running', started_at = ?
+        WHERE service_id = ? AND pass_id = ?`,
+    ).bind(input.startedAt ?? null, input.serviceId, input.passId).run();
+    return;
+  }
+  if (input.status === "coalesced") {
+    await env.D1.prepare(
+      `UPDATE serialized_dcb_safe_lane_passes
+          SET status = 'coalesced'
+        WHERE service_id = ? AND pass_id = ?`,
+    ).bind(input.serviceId, input.passId).run();
+    return;
+  }
+  await env.D1.prepare(
+    `UPDATE serialized_dcb_safe_lane_passes
+        SET status = ?, completed_at = ?, coverage_kind = ?,
+            coverage_reason = ?, coverage_partition_tag = ?,
+            settled_frontier_suid = ?, safe_heads_before_json = ?,
+            safe_heads_after_json = ?, error = ?
+      WHERE service_id = ? AND pass_id = ?`,
+  ).bind(
+    input.status,
+    input.completedAt ?? null,
+    coverage?.kind ?? null,
+    coverage?.reason ?? null,
+    coverage?.partitionTag ?? null,
+    coverage?.frontierSuid ?? null,
+    input.safeHeadsBeforeJson ?? null,
+    input.safeHeadsAfterJson ?? null,
+    input.error ?? null,
+    input.serviceId,
+    input.passId,
+  ).run();
+}
+
+/** Read projector checkpoint heads for pass evidence, never for admission. */
+export async function readMeetingRoomSafeHeads(
+  env: MeetingRoomD1Env,
+  serviceId: string,
+): Promise<string | null> {
+  if (env.D1_MV === undefined) return null;
+  const rows = await env.D1_MV.prepare(
+    `SELECT projection_id, last_suid
+       FROM serialized_dcb_projection_checkpoints
+      WHERE service_id = ?
+      ORDER BY projection_id COLLATE BINARY ASC`,
+  ).bind(serviceId).all<Record<string, unknown>>();
+  return JSON.stringify(rows.results.map((row) => ({
+    projectionId: typeof row.projection_id === "string" ? row.projection_id : "",
+    head: typeof row.last_suid === "string" ? row.last_suid : "",
+  })));
 }
 
 interface StoredEventLike {
@@ -501,7 +612,7 @@ export async function readMeetingRoomHealth(
   const source = new D1EventStore(env.D1);
   await source.initialize();
   const lag = await source.lagBoundDiagnostics(serviceId, nowMs);
-  const [coverageRow, coverageHistoryRows, globalHeadRow, projectionRows, livePollRows] = await Promise.all([
+  const [coverageRow, coverageHistoryRows, safeLanePassRows, globalHeadRow, projectionRows, livePollRows] = await Promise.all([
     env.D1.prepare(
       `SELECT coverage_kind, coverage_reason, coverage_partition_tag,
               settled_frontier_suid, observed_at
@@ -515,6 +626,23 @@ export async function readMeetingRoomHealth(
         WHERE service_id = ?
         ORDER BY observed_at COLLATE BINARY ASC, tick_id COLLATE BINARY ASC`,
     ).bind(serviceId).all<Record<string, unknown>>(),
+    (async () => {
+      try {
+        return await env.D1!.prepare(
+          `SELECT pass_id, trigger, status, scheduled_at, started_at,
+                  completed_at, coverage_kind, coverage_reason,
+                  coverage_partition_tag, settled_frontier_suid,
+                  safe_heads_before_json, safe_heads_after_json, error
+             FROM serialized_dcb_safe_lane_passes
+            WHERE service_id = ?
+            ORDER BY scheduled_at COLLATE BINARY ASC, pass_id COLLATE BINARY ASC`,
+        ).bind(serviceId).all<Record<string, unknown>>();
+      } catch {
+        // The additive G67 observer table is absent on pre-G67 deployments;
+        // do not turn an operator health read into a false projection fault.
+        return { results: [] as Record<string, unknown>[] };
+      }
+    })(),
     env.D1.prepare(
       `SELECT COALESCE(MAX("SortableUniqueId" COLLATE BINARY), '') AS global_head
          FROM dcb_events
@@ -591,6 +719,36 @@ export async function readMeetingRoomHealth(
     } satisfies MeetingRoomSafeLaneHistoryEntry;
   });
 
+  const safeLanePasses = safeLanePassRows.results.map((row) => {
+    const passId = typeof row.pass_id === "string" ? row.pass_id : "";
+    if (passId.length === 0) throw new Error("safe-lane pass row omitted pass_id");
+    const trigger = row.trigger === "kick" || row.trigger === "cron" ? row.trigger : "cron";
+    const status: MeetingRoomSafeLanePassStatus = row.status === "scheduled"
+      || row.status === "running"
+      || row.status === "completed"
+      || row.status === "failed"
+      || row.status === "coalesced"
+      ? row.status
+      : "failed";
+    return {
+      passId,
+      trigger,
+      status,
+      scheduledAt: asCount(row.scheduled_at, "safe_lane_pass.scheduled_at"),
+      startedAt: row.started_at === null || row.started_at === undefined ? null : asCount(row.started_at, "safe_lane_pass.started_at"),
+      completedAt: row.completed_at === null || row.completed_at === undefined ? null : asCount(row.completed_at, "safe_lane_pass.completed_at"),
+      kind: row.coverage_kind === "SETTLED" || row.coverage_kind === "BLOCK/UNSETTLED" ? row.coverage_kind : null,
+      reason: row.coverage_reason === null || row.coverage_reason === undefined ? null : String(row.coverage_reason),
+      partitionTag: row.coverage_partition_tag === null || row.coverage_partition_tag === undefined ? null : String(row.coverage_partition_tag),
+      frontierSuid: row.settled_frontier_suid === null || row.settled_frontier_suid === undefined || String(row.settled_frontier_suid).length === 0
+        ? null
+        : String(row.settled_frontier_suid),
+      safeHeadsBeforeJson: row.safe_heads_before_json === null || row.safe_heads_before_json === undefined ? null : String(row.safe_heads_before_json),
+      safeHeadsAfterJson: row.safe_heads_after_json === null || row.safe_heads_after_json === undefined ? null : String(row.safe_heads_after_json),
+      error: row.error === null || row.error === undefined ? null : String(row.error),
+    } satisfies MeetingRoomSafeLanePassEntry;
+  });
+
   const coverage = coverageRow === null || coverageRow === undefined
     ? {
       kind: "BLOCK/UNSETTLED" as const,
@@ -617,6 +775,7 @@ export async function readMeetingRoomHealth(
     materializedViews,
     coverage,
     coverageHistory,
+    safeLanePasses,
     lag: {
       estimateMs: lag.rawEstimateMs,
       observedAt: lag.rawObservedAt,

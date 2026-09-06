@@ -32,20 +32,59 @@ import {
   recordMeetingRoomLivePollAttempt,
   recordMeetingRoomLivePollOutcome,
   recordMeetingRoomSafeLaneCoverage,
+  recordMeetingRoomSafeLanePass,
+  readMeetingRoomSafeHeads,
   type MeetingRoomSafeLaneCoverage,
 } from "./d1-mv";
 import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 import { runtimeRequestWithIngressRay } from "./ingress-observation";
-import { createSafeLaneKickScheduler } from "./safe-lane-kick";
+import { createSafeLaneKickScheduler, type SafeLaneKickRequest } from "./safe-lane-kick";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
 
-const safeLaneKickSchedulers = new Map<string, () => Promise<void>>();
+const safeLaneKickSchedulers = new Map<string, (request: SafeLaneKickRequest) => Promise<void>>();
+
+async function bestEffortSafeLanePassObservation(
+  env: MeetingRoomCloudflareEnv,
+  input: Parameters<typeof recordMeetingRoomSafeLanePass>[1],
+): Promise<void> {
+  try {
+    await recordMeetingRoomSafeLanePass(env, input);
+  } catch (error) {
+    // The observer is additive evidence only. A missing or unavailable
+    // observer table must not change the G44 decision or safe catch-up.
+    console.warn("safe_lane_pass_observation", {
+      status: "failed",
+      serviceId: input.serviceId,
+      passId: input.passId,
+      trigger: input.trigger,
+      lifecycle: input.status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function bestEffortSafeLaneHeads(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+): Promise<string | null> {
+  try {
+    return await readMeetingRoomSafeHeads(env, serviceId);
+  } catch (error) {
+    console.warn("safe_lane_pass_observation", {
+      status: "failed",
+      serviceId,
+      lifecycle: "safe-head-read",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
 
 /**
  * Run the same G44 coverage -> safe MV catch-up body used by cron. A kick
@@ -57,17 +96,39 @@ export async function runMeetingRoomSafeLanePass(
   serviceId: string,
   trigger: "kick" | "cron",
   existingCoverage?: GlobalCompletenessCoverage,
+  request?: SafeLaneKickRequest,
 ): Promise<void> {
   if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
   const startedAt = Date.now();
+  const passId = request?.passId ?? `${trigger}:${String(startedAt)}:${crypto.randomUUID()}`;
+  const scheduledAt = request?.scheduledAt ?? startedAt;
+  await bestEffortSafeLanePassObservation(env, {
+    serviceId,
+    passId,
+    trigger,
+    status: "scheduled",
+    scheduledAt,
+  });
+  await bestEffortSafeLanePassObservation(env, {
+    serviceId,
+    passId,
+    trigger,
+    status: "running",
+    scheduledAt,
+    startedAt,
+  });
+  let coverage: GlobalCompletenessCoverage | undefined;
+  let safeHeadsBeforeJson: string | null = null;
   try {
     const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
-    const coverage = existingCoverage ?? await (async () => {
+    const computedCoverage = existingCoverage ?? await (async () => {
       await reconciler.reconcile(serviceId, Date.now());
       return reconciler.coverage(serviceId, Date.now());
     })();
+    coverage = computedCoverage;
+    safeHeadsBeforeJson = await bestEffortSafeLaneHeads(env, serviceId);
     await runMeetingRoomScheduledMaintenance({
-      freshCoverage: async () => coverage,
+      freshCoverage: async () => computedCoverage,
       catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
       drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
       runGenericScheduledWork: async () => {},
@@ -75,7 +136,24 @@ export async function runMeetingRoomSafeLanePass(
         ? { recordCoverage: (safeLaneCoverage: MeetingRoomSafeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage) }
         : {}),
     });
+    const safeHeadsAfterJson = await bestEffortSafeLaneHeads(env, serviceId);
+    await bestEffortSafeLanePassObservation(env, {
+      serviceId,
+      passId,
+      trigger,
+      status: "completed",
+      scheduledAt,
+      startedAt,
+      completedAt: Date.now(),
+      coverage,
+      safeHeadsBeforeJson,
+      safeHeadsAfterJson,
+    });
     console.log("safe_lane_pass", {
+      passId,
+      scheduledAt,
+      startedAt,
+      completedAt: Date.now(),
       trigger,
       status: "completed",
       serviceId,
@@ -85,7 +163,22 @@ export async function runMeetingRoomSafeLanePass(
       durationMs: Math.max(0, Date.now() - startedAt),
     });
   } catch (error) {
+    await bestEffortSafeLanePassObservation(env, {
+      serviceId,
+      passId,
+      trigger,
+      status: "failed",
+      scheduledAt,
+      startedAt,
+      completedAt: Date.now(),
+      coverage,
+      safeHeadsBeforeJson,
+      error: error instanceof Error ? error.message : String(error),
+    });
     console.warn("safe_lane_pass", {
+      passId,
+      scheduledAt,
+      startedAt,
       trigger,
       status: "failed",
       serviceId,
@@ -106,24 +199,51 @@ export function scheduleMeetingRoomSafeLaneKick(
   env: MeetingRoomCloudflareEnv,
   serviceId: string,
   ctx: ExecutionContext,
-  pass: (env: MeetingRoomCloudflareEnv, serviceId: string) => Promise<void> = (passEnv, passServiceId) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "kick"),
+  pass: (env: MeetingRoomCloudflareEnv, serviceId: string, request?: SafeLaneKickRequest) => Promise<void> = (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "kick", undefined, request),
 ): void {
   let scheduler = safeLaneKickSchedulers.get(serviceId);
   if (scheduler === undefined) {
     scheduler = createSafeLaneKickScheduler(
-      () => pass(env, serviceId),
+      (request) => pass(env, serviceId, request),
       () => {
         if (safeLaneKickSchedulers.get(serviceId) === scheduler) safeLaneKickSchedulers.delete(serviceId);
+      },
+      (request) => {
+        ctx.waitUntil(bestEffortSafeLanePassObservation(env, {
+          serviceId,
+          passId: request.passId,
+          trigger: "kick",
+          status: "coalesced",
+          scheduledAt: request.scheduledAt,
+        }));
       },
     );
     safeLaneKickSchedulers.set(serviceId, scheduler);
   }
-  const scheduled = scheduler();
+  const scheduledAt = Date.now();
+  const request: SafeLaneKickRequest = {
+    passId: `kick:${String(scheduledAt)}:${crypto.randomUUID()}`,
+    scheduledAt,
+  };
+  // Defer even the observer write and scheduler invocation until after the
+  // Queue callback has registered waitUntil. This keeps Queue acknowledgement
+  // and the public commit response independent from safe-lane D1 work.
+  const scheduled = Promise.resolve().then(async () => {
+    await bestEffortSafeLanePassObservation(env, {
+      serviceId,
+      passId: request.passId,
+      trigger: "kick",
+      status: "scheduled",
+      scheduledAt: request.scheduledAt,
+    });
+    return scheduler!(request);
+  });
   ctx.waitUntil(scheduled.catch((error) => {
     // Cron will retry a lost kick. Keep the failure visible without changing
     // the already-completed Queue disposition.
     console.warn("safe_lane_kick", {
       status: "failed",
+      passId: request.passId,
       serviceId,
       error: error instanceof Error ? error.message : String(error),
     });

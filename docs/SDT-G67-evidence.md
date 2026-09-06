@@ -311,3 +311,43 @@ returned local SQLite code 7500 `no such table`; they changed no state. The
 same reads against the stated MV D1 then succeeded and are retained with
 `-mv` filenames. This was not an authorization failure and did not trigger a
 write retry or alternate resource path.
+
+## W142 AC4 local repair checkpoint
+
+The W142 arm miss is retained as measurement evidence: candidate safe p95 was
+117,661 ms (above the 60,000 ms target) and candidate response p95 was 3,072
+ms versus the true parent baseline 2,866 ms (+206 ms, above the +150 ms
+allowance). The candidate had no unsafe >5,000 ms rows and all ten samples
+became safe within 180,000 ms, but the arm was correctly blocked. The discarded
+`f5b2212` deployment remains identity-only and is not a baseline.
+
+### Cause and bounded repair
+
+The pre-repair implementation did have a Queue callback, but it exposed no
+durable pass lifecycle. `serialized_dcb_safe_lane_history` was written only by
+the cron `recordCoverage` callback, so the W142 health snapshots could say
+“kick requested; winner not persisted” but could not distinguish a kick that
+was scheduled, started, coalesced, failed, or completed. The source therefore
+cannot support the stronger claim that cron caused the measured safe p95; the
+trigger provenance was incomplete. The current code path also invoked an
+awaitable callback and started the scheduler before registering its promise,
+which left an avoidable asynchronous boundary in the delivery path.
+
+The local repair keeps the existing G44/G62 pass body and frontier argument
+unchanged, but makes the Queue notification synchronous and non-awaiting,
+defers observer/scheduler start behind `waitUntil`, and admits every successful
+stored/idempotent Queue `recordDelivery` result unless the durable
+`recordDelivery` phase itself failed. The additive
+`serialized_dcb_safe_lane_passes` ledger records `kick`/`cron`, scheduled,
+running, completed, failed, and coalesced lifecycle states, observed times,
+coverage kind/reason/partition/frontier, and safe-head snapshots before/after.
+Observer failure is best effort and cannot change Queue disposition, G44
+certification, or safe catch-up. Cron remains the backstop.
+
+Local red-capable coverage now proves Queue hook non-awaiting, lifecycle
+provenance, one-isolate single-flight/coalesced rerun, and retained-frontier
+behavior under `BLOCK/UNSETTLED`; the existing omitted-kick and frontier
+mutants remain red. The three local G67 mutations are omitted kick,
+advance-under-BLOCK, and awaited Queue hook. No deployment, reset, Wrangler,
+Cloudflare, production, PR, or acceptance-bound change is part of this
+checkpoint.

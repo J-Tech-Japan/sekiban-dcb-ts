@@ -44,7 +44,11 @@ export interface AfterStoredQueueDeliveryInput {
  * is a post-view hook and is not reached when the G44 gate is BLOCK/UNSETTLED.
  */
 export interface DownstreamAdapterOptions extends DeliveryCoreOptions {
-  readonly afterStoredQueueDelivery?: (input: AfterStoredQueueDeliveryInput) => Promise<void> | void;
+  /**
+   * Notification only. The Queue handler never awaits this callback: the
+   * callback must register any work with the active ExecutionContext.
+   */
+  readonly afterStoredQueueDelivery?: (input: AfterStoredQueueDeliveryInput) => void;
 }
 
 export type AdapterOptions = DownstreamAdapterOptions;
@@ -326,12 +330,14 @@ export async function handleDownstreamQueue(
         else if (outcome.queueDisposition === "retry-once") queued.retry();
         else queued.retry();
         // A committed event still needs an event-driven safe-lane kick when
-        // G44 deliberately holds the ordinary views. The hook is invoked
-        // after the Queue disposition is selected and is observation-only:
-        // its caller must schedule work through waitUntil and return.
+        // G44 deliberately holds the ordinary views. A stored recordDelivery
+        // result includes idempotent Queue replays; each successful batch is
+        // eligible, while a recordDelivery failure is not. The hook is
+        // notification-only: it is never awaited, so its caller must
+        // register work through waitUntil and return.
         if (outcome.outcome === "stored" && !outcome.failures.some((failure) => failure.phase === "recordDelivery")) {
           try {
-            await options.afterStoredQueueDelivery?.({ message: queued.body, result: outcome });
+            options.afterStoredQueueDelivery?.({ message: queued.body, result: outcome });
           } catch (error) {
             // A lost kick is recoverable by cron and must never change the
             // durable Queue ack/retry decision already made above.

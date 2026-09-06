@@ -19,8 +19,8 @@ const mutations = Object.freeze([
   {
     name: "omit-event-driven-kick",
     file: workerFile,
-    from: "const scheduled = scheduler();",
-    to: "const scheduled = Promise.resolve();",
+    from: "return scheduler!(request);",
+    to: "return Promise.resolve();",
     pattern: "AC3: ten paced commits converge through kicks",
     reason: "local cron-disabled proof must fail when the kick is omitted",
   },
@@ -31,6 +31,14 @@ const mutations = Object.freeze([
     to: "    // The caller has just completed this tick's scanner. A FULL/SETTLED\n    // frontier is therefore immediately eligible; a BLOCK frontier is the\n    // last proven cursor retained by the reconciler and remains fenced.\n    await input.catchUp();",
     pattern: "AC2: a kicked BLOCK/UNSETTLED pass uses only the retained proven frontier",
     reason: "BLOCK/UNSETTLED must remain fenced to the retained proven frontier",
+  },
+  {
+    name: "await-queue-kick-hook",
+    file: adapterFile,
+    from: "            options.afterStoredQueueDelivery?.({ message: queued.body, result: outcome });",
+    to: "            await options.afterStoredQueueDelivery?.({ message: queued.body, result: outcome });",
+    pattern: "AC1: Queue kick hook is notification-only",
+    reason: "Queue acknowledgement and the public commit path must not await safe-lane work",
   },
 ]);
 
@@ -97,6 +105,8 @@ function assertContract(value) {
   requireContains(value.adapter, "afterStoredQueueDelivery", "Queue stored-delivery hook");
   requireContains(value.adapter, 'outcome.outcome === "stored"', "stored outcome gate");
   requireContains(value.adapter, 'failure.phase === "recordDelivery"', "recordDelivery failure exclusion");
+  requireContains(value.adapter, "notification-only", "non-awaiting Queue hook contract");
+  if (value.adapter.includes("await options.afterStoredQueueDelivery")) fail("Queue hook is awaited");
   requireContains(value.runtime, "afterStoredQueueDelivery", "runtime Queue hook option");
   requireContains(value.worker, "scheduleMeetingRoomSafeLaneKick", "sample Queue kick");
   requireContains(value.worker, "ctx.waitUntil", "non-blocking waitUntil boundary");
@@ -104,9 +114,13 @@ function assertContract(value) {
   requireContains(value.worker, "new GlobalCompletenessReconciler(env.D1, env.TAG)", "fresh G44 reconciler");
   requireContains(value.worker, "reconciler.reconcile(serviceId", "kick scanner evaluation");
   requireContains(value.worker, "runMeetingRoomScheduledMaintenance", "shared cron/kick pass body");
+  requireContains(value.worker, "status: \"scheduled\"", "durable kick scheduling receipt");
+  requireContains(value.worker, "status: \"completed\"", "durable kick completion receipt");
+  requireContains(value.worker, "Promise.resolve().then", "deferred waitUntil kick start");
   requireContains(value.scheduler, "state.rerun", "single-flight coalescing");
   requireContains(value.scheduler, "onIdle", "single-flight lifecycle cleanup");
   requireContains(value.test, "AC1: invokes the kick hook", "Queue hook oracle");
+  requireContains(value.test, "AC1: Queue kick hook is notification-only", "non-awaiting Queue hook oracle");
   requireContains(value.test, "AC1: concurrent kicks", "concurrent single-flight oracle");
   requireContains(value.test, "AC2: a kicked BLOCK/UNSETTLED pass", "frontier fence oracle");
   requireContains(value.test, "AC3: ten paced commits converge through kicks", "cron-disabled local proof");

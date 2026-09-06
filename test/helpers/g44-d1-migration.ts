@@ -17,6 +17,8 @@ import g60UnsafeWriterMigration from "../../migrations/d1/g32/0008_g60_unsafe_wr
 import g65AdmissionMigration from "../../migrations/d1/g32/0009_g65_admission_attempts.sql?raw";
 // @ts-expect-error Vite raw asset import.
 import g65DirectRingMigration from "../../migrations/d1/g32/0010_g65_direct_rings.sql?raw";
+// @ts-expect-error Vite raw asset import.
+import g67SafeLanePassMigration from "../../migrations/d1/g32/0011_g67_safe_lane_passes.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -73,5 +75,11 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).first<{ name: string }>();
   if (directRings === null || directRings === undefined) {
     await database.batch(statements(database, g65DirectRingMigration as string));
+  }
+  const safeLanePasses = await database.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_safe_lane_passes'",
+  ).first<{ name: string }>();
+  if (safeLanePasses === null || safeLanePasses === undefined) {
+    await database.batch(statements(database, g67SafeLanePassMigration as string));
   }
 }
