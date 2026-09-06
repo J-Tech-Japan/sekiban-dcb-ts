@@ -7,7 +7,10 @@
 - Branch: `claude/sdt-g57-deploy-free-w126`
 - Integrated/pushed checkpoint used for deployment: `23a0e5c06ab4b75c94461ddea28f2da4e254df04`
 - Integrated current main: `4b1d6eb37f9e701850b2b01e9fea9095d783c77f` (landed SDT-G65)
-- Status at this checkpoint: **deployed AC5/AC6 measurement complete; PR handoff follows after evidence commit**
+- Evidence publication head: `dfaa9cead1adef151e7824338ae746a4d0bd3c67`
+- PR: [#130](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/130), ready for review, with `Closes #123`
+- Canonical worker transition: `pr-created` applied for issue #123 (`github-only`, write mode)
+- Status: **completed**
 
 The prior W126/W127 HTTP-504 cohorts remain preserved as partial receipts and are
 not reused as an AC5 result. The fresh W142 comparison below completed both arms
@@ -145,7 +148,7 @@ not weakened. No G59 or G64 work was started.
 
 ## Handoff
 
-This artifact is the durable W142 deployed evidence checkpoint. The next action
-is the authorized issue-to-PR handoff for #123 with `Closes #123`, followed by
-the canonical worker `pr-created` transition. No separate deployment window is
-needed for the evidence above.
+This artifact is the durable W142 deployed evidence checkpoint and handoff. PR
+#130 is open and ready for review with `Closes #123`; the canonical worker
+`pr-created` transition was applied successfully. No separate deployment window
+is needed for the evidence above.

@@ -223,5 +223,6 @@ The durable W142 handoff artifact is
 [`sdt-g57-deployed-resume-wake-142.md`](../sdt-g57-deployed-resume-wake-142.md).
 G15/G16, G49, G52–G55, G57, G58, G65, typecheck, lint and diff-check passed on
 the integrated checkpoint, with expected red mutant receipts preserved. AC6 is
-therefore evidenced by the fresh deployed comparison; PR creation and the
-canonical worker transition are the remaining handoff actions for this task.
+therefore evidenced by the fresh deployed comparison. PR #130 is open and
+ready for review with `Closes #123`, and the canonical worker `pr-created`
+transition was applied successfully.
