@@ -9,6 +9,7 @@ import {
   processDownstreamDoorbell,
   readDirectDoorbellConfig,
   selectDirectDoorbellViews,
+  type G65DirectApplyOutcome,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { assertG32FinalFence } from "./compatibility";
@@ -86,6 +87,9 @@ async function applyMeetingRoomDoorbell(
     // scheduled safe convergence consumes it. The test seam may still supply
     // an explicit post-delivery hook for its own bounded lifecycle oracle.
     afterDelivery: testOverrides?.afterDelivery,
+    // The test seam can reproduce the real G44 BLOCK/UNSETTLED callback after
+    // independent-unsafe views, without changing the deployed composition.
+    beforeViews: testOverrides?.beforeViews,
     durableHopObserver,
   });
   console.log("direct_doorbell_core", {
@@ -178,16 +182,45 @@ async function applyG65DirectRing(
   await markG65DirectApplyStarted(env.D1!, message, applyStartedAt);
   try {
     const result = await applyMeetingRoomDoorbell(env, ctx, message, config);
-    const outcome = result.fastDisposition === "failed"
-      ? "failed"
-      : result.views.length > 0 && result.views.every((view) => view.status === "duplicate-race")
-        ? "duplicate"
-        : "applied";
+    // DeliveryCore's fast disposition includes the G44 completeness/detector
+    // result. That aggregate is intentionally allowed to fail closed while
+    // the independent-unsafe views have already applied. The G65 ledger is
+    // the RING/APPLY observation, so classify it from the selected unsafe
+    // view results and retain the full-core failures as diagnostics instead
+    // of misreporting a successful unsafe apply as failed.
+    const outcome = classifyG65DirectApplyOutcome(result, config);
+    console.log("direct_doorbell_apply", {
+      status: outcome,
+      coreDisposition: result.fastDisposition,
+      failures: result.failures.map((failure) => ({
+        failureId: `${failure.phase}:${failure.viewId ?? "core"}:${failure.class}`,
+        phase: failure.phase,
+        class: failure.class,
+        viewId: failure.viewId,
+        error: failure.error,
+      })),
+      unsafeViews: result.views
+        .filter((view) => config.allowedViews.includes(view.id))
+        .map((view) => ({ id: view.id, status: view.status, durationMs: view.durationMs })),
+    });
     await markG65DirectApplyFinished(env.D1!, message, Date.now(), outcome);
   } catch (error) {
     await markG65DirectApplyFinished(env.D1!, message, Date.now(), "failed", String(error));
     throw error;
   }
+}
+
+function classifyG65DirectApplyOutcome(
+  result: Awaited<ReturnType<typeof applyMeetingRoomDoorbell>>,
+  config: ReturnType<typeof readDirectDoorbellConfig>,
+): G65DirectApplyOutcome {
+  const allowedViews = new Set(config.allowedViews);
+  const unsafeViews = result.views.filter((view) => allowedViews.has(view.id));
+  if (unsafeViews.length === 0) return "failed";
+  if (unsafeViews.every((view) => view.status === "duplicate-race")) return "duplicate";
+  return unsafeViews.every((view) => view.status === "applied" || view.status === "duplicate-race")
+    ? "applied"
+    : "failed";
 }
 
 /**

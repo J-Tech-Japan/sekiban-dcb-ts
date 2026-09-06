@@ -52,6 +52,9 @@ function wiring(source) {
   if (ring.includes("await applyG65DirectRing(")) missing.push("ring awaits the full apply");
   if (!apply.includes("readG65DirectRing(env.D1!, fallbackMessage)")) missing.push("apply reads retained ring bytes");
   if (!apply.includes("markG65DirectApplyStarted") || !apply.includes("markG65DirectApplyFinished")) missing.push("apply ledger boundaries");
+  if (!apply.includes("classifyG65DirectApplyOutcome(result, config)")) missing.push("apply classifies selected unsafe view outcomes");
+  if (apply.includes('const outcome = result.fastDisposition === "failed"')) missing.push("apply ledger trusts aggregate full-core disposition");
+  if (!apply.includes("failureId:")) missing.push("DeliveryCore failure IDs/classes are recorded");
   if (!read(ringImplementationPath).includes("G65_DIRECT_RING_BUDGET_MS = 100")) missing.push("100 ms ring budget");
   return { ok: missing.length === 0, missing };
 }
@@ -100,6 +103,14 @@ if (preChange) {
       const mutant = wiring(awaitedApplyMutant);
       if (!mutant.ok) throw new Error(`mutant detected: ${mutant.missing.join(", ")}`);
     });
+    const aggregateDispositionMutant = source.replace(
+      "const outcome = classifyG65DirectApplyOutcome(result, config);",
+      'const outcome = result.fastDisposition === "failed" ? "failed" : classifyG65DirectApplyOutcome(result, config);',
+    );
+    const aggregateDispositionRedMutant = assertRed("aggregate full-core disposition mutant", () => {
+      const mutant = wiring(aggregateDispositionMutant);
+      if (!mutant.ok) throw new Error(`mutant detected: ${mutant.missing.join(", ")}`);
+    });
     const receipt = {
       guard: "SDT-G65 RING/APPLY receiver guard",
       phase: selfTest ? "self-test" : "post-change",
@@ -107,8 +118,8 @@ if (preChange) {
       sourceRevision: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim(),
       budgetMs: 100,
       green: current,
-      redMutants: { awaitedApply: redMutant },
-      contract: "the receiver durably rings the immutable envelope before returning; apply runs only through waitUntil and Queue remains the durable replay guarantee",
+      redMutants: { awaitedApply: redMutant, aggregateDisposition: aggregateDispositionRedMutant },
+      contract: "the receiver durably rings the immutable envelope before returning; selected independent-unsafe view outcomes determine the direct apply ledger while full-core failures remain diagnostic and Queue remains the durable replay guarantee",
     };
     writeReceipt(receiptFile, receipt);
     console.log(JSON.stringify(receipt));

@@ -162,4 +162,45 @@ describe("SDT-G65 RING/APPLY direct receiver", () => {
     expect(completed?.apply_finished_at).not.toBeNull();
     expect(completed?.apply_outcome).toBe("applied");
   });
+
+  it("records unsafe APPLY success when completeness remains unresolved", async () => {
+    const input = message(crypto.randomUUID());
+    const ctx = createExecutionContext();
+    let completenessChecked = false;
+    const receiver = new MeetingRoomDownstreamDoorbell(ctx, {
+      BOOTSTRAP: bootstrapAccepting(),
+      D1: database(),
+      DIRECT_DOORBELL: "true",
+      DIRECT_DOORBELL_ALLOWED_VIEWS: "ReservationProjector",
+      DIRECT_DOORBELL_DEGRADATION: "fail-fast",
+      SDT_SERVICE_ID: input.serviceId,
+      __G29_DOORBELL_TEST__: {
+        store: fakeStore(),
+        views: [{
+          id: "ReservationProjector",
+          admission: "independent-unsafe",
+          apply: async () => "applied",
+        }],
+        beforeViews: async () => {
+          completenessChecked = true;
+          throw new Error("global_completeness_BLOCK: simulated unresolved coverage");
+        },
+      },
+    } as unknown as MeetingRoomCloudflareEnv);
+
+    const result = await receiver.deliver(input);
+    expect(result).toMatchObject({ fastDisposition: "completed", ringOutcome: "rung", applyOutcome: "scheduled" });
+    await waitOnExecutionContext(ctx);
+
+    expect(completenessChecked).toBe(true);
+    const ring = await database().prepare(`
+      SELECT apply_outcome, apply_error
+        FROM serialized_dcb_g65_direct_rings
+       WHERE service_id = ? AND event_id = ? AND attempt_id = ?
+    `).bind(input.serviceId, input.eventId, input.attemptId).first<{
+      apply_outcome: string | null;
+      apply_error: string | null;
+    }>();
+    expect(ring).toEqual({ apply_outcome: "applied", apply_error: null });
+  });
 });

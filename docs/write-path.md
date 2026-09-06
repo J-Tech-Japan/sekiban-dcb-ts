@@ -34,6 +34,17 @@ failure. The Queue continues to own durable global admission, ordering,
 retries, and DLQ recovery, and later Queue delivery is a no-op for an already
 applied identity.
 
+The G65 APPLY ledger is intentionally narrower than the shared delivery
+disposition. `processDownstreamDoorbell` runs independent-unsafe views before
+the G44 completeness gate; a later `BLOCK`/`UNSETTLED` coverage result,
+detector result, or other full-core failure remains fail-closed for the
+ordinary/safe lane and remains visible in `DeliveryCoreResult.failures`, but
+does not turn an already `applied` or `duplicate-race` unsafe view into a
+failed direct APPLY. The receiver records selected unsafe-view statuses in the
+RING/APPLY ledger and records each full-core failure with its phase, class,
+view identity, and error text. This preserves the Queue fallback and G44
+fence while making direct-writer evidence truthful.
+
 The same source envelope is also admitted through the shared
 `D1EventStore.recordDelivery(..., "fast")` path before the response when the
 normal D1 binding is available. This attempt has the same 300 ms derived-write
