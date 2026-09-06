@@ -1,19 +1,78 @@
 # SDT-G67 evidence — local repair and retained deployed receipts
 
-This document retains the local AC1–AC3 proof and the W145/W146 deployed
-receipts for issue #129. The W146 receipt is historical evidence only: its
-selected pass did not prove that the pass which was attributed to a sample
-actually applied that sample's event. The old `started_at - scheduled_at`
-selection is therefore superseded and is not an AC4 gate result. No deployed
-cohort with the corrected event-to-applying-pass join exists in this
-checkpoint, so the deployed AC4 applying-pass gate remains incomplete rather
-than inferred from W146.
+This document retains the local AC1–AC3 proof, the historical W145/W146
+receipts, and the corrected W150 deployed attribution evidence for issue #129.
+W150 joins each sampled event to the durable pass whose applied-event detail
+contains that event's exact SUID. The W146 receipt is historical evidence only:
+its selected pass did not prove that the pass attributed to a sample actually
+applied that sample's event. The old `started_at - scheduled_at` selection is
+therefore superseded and is not an AC4 gate result. W150 is the authoritative
+corrected deployed evidence, and it records the resulting misses rather than
+inferring a pass.
 
 Safe first visibility, pass latency, fence wait, ring arrival, Queue arrival,
 and strict unsafe misses remain reported as observed attribution facts from
 the retained receipts. The W146 values are preserved below so the raw evidence
 is not rewritten, but stale gate language is explicitly invalidated. No
 cohort was rerun for this local repair.
+
+## W150 corrected deployed F1 attribution — exact candidate `766f5d3`
+
+W150 deployed exact source
+`766f5d328a6615582338ce52965f5017702182eb` to W155-C and the production
+sample in one controlled window. The W155-C final candidate was version
+`3a71bc18-7c3f-4bda-abc1-be7d4aa1cee4` at 100% deployment
+`9748f8ae-53d7-4e1a-af8a-4a33a1b75b9d`; production was version
+`2d127e8b-d0ba-4fc9-9a78-4126bdef1b42` at 100% deployment
+`6f971634-7bbc-4e75-bbff-e89613358515`. Both version views contain the exact
+source annotation. W155-C was self-bound with `DIRECT_DOORBELL=true`, while
+the production sample was `DIRECT_DOORBELL=false`, receiver mode `separate`,
+and had no `DOWNSTREAM_DOORBELL` service binding. The W155-C and production
+outbox queues each had one consumer and each DLQ had zero consumers. The
+production direct-ring population is therefore zero and is not presented as a
+G67 direct-ring pass.
+
+Both targets were C-0 reset before their cohorts. Each cold-first paced cohort
+contained ten commits. The exact per-event joins, including last-arrival
+updates, fence eligibility, actual applying pass, owner, trigger, stop
+deadline/reason, observed safe head, and all view applications are retained in
+the W150 attribution files and linked by the handoff artifact
+`sdt-g67-pr132-f1-deployed-attribution-wake-150.md`.
+
+For each event, `fenceEligibleAt = lastArrivedAt + SafeWindow`. Corrected
+`schedulingWaitMs` is the observed non-negative interval from that eligibility
+time to the start of the pass that actually contains the event's applied-event
+detail; the raw signed delta is retained separately. `passLatencyMs` is the
+observed duration of that applying pass. No authored `dcb_events.Timestamp` or
+client `received_at` was used.
+
+| cohort / measure | n | p50 ms | p95 ms | disposition |
+|---|---:|---:|---:|---|
+| W155-C response | 10 | 2809 | 3626 | measured |
+| W155-C unsafe first visibility | 10 | 2850 | 3532 | 0 over 5000 ms |
+| W155-C safe first visibility | 10 | 61657 | 120646 | 0 at/over 180000 ms |
+| W155-C corrected scheduling wait | 10 | 1765 | 6600 | p95 misses 5000 ms |
+| W155-C corrected applying-pass latency | 10 | 1186 | 8761 | p95 misses 5000 ms |
+| production response | 10 | 2428 | 2789 | measured |
+| production unsafe first visibility | 10 | 57420 | 119515 | 9/10 over 5000 ms |
+| production safe first visibility | 10 | 73009 | 121185 | 10/10 under 180000 ms |
+| production corrected scheduling wait | 10 | 1395 | 12774 | p95 misses 5000 ms |
+| production corrected applying-pass latency | 10 | 1909 | 11593 | p95 misses 5000 ms |
+
+W155-C recorded ten `rung/applied` direct rows, with delivery and one
+fence-expiry applying trigger. Production recorded no direct-ring rows; its
+safe applying triggers were delivery, fence-expiry, and cron, with the durable
+Queue path present. The W155-C and production raw cohort receipts, durable
+query receipts, and corrected attribution JSON are retained under the
+`sdt-g67-w150-*` prefixes in `.artifacts/` in the implementation worktree.
+
+The corrected evidence is blocked for acceptance: W155-C corrected scheduling
+p95 was 6600 ms and applying-pass p95 was 8761 ms; production corrected
+scheduling p95 was 12774 ms, applying-pass p95 was 11593 ms, and strict unsafe
+visibility missed in 9/10 rows. Production safe visibility was 10/10 below
+180 seconds. The historical W146 `1608 ms` invocation-delay claim is
+superseded and must not be used to turn these results into a pass. No further
+repair or cohort was run in W150.
 
 ## Final amended AC4/AC5 reconciliation — W145/W146
 
