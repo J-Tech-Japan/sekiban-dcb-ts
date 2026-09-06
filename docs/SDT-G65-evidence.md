@@ -183,3 +183,138 @@ cmp -s /tmp/sdt-g65-w138-2-post-change-cohort.json .artifacts/sdt-g65-w138-2-pos
 
 The complete deployment/version/reset/C-0/cohort/ledger receipts and compact
 analysis are the corresponding `.artifacts/sdt-g65-w138-2-*` files.
+
+## W139 RING/APPLY deployed continuation — blocked
+
+This section records the one W139 evidence window. It does not replace the
+earlier W138 receipts and does not claim AC0 or AC5 completion.
+
+### Exact primary-worker identity
+
+The exact candidate source was `075ea6c955302e034ef18eeb97c1b0493f838e61`.
+The candidate deployment was version
+`b7a28e51-684d-4f9d-877e-f75e2fb92ba3`, deployment
+`e5aa831d-d331-4bd4-bfea-c025264b4b0a`, at 100%, annotated
+`SDT-G65 W139 exact 075ea6c955302e034ef18eeb97c1b0493f838e61 RING APPLY`.
+The deployed version view showed `DIRECT_DOORBELL=true` and a
+`DOWNSTREAM_DOORBELL` service binding to
+`sekiban-dcb-meeting-room-doorbell`, entrypoint
+`MeetingRoomDownstreamDoorbell`, alongside the W155-C pipeline and MV D1
+bindings. The W155-C Queue consumer was attached to
+`sekiban-dcb-g60-w155-c`, with DLQ
+`sekiban-dcb-g60-w155-c-outbox-dlq`, batch size 10, max wait 1000 ms, and
+three retries. No resource was created or deleted. The existing `0010` schema
+migration was applied once to the existing W155-C pipeline D1 before the
+candidate deploy.
+
+The conformance route initially rejected the prior path-only token. A fresh
+path-only token was installed during this window before the later instruction
+to avoid further credential mutation; its value was never printed, logged, or
+committed. The resulting secret-only version was
+`db692603-988a-4904-bfd9-baa04d2a6540`; the exact candidate version above was
+then deployed and reverified. No credential value is included in this report.
+
+### Receiver identity finding and stop rule
+
+The read-only receiver inspection proves that the bound receiver is stale for
+this candidate measurement. The latest active deployment of
+`sekiban-dcb-meeting-room-doorbell` was version
+`c82e5be1-25b6-4d46-92fa-bf94401059e3`, with the older G30/G32 annotation and
+D1 bindings `eccf6048-7fc8-4412-a157-9fa180353f6d` and
+`c733dfb2-013a-4a5d-a72c-47931a63bac4`, not the W155-C pipeline/MV pair
+`ac751211-fde8-4587-9d56-1e9fd8051bc3` /
+`2b60dbcf-0912-4bb2-93aa-77c26cd260e1`.
+
+The repository has an old-G32 receiver config
+`samples/meeting-room/wrangler.g32-final-receiver.jsonc` and separate
+production receiver configs
+`wrangler.meeting-room-doorbell-production.jsonc`,
+`wrangler.meeting-room-doorbell.jsonc`, and
+`wrangler.cloudflare-only-doorbell.jsonc`. They point to different historical
+resource pairs. There is no existing W155-C-specific receiver config that
+unambiguously identifies the intended receiver resources and bindings.
+Consequently the authorized receiver redeploy cannot be resolved without
+guessing. It was not attempted, and no new resource or alternate binding was
+used. This is the precise blocker for treating the post cohort as a valid
+RING/APPLY candidate cohort.
+
+### Cohorts
+
+The first pre-change attempt is preserved as a failed partial receipt: five
+reservations completed and sample 6 returned HTTP 504 `unknown_outcome`; it is
+not counted as a cohort. After the path-only conformance correction, one fresh,
+non-stitched replacement pre-change cohort completed on the old source
+version `db692603-988a-4904-bfd9-baa04d2a6540` (the secret-only version of
+source `5edfd6413b1ff446e6f7475eef18c947b0ca93fe`).
+
+| Cohort | n | response p50/p95 | unsafe p50/p95 | unsafe >5000 ms | safe p50/p95 | safe >180 s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| replacement pre-change | 10 | 3154 / 3602 ms | 4547 / 19307 ms | 1/10 | 110375 / 175945 ms | 0/10 |
+| exact candidate post | 10 | 2786 / 3633 ms | 4521 / 124148 ms | 3/10 | 152367 / 218138 ms | 4/10 |
+
+The post cohort was cold-first and paced, and all ten commits returned
+successfully with no 504. All global-admission headers were `unknown`. The
+complete per-sample post table is:
+
+| # | response ms | unsafe ms | safe ms | safe result |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 2871 | 124148 | 218138 | over 180 s |
+| 2 | 3241 | 111145 | 204895 | over 180 s |
+| 3 | 2399 | 4485 | 192495 | over 180 s |
+| 4 | 2326 | 4446 | 180034 | over 180 s |
+| 5 | 3585 | 72438 | 165770 | within |
+| 6 | 3400 | 4521 | 152367 | within |
+| 7 | 3633 | 4577 | 138732 | within |
+| 8 | 2469 | 4462 | 125627 | within |
+| 9 | 2786 | 4486 | 112522 | within |
+| 10 | 2656 | 4666 | 99761 | within |
+
+Both deployed projectors eventually reached the post cohort final SUID, and
+all ten cohort tag-state reads returned committed version 1, but the safe
+180-second bound was missed for samples 1–4. The post cohort is therefore a
+failed AC0/AC5 receipt, not a pass.
+
+### Durable RING/APPLY result
+
+The raw post query contains counts `admission_attempts=20`,
+`hop_measurements=122`, `hop_submeasurements=218`, and
+`unsafe_writer_boundaries=44`, but **zero** rows in
+`serialized_dcb_g65_direct_rings`. Every post unsafe-writer row was
+`transport=queue`, `writer_path=inline-delivery`; there was no observed direct
+RING or direct APPLY. The Queue consumer therefore remains the only observed
+writer path in this receipt. Its later idempotent no-change rows do not prove
+the candidate's direct receiver idempotence.
+
+The admission rows were all `outcome=unknown`, each 300 ms, with no observed
+global completion timestamp. The post boundary counts were: completeness
+21 start/end pairs, global receipt readback 21, source acknowledgement 21,
+detector 4, and unsafe-view apply 21 starts with 11 `applied` and 10
+`duplicate-race` ends. These are durable Queue-path observations, not
+RING/APPLY observations.
+
+The response p95 change was `3633 - 3602 = +31 ms`, and the p50 change was
+`2786 - 3154 = -368 ms`; those response comparisons alone satisfy the
+same-window response deltas. AC0 nevertheless fails because the real direct
+ring was never observed, unsafe visibility exceeded 5000 ms in 3/10, and the
+post unsafe p50 was 4521 ms rather than the 189 ms target. AC5 fails because
+4/10 safe samples exceeded 180 seconds. No configured-store outage was
+attempted; the local typed-refusal proof remains the only AC1 evidence.
+
+### Raw receipts and boundaries
+
+The ignored raw receipts remain lossless and are not staged:
+
+| Receipt | SHA-256 |
+| --- | --- |
+| `.artifacts/sdt-g65-w139-pre-change-replacement.json` | `ddc0a8103fad9ceca4646894c4241abaa6fe009eb72648dd03f9d77eb291d39e` |
+| `.artifacts/sdt-g65-w139-post-change-cohort.json` | `af2ee13069a17e695bdff5eae8a729985ddb2643fa41a13d942f0b1a8d30c15c` |
+| `.artifacts/sdt-g65-w139-post-ledgers.raw` | `a232ba05aec6e2ca7b4a2f26b084a43edd4bd7c7125fc8fd3ae5e446f6ff3b35` |
+| `.artifacts/sdt-g65-w139-receiver-deployments.raw` | `0221e8669f9a349fe91c328c77f2b2c36b3860a2427fb40543fb0aafeb3df3b6` |
+| `.artifacts/sdt-g65-w139-receiver-version-view.raw` | `07e7baf3884ae70df0933e65828e125c306b407bc2b4202bcf1684a8b252d907` |
+
+The failed initial partial receipt, deployment/version/Queue identity
+receipts, migration receipt, conformance receipts, and post summary are also
+retained under `.artifacts/sdt-g65-w139-*`. The W155-C primary configuration
+was left on the exact candidate source; the stale shared receiver was left
+untouched. No source, fixture, workflow, gate, PR, or review state was changed
+in this evidence-only continuation.
