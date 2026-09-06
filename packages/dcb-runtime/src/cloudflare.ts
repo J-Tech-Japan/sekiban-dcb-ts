@@ -186,6 +186,17 @@ export interface CloudflareOnlyWorkerOptions {
     readonly source?: "queue" | "fast" | "import";
     readonly result?: DeliveryCoreResult;
   }) => Promise<void>;
+  /**
+   * Runs after a Queue message has durably recorded its event, including when
+   * G44 keeps ordinary views fail-closed. The callback must only register
+   * non-blocking work with the active ExecutionContext and return.
+   */
+  readonly afterStoredQueueDelivery?: (input: {
+    readonly message: DownstreamOutboxMessage;
+    readonly result: DeliveryCoreResult;
+    readonly env: CloudflareOnlyEnv;
+    readonly ctx: ExecutionContext;
+  }) => Promise<void> | void;
 }
 
 /**
@@ -436,6 +447,9 @@ export function createCloudflareOnlyRuntimeWorker(
         afterDelivery: options.afterStoredDownstreamDelivery === undefined
           ? undefined
           : ({ message, event, arrivedAt, source, result }) => options.afterStoredDownstreamDelivery!({ message, event, arrivedAt, env, ctx, source, result }),
+        afterStoredQueueDelivery: options.afterStoredQueueDelivery === undefined
+          ? undefined
+          : ({ message, result }) => options.afterStoredQueueDelivery!({ message, result, env, ctx }),
       });
     },
 

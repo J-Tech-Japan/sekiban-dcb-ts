@@ -33,7 +33,21 @@ export interface DownstreamAdapterEnv {
   SDT_SERVICE_ID?: string;
 }
 
-export type AdapterOptions = DeliveryCoreOptions;
+export interface AfterStoredQueueDeliveryInput {
+  readonly message: DownstreamOutboxMessage;
+  readonly result: DeliveryCoreResult;
+}
+
+/**
+ * Queue-only hooks run after the shared core has durably recorded the event.
+ * They are deliberately separate from DeliveryCore.afterDelivery: that hook
+ * is a post-view hook and is not reached when the G44 gate is BLOCK/UNSETTLED.
+ */
+export interface DownstreamAdapterOptions extends DeliveryCoreOptions {
+  readonly afterStoredQueueDelivery?: (input: AfterStoredQueueDeliveryInput) => Promise<void> | void;
+}
+
+export type AdapterOptions = DownstreamAdapterOptions;
 
 function observeSourceSubstep(
   observer: G60DurableHopObserver | undefined,
@@ -311,6 +325,25 @@ export async function handleDownstreamQueue(
         if (outcome.queueDisposition === "ack") queued.ack();
         else if (outcome.queueDisposition === "retry-once") queued.retry();
         else queued.retry();
+        // A committed event still needs an event-driven safe-lane kick when
+        // G44 deliberately holds the ordinary views. The hook is invoked
+        // after the Queue disposition is selected and is observation-only:
+        // its caller must schedule work through waitUntil and return.
+        if (outcome.outcome === "stored" && !outcome.failures.some((failure) => failure.phase === "recordDelivery")) {
+          try {
+            await options.afterStoredQueueDelivery?.({ message: queued.body, result: outcome });
+          } catch (error) {
+            // A lost kick is recoverable by cron and must never change the
+            // durable Queue ack/retry decision already made above.
+            console.warn("safe_lane_kick", {
+              status: "failed-to-schedule",
+              error: error instanceof Error ? error.message : String(error),
+              serviceId: queued.body.serviceId,
+              eventId: queued.body.eventId,
+              attemptId: queued.body.attemptId,
+            });
+          }
+        }
       } catch {
         console.warn("downstream_queue_delivery", { disposition: "retry-to-dlq" });
         queued.retry();

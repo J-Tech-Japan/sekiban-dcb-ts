@@ -38,11 +38,97 @@ import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 import { runtimeRequestWithIngressRay } from "./ingress-observation";
+import { createSafeLaneKickScheduler } from "./safe-lane-kick";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
+
+const safeLaneKickSchedulers = new Map<string, () => Promise<void>>();
+
+/**
+ * Run the same G44 coverage -> safe MV catch-up body used by cron. A kick
+ * performs a fresh reconciliation first; cron supplies the scan it already
+ * completed so it does not introduce a second scanner pass in that tick.
+ */
+export async function runMeetingRoomSafeLanePass(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+  trigger: "kick" | "cron",
+  existingCoverage?: GlobalCompletenessCoverage,
+): Promise<void> {
+  if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
+  const startedAt = Date.now();
+  try {
+    const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
+    const coverage = existingCoverage ?? await (async () => {
+      await reconciler.reconcile(serviceId, Date.now());
+      return reconciler.coverage(serviceId, Date.now());
+    })();
+    await runMeetingRoomScheduledMaintenance({
+      freshCoverage: async () => coverage,
+      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+      runGenericScheduledWork: async () => {},
+      ...(trigger === "cron"
+        ? { recordCoverage: (safeLaneCoverage: MeetingRoomSafeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage) }
+        : {}),
+    });
+    console.log("safe_lane_pass", {
+      trigger,
+      status: "completed",
+      serviceId,
+      coverage: coverage.kind,
+      reason: coverage.reason,
+      frontierSuid: coverage.frontierSuid,
+      durationMs: Math.max(0, Date.now() - startedAt),
+    });
+  } catch (error) {
+    console.warn("safe_lane_pass", {
+      trigger,
+      status: "failed",
+      serviceId,
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Math.max(0, Date.now() - startedAt),
+    });
+    throw error;
+  }
+}
+
+/**
+ * Queue recordDelivery has committed before this function is reached. The
+ * only synchronous work here is registering the promise with waitUntil; the
+ * Queue handler's acknowledgement/retry decision is never held by coverage
+ * or materialized-view D1 work. The cron remains the recovery backstop.
+ */
+export function scheduleMeetingRoomSafeLaneKick(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+  ctx: ExecutionContext,
+  pass: (env: MeetingRoomCloudflareEnv, serviceId: string) => Promise<void> = (passEnv, passServiceId) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "kick"),
+): void {
+  let scheduler = safeLaneKickSchedulers.get(serviceId);
+  if (scheduler === undefined) {
+    scheduler = createSafeLaneKickScheduler(
+      () => pass(env, serviceId),
+      () => {
+        if (safeLaneKickSchedulers.get(serviceId) === scheduler) safeLaneKickSchedulers.delete(serviceId);
+      },
+    );
+    safeLaneKickSchedulers.set(serviceId, scheduler);
+  }
+  const scheduled = scheduler();
+  ctx.waitUntil(scheduled.catch((error) => {
+    // Cron will retry a lost kick. Keep the failure visible without changing
+    // the already-completed Queue disposition.
+    console.warn("safe_lane_kick", {
+      status: "failed",
+      serviceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }));
+}
 
 
 const runtime = createCloudflareOnlyRuntimeWorker({
@@ -66,16 +152,15 @@ const runtime = createCloudflareOnlyRuntimeWorker({
       return { frontierSuid: undefined };
     }
     const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
-    await runMeetingRoomScheduledMaintenance({
-      freshCoverage: async () => coverage,
-      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
-      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
-      // The runtime invokes pollLiveProjections immediately after this hook;
-      // no second generic scanner or poll is started by the safe-lane pass.
-      runGenericScheduledWork: async () => {},
-      recordCoverage: async (safeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage),
-    });
+    await runMeetingRoomSafeLanePass(env, serviceId, "cron", coverage);
     return { frontierSuid: coverage.frontierSuid };
+  },
+  afterStoredQueueDelivery: ({ message, env, ctx }) => {
+    // Receiver-only G25 fixtures intentionally omit the source authority;
+    // they keep their existing transport-only behavior and cron is not
+    // meaningful there.
+    if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
+    scheduleMeetingRoomSafeLaneKick(env as MeetingRoomCloudflareEnv, message.serviceId, ctx);
   },
   liveProjectionPollObserver: {
     onAttempt: ({ env, serviceId, projectorIds, attemptedAt }) =>

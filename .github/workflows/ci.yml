@@ -753,6 +753,14 @@ jobs:
             echo "SDT-G62 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G67 event-driven safe-lane kick lane
+        run: npm run test:g67
+      - name: Prove SDT-G67 forced-red reachability
+        run: |
+          if SDT_G67_FORCE_FAILURE=1 npm run test:g67:forced-red; then
+            echo "SDT-G67 forced-red probe unexpectedly passed"
+            exit 1
+          fi
       - name: Run SDT-G61 retained-frontier projector regression lane
         run: npm run test:g61
       - name: Prove SDT-G61 forced-red CI reachability
