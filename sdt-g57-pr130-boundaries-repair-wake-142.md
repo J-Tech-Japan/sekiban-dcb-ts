@@ -75,4 +75,15 @@ The package fix itself has no failing focused test. Existing generated evidence/
 
 ## Checkpoint
 
+## Canonical worker transition
+
+`intent-cli worker result-summary --kind pr-comment-fix --pr 130 --repo J-Tech-Japan/sekiban-dcb-ts --outcome repair-pushed --format json` recognized the repair commit. The canonical claim and completion attempts were intentionally made through intent-cli and both refused without mutation because the PR currently has only `intent-target` and does not carry `intent-pr-request-update` / `intent-pr-update-in-progress`:
+
+```text
+claim.missing.intent-pr-request-update: PR does not carry 'intent-pr-request-update'.
+complete.stale.not-claimed: PR does not carry 'intent-pr-update-in-progress'.
+```
+
+No manual label operation was used. The source repair is pushed at the checkpoint reported by the canonical handoff; only the host/PR label-state reconciliation remains blocked.
+
 Only `packages/dcb-client/package.json`, its workspace entry in `package-lock.json`, and this evidence artifact are in scope for the pushed repair checkpoint. The exact post-push commit SHA is reported by the canonical completion message; verify it with `git rev-parse HEAD` on `claude/sdt-g57-deploy-free-w126`. PR review/merge state is unchanged.
