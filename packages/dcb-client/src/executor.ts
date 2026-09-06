@@ -236,6 +236,15 @@ function cloudResult<T>(value: T | CommitHttpResult): T | CommitHttpResult {
   if (isHttpResult(value) && (value.status === 401 || value.status === 403)) {
     throw new ClientError("credential.rejected", "SekibanCloud credential was rejected", { status: value.status });
   }
+  if (isHttpResult(value) && (value.status < 200 || value.status >= 300)) {
+    const body = value.body;
+    const candidateCode = isRecord(body) && typeof body.code === "string" ? body.code : undefined;
+    const code = candidateCode !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(candidateCode) ? candidateCode : "transport";
+    return {
+      ...value,
+      body: { code, error: "SekibanCloud request failed" },
+    };
+  }
   return value;
 }
 
@@ -311,19 +320,19 @@ function snapshotReaderFrom(
   const fallbackExists = async (tag: Tag): Promise<boolean> => {
     const found = byTag.get(tag.id);
     if (found !== undefined) return found.exists;
-    if (readMode === "snapshot-only") return missing(undefined, tag);
     if (reader !== undefined && reader.exists !== undefined) {
       return reader.exists(tag);
     }
+    if (readMode === "snapshot-only") return missing(undefined, tag);
     return (await executor.exists(tag)).exists;
   };
   const fallbackHead = async (tag: Tag): Promise<string | null> => {
     const found = byTag.get(tag.id);
     if (found !== undefined) return found.head;
-    if (readMode === "snapshot-only") return missing(undefined, tag);
     if (reader !== undefined && reader.head !== undefined) {
       return reader.head(tag);
     }
+    if (readMode === "snapshot-only") return missing(undefined, tag);
     return (await executor.exists(tag)).head;
   };
   return { read: fallbackRead, exists: fallbackExists, head: fallbackHead };
@@ -369,24 +378,55 @@ function responseHead(value: unknown, events: readonly WrittenEvent[]): string {
   return suids.sort().at(-1) ?? "";
 }
 
+function writtenEventHeads(
+  value: unknown,
+  candidateEvents: readonly CandidateEnvelope["events"][number][],
+): ReadonlyMap<string, string> {
+  const heads = new Map<string, string>();
+  for (const [index, written] of writtenEvents(value).entries()) {
+    const suid = [written.sortableUniqueIdValue, written.suid, written.lastSortableUniqueId]
+      .find((candidate): candidate is string => typeof candidate === "string");
+    if (suid === undefined) continue;
+    const writtenTags = Array.isArray(written.tags)
+      ? written.tags.filter((tag): tag is string => typeof tag === "string")
+      : [];
+    const candidateTags = candidateEvents[index]?.tags.map((tag) => tag.id) ?? [];
+    for (const tag of writtenTags.length > 0 ? writtenTags : candidateTags) {
+      const previous = heads.get(tag);
+      if (previous === undefined || suid > previous) heads.set(tag, suid);
+    }
+  }
+  return heads;
+}
+
 function responseHeads(
   value: unknown,
   claims: readonly { readonly tag: Tag; readonly head: string | null }[],
   fallbackHead: string,
   updatedTags: ReadonlySet<string>,
+  candidateEvents: readonly CandidateEnvelope["events"][number][],
 ): readonly { readonly tag: Tag; readonly head: string }[] {
   const responseBody = bodyOf(value);
   const raw = isRecord(responseBody) ? responseBody.heads : undefined;
+  const rawHeads = new Map<string, string>();
   if (Array.isArray(raw)) {
-    return raw.flatMap((item) => {
-      if (!isRecord(item) || typeof item.tag !== "string" || typeof item.head !== "string") return [];
-      return [{ tag: normalizeTag(item.tag), head: item.head }];
-    });
+    for (const item of raw) {
+      if (!isRecord(item) || typeof item.tag !== "string" || typeof item.head !== "string") continue;
+      rawHeads.set(normalizeTag(item.tag).id, item.head);
+    }
   }
-  return claims.map((claim) => ({
-    tag: claim.tag,
-    head: updatedTags.has(claim.tag.id) ? fallbackHead : claim.head ?? "",
-  }));
+  const writtenHeads = writtenEventHeads(value, candidateEvents);
+  if (claims.length === 0 && rawHeads.size > 0) {
+    return [...rawHeads].map(([tag, head]) => ({ tag: normalizeTag(tag), head }));
+  }
+  return claims.map((claim) => {
+    const writtenHead = writtenHeads.get(claim.tag.id);
+    const rawHead = rawHeads.get(claim.tag.id);
+    return {
+      tag: claim.tag,
+      head: updatedTags.has(claim.tag.id) ? writtenHead ?? rawHead ?? fallbackHead : claim.head ?? "",
+    };
+  });
 }
 
 function conflictDetails(value: unknown): ExecutorConflict["conflicts"] {
@@ -531,7 +571,7 @@ export function createSekibanExecutor(
           writtenEvents: events,
           tagWriteResults: tagWriteResults(lastResponse),
           head,
-          heads: responseHeads(lastResponse, result.envelope?.readClaims.map((claim) => ({ tag: claim.tag, head: claim.head })) ?? [], head, updatedTags),
+          heads: responseHeads(lastResponse, result.envelope?.readClaims.map((claim) => ({ tag: claim.tag, head: claim.head })) ?? [], head, updatedTags, result.envelope?.events ?? []),
         };
       }
       if (result.status === "discarded") {

@@ -15,9 +15,12 @@ import {
   command,
   done,
   event,
+  read,
   readExists,
+  readSet,
   tagFamily,
   type PortableSnapshot,
+  type SnapshotReader,
   type Tag,
 } from "@sekiban/dcb-domain";
 import {
@@ -213,6 +216,48 @@ describe("SDT-G57 executor facade deploy-free contract", () => {
     expect(second.kind).toBe("committed");
     expect(chainCounts.reads).toBe(1);
     expect(chainCounts.commits).toBe(2);
+
+    const firstTag = roomTag("head-a");
+    const secondTag = roomTag("head-b");
+    const twoTagEvent = event("G57TwoTag", z.object({ roomId: z.string(), value: z.string() }), {
+      tags: (input) => [roomTag(input.roomId)],
+    });
+    const twoTagCommand = command({
+      id: "g57-two-tag",
+      input: z.object({ value: z.string() }),
+      reads: () => readSet(read(roomProjector, firstTag), read(roomProjector, secondTag)),
+      handle: async (input, context) => {
+        await context.state(roomProjector, firstTag);
+        await context.state(roomProjector, secondTag);
+        context.append(twoTagEvent, twoTagEvent.make({ roomId: firstTag.value, value: input.value }));
+        context.append(twoTagEvent, twoTagEvent.make({ roomId: secondTag.value, value: input.value }));
+        return done({ value: input.value });
+      },
+    });
+    const twoTagExecutor = createSekibanExecutor(fixtureTransport({
+      readTagState: async ({ tagStateId }) => {
+        const [group, value] = tagStateId.split(":");
+        return emptyState(roomProjector, { group: group ?? "room", value: value ?? "unknown" });
+      },
+      commit: async () => ({
+        status: 200,
+        body: {
+          head: "0002",
+          heads: [
+            { tag: firstTag.id, head: "0002" },
+            { tag: secondTag.id, head: "0002" },
+          ],
+          writtenEvents: [
+            { sortableUniqueIdValue: "0001" },
+            { sortableUniqueIdValue: "0002" },
+          ],
+        },
+      }),
+    }));
+    const twoTagResult = await twoTagExecutor.execute(twoTagCommand, { value: "per-tag" });
+    expect(twoTagResult).toMatchObject({ kind: "committed" });
+    expect((twoTagResult as Extract<typeof twoTagResult, { kind: "committed" }>).heads.map((entry) => [entry.tag.id, entry.head]))
+      .toEqual([[firstTag.id, "0001"], [secondTag.id, "0002"]]);
   });
 
   it("AC3: maps state, assert-empty, and unclaimed tags without inventing claims", async () => {
@@ -275,6 +320,37 @@ describe("SDT-G57 executor facade deploy-free contract", () => {
     await executor.execute(unclaimedCommand, { value: "unclaimed" });
     expect(capturedEnvelope().candidates[0]?.tags).toEqual(["g57:unclaimed"]);
     expect(capturedEnvelope().consistency).toEqual([]);
+
+    const readerCounts = { exists: 0, head: 0, transportExists: 0 };
+    let readerCaptured: CommitEnvelope | undefined;
+    const readerExecutor = createSekibanExecutor(fixtureTransport({
+      readTagLatestSortable: async () => {
+        readerCounts.transportExists += 1;
+        throw new Error("snapshot-only existence bypassed supplied reader");
+      },
+      commit: async (envelope) => {
+        readerCaptured = envelope;
+        return { status: 200, body: { writtenEvents: [] } };
+      },
+    }));
+    const suppliedReader: SnapshotReader = {
+      read: async (projector, target) => snapshot(projector, target, typeof projector.initialState === "function" ? projector.initialState() : projector.initialState, null, false),
+      exists: () => {
+        readerCounts.exists += 1;
+        return true;
+      },
+      head: () => {
+        readerCounts.head += 1;
+        return "suid-snapshot-reader";
+      },
+    };
+    const suppliedReaderResult = await readerExecutor.execute(existsCommand, { value: "reader" }, {
+      snapshots: suppliedReader,
+      readMode: "snapshot-only",
+    });
+    expect(suppliedReaderResult).toMatchObject({ kind: "committed" });
+    expect(readerCaptured?.consistency).toEqual([{ tag: "g57:empty", lastSortableUniqueId: "suid-snapshot-reader" }]);
+    expect(readerCounts).toEqual({ exists: 2, head: 2, transportExists: 0 });
   });
 
   it("AC2: exposes typed conflict details without retrying when retries are disabled", async () => {
@@ -310,6 +386,22 @@ describe("SDT-G57 executor facade deploy-free contract", () => {
     await expect(cloud.query({ queryType: "q", queryParamsJson: "{}" })).rejects.toMatchObject({ code: "credential.rejected", status: 403 });
     await expect(cloud.query({ queryType: "q", queryParamsJson: "{}" })).rejects.not.toThrow(secret);
     expect(calls).toBe(2);
+
+    const cloudFailure = createSekibanCloudTransport({
+      BaseUrl: "https://cloud.test",
+      ServiceId: "service-a",
+      CredentialId: "credential-a",
+      CredentialSecret: secret,
+      fetch: async () => response(500, { code: "upstream_failure", error: secret, detail: secret }),
+    });
+    const rawFailure = await cloudFailure.commit({ candidates: [], consistency: [] });
+    expect(rawFailure).toMatchObject({ status: 500, body: { code: "upstream_failure", error: "SekibanCloud request failed" } });
+    expect(JSON.stringify(rawFailure)).not.toContain(secret);
+    const failureResult = await createSekibanExecutor(cloudFailure).execute(createRoomCommand, { roomId: "room-1", name: "Room" }, {
+      snapshots: [snapshot(roomProjector, roomTag("room-1"), { status: "empty", version: 0, roomId: null, name: "" }, null, false)],
+      readMode: "snapshot-only",
+    });
+    expect(JSON.stringify(failureResult)).not.toContain(secret);
 
     const mismatch = createSekibanExecutor(fixtureTransport({ serviceId: "service-a" }), { serviceId: "service-b" });
     const result = await mismatch.execute(createRoomCommand, { roomId: "room-1", name: "Room" });
