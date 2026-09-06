@@ -1,0 +1,42 @@
+[
+  {
+    "results": [
+      {
+        "table_name": "dcb_events",
+        "row_count": 0
+      },
+      {
+        "table_name": "serialized_dcb_source_partitions",
+        "row_count": 0
+      },
+      {
+        "table_name": "serialized_dcb_safe_lane_history",
+        "row_count": 1
+      },
+      {
+        "table_name": "serialized_dcb_hop_measurements",
+        "row_count": 0
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.8139
+      },
+      "duration": 0.8139,
+      "changes": 0,
+      "last_row_id": 1,
+      "changed_db": false,
+      "size_after": 425984,
+      "rows_read": 4,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
+
+exitCode=0

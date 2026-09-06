@@ -158,3 +158,70 @@ The immediate post-reset D1 read once returned code 7403 with all five
 credential variables stripped; the authorized read retry after approximately
 5 seconds succeeded. Both receipts are retained. No write authorization
 failure occurred and no resource or migration operation was attempted.
+
+## W142 deployed resume on the landed G65 bounded path
+
+W142 integrated current `origin/main` at `4b1d6eb37f9e701850b2b01e9fea9095d783c77f`
+and deployed exact source
+`23a0e5c06ab4b75c94461ddea28f2da4e254df04` to the existing W155-C arm. The
+deployment created version `b040a282-54d5-41d6-8a84-c0b75c10aa75`, with 100%
+traffic and annotation `SDT-G57 W142 exact
+23a0e5c06ab4b75c94461ddea28f2da4e254df04`. The deployed version view proved
+`DIRECT_DOORBELL=true`, self receiver mode and proof, the W155-C
+`DOWNSTREAM_DOORBELL` service binding to `MeetingRoomDownstreamDoorbell`, the
+W155-C Queue producer/consumer and DLQ, and the existing W155-C pipeline/MV D1
+IDs. No resource or migration operation occurred.
+
+The exact deployment/configuration receipts are:
+
+- `.artifacts/sdt-g57-w142-deploy-exact-23a0e5c.json.gz` (lossless raw output;
+  verify with `gzip -dc .artifacts/sdt-g57-w142-deploy-exact-23a0e5c.json.gz`)
+- `.artifacts/sdt-g57-w142-versions-list.json`
+- `.artifacts/sdt-g57-w142-version-view-b040.json`
+- `.artifacts/sdt-g57-w142-deployments-list.txt`
+
+The five Wrangler credential names were checked as unset and stripped from
+every Wrangler invocation; no `--keep-vars` was used. The G50 credential was
+passed only through `G50_OBSERVABILITY_TOKEN_FILE`. The first local harness
+launch used a nonexistent `./node_modules/.bin/node` path and exited 127 before
+any request; it is preserved in
+`.artifacts/sdt-g57-w142-g50-launch-path-error.json`. The corrected `node`
+launch is the only cohort run.
+
+Under C-0/C-13, W155-C operational rows were reset using the existing schema;
+the reset receipts are the lossless compressed raw outputs
+`.artifacts/sdt-g57-w142-reset-pipeline.json.gz` and
+`.artifacts/sdt-g57-w142-reset-mv.json.gz`; verify them with
+`gzip -dc <artifact>`. Corrected post-reset counts showed
+zero `dcb_events`, source partitions, hop measurements, `mv_rows`, unsafe
+receipts, unsafe rows, and unsafe kicks. A single safe-lane history row appeared
+from the scheduled service during the reset/count interval and remains
+recorded. The initial too-broad count query returned local SQLite code 7500 and
+was corrected once with a narrower read-only query; both receipts are retained.
+
+The fresh public comparison receipt is
+`.artifacts/sdt-g57-w142-g50-executor-comparison.json`. It used cold-first
+`POST /api/commands/create-room` samples, n=10 per mode, and ten-second
+response-to-next-start pacing within each mode. All 20 samples were committed
+with HTTP 200; no 504 or censored row occurred.
+
+| mode | n | p50 | p95 | tag-state reads/commit | reads saved/commit |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| read-through | 10 | 2819ms | 3073ms | 1 | 0 |
+| snapshot-only | 10 | 2213ms | 2586ms | 0 | 1 |
+
+Read-through samples were `3073, 2985, 2936, 2907, 2761, 2654, 2567,
+2660, 2819, 2881`ms; snapshot-only samples were `2119, 2541, 2115, 2213,
+2409, 2227, 2244, 2586, 2210, 1954`ms. The snapshot-only mode saved one
+tag-state read per commit, with a 606ms p50 and 487ms p95 client-latency
+difference. The optional observability query was unavailable, but the public
+raw receipt and executor mode accounting are complete. W142 had no 504, so no
+new G58 tick-history attribution was needed; the prior W126/W127 partial 504
+receipts and their tick classification remain unchanged above.
+
+The durable W142 handoff artifact is
+[`sdt-g57-deployed-resume-wake-142.md`](../sdt-g57-deployed-resume-wake-142.md).
+G15/G16, G49, G52–G55, G57, G58, G65, typecheck, lint and diff-check passed on
+the integrated checkpoint, with expected red mutant receipts preserved. AC6 is
+therefore evidenced by the fresh deployed comparison; PR creation and the
+canonical worker transition are the remaining handoff actions for this task.
