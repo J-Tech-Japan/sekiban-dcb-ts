@@ -6,6 +6,10 @@ Branch: `claude/sdt-g65-local-wake-w128`
 
 Base/source inspected: `df77a01b2fe95186bbf2baeba2d0408167992b53`
 
+Exact pushed repair source head: `0a3dad3941b846333bf46d4f42393d4e4e7de627`.
+This receipt is an evidence-only follow-up pinned to that source head; it does
+not change the repair code or any acceptance boundary.
+
 This is a deploy-free local checkpoint. No Wrangler, Cloudflare, deployment,
 resource, secret, PR, review, merge, or claim operation was performed.
 
