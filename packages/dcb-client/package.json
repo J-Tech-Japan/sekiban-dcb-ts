@@ -16,6 +16,9 @@
   "dependencies": {
     "@sekiban/dcb-core": "file:../dcb-core"
   },
+  "devDependencies": {
+    "@sekiban/dcb-domain": "file:../dcb-domain"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"

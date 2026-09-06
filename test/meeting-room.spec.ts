@@ -182,4 +182,16 @@ describe("SDT-G14 meeting-room consumer", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ kind: "rejected", code: "room_exists" });
   });
+
+  it("preserves the public invalid-command response for malformed executor input", async () => {
+    const worker = createMeetingRoomWorker();
+    const fetch = worker.fetch as unknown as (request: Request, env: MeetingRoomEnv, ctx: ExecutionContext) => Promise<Response>;
+    const response = await fetch(new Request("https://sample.test/api/commands/create-room", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "invalid" }),
+    }), { RUNTIME: { fetch: async () => { throw new Error("runtime must not be called"); } } } as unknown as MeetingRoomEnv, {} as ExecutionContext);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ kind: "invalid", code: "invalid_command_input" });
+  });
 });

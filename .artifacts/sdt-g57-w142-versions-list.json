@@ -1,0 +1,152 @@
+[
+  {
+    "id": "b7a28e51-684d-4f9d-877e-f75e2fb92ba3",
+    "number": 36,
+    "metadata": {
+      "created_on": "2026-09-05T23:58:28.461329Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W139 exact 075ea6c955302e034ef18eeb97c1b0493f838e61 RING APPLY",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "af0ec0af-88ca-4c1e-b345-9f4f34154cde",
+    "number": 37,
+    "metadata": {
+      "created_on": "2026-09-06T01:44:11.064414Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "29c9fc6e-e6b8-406e-8ddf-b1fbb2b9c521",
+    "number": 38,
+    "metadata": {
+      "created_on": "2026-09-06T01:48:29.152769Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/triggered_by": "secret"
+    }
+  },
+  {
+    "id": "9f1acea2-cc0c-4cac-9638-cb5c36f8d3e7",
+    "number": 39,
+    "metadata": {
+      "created_on": "2026-09-06T01:49:09.825975Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after token rotation",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "3e2861d8-35d7-4721-933e-a4cec9389ca0",
+    "number": 40,
+    "metadata": {
+      "created_on": "2026-09-06T01:58:04.995769Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W141 candidate df77a01b2fe95186bbf2baeba2d0408167992b53 W155-C self mode",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "7948e3fa-f997-455e-8ffe-9f770a5c44c1",
+    "number": 41,
+    "metadata": {
+      "created_on": "2026-09-06T03:32:40.120989Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "13fa6021-fc2c-4433-8da0-37ab20ade656",
+    "number": 42,
+    "metadata": {
+      "created_on": "2026-09-06T03:35:04.00236Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/triggered_by": "secret"
+    }
+  },
+  {
+    "id": "fb05d31e-d027-4d10-b179-383d1c242624",
+    "number": 43,
+    "metadata": {
+      "created_on": "2026-09-06T03:35:37.471258Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after conformance secret",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "fdf35a19-4b85-4a97-baa6-2ee019daef4f",
+    "number": 44,
+    "metadata": {
+      "created_on": "2026-09-06T03:45:37.778924Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G65 W141 candidate 5b59e372f70b0682315f2344e5baae30fdde94b8 W155-C self mode",
+      "workers/triggered_by": "version_upload"
+    }
+  },
+  {
+    "id": "b040a282-54d5-41d6-8a84-c0b75c10aa75",
+    "number": 45,
+    "metadata": {
+      "created_on": "2026-09-06T05:22:16.746294Z",
+      "source": "wrangler",
+      "author_id": "63b0568d4591a207cb1df473d0abd97c",
+      "author_email": "ttakaoka@jtechs.com",
+      "has_preview": false
+    },
+    "annotations": {
+      "workers/message": "SDT-G57 W142 exact 23a0e5c06ab4b75c94461ddea28f2da4e254df04",
+      "workers/triggered_by": "version_upload"
+    }
+  }
+]
+
+exitCode=0

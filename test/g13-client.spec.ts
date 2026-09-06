@@ -29,6 +29,8 @@ const transportFor = (
 ): SerializedDcbTransport => ({
   readTagState: async ({ tagStateId }) => read(tagStateId),
   commit: async (envelope) => commit(envelope),
+  query: async () => ({ status: 200, body: { resultJson: "{}" } }),
+  listQuery: async () => ({ status: 200, body: { itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 } }),
 });
 
 describe("SDT-G13 claim-ledger client", () => {

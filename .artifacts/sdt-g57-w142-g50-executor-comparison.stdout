@@ -1,0 +1,24 @@
+{
+  "output": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g57-w126/.artifacts/sdt-g57-w142-g50-executor-comparison.json",
+  "deployed": {
+    "baseUrl": "https://sekiban-dcb-g60-w155-c.ttakaoka.workers.dev",
+    "serviceId": "sekiban-dcb-g60-w155-c",
+    "versionId": "b040a282-54d5-41d6-8a84-c0b75c10aa75",
+    "sourceCommit": "23a0e5c06ab4b75c94461ddea28f2da4e254df04"
+  },
+  "comparison": {
+    "readThrough": {
+      "count": 10,
+      "p50": 2819,
+      "p95": 3073
+    },
+    "snapshotOnly": {
+      "count": 10,
+      "p50": 2213,
+      "p95": 2586
+    },
+    "p50SavedMs": 606,
+    "p95SavedMs": 487,
+    "expectedTagStateReadsSavedPerCommit": 1
+  }
+}
