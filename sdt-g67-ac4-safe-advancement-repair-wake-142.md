@@ -5,6 +5,7 @@
 - Task: `SDT-G67-AC4-SAFE-ADVANCEMENT-REPAIR-WAKE-142`
 - Branch: `claude/sdt-g67-local-wake-w142`
 - Starting pushed head: `1e110d9427066293bf018ca8558dc2b5e9fce1bf`
+- Final pushed head: `c4f4d948cce153c797f35ab8ce352ea838d75816`
 - Source under measurement: `246c4f21eb69c8f8f0f7c1a513e7f915ca7c6d51`
 - Cloudflare/Wrangler/deployment/reset operations: none
 - Semantic disposition: **blocked at the frozen SafeWindow boundary; no SafeWindow/frontier/reader bypass was made**
