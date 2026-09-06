@@ -1,0 +1,94 @@
+command: cd /private/tmp/sdt-g67-w142-parent && env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN ./node_modules/.bin/wrangler deployments list --config .artifacts/wrangler.g65-w155-c.jsonc
+credential-variable-state: CLOUDFLARE_API_TOKEN=UNSET CF_API_TOKEN=UNSET CLOUDFLARE_API_KEY=UNSET CF_API_KEY=UNSET WRANGLER_API_TOKEN=UNSET
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Created:     2026-09-06T03:35:04.002Z
+Author:      ttakaoka@jtechs.com
+Source:      Secret Change
+Message:     -
+Version(s):  (100%) 13fa6021-fc2c-4433-8da0-37ab20ade656
+                 Created:  2026-09-06T03:35:04.002Z
+                     Tag:  -
+                 Message:  -
+
+Created:     2026-09-06T03:35:38.643Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after conformance secret
+Version(s):  (100%) fb05d31e-d027-4d10-b179-383d1c242624
+                 Created:  2026-09-06T03:35:37.471Z
+                     Tag:  -
+                 Message:  SDT-G65 W141 pre-G65 parent 4687efa5c49951d9966a3785be5fd7b2620c6e4f W155-C self mode after conformance secret
+
+Created:     2026-09-06T03:45:38.886Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G65 W141 candidate 5b59e372f70b0682315f2344e5baae30fdde94b8 W155-C self mode
+Version(s):  (100%) fdf35a19-4b85-4a97-baa6-2ee019daef4f
+                 Created:  2026-09-06T03:45:37.778Z
+                     Tag:  -
+                 Message:  SDT-G65 W141 candidate 5b59e372f70b0682315f2344e5baae30fdde94b8 W155-C self mode
+
+Created:     2026-09-06T05:22:18.332Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G57 W142 exact 23a0e5c06ab4b75c94461ddea28f2da4e254df04
+Version(s):  (100%) b040a282-54d5-41d6-8a84-c0b75c10aa75
+                 Created:  2026-09-06T05:22:16.746Z
+                     Tag:  -
+                 Message:  SDT-G57 W142 exact 23a0e5c06ab4b75c94461ddea28f2da4e254df04
+
+Created:     2026-09-06T10:34:42.236Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G67 W142 parent exact f5b2212ad90cdf5c760ff4f43b8a3ef8f7a8954f W155-C normal arm
+Version(s):  (100%) 2ac59226-1c50-425e-9a7f-122c2cc330fa
+                 Created:  2026-09-06T10:34:41.224Z
+                     Tag:  -
+                 Message:  SDT-G67 W142 parent exact f5b2212ad90cdf5c760ff4f43b8a3ef8f7a8954f W155-C normal arm
+
+Created:     2026-09-06T10:35:21.197Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G67 W142 true parent exact 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C normal arm
+Version(s):  (100%) 5961d52f-4627-4498-978a-687ad13b3f5f
+                 Created:  2026-09-06T10:35:19.993Z
+                     Tag:  -
+                 Message:  SDT-G67 W142 true parent exact 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C normal arm
+
+Created:     2026-09-06T10:45:05.186Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G67 W142 candidate exact 8e8f13d9cb14d547193dc642d9038e5b80d7444a W155-C normal arm
+Version(s):  (100%) 9d2f26f2-77f1-403a-a90e-7b0808b72640
+                 Created:  2026-09-06T10:45:04.128Z
+                     Tag:  -
+                 Message:  SDT-G67 W142 candidate exact 8e8f13d9cb14d547193dc642d9038e5b80d7444a W155-C normal arm
+
+Created:     2026-09-06T12:00:41.678Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G67 W142 rehearsal baseline parent 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C self
+Version(s):  (100%) c8354d46-53d6-4d33-95f8-371328793178
+                 Created:  2026-09-06T12:00:40.494Z
+                     Tag:  -
+                 Message:  SDT-G67 W142 rehearsal baseline parent 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C self
+
+Created:     2026-09-06T12:07:17.991Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G67 W142 rehearsal candidate exact 6d691275dd763bb8fb8fad1c6d2a49bd18d45d00 W155-C self
+Version(s):  (100%) cf3aa08a-50bc-4c43-ad95-ea1a44f15f6b
+                 Created:  2026-09-06T12:07:16.914Z
+                     Tag:  -
+                 Message:  SDT-G67 W142 rehearsal candidate exact 6d691275dd763bb8fb8fad1c6d2a49bd18d45d00 W155-C self
+
+Created:     2026-09-06T12:48:35.432Z
+Author:      ttakaoka@jtechs.com
+Source:      Unknown (deployment)
+Message:     SDT-G67 AC4 event-drive rerehearsal parent 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C self
+Version(s):  (100%) 3dddae9f-5102-48c8-9a1b-ae93e3463a7e
+                 Created:  2026-09-06T12:48:34.351Z
+                     Tag:  -
+                 Message:  SDT-G67 AC4 event-drive rerehearsal parent 868f2fc63bb02fb2c127e750c1d22516cc0fcff6 W155-C self
