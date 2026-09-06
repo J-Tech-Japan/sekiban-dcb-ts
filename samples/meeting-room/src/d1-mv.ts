@@ -75,6 +75,13 @@ export interface MeetingRoomSafeLaneCatchUpObservation {
   readonly safeWindowMs: number;
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
+  /** Exact source events applied by this view in this pass, with observed clocks. */
+  readonly appliedEventDetails: readonly Readonly<{
+    suid: string;
+    lastArrivedAt: number;
+    fenceEligibleAt: number;
+    appliedAt: number;
+  }>[];
   readonly indeterminate: boolean;
   readonly deferredEventSuid: string | null;
   readonly deferredEventLastArrivedAt: number | null;
@@ -906,11 +913,24 @@ export async function catchUpMeetingRoomMaterializedViews(
   const observations: MeetingRoomSafeLaneCatchUpObservation[] = [];
   for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {
     const active = await views.readActive(serviceId, materializer.id);
+    const appliedEventDetails: Array<{ suid: string; lastArrivedAt: number; appliedAt: number }> = [];
+    const hooks = {
+      afterApply: async (event: StoredEvent) => {
+        // This is the actual event-level MV apply boundary. It is deliberately
+        // observed from the source event and the completed atomic MV call;
+        // scheduled_at or delivery ownership cannot substitute for it.
+        appliedEventDetails.push({
+          suid: event.suid,
+          lastArrivedAt: event.lastArrivedAt,
+          appliedAt: Date.now(),
+        });
+      },
+    };
     let result: MaterializedViewCatchUpResult;
     if (active === undefined) {
-      result = await runtime.build(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
+      result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
     } else {
-      result = await runtime.follow(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });
+      result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
     }
     observations.push({
       viewId: materializer.id,
@@ -920,6 +940,10 @@ export async function catchUpMeetingRoomMaterializedViews(
       safeWindowMs: result.safeWindowMs,
       advancedSourceEvents: result.advancedSourceEvents,
       appliedEvents: result.appliedEvents,
+      appliedEventDetails: appliedEventDetails.map((event) => ({
+        ...event,
+        fenceEligibleAt: event.lastArrivedAt + result.safeWindowMs,
+      })),
       indeterminate: result.indeterminate,
       deferredEventSuid: result.deferredEventSuid,
       deferredEventLastArrivedAt: result.deferredEventLastArrivedAt,

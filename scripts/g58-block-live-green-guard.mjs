@@ -36,7 +36,7 @@ function requireAbsent(source, forbidden, label) {
 
 function sourceContracts(sources) {
   const { runtime, live, projection, worker } = sources;
-  const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });";
+  const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });";
   const poll = "await pollLiveProjections(env, {";
   const hookAt = runtime.indexOf(hook);
   const pollAt = runtime.indexOf(poll, hookAt);
@@ -79,8 +79,8 @@ function assertHistoricalRedReceipt() {
 function mutationSelfTest(sources) {
   const earlyReturn = "if (scan.kind !== \"FULL\") return;";
   const earlyMutation = sources.runtime.replace(
-    "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });",
-    `const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });\n      ${earlyReturn}`,
+    "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });",
+    `const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });\n      ${earlyReturn}`,
   );
   let earlyRed = false;
   try { sourceContracts({ ...sources, runtime: earlyMutation }); } catch { earlyRed = true; }

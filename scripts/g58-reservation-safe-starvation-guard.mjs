@@ -156,7 +156,7 @@ function assertReceiptFacts(receipt, groups) {
 
 function sourceContracts(sources) {
   const { runtime, worker, mv, catchUp, projection } = sources;
-  const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });";
+  const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });";
   const poll = "await pollLiveProjections(env, {";
   const hookAt = runtime.indexOf(hook);
   const pollAt = runtime.indexOf(poll, hookAt);
@@ -183,7 +183,7 @@ function sourceContracts(sources) {
   const catchSource = mv.slice(catchStart, drainStart);
   const drainSource = mv.slice(drainStart);
   requireContains(catchSource, "for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {", "serial safe MV catch-up");
-  requireContains(catchSource, "await runtime.follow(serviceId, materializer, Date.now(), {}, { maximumSuid: frontierSuid });", "safe MV retained-frontier follow");
+  requireContains(catchSource, "await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });", "safe MV retained-frontier follow");
   requireContains(drainSource, "for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {", "serial unsafe-kick drain");
   requireContains(drainSource, "await runtime.follow(serviceId, materializer, nowMs, {}, { maximumSuid: frontierSuid });", "unsafe drain retained-frontier follow");
   requireContains(catchUp, "if (event.lastArrivedAt > nowMs - windowMs)", "first-unsafe SafeWindow barrier");
@@ -309,8 +309,8 @@ function mutationSelfTest(sources) {
 
   let earlyReturnRed = false;
   const earlyReturnMutant = sources.runtime.replace(
-    "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });",
-    "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });\n      if (scan.kind !== \"FULL\") return;",
+    "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });",
+    "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });\n      if (scan.kind !== \"FULL\") return;",
   );
   try { sourceContracts({ ...sources, runtime: earlyReturnMutant }); } catch { earlyReturnRed = true; }
   if (!earlyReturnRed) fail("restoring the W103 BLOCK early return did not turn the source guard red");

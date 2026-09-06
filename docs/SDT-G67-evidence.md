@@ -22,7 +22,7 @@ W146 production used the existing sample Worker
 candidate source `d596192f3b0ddb0ab6b70d10ed8b8c04cd5489ae`. The final deployed
 version was `11c907ff-dde3-44c3-928e-550303d47aac` at 100% with the exact-source
 annotation recorded in the W146 receipts. The deployed production
-configuration was `DIRECT_DOORBELL=false`, receiver mode absent/unconfigured,
+configuration was `DIRECT_DOORBELL=false`, receiver mode `"separate"`,
 and no `DOWNSTREAM_DOORBELL` service binding. Consequently the production
 ring-arrival population is zero and direct-ring/unsafe rows are non-gated in
 G67; the strict unsafe observation misses remain recorded honestly.
@@ -89,6 +89,62 @@ order. Final inventories show those W131-C resources absent while W155-C and
 the production D1/Queue resources remain. No production, W155-C, G32, G26, or
 doorbell resource was touched.
 
+## W149 request-update repair — exact-head local evidence
+
+W149 repairs the four exact-head findings from review 5126081331 without a
+deployment or Cloudflare operation. The repair is based on the existing branch
+head `61c95675e05d82091a126e944063d77e9eda0af7` and preserves all retained
+W145/W146 receipts; it does not recalculate an acceptance result from them.
+
+### F1 — applying-pass attribution
+
+The old W146 selection rule (`started_at - scheduled_at`) and delivery-owner
+join did not prove that the selected pass applied the sampled event. For
+example, the selected row for sample 8 did not apply its SUID, and the selected
+fence-expiry row for sample 7 applied zero events while an overlapping delivery
+pass applied. The source now records event-level MV apply observations in each
+catch-up result: exact `suid`, observed `lastArrivedAt`, derived
+`fenceEligibleAt = lastArrivedAt + safeWindowMs`, and observed `appliedAt`.
+The later deployed cohort must join each sample to the pass containing its
+exact applied-event detail; no W149 document value treats a non-applying row as
+the sample's scheduling attribution. The old W146 16,983 ms pass value remains
+historical attribution only: its selected pass left 11,866 ms unexplained by
+catch-up execution, so W149 does not claim that it identifies the scheduling
+wait.
+
+### F2 — cron uses the shared scheduler
+
+`beforeLiveProjectionPoll` now receives the scheduled handler's
+`ExecutionContext` and enters `scheduleMeetingRoomSafeLaneKick` with
+`trigger="cron"`. Delivery and cron therefore share the same per-service
+single-flight/coalescing scheduler; the cron hook no longer calls the pass body
+directly. The focused oracle holds one pass open, submits delivery and cron
+triggers concurrently, and proves maximum active passes is one with one
+coalesced second pass. The `cron-bypasses-single-flight-scheduler` mutation is
+retained and red.
+
+### F3 — genuine local public-path proof
+
+The AC3 oracle now uses the actual serialized public commit endpoint through
+the test Worker, real Tag Durable Objects and Tag outbox rows, the real
+`handleDownstreamQueue`/`recordDelivery` path, the shared safe-lane scheduler,
+and the public safe list reader. It runs ten distinct commits with cron
+disabled and records each returned event SUID, observed commit/delivery/safe
+clocks, and public safe head. The local test uses a deterministic logical clock
+to avoid ten 20-second SafeWindow sleeps; it is a local causal/path proof, not
+a deployed latency result. The omitted-kick mutation remains red, so this
+proof cannot pass through the old synthetic callback/head injection.
+
+### F4 — deployed receiver documentation
+
+The exact W146 production version view is documented as
+`DIRECT_DOORBELL=false`, `DIRECT_DOORBELL_RECEIVER_MODE="separate"`, and no
+`DOWNSTREAM_DOORBELL` service binding. This is the deployed configuration
+fact; the old “absent/unconfigured” wording was incorrect and is superseded.
+No W149 deployment, cohort, resource operation, or acceptance-criteria change
+was performed. A later deployed cohort is required to produce corrected F1
+scheduling attribution.
+
 ## Source and process
 
 - Base: `origin/main` at `868f2fc` after `git fetch origin`.
@@ -105,7 +161,7 @@ doorbell resource was touched.
 - The standalone issue URL was unavailable through the web cache in this
   environment; the checked-in SDT-G67 packet was used as the local contract.
 
-## Implementation
+## W149 implementation
 
 `handleDownstreamQueue` now exposes a Queue-only stored-delivery hook. It is
 called after a stored `recordDelivery` result has selected its Queue ack/retry
@@ -117,20 +173,28 @@ coalesced rerun. The kick first runs a fresh
 `GlobalCompletenessReconciler.reconcile`, then uses
 `runMeetingRoomScheduledMaintenance`, so coverage, retained-frontier fencing,
 unsafe-kick draining, and both materialized-view catch-up paths remain shared
-with cron. The cron hook remains the backstop and records its existing health
-history; kicks emit an observation-only `safe_lane_pass` log with
-`trigger=kick`.
+with cron. Cron now enters this same scheduler with its `ExecutionContext` and
+remains the backstop. The Queue hook remains notification-only and starts the
+non-blocking scheduler under `waitUntil`.
 
-## Red/green evidence
+`catchUpMeetingRoomMaterializedViews` now attaches an event-level
+`afterApply` observation to the existing MV catch-up hooks. This is additive
+evidence only: it records the event actually applied by the view and observed
+fence eligibility/apply clocks without changing coverage, frontier, safe-head,
+ordering, or Queue disposition semantics.
+
+## W149 red/green evidence
 
 The required guard is `scripts/g67-safe-lane-guard.mjs`. It preserves the
 following receipts:
 
-- `test/fixtures/g67-red-before-green.json`: both the omitted-kick mutant and
-  the frontier-omission mutant were red before the normal oracle was accepted.
-- `test/fixtures/g67-green.json`: AC1–AC3 focused tests passed.
-- `test/fixtures/g67-mutants-red.json`: both mutants remained red after the
-  implementation.
+- `test/fixtures/g67-red-before-green.json`: the seven-mutant pre-green guard
+  run is retained; the normal oracle was not accepted until the omitted-kick,
+  cron-bypass, coalesced-owner, BLOCK/frontier, awaited-hook, omitted-catch-up,
+  and omitted-fence-expiry mutations were red.
+- `test/fixtures/g67-green.json`: the focused W149 AC1–AC4 oracles passed.
+- `test/fixtures/g67-mutants-red.json`: all seven W149 mutations remained red
+  after the implementation.
 
 The AC1 focused file also contains a concurrent-kick oracle: three deliveries
 share one service scheduler, the first pass is held open, and the coalesced
@@ -146,17 +210,33 @@ npm run test:g67
 
 It runs the focused Vitest file, unique-anchor self-test, red-before-green
 receipt, green tests, and both mutation receipts. The local CI workflow now
-invokes this lane in the existing G44 lane and adds a forced-red reachability
-probe; existing gates were not removed, weakened, or timeout-inflated.
+invokes this lane in the existing G44 lane and retains the forced-red
+reachability probe; existing gates were not removed, weakened, or
+timeout-inflated.
 
-## AC3 local proof
+## W149 AC3 local proof
 
-`test/g67-safe-lane.spec.ts` drives ten logical commits at 10,000 ms spacing
-with cron disabled. Each commit schedules the actual exported kick scheduler;
-the injected pass calls the existing `runMeetingRoomScheduledMaintenance`
-body with a settled frontier and records the resulting safe head. The test
-asserts ten safe heads, ten delivery-to-safe intervals of 25 ms, ten pass-body
-runs, and zero cron invocations. The compact per-commit table is:
+`test/g67-safe-lane.spec.ts` drives ten distinct serialized public commits with
+cron disabled. Each commit is accepted by the real test Worker, creates real
+Tag outbox rows, is delivered through the real Queue adapter/`recordDelivery`
+path, and enters the actual safe-lane scheduler. The test then reads the
+public safe list and asserts the affected reservation is present with a safe
+head for every commit. It records the returned event SUID and observed
+commit, delivery, and safe clocks. The logical clock advances by 60,000 ms
+between commits so the test is deterministic and does not sleep through the
+SafeWindow; that clock substitution is explicitly not a deployed latency
+claim. The exact observations are emitted as `G67_AC3_OBSERVATIONS` by the
+focused test and the seven-mutation receipt preserves the red proof.
+
+The old synthetic `committedHead`/callback-only proof is no longer the AC3
+oracle. The existing G44/G62 frontier and public safe-reader semantics are
+unchanged. A later deployed cohort remains necessary for production timing and
+for F1's applying-pass scheduling attribution.
+
+## Historical W142 AC3 local proof
+
+The following compact table is retained only as the superseded W142 local
+checkpoint and is not the W149 AC3 proof:
 
 | commit | logical delivery time | logical safe time | delivery→safe | safe head |
 |---:|---:|---:|---:|---|
@@ -178,27 +258,69 @@ single-flight; the AC2 test proves the kick pass uses only the retained proven
 frontier. The G44/G62/G61/G60/G65 existing lanes remain separate and
 unchanged.
 
-## Local gates
+## W149 local gates
 
-Passed: `npm run test:g67` (four focused tests, red-before-green receipt,
-green receipt, and both mutants red), `npm run typecheck`, `npm run lint`,
-`npm run test:g44`, `npm run test:g58`, `npm run test:g60:required`,
-`npm run test:g61`, `npm run test:g62`, and `npm run test:g65:required`.
-`git diff --check` is clean for the scoped checkpoint.
+The focused repair and directly affected protections passed locally:
 
-The first aggregate `npm run check` stopped in the unchanged G28 boundary
-lane because npm could not write its log under the seat's root-owned
-`~/.npm`. The identical aggregate with
-`npm_config_cache=/private/tmp/sdt-g67-npm-cache` passed the boundary setup and
-progressed through the repository tests, but its normal parallel Vitest run
-reported two existing 5-second timeouts (`test/commit.spec.ts` AC7 and
-`test/tag.spec.ts` G5; 767 passed, 1 skipped). Each exact test passed when
-isolated with `--maxWorkers=1`. A serial aggregate with
-`VITEST_MAX_WORKERS=1` reached the unchanged G32 parity lane and produced no
-further output; it was timeboxed and terminated with exit 130. Its complete
-log is preserved at `/private/tmp/sdt-g67-w142-check-serial.log` for local
-diagnosis and is not a repository artifact. No G67 assertion, timeout, or
-gate was changed to obtain these classifications.
+- `npm run test:g67` — 11 tests; the genuine public-path AC3 proof passed;
+  red-before-green and all seven mutation rows were red, including the new
+  cron-bypass mutation. `npm run test:g67:forced-red` also completed its
+  normal lane and retained the same red receipts.
+- `npm run test:g31`, `npm run test:g44`, `npm run test:g58`,
+  `npm run test:g60:required`, `npm run test:g61`, `npm run test:g62`, and
+  `npm run test:g65:required` — passed. The G58 source-anchor updates only
+  follow the new `ctx` parameter and do not alter G58 behavior.
+- `npm run test:g21`, `npm run test:g22`, `npm run test:g23`,
+  `npm run test:g24`, `npm run test:g25`, `npm run test:g26`,
+  `npm run test:g27`, `npm run test:g38:prep`, `npm run test:g41`,
+  `npm run test:g42`, `npm run test:g43`, `npm run test:g45`,
+  `npm run test:g46`, `npm run test:g49`, `npm run test:g51`,
+  `npm run test:g53`, `npm run test:g54`, `npm run test:g55`, and
+  `npm run test:g56` — passed with their existing mutation/forced-red
+  protections.
+- `npm run test:g29:mapping`, `npm run test:g29:delivery`,
+  `npm run test:g29:diagnostics`, `npm run test:g29:compatibility`,
+  `npm run test:g29:domain-source`, `npm run test:g29:authoring-doc`,
+  `npm run test:g29:sample`, `npm run test:g29:witness`, and
+  `npm run test:g29:candidate` — passed. The candidate protocol reported its
+  retained historical candidate was not an ancestor, as expected for this
+  branch; no deployment was attempted.
+- `npm run test:g28`, `npm run test:g28:compile-fail`,
+  `npm run test:g28:boundary:source`, `npm run test:g28:boundary:negative`,
+  `NPM_CONFIG_CACHE=/private/tmp/sdt-g67-w149-npm-cache npm run test:g28:boundaries`,
+  and the same cache-qualified package-manifest gate — passed. The two
+  default-cache boundary attempts failed only because npm could not write
+  `/Users/tomohisa/.npm/_logs`; the cache-qualified retries passed.
+- `npm run test:g20`, `npm run test:g20:gate`, `npm run test:g20:candidate`,
+  `npm run test:g16`, `npm run test:g17`, `npm run test:g17:rollout-order`,
+  `npm run test:store-contract`, `npm run test:d1`, `npm run test:mv`,
+  `npm run test:boundaries`, `npm run test:consumer`, `npm run test:g37:evidence`,
+  `npm run typecheck`, and `npm run lint` — passed.
+
+The exact aggregate `npm test` was also run. It exited non-zero with 4
+5-second test timeouts among 778 tests (773 passed, 1 skipped): the existing
+`test/commit.spec.ts` AC7, existing `test/tag.spec.ts` G5,
+`test/repair.spec.ts` checkpoint, and the new G67 AC3 test when running in the
+full parallel pool. The G67 file passes in its isolated focused lane; this is
+recorded as a local parallel-runner contention/timeout exception, not called a
+green aggregate and not repaired by changing a timeout. The exact G30 workflow
+lane then produced its schema/B0/manifest and mutation receipts but emitted no
+new output for about 90 seconds; it was terminated with Ctrl-C, exit 130. The
+exact G32 workflow lane passed its 10-file/50-test Vitest portion and initial
+mutation output, then produced no output for about 90 seconds and was likewise
+terminated with Ctrl-C, exit 130. These are runner exceptions; no gate,
+assertion, schedule, or timeout was weakened.
+
+The workflow steps that would invoke `wrangler deploy` (`npm run build`) or a
+Wrangler local E2E were intentionally not run because W149 forbids deployment
+and Cloudflare operations. No Wrangler or Cloudflare command was invoked.
+`git diff --check` is clean for the scoped W149 checkpoint; unrelated dirty and
+untracked historical evidence remains unstaged.
+
+## Historical W142 local gates
+
+The earlier W142 aggregate notes below are retained for provenance only. They
+are not substituted for the W149 focused and affected-lane results above.
 
 ## Former local boundary (historical W142 checkpoint)
 

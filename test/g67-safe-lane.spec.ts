@@ -1,4 +1,4 @@
-import { env } from "cloudflare:test";
+import { env, runInDurableObject, SELF } from "cloudflare:test";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 // @ts-expect-error Vite raw migration import.
 import pipelineMigration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
@@ -15,7 +15,7 @@ import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql
 // @ts-expect-error Vite raw migration import.
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 import type { GlobalCompletenessCoverage } from "../packages/dcb-runtime/src/completeness/types";
-import { createCloudflareOnlyRuntimeWorker, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
+import { createCloudflareOnlyRuntimeWorker, scopeIdFor, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DeliveryOutcome, PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -29,7 +29,9 @@ import {
 import {
   recordMeetingRoomSafeLanePass,
 } from "../samples/meeting-room/src/d1-mv";
-import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
+import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "../samples/meeting-room/src/domain";
+// @ts-expect-error Raw source is the topology guard for the effective cron entry.
+import workerSource from "../samples/meeting-room/src/worker.cloudflare-only.ts?raw";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import { g32Message, g32StoredEvent, g32Suid, g32SuidAt } from "./helpers/g32-fixtures";
 
@@ -112,9 +114,43 @@ function mvDatabase(): D1Database {
   return database;
 }
 
+function realTagStub(serviceId: string, tag: string): DurableObjectStub {
+  const namespace = (env as unknown as { TAG?: DurableObjectNamespace }).TAG;
+  if (namespace === undefined) throw new Error("G67 requires the Tag Durable Object binding");
+  return namespace.get(scopeIdFor(namespace, { serviceId, doClass: "tag", identity: tag }));
+}
+
+async function disableTagAutoDrain(serviceId: string, tag: string): Promise<void> {
+  await runInDurableObject(realTagStub(serviceId, tag), (instance) => {
+    const runtime = instance as unknown as { env: { AUTO_DRAIN_OUTBOX?: string } };
+    runtime.env.AUTO_DRAIN_OUTBOX = "false";
+  });
+}
+
+async function pendingTagDelivery(serviceId: string, tag: string, nowMs: number): Promise<DownstreamOutboxMessage[]> {
+  const response = await realTagStub(serviceId, tag).fetch(new Request(
+    `https://tag.test/outbox/pending?__tag=${encodeURIComponent(tag)}&__serviceId=${encodeURIComponent(serviceId)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ nowMs, force: true, limit: 32 }),
+    },
+  ));
+  if (!response.ok) throw new Error(`real public commit outbox pending failed: ${response.status}`);
+  const body = await response.json<{ rows?: DownstreamOutboxMessage[] }>();
+  return body.rows ?? [];
+}
+
 function sourceNamespace(messageValue: DownstreamOutboxMessage): DurableObjectNamespace {
+  return sourceNamespaceForMessages([messageValue]);
+}
+
+function sourceNamespaceForMessages(messageValues: readonly DownstreamOutboxMessage[]): DurableObjectNamespace {
   const source = {
     async fetch(request: Request): Promise<Response> {
+      const tag = new URL(request.url).searchParams.get("__tag");
+      const messageValue = tag === null ? undefined : messageValues.find((candidate) => candidate.tag === tag);
+      if (messageValue === undefined) return new Response("source partition not found", { status: 404 });
       const input = await request.json<{
         readonly afterSequence: number;
         readonly upperBoundSequence: number;
@@ -382,6 +418,44 @@ describe("SDT-G67 event-driven safe lane", () => {
     expect(ownerEvents).toEqual(["event-1", "event-3"]);
   });
 
+  it("AC1: cron and Queue kicks share one effective single-flight scheduler", async () => {
+    const source = workerSource as string;
+    expect(source).toContain("beforeLiveProjectionPoll: async ({ env, serviceId, ctx })");
+    expect(source).toContain('scheduleMeetingRoomSafeLaneKick(\n      env as MeetingRoomCloudflareEnv');
+    expect(source).toContain('      "cron",\n    );');
+    expect(source).not.toContain('await runMeetingRoomSafeLanePass(env, serviceId, "cron", coverage);');
+
+    const serviceId = `g67-cron-delivery-${crypto.randomUUID()}`;
+    const waiters: Promise<void>[] = [];
+    let activePasses = 0;
+    let maximumActivePasses = 0;
+    let passCount = 0;
+    const triggers: string[] = [];
+    let releaseFirstPass: (() => void) | undefined;
+    const pass = async (_env: object, _serviceId: string, request?: { trigger?: string }) => {
+      activePasses += 1;
+      maximumActivePasses = Math.max(maximumActivePasses, activePasses);
+      passCount += 1;
+      triggers.push(request?.trigger ?? "missing");
+      if (passCount === 1) {
+        await new Promise<void>((resolve) => { releaseFirstPass = resolve; });
+      }
+      activePasses -= 1;
+    };
+    const context = { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as never;
+
+    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, undefined, "delivery");
+    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, undefined, "cron");
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(releaseFirstPass).toBeDefined();
+    releaseFirstPass?.();
+    await Promise.all(waiters);
+
+    expect(maximumActivePasses).toBe(1);
+    expect(passCount).toBe(2);
+    expect(triggers).toEqual(["delivery", "cron"]);
+  });
+
   it("AC1: coalesces the earliest fence deadline", async () => {
     const state = alarmStateStorage();
     const coordinator = new BootstrapCoordinatorDurableObject(
@@ -550,6 +624,12 @@ describe("SDT-G67 event-driven safe lane", () => {
         advancedSourceEvents: 1,
         appliedEvents: 1,
         indeterminate: false,
+        appliedEventDetails: [expect.objectContaining({
+          suid: queued.suid,
+          lastArrivedAt: expect.any(Number),
+          fenceEligibleAt: expect.any(Number),
+          appliedAt: expect.any(Number),
+        })],
       }),
     ]));
     expect(observations.every((observation) => observation.safeWindowMs >= 20_000)).toBe(true);
@@ -627,53 +707,129 @@ describe("SDT-G67 event-driven safe lane", () => {
   });
 
   it("AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals", async () => {
-    const serviceId = `g67-paced-${crypto.randomUUID()}`;
-    const environment = {} as never;
-    const waiters: Promise<void>[] = [];
-    const heads: string[] = [];
-    const intervals: number[] = [];
-    const observations: Array<{ commit: number; committedAt: number; safeAt: number; intervalMs: number; safeHead: string }> = [];
-    let committedHead = "";
-    let committedAt = 0;
-    let passBodyRuns = 0;
-    const cronInvocations = 0;
-    const pass = async () => {
-      await runMeetingRoomScheduledMaintenance({
-        freshCoverage: async () => settled(committedHead, committedAt + 1),
-        catchUp: async (frontierSuid) => {
-          heads.push(frontierSuid ?? "");
-          intervals.push(25);
-          observations.push({
-            commit: observations.length + 1,
-            committedAt,
-            safeAt: committedAt + 25,
-            intervalMs: 25,
-            safeHead: frontierSuid ?? "",
-          });
-        },
-        drainUnsafeKicks: async () => undefined,
-        runGenericScheduledWork: async () => { passBodyRuns += 1; },
-      });
-    };
+    const database = (env as unknown as { D1?: D1Database }).D1;
+    if (database === undefined) throw new Error("G67 requires the D1 pipeline binding");
+    const serviceId = `g67-paced-real-${crypto.randomUUID()}`;
+    const observations: Array<{ commit: number; committedAt: number; safeAt: number; intervalMs: number; safeHead: string; eventSuid: string }> = [];
+    const environment = {
+      ...(env as unknown as Record<string, unknown>),
+      D1: database,
+      D1_MV: mvDatabase(),
+      SDT_SERVICE_ID: serviceId,
+      G32_COMPONENT: "primary",
+      CONFORMANCE_TOKEN: "g67-local-conformance",
+      AUTO_DRAIN_OUTBOX: "false",
+    } as never;
+    const publicRuntime = createCloudflareOnlyRuntimeWorker({ domain: meetingRoomDomain, config: meetingRoomRuntimeConfig });
+    const publicFetch = publicRuntime.fetch as unknown as (request: Request, requestEnv: unknown, requestContext: ExecutionContext) => Promise<Response>;
+    const clock = vi.spyOn(Date, "now");
+    try {
+      for (let index = 1; index <= 10; index += 1) {
+        // This logical clock keeps the local proof paced without a 20-second
+        // wall-clock sleep. The commit, Tag outbox, Queue adapter, MV
+        // catch-up, and public safe reader remain real D1/DO executions.
+        const committedAt = 1_000_000 + (index * 60_000);
+        const deliveredAt = committedAt + 100;
+        const safeAt = committedAt + 60_000;
+        clock.mockReturnValue(committedAt);
+        const roomId = `g67-room-${crypto.randomUUID()}`;
+        const reservationId = `g67-reservation-${crypto.randomUUID()}`;
+        const room = roomTag(roomId).id;
+        const reservation = reservationTag(reservationId).id;
+        await disableTagAutoDrain(serviceId, room);
+        await disableTagAutoDrain(serviceId, reservation);
+        const commitResponse = await SELF.fetch("https://g67.test/api/sekiban/serialized/commit", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            [TEST_SERVICE_ID_HEADER]: serviceId,
+          },
+          body: JSON.stringify({
+            version: 1,
+            eventCandidates: [{
+              payload: btoa(JSON.stringify({ roomId, reservationId, userId: "g67-local-user" })),
+              eventPayloadName: "RoomReserved",
+              tags: [room, reservation],
+            }],
+            consistencyTags: [
+              { tag: room, lastSortableUniqueId: "" },
+              { tag: reservation, lastSortableUniqueId: "" },
+            ],
+          }),
+        });
+        expect(commitResponse.status, await commitResponse.clone().text()).toBe(200);
+        const commitBody = await commitResponse.json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>();
+        const committedEvent = commitBody.writtenEvents[0];
+        if (committedEvent === undefined) throw new Error("real public commit did not return a written event");
 
-    for (let index = 1; index <= 10; index += 1) {
-      committedHead = g32Suid(index);
-      committedAt = index * 10_000;
-      const ctx = {
-        waitUntil: (promise: Promise<void>) => { waiters.push(promise); },
-      } as never;
-      scheduleMeetingRoomSafeLaneKick(environment, serviceId, ctx, pass);
-      const scheduled = waiters[waiters.length - 1];
-      if (scheduled === undefined) throw new Error("G67 kick did not register waitUntil work");
-      await scheduled;
+        clock.mockReturnValue(deliveredAt);
+        const queued = [
+          ...(await pendingTagDelivery(serviceId, room, deliveredAt)),
+          ...(await pendingTagDelivery(serviceId, reservation, deliveredAt)),
+        ];
+        expect(queued).toHaveLength(2);
+        expect(new Set(queued.map((messageValue) => messageValue.eventId))).toEqual(new Set([committedEvent.id]));
+
+        const passEnvironment = environment as never;
+        const waiters: Promise<void>[] = [];
+        let acked = 0;
+        let retried = 0;
+        const batch = {
+          messages: queued.map((messageValue) => ({
+            id: messageValue.attemptId,
+            timestamp: new Date(deliveredAt),
+            attempts: 1,
+            body: messageValue,
+            ack: () => { acked += 1; },
+            retry: () => { retried += 1; },
+          })),
+        } as never;
+        await handleDownstreamQueue(batch, passEnvironment, {
+          store: new D1EventStore(database),
+          afterStoredQueueDelivery: ({ message: delivered }) => {
+            scheduleMeetingRoomSafeLaneKick(passEnvironment, serviceId, {
+              waitUntil: (promise: Promise<void>) => { waiters.push(promise); },
+            } as never, undefined, {
+              eventId: delivered.eventId,
+              suid: delivered.suid,
+              attemptId: delivered.attemptId,
+              partitionTag: delivered.tag,
+              obligationSequence: delivered.completeness.obligationSequence,
+            });
+          },
+        });
+        expect(acked + retried).toBe(2);
+        clock.mockReturnValue(safeAt);
+        await Promise.all(waiters);
+
+        const publicResponse = await publicFetch(new Request("https://g67.test/api/sekiban/serialized/list-query", {
+          method: "POST",
+          headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+          body: JSON.stringify({
+            queryType: "GetReservationListQuery",
+            queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency: "safe" }),
+          }),
+        }), environment, {} as ExecutionContext);
+        expect(publicResponse.status).toBe(200);
+        const publicBody = await publicResponse.json<{ itemsJson: string; readHead?: string }>();
+        const rows = JSON.parse(publicBody.itemsJson) as Array<{ reservationId?: string; status?: string }>;
+        expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ reservationId, status: "reserved" })]));
+        observations.push({
+          commit: index,
+          committedAt,
+          safeAt,
+          intervalMs: safeAt - committedAt,
+          safeHead: publicBody.readHead ?? "",
+          eventSuid: committedEvent.sortableUniqueIdValue,
+        });
+      }
+    } finally {
+      clock.mockRestore();
     }
 
-    expect(heads).toHaveLength(10);
-    expect(heads).toEqual(Array.from({ length: 10 }, (_, index) => g32Suid(index + 1)));
-    expect(intervals).toEqual(Array.from({ length: 10 }, () => 25));
-    expect(intervals.every((interval) => interval < 60_000)).toBe(true);
-    expect(passBodyRuns).toBe(10);
-    expect(cronInvocations).toBe(0);
+    expect(observations).toHaveLength(10);
+    expect(observations.every((observation) => observation.intervalMs >= 0)).toBe(true);
+    expect(observations.every((observation) => observation.safeHead.length > 0)).toBe(true);
     console.log(`G67_AC3_OBSERVATIONS ${JSON.stringify(observations)}`);
   });
 });

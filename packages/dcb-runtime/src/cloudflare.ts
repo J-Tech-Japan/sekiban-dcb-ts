@@ -168,6 +168,7 @@ export interface CloudflareOnlyWorkerOptions {
     readonly env: CloudflareOnlyEnv;
     readonly serviceId: string;
     readonly scan: GlobalCompletenessScanResult;
+    readonly ctx: ExecutionContext;
   }) => Promise<BeforeLiveProjectionPollResult | void>;
   /** Persists the observation-only lifecycle of each scheduled live poll. */
   readonly liveProjectionPollObserver?: LiveProjectionPollObserver;
@@ -453,7 +454,7 @@ export function createCloudflareOnlyRuntimeWorker(
       });
     },
 
-    async scheduled(_controller, env): Promise<void> {
+    async scheduled(_controller, env, ctx): Promise<void> {
       const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
       const serviceId = requireServiceIdentity(serviceIdentity);
       await stabilizeDownstream(env, { storeProvider }, undefined, serviceIdentity);
@@ -464,7 +465,7 @@ export function createCloudflareOnlyRuntimeWorker(
       // a live projection past the last proven frontier. The source receipt
       // remains retryable, but the poll still runs so retained safe work and
       // projection liveness are not starved on a BLOCK tick.
-      const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });
+      const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });
       await pollLiveProjections(env, {
         registry: composition.projectors,
         storeProvider,

@@ -27,6 +27,21 @@ const mutations = Object.freeze([
     reason: "local cron-disabled proof must fail when the kick is omitted",
   },
   {
+    name: "cron-bypasses-single-flight-scheduler",
+    file: workerFile,
+    from: `    scheduleMeetingRoomSafeLaneKick(
+      env as MeetingRoomCloudflareEnv,
+      serviceId,
+      ctx,
+      (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "cron", coverage, request),
+      undefined,
+      "cron",
+    );`,
+    to: `    await runMeetingRoomSafeLanePass(env, serviceId, "cron", coverage);`,
+    pattern: "AC1: cron and Queue kicks share one effective single-flight scheduler",
+    reason: "cron must enter the same single-flight/coalescing scheduler as Queue and fence-expiry triggers",
+  },
+  {
     name: "reuse-first-coalesced-owner",
     file: schedulerFile,
     from: "        const runRequest = state.pendingRequest;",
@@ -137,6 +152,8 @@ function assertContract(value) {
   if (value.adapter.includes("await options.afterStoredQueueDelivery")) fail("Queue hook is awaited");
   requireContains(value.runtime, "afterStoredQueueDelivery", "runtime Queue hook option");
   requireContains(value.worker, "scheduleMeetingRoomSafeLaneKick", "sample Queue kick");
+  requireContains(value.worker, "beforeLiveProjectionPoll: async ({ env, serviceId, ctx })", "cron scheduler context");
+  requireContains(value.worker, 'runMeetingRoomSafeLanePass(passEnv, passServiceId, "cron", coverage, request)', "cron shared scheduler pass");
   requireContains(value.worker, "ctx.waitUntil", "non-blocking waitUntil boundary");
   requireContains(value.worker, 'owner === undefined ? "kick" : "delivery"', "default delivery pass trigger");
   requireContains(value.worker, "new GlobalCompletenessReconciler(env.D1, env.TAG)", "fresh G44 reconciler");
@@ -160,6 +177,7 @@ function assertContract(value) {
   requireContains(value.test, "AC1: invokes the kick hook", "Queue hook oracle");
   requireContains(value.test, "AC1: Queue kick hook is notification-only", "non-awaiting Queue hook oracle");
   requireContains(value.test, "AC1: concurrent kicks", "concurrent single-flight oracle");
+  requireContains(value.test, "AC1: cron and Queue kicks share one effective single-flight scheduler", "cron shared scheduler oracle");
   requireContains(value.test, "AC2: a kicked BLOCK/UNSETTLED pass", "frontier fence oracle");
   requireContains(value.test, "AC3: ten paced commits converge through kicks", "cron-disabled local proof");
   requireContains(value.test, "AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader", "end-to-end safe handoff oracle");
@@ -210,7 +228,7 @@ function green() {
   if (prior.status !== "red-before-green" || prior.expectedFailure !== true) fail(`invalid red receipt ${redReceipt}`);
   const value = sourceSnapshot();
   assertContract(value);
-  const greenResult = runVitest("AC1: invokes the kick hook|AC1: concurrent kicks|AC2: a kicked BLOCK/UNSETTLED pass|AC3: ten paced commits converge through kicks|AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader|AC4: cron-disabled Queue kick records the SafeWindow stop", "G67 local green oracles");
+  const greenResult = runVitest("AC1: invokes the kick hook|AC1: concurrent kicks|AC1: cron and Queue kicks share one effective single-flight scheduler|AC2: a kicked BLOCK/UNSETTLED pass|AC3: ten paced commits converge through kicks|AC4: cron-disabled Queue delivery reaches coverage, MV catch-up, and the public safe reader|AC4: cron-disabled Queue kick records the SafeWindow stop", "G67 local green oracles");
   requirePass(greenResult);
   const rows = mutations.map(runMutation);
   writeReceipt(greenReceipt, {

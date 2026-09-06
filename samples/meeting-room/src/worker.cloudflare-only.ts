@@ -534,7 +534,7 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     env,
     env.TAG === undefined ? undefined : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise)),
   ),
-  beforeLiveProjectionPoll: async ({ env, serviceId }) => {
+  beforeLiveProjectionPoll: async ({ env, serviceId, ctx }) => {
     // Unit-only D1 fixtures intentionally omit the Tag authority. Preserve
     // their original unrestricted local catch-up seam; deployed primaries
     // always bind TAG and take the fresh-reconcile path below.
@@ -549,7 +549,18 @@ const runtime = createCloudflareOnlyRuntimeWorker({
       return { frontierSuid: undefined };
     }
     const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
-    await runMeetingRoomSafeLanePass(env, serviceId, "cron", coverage);
+    // Cron is the backstop, but it must enter the same per-service
+    // single-flight/coalescing scheduler as Queue and fence-expiry triggers.
+    // The scan result is captured so this scheduled pass uses the same
+    // coverage decision that the runtime just computed.
+    scheduleMeetingRoomSafeLaneKick(
+      env as MeetingRoomCloudflareEnv,
+      serviceId,
+      ctx,
+      (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "cron", coverage, request),
+      undefined,
+      "cron",
+    );
     return { frontierSuid: coverage.frontierSuid };
   },
   afterStoredQueueDelivery: ({ message, env, ctx }) => {
