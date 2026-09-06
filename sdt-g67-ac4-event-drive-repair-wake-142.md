@@ -4,7 +4,9 @@ Task: `SDT-G67-AC4-EVENT-DRIVE-REPAIR-WAKE-142`
 Issue: `J-Tech-Japan/sekiban-dcb-ts#129`  
 Branch: `claude/sdt-g67-local-wake-w142`  
 Starting head: `6d691275dd763bb8fb8fad1c6d2a49bd18d45d00`  
-Checkpoint SHA: **pinned after the scoped push below**
+Checkpoint SHA: `327eacb` (`327eacb` is the exact pushed checkpoint before
+this receipt-only pin; the final receipt pin is the immediately following
+evidence commit.)
 
 ## Classification and bounded decision
 
