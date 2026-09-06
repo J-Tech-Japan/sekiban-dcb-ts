@@ -12,20 +12,33 @@ export function createSafeLaneKickScheduler(
   onIdle?: () => void,
   onCoalesced?: (request: SafeLaneKickRequest) => void,
 ): (request: SafeLaneKickRequest) => Promise<void> {
-  let active: { rerun: boolean; promise: Promise<void> } | undefined;
+  let active: {
+    rerun: boolean;
+    pendingRequest: SafeLaneKickRequest;
+    promise: Promise<void>;
+  } | undefined;
 
   return (request) => {
     if (active !== undefined) {
       active.rerun = true;
+      // The next pass must be attributed to the latest committed delivery,
+      // not to the request that happened to start the already-running pass.
+      // This remains one-flight: only the request identity changes.
+      active.pendingRequest = request;
       onCoalesced?.(request);
       return active.promise;
     }
 
-    const state = { rerun: false, promise: undefined as unknown as Promise<void> };
+    const state = {
+      rerun: false,
+      pendingRequest: request,
+      promise: undefined as unknown as Promise<void>,
+    };
     state.promise = (async () => {
       do {
         state.rerun = false;
-        await pass(request);
+        const runRequest = state.pendingRequest;
+        await pass(runRequest);
       } while (state.rerun);
     })().finally(() => {
       if (active?.promise === state.promise) active = undefined;
@@ -40,4 +53,13 @@ export function createSafeLaneKickScheduler(
 export interface SafeLaneKickRequest {
   readonly passId: string;
   readonly scheduledAt: number;
+  readonly owner?: SafeLaneKickOwner;
+}
+
+/** Source identity carried by a Queue delivery into pass attribution. */
+export interface SafeLaneKickOwner {
+  readonly eventId: string;
+  readonly attemptId: string;
+  readonly partitionTag: string;
+  readonly obligationSequence: number | null;
 }

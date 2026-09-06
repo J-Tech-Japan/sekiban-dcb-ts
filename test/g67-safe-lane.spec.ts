@@ -159,12 +159,19 @@ describe("SDT-G67 event-driven safe lane", () => {
     const passId = `kick:${crypto.randomUUID()}`;
     const coverage = settled(g32Suid(7), 7_000);
     const passEnv = { D1: database };
+    const deliveryOwner = {
+      eventId: "g67-event-7",
+      attemptId: "g67-attempt-7",
+      partitionTag: "room:g67-7",
+      obligationSequence: 7,
+    };
     await recordMeetingRoomSafeLanePass(passEnv, {
       serviceId,
       passId,
       trigger: "kick",
       status: "scheduled",
       scheduledAt: 7_001,
+      deliveryOwner,
     });
     await recordMeetingRoomSafeLanePass(passEnv, {
       serviceId,
@@ -173,6 +180,7 @@ describe("SDT-G67 event-driven safe lane", () => {
       status: "running",
       scheduledAt: 7_001,
       startedAt: 7_002,
+      deliveryOwner,
     });
     await recordMeetingRoomSafeLanePass(passEnv, {
       serviceId,
@@ -183,13 +191,19 @@ describe("SDT-G67 event-driven safe lane", () => {
       startedAt: 7_002,
       completedAt: 7_010,
       coverage,
+      deliveryOwner,
       safeHeadsBeforeJson: "[{\"projectionId\":\"room\",\"head\":\"\"}]",
       safeHeadsAfterJson: `[{"projectionId":"room","head":"${coverage.frontierSuid}"}]`,
+      catchUpStartedAt: 7_003,
+      catchUpCompletedAt: 7_009,
+      catchUpOutcome: "completed",
     });
     const row = await database.prepare(
       `SELECT trigger, status, scheduled_at, started_at, completed_at,
               coverage_kind, settled_frontier_suid, safe_heads_before_json,
-              safe_heads_after_json
+              safe_heads_after_json, delivery_event_id, delivery_attempt_id,
+              delivery_partition_tag, delivery_obligation_sequence,
+              catch_up_started_at, catch_up_completed_at, catch_up_outcome
          FROM serialized_dcb_safe_lane_passes
         WHERE service_id = ? AND pass_id = ?`,
     ).bind(serviceId, passId).first<Record<string, unknown>>();
@@ -201,6 +215,13 @@ describe("SDT-G67 event-driven safe lane", () => {
       completed_at: 7_010,
       coverage_kind: "SETTLED",
       settled_frontier_suid: coverage.frontierSuid,
+      delivery_event_id: "g67-event-7",
+      delivery_attempt_id: "g67-attempt-7",
+      delivery_partition_tag: "room:g67-7",
+      delivery_obligation_sequence: 7,
+      catch_up_started_at: 7_003,
+      catch_up_completed_at: 7_009,
+      catch_up_outcome: "completed",
     });
     expect(row?.safe_heads_before_json).toContain("projectionId");
     expect(row?.safe_heads_after_json).toContain(coverage.frontierSuid);
@@ -213,11 +234,13 @@ describe("SDT-G67 event-driven safe lane", () => {
     let activePasses = 0;
     let maximumActivePasses = 0;
     let passCount = 0;
+    const ownerEvents: string[] = [];
     let releaseFirstPass: (() => void) | undefined;
-    const pass = async () => {
+    const pass = async (_env: object, _serviceId: string, request?: { owner?: { eventId: string } }) => {
       activePasses += 1;
       maximumActivePasses = Math.max(maximumActivePasses, activePasses);
       passCount += 1;
+      ownerEvents.push(request?.owner?.eventId ?? "missing-owner");
       if (passCount === 1) {
         await new Promise<void>((resolve) => { releaseFirstPass = resolve; });
       }
@@ -225,10 +248,16 @@ describe("SDT-G67 event-driven safe lane", () => {
       activePasses -= 1;
     };
     const context = { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as never;
+    const owner = (eventId: string) => ({
+      eventId,
+      attemptId: `${eventId}-attempt`,
+      partitionTag: `${eventId}-partition`,
+      obligationSequence: 1,
+    });
 
-    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass);
-    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass);
-    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass);
+    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, owner("event-1"));
+    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, owner("event-2"));
+    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, owner("event-3"));
     // The production path deliberately defers scheduler start until after
     // waitUntil registration; allow that non-blocking handoff to run.
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -239,6 +268,7 @@ describe("SDT-G67 event-driven safe lane", () => {
     expect(maximumActivePasses).toBe(1);
     expect(passCount).toBe(2);
     expect(heads).toEqual(["proven-head", "proven-head"]);
+    expect(ownerEvents).toEqual(["event-1", "event-3"]);
   });
 
   it("AC2: a kicked BLOCK/UNSETTLED pass uses only the retained proven frontier", async () => {

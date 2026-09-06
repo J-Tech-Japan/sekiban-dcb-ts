@@ -25,6 +25,14 @@ const mutations = Object.freeze([
     reason: "local cron-disabled proof must fail when the kick is omitted",
   },
   {
+    name: "reuse-first-coalesced-owner",
+    file: schedulerFile,
+    from: "        const runRequest = state.pendingRequest;",
+    to: "        const runRequest = request;",
+    pattern: "AC1: concurrent kicks",
+    reason: "a coalesced Queue delivery must own the effective follow-up pass",
+  },
+  {
     name: "advance-under-block-frontier",
     file: workerFile,
     from: "    // The caller has just completed this tick's scanner. A FULL/SETTLED\n    // frontier is therefore immediately eligible; a BLOCK frontier is the\n    // last proven cursor retained by the reconciler and remains fenced.\n    await input.catchUp(coverage.frontierSuid);",
@@ -114,10 +122,14 @@ function assertContract(value) {
   requireContains(value.worker, "new GlobalCompletenessReconciler(env.D1, env.TAG)", "fresh G44 reconciler");
   requireContains(value.worker, "reconciler.reconcile(serviceId", "kick scanner evaluation");
   requireContains(value.worker, "runMeetingRoomScheduledMaintenance", "shared cron/kick pass body");
+  requireContains(value.worker, "catchUp: effectiveCatchUp", "effective kicked catch-up callback");
+  requireContains(value.worker, "catchUpStartedAt", "catch-up start attribution");
+  requireContains(value.worker, "catchUpOutcome", "catch-up outcome attribution");
   requireContains(value.worker, "status: \"scheduled\"", "durable kick scheduling receipt");
   requireContains(value.worker, "status: \"completed\"", "durable kick completion receipt");
   requireContains(value.worker, "Promise.resolve().then", "deferred waitUntil kick start");
   requireContains(value.scheduler, "state.rerun", "single-flight coalescing");
+  requireContains(value.scheduler, "state.pendingRequest", "latest coalesced owner");
   requireContains(value.scheduler, "onIdle", "single-flight lifecycle cleanup");
   requireContains(value.test, "AC1: invokes the kick hook", "Queue hook oracle");
   requireContains(value.test, "AC1: Queue kick hook is notification-only", "non-awaiting Queue hook oracle");

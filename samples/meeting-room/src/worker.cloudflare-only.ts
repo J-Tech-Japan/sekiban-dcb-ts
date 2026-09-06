@@ -40,7 +40,7 @@ import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 import { runtimeRequestWithIngressRay } from "./ingress-observation";
-import { createSafeLaneKickScheduler, type SafeLaneKickRequest } from "./safe-lane-kick";
+import { createSafeLaneKickScheduler, type SafeLaneKickOwner, type SafeLaneKickRequest } from "./safe-lane-kick";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
@@ -102,12 +102,14 @@ export async function runMeetingRoomSafeLanePass(
   const startedAt = Date.now();
   const passId = request?.passId ?? `${trigger}:${String(startedAt)}:${crypto.randomUUID()}`;
   const scheduledAt = request?.scheduledAt ?? startedAt;
+  const deliveryOwner = request?.owner;
   await bestEffortSafeLanePassObservation(env, {
     serviceId,
     passId,
     trigger,
     status: "scheduled",
     scheduledAt,
+    deliveryOwner,
   });
   await bestEffortSafeLanePassObservation(env, {
     serviceId,
@@ -116,9 +118,14 @@ export async function runMeetingRoomSafeLanePass(
     status: "running",
     scheduledAt,
     startedAt,
+    deliveryOwner,
   });
   let coverage: GlobalCompletenessCoverage | undefined;
   let safeHeadsBeforeJson: string | null = null;
+  let catchUpStartedAt: number | null = null;
+  let catchUpCompletedAt: number | null = null;
+  let catchUpOutcome: string | null = null;
+  let catchUpError: string | null = null;
   try {
     const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
     const computedCoverage = existingCoverage ?? await (async () => {
@@ -127,9 +134,22 @@ export async function runMeetingRoomSafeLanePass(
     })();
     coverage = computedCoverage;
     safeHeadsBeforeJson = await bestEffortSafeLaneHeads(env, serviceId);
+    const effectiveCatchUp = async (frontierSuid?: string | null): Promise<void> => {
+      catchUpStartedAt = Date.now();
+      try {
+        await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        catchUpCompletedAt = Date.now();
+        catchUpOutcome = "completed";
+      } catch (error) {
+        catchUpCompletedAt = Date.now();
+        catchUpOutcome = "failed";
+        catchUpError = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    };
     await runMeetingRoomScheduledMaintenance({
       freshCoverage: async () => computedCoverage,
-      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+      catchUp: effectiveCatchUp,
       drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
       runGenericScheduledWork: async () => {},
       ...(trigger === "cron"
@@ -148,6 +168,11 @@ export async function runMeetingRoomSafeLanePass(
       coverage,
       safeHeadsBeforeJson,
       safeHeadsAfterJson,
+      deliveryOwner,
+      catchUpStartedAt,
+      catchUpCompletedAt,
+      catchUpOutcome,
+      catchUpError,
     });
     console.log("safe_lane_pass", {
       passId,
@@ -173,6 +198,11 @@ export async function runMeetingRoomSafeLanePass(
       completedAt: Date.now(),
       coverage,
       safeHeadsBeforeJson,
+      deliveryOwner,
+      catchUpStartedAt,
+      catchUpCompletedAt,
+      catchUpOutcome,
+      catchUpError,
       error: error instanceof Error ? error.message : String(error),
     });
     console.warn("safe_lane_pass", {
@@ -200,6 +230,7 @@ export function scheduleMeetingRoomSafeLaneKick(
   serviceId: string,
   ctx: ExecutionContext,
   pass: (env: MeetingRoomCloudflareEnv, serviceId: string, request?: SafeLaneKickRequest) => Promise<void> = (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "kick", undefined, request),
+  owner?: SafeLaneKickOwner,
 ): void {
   let scheduler = safeLaneKickSchedulers.get(serviceId);
   if (scheduler === undefined) {
@@ -215,6 +246,7 @@ export function scheduleMeetingRoomSafeLaneKick(
           trigger: "kick",
           status: "coalesced",
           scheduledAt: request.scheduledAt,
+          deliveryOwner: request.owner,
         }));
       },
     );
@@ -224,6 +256,7 @@ export function scheduleMeetingRoomSafeLaneKick(
   const request: SafeLaneKickRequest = {
     passId: `kick:${String(scheduledAt)}:${crypto.randomUUID()}`,
     scheduledAt,
+    owner,
   };
   // Defer even the observer write and scheduler invocation until after the
   // Queue callback has registered waitUntil. This keeps Queue acknowledgement
@@ -235,6 +268,7 @@ export function scheduleMeetingRoomSafeLaneKick(
       trigger: "kick",
       status: "scheduled",
       scheduledAt: request.scheduledAt,
+      deliveryOwner: request.owner,
     });
     return scheduler!(request);
   });
@@ -280,7 +314,12 @@ const runtime = createCloudflareOnlyRuntimeWorker({
     // they keep their existing transport-only behavior and cron is not
     // meaningful there.
     if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
-    scheduleMeetingRoomSafeLaneKick(env as MeetingRoomCloudflareEnv, message.serviceId, ctx);
+    scheduleMeetingRoomSafeLaneKick(env as MeetingRoomCloudflareEnv, message.serviceId, ctx, undefined, {
+      eventId: message.eventId,
+      attemptId: message.attemptId,
+      partitionTag: message.tag,
+      obligationSequence: message.completeness.obligationSequence,
+    });
   },
   liveProjectionPollObserver: {
     onAttempt: ({ env, serviceId, projectorIds, attemptedAt }) =>

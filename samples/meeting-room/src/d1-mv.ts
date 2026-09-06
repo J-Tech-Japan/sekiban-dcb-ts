@@ -55,6 +55,14 @@ export interface MeetingRoomSafeLaneHistoryEntry {
 
 export type MeetingRoomSafeLanePassStatus = "scheduled" | "running" | "completed" | "failed" | "coalesced";
 
+/** Exact Queue delivery identity that requested an event-driven pass. */
+export interface MeetingRoomSafeLaneDeliveryOwner {
+  readonly eventId: string;
+  readonly attemptId: string;
+  readonly partitionTag: string;
+  readonly obligationSequence: number | null;
+}
+
 /** Durable lifecycle evidence for one cron pass or event-driven kick. */
 export interface MeetingRoomSafeLanePassEntry {
   readonly passId: string;
@@ -70,6 +78,14 @@ export interface MeetingRoomSafeLanePassEntry {
   /** JSON objects keyed by projector id, retained as observed pass evidence. */
   readonly safeHeadsBeforeJson: string | null;
   readonly safeHeadsAfterJson: string | null;
+  readonly deliveryEventId: string | null;
+  readonly deliveryAttemptId: string | null;
+  readonly deliveryPartitionTag: string | null;
+  readonly deliveryObligationSequence: number | null;
+  readonly catchUpStartedAt: number | null;
+  readonly catchUpCompletedAt: number | null;
+  readonly catchUpOutcome: string | null;
+  readonly catchUpError: string | null;
   readonly error: string | null;
 }
 
@@ -148,6 +164,11 @@ export interface MeetingRoomSafeLanePassWrite {
   readonly coverage?: MeetingRoomSafeLaneCoverage;
   readonly safeHeadsBeforeJson?: string | null;
   readonly safeHeadsAfterJson?: string | null;
+  readonly deliveryOwner?: MeetingRoomSafeLaneDeliveryOwner | null;
+  readonly catchUpStartedAt?: number | null;
+  readonly catchUpCompletedAt?: number | null;
+  readonly catchUpOutcome?: string | null;
+  readonly catchUpError?: string | null;
   readonly error?: string | null;
 }
 
@@ -165,10 +186,22 @@ export async function recordMeetingRoomSafeLanePass(
   if (input.status === "scheduled") {
     await env.D1.prepare(
       `INSERT INTO serialized_dcb_safe_lane_passes
-         (service_id, pass_id, trigger, status, scheduled_at)
-       VALUES (?, ?, ?, ?, ?)
+         (service_id, pass_id, trigger, status, scheduled_at,
+          delivery_event_id, delivery_attempt_id, delivery_partition_tag,
+          delivery_obligation_sequence)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (service_id, pass_id) DO NOTHING`,
-    ).bind(input.serviceId, input.passId, input.trigger, input.status, input.scheduledAt).run();
+    ).bind(
+      input.serviceId,
+      input.passId,
+      input.trigger,
+      input.status,
+      input.scheduledAt,
+      input.deliveryOwner?.eventId ?? null,
+      input.deliveryOwner?.attemptId ?? null,
+      input.deliveryOwner?.partitionTag ?? null,
+      input.deliveryOwner?.obligationSequence ?? null,
+    ).run();
     return;
   }
   if (input.status === "running") {
@@ -192,7 +225,9 @@ export async function recordMeetingRoomSafeLanePass(
         SET status = ?, completed_at = ?, coverage_kind = ?,
             coverage_reason = ?, coverage_partition_tag = ?,
             settled_frontier_suid = ?, safe_heads_before_json = ?,
-            safe_heads_after_json = ?, error = ?
+            safe_heads_after_json = ?, catch_up_started_at = ?,
+            catch_up_completed_at = ?, catch_up_outcome = ?,
+            catch_up_error = ?, error = ?
       WHERE service_id = ? AND pass_id = ?`,
   ).bind(
     input.status,
@@ -203,6 +238,10 @@ export async function recordMeetingRoomSafeLanePass(
     coverage?.frontierSuid ?? null,
     input.safeHeadsBeforeJson ?? null,
     input.safeHeadsAfterJson ?? null,
+    input.catchUpStartedAt ?? null,
+    input.catchUpCompletedAt ?? null,
+    input.catchUpOutcome ?? null,
+    input.catchUpError ?? null,
     input.error ?? null,
     input.serviceId,
     input.passId,
@@ -216,10 +255,15 @@ export async function readMeetingRoomSafeHeads(
 ): Promise<string | null> {
   if (env.D1_MV === undefined) return null;
   const rows = await env.D1_MV.prepare(
-    `SELECT projection_id, last_suid
-       FROM serialized_dcb_projection_checkpoints
-      WHERE service_id = ?
-      ORDER BY projection_id COLLATE BINARY ASC`,
+    `SELECT instance.view_id AS projection_id, instance.last_suid
+       FROM mv_active_generations active
+       JOIN mv_instances instance
+         ON instance.service_id = active.service_id
+        AND instance.view_id = active.view_id
+        AND instance.generation = active.generation
+      WHERE active.service_id = ?
+        AND instance.status = 'active'
+      ORDER BY instance.view_id COLLATE BINARY ASC`,
   ).bind(serviceId).all<Record<string, unknown>>();
   return JSON.stringify(rows.results.map((row) => ({
     projectionId: typeof row.projection_id === "string" ? row.projection_id : "",
@@ -632,7 +676,11 @@ export async function readMeetingRoomHealth(
           `SELECT pass_id, trigger, status, scheduled_at, started_at,
                   completed_at, coverage_kind, coverage_reason,
                   coverage_partition_tag, settled_frontier_suid,
-                  safe_heads_before_json, safe_heads_after_json, error
+                  safe_heads_before_json, safe_heads_after_json,
+                  delivery_event_id, delivery_attempt_id,
+                  delivery_partition_tag, delivery_obligation_sequence,
+                  catch_up_started_at, catch_up_completed_at,
+                  catch_up_outcome, catch_up_error, error
              FROM serialized_dcb_safe_lane_passes
             WHERE service_id = ?
             ORDER BY scheduled_at COLLATE BINARY ASC, pass_id COLLATE BINARY ASC`,
@@ -745,6 +793,20 @@ export async function readMeetingRoomHealth(
         : String(row.settled_frontier_suid),
       safeHeadsBeforeJson: row.safe_heads_before_json === null || row.safe_heads_before_json === undefined ? null : String(row.safe_heads_before_json),
       safeHeadsAfterJson: row.safe_heads_after_json === null || row.safe_heads_after_json === undefined ? null : String(row.safe_heads_after_json),
+      deliveryEventId: row.delivery_event_id === null || row.delivery_event_id === undefined ? null : String(row.delivery_event_id),
+      deliveryAttemptId: row.delivery_attempt_id === null || row.delivery_attempt_id === undefined ? null : String(row.delivery_attempt_id),
+      deliveryPartitionTag: row.delivery_partition_tag === null || row.delivery_partition_tag === undefined ? null : String(row.delivery_partition_tag),
+      deliveryObligationSequence: row.delivery_obligation_sequence === null || row.delivery_obligation_sequence === undefined
+        ? null
+        : asCount(row.delivery_obligation_sequence, "safe_lane_pass.delivery_obligation_sequence"),
+      catchUpStartedAt: row.catch_up_started_at === null || row.catch_up_started_at === undefined
+        ? null
+        : asCount(row.catch_up_started_at, "safe_lane_pass.catch_up_started_at"),
+      catchUpCompletedAt: row.catch_up_completed_at === null || row.catch_up_completed_at === undefined
+        ? null
+        : asCount(row.catch_up_completed_at, "safe_lane_pass.catch_up_completed_at"),
+      catchUpOutcome: row.catch_up_outcome === null || row.catch_up_outcome === undefined ? null : String(row.catch_up_outcome),
+      catchUpError: row.catch_up_error === null || row.catch_up_error === undefined ? null : String(row.catch_up_error),
       error: row.error === null || row.error === undefined ? null : String(row.error),
     } satisfies MeetingRoomSafeLanePassEntry;
   });

@@ -1,0 +1,18 @@
+command: cd /private/tmp/sdt-g67-w142-parent && env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN ./node_modules/.bin/wrangler d1 execute sekiban-dcb-g60-w155-c-pipeline --remote --json --yes --config .artifacts/wrangler.g65-w155-c.jsonc --command "DELETE FROM serialized_dcb_safe_lane_passes;"
+credential-variable-state: CLOUDFLARE_API_TOKEN=UNSET CF_API_TOKEN=UNSET CLOUDFLARE_API_KEY=UNSET CF_API_KEY=UNSET WRANGLER_API_TOKEN=UNSET
+
+{
+  "error": {
+    "text": "A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/ac751211-fde8-4587-9d56-1e9fd8051bc3/query) failed.",
+    "notes": [
+      {
+        "text": "no such table: serialized_dcb_safe_lane_passes: SQLITE_ERROR [code: 7500]"
+      }
+    ],
+    "kind": "error",
+    "name": "APIError",
+    "code": 7500,
+    "accountTag": "3ede2188f4cf39a28e0aa3722d3d02c5"
+  }
+}
+exit_code: 1
