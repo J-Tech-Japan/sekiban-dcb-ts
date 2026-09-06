@@ -575,8 +575,20 @@ export function createSekibanExecutor(
       if (result.status === "unknown") return { kind: "timeout", attempts: result.attempts, code: "unknown_outcome", error: errorText(result.error) };
       return { kind: "rejected", attempts: result.attempts, error: `Command ${command.id} was rejected`, code: "command_rejected" };
     } catch (error) {
-      if (error instanceof DomainAuthoringError && error.code === "executor.snapshot_missing") {
-        return { kind: "invalid", attempts: 0, code: error.code, error: error.message };
+      // The facade and the authored sample can resolve separate package
+      // copies in a Worker bundle, so preserve the domain error code across
+      // that package boundary instead of relying on instanceof alone.
+      const authoringCode = error instanceof DomainAuthoringError
+        ? error.code
+        : isRecord(error) && typeof error.code === "string" ? error.code : undefined;
+      if (authoringCode === "executor.snapshot_missing") {
+        return { kind: "invalid", attempts: 0, code: authoringCode, error: errorText(error) };
+      }
+      // Command input validation is a typed application rejection, not a
+      // transport failure. The executor facade must preserve the public
+      // invalid-command contract used by the meeting-room API.
+      if (authoringCode === "COMMAND_INPUT_INVALID") {
+        return { kind: "invalid", attempts: 1, code: "invalid_command_input", error: errorText(error) };
       }
       if (error instanceof ClientError) {
         if (error.code === "timeout" || error.code === "aborted") return { kind: "timeout", attempts: 1, code: error.code, error: error.message };
