@@ -1,13 +1,19 @@
-# SDT-G67 evidence — final amended AC4/AC5 disposition
+# SDT-G67 evidence — local repair and retained deployed receipts
 
 This document retains the local AC1–AC3 proof and the W145/W146 deployed
-receipts for issue #129. The final amended AC4/AC5 ownership is the
-fence-expiry scheduling result: production scheduling-wait p95 is at or below
-5,000 ms and all ten production samples became safe within 180,000 ms. Safe
-first visibility is measured and attributed, not a target. Pass latency,
-fence wait, ring arrival, Queue arrival, and strict unsafe misses are reported
-as attribution facts and are not G67 gates. No cohort was rerun for this
-amendment.
+receipts for issue #129. The W146 receipt is historical evidence only: its
+selected pass did not prove that the pass which was attributed to a sample
+actually applied that sample's event. The old `started_at - scheduled_at`
+selection is therefore superseded and is not an AC4 gate result. No deployed
+cohort with the corrected event-to-applying-pass join exists in this
+checkpoint, so the deployed AC4 applying-pass gate remains incomplete rather
+than inferred from W146.
+
+Safe first visibility, pass latency, fence wait, ring arrival, Queue arrival,
+and strict unsafe misses remain reported as observed attribution facts from
+the retained receipts. The W146 values are preserved below so the raw evidence
+is not rewritten, but stale gate language is explicitly invalidated. No
+cohort was rerun for this local repair.
 
 ## Final amended AC4/AC5 reconciliation — W145/W146
 
@@ -28,13 +34,15 @@ ring-arrival population is zero and direct-ring/unsafe rows are non-gated in
 G67; the strict unsafe observation misses remain recorded honestly.
 
 The production run was cold-first and paced at ten seconds, with `n=10`, run
-ID `7b5cdd0f-ed47-46a2-8f7c-b2d04e9aff20`. The owned gates passed:
-scheduling-wait p95 `1608 ms <= 5000 ms`, and safe first visibility `10/10 <
-180000 ms`. All ten strict 5000 ms unsafe observations missed, while all ten
-eventually became visible. The production pass-latency p95 was `16983 ms`;
-this is broader than the arm catch-up cost because it includes production
+ID `7b5cdd0f-ed47-46a2-8f7c-b2d04e9aff20`. The historical receipt reported
+scheduling-wait p95 `1608 ms` and safe first visibility `10/10 < 180000 ms`.
+The `1608 ms` value is invalidated as an AC4 gate because it is the old
+`started_at - scheduled_at` invocation delay, not the fence-eligibility to the
+actual applying pass for each event. The ten strict 5000 ms unsafe misses and
+the eventual safe observations remain unchanged. The production pass-latency
+p95 was `16983 ms`; this is a composite observation including production
 Queue-arrival, fence, and deferred-pass timing rather than only catch-up
-execution. It is reported attribution, not an amended G67 gate.
+execution, and it must not be read as an unproven pre-pass Queue/fence wait.
 
 `Queue arrival` below is the maximum, across the room and reservation
 obligations for the exact sample, of `consumer-invocation-started -
@@ -66,7 +74,7 @@ All values are milliseconds from observed clocks. Production distributions:
 | command response | 10 | 2059 | 2388 | measured |
 | Queue arrival | 10 | 12205 | 22514 | reported attribution |
 | fence wait | 10 | 54995 | 62698 | reported attribution |
-| scheduling wait | 10 | 219 | 1608 | **owned gate passed** |
+| scheduling wait | 10 | 219 | 1608 | historical measurement; **invalidated gate attribution** |
 | pass latency | 10 | 9939 | 16983 | reported attribution, not a gate |
 | safe first visibility | 10 | 76684 | 116916 | measured; 10/10 under 180 s |
 | unsafe eventual visibility | 10 | 55070 | 115342 | strict 5 s observation missed 10/10 |

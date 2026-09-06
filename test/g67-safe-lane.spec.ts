@@ -425,35 +425,51 @@ describe("SDT-G67 event-driven safe lane", () => {
     expect(source).toContain('      "cron",\n    );');
     expect(source).not.toContain('await runMeetingRoomSafeLanePass(env, serviceId, "cron", coverage);');
 
-    const serviceId = `g67-cron-delivery-${crypto.randomUUID()}`;
-    const waiters: Promise<void>[] = [];
-    let activePasses = 0;
-    let maximumActivePasses = 0;
-    let passCount = 0;
-    const triggers: string[] = [];
-    let releaseFirstPass: (() => void) | undefined;
-    const pass = async (_env: object, _serviceId: string, request?: { trigger?: string }) => {
-      activePasses += 1;
-      maximumActivePasses = Math.max(maximumActivePasses, activePasses);
-      passCount += 1;
-      triggers.push(request?.trigger ?? "missing");
-      if (passCount === 1) {
-        await new Promise<void>((resolve) => { releaseFirstPass = resolve; });
-      }
-      activePasses -= 1;
+    const runOrder = async (
+      serviceId: string,
+      first: { trigger: "delivery" | "cron"; coverage: string },
+      second: { trigger: "delivery" | "cron"; coverage: string },
+    ) => {
+      const waiters: Promise<void>[] = [];
+      let activePasses = 0;
+      let maximumActivePasses = 0;
+      let passCount = 0;
+      const observations: string[] = [];
+      let releaseFirstPass: (() => void) | undefined;
+      const passFor = (coverage: string) => async (_env: object, _serviceId: string, request?: { trigger?: string }) => {
+        activePasses += 1;
+        maximumActivePasses = Math.max(maximumActivePasses, activePasses);
+        passCount += 1;
+        observations.push(`${request?.trigger ?? "missing"}:${coverage}`);
+        if (passCount === 1) {
+          await new Promise<void>((resolve) => { releaseFirstPass = resolve; });
+        }
+        activePasses -= 1;
+      };
+      const context = { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as never;
+
+      scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, passFor(first.coverage), undefined, first.trigger);
+      scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, passFor(second.coverage), undefined, second.trigger);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(releaseFirstPass).toBeDefined();
+      releaseFirstPass?.();
+      await Promise.all(waiters);
+
+      expect(maximumActivePasses).toBe(1);
+      expect(passCount).toBe(2);
+      return observations;
     };
-    const context = { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as never;
 
-    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, undefined, "delivery");
-    scheduleMeetingRoomSafeLaneKick({} as never, serviceId, context, pass, undefined, "cron");
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    expect(releaseFirstPass).toBeDefined();
-    releaseFirstPass?.();
-    await Promise.all(waiters);
-
-    expect(maximumActivePasses).toBe(1);
-    expect(passCount).toBe(2);
-    expect(triggers).toEqual(["delivery", "cron"]);
+    await expect(runOrder(
+      `g67-cron-delivery-${crypto.randomUUID()}`,
+      { trigger: "cron", coverage: "cron-snapshot" },
+      { trigger: "delivery", coverage: "fresh-delivery" },
+    )).resolves.toEqual(["cron:cron-snapshot", "delivery:fresh-delivery"]);
+    await expect(runOrder(
+      `g67-delivery-cron-${crypto.randomUUID()}`,
+      { trigger: "delivery", coverage: "fresh-delivery" },
+      { trigger: "cron", coverage: "cron-snapshot" },
+    )).resolves.toEqual(["delivery:fresh-delivery", "cron:cron-snapshot"]);
   });
 
   it("AC1: coalesces the earliest fence deadline", async () => {

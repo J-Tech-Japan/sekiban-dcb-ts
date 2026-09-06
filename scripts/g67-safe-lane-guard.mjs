@@ -156,6 +156,8 @@ function assertContract(value) {
   requireContains(value.worker, 'runMeetingRoomSafeLanePass(passEnv, passServiceId, "cron", coverage, request)', "cron shared scheduler pass");
   requireContains(value.worker, "ctx.waitUntil", "non-blocking waitUntil boundary");
   requireContains(value.worker, 'owner === undefined ? "kick" : "delivery"', "default delivery pass trigger");
+  requireContains(value.worker, "runPass: (runRequest) => pass(env, serviceId, runRequest)", "per-request pass context");
+  requireContains(value.worker, "request.runPass(request)", "coalesced request runner");
   requireContains(value.worker, "new GlobalCompletenessReconciler(env.D1, env.TAG)", "fresh G44 reconciler");
   requireContains(value.worker, "reconciler.reconcile(serviceId", "kick scanner evaluation");
   requireContains(value.worker, "runMeetingRoomScheduledMaintenance", "shared cron/kick pass body");

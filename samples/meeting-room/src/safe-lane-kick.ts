@@ -56,6 +56,14 @@ export interface SafeLaneKickRequest {
   readonly trigger?: SafeLanePassTrigger;
   readonly retryCount?: number;
   readonly owner?: SafeLaneKickOwner;
+  /**
+   * In-memory execution context only.  A coalesced request must carry the
+   * pass implementation that produced its coverage context; otherwise a
+   * delivery arriving behind a cron pass can accidentally execute the cron
+   * callback and reuse its stale scan result.  This is never serialized into
+   * the durable pass ledger.
+   */
+  readonly runPass?: (request: SafeLaneKickRequest) => Promise<void>;
 }
 
 /** Durable provenance for one safe-lane execution request. */

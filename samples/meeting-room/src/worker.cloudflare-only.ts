@@ -472,7 +472,16 @@ export function scheduleMeetingRoomSafeLaneKick(
   let scheduler = safeLaneKickSchedulers.get(serviceId);
   if (scheduler === undefined) {
     scheduler = createSafeLaneKickScheduler(
-      (request) => pass(env, serviceId, request),
+      (request) => {
+        // The runner is selected by the request, not by the first trigger
+        // that created the single-flight state.  This keeps a delivery's
+        // fresh reconciliation from inheriting a cron callback's captured
+        // coverage when it coalesces behind an active cron pass.
+        if (request.runPass === undefined) {
+          return Promise.reject(new Error("safe_lane_pass_runner_missing"));
+        }
+        return request.runPass(request);
+      },
       () => {
         if (safeLaneKickSchedulers.get(serviceId) === scheduler) safeLaneKickSchedulers.delete(serviceId);
       },
@@ -496,6 +505,10 @@ export function scheduleMeetingRoomSafeLaneKick(
     trigger,
     retryCount,
     owner,
+    // Keep the callback on the in-memory request so every coalesced trigger
+    // retains its own coverage context. The durable observer receives only
+    // the serializable request fields above.
+    runPass: (runRequest) => pass(env, serviceId, runRequest),
   };
   // Defer even the observer write and scheduler invocation until after the
   // Queue callback has registered waitUntil. This keeps Queue acknowledgement
