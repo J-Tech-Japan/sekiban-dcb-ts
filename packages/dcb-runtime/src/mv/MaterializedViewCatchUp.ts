@@ -187,7 +187,7 @@ export class MaterializedViewCatchUpRuntime {
         };
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
-      await this.assertStrictOrder(serviceId, materializer.id, instance.lastSuid, sourceEvents);
+      await this.assertStrictOrder(serviceId, materializer.id, instance.lastSuid, instance.updatedAt, sourceEvents);
       let current = instance;
       let advancedSourceEvents = 0;
       let appliedEvents = 0;
@@ -291,7 +291,33 @@ export class MaterializedViewCatchUpRuntime {
     throw new MaterializedViewStoreError("apply", "MV_CAS_MISMATCH", "Materialized-view catch-up did not converge after concurrent updates");
   }
 
-  private async assertStrictOrder(serviceId: string, viewId: string, priorSuid: string, events: readonly StoredEvent[]): Promise<void> {
+  private async assertStrictOrder(
+    serviceId: string,
+    viewId: string,
+    priorSuid: string,
+    checkpointUpdatedAt: number,
+    events: readonly StoredEvent[],
+  ): Promise<void> {
+    if (priorSuid.length > 0) {
+      const lateLower = await this.source.findLateLowerSuid?.(serviceId, priorSuid, checkpointUpdatedAt);
+      if (lateLower !== undefined) {
+        const incident = {
+          serviceId,
+          identityKey: `LATE_LOWER_SUID|${serviceId}|${viewId}|${priorSuid}|${lateLower.suid}|${lateLower.eventId}`,
+          classification: "ORDER_VIOLATION" as const,
+          suid: lateLower.suid,
+          eventId: lateLower.eventId,
+          incomingEventId: lateLower.eventId,
+          observedAt: lateLower.lastArrivedAt,
+        };
+        await this.source.appendDeliveryIncident(incident);
+        throw new MaterializedViewStoreError(
+          "apply",
+          "MV_STORE_OPERATION_FAILED",
+          "Materialized-view source admitted a lower SUID after the projection checkpoint",
+        );
+      }
+    }
     let previous = priorSuid;
     for (const event of events) {
       if (compareSuid(previous, event.suid) >= 0) {

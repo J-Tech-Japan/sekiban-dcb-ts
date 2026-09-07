@@ -198,6 +198,8 @@ export interface DetectorStore {
  */
 export interface ProjectionStore {
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
+  /** Optional D1-backed detector for a newly admitted lower SUID. */
+  findLateLowerSuid?(serviceId: string, checkpointSuid: string, checkpointUpdatedAt: number): Promise<StoredEvent | undefined>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   listProjectionTags(serviceId: string): Promise<string[]>;
   readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;

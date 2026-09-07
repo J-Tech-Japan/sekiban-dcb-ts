@@ -1,4 +1,5 @@
 import { decayedLagEstimateMs } from "../safeWindow";
+import { appendG69AdmissionAttempt, type G69AdmissionAttemptStatus } from "../diagnostics/G69AdmissionAttempt";
 import type { WaitForTargetLookup, WaitForTargetSourcePort } from "../query/ProjectionQueryStore";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
@@ -72,6 +73,10 @@ function asNumber(value: unknown, name: string): number {
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number)) throw new Error(`D1 ${name} was not a safe integer`);
   return number;
+}
+
+function errorText(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 256);
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -293,6 +298,22 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
   }
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
+    this.ready();
+    const before = await this.eventArrivalOps(message.serviceId, message.eventId).catch(() => undefined);
+    try {
+      const result = await this.recordDeliveryCore(message, arrivedAt, deliverySource);
+      const status: G69AdmissionAttemptStatus = result.outcome === "stored"
+        ? before === undefined ? "stored" : "duplicate"
+        : result.outcome;
+      await this.bestEffortG69AdmissionAttempt(message, arrivedAt, deliverySource, before, status, null);
+      return result;
+    } catch (error) {
+      await this.bestEffortG69AdmissionAttempt(message, arrivedAt, deliverySource, before, "failed", errorText(error));
+      throw error;
+    }
+  }
+
+  private async recordDeliveryCore(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
     // G44 source facts belong to a Tag outbox obligation.  The fenced G22
     // bootstrap import path has no Tag source partition to acknowledge, so it
@@ -629,10 +650,6 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
                    OR contradictory."Payload" <> ? OR contradictory."EventType" <> ?
                    OR contradictory."Tags" <> ?)
             )
-            AND NOT EXISTS (
-              SELECT 1 FROM dcb_events prior
-               WHERE prior."ServiceId" = ? AND prior."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY
-            )
          ON CONFLICT (service_id) DO UPDATE
             SET estimate_ms = MAX(
               MAX(serialized_dcb_lag_estimates.estimate_ms -
@@ -656,8 +673,6 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.payload,
         incomingEventType,
         tagsJson,
-        message.serviceId,
-        message.suid,
       ),
     ];
     await this.batch("recordDelivery", statements);
@@ -762,6 +777,36 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       since,
     );
     return Promise.all(rows.map((row) => this.eventFromRow(row)));
+  }
+
+  /**
+   * G69 strict-order detector: find an event admitted after a projection
+   * checkpoint whose opaque SUID is lower than that checkpoint. A replay of
+   * an event already known before the checkpoint is deliberately excluded by
+   * FirstArrivedAt, so the detector reports new lower-SUID admission rather
+   * than ordinary Queue redelivery.
+   */
+  async findLateLowerSuid(
+    serviceId: string,
+    checkpointSuid: string,
+    checkpointUpdatedAt: number,
+  ): Promise<StoredEvent | undefined> {
+    this.ready();
+    if (checkpointSuid.length === 0) return undefined;
+    assertSortableUniqueId(checkpointSuid);
+    const row = await this.database.prepare(
+      `SELECT e."Id" AS event_id
+         FROM dcb_events e
+         JOIN dcb_event_ops o
+           ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+        WHERE e."ServiceId" = ?
+          AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
+          AND o."FirstArrivedAt" > ?
+        ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC
+        LIMIT 1`,
+    ).bind(serviceId, checkpointSuid, checkpointUpdatedAt).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    return this.eventById(serviceId, asString(row.event_id, "late_lower_suid.event_id"));
   }
 
   /**
@@ -1204,6 +1249,58 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       identityKey,
     );
     return rows[0] === undefined ? undefined : incidentFrom(rows[0]);
+  }
+
+  private async eventArrivalOps(serviceId: string, eventId: string): Promise<{
+    readonly firstArrivedAt: number;
+    readonly lastArrivedAt: number;
+  } | undefined> {
+    const row = await this.database.prepare(
+      `SELECT "FirstArrivedAt" AS first_arrived_at, "LastArrivedAt" AS last_arrived_at
+         FROM dcb_event_ops
+        WHERE "ServiceId" = ? AND "Id" = ?`,
+    ).bind(serviceId, eventId).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    return {
+      firstArrivedAt: asNumber(row.first_arrived_at, "event_ops.first_arrived_at"),
+      lastArrivedAt: asNumber(row.last_arrived_at, "event_ops.last_arrived_at"),
+    };
+  }
+
+  private async bestEffortG69AdmissionAttempt(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource: DeliverySource,
+    before: { readonly firstArrivedAt: number; readonly lastArrivedAt: number } | undefined,
+    status: G69AdmissionAttemptStatus,
+    retryReason: string | null,
+  ): Promise<void> {
+    try {
+      const after = await this.eventArrivalOps(message.serviceId, message.eventId);
+      await appendG69AdmissionAttempt(this.database, {
+        serviceId: message.serviceId,
+        eventId: message.eventId,
+        suid: message.suid,
+        tag: message.tag,
+        deliverySource,
+        queueMessageId: message.attemptId,
+        attemptId: message.attemptId,
+        allocatorLineageId: message.allocatorLineageId,
+        obligationSequence: message.completeness.obligationSequence,
+        enqueuedAt: message.enqueuedAt,
+        observedAt: Date.now(),
+        arrivedAt,
+        firstArrivedAtBefore: before?.firstArrivedAt ?? null,
+        lastArrivedAtBefore: before?.lastArrivedAt ?? null,
+        firstArrivedAtAfter: after?.firstArrivedAt ?? null,
+        lastArrivedAtAfter: after?.lastArrivedAt ?? null,
+        status,
+        retryReason,
+      });
+    } catch {
+      // Diagnostic evidence is strictly best effort. It must not alter the
+      // durable event, Queue disposition, G44 receipt, or safe frontier.
+    }
   }
 
   private ready(): void {

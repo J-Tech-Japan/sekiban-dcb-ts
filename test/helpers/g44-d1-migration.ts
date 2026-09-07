@@ -25,6 +25,8 @@ import g67SafeLanePassOwnershipMigration from "../../migrations/d1/g32/0012_g67_
 import g67SafeLaneCatchUpObservationsMigration from "../../migrations/d1/g32/0013_g67_safe_lane_catch_up_observations.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import g67SafeLaneFenceExpiryMigration from "../../migrations/d1/g32/0014_g67_safe_lane_fence_expiry.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69AdmissionAttemptMigration from "../../migrations/d1/g32/0015_g69_admission_attempts.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -105,5 +107,11 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).all<{ name: string }>();
   if (!safeLanePassFenceExpiryColumns.results.some((row) => row.name === "stop_deadline_at")) {
     await database.batch(statements(database, g67SafeLaneFenceExpiryMigration as string));
+  }
+  const g69AdmissionAttempts = await database.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_g69_admission_attempts'",
+  ).first<{ name: string }>();
+  if (g69AdmissionAttempts === null || g69AdmissionAttempts === undefined) {
+    await database.batch(statements(database, g69AdmissionAttemptMigration as string));
   }
 }
