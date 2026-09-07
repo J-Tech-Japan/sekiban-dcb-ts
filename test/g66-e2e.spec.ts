@@ -6,6 +6,7 @@ function fixture() {
     commands: Array<{
       target: { kind: string; id: string; expectedStatus: string };
       safePredicate: { mode: string; kind: string; id: string; expectedStatus: string; terminalMutationOrdinal: number | null };
+      tagReads: Array<{ version: number; expectedVersion: number; lastSortedUniqueId: string; expectedSuid: string }>;
       commit: { startedAtMs: number; completedAtMs: number; responseMs: number; suid: string };
       unsafe: { firstVisibleAtMs?: number; responseRelativeMs?: number; observations: Array<{ completedAtMs?: number; visible?: boolean }> };
       safe: { firstVisibleAtMs?: number; observedAtMs?: number; responseRelativeMs?: number; publicQuery: { completedAtMs?: number; readHead?: string } };
@@ -86,6 +87,12 @@ describe("SDT-G66 public e2e guard", () => {
     laterMutation.commands[8]!.safePredicate.expectedStatus = "reserved";
     laterMutation.commands[8]!.safePredicate.terminalMutationOrdinal = null;
     expect(passes(laterMutation)).toBe(false);
+  });
+
+  it("rejects a tag-state receipt with no applied projector version", () => {
+    const staleTagState = fixture();
+    staleTagState.commands[1]!.tagReads[0]!.version = 0;
+    expect(passes(staleTagState)).toBe(false);
   });
 
   it("retains hard failures for rejected writes and missing coverage", () => {

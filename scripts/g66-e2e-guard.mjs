@@ -61,6 +61,15 @@ function expectedTags(sample) {
   return tags;
 }
 
+function tagStateEvidence(tag) {
+  return tag.status === 200
+    && Number.isSafeInteger(tag.version)
+    && tag.version >= 1
+    && Number.isSafeInteger(tag.expectedVersion)
+    && tag.expectedVersion >= 1
+    && atLeast(tag.lastSortedUniqueId, tag.expectedSuid);
+}
+
 function exactFinalQuery(receipt) {
   const expected = receipt.expectedFinalState?.reservations;
   const rows = receipt.finalQuery?.reservations?.rows;
@@ -98,7 +107,7 @@ function sampleShape(sample, index) {
   if (!Array.isArray(sample.tagReads) || sample.tagReads.length !== expected.length || expected.length === 0) fail(`sample ${index} has incomplete affected-tag set`);
   const tagKeys = new Set(sample.tagReads.map((tag) => `${tag.tag}:${tag.projector}`));
   if (tagKeys.size !== sample.tagReads.length || !expected.every((tag) => tagKeys.has(`${tag.tag}:${tag.projector}`))) fail(`sample ${index} has missing or unrelated affected-tag evidence`);
-  if (!sample.tagReads.every((tag) => tag.status === 200 && Number.isSafeInteger(tag.version) && Number.isSafeInteger(tag.expectedVersion) && tag.version >= tag.expectedVersion && atLeast(tag.lastSortedUniqueId, tag.expectedSuid))) fail(`sample ${index} has incomplete committed tag evidence`);
+  if (!sample.tagReads.every(tagStateEvidence)) fail(`sample ${index} has incomplete committed tag evidence`);
   if (sample.unsafe?.disposition !== "pass" && sample.unsafe?.disposition !== "censored") fail(`sample ${index} unsafe is neither pass nor explicit censored`);
   if (sample.safe?.disposition !== "pass" && sample.safe?.disposition !== "censored") fail(`sample ${index} safe is neither pass nor explicit censored`);
   if (sample.unsafe?.disposition === "pass") {
@@ -298,6 +307,10 @@ export function selfTest() {
   staleReadHead.commands[1].safe.publicQuery.readHead = staleReadHead.commands[0].commit.suid;
   if (passes(staleReadHead)) fail("stale-read-head mutant passed");
 
+  const staleTagState = structuredClone(good);
+  staleTagState.commands[1].tagReads[0].version = 0;
+  if (passes(staleTagState)) fail("stale-tag-state mutant passed");
+
   const laterSafePredicate = structuredClone(good);
   laterSafePredicate.commands[8].safePredicate.expectedStatus = "reserved";
   laterSafePredicate.commands[8].safePredicate.terminalMutationOrdinal = null;
@@ -315,7 +328,7 @@ export function selfTest() {
   try { inspectG66Receipt(noCoverage); } catch { coverageRed = true; }
   if (!coverageRed) fail("coverage/frontier mutant did not go red");
 
-  process.stdout.write(`${JSON.stringify({ selfTest: "sdt-g66-e2e-guards", censoredSafeRed: true, pauseToSafeRed: true, chronologicalPauseRed: true, unsafeClockRed: true, publicQueryRed: true, lateSuccessRed: true, absoluteClockRed: true, safeHeadRed: true, inflatedBoundRed: true, unsafeObservationRed: true, duplicateFinalRed: true, staleReadHeadRed: true, laterSafePredicateMutationRed: true, failedWriteRed, missingCoverageRed: coverageRed })}\n`);
+  process.stdout.write(`${JSON.stringify({ selfTest: "sdt-g66-e2e-guards", censoredSafeRed: true, pauseToSafeRed: true, chronologicalPauseRed: true, unsafeClockRed: true, publicQueryRed: true, lateSuccessRed: true, absoluteClockRed: true, safeHeadRed: true, inflatedBoundRed: true, unsafeObservationRed: true, duplicateFinalRed: true, staleReadHeadRed: true, staleTagStateRed: true, laterSafePredicateMutationRed: true, failedWriteRed, missingCoverageRed: coverageRed })}\n`);
 }
 
 function main() {

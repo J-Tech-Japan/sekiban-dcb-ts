@@ -347,6 +347,15 @@ function affectedTagReads(sample) {
   return values;
 }
 
+function tagStateEvidence(tag) {
+  return tag.status === 200
+    && Number.isSafeInteger(tag.version)
+    && tag.version >= 1
+    && Number.isSafeInteger(tag.expectedVersion)
+    && tag.expectedVersion >= 1
+    && atLeast(tag.lastSortedUniqueId, tag.expectedSuid);
+}
+
 function queryShowsTarget(target, queryReads, expectedSuid = null) {
   if (target.kind === "room") {
     const result = queryReads?.room?.result;
@@ -558,7 +567,7 @@ function summarizeReport(report) {
       && rows.some((row, index) => index > 0 && rows[index - 1].safe?.firstVisibleAtMs !== null && rows[index - 1].safe?.firstVisibleAtMs !== undefined && row.commit.startedAtMs < rows[index - 1].safe.firstVisibleAtMs),
     readThroughThenSnapshotOnly: rows.some((row) => row.commit?.executor?.readMode === "read-through") && rows.some((row) => row.commit?.executor?.readMode === "snapshot-only"),
     tagStateAndQueryReads: rows.every((row) => Array.isArray(row.tagReads) && row.tagReads.length > 0
-      && row.tagReads.every((tag) => tag.status === 200 && Number.isSafeInteger(tag.version) && (tag.expectedVersion === null || tag.version >= tag.expectedVersion) && atLeast(tag.lastSortedUniqueId, tag.expectedSuid))
+      && row.tagReads.every(tagStateEvidence)
       && row.queryReads?.room?.status === 200 && row.queryReads?.reservations?.status === 200
       && queryShowsTarget(row.safePredicate ?? row.target, row.queryReads)
       && (row.target.kind === "room" || atLeast(row.queryReads.reservations.readHead, row.commit.suid))),
