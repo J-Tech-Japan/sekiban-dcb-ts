@@ -147,6 +147,24 @@ function projectionSnapshot(kind, id, result) {
   };
 }
 
+function emptySnapshot(kind, id) {
+  return kind === "room"
+    ? {
+      projectorId: "RoomProjector",
+      tag: projectionTag(kind, id),
+      head: null,
+      exists: false,
+      state: { status: "empty", version: 0, roomId: null, name: "" },
+    }
+    : {
+      projectorId: "ReservationProjector",
+      tag: projectionTag(kind, id),
+      head: null,
+      exists: false,
+      state: { status: "empty", version: 0, reservationId: null, roomId: null },
+    };
+}
+
 async function waitForSnapshot(options, kind, id, deadlineMs) {
   const observations = [];
   for (;;) {
@@ -462,9 +480,10 @@ export async function runG66Cohort(options) {
         roomSnapshot = snapshotResult.snapshot;
         if (roomSnapshot === null) throw new Error(`room snapshot unavailable before reservation ${ordinal}`);
       }
+      const snapshots = firstReservation ? [] : [roomSnapshot, emptySnapshot("reservation", ids.reservationId)];
       const row = await captureCommand(options, report, "reserve-room", ids, ordinal, firstReservation
-        ? { readMode: "read-through", snapshots: [] }
-        : { readMode: "snapshot-only", snapshots: [roomSnapshot] }, snapshotReceipt);
+        ? { readMode: "read-through", snapshots }
+        : { readMode: "snapshot-only", snapshots }, snapshotReceipt);
       previousResponseAtMs = row.commit.completedAtMs;
     }
     const cancelNotBefore = previousResponseAtMs + options.paceMs;
