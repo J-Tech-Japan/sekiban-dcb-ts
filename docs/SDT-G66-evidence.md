@@ -362,3 +362,36 @@ observed safe p50/p95 `38259/61014 ms` over those 9; sample 9 was censored at
 the fixed 180,000 ms bound. The strict 10/10 safe criterion therefore failed;
 no rerun or tuning was attempted. Full per-sample response-relative clocks,
 SUIDs and public read heads are in the durable W161 artifact and raw receipt.
+
+## W162 phase-one durable checkpoint
+
+W162 publishes the phase-one result without changing behavior or rerunning the
+cohort. The exact checkpoint is `6e370aa41c90b07d5b9eef812858b59eec64a108`;
+the deployed corrected source was `7ad3b08136dcabbf80bcdcaa9e8c7b5736693bb1`
+in version `e8665dee-6a86-41de-b11d-8d2e9dbea30c`.
+
+The retained corrected receipt remains fail-closed: 10/10 commits and unsafe
+observations passed, with unsafe p50/p95 `2253/2727 ms`, but only 9/10 safe
+public read-head proofs completed before the fixed 180,000 ms bound. Observed
+safe p50/p95 is `38259/61014 ms` over n=9 only; it is not a 10-row pass
+distribution. AC2 remains outstanding and SDT-G69 owns the unchanged-cohort
+follow-up. The complete W162 publication, including the full read-only Queue
+consumer and D1 binding lists, is in
+`sdt-g66-phase1-evidence-pr-w162.md`.
+
+The exact censored row is sample 9 (`reserve-room`): commit start/completion
+`1788800575342`/`1788800577387`, response `2045 ms`, committed SUID
+`063924397376364000000490188162`, unsafe first visible at
+`1788800579620` (`2233 ms` response-relative), and safe bound exceeded at
+`1788800757569` with no target-safe first-visible clock. Its final safe health
+was received at `1788800757112` and observed at `1788800757569`; the settled
+frontier/read head was `063924397388322000000430464790`, which did not prove
+the committed target SUID. The raw safe object has no successful target
+observation and remains censored.
+
+The miss is attributed to the retained G68 diagnosis: repeat delivery
+arrivals move `LastArrivedAt` and restart the SafeWindow/fence-expiry deadline.
+Operator split answer: the write/unsafe lane succeeded for every sample, but
+the safe lane did not close the gate at 9/10, so no AC2 closeout is claimed.
+The next G69 follow-up owns the approved behavior change and unchanged-cohort
+proof; W162 performs no rerun, tuning, cleanup, or behavior change.
