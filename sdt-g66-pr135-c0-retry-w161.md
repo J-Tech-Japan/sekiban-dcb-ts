@@ -44,9 +44,11 @@ their response completions 11,537–12,616 ms apart (minimum 11,537 ms). The
 runner used response-completed-at-relative observed clocks, public unsafe
 visibility, public safe query/read-head proof, and the fixed 5,000 ms unsafe /
 180,000 ms safe bounds. Every command had HTTP 200 committed status and all
-10 unsafe observations passed. Nine safe observations passed; sample 9 did
-not reach the committed public read head within 180,000 ms and is retained as
-censored. No rerun or tuning was performed.
+10 unsafe observations passed. Nine safe target predicates passed; sample 9's
+reserved-state predicate was censored at 180,000 ms. Its public safe/read head
+later reached the SUID written by sample 10's cancellation, but that later
+head did not prove the earlier reserved state. No rerun or tuning was
+performed.
 
 | # | committed SUID | response ms | unsafe relative ms | unsafe | safe relative ms | safe | public safe readHead |
 |---:|---|---:|---:|---|---:|---|---|
@@ -58,7 +60,7 @@ censored. No rerun or tuning was performed.
 | 6 | `063924397340437000001622018425` | 1612 | 2228 | pass | 39365 | pass | `063924397376364000000490188162` |
 | 7 | `063924397352255000001465861665` | 1822 | 2245 | pass | 36122 | pass | `063924397376364000000490188162` |
 | 8 | `063924397364316000000927717473` | 2000 | 2309 | pass | 61014 | pass | `063924397388322000000430464790` |
-| 9 | `063924397376364000000490188162` | 2045 | 2233 | pass | censored | censored | did not reach committed SUID |
+| 9 | `063924397376364000000490188162` | 2045 | 2233 | pass | censored | censored | later head was sample-10 cancel SUID; reserved predicate not proven |
 | 10 | `063924397388322000000430464790` | 1196 | 2253 | pass | 40384 | pass | `063924397388322000000430464790` |
 
 Nearest-rank distributions from the receipt:
@@ -67,13 +69,15 @@ Nearest-rank distributions from the receipt:
 |---|---:|---:|---:|---:|---:|---|
 | response | 10 | 10 | 1970 | 3034 | 3034 | recorded |
 | unsafe response-relative | 10 | 10 | 2253 | 2727 | 2727 | 0/10 over 5000 ms |
-| safe response-relative | 10 | 9 | 38259 | 61014 | 61014 | 9/10 observed; 1 censored at 180000 ms |
+| safe target predicate response-relative | 10 | 9 | 38259 | 61014 | 61014 | 9/10 observed; sample-9 reserved predicate censored at 180000 ms |
 
 ## Result
 
 The C-0 retry itself succeeded, but the corrected deployed proof is blocked:
-the strict safe criterion is not met because only 9/10 commands reached the
-committed public safe read head within 180 seconds. The unsafe contract passed
-10/10. The raw command, public query, read-head, tag-state and final-state
-observations remain lossless in the cohort receipt. No additional cohort,
-repair, reset retry, cleanup, or resource operation was attempted.
+the strict safe target criterion is not met because sample 9's reserved-state
+predicate was censored at 180 seconds. Sample 9 did commit its expected head
+and passed unsafe visibility; sample 10 subsequently cancelled the same
+reservation and passed the cancelled-state predicate. The unsafe contract
+passed 10/10. The raw command, public query, read-head, tag-state and
+final-state observations remain lossless in the cohort receipt. No additional
+cohort, repair, reset retry, cleanup, or resource operation was attempted.
