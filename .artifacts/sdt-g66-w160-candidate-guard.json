@@ -1,0 +1,13 @@
+{
+  "schema": "sdt-g66-e2e-guard/v1",
+  "input": ".artifacts/sdt-g66-w160-production-candidate.json",
+  "shape": "pass",
+  "acceptance": {
+    "allAccepted": true,
+    "allUnsafeWithinBound": true,
+    "allSafeWithinBound": true,
+    "tagStateAndQueryReads": true,
+    "coverageAndFrontierObserved": true
+  },
+  "passed": true
+}

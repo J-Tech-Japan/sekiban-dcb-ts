@@ -1,0 +1,83 @@
+{
+  "schema": "sdt-g66-c0-reset/v1",
+  "task": "SDT-G66",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "config": "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+  "databases": {
+    "pipeline": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+    "mv": "sekiban-dcb-meeting-room-cloudflare-mv"
+  },
+  "credentialEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "credentialHandling": "all five Wrangler-recognized names stripped from every child process; no token values persisted; no --keep-vars",
+  "operation": "C-0 operational-row reset; schema, migrations, DO namespaces, Queue and bindings preserved",
+  "pipelineTables": [
+    "serialized_dcb_global_receipts",
+    "serialized_dcb_global_memberships",
+    "serialized_dcb_event_arrivals",
+    "dcb_event_ops",
+    "dcb_events",
+    "serialized_dcb_allocator_bindings",
+    "serialized_dcb_completeness_findings",
+    "serialized_dcb_completeness_scanner_health",
+    "serialized_dcb_delivery_incidents",
+    "serialized_dcb_inconsistency_findings",
+    "serialized_dcb_lag_estimates",
+    "serialized_dcb_live_poll_health",
+    "serialized_dcb_pending_arrivals",
+    "serialized_dcb_projection_checkpoints",
+    "serialized_dcb_safe_lane_health",
+    "serialized_dcb_safe_lane_history",
+    "serialized_dcb_source_partitions",
+    "serialized_dcb_wait_target_incidents",
+    "serialized_dcb_hop_measurements",
+    "serialized_dcb_hop_submeasurements"
+  ],
+  "mvTables": [
+    "mv_active_generations",
+    "mv_checkpoint_ahead_findings",
+    "mv_index_entries",
+    "mv_rows",
+    "mv_unsafe_index_entries",
+    "mv_unsafe_rows",
+    "mv_wait_receipts",
+    "mv_wait_target_poison",
+    "mv_unsafe_arrivals",
+    "mv_unsafe_kicks",
+    "mv_unsafe_markers",
+    "mv_unsafe_receipts",
+    "mv_unsafe_failure_findings",
+    "mv_atomic_guards",
+    "mv_instances"
+  ],
+  "invocations": [
+    {
+      "kind": "pre-reset-pipeline-counts",
+      "attemptedAt": "2026-09-07T10:31:57.777Z",
+      "command": [
+        "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/node_modules/.bin/wrangler",
+        "d1",
+        "execute",
+        "sekiban-dcb-meeting-room-cloudflare-pipeline",
+        "--remote",
+        "--config",
+        "samples/meeting-room/wrangler.cloudflare-only.jsonc",
+        "--json",
+        "--command",
+        "SELECT 'serialized_dcb_global_receipts' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_global_receipts UNION ALL SELECT 'serialized_dcb_global_memberships' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_global_memberships UNION ALL SELECT 'serialized_dcb_event_arrivals' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_event_arrivals UNION ALL SELECT 'dcb_event_ops' AS table_name, COUNT(*) AS row_count FROM dcb_event_ops UNION ALL SELECT 'dcb_events' AS table_name, COUNT(*) AS row_count FROM dcb_events UNION ALL SELECT 'serialized_dcb_allocator_bindings' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_allocator_bindings UNION ALL SELECT 'serialized_dcb_completeness_findings' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_completeness_findings UNION ALL SELECT 'serialized_dcb_completeness_scanner_health' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_completeness_scanner_health UNION ALL SELECT 'serialized_dcb_delivery_incidents' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_delivery_incidents UNION ALL SELECT 'serialized_dcb_inconsistency_findings' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_inconsistency_findings UNION ALL SELECT 'serialized_dcb_lag_estimates' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_lag_estimates UNION ALL SELECT 'serialized_dcb_live_poll_health' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_live_poll_health UNION ALL SELECT 'serialized_dcb_pending_arrivals' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_pending_arrivals UNION ALL SELECT 'serialized_dcb_projection_checkpoints' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_projection_checkpoints UNION ALL SELECT 'serialized_dcb_safe_lane_health' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_safe_lane_health UNION ALL SELECT 'serialized_dcb_safe_lane_history' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_safe_lane_history UNION ALL SELECT 'serialized_dcb_source_partitions' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_source_partitions UNION ALL SELECT 'serialized_dcb_wait_target_incidents' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_wait_target_incidents UNION ALL SELECT 'serialized_dcb_hop_measurements' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_hop_measurements UNION ALL SELECT 'serialized_dcb_hop_submeasurements' AS table_name, COUNT(*) AS row_count FROM serialized_dcb_hop_submeasurements"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "spawnError": null,
+      "stdout": "\n{\n  \"error\": {\n    \"text\": \"A request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/f26d1299-82d9-4a64-8647-bc2ec86326ac/query) failed.\",\n    \"notes\": [\n      {\n        \"text\": \"too many terms in compound SELECT: SQLITE_ERROR [code: 7500]\"\n      }\n    ],\n    \"kind\": \"error\",\n    \"name\": \"APIError\",\n    \"code\": 7500,\n    \"accountTag\": \"3ede2188f4cf39a28e0aa3722d3d02c5\"\n  }\n}\n",
+      "stderr": ""
+    }
+  ],
+  "status": "blocked",
+  "failure": "pre-reset-pipeline-counts failed; no state-changing retry was made"
+}
