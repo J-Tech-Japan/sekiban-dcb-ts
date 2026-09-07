@@ -52,4 +52,4 @@ All commands were run after the repair:
 
 The two large pre-existing W160 production receipt files remain untracked and were not staged, deleted, or modified. No Wrangler, deployment, cleanup, resource, or production operation was performed.
 
-The repair is ready to push; the follow-up exact-head workflow must be evaluated separately and is not claimed green by this receipt.
+The repair was committed and pushed as `0e2aab95504517659a6cebc75c9ecca21a835c38`. Follow-up exact-head workflow `34119874701` is pending (coverage has passed so far); its final state is not claimed green by this receipt.
