@@ -1,0 +1,81 @@
+attempt_at_utc: 2026-09-06T13:03:21Z
+command: env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN ./node_modules/.bin/wrangler d1 execute D1 --remote --json --command <coverage history SELECT> --config .artifacts/wrangler.g65-w155-c.jsonc
+credential-variable-state: CLOUDFLARE_API_TOKEN=UNSET CF_API_TOKEN=UNSET CLOUDFLARE_API_KEY=UNSET CF_API_KEY=UNSET WRANGLER_API_TOKEN=UNSET
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "tick_id": "scheduled:1788699465815",
+        "coverage_kind": "SETTLED",
+        "coverage_reason": null,
+        "coverage_partition_tag": null,
+        "settled_frontier_suid": "",
+        "observed_at": 1788699465815
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "tick_id": "scheduled:1788699525912",
+        "coverage_kind": "SETTLED",
+        "coverage_reason": null,
+        "coverage_partition_tag": null,
+        "settled_frontier_suid": "063924296320387000001576196309",
+        "observed_at": 1788699525912
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "tick_id": "scheduled:1788699588758",
+        "coverage_kind": "SETTLED",
+        "coverage_reason": null,
+        "coverage_partition_tag": null,
+        "settled_frontier_suid": "063924296385259000001514111607",
+        "observed_at": 1788699588758
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "tick_id": "scheduled:1788699650819",
+        "coverage_kind": "SETTLED",
+        "coverage_reason": null,
+        "coverage_partition_tag": null,
+        "settled_frontier_suid": "063924296436335000001248088044",
+        "observed_at": 1788699650819
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "tick_id": "scheduled:1788699711443",
+        "coverage_kind": "SETTLED",
+        "coverage_reason": null,
+        "coverage_partition_tag": null,
+        "settled_frontier_suid": "063924296436335000001248088044",
+        "observed_at": 1788699711443
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "tick_id": "scheduled:1788699770628",
+        "coverage_kind": "SETTLED",
+        "coverage_reason": null,
+        "coverage_partition_tag": null,
+        "settled_frontier_suid": "063924296436335000001248088044",
+        "observed_at": 1788699770628
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.4078
+      },
+      "duration": 0.4078,
+      "changes": 0,
+      "last_row_id": 6,
+      "changed_db": false,
+      "size_after": 847872,
+      "rows_read": 6,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

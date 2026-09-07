@@ -3,7 +3,7 @@ import {
   createCloudflareOnlyRuntimeWorker,
   createG60DurableHopObserver,
   AllocatorDurableObject,
-  BootstrapCoordinatorDurableObject,
+  BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject,
   cleanupG42JournalProbeTrial,
   envServiceIdentity,
   GlobalCompletenessReconciler,
@@ -16,6 +16,7 @@ import {
   readDirectDoorbellConfig,
   requireServiceIdentity,
   runG42JournalProbeTrial,
+  scopeIdFor,
   TagDurableObject,
   TagStateDurableObject,
   type G42JournalProbeRequest,
@@ -32,50 +33,561 @@ import {
   recordMeetingRoomLivePollAttempt,
   recordMeetingRoomLivePollOutcome,
   recordMeetingRoomSafeLaneCoverage,
+  recordMeetingRoomSafeLanePass,
+  readMeetingRoomSafeHeads,
   type MeetingRoomSafeLaneCoverage,
 } from "./d1-mv";
 import { rejectUnlessPrimaryComponent } from "./worker.g38-component-guard";
 import { assertFinalCutoverFenceIfConfigured } from "./worker.cloudflare-receiver-support";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 import { runtimeRequestWithIngressRay } from "./ingress-observation";
+import {
+  createSafeLaneKickScheduler,
+  type SafeLaneKickOwner,
+  type SafeLaneKickRequest,
+  type SafeLanePassTrigger,
+} from "./safe-lane-kick";
 
 export { MeetingRoomDownstreamDoorbell } from "./worker.g38-receiver";
 export type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
+export { AllocatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
+
+const safeLaneKickSchedulers = new Map<string, (request: SafeLaneKickRequest) => Promise<void>>();
+const SAFE_LANE_ALARM_KEY = "sdt-g67-safe-lane-alarm";
+const SAFE_LANE_RETRY_BASE_MS = 1_000;
+const SAFE_LANE_RETRY_MAX_MS = 30_000;
+
+interface SafeLaneAlarmState {
+  readonly serviceId: string;
+  readonly dueAt: number;
+  readonly trigger: "fence-expiry" | "coverage-retry";
+  readonly retryCount: number;
+  readonly owner?: SafeLaneKickOwner;
+}
+
+interface SafeLaneFollowUp {
+  readonly trigger: "fence-expiry" | "coverage-retry";
+  readonly dueAt: number;
+  readonly retryCount: number;
+  readonly reason: string;
+  readonly owner?: SafeLaneKickOwner;
+}
+
+function safeLaneRetryDelayMs(retryCount: number): number {
+  const exponent = Math.min(Math.max(retryCount, 0), 5);
+  return Math.min(SAFE_LANE_RETRY_MAX_MS, SAFE_LANE_RETRY_BASE_MS * (2 ** exponent));
+}
+
+async function scheduleMeetingRoomSafeLaneFollowUp(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+  followUp: SafeLaneFollowUp,
+): Promise<void> {
+  if (serviceId.length === 0 || env.BOOTSTRAP === undefined) {
+    console.warn("safe_lane_alarm", {
+      status: "not-scheduled",
+      reason: "bootstrap_binding_or_service_identity_missing",
+      trigger: followUp.trigger,
+      dueAt: followUp.dueAt,
+    });
+    return;
+  }
+  const coordinator = env.BOOTSTRAP.get(scopeIdFor(env.BOOTSTRAP, {
+    serviceId,
+    doClass: "bootstrap",
+    identity: "coordinator",
+  }));
+  const response = await coordinator.fetch(new Request(
+    `https://safe-lane.internal/safe-lane/schedule?__serviceId=${encodeURIComponent(serviceId)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        dueAt: followUp.dueAt,
+        trigger: followUp.trigger,
+        retryCount: followUp.retryCount,
+        ...(followUp.owner === undefined ? {} : { owner: followUp.owner }),
+      }),
+    },
+  ));
+  if (!response.ok) throw new Error(`safe_lane_alarm_schedule_failed:${response.status}`);
+}
+
+async function bestEffortSafeLanePassObservation(
+  env: MeetingRoomCloudflareEnv,
+  input: Parameters<typeof recordMeetingRoomSafeLanePass>[1],
+): Promise<void> {
+  try {
+    await recordMeetingRoomSafeLanePass(env, input);
+  } catch (error) {
+    // The observer is additive evidence only. A missing or unavailable
+    // observer table must not change the G44 decision or safe catch-up.
+    console.warn("safe_lane_pass_observation", {
+      status: "failed",
+      serviceId: input.serviceId,
+      passId: input.passId,
+      trigger: input.trigger,
+      lifecycle: input.status,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function bestEffortSafeLaneHeads(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+): Promise<string | null> {
+  try {
+    return await readMeetingRoomSafeHeads(env, serviceId);
+  } catch (error) {
+    console.warn("safe_lane_pass_observation", {
+      status: "failed",
+      serviceId,
+      lifecycle: "safe-head-read",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Run the same G44 coverage -> safe MV catch-up body used by cron. A kick
+ * performs a fresh reconciliation first; cron supplies the scan it already
+ * completed so it does not introduce a second scanner pass in that tick.
+ */
+export async function runMeetingRoomSafeLanePass(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+  trigger: SafeLanePassTrigger,
+  existingCoverage?: GlobalCompletenessCoverage,
+  request?: SafeLaneKickRequest,
+): Promise<void> {
+  if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
+  const startedAt = Date.now();
+  const effectiveTrigger = request?.trigger ?? trigger;
+  const passId = request?.passId ?? `${effectiveTrigger}:${String(startedAt)}:${crypto.randomUUID()}`;
+  const scheduledAt = request?.scheduledAt ?? startedAt;
+  const deliveryOwner = request?.owner;
+  await bestEffortSafeLanePassObservation(env, {
+    serviceId,
+    passId,
+    trigger: effectiveTrigger,
+    status: "scheduled",
+    scheduledAt,
+    deliveryOwner,
+  });
+  await bestEffortSafeLanePassObservation(env, {
+    serviceId,
+    passId,
+    trigger: effectiveTrigger,
+    status: "running",
+    scheduledAt,
+    startedAt,
+    deliveryOwner,
+  });
+  let coverage: GlobalCompletenessCoverage | undefined;
+  let safeHeadsBeforeJson: string | null = null;
+  let catchUpStartedAt: number | null = null;
+  let catchUpCompletedAt: number | null = null;
+  let catchUpOutcome: string | null = null;
+  let catchUpResultJson: string | null = null;
+  let catchUpError: string | null = null;
+  let catchUpObservations: Awaited<ReturnType<typeof catchUpMeetingRoomMaterializedViews>> = [];
+  try {
+    const reconciler = new GlobalCompletenessReconciler(env.D1, env.TAG);
+    const computedCoverage = existingCoverage ?? await (async () => {
+      await reconciler.reconcile(serviceId, Date.now());
+      return reconciler.coverage(serviceId, Date.now());
+    })();
+    coverage = computedCoverage;
+    safeHeadsBeforeJson = await bestEffortSafeLaneHeads(env, serviceId);
+    const effectiveCatchUp = async (frontierSuid?: string | null): Promise<void> => {
+      catchUpStartedAt = Date.now();
+      try {
+        const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        catchUpObservations = observations;
+        // Persist the actual SafeWindow/MV result separately from the G44
+        // coverage decision. A completed pass may legitimately advance zero
+        // rows when the first source event is still inside SafeWindow; that
+        // is evidence, not permission to widen the safe lane.
+        catchUpResultJson = JSON.stringify(observations);
+        catchUpCompletedAt = Date.now();
+        catchUpOutcome = "completed";
+      } catch (error) {
+        catchUpCompletedAt = Date.now();
+        catchUpOutcome = "failed";
+        catchUpError = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
+    };
+    await runMeetingRoomScheduledMaintenance({
+      freshCoverage: async () => computedCoverage,
+      catchUp: effectiveCatchUp,
+      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+      runGenericScheduledWork: async () => {},
+      ...(effectiveTrigger === "cron"
+        ? { recordCoverage: (safeLaneCoverage: MeetingRoomSafeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage) }
+        : {}),
+    });
+    const deferred = catchUpObservations
+      .filter((observation) => observation.deferredDeadlineAt !== null)
+      .sort((left, right) => (left.deferredDeadlineAt ?? Number.MAX_SAFE_INTEGER) - (right.deferredDeadlineAt ?? Number.MAX_SAFE_INTEGER))[0];
+    const nonFenceStop = catchUpObservations.find((observation) => observation.stopReason !== null && observation.stopReason !== "safe_window_fence");
+    let followUp: SafeLaneFollowUp | undefined;
+    let stopDeadlineAt: number | null = null;
+    let stopReason: string | null = null;
+    if (coverage?.kind !== "SETTLED") {
+      const retryCount = (request?.retryCount ?? 0) + 1;
+      stopDeadlineAt = Date.now() + safeLaneRetryDelayMs(retryCount);
+      stopReason = `coverage_retry:${coverage?.reason ?? "not_settled"}`;
+      followUp = {
+        trigger: "coverage-retry",
+        dueAt: stopDeadlineAt,
+        retryCount,
+        reason: stopReason,
+        owner: deliveryOwner,
+      };
+    } else if (deferred?.deferredDeadlineAt !== null && deferred?.deferredDeadlineAt !== undefined) {
+      stopDeadlineAt = deferred.deferredDeadlineAt;
+      stopReason = "safe_window_fence";
+      followUp = {
+        trigger: "fence-expiry",
+        dueAt: stopDeadlineAt,
+        retryCount: 0,
+        reason: stopReason,
+        owner: deliveryOwner,
+      };
+    } else if (nonFenceStop !== undefined || catchUpOutcome !== "completed") {
+      const retryCount = (request?.retryCount ?? 0) + 1;
+      stopDeadlineAt = Date.now() + safeLaneRetryDelayMs(retryCount);
+      stopReason = nonFenceStop?.stopReason ?? "catch_up_retry";
+      followUp = {
+        trigger: "coverage-retry",
+        dueAt: stopDeadlineAt,
+        retryCount,
+        reason: stopReason,
+        owner: deliveryOwner,
+      };
+    } else {
+      stopReason = "advanced_or_caught_up";
+    }
+    const safeHeadsAfterJson = await bestEffortSafeLaneHeads(env, serviceId);
+    await bestEffortSafeLanePassObservation(env, {
+      serviceId,
+      passId,
+      trigger: effectiveTrigger,
+      status: "completed",
+      scheduledAt,
+      startedAt,
+      completedAt: Date.now(),
+      coverage,
+      safeHeadsBeforeJson,
+      safeHeadsAfterJson,
+      deliveryOwner,
+      catchUpStartedAt,
+      catchUpCompletedAt,
+      catchUpOutcome,
+      catchUpResultJson,
+      catchUpError,
+      stopDeadlineAt,
+      stopReason,
+    });
+    if (followUp !== undefined) {
+      try {
+        await scheduleMeetingRoomSafeLaneFollowUp(env, serviceId, followUp);
+      } catch (error) {
+        console.warn("safe_lane_alarm", {
+          status: "failed-to-schedule",
+          serviceId,
+          trigger: followUp.trigger,
+          dueAt: followUp.dueAt,
+          reason: followUp.reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    console.log("safe_lane_pass", {
+      passId,
+      scheduledAt,
+      startedAt,
+      completedAt: Date.now(),
+      trigger: effectiveTrigger,
+      status: "completed",
+      serviceId,
+      coverage: coverage.kind,
+      reason: coverage.reason,
+      frontierSuid: coverage.frontierSuid,
+      stopDeadlineAt,
+      stopReason,
+      durationMs: Math.max(0, Date.now() - startedAt),
+    });
+  } catch (error) {
+    await bestEffortSafeLanePassObservation(env, {
+      serviceId,
+      passId,
+      trigger: effectiveTrigger,
+      status: "failed",
+      scheduledAt,
+      startedAt,
+      completedAt: Date.now(),
+      coverage,
+      safeHeadsBeforeJson,
+      deliveryOwner,
+      catchUpStartedAt,
+      catchUpCompletedAt,
+      catchUpOutcome,
+      catchUpResultJson,
+      catchUpError,
+      stopDeadlineAt: Date.now() + safeLaneRetryDelayMs((request?.retryCount ?? 0) + 1),
+      stopReason: "pass_failed",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    try {
+      await scheduleMeetingRoomSafeLaneFollowUp(env, serviceId, {
+        trigger: "coverage-retry",
+        dueAt: Date.now() + safeLaneRetryDelayMs((request?.retryCount ?? 0) + 1),
+        retryCount: (request?.retryCount ?? 0) + 1,
+        reason: "pass_failed",
+        owner: deliveryOwner,
+      });
+    } catch (scheduleError) {
+      console.warn("safe_lane_alarm", {
+        status: "failed-to-schedule",
+        serviceId,
+        trigger: "coverage-retry",
+        error: scheduleError instanceof Error ? scheduleError.message : String(scheduleError),
+      });
+    }
+    console.warn("safe_lane_pass", {
+      passId,
+      scheduledAt,
+      startedAt,
+      trigger: effectiveTrigger,
+      status: "failed",
+      serviceId,
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Math.max(0, Date.now() - startedAt),
+    });
+    throw error;
+  }
+}
+
+/**
+ * The existing service-scoped BOOTSTRAP object owns the one delayed safe-lane
+ * alarm.  Keeping this state beside the existing coordinator avoids a new
+ * Cloudflare resource/binding while giving fence expiry a durable trigger.
+ * Normal bootstrap routes remain delegated unchanged to the runtime class.
+ */
+export class BootstrapCoordinatorDurableObject extends RuntimeBootstrapCoordinatorDurableObject {
+  constructor(
+    private readonly safeLaneContext: DurableObjectState,
+    private readonly safeLaneEnvironment: MeetingRoomCloudflareEnv,
+  ) {
+    super(safeLaneContext, safeLaneEnvironment);
+  }
+
+  override async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method === "POST" && url.pathname === "/safe-lane/schedule") {
+      return this.scheduleSafeLaneAlarm(url, request);
+    }
+    return super.fetch(request);
+  }
+
+  async alarm(): Promise<void> {
+    const pending = await this.safeLaneContext.storage.transaction(async (txn) => {
+      const state = await txn.get<SafeLaneAlarmState>(SAFE_LANE_ALARM_KEY);
+      if (state === undefined) return undefined;
+      if (state.dueAt > Date.now()) {
+        await txn.setAlarm(state.dueAt);
+        return undefined;
+      }
+      await txn.delete(SAFE_LANE_ALARM_KEY);
+      return state;
+    });
+    if (pending === undefined) return;
+
+    const waiters: Promise<void>[] = [];
+    scheduleMeetingRoomSafeLaneKick(
+      this.safeLaneEnvironment,
+      pending.serviceId,
+      { waitUntil: (promise: Promise<void>) => { waiters.push(promise); } } as unknown as ExecutionContext,
+      undefined,
+      pending.owner,
+      pending.trigger,
+      pending.retryCount,
+    );
+    await Promise.all(waiters);
+  }
+
+  private async scheduleSafeLaneAlarm(url: URL, request: Request): Promise<Response> {
+    const serviceId = url.searchParams.get("__serviceId");
+    if (serviceId === null || serviceId.length === 0) return json({ code: "safe_lane_service_required" }, 400);
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ code: "safe_lane_alarm_body_invalid" }, 400);
+    }
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ code: "safe_lane_alarm_body_invalid" }, 400);
+    const input = body as Record<string, unknown>;
+    const dueAt = typeof input.dueAt === "number" && Number.isSafeInteger(input.dueAt) && input.dueAt >= 0 ? input.dueAt : undefined;
+    const trigger = input.trigger === "fence-expiry" || input.trigger === "coverage-retry" ? input.trigger : undefined;
+    const retryCount = typeof input.retryCount === "number" && Number.isSafeInteger(input.retryCount) && input.retryCount >= 0 ? input.retryCount : 0;
+    if (dueAt === undefined || trigger === undefined) return json({ code: "safe_lane_alarm_body_invalid" }, 400);
+    const owner = typeof input.owner === "object" && input.owner !== null && !Array.isArray(input.owner)
+      ? input.owner as SafeLaneKickOwner
+      : undefined;
+    const next: SafeLaneAlarmState = { serviceId, dueAt, trigger, retryCount, owner };
+    const result = await this.safeLaneContext.storage.transaction(async (txn) => {
+      const current = await txn.get<SafeLaneAlarmState>(SAFE_LANE_ALARM_KEY);
+      if (current !== undefined && current.dueAt <= next.dueAt) {
+        await txn.setAlarm(current.dueAt);
+        return { coalesced: true, dueAt: current.dueAt, trigger: current.trigger };
+      }
+      await txn.put(SAFE_LANE_ALARM_KEY, next);
+      await txn.setAlarm(next.dueAt);
+      return { coalesced: false, dueAt: next.dueAt, trigger: next.trigger };
+    });
+    return json(result, 202);
+  }
+}
+
+/**
+ * Queue recordDelivery has committed before this function is reached. The
+ * only synchronous work here is registering the promise with waitUntil; the
+ * Queue handler's acknowledgement/retry decision is never held by coverage
+ * or materialized-view D1 work. The cron remains the recovery backstop.
+ */
+export function scheduleMeetingRoomSafeLaneKick(
+  env: MeetingRoomCloudflareEnv,
+  serviceId: string,
+  ctx: ExecutionContext,
+  pass: (env: MeetingRoomCloudflareEnv, serviceId: string, request?: SafeLaneKickRequest) => Promise<void> = (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "kick", undefined, request),
+  owner?: SafeLaneKickOwner,
+  trigger: SafeLanePassTrigger = owner === undefined ? "kick" : "delivery",
+  retryCount = 0,
+): void {
+  let scheduler = safeLaneKickSchedulers.get(serviceId);
+  if (scheduler === undefined) {
+    scheduler = createSafeLaneKickScheduler(
+      (request) => {
+        // The runner is selected by the request, not by the first trigger
+        // that created the single-flight state.  This keeps a delivery's
+        // fresh reconciliation from inheriting a cron callback's captured
+        // coverage when it coalesces behind an active cron pass.
+        if (request.runPass === undefined) {
+          return Promise.reject(new Error("safe_lane_pass_runner_missing"));
+        }
+        return request.runPass(request);
+      },
+      () => {
+        if (safeLaneKickSchedulers.get(serviceId) === scheduler) safeLaneKickSchedulers.delete(serviceId);
+      },
+      (request) => {
+        ctx.waitUntil(bestEffortSafeLanePassObservation(env, {
+          serviceId,
+          passId: request.passId,
+          trigger: request.trigger ?? "kick",
+          status: "coalesced",
+          scheduledAt: request.scheduledAt,
+          deliveryOwner: request.owner,
+        }));
+      },
+    );
+    safeLaneKickSchedulers.set(serviceId, scheduler);
+  }
+  const scheduledAt = Date.now();
+  const request: SafeLaneKickRequest = {
+    passId: `${trigger}:${String(scheduledAt)}:${crypto.randomUUID()}`,
+    scheduledAt,
+    trigger,
+    retryCount,
+    owner,
+    // Keep the callback on the in-memory request so every coalesced trigger
+    // retains its own coverage context. The durable observer receives only
+    // the serializable request fields above.
+    runPass: (runRequest) => pass(env, serviceId, runRequest),
+  };
+  // Defer even the observer write and scheduler invocation until after the
+  // Queue callback has registered waitUntil. This keeps Queue acknowledgement
+  // and the public commit response independent from safe-lane D1 work.
+  const scheduled = Promise.resolve().then(async () => {
+    await bestEffortSafeLanePassObservation(env, {
+      serviceId,
+      passId: request.passId,
+      trigger: request.trigger ?? "kick",
+      status: "scheduled",
+      scheduledAt: request.scheduledAt,
+      deliveryOwner: request.owner,
+    });
+    return scheduler!(request);
+  });
+  ctx.waitUntil(scheduled.catch((error) => {
+    // Cron will retry a lost kick. Keep the failure visible without changing
+    // the already-completed Queue disposition.
+    console.warn("safe_lane_kick", {
+      status: "failed",
+      passId: request.passId,
+      serviceId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }));
+}
 
 
 const runtime = createCloudflareOnlyRuntimeWorker({
   domain: meetingRoomDomain,
   config: meetingRoomRuntimeConfig,
-  afterBootstrapVerify: async ({ serviceId, env }) => catchUpMeetingRoomMaterializedViews(env, serviceId),
+  afterBootstrapVerify: async ({ serviceId, env }) => {
+    await catchUpMeetingRoomMaterializedViews(env, serviceId);
+  },
   deliveryViews: ({ env, ctx }) => meetingRoomDeliveryViews(
     env,
     env.TAG === undefined ? undefined : createG60DurableHopObserver(env.D1, (promise) => ctx.waitUntil(promise)),
   ),
-  beforeLiveProjectionPoll: async ({ env, serviceId }) => {
+  beforeLiveProjectionPoll: async ({ env, serviceId, ctx }) => {
     // Unit-only D1 fixtures intentionally omit the Tag authority. Preserve
     // their original unrestricted local catch-up seam; deployed primaries
     // always bind TAG and take the fresh-reconcile path below.
     if (env.TAG === undefined) {
       await runMeetingRoomScheduledMaintenance({
-        catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
+        catchUp: async (frontierSuid) => {
+          await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        },
         drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
         runGenericScheduledWork: async () => {},
       });
       return { frontierSuid: undefined };
     }
     const coverage = await new GlobalCompletenessReconciler(env.D1, env.TAG).coverage(serviceId, Date.now());
-    await runMeetingRoomScheduledMaintenance({
-      freshCoverage: async () => coverage,
-      catchUp: (frontierSuid) => catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid),
-      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
-      // The runtime invokes pollLiveProjections immediately after this hook;
-      // no second generic scanner or poll is started by the safe-lane pass.
-      runGenericScheduledWork: async () => {},
-      recordCoverage: async (safeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage),
-    });
+    // Cron is the backstop, but it must enter the same per-service
+    // single-flight/coalescing scheduler as Queue and fence-expiry triggers.
+    // The scan result is captured so this scheduled pass uses the same
+    // coverage decision that the runtime just computed.
+    scheduleMeetingRoomSafeLaneKick(
+      env as MeetingRoomCloudflareEnv,
+      serviceId,
+      ctx,
+      (passEnv, passServiceId, request) => runMeetingRoomSafeLanePass(passEnv, passServiceId, "cron", coverage, request),
+      undefined,
+      "cron",
+    );
     return { frontierSuid: coverage.frontierSuid };
+  },
+  afterStoredQueueDelivery: ({ message, env, ctx }) => {
+    // Receiver-only G25 fixtures intentionally omit the source authority;
+    // they keep their existing transport-only behavior and cron is not
+    // meaningful there.
+    if (env.D1 === undefined || env.TAG === undefined || env.D1_MV === undefined) return;
+    scheduleMeetingRoomSafeLaneKick(env as MeetingRoomCloudflareEnv, message.serviceId, ctx, undefined, {
+      eventId: message.eventId,
+      suid: message.suid,
+      attemptId: message.attemptId,
+      partitionTag: message.tag,
+      obligationSequence: message.completeness.obligationSequence,
+    });
   },
   liveProjectionPollObserver: {
     onAttempt: ({ env, serviceId, projectorIds, attemptedAt }) =>

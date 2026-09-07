@@ -129,7 +129,7 @@ function validateReceipt(receipt, groups) {
 function sourceContracts(sources) {
   const { runtime, worker, live, projection, mv, completeness } = sources;
   const reconcile = "const scan = await new GlobalCompletenessReconciler(env.D1, env.TAG).reconcile(serviceId, Date.now());";
-  const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });";
+  const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });";
   const poll = "await pollLiveProjections(env, {";
   const reconcileAt = runtime.indexOf(reconcile);
   const hookAt = runtime.indexOf(hook, reconcileAt);

@@ -1,0 +1,28 @@
+{
+  "schema": "sdt-g60-w159-wrangler-receipt/v1",
+  "label": "w147-worker-resolution",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g67-w142/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "deployments",
+    "list",
+    "--name",
+    "sekiban-dcb-g60-w131-c",
+    "--json"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-06T15:47:22.513Z",
+  "finishedAt": "2026-09-06T15:47:24.127Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "[\n  {\n    \"id\": \"5271c924-916f-4438-ab99-4ef0f6bbbb52\",\n    \"source\": \"wrangler\",\n    \"strategy\": \"percentage\",\n    \"author_email\": \"ttakaoka@jtechs.com\",\n    \"annotations\": {\n      \"workers/message\": \"SDT-G60 W143 exact 3e5954b8c6ea2f29d664f09417b4...\",\n      \"workers/triggered_by\": \"upload\"\n    },\n    \"versions\": [\n      {\n        \"version_id\": \"44a8bc2f-1d16-439e-92de-2bdbb8e63cc9\",\n        \"percentage\": 100\n      }\n    ],\n    \"created_on\": \"2026-09-04T07:26:16.963668Z\"\n  },\n  {\n    \"id\": \"8c45773b-f59b-4071-8a8b-40929f01c8f6\",\n    \"source\": \"wrangler\",\n    \"strategy\": \"percentage\",\n    \"author_email\": \"ttakaoka@jtechs.com\",\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    },\n    \"versions\": [\n      {\n        \"version_id\": \"94a96421-d490-45cd-bccb-dfd745c2988b\",\n        \"percentage\": 100\n      }\n    ],\n    \"created_on\": \"2026-09-04T07:27:25.852997Z\"\n  },\n  {\n    \"id\": \"8d11c4f1-7918-4bc6-bbb7-491a859b65fd\",\n    \"source\": \"wrangler\",\n    \"strategy\": \"percentage\",\n    \"author_email\": \"ttakaoka@jtechs.com\",\n    \"annotations\": {\n      \"workers/message\": \"SDT-G60 W143 exact 3e5954b8c6ea2f29d664f09417b4c09e6cef4880 fence 856d12ed5d96cf9a37f89c9d754694e20a1029e85a50a4c9fefc15a101fcad9c\",\n      \"workers/triggered_by\": \"deployment\"\n    },\n    \"versions\": [\n      {\n        \"version_id\": \"450c506e-1485-4d15-aa5d-882d34a8480d\",\n        \"percentage\": 100\n      }\n    ],\n    \"created_on\": \"2026-09-04T07:28:12.897967Z\"\n  },\n  {\n    \"id\": \"ff71be41-138a-47df-997d-cbf8ea2aa2a7\",\n    \"source\": \"wrangler\",\n    \"strategy\": \"percentage\",\n    \"author_email\": \"ttakaoka@jtechs.com\",\n    \"annotations\": {\n      \"workers/triggered_by\": \"secret\"\n    },\n    \"versions\": [\n      {\n        \"version_id\": \"db71294f-3dae-476b-944f-206d98b6083c\",\n        \"percentage\": 100\n      }\n    ],\n    \"created_on\": \"2026-09-04T20:11:16.800171Z\"\n  },\n  {\n    \"id\": \"65dcb2f4-5aa4-40ad-9bbf-668537b6bb71\",\n    \"source\": \"wrangler\",\n    \"strategy\": \"percentage\",\n    \"author_email\": \"ttakaoka@jtechs.com\",\n    \"annotations\": {\n      \"workers/message\": \"SDT-G60 W159 exact 6481ddf4285b5bd71b576aee4a02e0605fb102b1 product 84892e5bd5233de9c12f07dffb12b28e08bee00e fence ce80a2a5d31fe0e74c8d488ee0d95af3e537bf0981252020ce6b22fcf62ec857\",\n      \"workers/triggered_by\": \"deployment\"\n    },\n    \"versions\": [\n      {\n        \"version_id\": \"e2c870ee-3f3d-404d-96b1-bc480a96dda5\",\n        \"percentage\": 100\n      }\n    ],\n    \"created_on\": \"2026-09-04T20:11:50.976998Z\"\n  }\n]\n",
+  "stderr": ""
+}

@@ -1,0 +1,131 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database 2b60dbcf-0912-4bb2-93aa-77c26cd260e1 (2b60dbcf-0912-4bb2-93aa-77c26cd260e1):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.28ms
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "RoomProjector",
+        "generation": 0,
+        "row_key": "g58-room-3147d381-f03",
+        "value_json": "{\"roomId\":\"g58-room-3147d381-f03\",\"name\":\"SDT-G58 paced\",\"status\":\"created\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288510156000000045657586"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-1",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-1\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288522584000000921680792"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-2",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-2\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288535006000001623617049"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-3",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-3\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288547223000000357223741"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-4",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-4\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288559819000000904001847"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-5",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-5\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288572885000001934473981"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-6",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-6\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288586207000001475827699"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-7",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-7\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288598964000001977391542"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-8",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-8\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288611652000001522689977"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-9",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-9\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288624216000000176915988"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "view_id": "ReservationProjector",
+        "generation": 0,
+        "row_key": "g58-reservation-3147d381-f03-10",
+        "value_json": "{\"reservationId\":\"g58-reservation-3147d381-f03-10\",\"roomId\":\"g58-room-3147d381-f03\",\"status\":\"reserved\",\"version\":1}",
+        "row_version": 1,
+        "source_suid": "063924288636725000000799505470"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SJC",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.2801
+      },
+      "duration": 0.2801,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 192512,
+      "rows_read": 11,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

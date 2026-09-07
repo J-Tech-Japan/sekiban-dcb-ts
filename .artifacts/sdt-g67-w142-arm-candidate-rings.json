@@ -1,0 +1,197 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database ac751211-fde8-4587-9d56-1e9fd8051bc3 (ac751211-fde8-4587-9d56-1e9fd8051bc3):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.60ms
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-7da4-7c1c-b7c1-a0ce9a10906d",
+        "suid": "063924288510156000000045657586",
+        "attempt_id": "2e6640e4-8582-49f5-ac1a-ac33415abded",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"2e6640e4-8582-49f5-ac1a-ac33415abded\",\"eventId\":\"01a07655-7da4-7c1c-b7c1-a0ce9a10906d\",\"suid\":\"063924288510156000000045657586\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"name\\\":\\\"SDT-G58 paced\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\"],\"eventType\":\"RoomCreated\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:48:29.348Z\",\"causationId\":\"01a07655-7da4-7c1c-b7c1-a0ce9a10906d\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691710490,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1NS03ZGE0LTdjMWMtYjdjMS1hMGNlOWExMDkwNmQBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTEwMTU2MDAwMDAwMDQ1NjU3NTg2AQAAAAlldmVudFR5cGUAAAALUm9vbUNyZWF0ZWQBAAAACXRpbWVzdGFtcAAAABgyMDI2LTA5LTA2VDEwOjQ4OjI5LjM0OFoBAAAAEmFsbG9jYXRvckxpbmVhZ2VJZAAAACRlZDM3MDEzMy1hM2IyLTRkOGItOGE5NC0xZWFlMmUyNWY1ZjEBAAAACWF0dGVtcHRJZAAAACQyZTY2NDBlNC04NTgyLTQ5ZjUtYWMxYS1hYzMzNDE1YWJkZWQBAAAADmRlY2xhcmVkVGFnU2V0AAAAHgAAABpyb29tOmc1OC1yb29tLTMxNDdkMzgxLWYwMwEAAAAHcGF5bG9hZAAAADl7InJvb21JZCI6Imc1OC1yb29tLTMxNDdkMzgxLWYwMyIsIm5hbWUiOiJTRFQtRzU4IHBhY2VkIn0=\",\"eventDigest\":\"e85fa30283a80b10529046e0f3b756062c7402c21be3fb1625c4701f79d2e22b\",\"declaredTagSet\":[\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07655-7da4-7c1c-b7c1-a0ce9a10906d\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":1}}",
+        "ring_started_at": 1788691710686,
+        "ring_finished_at": 1788691710686,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691711589,
+        "apply_finished_at": 1788691712957,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "suid": "063924288522584000000921680792",
+        "attempt_id": "deb21e37-dba3-4dc6-b8c4-d85cd0173ffc",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"deb21e37-dba3-4dc6-b8c4-d85cd0173ffc\",\"eventId\":\"01a07655-aec4-7aed-ac76-d75a3a9a267c\",\"suid\":\"063924288522584000000921680792\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-1\\\",\\\"userId\\\":\\\"g58-user-1\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-1\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:48:41.924Z\",\"causationId\":\"01a07655-aec4-7aed-ac76-d75a3a9a267c\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691722803,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1NS1hZWM0LTdhZWQtYWM3Ni1kNzVhM2E5YTI2N2MBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTIyNTg0MDAwMDAwOTIxNjgwNzkyAQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0ODo0MS45MjRaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkZGViMjFlMzctZGJhMy00ZGM2LWI4YzQtZDg1Y2QwMTczZmZjAQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy0xAAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtMSIsInVzZXJJZCI6Imc1OC11c2VyLTEifQ==\",\"eventDigest\":\"89f2058fd3603a1b2a6cacc18433c9b69803ba4238b07e8d0d3a6fa7b7f360b4\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-1\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07655-aec4-7aed-ac76-d75a3a9a267c\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":2}}",
+        "ring_started_at": 1788691722888,
+        "ring_finished_at": 1788691722888,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691723888,
+        "apply_finished_at": 1788691725224,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "suid": "063924288535006000001623617049",
+        "attempt_id": "99c80cc9-b74a-40d4-9f29-3ffefda03f62",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"99c80cc9-b74a-40d4-9f29-3ffefda03f62\",\"eventId\":\"01a07655-deed-75b9-9cd8-9a6a6fbbf7a5\",\"suid\":\"063924288535006000001623617049\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-2\\\",\\\"userId\\\":\\\"g58-user-2\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-2\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:48:54.253Z\",\"causationId\":\"01a07655-deed-75b9-9cd8-9a6a6fbbf7a5\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691735224,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1NS1kZWVkLTc1YjktOWNkOC05YTZhNmZiYmY3YTUBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTM1MDA2MDAwMDAxNjIzNjE3MDQ5AQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0ODo1NC4yNTNaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkOTljODBjYzktYjc0YS00MGQ0LTlmMjktM2ZmZWZkYTAzZjYyAQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy0yAAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtMiIsInVzZXJJZCI6Imc1OC11c2VyLTIifQ==\",\"eventDigest\":\"421ce375fdfc7db471f1490e07882b4f518ef30767698471ab2f4d9edaf52bf2\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-2\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07655-deed-75b9-9cd8-9a6a6fbbf7a5\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":3}}",
+        "ring_started_at": 1788691735283,
+        "ring_finished_at": 1788691735283,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691736473,
+        "apply_finished_at": 1788691738041,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "suid": "063924288547223000000357223741",
+        "attempt_id": "fb9ef548-ed58-443f-85ac-28a46ac1a822",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"fb9ef548-ed58-443f-85ac-28a46ac1a822\",\"eventId\":\"01a07656-0f14-7c0e-98a0-f9b347576ba1\",\"suid\":\"063924288547223000000357223741\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-3\\\",\\\"userId\\\":\\\"g58-user-3\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-3\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:49:06.580Z\",\"causationId\":\"01a07656-0f14-7c0e-98a0-f9b347576ba1\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691747439,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ni0wZjE0LTdjMGUtOThhMC1mOWIzNDc1NzZiYTEBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTQ3MjIzMDAwMDAwMzU3MjIzNzQxAQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0OTowNi41ODBaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkZmI5ZWY1NDgtZWQ1OC00NDNmLTg1YWMtMjhhNDZhYzFhODIyAQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy0zAAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtMyIsInVzZXJJZCI6Imc1OC11c2VyLTMifQ==\",\"eventDigest\":\"99ad3b2c8a79ccabfaefafc62257cb06769f5720a1b6b582f7303a069a1d9847\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-3\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07656-0f14-7c0e-98a0-f9b347576ba1\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":4}}",
+        "ring_started_at": 1788691747500,
+        "ring_finished_at": 1788691747500,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691748555,
+        "apply_finished_at": 1788691750233,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "suid": "063924288559819000000904001847",
+        "attempt_id": "2b861435-f5b0-4e5d-afa7-93bda7310776",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"2b861435-f5b0-4e5d-afa7-93bda7310776\",\"eventId\":\"01a07656-3f86-7e66-8dd0-f8a61f803ad6\",\"suid\":\"063924288559819000000904001847\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-4\\\",\\\"userId\\\":\\\"g58-user-4\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-4\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:49:18.982Z\",\"causationId\":\"01a07656-3f86-7e66-8dd0-f8a61f803ad6\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691760033,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ni0zZjg2LTdlNjYtOGRkMC1mOGE2MWY4MDNhZDYBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTU5ODE5MDAwMDAwOTA0MDAxODQ3AQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0OToxOC45ODJaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkMmI4NjE0MzUtZjViMC00ZTVkLWFmYTctOTNiZGE3MzEwNzc2AQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy00AAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtNCIsInVzZXJJZCI6Imc1OC11c2VyLTQifQ==\",\"eventDigest\":\"3150c8f9526ede7f0d2b9116e841bbd4ac574b87656e00e72d5f1adec820acb0\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-4\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07656-3f86-7e66-8dd0-f8a61f803ad6\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":5}}",
+        "ring_started_at": 1788691760095,
+        "ring_finished_at": 1788691760095,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691761133,
+        "apply_finished_at": 1788691762934,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "suid": "063924288572885000001934473981",
+        "attempt_id": "34eb18cb-df6d-4927-8e4b-889d54257043",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"34eb18cb-df6d-4927-8e4b-889d54257043\",\"eventId\":\"01a07656-72b9-7fe0-a44a-31c5428a448c\",\"suid\":\"063924288572885000001934473981\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-5\\\",\\\"userId\\\":\\\"g58-user-5\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-5\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:49:32.089Z\",\"causationId\":\"01a07656-72b9-7fe0-a44a-31c5428a448c\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691773091,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ni03MmI5LTdmZTAtYTQ0YS0zMWM1NDI4YTQ0OGMBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTcyODg1MDAwMDAxOTM0NDczOTgxAQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0OTozMi4wODlaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkMzRlYjE4Y2ItZGY2ZC00OTI3LThlNGItODg5ZDU0MjU3MDQzAQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy01AAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtNSIsInVzZXJJZCI6Imc1OC11c2VyLTUifQ==\",\"eventDigest\":\"207a09498abfa0086ce8e01d55297cacb5749cb941665eae817a44ad2c30fdb4\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-5\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07656-72b9-7fe0-a44a-31c5428a448c\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":6}}",
+        "ring_started_at": 1788691773150,
+        "ring_finished_at": 1788691773150,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691774193,
+        "apply_finished_at": 1788691775854,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "suid": "063924288586207000001475827699",
+        "attempt_id": "22357745-4d8b-418f-af77-c35c79c7d6f6",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"22357745-4d8b-418f-af77-c35c79c7d6f6\",\"eventId\":\"01a07656-a5cc-7a15-af37-1cc25f625315\",\"suid\":\"063924288586207000001475827699\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-6\\\",\\\"userId\\\":\\\"g58-user-6\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-6\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:49:45.164Z\",\"causationId\":\"01a07656-a5cc-7a15-af37-1cc25f625315\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691786509,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ni1hNWNjLTdhMTUtYWYzNy0xY2MyNWY2MjUzMTUBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTg2MjA3MDAwMDAxNDc1ODI3Njk5AQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0OTo0NS4xNjRaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkMjIzNTc3NDUtNGQ4Yi00MThmLWFmNzctYzM1Yzc5YzdkNmY2AQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy02AAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtNiIsInVzZXJJZCI6Imc1OC11c2VyLTYifQ==\",\"eventDigest\":\"54bf62e655ea56645cd49416f76da01659c01eb7554f9112650c7136bed1e437\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-6\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07656-a5cc-7a15-af37-1cc25f625315\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":7}}",
+        "ring_started_at": 1788691786569,
+        "ring_finished_at": 1788691786569,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691787632,
+        "apply_finished_at": 1788691789526,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "suid": "063924288598964000001977391542",
+        "attempt_id": "a2aafbec-234b-4966-b46c-f2413509a1c2",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"a2aafbec-234b-4966-b46c-f2413509a1c2\",\"eventId\":\"01a07656-d89b-7ba0-ae9c-c11e2acfce70\",\"suid\":\"063924288598964000001977391542\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-7\\\",\\\"userId\\\":\\\"g58-user-7\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-7\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:49:58.171Z\",\"causationId\":\"01a07656-d89b-7ba0-ae9c-c11e2acfce70\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691799167,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ni1kODliLTdiYTAtYWU5Yy1jMTFlMmFjZmNlNzABAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NTk4OTY0MDAwMDAxOTc3MzkxNTQyAQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo0OTo1OC4xNzFaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkYTJhYWZiZWMtMjM0Yi00OTY2LWI0NmMtZjI0MTM1MDlhMWMyAQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy03AAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtNyIsInVzZXJJZCI6Imc1OC11c2VyLTcifQ==\",\"eventDigest\":\"563e9eaacf3a4a2ffd9bc343a35673c1340910c5c197746f8874b69f2b3470ef\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-7\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07656-d89b-7ba0-ae9c-c11e2acfce70\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":8}}",
+        "ring_started_at": 1788691799240,
+        "ring_finished_at": 1788691799240,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691800271,
+        "apply_finished_at": 1788691801795,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "suid": "063924288611652000001522689977",
+        "attempt_id": "8326510a-d457-4541-be5d-121f119e1737",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"8326510a-d457-4541-be5d-121f119e1737\",\"eventId\":\"01a07657-0a28-7ba2-b39f-b856caee8b58\",\"suid\":\"063924288611652000001522689977\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-8\\\",\\\"userId\\\":\\\"g58-user-8\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-8\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:50:10.856Z\",\"causationId\":\"01a07657-0a28-7ba2-b39f-b856caee8b58\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691811869,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ny0wYTI4LTdiYTItYjM5Zi1iODU2Y2FlZThiNTgBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NjExNjUyMDAwMDAxNTIyNjg5OTc3AQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo1MDoxMC44NTZaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkODMyNjUxMGEtZDQ1Ny00NTQxLWJlNWQtMTIxZjExOWUxNzM3AQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy04AAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtOCIsInVzZXJJZCI6Imc1OC11c2VyLTgifQ==\",\"eventDigest\":\"bffbf504229f392824dae547846db83b347376bc76adbcf5855a6401db28d40b\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-8\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07657-0a28-7ba2-b39f-b856caee8b58\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":9}}",
+        "ring_started_at": 1788691811931,
+        "ring_finished_at": 1788691811931,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691812959,
+        "apply_finished_at": 1788691814537,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "suid": "063924288624216000000176915988",
+        "attempt_id": "5a7f9c4d-bc47-4902-b531-a8fc26f519e1",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"5a7f9c4d-bc47-4902-b531-a8fc26f519e1\",\"eventId\":\"01a07657-3b86-7882-87e2-3d7e74c338f8\",\"suid\":\"063924288624216000000176915988\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-9\\\",\\\"userId\\\":\\\"g58-user-9\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-9\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:50:23.494Z\",\"causationId\":\"01a07657-3b86-7882-87e2-3d7e74c338f8\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691824426,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ny0zYjg2LTc4ODItODdlMi0zZDdlNzRjMzM4ZjgBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NjI0MjE2MDAwMDAwMTc2OTE1OTg4AQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo1MDoyMy40OTRaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkNWE3ZjljNGQtYmM0Ny00OTAyLWI1MzEtYThmYzI2ZjUxOWUxAQAAAA5kZWNsYXJlZFRhZ1NldAAAAEwAAAAqcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy05AAAAGnJvb206ZzU4LXJvb20tMzE0N2QzODEtZjAzAQAAAAdwYXlsb2FkAAAAaXsicm9vbUlkIjoiZzU4LXJvb20tMzE0N2QzODEtZjAzIiwicmVzZXJ2YXRpb25JZCI6Imc1OC1yZXNlcnZhdGlvbi0zMTQ3ZDM4MS1mMDMtOSIsInVzZXJJZCI6Imc1OC11c2VyLTkifQ==\",\"eventDigest\":\"331dd48cd39e06e5e7c16e81a6c6722de88f32b29870d9edcda5a8be80614987\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-9\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07657-3b86-7882-87e2-3d7e74c338f8\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":10}}",
+        "ring_started_at": 1788691824488,
+        "ring_finished_at": 1788691824488,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691825618,
+        "apply_finished_at": 1788691827504,
+        "apply_outcome": "applied",
+        "apply_error": null
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "suid": "063924288636725000000799505470",
+        "attempt_id": "2c05e635-a2e7-4394-ab8a-ba744297fcda",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "message_json": "{\"version\":1,\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"tag\":\"room:g58-room-3147d381-f03\",\"attemptId\":\"2c05e635-a2e7-4394-ab8a-ba744297fcda\",\"eventId\":\"01a07657-6c4f-7b72-9945-d2031672bbb5\",\"suid\":\"063924288636725000000799505470\",\"payload\":\"{\\\"roomId\\\":\\\"g58-room-3147d381-f03\\\",\\\"reservationId\\\":\\\"g58-reservation-3147d381-f03-10\\\",\\\"userId\\\":\\\"g58-user-10\\\"}\",\"allocatorLineageId\":\"ed370133-a3b2-4d8b-8a94-1eae2e25f5f1\",\"eventTags\":[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-10\"],\"eventType\":\"RoomReserved\",\"provenance\":\"g32\",\"timestamp\":\"2026-09-06T10:50:35.983Z\",\"causationId\":\"01a07657-6c4f-7b72-9945-d2031672bbb5\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\",\"enqueuedAt\":1788691836937,\"completeness\":{\"canonicalBytesBase64\":\"c2VraWJhbi1kY2ItdHMvZXZlbnREaWdlc3QvdjIAAQAAAAlzZXJ2aWNlSWQAAAAWc2VraWJhbi1kY2ItZzYwLXcxNTUtYwEAAAAHZXZlbnRJZAAAACQwMWEwNzY1Ny02YzRmLTdiNzItOTk0NS1kMjAzMTY3MmJiYjUBAAAAEHNvcnRhYmxlVW5pcXVlSWQAAAAeMDYzOTI0Mjg4NjM2NzI1MDAwMDAwNzk5NTA1NDcwAQAAAAlldmVudFR5cGUAAAAMUm9vbVJlc2VydmVkAQAAAAl0aW1lc3RhbXAAAAAYMjAyNi0wOS0wNlQxMDo1MDozNS45ODNaAQAAABJhbGxvY2F0b3JMaW5lYWdlSWQAAAAkZWQzNzAxMzMtYTNiMi00ZDhiLThhOTQtMWVhZTJlMjVmNWYxAQAAAAlhdHRlbXB0SWQAAAAkMmMwNWU2MzUtYTJlNy00Mzk0LWFiOGEtYmE3NDQyOTdmY2RhAQAAAA5kZWNsYXJlZFRhZ1NldAAAAE0AAAArcmVzZXJ2YXRpb246ZzU4LXJlc2VydmF0aW9uLTMxNDdkMzgxLWYwMy0xMAAAABpyb29tOmc1OC1yb29tLTMxNDdkMzgxLWYwMwEAAAAHcGF5bG9hZAAAAGt7InJvb21JZCI6Imc1OC1yb29tLTMxNDdkMzgxLWYwMyIsInJlc2VydmF0aW9uSWQiOiJnNTgtcmVzZXJ2YXRpb24tMzE0N2QzODEtZjAzLTEwIiwidXNlcklkIjoiZzU4LXVzZXItMTAifQ==\",\"eventDigest\":\"d259467c95519b7afa69276fcacd3d1276bf4e5296139b8ff5cdb408e9e3fcea\",\"declaredTagSet\":[\"reservation:g58-reservation-3147d381-f03-10\",\"room:g58-room-3147d381-f03\"],\"localCommittedMembership\":[{\"serviceId\":\"sekiban-dcb-g60-w155-c\",\"eventId\":\"01a07657-6c4f-7b72-9945-d2031672bbb5\",\"tag\":\"room:g58-room-3147d381-f03\"}],\"obligationSequence\":11}}",
+        "ring_started_at": 1788691836995,
+        "ring_finished_at": 1788691836995,
+        "ring_outcome": "rung",
+        "apply_started_at": 1788691838149,
+        "apply_finished_at": 1788691840267,
+        "apply_outcome": "applied",
+        "apply_error": null
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.597
+      },
+      "duration": 0.597,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 733184,
+      "rows_read": 11,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

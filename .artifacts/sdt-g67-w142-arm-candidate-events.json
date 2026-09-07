@@ -1,0 +1,175 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database ac751211-fde8-4587-9d56-1e9fd8051bc3 (ac751211-fde8-4587-9d56-1e9fd8051bc3):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.93ms
+[
+  {
+    "results": [
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07655-7da4-7c1c-b7c1-a0ce9a10906d",
+        "SortableUniqueId": "063924288510156000000045657586",
+        "EventType": "RoomCreated",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"name\":\"SDT-G58 paced\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\"]",
+        "Timestamp": "2026-09-06T10:48:29.348Z",
+        "CausationId": "01a07655-7da4-7c1c-b7c1-a0ce9a10906d",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "e85fa30283a80b10529046e0f3b756062c7402c21be3fb1625c4701f79d2e22b"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "SortableUniqueId": "063924288522584000000921680792",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-1\",\"userId\":\"g58-user-1\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-1\"]",
+        "Timestamp": "2026-09-06T10:48:41.924Z",
+        "CausationId": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "89f2058fd3603a1b2a6cacc18433c9b69803ba4238b07e8d0d3a6fa7b7f360b4"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "SortableUniqueId": "063924288535006000001623617049",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-2\",\"userId\":\"g58-user-2\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-2\"]",
+        "Timestamp": "2026-09-06T10:48:54.253Z",
+        "CausationId": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "421ce375fdfc7db471f1490e07882b4f518ef30767698471ab2f4d9edaf52bf2"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "SortableUniqueId": "063924288547223000000357223741",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-3\",\"userId\":\"g58-user-3\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-3\"]",
+        "Timestamp": "2026-09-06T10:49:06.580Z",
+        "CausationId": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "99ad3b2c8a79ccabfaefafc62257cb06769f5720a1b6b582f7303a069a1d9847"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "SortableUniqueId": "063924288559819000000904001847",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-4\",\"userId\":\"g58-user-4\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-4\"]",
+        "Timestamp": "2026-09-06T10:49:18.982Z",
+        "CausationId": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "3150c8f9526ede7f0d2b9116e841bbd4ac574b87656e00e72d5f1adec820acb0"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "SortableUniqueId": "063924288572885000001934473981",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-5\",\"userId\":\"g58-user-5\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-5\"]",
+        "Timestamp": "2026-09-06T10:49:32.089Z",
+        "CausationId": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "207a09498abfa0086ce8e01d55297cacb5749cb941665eae817a44ad2c30fdb4"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "SortableUniqueId": "063924288586207000001475827699",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-6\",\"userId\":\"g58-user-6\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-6\"]",
+        "Timestamp": "2026-09-06T10:49:45.164Z",
+        "CausationId": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "54bf62e655ea56645cd49416f76da01659c01eb7554f9112650c7136bed1e437"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "SortableUniqueId": "063924288598964000001977391542",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-7\",\"userId\":\"g58-user-7\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-7\"]",
+        "Timestamp": "2026-09-06T10:49:58.171Z",
+        "CausationId": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "563e9eaacf3a4a2ffd9bc343a35673c1340910c5c197746f8874b69f2b3470ef"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "SortableUniqueId": "063924288611652000001522689977",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-8\",\"userId\":\"g58-user-8\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-8\"]",
+        "Timestamp": "2026-09-06T10:50:10.856Z",
+        "CausationId": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "bffbf504229f392824dae547846db83b347376bc76adbcf5855a6401db28d40b"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "SortableUniqueId": "063924288624216000000176915988",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-9\",\"userId\":\"g58-user-9\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-9\"]",
+        "Timestamp": "2026-09-06T10:50:23.494Z",
+        "CausationId": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "331dd48cd39e06e5e7c16e81a6c6722de88f32b29870d9edcda5a8be80614987"
+      },
+      {
+        "ServiceId": "sekiban-dcb-g60-w155-c",
+        "Id": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "SortableUniqueId": "063924288636725000000799505470",
+        "EventType": "RoomReserved",
+        "Payload": "{\"roomId\":\"g58-room-3147d381-f03\",\"reservationId\":\"g58-reservation-3147d381-f03-10\",\"userId\":\"g58-user-10\"}",
+        "Tags": "[\"room:g58-room-3147d381-f03\",\"reservation:g58-reservation-3147d381-f03-10\"]",
+        "Timestamp": "2026-09-06T10:50:35.983Z",
+        "CausationId": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "CorrelationId": "SerializedCommit",
+        "ExecutedUser": "SerializedSekibanExecutor",
+        "EventDigest": "d259467c95519b7afa69276fcacd3d1276bf4e5296139b8ff5cdb408e9e3fcea"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.928
+      },
+      "duration": 0.928,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 733184,
+      "rows_read": 11,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

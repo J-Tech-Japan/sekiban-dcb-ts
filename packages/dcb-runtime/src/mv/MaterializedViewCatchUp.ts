@@ -19,6 +19,11 @@ export interface MaterializedViewCatchUpResult {
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
   readonly indeterminate: boolean;
+  /** The first source event withheld by the current safe-lane boundary. */
+  readonly deferredEventSuid: string | null;
+  readonly deferredEventLastArrivedAt: number | null;
+  readonly deferredDeadlineAt: number | null;
+  readonly stopReason: "safe_window_fence" | "safe_window_ceiling" | "frontier_fence" | null;
 }
 
 export interface MaterializedViewCatchUpHooks {
@@ -175,6 +180,10 @@ export class MaterializedViewCatchUpRuntime {
           advancedSourceEvents: 0,
           appliedEvents: 0,
           indeterminate: true,
+          deferredEventSuid: null,
+          deferredEventLastArrivedAt: null,
+          deferredDeadlineAt: null,
+          stopReason: "safe_window_ceiling",
         };
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
@@ -191,7 +200,18 @@ export class MaterializedViewCatchUpRuntime {
         if (options.maximumSuid === null || (
           options.maximumSuid !== undefined && compareSuid(event.suid, options.maximumSuid) > 0
         )) {
-          break;
+          return {
+            instance: current,
+            dynamicLagBoundMs,
+            safeWindowMs: windowMs,
+            advancedSourceEvents,
+            appliedEvents,
+            indeterminate: false,
+            deferredEventSuid: event.suid,
+            deferredEventLastArrivedAt: event.lastArrivedAt,
+            deferredDeadlineAt: null,
+            stopReason: "frontier_fence",
+          };
         }
         // Read-only SafeWindow rule: do not skip the first unsafe event or
         // process later events ahead of a late lower SUID.
@@ -203,6 +223,10 @@ export class MaterializedViewCatchUpRuntime {
             advancedSourceEvents,
             appliedEvents,
             indeterminate: false,
+            deferredEventSuid: event.suid,
+            deferredEventLastArrivedAt: event.lastArrivedAt,
+            deferredDeadlineAt: event.lastArrivedAt + windowMs,
+            stopReason: "safe_window_fence",
           };
         }
         await hooks.beforeApply?.(event);
@@ -257,6 +281,10 @@ export class MaterializedViewCatchUpRuntime {
           advancedSourceEvents,
           appliedEvents,
           indeterminate: false,
+          deferredEventSuid: null,
+          deferredEventLastArrivedAt: null,
+          deferredDeadlineAt: null,
+          stopReason: null,
         };
       }
     }

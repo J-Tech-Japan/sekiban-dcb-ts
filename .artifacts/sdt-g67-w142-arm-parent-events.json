@@ -1,0 +1,101 @@
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764c-9f3f-7186-9c7d-549aa134b876",
+        "suid": "063924287929117000002032540062",
+        "authored_timestamp": "2026-09-06T10:38:48.127Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764c-d124-7041-948d-7dae317028ff",
+        "suid": "063924287941855000000927750081",
+        "authored_timestamp": "2026-09-06T10:39:00.900Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-1\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764d-047a-7146-8985-8a688358d53e",
+        "suid": "063924287954830000000075032896",
+        "authored_timestamp": "2026-09-06T10:39:14.042Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-2\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764d-36be-7954-85a7-fb05cdbc09fe",
+        "suid": "063924287967580000000413364058",
+        "authored_timestamp": "2026-09-06T10:39:26.910Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-3\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764d-67a3-73ea-836d-a7b36590be49",
+        "suid": "063924287980086000001773427440",
+        "authored_timestamp": "2026-09-06T10:39:39.427Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-4\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764d-98b5-7b59-981a-97850e6f618b",
+        "suid": "063924287992788000000542336472",
+        "authored_timestamp": "2026-09-06T10:39:51.989Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-5\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764d-c9de-7f5d-a165-6d82b37ee09e",
+        "suid": "063924288005234000000976524346",
+        "authored_timestamp": "2026-09-06T10:40:04.574Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-6\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764d-fa97-75c9-8cb6-f516070db2e1",
+        "suid": "063924288017817000001294343380",
+        "authored_timestamp": "2026-09-06T10:40:17.047Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-7\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764e-2b89-7d73-8639-83aef6a97a80",
+        "suid": "063924288030247000000340676187",
+        "authored_timestamp": "2026-09-06T10:40:29.577Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-8\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764e-5c23-7da8-9901-1e93733f5c32",
+        "suid": "063924288042838000000545675244",
+        "authored_timestamp": "2026-09-06T10:40:42.019Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-9\"]"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a0764e-8e14-74f9-aed8-de8724f152da",
+        "suid": "063924288055742000001471119526",
+        "authored_timestamp": "2026-09-06T10:40:54.804Z",
+        "tags": "[\"room:g58-room-7de42032-6a7\",\"reservation:g58-reservation-7de42032-6a7-10\"]"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3812
+      },
+      "duration": 0.3812,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 872448,
+      "rows_read": 11,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

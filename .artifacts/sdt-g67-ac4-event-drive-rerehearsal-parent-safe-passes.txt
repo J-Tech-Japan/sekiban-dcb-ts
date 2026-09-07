@@ -1,0 +1,13 @@
+command: cd /private/tmp/sdt-g67-w142-parent && env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN ./node_modules/.bin/wrangler d1 execute sekiban-dcb-g60-w155-c-pipeline --remote --json --config .artifacts/wrangler.g65-w155-c.jsonc --file /Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g67-w142/.artifacts/sdt-g67-ac4-event-drive-rerehearsal-pass-query.sql
+credential-variable-state: CLOUDFLARE_API_TOKEN=UNSET CF_API_TOKEN=UNSET CLOUDFLARE_API_KEY=UNSET CF_API_KEY=UNSET WRANGLER_API_TOKEN=UNSET
+├ Checking if file needs uploading
+│
+├ 🌀 Uploading ac751211-fde8-4587-9d56-1e9fd8051bc3.fddc44c60a4e273f.sql
+│ 🌀 Uploading complete.
+│
+
+{
+  "error": {
+    "text": "no such column: delivery_event_id at offset 224: SQLITE_ERROR"
+  }
+}

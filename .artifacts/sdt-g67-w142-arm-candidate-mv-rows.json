@@ -1,0 +1,16 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database ac751211-fde8-4587-9d56-1e9fd8051bc3 (ac751211-fde8-4587-9d56-1e9fd8051bc3):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mA request to the Cloudflare API (/accounts/3ede2188f4cf39a28e0aa3722d3d02c5/d1/database/ac751211-fde8-4587-9d56-1e9fd8051bc3/query) failed.[0m
+
+  no such table: mv_rows: SQLITE_ERROR [code: 7500]
+  
+  If you think this is a bug, please open an issue at: [4mhttps://github.com/cloudflare/workers-sdk/issues/new/choose[0m
+
+
+🪵  Logs were written to "/Users/tomohisa/Library/Preferences/.wrangler/logs/wrangler-2026-09-06_10-52-21_175.log"

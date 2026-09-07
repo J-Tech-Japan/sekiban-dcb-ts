@@ -157,7 +157,7 @@ function assertSourceContracts(sources) {
   const { runtime, worker, mv, delivery, catchUp, live } = sources;
   const earlyReturn = "if (scan.kind !== \"FULL\") return;";
   requireUnique(runtime, earlyReturn, "scheduled BLOCK gate");
-  requireContains(runtime, "await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });", "fresh scheduled hook");
+  requireContains(runtime, "await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });", "fresh scheduled hook");
   requireContains(runtime, "await pollLiveProjections(env, { registry: composition.projectors", "scheduled live poll");
   requireContains(worker, "await input.catchUp(coverage.frontierSuid);", "retained-frontier catch-up");
   requireContains(worker, "await input.drainUnsafeKicks(coverage.frontierSuid);", "retained-frontier unsafe drain");

@@ -1,0 +1,34 @@
+command: env -u CLOUDFLARE_API_TOKEN -u CF_API_TOKEN -u CLOUDFLARE_API_KEY -u CF_API_KEY -u WRANGLER_API_TOKEN ./node_modules/.bin/wrangler d1 execute D1 --remote --json --command <post-cohort counts> --config .artifacts/wrangler.g65-w155-c.jsonc
+credential-variable-state: CLOUDFLARE_API_TOKEN=UNSET CF_API_TOKEN=UNSET CLOUDFLARE_API_KEY=UNSET CF_API_KEY=UNSET WRANGLER_API_TOKEN=UNSET
+[
+  {
+    "results": [
+      {
+        "dcb_events": 11,
+        "global_receipts": 21,
+        "source_partitions": 11,
+        "safe_health": 1,
+        "safe_history": 4,
+        "safe_passes": 107
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 1.5626
+      },
+      "duration": 1.5626,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 847872,
+      "rows_read": 155,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

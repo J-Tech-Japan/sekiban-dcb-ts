@@ -1,0 +1,28 @@
+{
+  "schema": "sdt-g60-w159-wrangler-receipt/v1",
+  "label": "w147-detach-outbox-consumer",
+  "wrangler": "/Users/tomohisa/dev/GitHub/SekibanDcbTsImplementation/.g67-w142/node_modules/.bin/wrangler",
+  "tokenEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "UNSET",
+    "CF_API_TOKEN": "UNSET",
+    "CLOUDFLARE_API_KEY": "UNSET",
+    "CF_API_KEY": "UNSET",
+    "WRANGLER_API_TOKEN": "UNSET"
+  },
+  "noKeepVars": true,
+  "command": [
+    "queues",
+    "consumer",
+    "remove",
+    "sekiban-dcb-g60-w131-c-outbox",
+    "sekiban-dcb-g60-w131-c"
+  ],
+  "stdinFile": null,
+  "startedAt": "2026-09-06T15:48:43.622Z",
+  "finishedAt": "2026-09-06T15:48:46.172Z",
+  "exitCode": 0,
+  "signal": null,
+  "spawnError": null,
+  "stdout": "\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n───────────────────────────────────────────────\nRemoving consumer from queue sekiban-dcb-g60-w131-c-outbox.\nRemoved consumer from queue sekiban-dcb-g60-w131-c-outbox.\n",
+  "stderr": ""
+}

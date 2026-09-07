@@ -27,11 +27,11 @@ function assertScheduledDelegationAndFreshFrontierOrder(workerSource: string, ru
     throw new Error("sample scheduled wrapper must delegate to runtime.scheduled");
   }
 
-  const runtimeScheduledStart = runtimeSource.indexOf("async scheduled(_controller, env): Promise<void>");
+  const runtimeScheduledStart = runtimeSource.indexOf("async scheduled(_controller, env, ctx): Promise<void>");
   if (runtimeScheduledStart < 0) throw new Error("runtime scheduled handler is missing");
   const runtimeScheduled = runtimeSource.slice(runtimeScheduledStart);
   const scanIndex = runtimeScheduled.indexOf("const scan = await new GlobalCompletenessReconciler");
-  const hookIndex = runtimeScheduled.indexOf("const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });");
+  const hookIndex = runtimeScheduled.indexOf("const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });");
   const pollIndex = runtimeScheduled.indexOf("await pollLiveProjections(env, {");
   if (scanIndex < 0 || hookIndex < 0 || pollIndex < 0 || !(scanIndex < hookIndex && hookIndex < pollIndex)) {
     throw new Error("runtime scheduled order must be reconcile, fresh-frontier hook, then live poll");
@@ -134,7 +134,7 @@ describe("SDT-G31 meeting-room list auto-refresh", () => {
     expect(() => assertScheduledDelegationAndFreshFrontierOrder(directCall, runtimeSource))
       .toThrow("runtime.scheduled");
 
-    const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan });";
+    const hook = "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });";
     const pollCall = `await pollLiveProjections(env, {
         registry: composition.projectors,
         storeProvider,

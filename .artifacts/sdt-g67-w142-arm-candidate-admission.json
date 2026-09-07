@@ -1,0 +1,305 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database ac751211-fde8-4587-9d56-1e9fd8051bc3 (ac751211-fde8-4587-9d56-1e9fd8051bc3):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.49ms
+[
+  {
+    "results": [
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-7da4-7c1c-b7c1-a0ce9a10906d",
+        "suid": "063924288510156000000045657586",
+        "attempt_id": "2e6640e4-8582-49f5-ac1a-ac33415abded",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691710786,
+        "admission_finished_at": 1788691711086,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "suid": "063924288522584000000921680792",
+        "attempt_id": "deb21e37-dba3-4dc6-b8c4-d85cd0173ffc",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691722988,
+        "admission_finished_at": 1788691723288,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-aec4-7aed-ac76-d75a3a9a267c",
+        "suid": "063924288522584000000921680792",
+        "attempt_id": "deb21e37-dba3-4dc6-b8c4-d85cd0173ffc",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-1",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691723143,
+        "admission_finished_at": 1788691723443,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "suid": "063924288535006000001623617049",
+        "attempt_id": "99c80cc9-b74a-40d4-9f29-3ffefda03f62",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691735383,
+        "admission_finished_at": 1788691735683,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07655-deed-75b9-9cd8-9a6a6fbbf7a5",
+        "suid": "063924288535006000001623617049",
+        "attempt_id": "99c80cc9-b74a-40d4-9f29-3ffefda03f62",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-2",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691735651,
+        "admission_finished_at": 1788691735951,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "suid": "063924288547223000000357223741",
+        "attempt_id": "fb9ef548-ed58-443f-85ac-28a46ac1a822",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691747600,
+        "admission_finished_at": 1788691747900,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-0f14-7c0e-98a0-f9b347576ba1",
+        "suid": "063924288547223000000357223741",
+        "attempt_id": "fb9ef548-ed58-443f-85ac-28a46ac1a822",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-3",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691747803,
+        "admission_finished_at": 1788691748103,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "suid": "063924288559819000000904001847",
+        "attempt_id": "2b861435-f5b0-4e5d-afa7-93bda7310776",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691760195,
+        "admission_finished_at": 1788691760495,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-3f86-7e66-8dd0-f8a61f803ad6",
+        "suid": "063924288559819000000904001847",
+        "attempt_id": "2b861435-f5b0-4e5d-afa7-93bda7310776",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-4",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691760481,
+        "admission_finished_at": 1788691760781,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "suid": "063924288572885000001934473981",
+        "attempt_id": "34eb18cb-df6d-4927-8e4b-889d54257043",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691773250,
+        "admission_finished_at": 1788691773550,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-72b9-7fe0-a44a-31c5428a448c",
+        "suid": "063924288572885000001934473981",
+        "attempt_id": "34eb18cb-df6d-4927-8e4b-889d54257043",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-5",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691773537,
+        "admission_finished_at": 1788691773837,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "suid": "063924288586207000001475827699",
+        "attempt_id": "22357745-4d8b-418f-af77-c35c79c7d6f6",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691786669,
+        "admission_finished_at": 1788691786969,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-a5cc-7a15-af37-1cc25f625315",
+        "suid": "063924288586207000001475827699",
+        "attempt_id": "22357745-4d8b-418f-af77-c35c79c7d6f6",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-6",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691787017,
+        "admission_finished_at": 1788691787317,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "suid": "063924288598964000001977391542",
+        "attempt_id": "a2aafbec-234b-4966-b46c-f2413509a1c2",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691799340,
+        "admission_finished_at": 1788691799640,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07656-d89b-7ba0-ae9c-c11e2acfce70",
+        "suid": "063924288598964000001977391542",
+        "attempt_id": "a2aafbec-234b-4966-b46c-f2413509a1c2",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-7",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691799547,
+        "admission_finished_at": 1788691799847,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "suid": "063924288611652000001522689977",
+        "attempt_id": "8326510a-d457-4541-be5d-121f119e1737",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691812031,
+        "admission_finished_at": 1788691812331,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-0a28-7ba2-b39f-b856caee8b58",
+        "suid": "063924288611652000001522689977",
+        "attempt_id": "8326510a-d457-4541-be5d-121f119e1737",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-8",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691812388,
+        "admission_finished_at": 1788691812688,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "suid": "063924288624216000000176915988",
+        "attempt_id": "5a7f9c4d-bc47-4902-b531-a8fc26f519e1",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691824588,
+        "admission_finished_at": 1788691824888,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-3b86-7882-87e2-3d7e74c338f8",
+        "suid": "063924288624216000000176915988",
+        "attempt_id": "5a7f9c4d-bc47-4902-b531-a8fc26f519e1",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-9",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691824792,
+        "admission_finished_at": 1788691825092,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "suid": "063924288636725000000799505470",
+        "attempt_id": "2c05e635-a2e7-4394-ab8a-ba744297fcda",
+        "partition_tag": "room:g58-room-3147d381-f03",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691837095,
+        "admission_finished_at": 1788691837395,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      },
+      {
+        "service_id": "sekiban-dcb-g60-w155-c",
+        "event_id": "01a07657-6c4f-7b72-9945-d2031672bbb5",
+        "suid": "063924288636725000000799505470",
+        "attempt_id": "2c05e635-a2e7-4394-ab8a-ba744297fcda",
+        "partition_tag": "reservation:g58-reservation-3147d381-f03-10",
+        "delivery_source": "fast",
+        "admission_started_at": 1788691837390,
+        "admission_finished_at": 1788691837690,
+        "outcome": "unknown",
+        "global_completion_observed_at": null,
+        "clock_origin": "Date.now epoch ms"
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SEA",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.4854
+      },
+      "duration": 0.4854,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 733184,
+      "rows_read": 21,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

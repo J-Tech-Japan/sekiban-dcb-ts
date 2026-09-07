@@ -1,0 +1,40 @@
+
+ ⛅️ wrangler 4.125.0 (update available 4.129.0)
+───────────────────────────────────────────────
+Resource location: remote 
+
+🌀 Executing on remote database 2b60dbcf-0912-4bb2-93aa-77c26cd260e1 (2b60dbcf-0912-4bb2-93aa-77c26cd260e1):
+🌀 To execute on your local development database, remove the --remote flag from your wrangler command.
+🚣 Executed 1 command in 0.38ms
+[
+  {
+    "results": [
+      {
+        "mv_rows": 0,
+        "mv_unsafe_receipts": 0,
+        "mv_unsafe_rows": 0,
+        "mv_unsafe_kicks": 0,
+        "mv_instances": 2,
+        "mv_active_generations": 2
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_colo": "SJC",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.3792
+      },
+      "duration": 0.3792,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 192512,
+      "rows_read": 4,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]
