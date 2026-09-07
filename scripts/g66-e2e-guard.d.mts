@@ -4,8 +4,10 @@ export interface G66ReceiptResult {
     readonly allAccepted: boolean;
     readonly allUnsafeWithinBound: boolean;
     readonly allSafeWithinBound: boolean;
+    readonly continuousPacedWrites: boolean;
     readonly tagStateAndQueryReads: boolean;
     readonly coverageAndFrontierObserved: boolean;
+    readonly observedResponseRelativeReads: boolean;
   };
   readonly passed: boolean;
 }

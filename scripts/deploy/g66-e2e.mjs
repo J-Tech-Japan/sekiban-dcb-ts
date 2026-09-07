@@ -121,16 +121,21 @@ function projectionPath(kind, id) {
   return kind === "room" ? `/api/read/room?roomId=${encodeURIComponent(id)}` : `/api/read/reservation?reservationId=${encodeURIComponent(id)}`;
 }
 
+// The projection endpoint is the unsafe/tag-state witness.  The application
+// query endpoints are a separate safe-lane witness and must be captured too;
+// a safe MV head alone is not proof that the public query returned the event.
+function safeQueryPath(kind, id) {
+  return kind === "room"
+    ? `/api/read/room-query?roomId=${encodeURIComponent(id)}`
+    : "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true";
+}
+
 function projectionTag(kind, id) {
   return kind === "room" ? `room:${id}` : `reservation:${id}`;
 }
 
 function projectorId(kind) {
   return kind === "room" ? "RoomProjector" : "ReservationProjector";
-}
-
-function targetTagStateId(kind, id) {
-  return `${projectionTag(kind, id)}:${projectorId(kind)}`;
 }
 
 function projectionSnapshot(kind, id, result) {
@@ -227,8 +232,32 @@ async function health(options) {
   return healthSummary(result);
 }
 
-async function tagState(options, kind, id) {
-  const tagStateId = targetTagStateId(kind, id);
+function parseJsonField(body, key, fallback) {
+  const value = bodyObject(body)[key];
+  if (typeof value !== "string") return fallback;
+  try { return JSON.parse(value); } catch { return fallback; }
+}
+
+function readHeadFromBody(body) {
+  const value = bodyObject(body).readHead;
+  return typeof value === "string" && SUID.test(value) ? value : null;
+}
+
+function queryObservation(result) {
+  const body = bodyObject(result.body);
+  return {
+    status: result.status,
+    responseMs: result.elapsedMs,
+    completedAtMs: result.completedAtMs,
+    body,
+    readHead: readHeadFromBody(body),
+    result: parseJsonField(body, "resultJson", null),
+    rows: parseJsonField(body, "itemsJson", null),
+  };
+}
+
+async function tagState(options, tag, projector, expectedVersion, expectedSuid) {
+  const tagStateId = `${tag}:${projector}`;
   const result = await requestJson(options.baseUrl, "/conformance/v1/api/sekiban/serialized/tag-state", {
     method: "POST",
     headers: { ...conformanceHeaders(options.token), "content-type": "application/json" },
@@ -236,6 +265,10 @@ async function tagState(options, kind, id) {
   });
   return {
     tagStateId,
+    tag,
+    projector,
+    expectedVersion,
+    expectedSuid,
     status: result.status,
     responseMs: result.elapsedMs,
     completedAtMs: result.completedAtMs,
@@ -249,8 +282,8 @@ async function queryReads(options, roomId) {
   const room = await requestJson(options.baseUrl, `/api/read/room-query?roomId=${encodeURIComponent(roomId)}`, { headers: publicHeaders() });
   const reservations = await requestJson(options.baseUrl, "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true", { headers: publicHeaders() });
   return {
-    room: { status: room.status, responseMs: room.elapsedMs, completedAtMs: room.completedAtMs, body: room.body },
-    reservations: { status: reservations.status, responseMs: reservations.elapsedMs, completedAtMs: reservations.completedAtMs, body: reservations.body },
+    room: queryObservation(room),
+    reservations: queryObservation(reservations),
   };
 }
 
@@ -267,8 +300,46 @@ function commandInput(commandId, ids, ordinal) {
 
 function targetFor(commandId, ids) {
   return commandId === "create-room"
-    ? { kind: "room", id: ids.roomId, projector: "RoomProjector" }
-    : { kind: "reservation", id: ids.reservationId, projector: "ReservationProjector" };
+    ? { kind: "room", id: ids.roomId, projector: "RoomProjector", expectedStatus: "created" }
+    : { kind: "reservation", id: ids.reservationId, projector: "ReservationProjector", expectedStatus: commandId === "cancel-reservation" ? "cancelled" : "reserved" };
+}
+
+function affectedTagReads(sample) {
+  const body = bodyObject(sample.commit.body);
+  const response = bodyObject(body.response);
+  const events = Array.isArray(response.writtenEvents) ? response.writtenEvents : Array.isArray(body.writtenEvents) ? body.writtenEvents : [];
+  const versions = Array.isArray(response.tagWriteResults) ? response.tagWriteResults : Array.isArray(body.tagWriteResults) ? body.tagWriteResults : [];
+  const versionByTag = new Map(versions.map((entry) => [entry?.tag, entry?.version]));
+  const values = [];
+  for (const event of events) {
+    const suid = typeof event?.sortableUniqueIdValue === "string" ? event.sortableUniqueIdValue : sample.commit.suid;
+    for (const tag of Array.isArray(event?.tags) ? event.tags : []) {
+      if (typeof tag !== "string") continue;
+      const separator = tag.indexOf(":");
+      const kind = separator < 0 ? "unknown" : tag.slice(0, separator);
+      const projector = kind === "room" ? "RoomProjector" : kind === "reservation" ? "ReservationProjector" : "";
+      if (projector.length === 0) continue;
+      values.push({ tag, projector, expectedVersion: versionByTag.get(tag) ?? null, expectedSuid: suid });
+    }
+  }
+  return values;
+}
+
+function queryShowsTarget(target, queryReads) {
+  if (target.kind === "room") {
+    const result = queryReads?.room?.result;
+    return queryReads?.room?.status === 200 && result !== null && typeof result === "object" && Number(result.count) >= 1;
+  }
+  const rows = Array.isArray(queryReads?.reservations?.rows) ? queryReads.reservations.rows : [];
+  return queryReads?.reservations?.status === 200
+    && typeof queryReads.reservations.readHead === "string"
+    && rows.filter((row) => row?.reservationId === target.id).length === 1
+    && rows.some((row) => row?.reservationId === target.id && row?.status === target.expectedStatus);
+}
+
+async function publicSafeQuery(options, target) {
+  const result = await requestJson(options.baseUrl, safeQueryPath(target.kind, target.id), { headers: publicHeaders() });
+  return queryObservation(result);
 }
 
 async function sendCommand(options, commandId, input, executor) {
@@ -299,45 +370,56 @@ async function sendCommand(options, commandId, input, executor) {
 }
 
 async function unsafeProbe(options, target, sample) {
-  const startedAtMs = sample.commit.completedAtMs;
+  const responseCompletedAtMs = sample.commit.completedAtMs;
   const observations = [];
-  const deadlineMs = startedAtMs + UNSAFE_BOUND_MS;
+  const deadlineMs = responseCompletedAtMs + UNSAFE_BOUND_MS;
   for (;;) {
     const result = await requestJson(options.baseUrl, projectionPath(target.kind, target.id), { headers: publicHeaders() });
     const body = bodyObject(result.body);
     const visible = result.status === 200 && atLeast(body.lastSortedUniqueId, sample.commit.suid);
     observations.push({
       completedAtMs: result.completedAtMs,
-      elapsedMs: result.completedAtMs - startedAtMs,
+      responseRelativeMs: result.completedAtMs - responseCompletedAtMs,
+      elapsedMs: result.completedAtMs - responseCompletedAtMs,
       status: result.status,
       visible,
       lastSortedUniqueId: typeof body.lastSortedUniqueId === "string" ? body.lastSortedUniqueId : null,
       body,
     });
     if (visible) {
-      return { disposition: result.completedAtMs <= deadlineMs ? "pass" : "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: result.completedAtMs, observations };
+      const withinBound = result.completedAtMs <= deadlineMs;
+      return { disposition: withinBound ? "pass" : "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: withinBound ? result.completedAtMs : null, responseRelativeMs: withinBound ? result.completedAtMs - responseCompletedAtMs : null, boundExceededAtMs: withinBound ? null : result.completedAtMs, observations };
     }
     if (Date.now() >= deadlineMs) {
-      return { disposition: "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: null, boundExceededAtMs: result.completedAtMs, observations };
+      return { disposition: "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: null, responseRelativeMs: null, boundExceededAtMs: result.completedAtMs, observations };
     }
     await sleep(Math.min(options.pollMs, Math.max(1, deadlineMs - Date.now())));
   }
 }
 
 async function safeProbe(options, target, sample, report) {
-  const startedAtMs = sample.commit.completedAtMs;
-  const deadlineMs = startedAtMs + SAFE_BOUND_MS;
+  const responseCompletedAtMs = sample.commit.completedAtMs;
+  const deadlineMs = responseCompletedAtMs + SAFE_BOUND_MS;
   for (;;) {
     const current = await health(options);
     report.healthSnapshots.push(current);
     sample.healthSnapshots.push(current);
     const safeHead = safeHeadFor(current, target.projector);
-    if (atLeast(safeHead, sample.commit.suid)) {
+    const safeQuery = await publicSafeQuery(options, target);
+    const publicQueryVisible = safeQuery.status === 200 && queryShowsTarget(target, { [target.kind === "room" ? "room" : "reservations"]: safeQuery });
+    const readHeadAvailable = target.kind === "room" || safeQuery.readHead !== null;
+    if (atLeast(safeHead, sample.commit.suid) && publicQueryVisible && readHeadAvailable) {
+      const observedAtMs = Math.max(current.receivedAtMs, safeQuery.completedAtMs);
+      const withinBound = observedAtMs <= deadlineMs;
       return {
-        disposition: "pass",
+        disposition: withinBound ? "pass" : "censored",
         boundMs: SAFE_BOUND_MS,
-        firstVisibleAtMs: current.receivedAtMs,
+        firstVisibleAtMs: withinBound ? observedAtMs : null,
+        responseRelativeMs: withinBound ? observedAtMs - responseCompletedAtMs : null,
+        boundExceededAtMs: withinBound ? null : observedAtMs,
         safeHead,
+        readHead: safeQuery.readHead,
+        publicQuery: safeQuery,
         health: current,
       };
     }
@@ -346,13 +428,35 @@ async function safeProbe(options, target, sample, report) {
         disposition: "censored",
         boundMs: SAFE_BOUND_MS,
         firstVisibleAtMs: null,
-        boundExceededAtMs: current.receivedAtMs,
+        responseRelativeMs: null,
+        boundExceededAtMs: Math.max(current.receivedAtMs, safeQuery.completedAtMs),
         safeHead,
+        readHead: safeQuery.readHead,
+        publicQuery: safeQuery,
         health: current,
       };
     }
     await sleep(Math.min(options.pollMs, Math.max(1, deadlineMs - Date.now())));
   }
+}
+
+async function observeCommand(options, report, sample) {
+  sample.unsafe = await unsafeProbe(options, sample.target, sample);
+  writeReceipt(options.reportPath, report);
+  sample.safe = await safeProbe(options, sample.target, sample, report);
+  writeReceipt(options.reportPath, report);
+  if (sample.safe.disposition !== "pass") {
+    sample.censored = true;
+    sample.failure = `safe visibility did not reach ${sample.commit.suid} within ${SAFE_BOUND_MS}ms`;
+    writeReceipt(options.reportPath, report);
+    throw new Error(sample.failure);
+  }
+  for (const target of affectedTagReads(sample)) {
+    sample.tagReads.push(await tagState(options, target.tag, target.projector, target.expectedVersion, target.expectedSuid));
+  }
+  sample.queryReads = await queryReads(options, sample.ids.roomId);
+  writeReceipt(options.reportPath, report);
+  return sample;
 }
 
 async function captureCommand(options, report, commandId, ids, ordinal, executor, sourceSnapshot = null) {
@@ -369,6 +473,7 @@ async function captureCommand(options, report, commandId, ids, ordinal, executor
     ordinal,
     commandId,
     target,
+    ids: { roomId: ids.roomId, reservationId: ids.reservationId },
     commit,
     unsafe: null,
     safe: null,
@@ -384,20 +489,7 @@ async function captureCommand(options, report, commandId, ids, ordinal, executor
     writeReceipt(options.reportPath, report);
     throw new Error(`${commandId} did not commit (HTTP ${commit.status}, kind ${commit.kind ?? "unknown"})`);
   }
-  sample.unsafe = await unsafeProbe(options, target, sample);
-  writeReceipt(options.reportPath, report);
-  sample.safe = await safeProbe(options, target, sample, report);
-  writeReceipt(options.reportPath, report);
-  if (sample.safe.disposition !== "pass") {
-    sample.censored = true;
-    sample.failure = `safe visibility did not reach ${commit.suid} within ${SAFE_BOUND_MS}ms`;
-    writeReceipt(options.reportPath, report);
-    throw new Error(sample.failure);
-  }
-  sample.tagReads.push(await tagState(options, target.kind, target.id));
-  sample.queryReads = await queryReads(options, ids.roomId);
-  writeReceipt(options.reportPath, report);
-  return sample;
+  return { sample, observation: observeCommand(options, report, sample) };
 }
 
 function summarize(values) {
@@ -409,8 +501,8 @@ function summarizeReport(report) {
   const rows = report.commands;
   const timing = (field) => summarize(rows.map((row) => {
     if (field === "response") return row.commit?.responseMs;
-    if (field === "unsafe") return row.unsafe?.firstVisibleAtMs === null || row.unsafe?.firstVisibleAtMs === undefined ? null : row.unsafe.firstVisibleAtMs - row.commit.completedAtMs;
-    if (field === "safe") return row.safe?.firstVisibleAtMs === null || row.safe?.firstVisibleAtMs === undefined ? null : row.safe.firstVisibleAtMs - row.commit.completedAtMs;
+    if (field === "unsafe") return row.unsafe?.responseRelativeMs;
+    if (field === "safe") return row.safe?.responseRelativeMs;
     return null;
   }));
   report.summary = {
@@ -422,6 +514,7 @@ function summarizeReport(report) {
     unsafeOverBoundCount: rows.filter((row) => row.unsafe?.disposition !== "pass").length,
     safeOverBoundCount: rows.filter((row) => row.safe?.disposition !== "pass").length,
     admission: Object.fromEntries([...new Set(rows.map((row) => row.commit?.admission))].map((value) => [value, rows.filter((row) => row.commit?.admission === value).length])),
+    measurementOrigin: "response-completed-at-to-observed-public-read; command send/response clocks are retained separately",
   };
   report.acceptance = {
     coldFirst: report.contract.coldFirst === true,
@@ -430,9 +523,16 @@ function summarizeReport(report) {
     allAccepted: report.summary.acceptedCount === rows.length && rows.length >= DEFAULT_SAMPLE_COUNT,
     allUnsafeWithinBound: report.summary.unsafeOverBoundCount === 0,
     allSafeWithinBound: report.summary.safeOverBoundCount === 0,
+    continuousWrites: rows.every((row, index) => index === 0 || row.commit.startedAtMs - rows[index - 1].commit.startedAtMs >= report.contract.minimumInterSampleMs)
+      && rows.some((row, index) => index > 0 && rows[index - 1].safe?.firstVisibleAtMs !== null && rows[index - 1].safe?.firstVisibleAtMs !== undefined && row.commit.startedAtMs < rows[index - 1].safe.firstVisibleAtMs),
     readThroughThenSnapshotOnly: rows.some((row) => row.commit?.executor?.readMode === "read-through") && rows.some((row) => row.commit?.executor?.readMode === "snapshot-only"),
-    tagStateAndQueryReads: rows.every((row) => Array.isArray(row.tagReads) && row.tagReads.length > 0 && row.queryReads?.room?.status === 200 && row.queryReads?.reservations?.status === 200),
+    tagStateAndQueryReads: rows.every((row) => Array.isArray(row.tagReads) && row.tagReads.length > 0
+      && row.tagReads.every((tag) => tag.status === 200 && Number.isSafeInteger(tag.version) && (tag.expectedVersion === null || tag.version >= tag.expectedVersion) && atLeast(tag.lastSortedUniqueId, tag.expectedSuid))
+      && row.queryReads?.room?.status === 200 && row.queryReads?.reservations?.status === 200
+      && queryShowsTarget(row.target, row.queryReads)
+      && typeof row.queryReads.reservations.readHead === "string"),
     coverageAndFrontierObserved: report.healthSnapshots.length > 0 && report.healthSnapshots.every((entry) => entry.coverage !== undefined && Array.isArray(entry.coverageHistory) && Array.isArray(entry.safeLanePasses)),
+    publicUnsafeAndSafeReads: rows.every((row) => Array.isArray(row.unsafe?.observations) && row.unsafe.observations.length > 0 && row.safe?.publicQuery?.status === 200 && row.safe?.safeHead !== undefined),
   };
 }
 
@@ -447,13 +547,16 @@ export async function runG66Cohort(options) {
     deployedVersionId: options.versionId ?? null,
     startedAt: new Date().toISOString(),
     contract: {
-      publicSurface: "one browser-equivalent sequential session over /api/commands/* and /api/read/*",
+      publicSurface: "one browser-equivalent paced session over /api/commands/*, unsafe projection reads and public safe query reads",
       commandPlan: "create-room plus eight reserve-room commands plus one cancel-reservation command",
       sampleCount: options.sampleCount,
       coldFirst: true,
       minimumInterSampleMs: options.paceMs,
       unsafeBoundMs: UNSAFE_BOUND_MS,
       safeBoundMs: SAFE_BOUND_MS,
+      visibilityClock: "response-completed-at to observed public read; send/response clocks retained separately",
+      continuousWrites: "visibility polling and safe-fence convergence never delay the next paced command; only source snapshot acquisition may gate executor input",
+      safeQueryProof: "unsafe projection endpoint plus default public query body and readHead where the list wire supplies it",
       conformanceAuthorization: "Bearer supplied from protected token-file path; value not persisted",
       censoredRule: "any missing command/unsafe/safe clock is retained as censored and cannot pass",
     },
@@ -466,7 +569,10 @@ export async function runG66Cohort(options) {
     report.healthSnapshots.push(initial);
     writeReceipt(options.reportPath, report);
     const ids = { phase: options.phase, roomId: `g66-${options.phase}-${options.runId.slice(0, 16)}`, reservationId: `g66-${options.phase}-${options.runId.slice(0, 12)}-r01` };
-    const room = await captureCommand(options, report, "create-room", ids, 1, { readMode: "read-through", snapshots: [] });
+    const observations = [];
+    const roomIssued = await captureCommand(options, report, "create-room", ids, 1, { readMode: "read-through", snapshots: [] });
+    observations.push(roomIssued.observation);
+    const room = roomIssued.sample;
     let previousResponseAtMs = room.commit.completedAtMs;
     let roomSnapshot = null;
     const lastReservationOrdinal = options.sampleCount - 1;
@@ -484,17 +590,20 @@ export async function runG66Cohort(options) {
         if (roomSnapshot === null) throw new Error(`room snapshot unavailable before reservation ${ordinal}`);
       }
       const snapshots = firstReservation ? [] : [roomSnapshot, emptySnapshot("reservation", ids.reservationId)];
-      const row = await captureCommand(options, report, "reserve-room", ids, ordinal, firstReservation
+      const issued = await captureCommand(options, report, "reserve-room", ids, ordinal, firstReservation
         ? { readMode: "read-through", snapshots }
         : { readMode: "snapshot-only", snapshots }, snapshotReceipt);
-      previousResponseAtMs = row.commit.completedAtMs;
+      observations.push(issued.observation);
+      previousResponseAtMs = issued.sample.commit.completedAtMs;
     }
     const cancelNotBefore = previousResponseAtMs + options.paceMs;
     if (Date.now() < cancelNotBefore) await sleep(cancelNotBefore - Date.now());
     const reservationSnapshotResult = await waitForSnapshot(options, "reservation", ids.reservationId, Date.now() + options.snapshotTimeoutMs);
     const reservationSnapshotReceipt = { kind: "reservation", id: ids.reservationId, observations: reservationSnapshotResult.observations, snapshot: reservationSnapshotResult.snapshot };
     if (reservationSnapshotResult.snapshot === null) throw new Error("reservation snapshot unavailable before cancel");
-    await captureCommand(options, report, "cancel-reservation", ids, options.sampleCount, { readMode: "snapshot-only", snapshots: [reservationSnapshotResult.snapshot] }, reservationSnapshotReceipt);
+    const cancelIssued = await captureCommand(options, report, "cancel-reservation", ids, options.sampleCount, { readMode: "snapshot-only", snapshots: [reservationSnapshotResult.snapshot] }, reservationSnapshotReceipt);
+    observations.push(cancelIssued.observation);
+    await Promise.all(observations);
     summarizeReport(report);
     report.finishedAt = new Date().toISOString();
     report.status = "completed";

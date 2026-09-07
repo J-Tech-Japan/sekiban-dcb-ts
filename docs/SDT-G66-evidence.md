@@ -13,15 +13,33 @@ after every accepted command before visibility polling.
 - The first command for each tag is read-through; subsequent commands use a
   portable snapshot. Tag-state and public query responses are saved per
   command.
-- Every command records the observed response and `x-sdt-global-admission`
-  header. Every sample records unsafe and safe first visibility, per-tick
-  coverage/frontier health, and tag-state/query reads.
+- Every command records the request start, response completion, response
+  duration, and `x-sdt-global-admission` header. Every sample records unsafe
+  projection visibility and the default public query's safe visibility from
+  the response-completed-at clock, per-tick coverage/frontier health, every
+  affected tag-state read with its committed version, and query/read-head
+  evidence. The scalar room-query wire has no read-head field; that absence is
+  recorded explicitly while the reservation-list read-head is required.
+- Visibility polling is asynchronous with respect to paced command issuance.
+  A later command may be sent while an earlier command is still waiting for
+  unsafe or safe visibility. Source snapshot acquisition remains a necessary
+  executor input, but safe convergence is never used as a pacing barrier.
 - Missing or late observations are explicitly `censored`; the guard never
-  converts a censored sample into a pass. The paused-write, missing-lane, and
-  missing-coverage mutants are red-capable and exercised by
-  `test/g66-e2e.spec.ts` and `scripts/g66-e2e-guard.mjs --self-test`.
+  converts a censored sample into a pass. The pause-to-safe, missing-clock,
+  public-query, late-success, failed-write, and missing-coverage mutants are
+  red-capable and exercised by `test/g66-e2e.spec.ts` and
+  `scripts/g66-e2e-guard.mjs --self-test`.
 
-## Deployment evidence — W160 production window
+## Historical deployment evidence — W160 production window
+
+The W160 receipts below are retained losslessly and remain useful for the
+deployed configuration, admission headers, and broad latency context. They are
+not current AC1–AC4 proof after review 5132886542: the old runner serialized
+each visibility wait before issuing the next command, checked only the unsafe
+projection and MV safe head, read one target tag after convergence, and did not
+record the complete affected-tag/default-query/read-head joins. The old tables
+therefore must not be described as a continuous-write cohort or as proof of
+the corrected guard.
 
 The window used the same existing production Worker and D1 pair. The
 pre-change deployment was the true parent `774f76def8fcf37edf4bd651187bd3a9230efa61`
@@ -58,8 +76,10 @@ producers and zero consumers.
 Both cohorts were cold-first, sequential, ten accepted public commands,
 with at least 10,000 ms between command responses. Each used read-through for
 the first command on a tag and portable snapshot-only for subsequent commands;
-each saved tag-state and room/reservations query reads. `response`, `unsafe`,
-and `safe` are observed send-to-first-response/visibility intervals in ms.
+each saved one post-convergence target tag-state read and room/reservations
+query reads. In this historical runner, `response` is command duration and
+`unsafe`/`safe` are response-completed-at-relative visibility intervals; the
+receipts do not establish send-to-visibility clocks or continuous issuance.
 
 | phase | receipt | response p50/p95 | unsafe p50/p95 | safe p50/p95 | over 5 s / 180 s | admission |
 |---|---|---:|---:|---:|---:|---|
@@ -137,11 +157,73 @@ queues remain untouched.
 
 ## Result
 
-The W160 production before/after witness passed the G66 public-surface
-acceptance bars on both normal and self-ring configurations. The candidate
-sample is usable after the cohort. The self-ring configuration is deployed
-on the production sample, while the explicitly unsafe old-G32 cleanup is
-blocked by the consumer-topology contradiction above and was not performed.
+The W160 production before/after witness passed the then-existing
+public-surface smoke bars on both normal and self-ring configurations. It did
+not prove the corrected AC1–AC4 measurement contract described above. The
+candidate sample remains usable historical evidence; a later authorized
+cohort is required before claiming the corrected continuous-write, public
+safe-query, complete-tag-join, and mutant-resistant acceptance. The self-ring
+configuration is deployed on the production sample, while the explicitly
+unsafe old-G32 cleanup is blocked by the consumer-topology contradiction above
+and was not performed.
+
+## W161 review repair — corrected measurement contract
+
+Review 5132886542 found four measurement/guard defects, not a product-runtime
+defect. The local repair addresses them without changing G66 runtime behavior
+or any G32 resource:
+
+1. The runner now separates the unsafe/tag-state projection from the public
+   room/list query. Each pass records the query body, list `readHead` when the
+   wire supplies it, target identity/state, and every affected tag's expected
+   version/SUID versus its observed committed version/head. A safe MV head by
+   itself is no longer accepted as public safe visibility.
+2. The runner checkpoints an accepted command before starting asynchronous
+   visibility polling. The next command is paced from the command clock and is
+   not delayed by the preceding safe fence. The receipt and guard require both
+   ten-second pacing and at least one later command issued before its
+   predecessor's safe observation; an intentionally pause-to-safe mutant is
+   red.
+3. Unsafe and safe summaries are explicitly response-completed-at-relative
+   clocks, with request start, response completion, and duration retained
+   separately. A late successful read is censored/rejected by the bound guard;
+   no send-to-visibility claim is made. Admission-attempt duration percentile
+   is not reconstructed from the old receipts and remains missing until the
+   next authorized run records it directly.
+4. The guard no longer trusts a disposition label, non-empty tag array, or
+   HTTP 200 alone. Missing visibility clocks, bad public-query bodies, stale
+   tag versions, late-success timestamps, rejected writes, missing coverage,
+   and pause-to-safe sequencing all have red-capable checks.
+
+The retained W160 receipts cannot be upgraded to this contract: they lack
+continuous-write overlap and the complete per-event public-query/tag joins.
+No cohort was rerun in W161; deployment and Cloudflare state were untouched.
+The next deployed continuation must use the corrected harness and publish a
+new receipt before reclassifying AC1–AC4.
+
+### W161 local gate record
+
+Focused repair checks passed: `npm run lint`, `npm run typecheck`,
+`npm run test:g66`, `node scripts/deploy/g66-e2e.mjs --self-test`,
+`node scripts/g66-e2e-guard.mjs --self-test`, and the four focused
+`test/g66-e2e.spec.ts` tests. The focused G60 required lane and G61 retained
+frontier lane also passed with their existing red mutants green-protected.
+
+The repository aggregate `npm run check` reached `npm test` and stopped with
+five existing parallel-runner/5-second-bound exceptions: `test/commit.spec.ts`
+AC7 timeout, `test/g43-tag-sql.spec.ts` AC6 `waitForConfiguredAlarm` null at
+line 446, `test/g67-safe-lane.spec.ts` AC3 timeout, `test/repair.spec.ts`
+bounded-scan timeout, and `test/tag.spec.ts` G5 timeout. The aggregate had 88
+files/776 tests passed, 5 failed, and 1 skipped. No G66 assertion failed.
+The isolated G28 boundary lane passes with a temporary npm cache; the first
+uncached attempt was an environment-only npm-log write failure under
+`/Users/tomohisa/.npm/_logs`.
+
+The directly affected G62, G65 mutation, and G67 mutation lanes also hit the
+seat's existing package-layout exception: their subprocesses invoke
+`node_modules/vitest/vitest.mjs`, which is absent, while the supported `vitest`
+CLI and focused tests run successfully. Exact signatures were retained in the
+W161 repair receipt; no timeout, assertion, gate, or resource was changed.
 
 ## W161 read-only topology publication
 

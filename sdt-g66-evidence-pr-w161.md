@@ -64,3 +64,22 @@ not a cleanup authorization.
 - The PR will be non-draft and close issue #128 from this exact evidence
   head; its number and exact-head CI result are carried by the canonical
   W161 handoff after creation.
+
+## W161 review-repair disposition
+
+Review 5132886542 identified measurement/guard defects in the W160 witness;
+it did not identify a G66 runtime defect. The repaired local harness now
+captures the unsafe projection separately from the public room/list query,
+requires affected-tag version/head evidence and reservation-list `readHead`,
+uses response-completed-at-relative unsafe/safe clocks, and issues paced
+commands without waiting for the preceding safe fence. The guard includes
+red-capable pause-to-safe, missing-clock, bad-public-query, late-success,
+failed-write, and missing-coverage mutants.
+
+The retained W160 production receipts are preserved as historical topology and
+smoke evidence only. They cannot prove the corrected AC1–AC4 contract because
+the old runner serialized visibility waits, captured only one target tag after
+convergence, and did not join each event to the public safe query/read-head
+observations. No rerun, deployment, reset, cleanup, or G32 mutation was made
+for this repair; a later authorized deployed cohort is required for corrected
+acceptance publication.
