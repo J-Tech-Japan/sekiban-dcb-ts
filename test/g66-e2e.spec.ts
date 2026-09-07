@@ -1,7 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { inspectG66Receipt } from "../scripts/g66-e2e-guard.mjs";
 
-function fixture() {
+type G66Fixture = {
+  schema: string;
+  contract: { coldFirst: boolean; minimumInterSampleMs: number };
+  healthSnapshots: G66HealthSnapshot[];
+  commands: G66Command[];
+};
+
+type G66HealthSnapshot = {
+  coverage: { kind: string };
+  coverageHistory: unknown[] | null;
+  safeLanePasses: unknown[];
+};
+
+type G66Command = {
+  commit: {
+    status: number;
+    kind: string;
+    suid: string;
+    responseMs: number;
+    executor: { readMode: string };
+  };
+  healthSnapshots: G66HealthSnapshot[];
+  tagReads: Array<{ status: number }>;
+  queryReads: { room: { status: number }; reservations: { status: number } };
+  unsafe: { disposition: string };
+  safe: { disposition: string };
+};
+
+function fixture(): G66Fixture {
   const health = { coverage: { kind: "SETTLED" }, coverageHistory: [], safeLanePasses: [] };
   return {
     schema: "sdt-g66-public-e2e/v1",
@@ -38,4 +66,3 @@ describe("SDT-G66 public e2e guard", () => {
     expect(() => inspectG66Receipt(coverage)).toThrow();
   });
 });
-
