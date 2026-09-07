@@ -10,9 +10,11 @@ changed or cleaned up.
 - Deployed source: `8042cfcbc7cd5ea207473e62d12aa478b2afc990`
 - Deployed version: `f9b2b714-53e5-4b8c-bda9-6c4d35c6389e` (version 226)
 - Deployment annotation: `SDT-G66 W164 safe-predicate repair 8042cfc`
-- Final pushed head: `44bef7f0145e7bd7f21e646c7b4b3a5b4a07db20`
-- Final-head changes after deployment are harness/guard receipt semantics only;
-  the Worker runtime was not changed after the deployed source.
+- Source/guard checkpoint before documentation publication:
+  `44bef7f0145e7bd7f21e646c7b4b3a5b4a07db20`
+- Documentation publication follows that checkpoint; all post-deployment
+  changes are harness/guard/docs evidence semantics only, and the Worker
+  runtime was not changed after the deployed source.
 
 The version view proved the existing production configuration: self direct
 doorbell enabled and proven, `DOWNSTREAM_DOORBELL` bound to

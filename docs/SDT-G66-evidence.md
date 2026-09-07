@@ -431,9 +431,11 @@ the shared-tag write version; `staleTagStateRed=true` remains red.
 The exact deployed Worker source was
 `8042cfcbc7cd5ea207473e62d12aa478b2afc990`, version
 `f9b2b714-53e5-4b8c-bda9-6c4d35c6389e`, annotation
-`SDT-G66 W164 safe-predicate repair 8042cfc`, at 100% traffic. The final pushed
-head is `44bef7f0145e7bd7f21e646c7b4b3a5b4a07db20`; its post-cohort changes
-are harness/guard evidence semantics only and were not redeployed.
+`SDT-G66 W164 safe-predicate repair 8042cfc`, at 100% traffic. The
+source/guard checkpoint before documentation publication is
+`44bef7f0145e7bd7f21e646c7b4b3a5b4a07db20`; its post-cohort changes are
+harness/guard evidence semantics only and were not redeployed. The subsequent
+documentation publication is the W164 evidence commit.
 
 The one authorized C-0 reset receipt is
 `.artifacts/sdt-g66-w164-production-c0-reset.json`: all 105 existing
