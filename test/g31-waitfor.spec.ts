@@ -683,7 +683,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
     expect(result.sourceBudget.waitRowsRead).toBe(26);
     expect(result.viewBudget.waitRowsRead).toBe(26);
     expect(result.sourceBudget.statements).toBe(27); // one lag snapshot plus 26 source target probes
-    expect(result.viewBudget.statements).toBe(27); // one initial CHECKPOINT_AHEAD gate plus 26 MV wait probes
+    expect(result.viewBudget.statements).toBe(28); // one ordering-quarantine read, one initial CHECKPOINT_AHEAD gate, plus 26 MV wait probes
     expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(53); // the empty initial checkpoint gate reads zero rows
   });
 
@@ -701,7 +701,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
     expect(result.sourceBudget.waitRowsRead).toBe(126);
     expect(result.viewBudget.waitRowsRead).toBe(126);
     expect(result.sourceBudget.statements).toBe(127); // one lag snapshot plus 126 source target probes
-    expect(result.viewBudget.statements).toBe(127); // one initial CHECKPOINT_AHEAD gate plus 126 MV wait probes
+    expect(result.viewBudget.statements).toBe(128); // one ordering-quarantine read, one initial CHECKPOINT_AHEAD gate, plus 126 MV wait probes
     expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(253); // the empty initial checkpoint gate reads zero rows
   });
 

@@ -563,7 +563,10 @@ describe("SDT-G19 D1 materialized-view store", () => {
     const mv = store();
     await mv.initialize();
     const runtime = new MaterializedViewCatchUpRuntime(source, mv);
-    await expect(runtime.build(serviceId, STORED_MATERIALIZER, 50_000)).rejects.toThrow(/strictly SUID ordered/);
+    await expect(runtime.build(serviceId, STORED_MATERIALIZER, 50_000)).rejects.toMatchObject({
+      code: "MV_ORDERING_QUARANTINED",
+      message: expect.stringMatching(/ordering violation/),
+    });
     expect(incidents).toEqual([expect.objectContaining({ classification: "ORDER_VIOLATION" })]);
     expect(await mv.readRows(serviceId, STORED_MATERIALIZER.id)).toEqual([]);
   });

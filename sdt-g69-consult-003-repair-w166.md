@@ -88,6 +88,19 @@ rollback, imported/unknown repaired timestamps, and generation transition.
 | `npm run test:g69` | PASS; four mutants red (exit 1) and restored |
 | `git diff --check` | PASS |
 
+The initial hosted exact-head run `34166968931` at `7c2f8832e989d3b47b1b814605cc4198d83d97ca`
+exposed two compatibility assertions caused by the newly intentional
+quarantine surface: `ci-foundation` and `ci-local-e2e` both reached the G19
+ORDER_VIOLATION case in `test/d1-mv.spec.ts`, whose old assertion expected the
+pre-quarantine message, while `ci-g31` expected 27/127 MV statements and the
+new indexed active-generation quarantine read made those 28/128. The repair
+updates the G19 assertion to require `MV_ORDERING_QUARANTINED` and an ordering
+violation message, and counts the additional read without changing any wait
+bound, retry, frontier or public safe-read rule. The focused rerun of
+`test/d1-mv.spec.ts` plus `test/g31-waitfor.spec.ts` is 37/37 green. The
+follow-up hosted exact-head result is the final CI authority; no deployment or
+production evidence is implied by this correction.
+
 The direct D1 test under `vitest.g69.config.ts` was not used as a result because
 that intentionally narrow source-alias config does not alias the unrelated
 `@sekiban/dcb-runtime/cosmos` helper; the canonical repository config passed
