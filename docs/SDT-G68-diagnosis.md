@@ -246,11 +246,110 @@ earlier-SUID event will not arrive and therefore cannot shorten the current
 | Earlier-SUID closure certificate | Shorten the first-arrival fence only after a durable certificate proves every in-scope obligation at or below target is terminal with no retry/DLQ path. | Complete partition discovery, exact strict-SUID scope, no pending retry, and G44 SETTLED are all proved atomically. | Omit a partition, insert a delayed earlier SUID, or retain a retry/DLQ obligation; each must keep the frontier blocked. | High G11/G44/G62 and C# parity impact; requires a separate design/ruling. | Certificate maintenance is expensive; an omitted partition would make the optimization unsound, so fallback must be current fencing. |
 | Conservative quiet/high-water certificate | Use durable Queue lag high-water plus arrival generation; shorten only after conservative unseen-earlier-SUID quiet bound and G44 settlement. | The lag bound covers every allowed delivery path and a new duplicate invalidates the generation. | Delay earlier-SUID delivery beyond the bound, duplicate after quiet, and remove generation invalidation; all must remain fail-closed. | Changes SafeWindow certification assumptions and likely G11/G44/G62/C# parity; separate ruling required. | May still wait nearly as long, and a wrong bound is a frontier-soundness defect. |
 
+### Recorded engineering dissent (verbatim)
+
 Recommendation: do nothing behaviorally until the missing arrival clocks and a
 homogeneous AC1 population are captured. Generation tagging is a useful
 future observability option, but **generation tagging alone preserves the
 deadline** and is not a latency repair. The closure and quiet certificates
 are future design work, not authorized implementation in this PR.
+
+## Design Decision: first-arrival fencing under a true bound
+
+WAKE-155 records the following design decision for the later G69 behavior;
+this G68 PR does not implement it. Let `E` be the target event, let `t0(E)`
+be its first durable arrival in D1, and let `W` be a true enqueue-to-arrival
+bound for every allowed delivery path. If an earlier-SUID event `E-prime` was
+enqueued before `E` reached D1, then
+
+```text
+arrival(E-prime) <= enqueue(E-prime) + W < t0(E) + W
+```
+
+Therefore, by the first-arrival deadline `t0(E) + W`, every earlier-SUID
+`E-prime` covered by that premise has reached D1. A later arrival or
+redelivery of `E` supplies no new ordering evidence: its event identity and
+SUID are already known, and it does not establish the arrival of an earlier
+SUID. With strict SUID order, complete source-universe discovery, and G44
+settlement still required, first-arrival fencing is sound under this explicit
+bound.
+
+The cost is real: first-arrival fencing removes accidental queue-backlog
+adaptivity from the current MAX/`LastArrivedAt` behavior. If `W` underestimates
+lag for an allowed delivery path, exposure increases because the fence can
+open earlier. The bound must therefore be a real contract precondition, not an
+estimate inferred from the W150 substitute clocks. No concrete counterexample
+where `W` is true and first-arrival admits while last-arrival excludes was
+found in the retained receipts. Those receipts cannot establish that `W` is
+true because their individual arrival rows are missing; that remains a G69
+proof obligation, not a claim made by this PR.
+
+### G69 controls and fallback
+
+The G69 control plan is mandatory if this decision is implemented:
+
+- Run a delayed-lower-SUID ordering test with two red mutants: one that skips
+  the delayed lower-SUID row in favor of a later row, and one that advances
+  the frontier before the delayed lower-SUID arrival is accounted for. Both
+  mutants must go red.
+- Exercise a late-lower-SUID detector that records the `(target, lower-SUID,
+  observed-after-fence)` pair. The arm and production acceptance receipts must
+  show zero detections; the detector result is not present in W145/W150 and is
+  not claimed here.
+- Roll back the first-arrival decision on any detector hit, frontier anomaly,
+  or violation of the true-bound precondition.
+- Under the WAKE-155 numbering, candidates two and three remain the fallback
+  if the hazard disproves this decision: candidate two is the earlier-SUID
+  closure certificate and candidate three is the conservative quiet/high-water
+  certificate described in the comparison above. The arrival-generation row
+  is observability/coalescing only. All are future design alternatives, not
+  G68 implementation.
+
+## G69 loose-thread handoff: post-Queue LastArrivedAt writers
+
+The source trace identifies the writers without changing them. In
+`packages/dcb-runtime/src/store/D1EventStore.ts:295`, both `fast` and `queue`
+delivery call `recordDelivery(message, arrivedAt, deliverySource)`. The same
+atomic batch at lines 543-555 upserts `dcb_event_ops.LastArrivedAt` with
+`MAX(...)`; lines 572-592 upsert `serialized_dcb_event_arrivals.arrived_at`
+with `MAX(...)`; line 663 commits the batch. The `fast` direct-doorbell path
+is `DownstreamAdapter.ts:233-252` (and the Tag admission call at
+`TagDurableObject.ts:3334`); the Queue path is
+`DownstreamAdapter.ts:285-340`. `DeliveryCore.ts:313-324` records the durable
+batch boundary after `recordDelivery` returns. The safe pass only reads the
+resulting `event.lastArrivedAt` and computes the fence at
+`MaterializedViewCatchUp.ts:216-229`; it is not a `LastArrivedAt` writer.
+
+W150 contains ten target reservation events, obligation sequences 2 through
+11. The retained durable-hop receipt has one fast and two Queue
+`record-delivery-batch-committed` observations per event: 10 fast potential
+writers and 20 post-Queue potential writers. The hop receipt also has two
+Queue consumer invocations per event. These are batch-boundary counts; the
+missing arrival export means they are not silently relabeled as 20 proven
+`MAX` changes.
+
+| obligation sequence | target SUID | Queue batch commit times | final selected LastArrivedAt | retained post-Queue effect / still-needed assessment |
+| ---: | --- | --- | ---: | --- |
+| 2 | `063924324988440000001041685361` | 1788728192234, 1788728194784 | 1788728214260 | Two Queue writers; no new event identity or unsafe view. Queue guarantee/retry path remains needed, but the exact MAX-changing attempt is unavailable. |
+| 3 | `063924325002491000000522510130` | 1788728205977, 1788728207100 | 1788728225529 | Same: Queue guarantee/retry processing, no new event/unsafe state; MAX-changing attempt not identifiable. |
+| 4 | `063924325015429000001832279219` | 1788728219453, 1788728221151 | 1788728226897 | Same; later Queue processing is visible, but no per-arrival `arrived_at` row is retained. |
+| 5 | `063924325028310000001361936111` | 1788728231084, 1788728232190 | 1788728256877 | Same; Queue is the guarantee path, not new ordering evidence. |
+| 6 | `063924325040941000000145805155` | 1788728243959, 1788728245564 | 1788728258702 | Same; no retained evidence that either replay carried a missing event. |
+| 7 | `063924325053570000000144395544` | 1788728256901, 1788728260896 | 1788728269553 | Same; two Queue batches and no new unsafe state. |
+| 8 | `063924325066798000000328411432` | 1788728271317, 1788728272849 | 1788728302505 | Same; later high-water is selected by the pass, but the writer attempt is not identifiable. |
+| 9 | `063924325079863000000389715198` | 1788728282642, 1788728283825 | 1788728304474 | Same; Queue replay is observable, not a new event identity. |
+| 10 | `063924325092487000001163035396` | 1788728295434, 1788728296775 | 1788728314889 | Same; Queue guarantee/retry need is retained, semantic novelty is not. |
+| 11 | `063924325105572000001455364113` | 1788728308591, 1788728310207 | 1788728334252 | Same; no source receipt identifies which replay raised the high-water. |
+
+Per target, the unsafe-writer receipt records one fast `applied`, one fast
+`no-change`, and two Queue `duplicate-race` end outcomes across the two
+independent unsafe views; the MV unsafe receipt records one `no-change`. This
+supports the conclusion that the Queue deliveries did not create a missing
+event or new unsafe view in this cohort. They remained operationally relevant
+as the durable Queue guarantee/retry path. The retained rows do not preserve
+the Queue ack/retry reason well enough to say that the second replay was
+required operationally, and they do not prove which Queue attempt changed
+`LastArrivedAt`; G69 should add that join rather than infer it.
 
 ## Boundaries and checks
 
