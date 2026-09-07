@@ -16,15 +16,40 @@ a still-fresh strict-SUID event, and schedules or retains the applicable later
 follow-up. This explains the long safe-visibility tail without implying a
 frontier or reader defect.
 
-The central design fact is narrower than “duplicates are harmless.” A second
-arrival of the same event supplies no new event identity and no earlier-SUID
-information: the event identity and strict SUID are already known, and
-`FirstArrivedAt` remains the earliest observation. It does, however, supply a
-new observed delivery on the guarantee path. The current conservative
-`LastArrivedAt = MAX(...)` fact cannot prove that no other earlier-SUID event
-will arrive later, so a duplicate can legitimately restart the current fence.
-Shortening that fence therefore requires a separate sound closure proof; a
-timer or duplicate detection alone is not sufficient.
+The earlier clock-only argument is withdrawn by WAKE-156. A second arrival of
+the same event supplies no new event identity, but the retained receipts do
+not establish a globally ordered enqueue stream or prove that no lower-SUID
+event is still unseen. The current conservative `LastArrivedAt = MAX(...)`
+observation can therefore reflect real repeated delivery work without being a
+sound substitute for source-universe closure. Shortening the fence requires a
+proof that covers allocation, pending Tag work, retries, and G44/G62
+settlement; a timer, duplicate detector, or measured lag value alone is not
+sufficient.
+
+## WAKE-156 correction: the clock-only proof is withdrawn
+
+The WAKE-155 first-arrival design argument and the earlier last-arrival
+interpretation are retained below as history, but neither is an accepted proof
+after consultation 002. The consultation identifies a real allocator/parallel
+Tag counterexample even when `W` is a true enqueue-to-arrival bound. Let
+`W = 20 s`. A lower-SUID event `L` is allocated at `t=0` and stalls before
+append or handoff. A higher-SUID event `H` is allocated at `t=1`, handed off at
+`t=1`, reaches D1 at `t=1.1`, and has a later Queue redelivery at `t=10`.
+`L` is finally enqueued at `t=15` and reaches D1 at `t=25`. Every actual
+enqueue-to-arrival interval is below `W`, but at `t=22` a first-arrival fence
+for `H` has expired (`1.1 + 20 = 21.1`) while `L` is still unseen. A
+last-arrival fence using `H`'s `t=10` redelivery remains closed until `t=30`.
+
+This is not a claim that deployed G44/G62 currently permits the bad frontier;
+it is a counterexample to the clock-only inference. The source path allocates
+and appends Tag participants in parallel and can install pending/partial-write
+state before a lower-SUID participant is represented as a committed outbox
+obligation (`commit/CommitWorker.ts:606–630,668–685,972–1029`). The Tag handoff
+preserves `enqueuedAt` across retries (`tag/TagDurableObject.ts:4019–4044`),
+but that does not make allocation order equal enqueue order. G69 must first
+prove whether G44/G62 closure already excludes this schedule; if it does not,
+candidates two and three below remain the fallback. No behavioral clock change
+is authorized by this diagnosis.
 
 ## Retained evidence and identity
 
@@ -81,7 +106,7 @@ while the unavailable per-arrival clock remains explicitly marked below.
 
 ### Durable boundary join
 
-| # | event ID | target SUID | command / enqueue / ring finish | first global receipt | fast batch | Queue send / invoke / batch / last | selected final LastArrivedAt |
+| # | event ID | target SUID | command / enqueue / ring finish | first global receipt | fast batch | Queue send / invoke / batch / last | selected deferred-pass LastArrivedAt |
 | ---: | --- | --- | --- | ---: | ---: | --- | ---: |
 | 1 | `01a07882-1b74-7f3c-bf92-ebedf1c1b08f` | `063924324988440000001041685361` | 1788728187764 / 1788728188648 / 1788728188677 | 1788728189324 | 1788728190585 | 1788728189276 / 1788728191520 / 1788728192234 / 1788728194098 | 1788728214260 |
 | 2 | `01a07882-504b-77d6-89cc-89c1a68a40b2` | `063924325002491000000522510130` | 1788728201291 / 1788728202707 / 1788728202735 | 1788728202873 | 1788728205592 | 1788728203275 / 1788728205016 / 1788728205977 / 1788728206502 | 1788728225529 |
@@ -97,9 +122,10 @@ while the unavailable per-arrival clock remains explicitly marked below.
 The W150 receipts do not contain the durable `dcb_event_ops`/arrival export,
 so **FirstArrivedAt, each individual `arrived_at`, arrival source, and
 arrival identity are unavailable for every row**. The `enqueuedAt` in the
-ring message is a producer/message field, not a substitute. The `LastArrivedAt`
-column above is the selected applying-pass high-water, not an inferred first
-arrival. This is the exact F1 evidence gap.
+ring message is a producer/message field, not a substitute. The final column
+is the `LastArrivedAt` value observed by the selected deferred pass; it is not
+a complete write/attempt history and not an inferred first arrival. This is
+the exact F1 evidence gap.
 
 ### Applying-pass join
 
@@ -138,8 +164,8 @@ caller `received_at`.
 The W145 ledger joins retained `ReservationProjector` deferred-event rows to
 its ten public target SUIDs. A dash means the raw ledger has no matching
 deferred row; it does not mean that no delivery occurred. W145 does not have
-the W150 per-commit ring/arrival export, so this table is retained as deadline
-movement evidence, not merged into the W150 per-pass joins.
+the W150 per-commit ring/arrival export, so this table is retained as deferred
+pass/deadline movement evidence, not merged into the W150 per-pass joins.
 
 | # | target SUID | first LastArrivedAt | last LastArrivedAt | first deadline | last deadline | observations | applying trigger | safe ms |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: |
@@ -154,10 +180,29 @@ movement evidence, not merged into the W150 per-pass joins.
 | 9 | `063924303504592000002074552862` | 1788706736538 | 1788706736538 | 1788706756538 | 1788706756538 | 3 | — | 74240 |
 | 10 | `063924303518086000000966797386` | — | — | — | — | 0 | fence-expiry | 61375 |
 
-W145 rows 1 and 3 show direct durable movement of 15,527 ms and 15,236 ms;
-the deadline moved by the same amount because the observed SafeWindow was
-20,000 ms. These rows support the retained diagnosis but do not repair the
-W150 missing-arrival-clock or homogeneous-AC1 gaps.
+W145 rows 1 and 3 show observed deferred-pass high-water movement of 15,527 ms
+and 15,236 ms; the deadline moved by the same amount because the observed
+SafeWindow was 20,000 ms. These rows support the retained diagnosis but do not
+prove distinct arrival writes, repair the W150 missing-arrival-clock gap, or
+establish the homogeneous-AC1 population.
+
+### Corrected observation counts
+
+The previously described “0–23 arrival updates” were not arrival-write
+counts. They were counts of retained deferred-pass/view observations for the
+target event. The retained W150 evidence reports the following distinct
+`LastArrivedAt` values per sample after deduplication:
+
+| sample | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| deferred-pass observations | 22 | 6 | 2 | 18 | 0 | 8 | 23 | 1 | 5 | 5 |
+| distinct observed values | 2 | 1 | 1 | 2 | 0 | 1 | 5 | 1 | 1 | 1 |
+
+Neither row is an exact arrival-attempt or write count. The durable diagnostic
+ledger stores `MIN(observed_at)` on its event/tag/stage/partition/view/transport
+key, so later Queue invocations and retries are hidden by construction. The
+distinct-value row is therefore the bounded receipt fact, not evidence that a
+non-Queue writer moved `LastArrivedAt`.
 
 ## Available distributions and named estimate-raising candidates
 
@@ -211,10 +256,17 @@ Read-only inspection of the retained G67 source found this sequence:
 1. `packages/dcb-runtime/src/store/D1EventStore.ts` upserts `dcb_event_ops`
    with `FirstArrivedAt = MIN(...)` and `LastArrivedAt = MAX(...)`. The
    `serialized_dcb_event_arrivals` row likewise uses `arrived_at = MAX(...)`.
-   Queue delivery alone updates `serialized_dcb_lag_estimates`.
+   Queue delivery updates `serialized_dcb_lag_estimates`, but the retained
+   diagnostic ledger is separate: `diagnostics/G60DurableHop.ts:124–145`
+   stores `MIN(observed_at)` for its event/tag/stage/partition/view/transport
+   key and therefore does not retain every attempt.
 2. The G65 receiver support records the direct ring and applies the delivery
    core asynchronously. The later Queue path invokes the same core with
-   `deliverySource='queue'`, so both paths can touch the same arrival facts.
+   `deliverySource='queue'`; when downstream work fails after admission,
+   `DownstreamAdapter.ts:304–331` requests Queue retry, and the retry reruns
+   DeliveryCore and can restamp the already-admitted event's arrival facts.
+   This is the supported explanation for later observed high-water movement;
+   the receipts do not establish a non-Queue writer.
 3. `packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts` walks events in
    strict SUID order and returns `safe_window_fence` at the first event whose
    `lastArrivedAt` is newer than `now - safeWindowMs`, with
@@ -227,14 +279,21 @@ Read-only inspection of the retained G67 source found this sequence:
    single-flight pass. Delivery/fence/cron triggers coalesce through the
    existing kick scheduler.
 
-An earlier alarm is therefore safe but not final while `LastArrivedAt` moves:
-the pass re-evaluates durable state and waits for the final post-arrival
-deadline. The strict-SUID frontier cannot advance across the unproven gap.
+An earlier alarm remains fail-closed while `LastArrivedAt` moves: the pass
+re-evaluates durable state and waits for the current post-arrival deadline.
+That operational behavior does not prove that a first-arrival deadline would
+be sound, because the allocator/parallel-Tag schedule can leave a lower SUID
+unseen even when each enqueue-to-arrival interval is below `W`.
 
 ## Candidate comparison and recommendation
 
 The diagnosis permits at most these three candidate changes plus the
-do-nothing option. None was implemented. “Generation tagging alone preserves
+do-nothing option. None was implemented. The clock-only argument is refuted
+by the allocator/parallel-Tag counterexample above. G69 must first prove
+whether the existing G44/G62 closure already excludes that schedule. If it
+does not, candidate two (the earlier-SUID closure certificate) or candidate
+three (the conservative quiet/high-water certificate) remains the fallback;
+there is no behavioral change meanwhile. “Generation tagging alone preserves
 the deadline”: it can identify stale timer work, but it cannot certify that an
 earlier-SUID event will not arrive and therefore cannot shorten the current
 `LastArrivedAt + SafeWindow` deadline.
@@ -254,39 +313,41 @@ future observability option, but **generation tagging alone preserves the
 deadline** and is not a latency repair. The closure and quiet certificates
 are future design work, not authorized implementation in this PR.
 
-## Design Decision: first-arrival fencing under a true bound
+## Historical WAKE-155 proposal — withdrawn by WAKE-156
 
-WAKE-155 records the following design decision for the later G69 behavior;
-this G68 PR does not implement it. Let `E` be the target event, let `t0(E)`
-be its first durable arrival in D1, and let `W` be a true enqueue-to-arrival
-bound for every allowed delivery path. If an earlier-SUID event `E-prime` was
-enqueued before `E` reached D1, then
+The following preserves the WAKE-155 proposal and its rationale for history;
+it is **withdrawn as a proof or design decision** by WAKE-156. It is not
+implemented by this G68 PR. Under the proposal's narrower premise, let `E` be
+the target event, let `t0(E)` be its first durable arrival in D1, and let `W`
+be a true enqueue-to-arrival bound for every allowed delivery path. If an
+earlier-SUID event `E-prime` was actually enqueued before `E` reached D1, then
 
 ```text
 arrival(E-prime) <= enqueue(E-prime) + W < t0(E) + W
 ```
 
 Therefore, by the first-arrival deadline `t0(E) + W`, every earlier-SUID
-`E-prime` covered by that premise has reached D1. A later arrival or
-redelivery of `E` supplies no new ordering evidence: its event identity and
-SUID are already known, and it does not establish the arrival of an earlier
-SUID. With strict SUID order, complete source-universe discovery, and G44
-settlement still required, first-arrival fencing is sound under this explicit
-bound.
+`E-prime` covered by that premise has reached D1. This conditional algebra is
+valid, but the implementation does not prove the premise that allocation and
+parallel Tag handoff order every earlier-SUID event before `E`; the WAKE-156
+counterexample above has true `W` and an unseen lower SUID. Strict SUID order,
+complete source-universe discovery, and G44 settlement are therefore still
+required, and first-arrival fencing is not sound from `W` alone.
 
 The cost is real: first-arrival fencing removes accidental queue-backlog
 adaptivity from the current MAX/`LastArrivedAt` behavior. If `W` underestimates
 lag for an allowed delivery path, exposure increases because the fence can
-open earlier. The bound must therefore be a real contract precondition, not an
-estimate inferred from the W150 substitute clocks. No concrete counterexample
-where `W` is true and first-arrival admits while last-arrival excludes was
-found in the retained receipts. Those receipts cannot establish that `W` is
-true because their individual arrival rows are missing; that remains a G69
-proof obligation, not a claim made by this PR.
+open earlier. More importantly, consultation 002 supplies a concrete
+allocator/parallel-Tag counterexample where `W` is true and first-arrival
+admits while last-arrival excludes. The bound must therefore be paired with a
+real G44/G62 closure proof, not an estimate inferred from the W150 substitute
+clocks.
 
 ### G69 controls and fallback
 
-The G69 control plan is mandatory if this decision is implemented:
+The G69 control plan is mandatory before any first-arrival behavior is
+considered. G69 first proves whether G44/G62 closure excludes the WAKE-156
+counterexample; no behavioral clock change occurs while that proof is absent:
 
 - Run a delayed-lower-SUID ordering test with two red mutants: one that skips
   the delayed lower-SUID row in favor of a later row, and one that advances
@@ -296,8 +357,8 @@ The G69 control plan is mandatory if this decision is implemented:
   observed-after-fence)` pair. The arm and production acceptance receipts must
   show zero detections; the detector result is not present in W145/W150 and is
   not claimed here.
-- Roll back the first-arrival decision on any detector hit, frontier anomaly,
-  or violation of the true-bound precondition.
+- Roll back any first-arrival experiment on any detector hit, frontier
+  anomaly, or violation of the true-bound/closure precondition.
 - Under the WAKE-155 numbering, candidates two and three remain the fallback
   if the hazard disproves this decision: candidate two is the earlier-SUID
   closure certificate and candidate three is the conservative quiet/high-water
@@ -307,7 +368,8 @@ The G69 control plan is mandatory if this decision is implemented:
 
 ## G69 loose-thread handoff: post-Queue LastArrivedAt writers
 
-The source trace identifies the writers without changing them. In
+The source trace identifies possible `recordDelivery` call sites without
+proving which attempt changed `LastArrivedAt`. In
 `packages/dcb-runtime/src/store/D1EventStore.ts:295`, both `fast` and `queue`
 delivery call `recordDelivery(message, arrivedAt, deliverySource)`. The same
 atomic batch at lines 543-555 upserts `dcb_event_ops.LastArrivedAt` with
@@ -320,23 +382,30 @@ batch boundary after `recordDelivery` returns. The safe pass only reads the
 resulting `event.lastArrivedAt` and computes the fence at
 `MaterializedViewCatchUp.ts:216-229`; it is not a `LastArrivedAt` writer.
 
+The consultation trace is the bounded causal explanation for later observed
+values: a Queue retry can rerun DeliveryCore after a downstream failure and
+restamp an already-admitted event. The diagnostic receipt is keyed by
+`MIN(observed_at)`, so it hides later retries. No retained evidence supports
+the prior suggestion that a non-Queue writer explains those later values.
+
 W150 contains ten target reservation events, obligation sequences 2 through
 11. The retained durable-hop receipt has one fast and two Queue
-`record-delivery-batch-committed` observations per event: 10 fast potential
-writers and 20 post-Queue potential writers. The hop receipt also has two
-Queue consumer invocations per event. These are batch-boundary counts; the
-missing arrival export means they are not silently relabeled as 20 proven
-`MAX` changes.
+`record-delivery-batch-committed` observations per event: 10 fast and 20
+post-Queue delivery-core batch-boundary observations. The hop receipt also has
+two Queue consumer invocations per event. These are boundary counts; the
+missing arrival export and the diagnostic ledger's `MIN(observed_at)` behavior
+mean they are not silently relabeled as 20 proven `MAX` changes or 20 distinct
+arrival writes.
 
-| obligation sequence | target SUID | Queue batch commit times | final selected LastArrivedAt | retained post-Queue effect / still-needed assessment |
+| obligation sequence | target SUID | Queue batch boundary times | selected deferred-pass LastArrivedAt | retained post-Queue effect / evidence limit |
 | ---: | --- | --- | ---: | --- |
-| 2 | `063924324988440000001041685361` | 1788728192234, 1788728194784 | 1788728214260 | Two Queue writers; no new event identity or unsafe view. Queue guarantee/retry path remains needed, but the exact MAX-changing attempt is unavailable. |
-| 3 | `063924325002491000000522510130` | 1788728205977, 1788728207100 | 1788728225529 | Same: Queue guarantee/retry processing, no new event/unsafe state; MAX-changing attempt not identifiable. |
+| 2 | `063924324988440000001041685361` | 1788728192234, 1788728194784 | 1788728214260 | Two Queue delivery-core boundaries; no new event identity or unsafe view. The exact MAX-changing attempt is unavailable. |
+| 3 | `063924325002491000000522510130` | 1788728205977, 1788728207100 | 1788728225529 | Same: Queue guarantee/retry processing is visible; the MAX-changing attempt is not identifiable. |
 | 4 | `063924325015429000001832279219` | 1788728219453, 1788728221151 | 1788728226897 | Same; later Queue processing is visible, but no per-arrival `arrived_at` row is retained. |
 | 5 | `063924325028310000001361936111` | 1788728231084, 1788728232190 | 1788728256877 | Same; Queue is the guarantee path, not new ordering evidence. |
 | 6 | `063924325040941000000145805155` | 1788728243959, 1788728245564 | 1788728258702 | Same; no retained evidence that either replay carried a missing event. |
-| 7 | `063924325053570000000144395544` | 1788728256901, 1788728260896 | 1788728269553 | Same; two Queue batches and no new unsafe state. |
-| 8 | `063924325066798000000328411432` | 1788728271317, 1788728272849 | 1788728302505 | Same; later high-water is selected by the pass, but the writer attempt is not identifiable. |
+| 7 | `063924325053570000000144395544` | 1788728256901, 1788728260896 | 1788728269553 | Same; two Queue boundaries and no new unsafe state. |
+| 8 | `063924325066798000000328411432` | 1788728271317, 1788728272849 | 1788728302505 | Same; a later high-water is selected by the pass, but the attempt is not identifiable. |
 | 9 | `063924325079863000000389715198` | 1788728282642, 1788728283825 | 1788728304474 | Same; Queue replay is observable, not a new event identity. |
 | 10 | `063924325092487000001163035396` | 1788728295434, 1788728296775 | 1788728314889 | Same; Queue guarantee/retry need is retained, semantic novelty is not. |
 | 11 | `063924325105572000001455364113` | 1788728308591, 1788728310207 | 1788728334252 | Same; no source receipt identifies which replay raised the high-water. |
