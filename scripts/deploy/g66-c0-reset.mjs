@@ -61,8 +61,8 @@ function authorizationShaped(invocation) {
   const text = `${invocation.stdout}\n${invocation.stderr}`;
   return /(?:\b7403\b|\b10000\b|unauthori[sz]|permission|forbidden)/i.test(text);
 }
-function countSql(tables) {
-  return tables.map((table) => `SELECT ${sqlQuote(table)} AS table_name, COUNT(*) AS row_count FROM ${table}`).join(" UNION ALL ");
+function countSql(table) {
+  return `SELECT ${sqlQuote(table)} AS table_name, COUNT(*) AS row_count FROM ${table}`;
 }
 function run(options) {
   const receipt = {
@@ -97,12 +97,12 @@ function run(options) {
     }
     return invocation;
   };
-  invoke(options.pipeline, countSql(PIPELINE_TABLES), "pre-reset-pipeline-counts");
-  invoke(options.mv, countSql(MV_TABLES), "pre-reset-mv-counts");
+  for (const table of PIPELINE_TABLES) invoke(options.pipeline, countSql(table), `pre-reset-pipeline-count-${table}`);
+  for (const table of MV_TABLES) invoke(options.mv, countSql(table), `pre-reset-mv-count-${table}`);
   for (const table of PIPELINE_TABLES) invoke(options.pipeline, `DELETE FROM ${table}`, `delete-pipeline-${table}`);
   for (const table of MV_TABLES) invoke(options.mv, `DELETE FROM ${table}`, `delete-mv-${table}`);
-  invoke(options.pipeline, countSql(PIPELINE_TABLES), "post-reset-pipeline-counts");
-  invoke(options.mv, countSql(MV_TABLES), "post-reset-mv-counts");
+  for (const table of PIPELINE_TABLES) invoke(options.pipeline, countSql(table), `post-reset-pipeline-count-${table}`);
+  for (const table of MV_TABLES) invoke(options.mv, countSql(table), `post-reset-mv-count-${table}`);
   receipt.status = "completed";
   receipt.finishedAt = new Date().toISOString();
   writeReceipt(options.output, receipt);
