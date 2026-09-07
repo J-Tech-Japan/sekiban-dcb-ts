@@ -4,6 +4,8 @@ import { createG66GuardFixture, inspectG66Receipt } from "../scripts/g66-e2e-gua
 function fixture() {
   return createG66GuardFixture() as {
     commands: Array<{
+      target: { kind: string; id: string; expectedStatus: string };
+      safePredicate: { mode: string; kind: string; id: string; expectedStatus: string; terminalMutationOrdinal: number | null };
       commit: { startedAtMs: number; completedAtMs: number; responseMs: number; suid: string };
       unsafe: { firstVisibleAtMs?: number; responseRelativeMs?: number; observations: Array<{ completedAtMs?: number; visible?: boolean }> };
       safe: { firstVisibleAtMs?: number; observedAtMs?: number; responseRelativeMs?: number; publicQuery: { completedAtMs?: number; readHead?: string } };
@@ -77,6 +79,13 @@ describe("SDT-G66 public e2e guard", () => {
     const stale = fixture();
     stale.commands[1]!.safe.publicQuery.readHead = stale.commands[0]!.commit.suid;
     expect(passes(stale)).toBe(false);
+  });
+
+  it("rejects a safe predicate whose reservation is mutated by a later sample", () => {
+    const laterMutation = fixture();
+    laterMutation.commands[8]!.safePredicate.expectedStatus = "reserved";
+    laterMutation.commands[8]!.safePredicate.terminalMutationOrdinal = null;
+    expect(passes(laterMutation)).toBe(false);
   });
 
   it("retains hard failures for rejected writes and missing coverage", () => {

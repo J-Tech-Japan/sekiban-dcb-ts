@@ -308,10 +308,22 @@ function commandInput(commandId, ids, ordinal) {
   throw new Error(`unsupported G66 command ${commandId}`);
 }
 
-function targetFor(commandId, ids) {
-  return commandId === "create-room"
+function targetFor(commandId, ids, terminalReservationId = null, terminalMutationOrdinal = null) {
+  const target = commandId === "create-room"
     ? { kind: "room", id: ids.roomId, projector: "RoomProjector", expectedStatus: "created" }
     : { kind: "reservation", id: ids.reservationId, projector: "ReservationProjector", expectedStatus: commandId === "cancel-reservation" ? "cancelled" : "reserved" };
+  const terminalReservation = target.kind === "reservation" && target.id === terminalReservationId;
+  return {
+    target,
+    safePredicate: {
+      mode: "terminal-state",
+      kind: target.kind,
+      id: target.id,
+      projector: target.projector,
+      expectedStatus: terminalReservation ? "cancelled" : target.expectedStatus,
+      terminalMutationOrdinal: terminalReservation && commandId === "reserve-room" ? terminalMutationOrdinal : null,
+    },
+  };
 }
 
 function affectedTagReads(sample) {
@@ -413,17 +425,17 @@ async function unsafeProbe(options, target, sample) {
   }
 }
 
-async function safeProbe(options, target, sample, report) {
+async function safeProbe(options, safePredicate, sample, report) {
   const responseCompletedAtMs = sample.commit.completedAtMs;
   const deadlineMs = responseCompletedAtMs + SAFE_BOUND_MS;
   for (;;) {
     const current = await health(options);
     report.healthSnapshots.push(current);
     sample.healthSnapshots.push(current);
-    const safeHead = safeHeadFor(current, target.projector);
-    const safeQuery = await publicQuery(options, target, sample.commit.suid);
-    const publicQueryVisible = queryShowsTarget(target, target.kind === "reservation" ? { reservations: safeQuery } : { room: safeQuery });
-    const readHeadReached = target.kind === "room" || atLeast(safeQuery.readHead, sample.commit.suid);
+    const safeHead = safeHeadFor(current, safePredicate.projector);
+    const safeQuery = await publicQuery(options, safePredicate, sample.commit.suid);
+    const publicQueryVisible = queryShowsTarget(safePredicate, safePredicate.kind === "reservation" ? { reservations: safeQuery } : { room: safeQuery });
+    const readHeadReached = safePredicate.kind === "room" || atLeast(safeQuery.readHead, sample.commit.suid);
     if (atLeast(safeHead, sample.commit.suid) && publicQueryVisible && readHeadReached) {
       const observedAtMs = Math.max(current.receivedAtMs, safeQuery.completedAtMs);
       const withinBound = observedAtMs <= deadlineMs;
@@ -461,7 +473,7 @@ async function safeProbe(options, target, sample, report) {
 async function observeCommand(options, report, sample) {
   sample.unsafe = await unsafeProbe(options, sample.target, sample);
   writeReceipt(options.reportPath, report);
-  sample.safe = await safeProbe(options, sample.target, sample, report);
+  sample.safe = await safeProbe(options, sample.safePredicate, sample, report);
   writeReceipt(options.reportPath, report);
   if (sample.safe.disposition !== "pass") {
     sample.censored = true;
@@ -477,7 +489,7 @@ async function observeCommand(options, report, sample) {
   return sample;
 }
 
-async function captureCommand(options, report, commandId, ids, ordinal, executor, sourceSnapshot = null) {
+async function captureCommand(options, report, commandId, ids, ordinal, executor, terminalReservationId, terminalMutationOrdinal, sourceSnapshot = null) {
   if (sourceSnapshot !== null) {
     // Keep the exact external snapshot-read receipt separate from the command
     // receipt: the executor's snapshot-only path must never be mistaken for a
@@ -486,11 +498,12 @@ async function captureCommand(options, report, commandId, ids, ordinal, executor
   }
   const input = commandInput(commandId, ids, ordinal);
   const commit = await sendCommand(options, commandId, input, executor);
-  const target = targetFor(commandId, ids);
+  const { target, safePredicate } = targetFor(commandId, ids, terminalReservationId, terminalMutationOrdinal);
   const sample = {
     ordinal,
     commandId,
     target,
+    safePredicate,
     ids: { roomId: ids.roomId, reservationId: ids.reservationId },
     commit,
     unsafe: null,
@@ -547,7 +560,7 @@ function summarizeReport(report) {
     tagStateAndQueryReads: rows.every((row) => Array.isArray(row.tagReads) && row.tagReads.length > 0
       && row.tagReads.every((tag) => tag.status === 200 && Number.isSafeInteger(tag.version) && (tag.expectedVersion === null || tag.version >= tag.expectedVersion) && atLeast(tag.lastSortedUniqueId, tag.expectedSuid))
       && row.queryReads?.room?.status === 200 && row.queryReads?.reservations?.status === 200
-      && queryShowsTarget(row.target, row.queryReads)
+      && queryShowsTarget(row.safePredicate ?? row.target, row.queryReads)
       && (row.target.kind === "room" || atLeast(row.queryReads.reservations.readHead, row.commit.suid))),
     coverageAndFrontierObserved: report.healthSnapshots.length > 0 && report.healthSnapshots.every((entry) => entry.coverage !== undefined && Array.isArray(entry.coverageHistory) && Array.isArray(entry.safeLanePasses)),
     publicUnsafeAndSafeReads: rows.every((row) => Array.isArray(row.unsafe?.observations) && row.unsafe.observations.length > 0 && row.unsafe?.publicQuery?.status === 200 && row.safe?.publicQuery?.status === 200 && row.safe?.safeHead !== undefined && (row.target.kind === "room" || atLeast(row.safe.publicQuery.readHead, row.commit.suid))),
@@ -597,6 +610,7 @@ export async function runG66Cohort(options) {
       visibilityClock: "response-completed-at to observed public read; send/response clocks retained separately",
       continuousWrites: "visibility polling and safe-fence convergence never delay the next paced command; only source snapshot acquisition may gate executor input",
       safeQueryProof: "unsafe projection endpoint plus default public query body and readHead where the list wire supplies it",
+      safePredicate: "terminal state for a reservation that a later cohort command mutates; readHead and safeHead remain event-order proofs",
       conformanceAuthorization: "Bearer supplied from protected token-file path; value not persisted",
       censoredRule: "any missing command/unsafe/safe clock is retained as censored and cannot pass",
     },
@@ -610,7 +624,9 @@ export async function runG66Cohort(options) {
     writeReceipt(options.reportPath, report);
     const ids = { phase: options.phase, roomId: `g66-${options.phase}-${options.runId.slice(0, 16)}`, reservationId: `g66-${options.phase}-${options.runId.slice(0, 12)}-r01` };
     const observations = [];
-    const roomIssued = await captureCommand(options, report, "create-room", ids, 1, { readMode: "read-through", snapshots: [] });
+    const terminalReservationId = `g66-${options.phase}-${options.runId.slice(0, 12)}-r${String(options.sampleCount - 2).padStart(2, "0")}`;
+    const terminalMutationOrdinal = options.sampleCount;
+    const roomIssued = await captureCommand(options, report, "create-room", ids, 1, { readMode: "read-through", snapshots: [] }, terminalReservationId, terminalMutationOrdinal);
     observations.push(roomIssued.observation);
     const room = roomIssued.sample;
     let previousResponseAtMs = room.commit.completedAtMs;
@@ -632,7 +648,7 @@ export async function runG66Cohort(options) {
       const snapshots = firstReservation ? [] : [roomSnapshot, emptySnapshot("reservation", ids.reservationId)];
       const issued = await captureCommand(options, report, "reserve-room", ids, ordinal, firstReservation
         ? { readMode: "read-through", snapshots }
-        : { readMode: "snapshot-only", snapshots }, snapshotReceipt);
+        : { readMode: "snapshot-only", snapshots }, terminalReservationId, terminalMutationOrdinal, snapshotReceipt);
       observations.push(issued.observation);
       previousResponseAtMs = issued.sample.commit.completedAtMs;
     }
@@ -641,7 +657,7 @@ export async function runG66Cohort(options) {
     const reservationSnapshotResult = await waitForSnapshot(options, "reservation", ids.reservationId, Date.now() + options.snapshotTimeoutMs);
     const reservationSnapshotReceipt = { kind: "reservation", id: ids.reservationId, observations: reservationSnapshotResult.observations, snapshot: reservationSnapshotResult.snapshot };
     if (reservationSnapshotResult.snapshot === null) throw new Error("reservation snapshot unavailable before cancel");
-    const cancelIssued = await captureCommand(options, report, "cancel-reservation", ids, options.sampleCount, { readMode: "snapshot-only", snapshots: [reservationSnapshotResult.snapshot] }, reservationSnapshotReceipt);
+    const cancelIssued = await captureCommand(options, report, "cancel-reservation", ids, options.sampleCount, { readMode: "snapshot-only", snapshots: [reservationSnapshotResult.snapshot] }, terminalReservationId, terminalMutationOrdinal, reservationSnapshotReceipt);
     observations.push(cancelIssued.observation);
     await Promise.all(observations);
     report.expectedFinalState = expectedFinalState(report.commands, ids.roomId);

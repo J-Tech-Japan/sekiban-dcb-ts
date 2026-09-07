@@ -21,7 +21,7 @@ export function assertG66HarnessSource(source) {
     "read-through", "snapshot-only", "coverageHistory", "safeLanePasses", "tagReads", "queryReads",
     "UNSAFE_BOUND_MS", "SAFE_BOUND_MS", "censored", "writeReceipt(options.reportPath, report)",
     "responseRelativeMs", "publicQuery", "continuousWrites", "affectedTagReads",
-    "waitForSortableUniqueId", "expectedFinalState", "finalConsistency",
+    "waitForSortableUniqueId", "expectedFinalState", "finalConsistency", "safePredicate", "terminal-state",
   ]) if (!source.includes(expected)) fail(`harness omitted ${expected}`);
   if (!source.includes("if (sample.safe.disposition !== \"pass\")")) fail("safe lane is not fail-closed");
   if (!source.includes("if (commit.status !== 200 || commit.kind !== \"committed\" || commit.suid === null)")) fail("failed writes are not censored");
@@ -33,7 +33,7 @@ function publicQueryEvidence(sample) {
   const room = sample.queryReads?.room;
   const reservations = sample.queryReads?.reservations;
   if (room?.status !== 200 || reservations?.status !== 200) return false;
-  const target = sample.target;
+  const target = sample.safePredicate ?? sample.target;
   if (target?.kind === "room") {
     const result = room.result ?? parsed(room.body?.resultJson, null);
     return result !== null && typeof result === "object" && Number(result.count) === 1;
@@ -92,6 +92,8 @@ function sampleShape(sample, index) {
   if (sample.commit.completedAtMs < sample.commit.startedAtMs || sample.commit.responseMs < 0 || sample.commit.completedAtMs - sample.commit.startedAtMs !== sample.commit.responseMs) fail(`sample ${index} command clock order is invalid`);
   if (!Array.isArray(sample.healthSnapshots) || sample.healthSnapshots.length === 0) fail(`sample ${index} has no per-tick health receipt`);
   if (!sample.healthSnapshots.every((entry) => entry.coverage !== undefined && Array.isArray(entry.coverageHistory) && Array.isArray(entry.safeLanePasses))) fail(`sample ${index} has incomplete coverage/frontier receipt`);
+  const safePredicate = sample.safePredicate;
+  if (safePredicate?.mode !== "terminal-state" || safePredicate.kind !== sample.target.kind || safePredicate.id !== sample.target.id || typeof safePredicate.expectedStatus !== "string") fail(`sample ${index} has no terminal safe predicate`);
   const expected = expectedTags(sample);
   if (!Array.isArray(sample.tagReads) || sample.tagReads.length !== expected.length || expected.length === 0) fail(`sample ${index} has incomplete affected-tag set`);
   const tagKeys = new Set(sample.tagReads.map((tag) => `${tag.tag}:${tag.projector}`));
@@ -106,8 +108,18 @@ function sampleShape(sample, index) {
   if (sample.safe?.disposition === "pass") {
     if (!observedClock(sample, "safe") || sample.safe.publicQuery?.status !== 200 || sample.safe.publicQuery?.visible !== true) fail(`sample ${index} has invalid safe clock/bound/public proof`);
     if (!atLeast(sample.safe.safeHead, sample.commit.suid)) fail(`sample ${index} safe materialized-view head is behind its commit`);
-    if (sample.target.kind === "reservation" && !atLeast(sample.safe.publicQuery.readHead, sample.commit.suid)) fail(`sample ${index} safe readHead is behind its commit`);
+    if (safePredicate.kind === "reservation" && !atLeast(sample.safe.publicQuery.readHead, sample.commit.suid)) fail(`sample ${index} safe readHead is behind its commit`);
   }
+}
+
+function laterSafePredicateMutation(receipt, index) {
+  const sample = receipt.commands[index];
+  if (sample?.target?.kind !== "reservation") return null;
+  return receipt.commands.slice(index + 1).find((candidate) => candidate?.commandId === "cancel-reservation"
+    && candidate.target?.kind === "reservation"
+    && candidate.target.id === sample.target.id
+    && candidate.commit?.status === 200
+    && candidate.commit?.kind === "committed") ?? null;
 }
 
 export function inspectG66Receipt(receipt) {
@@ -116,6 +128,16 @@ export function inspectG66Receipt(receipt) {
   if (!Number.isSafeInteger(receipt?.contract?.minimumInterSampleMs) || receipt.contract.minimumInterSampleMs < 10_000) fail("10-second pacing is absent");
   if (!Array.isArray(receipt.commands) || receipt.commands.length < 10) fail("fewer than ten command rows");
   receipt.commands.forEach(sampleShape);
+  receipt.commands.forEach((sample, index) => {
+    const later = laterSafePredicateMutation(receipt, index);
+    if (later === null) return;
+    const predicate = sample.safePredicate;
+    if (predicate?.mode !== "terminal-state"
+      || predicate.terminalMutationOrdinal !== later.ordinal
+      || predicate.expectedStatus !== later.target.expectedStatus) {
+      fail(`sample ${index} safe predicate was mutated by later sample ${later.ordinal}`);
+    }
+  });
   if (!receipt.commands.some((sample) => sample.commit.executor?.readMode === "read-through")) fail("no read-through command");
   if (!receipt.commands.some((sample) => sample.commit.executor?.readMode === "snapshot-only")) fail("no snapshot-only command");
   if (!Array.isArray(receipt.healthSnapshots) || receipt.healthSnapshots.length === 0) fail("no cohort health receipt");
@@ -147,11 +169,19 @@ export function createG66GuardFixture() {
       const isRoom = index === 0;
       const id = isRoom ? "room-1" : "reservation-1";
       const expectedStatus = index === 9 ? "cancelled" : "reserved";
+      const safeExpectedStatus = !isRoom && index === 8 ? "cancelled" : expectedStatus;
       const tag = `${isRoom ? "room" : "reservation"}:${id}`;
-      const queryRows = isRoom ? [] : [{ reservationId: id, roomId: "room-1", status: expectedStatus }];
+      const queryRows = isRoom ? [] : [{ reservationId: id, roomId: "room-1", status: safeExpectedStatus }];
       const completedAtMs = index * 10_000 + 10;
       return {
         target: { kind: isRoom ? "room" : "reservation", id, expectedStatus: isRoom ? "created" : expectedStatus },
+        safePredicate: {
+          mode: "terminal-state",
+          kind: isRoom ? "room" : "reservation",
+          id,
+          expectedStatus: isRoom ? "created" : safeExpectedStatus,
+          terminalMutationOrdinal: !isRoom && index === 8 ? 10 : null,
+        },
         commit: {
           status: 200,
           kind: "committed",
@@ -268,6 +298,11 @@ export function selfTest() {
   staleReadHead.commands[1].safe.publicQuery.readHead = staleReadHead.commands[0].commit.suid;
   if (passes(staleReadHead)) fail("stale-read-head mutant passed");
 
+  const laterSafePredicate = structuredClone(good);
+  laterSafePredicate.commands[8].safePredicate.expectedStatus = "reserved";
+  laterSafePredicate.commands[8].safePredicate.terminalMutationOrdinal = null;
+  if (passes(laterSafePredicate)) fail("later-safe-predicate-mutation mutant passed");
+
   const failedWrite = structuredClone(good);
   failedWrite.commands[0].commit.status = 504;
   let failedWriteRed = false;
@@ -280,7 +315,7 @@ export function selfTest() {
   try { inspectG66Receipt(noCoverage); } catch { coverageRed = true; }
   if (!coverageRed) fail("coverage/frontier mutant did not go red");
 
-  process.stdout.write(`${JSON.stringify({ selfTest: "sdt-g66-e2e-guards", censoredSafeRed: true, pauseToSafeRed: true, chronologicalPauseRed: true, unsafeClockRed: true, publicQueryRed: true, lateSuccessRed: true, absoluteClockRed: true, safeHeadRed: true, inflatedBoundRed: true, unsafeObservationRed: true, duplicateFinalRed: true, staleReadHeadRed: true, failedWriteRed, missingCoverageRed: coverageRed })}\n`);
+  process.stdout.write(`${JSON.stringify({ selfTest: "sdt-g66-e2e-guards", censoredSafeRed: true, pauseToSafeRed: true, chronologicalPauseRed: true, unsafeClockRed: true, publicQueryRed: true, lateSuccessRed: true, absoluteClockRed: true, safeHeadRed: true, inflatedBoundRed: true, unsafeObservationRed: true, duplicateFinalRed: true, staleReadHeadRed: true, laterSafePredicateMutationRed: true, failedWriteRed, missingCoverageRed: coverageRed })}\n`);
 }
 
 function main() {
