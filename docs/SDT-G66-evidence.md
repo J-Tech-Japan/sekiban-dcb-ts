@@ -313,3 +313,30 @@ of this corrected contract. A fresh corrected deployed cohort is required
 before AC1–AC4 can be reclassified. The required deployment, if run, must
 retain the existing production Worker/D1/Queue configuration and the G32
 worker, databases, outbox and DLQ unchanged.
+
+## W161 final repair deployed attempt — C-0 storage-timeout blocker
+
+The exact W161 repair source `b840c189cd1dd5cbe31400fc606b691c0293d9e9` was
+deployed to the existing production sample with the unchanged self-mode
+configuration. Version `566dd5dd-4d9d-4125-be6d-750722d0c210` carried the exact
+message `SDT-G66 W161 exact b840c189 final public MV repair` at 100% traffic.
+The deployed version view confirmed `DIRECT_DOORBELL=true`, self receiver mode
+and proof, and `DOWNSTREAM_DOORBELL` bound to
+`sekiban-dcb-meeting-room-cloudflare-only#MeetingRoomDownstreamDoorbell`. It
+also confirmed the existing production D1 IDs
+`f26d1299-82d9-4a64-8647-bc2ec86326ac` and
+`b416b212-4d09-413c-9b8d-7660e475772f`, plus the existing production outbox
+consumer and DLQ.
+
+The required C-0 reset receipt is
+`.artifacts/sdt-g66-w161-production-c0-reset.json`. Every child Wrangler
+process stripped `CLOUDFLARE_API_TOKEN`, `CF_API_TOKEN`,
+`CLOUDFLARE_API_KEY`, `CF_API_KEY`, and `WRANGLER_API_TOKEN`; no secret value
+was printed or persisted and no `--keep-vars` was used. The reset completed
+all pipeline counts/deletes, then stopped on the first MV delete
+`mv_active_generations` with Cloudflare D1 storage timeout code `7429`.
+There was no authorization failure, no classifier, and no state-changing retry.
+Because the pipeline was partially reset but MV rows were not reset, the
+sample was not clean and no corrected W161 cohort was started. AC1–AC4 remain
+blocked; no W161 response/unsafe/safe metrics are claimed. G32 worker/D1/
+outbox/DLQ resources were retained and untouched.
