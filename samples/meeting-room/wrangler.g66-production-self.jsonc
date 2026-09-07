@@ -70,4 +70,3 @@
     { "tag": "v3", "new_sqlite_classes": ["TagStateDurableObject"] }
   ]
 }
-

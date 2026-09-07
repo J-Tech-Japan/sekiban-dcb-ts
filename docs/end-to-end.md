@@ -10,4 +10,3 @@ command rows before polling and treats an absent or late clock as censored.
 The G66 production configuration proof is kept in `docs/SDT-G66-evidence.md`.
 No end-to-end result is a product pass unless the corresponding raw receipt
 and the fail-closed guard result are present.
-

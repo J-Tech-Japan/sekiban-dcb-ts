@@ -8,8 +8,10 @@ export interface G66ReceiptResult {
     readonly tagStateAndQueryReads: boolean;
     readonly coverageAndFrontierObserved: boolean;
     readonly observedResponseRelativeReads: boolean;
+    readonly finalQueryConsistency: boolean;
   };
   readonly passed: boolean;
 }
 
 export declare function inspectG66Receipt(receipt: unknown): G66ReceiptResult;
+export declare function createG66GuardFixture(): unknown;

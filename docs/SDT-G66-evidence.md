@@ -272,3 +272,44 @@ production delivery. The old G32 outbox remains separately consumed by the
 protected production worker, which is why W160 did not detach or delete it.
 W161 treats that cleanup as intentionally deferred configuration work; no G32
 worker, D1, Queue, DLQ, or old receiver was modified.
+
+## W161 final review repair — corrected public MV witness
+
+Review `5133812363` identified four evidence/guard escapes in the W160
+witness. The repair is limited to the G66 runner, its guard, the focused test,
+and this evidence record; it does not change the G66 runtime path or any G32
+resource.
+
+- Unsafe reservation visibility is now polled from the public
+  `/api/read/reservations` surface. The room/projection observation remains a
+  separately labelled projection diagnostic; it is not substituted for the
+  public reservation result.
+- Safe acceptance requires the public reservation body to contain exactly one
+  target/status and a `readHead` at least as large as the committed SUID. The
+  safe MV head is retained as supporting evidence, never as the sole proof.
+- Each affected tag is joined to its expected committed version/SUID and the
+  observed tag-state result. The final public state is compared with the exact
+  committed room/reservation set and duplicate count.
+- Observed absolute clocks are used to derive response-completed-at-relative
+  visibility durations. The guard pins the unchanged 5,000 ms unsafe and
+  180,000 ms safe bounds and rejects missing, late, false, stale, or synthetic
+  observations.
+- The accepted command is checkpointed before asynchronous visibility polling,
+  so later commands continue at the configured ten-second pace. Red-capable
+  tests cover censored safe reads, a fully chronological pause-to-safe mutant,
+  bad public reads, stale read heads, absolute-clock/bound escapes, failed
+  writes, missing coverage, and duplicate final state.
+
+Local source/guard checks passed before this checkpoint:
+`node --check scripts/deploy/g66-e2e.mjs`,
+`node --check scripts/g66-e2e-guard.mjs`, both script self-tests,
+`npx vitest run --config vitest.config.ts test/g66-e2e.spec.ts
+--pool=threads --maxWorkers=1`, `npm run lint -- --quiet`, and
+`npm run typecheck`. The broader aggregate and package-layout exceptions remain
+the documented W161 environment exceptions above; they are not called green.
+
+The W160 deployed receipts remain historical and are not relabelled as proof
+of this corrected contract. A fresh corrected deployed cohort is required
+before AC1–AC4 can be reclassified. The required deployment, if run, must
+retain the existing production Worker/D1/Queue configuration and the G32
+worker, databases, outbox and DLQ unchanged.

@@ -124,10 +124,10 @@ function projectionPath(kind, id) {
 // The projection endpoint is the unsafe/tag-state witness.  The application
 // query endpoints are a separate safe-lane witness and must be captured too;
 // a safe MV head alone is not proof that the public query returned the event.
-function safeQueryPath(kind, id) {
-  return kind === "room"
-    ? `/api/read/room-query?roomId=${encodeURIComponent(id)}`
-    : "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true";
+function publicQueryPath(kind, id, waitForSuid = null) {
+  if (kind === "room") return `/api/read/room-query?roomId=${encodeURIComponent(id)}`;
+  const path = "/api/read/reservations?pageNumber=1&pageSize=100&newestFirst=true";
+  return waitForSuid === null ? path : `${path}&waitForSortableUniqueId=${encodeURIComponent(waitForSuid)}`;
 }
 
 function projectionTag(kind, id) {
@@ -287,6 +287,16 @@ async function queryReads(options, roomId) {
   };
 }
 
+async function publicQuery(options, target, waitForSuid = null) {
+  const result = await requestJson(options.baseUrl, publicQueryPath(target.kind, target.id, waitForSuid), { headers: publicHeaders() });
+  return {
+    ...queryObservation(result),
+    surface: target.kind === "reservation" ? "public-reservations" : "public-room-query",
+    consistency: target.kind === "reservation" && waitForSuid !== null ? "safe-after-wait" : "unsafe-merge-or-room-query",
+    waitForSuid,
+  };
+}
+
 function safeHeadFor(healthValue, projector) {
   return healthValue.materializedViews.find((view) => view.viewId === projector)?.safeHead ?? "";
 }
@@ -325,21 +335,16 @@ function affectedTagReads(sample) {
   return values;
 }
 
-function queryShowsTarget(target, queryReads) {
+function queryShowsTarget(target, queryReads, expectedSuid = null) {
   if (target.kind === "room") {
     const result = queryReads?.room?.result;
-    return queryReads?.room?.status === 200 && result !== null && typeof result === "object" && Number(result.count) >= 1;
+    return queryReads?.room?.status === 200 && result !== null && typeof result === "object" && Number(result.count) === 1;
   }
   const rows = Array.isArray(queryReads?.reservations?.rows) ? queryReads.reservations.rows : [];
   return queryReads?.reservations?.status === 200
-    && typeof queryReads.reservations.readHead === "string"
+    && (expectedSuid === null || atLeast(queryReads.reservations.readHead, expectedSuid))
     && rows.filter((row) => row?.reservationId === target.id).length === 1
     && rows.some((row) => row?.reservationId === target.id && row?.status === target.expectedStatus);
-}
-
-async function publicSafeQuery(options, target) {
-  const result = await requestJson(options.baseUrl, safeQueryPath(target.kind, target.id), { headers: publicHeaders() });
-  return queryObservation(result);
 }
 
 async function sendCommand(options, commandId, input, executor) {
@@ -374,24 +379,35 @@ async function unsafeProbe(options, target, sample) {
   const observations = [];
   const deadlineMs = responseCompletedAtMs + UNSAFE_BOUND_MS;
   for (;;) {
-    const result = await requestJson(options.baseUrl, projectionPath(target.kind, target.id), { headers: publicHeaders() });
-    const body = bodyObject(result.body);
-    const visible = result.status === 200 && atLeast(body.lastSortedUniqueId, sample.commit.suid);
+    const query = await publicQuery(options, target);
+    let projection = null;
+    if (target.kind === "room") {
+      const result = await requestJson(options.baseUrl, projectionPath(target.kind, target.id), { headers: publicHeaders() });
+      const body = bodyObject(result.body);
+      projection = {
+        status: result.status,
+        completedAtMs: result.completedAtMs,
+        lastSortedUniqueId: typeof body.lastSortedUniqueId === "string" ? body.lastSortedUniqueId : null,
+        visible: result.status === 200 && atLeast(body.lastSortedUniqueId, sample.commit.suid),
+        body,
+      };
+    }
+    const visible = queryShowsTarget(target, target.kind === "reservation" ? { reservations: query } : { room: query });
+    const observedAtMs = Math.max(query.completedAtMs, projection?.completedAtMs ?? query.completedAtMs);
     observations.push({
-      completedAtMs: result.completedAtMs,
-      responseRelativeMs: result.completedAtMs - responseCompletedAtMs,
-      elapsedMs: result.completedAtMs - responseCompletedAtMs,
-      status: result.status,
+      completedAtMs: observedAtMs,
+      responseRelativeMs: observedAtMs - responseCompletedAtMs,
+      elapsedMs: observedAtMs - responseCompletedAtMs,
       visible,
-      lastSortedUniqueId: typeof body.lastSortedUniqueId === "string" ? body.lastSortedUniqueId : null,
-      body,
+      publicQuery: { ...query, visible },
+      projection,
     });
     if (visible) {
-      const withinBound = result.completedAtMs <= deadlineMs;
-      return { disposition: withinBound ? "pass" : "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: withinBound ? result.completedAtMs : null, responseRelativeMs: withinBound ? result.completedAtMs - responseCompletedAtMs : null, boundExceededAtMs: withinBound ? null : result.completedAtMs, observations };
+      const withinBound = observedAtMs <= deadlineMs;
+      return { disposition: withinBound ? "pass" : "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: withinBound ? observedAtMs : null, responseRelativeMs: withinBound ? observedAtMs - responseCompletedAtMs : null, boundExceededAtMs: withinBound ? null : observedAtMs, observations, publicQuery: { ...query, visible }, projection };
     }
     if (Date.now() >= deadlineMs) {
-      return { disposition: "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: null, responseRelativeMs: null, boundExceededAtMs: result.completedAtMs, observations };
+      return { disposition: "censored", boundMs: UNSAFE_BOUND_MS, firstVisibleAtMs: null, responseRelativeMs: null, boundExceededAtMs: observedAtMs, observations, publicQuery: { ...query, visible }, projection };
     }
     await sleep(Math.min(options.pollMs, Math.max(1, deadlineMs - Date.now())));
   }
@@ -405,10 +421,10 @@ async function safeProbe(options, target, sample, report) {
     report.healthSnapshots.push(current);
     sample.healthSnapshots.push(current);
     const safeHead = safeHeadFor(current, target.projector);
-    const safeQuery = await publicSafeQuery(options, target);
-    const publicQueryVisible = safeQuery.status === 200 && queryShowsTarget(target, { [target.kind === "room" ? "room" : "reservations"]: safeQuery });
-    const readHeadAvailable = target.kind === "room" || safeQuery.readHead !== null;
-    if (atLeast(safeHead, sample.commit.suid) && publicQueryVisible && readHeadAvailable) {
+    const safeQuery = await publicQuery(options, target, sample.commit.suid);
+    const publicQueryVisible = queryShowsTarget(target, target.kind === "reservation" ? { reservations: safeQuery } : { room: safeQuery });
+    const readHeadReached = target.kind === "room" || atLeast(safeQuery.readHead, sample.commit.suid);
+    if (atLeast(safeHead, sample.commit.suid) && publicQueryVisible && readHeadReached) {
       const observedAtMs = Math.max(current.receivedAtMs, safeQuery.completedAtMs);
       const withinBound = observedAtMs <= deadlineMs;
       return {
@@ -419,7 +435,8 @@ async function safeProbe(options, target, sample, report) {
         boundExceededAtMs: withinBound ? null : observedAtMs,
         safeHead,
         readHead: safeQuery.readHead,
-        publicQuery: safeQuery,
+        publicQuery: { ...safeQuery, visible: publicQueryVisible },
+        observedAtMs,
         health: current,
       };
     }
@@ -432,7 +449,8 @@ async function safeProbe(options, target, sample, report) {
         boundExceededAtMs: Math.max(current.receivedAtMs, safeQuery.completedAtMs),
         safeHead,
         readHead: safeQuery.readHead,
-        publicQuery: safeQuery,
+        publicQuery: { ...safeQuery, visible: publicQueryVisible },
+        observedAtMs: Math.max(current.receivedAtMs, safeQuery.completedAtMs),
         health: current,
       };
     }
@@ -530,10 +548,32 @@ function summarizeReport(report) {
       && row.tagReads.every((tag) => tag.status === 200 && Number.isSafeInteger(tag.version) && (tag.expectedVersion === null || tag.version >= tag.expectedVersion) && atLeast(tag.lastSortedUniqueId, tag.expectedSuid))
       && row.queryReads?.room?.status === 200 && row.queryReads?.reservations?.status === 200
       && queryShowsTarget(row.target, row.queryReads)
-      && typeof row.queryReads.reservations.readHead === "string"),
+      && (row.target.kind === "room" || atLeast(row.queryReads.reservations.readHead, row.commit.suid))),
     coverageAndFrontierObserved: report.healthSnapshots.length > 0 && report.healthSnapshots.every((entry) => entry.coverage !== undefined && Array.isArray(entry.coverageHistory) && Array.isArray(entry.safeLanePasses)),
-    publicUnsafeAndSafeReads: rows.every((row) => Array.isArray(row.unsafe?.observations) && row.unsafe.observations.length > 0 && row.safe?.publicQuery?.status === 200 && row.safe?.safeHead !== undefined),
+    publicUnsafeAndSafeReads: rows.every((row) => Array.isArray(row.unsafe?.observations) && row.unsafe.observations.length > 0 && row.unsafe?.publicQuery?.status === 200 && row.safe?.publicQuery?.status === 200 && row.safe?.safeHead !== undefined && (row.target.kind === "room" || atLeast(row.safe.publicQuery.readHead, row.commit.suid))),
   };
+}
+
+function expectedFinalState(rows, roomId) {
+  const reservations = new Map();
+  for (const row of rows) {
+    if (row.target?.kind !== "reservation") continue;
+    reservations.set(row.target.id, { reservationId: row.target.id, roomId, status: row.target.expectedStatus });
+  }
+  return { roomId, reservations: [...reservations.values()].sort((left, right) => left.reservationId.localeCompare(right.reservationId)) };
+}
+
+function finalQueryMatches(expected, queryReads) {
+  const rows = queryReads?.reservations?.rows;
+  if (queryReads?.reservations?.status !== 200 || !Array.isArray(rows)) return false;
+  const actual = rows.map((row) => ({ reservationId: row?.reservationId, roomId: row?.roomId, status: row?.status }));
+  if (new Set(actual.map((row) => row.reservationId)).size !== actual.length) return false;
+  if (actual.length !== expected.reservations.length) return false;
+  const byId = new Map(actual.map((row) => [row.reservationId, row]));
+  return expected.reservations.every((row) => {
+    const observed = byId.get(row.reservationId);
+    return observed?.roomId === row.roomId && observed?.status === row.status;
+  });
 }
 
 export async function runG66Cohort(options) {
@@ -604,7 +644,18 @@ export async function runG66Cohort(options) {
     const cancelIssued = await captureCommand(options, report, "cancel-reservation", ids, options.sampleCount, { readMode: "snapshot-only", snapshots: [reservationSnapshotResult.snapshot] }, reservationSnapshotReceipt);
     observations.push(cancelIssued.observation);
     await Promise.all(observations);
+    report.expectedFinalState = expectedFinalState(report.commands, ids.roomId);
+    report.finalQuery = await queryReads(options, ids.roomId);
+    report.finalConsistency = {
+      expectedReservationCount: report.expectedFinalState.reservations.length,
+      observedReservationCount: report.finalQuery.reservations?.rows?.length ?? null,
+      exactReservationSet: finalQueryMatches(report.expectedFinalState, report.finalQuery),
+      duplicateReservationIds: Array.isArray(report.finalQuery.reservations?.rows)
+        ? report.finalQuery.reservations.rows.length - new Set(report.finalQuery.reservations.rows.map((row) => row?.reservationId)).size
+        : null,
+    };
     summarizeReport(report);
+    report.acceptance.finalQueryConsistency = report.finalConsistency.exactReservationSet === true;
     report.finishedAt = new Date().toISOString();
     report.status = "completed";
     writeReceipt(options.reportPath, report);
