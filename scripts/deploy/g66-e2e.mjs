@@ -185,6 +185,7 @@ function healthSummary(result) {
   const passRows = Array.isArray(body.safeLanePasses) ? body.safeLanePasses : [];
   const coverageHistory = Array.isArray(body.coverageHistory) ? body.coverageHistory : [];
   const liveProjections = Array.isArray(body.liveProjections) ? body.liveProjections : [];
+  const latest = (values) => values.length === 0 ? [] : [values.at(-1)];
   return {
     receivedAtMs: result.completedAtMs,
     responseMs: result.elapsedMs,
@@ -196,8 +197,10 @@ function healthSummary(result) {
       frontierSuid: typeof coverage.frontierSuid === "string" ? coverage.frontierSuid : null,
       observedAt: Number.isSafeInteger(coverage.observedAt) ? coverage.observedAt : null,
     },
-    coverageHistory,
-    safeLanePasses: passRows,
+    coverageHistory: latest(coverageHistory),
+    coverageHistoryCount: coverageHistory.length,
+    safeLanePasses: latest(passRows),
+    safeLanePassCount: passRows.length,
     lag: {
       estimateMs: Number.isFinite(lag.estimateMs) ? lag.estimateMs : null,
       observedAt: Number.isSafeInteger(lag.observedAt) ? lag.observedAt : null,
