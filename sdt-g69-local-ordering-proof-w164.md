@@ -6,6 +6,9 @@ Branch: `claude/sdt-g69-local-ordering-proof-w164`
 Base: `3f6df6433c6e6cc7e16ea26f0fc8ac32e39f5809` (`origin/main` at start)
 Scope: local proof and diagnostic/guard work only.
 
+Source/proof checkpoint: `73243429ed3310abd9a037e9671aa476c411b34a` (the
+evidence-only pin for this receipt follows on the same pushed branch).
+
 ## Result
 
 The real allocator → Tag → D1 → G44/G62 proof reproduces a live strict-order
