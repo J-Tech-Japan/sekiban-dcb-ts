@@ -340,3 +340,25 @@ Because the pipeline was partially reset but MV rows were not reset, the
 sample was not clean and no corrected W161 cohort was started. AC1–AC4 remain
 blocked; no W161 response/unsafe/safe metrics are claimed. G32 worker/D1/
 outbox/DLQ resources were retained and untouched.
+
+## W161 C-0 retry and corrected public cohort
+
+The W161 retry reused the exact source head
+`7ad3b08136dcabbf80bcdcaa9e8c7b5736693bb1` and deployed version
+`e8665dee-6a86-41de-b11d-8d2e9dbea30c` with annotation
+`SDT-G66 W161 exact 7ad3b081 C-0 retry corrected public MV proof`. The version
+view again confirmed the self receiver binding, production D1 pair, and
+existing outbox/DLQ. G32 resources remained untouched.
+
+The first W161 reset's D1 `7429` receipt was not retried in that window. This
+task's one authorized retry is `.artifacts/sdt-g66-w161-production-c0-retry.json`;
+it completed all 105 stripped Wrangler invocations and produced clean
+post-counts. The corrected cohort receipt is
+`.artifacts/sdt-g66-w161-production-corrected.json`. Ten commands were issued
+continuously with response-completion spacing of 11,537–12,616 ms. All 10/10
+unsafe public observations passed, p50/p95 `2253/2727 ms`. Response p50/p95
+was `1970/3034 ms`. Only 9/10 safe public read-head proofs completed, with
+observed safe p50/p95 `38259/61014 ms` over those 9; sample 9 was censored at
+the fixed 180,000 ms bound. The strict 10/10 safe criterion therefore failed;
+no rerun or tuning was attempted. Full per-sample response-relative clocks,
+SUIDs and public read heads are in the durable W161 artifact and raw receipt.
