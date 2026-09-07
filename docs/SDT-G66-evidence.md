@@ -142,3 +142,51 @@ acceptance bars on both normal and self-ring configurations. The candidate
 sample is usable after the cohort. The self-ring configuration is deployed
 on the production sample, while the explicitly unsafe old-G32 cleanup is
 blocked by the consumer-topology contradiction above and was not performed.
+
+## W161 read-only topology publication
+
+W161 deliberately performs no G32 mutation. The complete read-only topology
+receipt is `.artifacts/sdt-g66-w161-production-topology.json`.
+
+The candidate version view for
+`16d0ee47-24ad-43d4-ad65-668a6933b5c0` (source annotation
+`SDT-G66 W160 self-ring candidate exact
+134476a0c57187e697c4db55689b486b34bf2aed`) reported the full production D1
+binding list:
+
+| binding | database name | database ID |
+|---|---|---|
+| `D1` | `sekiban-dcb-meeting-room-cloudflare-pipeline` | `f26d1299-82d9-4a64-8647-bc2ec86326ac` |
+| `D1_MV` | `sekiban-dcb-meeting-room-cloudflare-mv` | `b416b212-4d09-413c-9b8d-7660e475772f` |
+
+The account inventory also contained, for comparison, G32 D1s
+`sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv`
+(`c733dfb2-013a-4a5d-a72c-47931a63bac4`) and
+`sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline`
+(`eccf6048-7fc8-4412-a157-9fa180353f6d`). Neither G32 ID is bound to the
+production worker.
+
+The production version has one Queue producer binding
+`DOWNSTREAM_QUEUE` to `sekiban-dcb-meeting-room-cloudflare-outbox` and one
+consumer for that same queue, with DLQ
+`sekiban-dcb-meeting-room-cloudflare-outbox-dlq`. The complete account Queue
+inventory and exact consumers is:
+
+| queue | ID | producers | consumers |
+|---|---|---|---|
+| `sekiban-dcb-g60-w129-a-outbox` | `372a4b8b67714238835dc4aeaf67712f` | `worker:sekiban-dcb-g60-w129-a` | `worker:sekiban-dcb-g60-w129-a` |
+| `sekiban-dcb-g60-w129-a-outbox-dlq` | `b8550fde79824aef88d9ed8ed674fe80` | none | none |
+| `sekiban-dcb-g60-w129-b-outbox` | `f010a2882ebc48d6a8b8d0859ccbb92c` | `worker:sekiban-dcb-g60-w129-b` | `worker:sekiban-dcb-g60-w129-b` |
+| `sekiban-dcb-g60-w129-b-outbox-dlq` | `eb412c9ea2c847758ec6a91df7416432` | none | none |
+| `sekiban-dcb-g60-w155-c-outbox` | `1c45193743cb4adabeac4d071ec96ca6` | `worker:sekiban-dcb-g60-w155-c` | `worker:sekiban-dcb-g60-w155-c` |
+| `sekiban-dcb-g60-w155-c-outbox-dlq` | `a1a3667566f140b4a25d42daf1dc8358` | none | none |
+| `sekiban-dcb-meeting-room-cloudflare-outbox` | `e8c48f826758437ca4df10f61a9145ad` | `worker:sekiban-dcb-meeting-room-cloudflare-only` | `worker:sekiban-dcb-meeting-room-cloudflare-only` |
+| `sekiban-dcb-meeting-room-cloudflare-outbox-dlq` | `495f566c63c64b1a9d7d49d275801438` | none | none |
+| `sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox` | `a8f591e7053743e79e2e9ade49e52ba4` | none | `worker:sekiban-dcb-meeting-room-cloudflare-only` |
+| `sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq` | `6e67ddcde0dd48faac784548ad3e185d` | none | none |
+
+Therefore production uses its own outbox, not the G32 outbox, for current
+production delivery. The old G32 outbox remains separately consumed by the
+protected production worker, which is why W160 did not detach or delete it.
+W161 treats that cleanup as intentionally deferred configuration work; no G32
+worker, D1, Queue, DLQ, or old receiver was modified.

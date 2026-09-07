@@ -1,0 +1,130 @@
+{
+  "task": "SDT-G66-EVIDENCE-PR-W161",
+  "worker": "sekiban-dcb-meeting-room-cloudflare-only",
+  "versionId": "16d0ee47-24ad-43d4-ad65-668a6933b5c0",
+  "sourceAnnotation": "SDT-G66 W160 self-ring candidate exact 134476a0c57187e697c4db55689b486b34bf2aed",
+  "wranglerVersion": "4.125.0",
+  "credentialEnvironment": {
+    "CLOUDFLARE_API_TOKEN": "unset",
+    "CF_API_TOKEN": "unset",
+    "CLOUDFLARE_API_KEY": "unset",
+    "CF_API_KEY": "unset",
+    "WRANGLER_API_TOKEN": "unset"
+  },
+  "commands": [
+    "wrangler versions view 16d0ee47-24ad-43d4-ad65-668a6933b5c0 --name sekiban-dcb-meeting-room-cloudflare-only --config samples/meeting-room/wrangler.cloudflare-only.jsonc --json",
+    "wrangler d1 list --json",
+    "wrangler queues list",
+    "wrangler queues info <each queue listed below>"
+  ],
+  "exitCodes": {
+    "versionsView": 0,
+    "d1List": 0,
+    "queuesList": 0,
+    "queueInfo": 0
+  },
+  "productionD1Bindings": [
+    {
+      "name": "D1",
+      "databaseName": "sekiban-dcb-meeting-room-cloudflare-pipeline",
+      "databaseId": "f26d1299-82d9-4a64-8647-bc2ec86326ac"
+    },
+    {
+      "name": "D1_MV",
+      "databaseName": "sekiban-dcb-meeting-room-cloudflare-mv",
+      "databaseId": "b416b212-4d09-413c-9b8d-7660e475772f"
+    }
+  ],
+  "accountD1InventoryG32OnlyForComparison": [
+    {
+      "databaseName": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-mv",
+      "databaseId": "c733dfb2-013a-4a5d-a72c-47931a63bac4"
+    },
+    {
+      "databaseName": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-pipeline",
+      "databaseId": "eccf6048-7fc8-4412-a157-9fa180353f6d"
+    }
+  ],
+  "productionQueueBindings": [
+    {
+      "binding": "DOWNSTREAM_QUEUE",
+      "queueName": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "role": "producer"
+    },
+    {
+      "queueName": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "deadLetterQueue": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq",
+      "role": "consumer",
+      "worker": "sekiban-dcb-meeting-room-cloudflare-only"
+    }
+  ],
+  "queueInventory": [
+    {
+      "name": "sekiban-dcb-g60-w129-a-outbox",
+      "id": "372a4b8b67714238835dc4aeaf67712f",
+      "producers": ["worker:sekiban-dcb-g60-w129-a"],
+      "consumers": ["worker:sekiban-dcb-g60-w129-a"]
+    },
+    {
+      "name": "sekiban-dcb-g60-w129-a-outbox-dlq",
+      "id": "b8550fde79824aef88d9ed8ed674fe80",
+      "producers": [],
+      "consumers": []
+    },
+    {
+      "name": "sekiban-dcb-g60-w129-b-outbox",
+      "id": "f010a2882ebc48d6a8b8d0859ccbb92c",
+      "producers": ["worker:sekiban-dcb-g60-w129-b"],
+      "consumers": ["worker:sekiban-dcb-g60-w129-b"]
+    },
+    {
+      "name": "sekiban-dcb-g60-w129-b-outbox-dlq",
+      "id": "eb412c9ea2c847758ec6a91df7416432",
+      "producers": [],
+      "consumers": []
+    },
+    {
+      "name": "sekiban-dcb-g60-w155-c-outbox",
+      "id": "1c45193743cb4adabeac4d071ec96ca6",
+      "producers": ["worker:sekiban-dcb-g60-w155-c"],
+      "consumers": ["worker:sekiban-dcb-g60-w155-c"]
+    },
+    {
+      "name": "sekiban-dcb-g60-w155-c-outbox-dlq",
+      "id": "a1a3667566f140b4a25d42daf1dc8358",
+      "producers": [],
+      "consumers": []
+    },
+    {
+      "name": "sekiban-dcb-meeting-room-cloudflare-outbox",
+      "id": "e8c48f826758437ca4df10f61a9145ad",
+      "producers": ["worker:sekiban-dcb-meeting-room-cloudflare-only"],
+      "consumers": ["worker:sekiban-dcb-meeting-room-cloudflare-only"]
+    },
+    {
+      "name": "sekiban-dcb-meeting-room-cloudflare-outbox-dlq",
+      "id": "495f566c63c64b1a9d7d49d275801438",
+      "producers": [],
+      "consumers": []
+    },
+    {
+      "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox",
+      "id": "a8f591e7053743e79e2e9ade49e52ba4",
+      "producers": [],
+      "consumers": ["worker:sekiban-dcb-meeting-room-cloudflare-only"]
+    },
+    {
+      "name": "sekiban-dcb-meeting-room-g32-9043d626fe1149cb-outbox-dlq",
+      "id": "6e67ddcde0dd48faac784548ad3e185d",
+      "producers": [],
+      "consumers": []
+    }
+  ],
+  "conclusion": {
+    "productionUsesG32Outbox": false,
+    "productionUsesOwnOutbox": true,
+    "g32D1IdBoundToProductionWorker": false,
+    "g32OutboxConsumerStillPresent": true,
+    "g32MutationPerformed": false
+  }
+}
