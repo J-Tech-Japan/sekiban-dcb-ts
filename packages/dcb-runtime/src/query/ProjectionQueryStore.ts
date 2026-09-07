@@ -5,6 +5,7 @@ import type {
   MaterializedViewListOptions,
   MaterializedViewListPage,
   MaterializedViewQueryOptions,
+  MaterializedViewOrderingQuarantine,
   MaterializedViewRow,
   MaterializedViewWaitForState,
 } from "../mv/MaterializedViewStore";
@@ -44,6 +45,8 @@ export interface MaterializedViewQueryPort {
   hasTargetReceipt?(serviceId: string, viewId: string, eventId: string, suid: string): Promise<boolean>;
   /** SDT-G24 active-generation finding; true means every composed read is unavailable. */
   hasCheckpointAheadFinding?(serviceId: string, viewId: string): Promise<boolean>;
+  /** G69 fail-closed ordering gate; only the active generation can refuse safe reads. */
+  readOrderingQuarantine?(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined>;
   /**
    * SDT-G31 active-generation wait facts.  This deliberately combines only
    * indexed point reads; its receipt is generation/definition-bound and its

@@ -14,6 +14,8 @@ import unsafeFailureMvMigration from "../migrations/mv/0004_unsafe_window_failur
 import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 import { D1EventStore, D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
@@ -154,6 +156,10 @@ function messageBatch(messages: readonly DownstreamOutboxMessage[], timestamp: n
   } as never;
 }
 
+async function settleDiagnosticReceipts(): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+}
+
 async function deliver(
   database: D1Database,
   messages: readonly DownstreamOutboxMessage[],
@@ -171,7 +177,7 @@ beforeAll(async () => {
   await database.batch(statements(database, pipelineMigration as string));
   await applyG44D1Migration(database);
   const mv = materializedViews();
-  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
+  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration]) {
     await mv.batch(statements(mv, migration as string));
   }
 });
@@ -232,12 +238,11 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       await views.initialize();
       const higherSafeRows = await views.readListPage(serviceId, "ReservationProjector", { consistency: "safe", limit: null });
       const higherSafe = higherSafeRows.rows.some((row) => String(row.sourceSuid) === higherEvent.sortableUniqueIdValue);
-      // This is the live defect witness. The current source can make a higher
-      // SUID safe while an allocator-issued lower SUID is still only held
-      // before Tag append. Keep the witness explicit: this test records the
-      // defect and the later detector must fail closed after lower admission;
-      // it must never be made green by injecting SETTLED or changing the
-      // source ordering contract in this task.
+      // This is a structural allocator witness under accelerated time: the
+      // higher candidate is directly Tag-appended while the lower candidate
+      // remains held. It is not a production incident. After lower admission,
+      // the detector must persist a generation-scoped quarantine and fail
+      // closed without changing the source ordering contract.
       expect(higherSafe, `higher SUID ${higherEvent.sortableUniqueIdValue} became safe before lower admission`).toBe(true);
 
       await Promise.all(lowerAllocatedMessages.map((message) => appendHeldTag(message)));
@@ -247,6 +252,9 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       };
       expect(lowerEvent.sortableUniqueIdValue < higherEvent.sortableUniqueIdValue).toBe(true);
 
+      // Keep the lower admission strictly after the higher pass checkpoint;
+      // equal-ms arrivals are intentionally excluded by the detector guard.
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
       const lowerArrival = Date.now();
       const lowerMessages = await pendingDeliveries(serviceId, [lowerRoom, lowerReservation], lowerArrival);
       expect(lowerMessages).toHaveLength(2);
@@ -292,13 +300,18 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       } catch (error) {
         lowerError = error instanceof Error ? error.message : String(error);
       }
-      const lowerPass = await database.prepare(
+      const lowerPasses = await database.prepare(
         `SELECT catch_up_outcome, catch_up_error, catch_up_result_json, stop_reason
            FROM serialized_dcb_safe_lane_passes
-          WHERE service_id = ? ORDER BY scheduled_at DESC, pass_id DESC LIMIT 1`,
-      ).bind(serviceId).first<Record<string, unknown>>();
-      expect(lowerPass).toMatchObject({ catch_up_outcome: "failed", stop_reason: "pass_failed" });
-      expect(lowerError).toContain("lower SUID");
+          WHERE service_id = ? ORDER BY scheduled_at ASC, pass_id ASC`,
+      ).bind(serviceId).all<Record<string, unknown>>();
+      // Queue delivery schedules its own non-blocking safe-lane kick. The
+      // explicit proof pass and that kick may race, so the latest row is not
+      // the ordering oracle. The durable quarantine/incident is the oracle;
+      // at least one pass must expose the typed fail-closed boundary when the
+      // race is serialized through the catch-up body.
+      expect(lowerPasses.results.some((row) => row.catch_up_outcome === "failed" && row.stop_reason === "pass_failed" && String(row.catch_up_error ?? "").includes("quarantined"))).toBe(true);
+      if (lowerError.length > 0) expect(lowerError).toContain("quarantined");
 
       const incident = await database.prepare(
         `SELECT classification, identity_key, event_id, incoming_event_id, suid
@@ -314,6 +327,22 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       });
       expect(String(incident?.identity_key)).toContain(`LATE_LOWER_SUID|${serviceId}`);
 
+      const quarantine = await materializedViews().prepare(
+        `SELECT service_id, view_id, generation, checkpoint_suid, late_suid, event_id,
+                classification, status
+           FROM mv_ordering_quarantines
+          WHERE service_id = ? ORDER BY generation DESC LIMIT 1`,
+      ).bind(serviceId).first<Record<string, unknown>>();
+      expect(quarantine).toMatchObject({
+        service_id: serviceId,
+        checkpoint_suid: higherEvent.sortableUniqueIdValue,
+        late_suid: lowerEvent.sortableUniqueIdValue,
+        event_id: lowerEvent.id,
+        classification: "LATE_LOWER_SUID",
+        status: "open",
+      });
+
+      await settleDiagnosticReceipts();
       const receiptRows = await database.prepare(
         `SELECT delivery_source, queue_message_id, attempt_id, receipt_status, first_arrived_at_before,
                 first_arrived_at_after, last_arrived_at_after, clock_origin
@@ -375,6 +404,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     await expect(store.recordDelivery(high, 2_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
     await expect(store.recordDelivery(lower, 10_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
     await expect(store.recordDelivery(lower, 11_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    await settleDiagnosticReceipts();
     const lag = await database.prepare(
       `SELECT estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = ?`,
     ).bind(serviceId).first<Record<string, unknown>>();
@@ -385,5 +415,109 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
          FROM serialized_dcb_g69_admission_attempts WHERE service_id = ?`,
     ).bind(serviceId).first<Record<string, unknown>>();
     expect(receipts).toMatchObject({ count: 3, first_before: 10_000, last_after: 11_000 });
+  });
+
+  it("returns core admission while the bounded diagnostic receipt is still pending", async () => {
+    const database = pipeline();
+    const serviceId = `g69-nonblocking-${crypto.randomUUID()}`;
+    const tag = `room:g69-nonblocking-${crypto.randomUUID()}`;
+    const message = g32Message({
+      serviceId,
+      tag,
+      eventId: g32EventId(`g69-nonblocking-event-${crypto.randomUUID()}`),
+      suid: g32Suid("g69-nonblocking"),
+      allocatorLineageId: `g69-nonblocking-lineage-${crypto.randomUUID()}`,
+    });
+    let releaseReceipt: (() => void) | undefined;
+    const receiptGate = new Promise<void>((resolve) => { releaseReceipt = resolve; });
+    const store = new D1EventStore(database, {
+      beforeG69AdmissionAttempt: async () => receiptGate,
+    });
+    await store.initialize();
+    const outcome = await Promise.race([
+      store.recordDelivery(message, 2_000, "queue").then(() => "core-returned" as const),
+      new Promise<"receipt-blocked">((resolve) => setTimeout(() => resolve("receipt-blocked"), 500)),
+    ]);
+    expect(outcome).toBe("core-returned");
+    releaseReceipt?.();
+    await settleDiagnosticReceipts();
+  });
+
+  it("excludes equal-ms, delayed-admission, overwrite, replay, rollback, import, and generation false positives", async () => {
+    const database = pipeline();
+    const serviceId = `g69-false-positive-${crypto.randomUUID()}`;
+    const tag = `room:g69-false-positive-${crypto.randomUUID()}`;
+    const lineage = `g69-false-positive-lineage-${crypto.randomUUID()}`;
+    const message = (label: string, ordinal: number) => g32Message({
+      serviceId,
+      tag,
+      eventId: g32EventId(`g69-false-positive-${label}-${crypto.randomUUID()}`),
+      suid: g32Suid(ordinal),
+      allocatorLineageId: lineage,
+    });
+    const earlier = message("earlier", 10);
+    const equalMs = message("equal-ms", 15);
+    const imported = message("imported", 14);
+    const delayedAdmission = message("delayed-admission", 11);
+    const rollback = message("rollback", 13);
+    const replay = message("replay", 12);
+    const checkpoint = message("checkpoint", 20);
+    const store = new D1EventStore(database);
+    await store.initialize();
+    await store.recordDelivery(earlier, 100, "queue");
+    // This event was durably admitted before the checkpoint but is replayed
+    // later. Its later LastArrivedAt must not turn it into a new witness.
+    await store.recordDelivery(delayedAdmission, 120, "queue");
+    await store.recordDelivery(checkpoint, 150, "queue");
+    // Equal-ms arrival is not strictly after the checkpoint observation.
+    await store.recordDelivery(equalMs, 150, "queue");
+    await store.recordDelivery(imported, 500, "import");
+    await store.recordDelivery(rollback, 800, "queue");
+    await store.recordDelivery(delayedAdmission, 900, "queue");
+    await database.prepare(
+      `UPDATE dcb_event_ops SET "FirstArrivedAt" = ?, "LastArrivedAt" = ?
+        WHERE "ServiceId" = ? AND "Id" = ?`,
+    ).bind(800, 700, serviceId, rollback.eventId).run();
+
+    // Equal-ms, delayed-admission/replay, imported provenance, and a
+    // rolled-back clock are all excluded before the genuine late lower row.
+    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 150)).resolves.toBeUndefined();
+
+    await store.recordDelivery(replay, 600, "queue");
+    await store.recordDelivery(replay, 900, "queue");
+
+    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 150)).resolves.toMatchObject({ eventId: replay.eventId });
+    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 300)).resolves.toMatchObject({ eventId: replay.eventId });
+    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 400)).resolves.toMatchObject({ eventId: replay.eventId });
+    // A later checkpoint observation overwrites the comparison clock and
+    // removes the old candidate; the detector never uses authored timestamps.
+    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 950)).resolves.toBeUndefined();
+    const replayOps = await database.prepare(
+      `SELECT "FirstArrivedAt" AS first_arrived_at, "LastArrivedAt" AS last_arrived_at
+         FROM dcb_event_ops WHERE "ServiceId" = ? AND "Id" = ?`,
+    ).bind(serviceId, replay.eventId).first<Record<string, unknown>>();
+    expect(replayOps).toMatchObject({ first_arrived_at: 600, last_arrived_at: 900 });
+    const views = new D1MaterializedViewStore(materializedViews());
+    await views.initialize();
+    const recoveryService = `g69-generation-${crypto.randomUUID()}`;
+    await views.createActive({ serviceId: recoveryService, viewId: "RoomProjector", definitionVersion: 1, updatedAt: 1 });
+    await views.recordOrderingQuarantine({
+      serviceId: recoveryService,
+      viewId: "RoomProjector",
+      generation: 0,
+      checkpointSuid: checkpoint.suid,
+      lateSuid: replay.suid,
+      eventId: replay.eventId,
+      classification: "LATE_LOWER_SUID",
+      observedAt: 2,
+    });
+    await views.createCandidate({ serviceId: recoveryService, viewId: "RoomProjector", generation: 1, definitionVersion: 1, updatedAt: 3 });
+    await views.promoteGeneration({ serviceId: recoveryService, viewId: "RoomProjector", candidateGeneration: 1, expectedActiveGeneration: 0, updatedAt: 4 });
+    await expect(views.readOrderingQuarantine(recoveryService, "RoomProjector")).resolves.toBeUndefined();
+    const resolved = await materializedViews().prepare(
+      `SELECT status, resolved_at FROM mv_ordering_quarantines WHERE service_id = ? AND generation = 0`,
+    ).bind(recoveryService).first<Record<string, unknown>>();
+    expect(resolved?.status).toBe("resolved");
+    expect(Number(resolved?.resolved_at)).toBe(4);
   });
 });

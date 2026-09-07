@@ -31,6 +31,8 @@ export type {
   MaterializedViewCreateInput,
   MaterializedViewIndexEntry,
   MaterializedViewInstance,
+  MaterializedViewOrderingQuarantine,
+  MaterializedViewOrderingQuarantineClassification,
   MaterializedViewPromoteInput,
   MaterializedViewQueryOptions,
   MaterializedViewRow,

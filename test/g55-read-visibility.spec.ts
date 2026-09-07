@@ -12,6 +12,8 @@ import migration0004 from "../migrations/mv/0004_unsafe_window_failure_findings.
 import migration0005 from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
@@ -84,6 +86,7 @@ describe("SDT-G55 D1 list read visibility", () => {
       migration0004,
       migration0005,
       migration0006,
+      migration0007,
     ].flatMap((migration) => migrationStatements(migration as string)));
   });
 
@@ -220,5 +223,40 @@ describe("SDT-G55 D1 list read visibility", () => {
     }), {}, { queryBacking: "d1-mv", materializedViewQueryPort: new D1MaterializedViewStore(database()) });
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({ code: "validation_error" });
+  });
+
+  it("refuses the safe public read for the active generation's ordering quarantine while leaving unsafe explicit", async () => {
+    const serviceId = `g69-quarantine-read-${crypto.randomUUID()}`;
+    const mv = new D1MaterializedViewStore(database());
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: MATERIALIZER.version, updatedAt: 10 });
+    await mv.recordOrderingQuarantine({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      checkpointSuid: g32Suid("g69-q-checkpoint"),
+      lateSuid: g32Suid("g69-q-late"),
+      eventId: "g69-quarantine-event",
+      classification: "LATE_LOWER_SUID",
+      observedAt: 11,
+    });
+    const safe = await handleSerializedQuery(queryRequest(serviceId, { PageNumber: 1, PageSize: 20 }), {}, {
+      queryBacking: "d1-mv",
+      materializedViewQueryPort: mv,
+    });
+    expect(safe.status).toBe(503);
+    await expect(safe.json()).resolves.toEqual({
+      error: "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+      code: "projection_ordering_quarantined",
+    });
+    const unsafe = await handleSerializedQuery(queryRequest(serviceId, {
+      PageNumber: 1,
+      PageSize: 20,
+      consistency: "unsafe",
+    }), {}, {
+      queryBacking: "d1-mv",
+      materializedViewQueryPort: mv,
+    });
+    expect(unsafe.status).toBe(200);
   });
 });

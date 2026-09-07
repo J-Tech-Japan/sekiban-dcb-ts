@@ -27,6 +27,8 @@ import g67SafeLaneCatchUpObservationsMigration from "../../migrations/d1/g32/001
 import g67SafeLaneFenceExpiryMigration from "../../migrations/d1/g32/0014_g67_safe_lane_fence_expiry.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import g69AdmissionAttemptMigration from "../../migrations/d1/g32/0015_g69_admission_attempts.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69Consultation003Migration from "../../migrations/d1/g32/0016_g69_consultation003.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -113,5 +115,15 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).first<{ name: string }>();
   if (g69AdmissionAttempts === null || g69AdmissionAttempts === undefined) {
     await database.batch(statements(database, g69AdmissionAttemptMigration as string));
+  }
+  const g69ConsultationColumns = await database.prepare(
+    "PRAGMA table_info(serialized_dcb_g69_admission_attempts)",
+  ).all<{ name: string }>();
+  const eventOpsColumns = await database.prepare("PRAGMA table_info(dcb_event_ops)").all<{ name: string }>();
+  if (
+    !g69ConsultationColumns.results.some((row) => row.name === "before_observed_at") ||
+    !eventOpsColumns.results.some((row) => row.name === "FirstArrivedSource")
+  ) {
+    await database.batch(statements(database, g69Consultation003Migration as string));
   }
 }

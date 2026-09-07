@@ -80,10 +80,20 @@ const mutations = [
     file: receiptFile,
     testPattern: "lag estimate",
     replacements: [{
-      from: "  await database.prepare(\n    `INSERT INTO serialized_dcb_g69_admission_attempts",
-      to: "  return;\n  await database.prepare(\n    `INSERT INTO serialized_dcb_g69_admission_attempts",
+      from: "  const insert = database.prepare(\n    `INSERT INTO serialized_dcb_g69_admission_attempts",
+      to: "  return;\n  const insert = database.prepare(\n    `INSERT INTO serialized_dcb_g69_admission_attempts",
     }],
     reason: "each recordDelivery attempt must leave one immutable receipt row",
+  },
+  {
+    name: "await-diagnostic-receipt-on-core-path",
+    file: storeFile,
+    testPattern: "returns core admission",
+    replacements: [{
+      from: "    void this.bestEffortG69AdmissionAttempt(",
+      to: "    await this.bestEffortG69AdmissionAttempt(",
+    }],
+    reason: "a stalled diagnostic observation must not hold core admission or Queue disposition",
   },
 ];
 
@@ -119,6 +129,7 @@ function runOracle(pattern) {
     cwd: root,
     encoding: "utf8",
     env: { ...process.env, CI: "1", FORCE_COLOR: "0" },
+    timeout: 3_000,
   });
   return {
     command: [process.execPath, ...args].join(" "),

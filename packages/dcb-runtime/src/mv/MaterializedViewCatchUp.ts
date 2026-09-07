@@ -187,7 +187,7 @@ export class MaterializedViewCatchUpRuntime {
         };
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
-      await this.assertStrictOrder(serviceId, materializer.id, instance.lastSuid, instance.updatedAt, sourceEvents);
+      await this.assertStrictOrder(serviceId, materializer.id, generation, instance.lastSuid, instance.updatedAt, sourceEvents);
       let current = instance;
       let advancedSourceEvents = 0;
       let appliedEvents = 0;
@@ -294,6 +294,7 @@ export class MaterializedViewCatchUpRuntime {
   private async assertStrictOrder(
     serviceId: string,
     viewId: string,
+    generation: number,
     priorSuid: string,
     checkpointUpdatedAt: number,
     events: readonly StoredEvent[],
@@ -311,10 +312,29 @@ export class MaterializedViewCatchUpRuntime {
           observedAt: lateLower.lastArrivedAt,
         };
         await this.source.appendDeliveryIncident(incident);
+        await this.materializedViews.recordOrderingQuarantine({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: priorSuid,
+          lateSuid: lateLower.suid,
+          eventId: lateLower.eventId,
+          classification: "LATE_LOWER_SUID",
+          observedAt: lateLower.lastArrivedAt,
+        });
+        console.error("SDT-G69_ORDERING_QUARANTINE", JSON.stringify({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: priorSuid,
+          lateSuid: lateLower.suid,
+          eventId: lateLower.eventId,
+          classification: "LATE_LOWER_SUID",
+        }));
         throw new MaterializedViewStoreError(
           "apply",
-          "MV_STORE_OPERATION_FAILED",
-          "Materialized-view source admitted a lower SUID after the projection checkpoint",
+          "MV_ORDERING_QUARANTINED",
+          "Materialized-view safe lane is quarantined for an ordering violation; rebuild and promote a generation",
         );
       }
     }
@@ -331,7 +351,30 @@ export class MaterializedViewCatchUpRuntime {
           observedAt: event.lastArrivedAt,
         };
         await this.source.appendDeliveryIncident(incident);
-        throw new MaterializedViewStoreError("apply", "MV_STORE_OPERATION_FAILED", "Materialized-view source was not strictly SUID ordered");
+        await this.materializedViews.recordOrderingQuarantine({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: previous,
+          lateSuid: event.suid,
+          eventId: event.eventId,
+          classification: "ORDER_VIOLATION",
+          observedAt: event.lastArrivedAt,
+        });
+        console.error("SDT-G69_ORDERING_QUARANTINE", JSON.stringify({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: previous,
+          lateSuid: event.suid,
+          eventId: event.eventId,
+          classification: "ORDER_VIOLATION",
+        }));
+        throw new MaterializedViewStoreError(
+          "apply",
+          "MV_ORDERING_QUARANTINED",
+          "Materialized-view safe lane is quarantined for an ordering violation; rebuild and promote a generation",
+        );
       }
       previous = event.suid;
     }

@@ -15,6 +15,8 @@ import failureMigration from "../migrations/mv/0004_unsafe_window_failure_findin
 import waitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import waitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 // @ts-expect-error Raw source fixture for the no-full-scan mutation oracle.
 import queryWorkerSource from "../packages/dcb-runtime/src/http/SerializedQueryWorker.ts?raw";
 import {
@@ -435,7 +437,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
   beforeAll(async () => {
     await d1().batch(statements(d1(), g32Migration as string));
     await applyG44D1Migration(d1());
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration, orderingQuarantineMigration]) {
       await mvDatabase().batch(statements(mvDatabase(), migration as string));
     }
   });

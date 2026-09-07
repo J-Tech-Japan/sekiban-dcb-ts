@@ -433,6 +433,7 @@ export async function handleSerializedQuery(
 
   try {
     const backing = options.queryBacking ?? "memory";
+    const viewId = definition.materializedViewId ?? definition.tagProjector;
     let requestStoreValue: PipelineStore | undefined;
     let waitStore: QueryProjectionStore | undefined = options.store;
     let selection: QueryBackingSelection;
@@ -446,7 +447,16 @@ export async function handleSerializedQuery(
       d1MaterializedView = materializedView;
       await materializedView.initialize?.();
       selection = selectQueryBacking({ backing, materializedView });
-      if (await materializedView.hasCheckpointAheadFinding?.(serviceId, definition.materializedViewId ?? definition.tagProjector)) {
+      const orderingQuarantine = await materializedView.readOrderingQuarantine?.(serviceId, viewId);
+      const safeRead = pagination.value?.consistency !== "unsafe";
+      if (safeRead && orderingQuarantine !== undefined) {
+        return error(
+          503,
+          "projection_ordering_quarantined",
+          "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+        );
+      }
+      if (await materializedView.hasCheckpointAheadFinding?.(serviceId, viewId)) {
         return error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable");
       }
       // Waiting still needs the durable source/checkpoint facts. Only create
@@ -504,7 +514,6 @@ export async function handleSerializedQuery(
       }
     }
     const requestedPage = pagination.value;
-    const viewId = definition.materializedViewId ?? definition.tagProjector;
     if (requestedPage !== undefined && selection.backing === "d1-mv" && selection.store.readListPage !== undefined) {
       const page = await selection.store.readListPage(serviceId, viewId, {
         limit: requestedPage.pageSize,

@@ -33,6 +33,12 @@ export interface G69AdmissionAttemptReceipt {
   readonly lastArrivedAtBefore: number | null;
   readonly firstArrivedAtAfter: number | null;
   readonly lastArrivedAtAfter: number | null;
+  /** Timestamp of the diagnostic before-read, if it completed before core. */
+  readonly beforeObservedAt: number | null;
+  /** Timestamp captured immediately before the diagnostic after-read. */
+  readonly afterObservedAt: number | null;
+  /** Explicitly distinguishes a usable before-core observation from a late/missing read. */
+  readonly observationConsistency: "before-core" | "before-core-absent" | "before-read-after-core" | "unverified";
   readonly status: G69AdmissionAttemptStatus;
   readonly retryReason: string | null;
 }
@@ -42,15 +48,16 @@ export async function appendG69AdmissionAttempt(
   database: D1Database,
   receipt: G69AdmissionAttemptReceipt,
 ): Promise<void> {
-  await database.prepare(
+  const insert = database.prepare(
     `INSERT INTO serialized_dcb_g69_admission_attempts
        (service_id, event_id, suid, partition_tag, delivery_source,
         queue_message_id, attempt_id, allocator_lineage_id, obligation_sequence,
         enqueued_at, observed_at, arrived_at,
         first_arrived_at_before, last_arrived_at_before,
         first_arrived_at_after, last_arrived_at_after,
+        before_observed_at, after_observed_at, observation_consistency,
         receipt_status, retry_reason, clock_origin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     receipt.serviceId,
     receipt.eventId,
@@ -68,8 +75,23 @@ export async function appendG69AdmissionAttempt(
     receipt.lastArrivedAtBefore,
     receipt.firstArrivedAtAfter,
     receipt.lastArrivedAtAfter,
+    receipt.beforeObservedAt,
+    receipt.afterObservedAt,
+    receipt.observationConsistency,
     receipt.status,
     receipt.retryReason,
     "Date.now epoch ms",
-  ).run();
+  );
+  // Keep diagnostic history bounded per service. The receipt is deliberately
+  // outside core admission, so inability to retain it never changes Queue
+  // disposition or the public commit/delivery result.
+  const trim = database.prepare(
+    `DELETE FROM serialized_dcb_g69_admission_attempts
+      WHERE service_id = ?
+        AND sequence NOT IN (
+          SELECT sequence FROM serialized_dcb_g69_admission_attempts
+           WHERE service_id = ? ORDER BY sequence DESC LIMIT 512
+        )`,
+  ).bind(receipt.serviceId, receipt.serviceId);
+  await database.batch([insert, trim]);
 }

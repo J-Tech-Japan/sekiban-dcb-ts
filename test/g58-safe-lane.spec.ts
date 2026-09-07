@@ -14,6 +14,8 @@ import mvMigration0004 from "../migrations/mv/0004_unsafe_window_failure_finding
 import mvMigration0005 from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import mvMigration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import mvMigration0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1EventStore, D1MaterializedViewStore, safeWindowMs } from "../packages/dcb-runtime/src/d1";
 import { decayedLagEstimateMs, PUBLISHED_SAFE_WINDOW_MS } from "../packages/dcb-runtime/src/safeWindow";
@@ -108,6 +110,7 @@ beforeAll(async () => {
     mvMigration0004,
     mvMigration0005,
     mvMigration0006,
+    mvMigration0007,
   ].flatMap((migration) => statements(materializedViews(), migration as string)));
 });
 

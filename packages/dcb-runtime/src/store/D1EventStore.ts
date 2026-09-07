@@ -1,5 +1,5 @@
 import { decayedLagEstimateMs } from "../safeWindow";
-import { appendG69AdmissionAttempt, type G69AdmissionAttemptStatus } from "../diagnostics/G69AdmissionAttempt";
+import { appendG69AdmissionAttempt, type G69AdmissionAttemptReceipt, type G69AdmissionAttemptStatus } from "../diagnostics/G69AdmissionAttempt";
 import type { WaitForTargetLookup, WaitForTargetSourcePort } from "../query/ProjectionQueryStore";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
@@ -50,6 +50,11 @@ export interface D1StoreOptions {
     statement: D1PreparedStatement,
     database: D1Database,
   ) => D1PreparedStatement;
+  /**
+   * Test-only delay seam for proving G69 evidence never gates core admission.
+   * Production composition leaves this unset.
+   */
+  readonly beforeG69AdmissionAttempt?: () => void | Promise<void>;
 }
 
 /** A contradictory EventId identity is a typed fail-closed outcome. */
@@ -299,18 +304,35 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
 
   async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
     this.ready();
-    const before = await this.eventArrivalOps(message.serviceId, message.eventId).catch(() => undefined);
+    // Start the diagnostic pre-read concurrently, but never await it on the
+    // core admission path.  If it finishes after core admission, the receipt
+    // marks the before-state unverified instead of claiming allocation closure.
+    const beforePromise = this.eventArrivalOps(message.serviceId, message.eventId)
+      .then((values) => values === undefined ? undefined : { values, observedAt: Date.now() })
+      .catch(() => undefined);
+    let result: DeliveryOutcome | undefined;
+    let failure: { readonly error: unknown } | undefined;
     try {
-      const result = await this.recordDeliveryCore(message, arrivedAt, deliverySource);
-      const status: G69AdmissionAttemptStatus = result.outcome === "stored"
-        ? before === undefined ? "stored" : "duplicate"
-        : result.outcome;
-      await this.bestEffortG69AdmissionAttempt(message, arrivedAt, deliverySource, before, status, null);
-      return result;
+      result = await this.recordDeliveryCore(message, arrivedAt, deliverySource);
     } catch (error) {
-      await this.bestEffortG69AdmissionAttempt(message, arrivedAt, deliverySource, before, "failed", errorText(error));
-      throw error;
+      failure = { error };
     }
+    const coreCompletedAt = Date.now();
+    const status: G69AdmissionAttemptStatus = failure === undefined
+      ? result!.outcome === "stored" ? "stored" : result!.outcome
+      : "failed";
+    const retryReason = failure === undefined ? null : errorText(failure.error);
+    void this.bestEffortG69AdmissionAttempt(
+      message,
+      arrivedAt,
+      deliverySource,
+      beforePromise,
+      coreCompletedAt,
+      status,
+      retryReason,
+    );
+    if (failure !== undefined) throw failure.error;
+    return result!;
   }
 
   private async recordDeliveryCore(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
@@ -562,8 +584,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       ),
       this.database.prepare(
         `INSERT INTO dcb_event_ops
-           ("ServiceId", "Id", "AttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs")
-         SELECT ?, ?, ?, ?, ?, ?, ?
+           ("ServiceId", "Id", "AttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs", "FirstArrivedSource", "LastArrivedSource")
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (
             SELECT 1 FROM dcb_events
              WHERE "ServiceId" = ? AND "Id" = ?
@@ -571,9 +593,14 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
                AND "Payload" = ? AND "EventType" = ? AND "Tags" = ?
           )
          ON CONFLICT ("ServiceId", "Id") DO UPDATE
-           SET "FirstArrivedAt" = MIN(dcb_event_ops."FirstArrivedAt", excluded."FirstArrivedAt"),
+           SET "FirstArrivedAt" = dcb_event_ops."FirstArrivedAt",
                "LastArrivedAt" = MAX(dcb_event_ops."LastArrivedAt", excluded."LastArrivedAt"),
-               "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs")`,
+               "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs"),
+               "FirstArrivedSource" = dcb_event_ops."FirstArrivedSource",
+               "LastArrivedSource" = CASE
+                 WHEN excluded."LastArrivedAt" > dcb_event_ops."LastArrivedAt" THEN excluded."LastArrivedSource"
+                 ELSE dcb_event_ops."LastArrivedSource"
+               END`,
       ).bind(
         message.serviceId,
         message.eventId,
@@ -582,6 +609,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         arrivedAt,
         arrivedAt,
         lagMs,
+        deliverySource,
+        deliverySource,
         message.serviceId,
         message.eventId,
         message.suid,
@@ -802,6 +831,9 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         WHERE e."ServiceId" = ?
           AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
           AND o."FirstArrivedAt" > ?
+          AND o."FirstArrivedAt" <= o."LastArrivedAt"
+          AND o."FirstArrivedAt" >= 0
+          AND o."FirstArrivedSource" IN ('queue', 'fast')
         ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC
         LIMIT 1`,
     ).bind(serviceId, checkpointSuid, checkpointUpdatedAt).first<D1Row>();
@@ -1271,11 +1303,26 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     message: DownstreamOutboxMessage,
     arrivedAt: number,
     deliverySource: DeliverySource,
-    before: { readonly firstArrivedAt: number; readonly lastArrivedAt: number } | undefined,
+    beforePromise: Promise<{
+      readonly values: { readonly firstArrivedAt: number; readonly lastArrivedAt: number };
+      readonly observedAt: number;
+    } | undefined>,
+    coreCompletedAt: number,
     status: G69AdmissionAttemptStatus,
     retryReason: string | null,
   ): Promise<void> {
     try {
+      await this.options.beforeG69AdmissionAttempt?.();
+      const beforeObservation = await beforePromise;
+      const before = beforeObservation !== undefined && beforeObservation.observedAt <= coreCompletedAt
+        ? beforeObservation.values
+        : undefined;
+      const observationConsistency: G69AdmissionAttemptReceipt["observationConsistency"] = beforeObservation === undefined
+        ? "before-core-absent"
+        : before === undefined
+          ? "before-read-after-core"
+          : "before-core";
+      const afterObservedAt = Date.now();
       const after = await this.eventArrivalOps(message.serviceId, message.eventId);
       await appendG69AdmissionAttempt(this.database, {
         serviceId: message.serviceId,
@@ -1288,12 +1335,15 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         allocatorLineageId: message.allocatorLineageId,
         obligationSequence: message.completeness.obligationSequence,
         enqueuedAt: message.enqueuedAt,
-        observedAt: Date.now(),
+        observedAt: afterObservedAt,
         arrivedAt,
         firstArrivedAtBefore: before?.firstArrivedAt ?? null,
         lastArrivedAtBefore: before?.lastArrivedAt ?? null,
         firstArrivedAtAfter: after?.firstArrivedAt ?? null,
         lastArrivedAtAfter: after?.lastArrivedAt ?? null,
+        beforeObservedAt: beforeObservation?.observedAt ?? null,
+        afterObservedAt,
+        observationConsistency,
         status,
         retryReason,
       });

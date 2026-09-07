@@ -25,6 +25,7 @@ export type MaterializedViewStoreErrorCode =
   | "MV_GENERATION_INVALID"
   | "MV_PATCH_ROW_MISSING"
   | "MV_VALUE_INVALID"
+  | "MV_ORDERING_QUARANTINED"
   | "MV_STORE_OPERATION_FAILED";
 
 export class MaterializedViewStoreError extends Error {
@@ -173,6 +174,21 @@ export interface MaterializedViewWaitForState {
   readonly poison: boolean;
 }
 
+export type MaterializedViewOrderingQuarantineClassification = "LATE_LOWER_SUID" | "ORDER_VIOLATION";
+
+export interface MaterializedViewOrderingQuarantine {
+  readonly serviceId: string;
+  readonly viewId: string;
+  readonly generation: number;
+  readonly checkpointSuid: string;
+  readonly lateSuid: string;
+  readonly eventId: string;
+  readonly classification: MaterializedViewOrderingQuarantineClassification;
+  readonly status: "open" | "resolved";
+  readonly observedAt: number;
+  readonly resolvedAt: number | null;
+}
+
 function asString(value: unknown, name: string): string {
   if (typeof value !== "string") throw new Error(`MV ${name} was not a string`);
   return value;
@@ -266,6 +282,7 @@ export class D1MaterializedViewStore {
     await this.database.prepare("SELECT 1 FROM mv_instances LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_atomic_guards LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_checkpoint_ahead_findings LIMIT 1").all();
+    await this.database.prepare("SELECT 1 FROM mv_ordering_quarantines LIMIT 1").all();
     this.initialized = true;
   }
 
@@ -715,6 +732,84 @@ export class D1MaterializedViewStore {
     return result?.present === 1;
   }
 
+  /** Open quarantine is keyed to the active generation; old generations are not a public read gate. */
+  async readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined> {
+    this.ready("initialize");
+    const row = await this.database.prepare(
+      `SELECT quarantine.service_id, quarantine.view_id, quarantine.generation,
+              quarantine.checkpoint_suid, quarantine.late_suid, quarantine.event_id,
+              quarantine.classification, quarantine.status, quarantine.observed_at,
+              quarantine.resolved_at
+         FROM mv_ordering_quarantines quarantine
+         JOIN mv_active_generations active
+           ON active.service_id = quarantine.service_id
+          AND active.view_id = quarantine.view_id
+          AND active.generation = quarantine.generation
+        WHERE quarantine.service_id = ? AND quarantine.view_id = ? AND quarantine.status = 'open'
+        LIMIT 1`,
+    ).bind(serviceId, viewId).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    const classification = asString(row.classification, "ordering_quarantine.classification");
+    if (classification !== "LATE_LOWER_SUID" && classification !== "ORDER_VIOLATION") {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view ordering quarantine classification was invalid");
+    }
+    const status = asString(row.status, "ordering_quarantine.status");
+    if (status !== "open" && status !== "resolved") {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view ordering quarantine status was invalid");
+    }
+    return {
+      serviceId: asString(row.service_id, "ordering_quarantine.service_id"),
+      viewId: asString(row.view_id, "ordering_quarantine.view_id"),
+      generation: asInteger(row.generation, "ordering_quarantine.generation"),
+      checkpointSuid: asString(row.checkpoint_suid, "ordering_quarantine.checkpoint_suid"),
+      lateSuid: asString(row.late_suid, "ordering_quarantine.late_suid"),
+      eventId: asString(row.event_id, "ordering_quarantine.event_id"),
+      classification,
+      status,
+      observedAt: asInteger(row.observed_at, "ordering_quarantine.observed_at"),
+      resolvedAt: row.resolved_at === null || row.resolved_at === undefined
+        ? null
+        : asInteger(row.resolved_at, "ordering_quarantine.resolved_at"),
+    };
+  }
+
+  /** Persist the detector result before stopping the safe pass. Repeated observations are idempotent. */
+  async recordOrderingQuarantine(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly generation: number;
+    readonly checkpointSuid: string;
+    readonly lateSuid: string;
+    readonly eventId: string;
+    readonly classification: MaterializedViewOrderingQuarantineClassification;
+    readonly observedAt: number;
+  }): Promise<void> {
+    this.ready("apply");
+    this.validateGeneration(input.generation, "apply");
+    await this.database.prepare(
+      `INSERT INTO mv_ordering_quarantines
+         (service_id, view_id, generation, checkpoint_suid, late_suid, event_id, classification, status, observed_at, resolved_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL)
+       ON CONFLICT (service_id, view_id, generation) DO UPDATE SET
+         checkpoint_suid = excluded.checkpoint_suid,
+         late_suid = excluded.late_suid,
+         event_id = excluded.event_id,
+         classification = excluded.classification,
+         status = 'open',
+         observed_at = MIN(mv_ordering_quarantines.observed_at, excluded.observed_at),
+         resolved_at = NULL`,
+    ).bind(
+      input.serviceId,
+      input.viewId,
+      input.generation,
+      input.checkpointSuid,
+      input.lateSuid,
+      input.eventId,
+      input.classification,
+      input.observedAt,
+    ).run();
+  }
+
   /**
    * Apply rows/index entries and advance one generation checkpoint atomically.
    * The guard row intentionally uses a NOT NULL failure to abort a stale CAS.
@@ -954,6 +1049,15 @@ export class D1MaterializedViewStore {
          VALUES (?, ?, ?, ?)
          ON CONFLICT (service_id, view_id) DO UPDATE SET generation = excluded.generation, updated_at = excluded.updated_at`,
       ).bind(input.serviceId, input.viewId, input.candidateGeneration, input.updatedAt),
+      // A successful rebuild/promotion is the explicit recovery action for an
+      // open ordering quarantine. The active-generation pointer changes in the
+      // same batch, so a safe read never observes a cleared gate on the old
+      // generation with the new generation still unproven.
+      this.database.prepare(
+        `UPDATE mv_ordering_quarantines
+            SET status = 'resolved', resolved_at = ?
+          WHERE service_id = ? AND view_id = ? AND status = 'open' AND generation <> ?`,
+      ).bind(input.updatedAt, input.serviceId, input.viewId, input.candidateGeneration),
       this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id = ?").bind(operation),
     ];
     try {
@@ -1028,6 +1132,8 @@ export type MaterializedViewStore = Pick<
   | "queryRowsWithTotal"
   | "readListPage"
   | "hasTargetReceipt"
+  | "readOrderingQuarantine"
+  | "recordOrderingQuarantine"
   | "readWaitForState"
   | "recordCheckpointAhead"
   | "hasCheckpointAheadFinding"
