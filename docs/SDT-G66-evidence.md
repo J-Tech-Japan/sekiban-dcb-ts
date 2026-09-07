@@ -412,3 +412,84 @@ records the exact sample-9 commit/head and unsafe pass, sample-10 cancellation
 of the same reservation, and the distinction between the later safe/read head
 and the censored reserved-state predicate. It supersedes any wording above
 that describes sample 9 as simply failing to reach a committed read head.
+
+## W164 corrected safe-predicate proof
+
+W164 repaired the deployed-e2e harness only. A cohort sample's safe predicate
+now names a terminal state when a later sample mutates the same object. The
+continuous cohort therefore keeps the command target (`reserved`) for sample
+9, but records its safe predicate as the terminal `cancelled` state and points
+to sample 10 as the known mutation. The guard is fail-closed if that predicate
+is left at `reserved`, loses the terminal mutation ordinal, or otherwise
+permits a later sample mutation; the self-test reports
+`laterSafePredicateMutationRed=true`. A second guard correction distinguishes
+the DCB tag-write version from the projector tag-state applied version. It
+requires both positive versions and a tag-state last SUID at or beyond the
+committed event, without incorrectly requiring the projector version to equal
+the shared-tag write version; `staleTagStateRed=true` remains red.
+
+The exact deployed Worker source was
+`8042cfcbc7cd5ea207473e62d12aa478b2afc990`, version
+`f9b2b714-53e5-4b8c-bda9-6c4d35c6389e`, annotation
+`SDT-G66 W164 safe-predicate repair 8042cfc`, at 100% traffic. The final pushed
+head is `44bef7f0145e7bd7f21e646c7b4b3a5b4a07db20`; its post-cohort changes
+are harness/guard evidence semantics only and were not redeployed.
+
+The one authorized C-0 reset receipt is
+`.artifacts/sdt-g66-w164-production-c0-reset.json`: all 105 existing
+pipeline/MV count/delete/count invocations completed with clean post-counts.
+Every child Wrangler process recorded
+`CLOUDFLARE_API_TOKEN`, `CF_API_TOKEN`, `CLOUDFLARE_API_KEY`,
+`CF_API_KEY`, and `WRANGLER_API_TOKEN` as `UNSET`; no token value was printed,
+persisted, or used with `--keep-vars`. G32 worker/D1/outbox/DLQ resources were
+retained and untouched. The lossless deployed identity, reset, cohort and
+guard receipts are `.artifacts/sdt-g66-w164-deployed-version.json`,
+`.artifacts/sdt-g66-w164-production-c0-reset.json`,
+`.artifacts/sdt-g66-w164-production-corrected.json`, and
+`.artifacts/sdt-g66-w164-production-guard.json`.
+
+The corrected cohort was cold-first, continuous and paced at 10,000 ms; the
+actual command-start spacings were 11,965–12,959 ms. It issued ten accepted
+commands, with the first tag read-through and later commands snapshot-only.
+All ten unsafe observations and all ten terminal-state safe observations
+passed. The runner's embedded summary retained the old tag-state comparison
+and therefore says `tagStateAndQueryReads=false`; the post-cohort corrected
+guard applied the distinct projector/tag-write version semantics to the same
+lossless receipt and passed every acceptance boolean. No new cohort was run.
+
+| sample | command | safe predicate | response ms | unsafe ms | safe ms | admission |
+| ---: | --- | --- | ---: | ---: | ---: | --- |
+| 1 | create-room | created | 2,957 | 2,804 | 33,680 | admitted |
+| 2 | reserve-room | reserved | 2,447 | 2,365 | 50,786 | unknown |
+| 3 | reserve-room | reserved | 2,186 | 2,446 | 42,916 | unknown |
+| 4 | reserve-room | reserved | 2,237 | 2,303 | 49,473 | unknown |
+| 5 | reserve-room | reserved | 1,909 | 2,344 | 36,699 | unknown |
+| 6 | reserve-room | reserved | 1,908 | 2,409 | 46,132 | unknown |
+| 7 | reserve-room | reserved | 1,999 | 2,366 | 45,355 | unknown |
+| 8 | reserve-room | reserved | 1,802 | 2,390 | 32,994 | unknown |
+| 9 | reserve-room | cancelled at sample 10 | 2,036 | 2,336 | 55,942 | admitted |
+| 10 | cancel-reservation | cancelled | 1,344 | 4,650 | 46,891 | admitted |
+
+Response p50/p95 was `1,999/2,957 ms`; unsafe response-relative p50/p95 was
+`2,366/4,650 ms` with zero unsafe-bound misses; terminal-state safe
+response-relative p50/p95 was `45,355/55,942 ms` with zero safe-bound misses.
+Thus the corrected run is 10/10 accepted, 10/10 unsafe within 5,000 ms and
+10/10 safe within 180,000 ms. There were 3 admitted and 7 unknown admission
+headers. Sample 9's predicate is explicitly the surviving terminal state and
+is not a retroactive claim about the earlier reserved state.
+
+Local focused evidence after the cohort: both deployment/e2e self-tests
+passed; the corrected receipt guard passed with all of
+`allAccepted`, `allUnsafeWithinBound`, `allSafeWithinBound`,
+`continuousPacedWrites`, `tagStateAndQueryReads`,
+`coverageAndFrontierObserved`, `observedResponseRelativeReads`, and
+`finalQueryConsistency`; Vitest `test/g66-e2e.spec.ts` passed 7/7; typecheck,
+targeted ESLint and `git diff --check` passed. The only local environment
+notice was Vitest's existing non-empty Hyperdrive local-connection-string
+warning; it did not change the result.
+
+This corrected 10/10 result closes the previously outstanding AC2 measurement
+for design/operator purposes and supports changing the PR relationship for
+`#128` from phase-one `References #128` to `Closes #128` on merge. The W162 /
+W163 phase-one 9/10 result and its exact sample-9 attribution remain preserved
+as historical evidence; W164 does not rewrite or improve that old receipt.
