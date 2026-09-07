@@ -70,7 +70,51 @@ NOSENTRY environment notes are retained in
 
 ## Lifecycle handoff
 
-Ready-for-review PR creation is the next step after this evidence commit. Exact
-hosted CI must be green before rereview. No review, merge, deployment, resource
-cleanup, production operation, or first-arrival-fence implementation is part of
-this checkpoint.
+Ready-for-review PR `#136` is open at
+<https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/136> on the pushed W165
+head `a9ae7c6ce26f3e57cbceb357b133cf5c4d00468b`. The PR body uses
+`References #133`, not `Closes #133`, so issue #133 remains open with AC4/AC5
+outstanding. The canonical result-summary completed with `pr-created`; the
+canonical issue `worker complete --outcome pr-created --pr 136` was refused by
+the installed lifecycle policy because it requires a closing reference. That
+requirement conflicts with the task's explicit open-issue boundary, so the PR
+body was not changed to add `Closes #133`. Exact hosted CI must be green before
+rereview. No review, merge, deployment, resource cleanup, production
+operation, or first-arrival-fence implementation is part of this checkpoint.
+
+## Exact-head CI classification and bounded repair
+
+The first exact-head workflow `34162548114` reproduced one G69-caused failure:
+
+- job: `ci-local-e2e`,
+  <https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34162548114/job/101867150488>
+- step: `Run required Miniflare D1 contract and fault lane`
+- command: `npm run test:d1`
+- assertion: `test/d1-pipeline.spec.ts:277`, the G32 logical-event schema
+  inventory expected 21 tables but received 22;
+- concrete difference: the G69 migration correctly created
+  `serialized_dcb_g69_admission_attempts`, while the pre-G69 expected table
+  list omitted it.
+
+This is a test-contract omission caused by the G69 migration, not a runtime
+ordering change or a reason to remove the migration. The bounded repair adds
+that table to the sorted schema expectation. No production path, G44/G62
+semantics, first-arrival fence, SafeWindow, retry/drain behavior, deployment,
+or G32 resource was changed.
+
+Post-repair local evidence:
+
+- `../node_modules/.bin/vitest run --config vitest.config.ts
+  test/d1-pipeline.spec.ts --reporter=dot`: 12/12 passed;
+- `npm run test:g69`: baseline passed and all three safety mutants exited 1;
+- `npm run lint`: passed;
+- `npm run build --workspace @sekiban/dcb-runtime`: passed;
+- the wrapper `npm run test:d1` remains an environment exception because its
+  preceding `build:packages` resolves the stale parent package surface
+  (`SnapshotReader.head`, `ExecuteCommandResult`, and already-landed G60/G65/G67
+  exports/options); it did not reach the test after the repair. This is recorded
+  separately and is not called green.
+
+The original exact-head run remains non-green until the repaired push receives a
+new exact-head workflow result. The PR body continues to say `References #133`
+and leaves issue #133 open; AC4/AC5 remain outstanding.

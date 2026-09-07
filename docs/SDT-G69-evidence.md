@@ -77,3 +77,14 @@ rereview.
 The full red/green receipt is retained at
 `.artifacts/sdt-g69-ordering-red-green.json`; W164's complete proof and lane
 record remain in `sdt-g69-local-ordering-proof-w164.md`.
+
+## Exact-head schema-contract repair
+
+The first exact-head PR workflow (`34162548114`, `ci-local-e2e` job
+`101867150488`) exposed a G69-caused test-contract omission: the D1 schema
+inventory expected the pre-G69 table set while migration `0015` correctly
+created `serialized_dcb_g69_admission_attempts`. The repair adds the G69 table
+to that expected inventory only. Direct Vitest execution passes 12/12; the
+`npm run test:d1` wrapper remains separately recorded as blocked before its
+test by the known stale-parent package-resolution errors. No runtime behavior
+or safety boundary changed.
