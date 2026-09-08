@@ -7,6 +7,7 @@ Status: implementation checkpoint ready for review; npm publish not performed.
 - Issue: `J-Tech-Japan/sekiban-dcb-ts#124`.
 - Branch: `claude/sdt-g59-npm-010-release-prep-w172`.
 - Base: `origin/main` at `5b643ef`.
+- Implementation source commit: `5294f6666accfc0ba26e81e17562ba1c37f0bf4f`.
 - Canonical claim command from this child cwd:
   `intent-cli worker claim --repo J-Tech-Japan/sekiban-dcb-ts --kind issue --number 124 --github-only --write --format json`.
 - Claim result: `proceed=true`, `applied=true`, `errors=[]`, and
@@ -55,6 +56,6 @@ The tag workflow repeats the gates and uses that command only when operator
 credentials/configuration exists; otherwise it executes the documented
 `npm publish --dry-run --provenance --access public` no-publish path.
 
-The final source/evidence SHA will be recorded here after the scoped commit is
-created. No Cloudflare, deployment, registry, credential, or resource action
-was performed.
+The evidence-only follow-up commit containing this finalized handoff is the
+branch tip reported with the canonical completion report. No Cloudflare,
+deployment, registry, credential, or resource action was performed.

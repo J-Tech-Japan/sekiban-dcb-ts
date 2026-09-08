@@ -6,8 +6,8 @@ This checkpoint prepares `@sekiban/dcb-domain` `0.1.0` for an operator-owned
 release. It does not publish to npm and does not handle or create npm
 credentials. The implementation branch is
 `claude/sdt-g59-npm-010-release-prep-w172`, based on `origin/main` at
-`5b643ef` (the exact source and evidence checkpoint SHA is recorded in the
-handoff artifact after commit).
+`5b643ef`. The implementation source commit is
+`5294f6666accfc0ba26e81e17562ba1c37f0bf4f`.
 
 ## Manifest and package boundary
 
