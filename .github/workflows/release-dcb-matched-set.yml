@@ -58,10 +58,20 @@ jobs:
             publish_args+=(--provenance)
           else
             # npm may auto-enable provenance in GitHub Actions even when the
-            # flag is omitted. Private source repositories are rejected by
-            # the npm registry for that bundle, so disable that implicit
-            # behavior while retaining the plain public-access command.
+            # flag is omitted. The package manifests also carry the public
+            # release policy, so remove that publish-only provenance field
+            # from this isolated checkout before the private publish. Private
+            # source repositories are rejected by the registry for that
+            # bundle; the public branch keeps the field and explicit flag.
             publish_env+=(NPM_CONFIG_PROVENANCE=false)
+            for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
+              echo "private publish metadata: remove publishConfig.provenance from ${package}"
+              (
+                cd "${package}"
+                npm pkg delete publishConfig.provenance
+                [[ "$(npm pkg get publishConfig.provenance --json)" == "{}" ]]
+              )
+            done
           fi
           if [[ "${NPM_TRUSTED_PUBLISHING}" == "true" || -n "${NODE_AUTH_TOKEN}" ]]; then
             for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do

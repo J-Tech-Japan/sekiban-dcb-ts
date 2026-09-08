@@ -4,10 +4,12 @@ This document records the release-preparation proof for issue #120. The original
 W174/W176 source checkpoints did not publish packages, create credentials, or
 create a tag. W177 repairs the tag workflow so an operator can publish the
 matched set safely from this private repository; the workflow still changes no
-runtime API behavior. For a private repository, the workflow both omits the
-explicit `--provenance` flag and sets `NPM_CONFIG_PROVENANCE=false` because npm
-can otherwise auto-enable provenance inside GitHub Actions. The matched release
-set is `@sekiban/dcb-core`,
+runtime API behavior. For a private repository, the workflow omits the explicit
+`--provenance` flag, sets `NPM_CONFIG_PROVENANCE=false`, and removes the
+manifest-level `publishConfig.provenance` field from the isolated checkout
+before authenticated publication. npm otherwise retains that static setting
+even when the command-line flag is omitted. The matched release set is
+`@sekiban/dcb-core`,
 `@sekiban/dcb-domain`, and `@sekiban/dcb-client`, all at `0.1.0`.
 
 ## Acceptance map
@@ -100,14 +102,17 @@ node scripts/dcb-matched-set-publish-dry-run.mjs --self-test       PASS
 public:  npm publish --dry-run --provenance --access public
 private: npm publish --dry-run --access public
 private environment: NPM_CONFIG_PROVENANCE=false
+private manifest preparation: npm pkg delete publishConfig.provenance
 private provenance mutation: rejected (private publish must omit provenance)
 ```
 
 The private branch retains `--access public`; it omits the unsupported
-provenance flag and explicitly sets `NPM_CONFIG_PROVENANCE=false` so npm cannot
-silently add a provenance bundle in GitHub Actions. The public branch retains
-both public access and provenance. The self-test covers both the command and
-the private environment policy.
+provenance flag, explicitly sets `NPM_CONFIG_PROVENANCE=false`, and runs
+`npm pkg delete publishConfig.provenance` for core, domain, and client in the
+isolated checkout immediately before publication. The workflow verifies that
+the field is absent before continuing. The public branch retains both public
+access and provenance. The self-test covers both command branches, the public
+provenance red mutation, and the workflow's private metadata cleanup.
 The workflow obtains `.private` from the live GitHub repository API before the
 matched-set gates and exports the result as `REPO_IS_PRIVATE`; it fails closed
 on any response other than the literal `true` or `false`. The publish step
@@ -189,7 +194,27 @@ npm error 422 Unprocessable Entity - PUT https://registry.npmjs.org/@sekiban%2fd
 The run exited before domain/client publication and no package was published.
 The follow-up repair sets `NPM_CONFIG_PROVENANCE=false` only for the private
 authenticated branch while keeping the public branch's explicit
-`--provenance` behavior unchanged.
+`--provenance` behavior unchanged; the current repair additionally removes the
+static manifest provenance setting before the private publish because the
+second retry proved the environment override alone was insufficient.
+
+The second retry after that environment-only repair was run `34284621489`, job
+[`102257213293`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34284621489/job/102257213293).
+It again resolved `REPO_IS_PRIVATE=true`; the command-shape, dry-run, build,
+tarball, consumer, and domain gates passed, but the first authenticated core
+publish still emitted a provenance bundle and failed with the same registry
+response:
+
+```text
+npm notice publish Signed provenance statement with source and build information from GitHub Actions
+npm notice publish Provenance statement published to transparency log: https://search.sigstore.dev/?logIndex=2762575275
+npm error code E422
+npm error 422 Unprocessable Entity - PUT https://registry.npmjs.org/@sekiban%2fdcb-core - Error verifying sigstore provenance bundle: Unsupported GitHub Actions source repository visibility: "private". Only public source repositories are supported when publishing with provenance.
+```
+
+No package was published by this run. The receipt is retained as the direct
+evidence that static `publishConfig.provenance` must be removed in the private
+isolated checkout; it is not a passing release proof.
 
 The W176 G22 repair is explicitly a test-quality comparison normalization, not
 an unchanged-test claim: `test/g22-bootstrap-d1.spec.ts` excludes only
@@ -226,12 +251,13 @@ when one of the two approved authentication paths is configured, runs:
 ```
 
 For this private repository the corresponding authenticated commands are the
-same dependency order with provenance omitted:
+same dependency order with provenance omitted. The tag workflow performs the
+metadata deletion in its isolated checkout before these commands:
 
 ```sh
-NPM_CONFIG_PROVENANCE=false npm publish --access public  # core
-NPM_CONFIG_PROVENANCE=false npm publish --access public  # domain
-NPM_CONFIG_PROVENANCE=false npm publish --access public  # client
+(cd packages/dcb-core && npm pkg delete publishConfig.provenance && NPM_CONFIG_PROVENANCE=false npm publish --access public)
+(cd packages/dcb-domain && npm pkg delete publishConfig.provenance && NPM_CONFIG_PROVENANCE=false npm publish --access public)
+(cd packages/dcb-client && npm pkg delete publishConfig.provenance && NPM_CONFIG_PROVENANCE=false npm publish --access public)
 ```
 
 The trusted-publisher path registers the exact workflow filename

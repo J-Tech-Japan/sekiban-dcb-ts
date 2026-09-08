@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -83,11 +84,21 @@ function assertCommandShape() {
     "private provenance mutation must be red",
   );
 
+  const workflow = readFileSync(resolve(root, ".github/workflows/release-dcb-matched-set.yml"), "utf8");
+  assert.match(workflow, /publish_args\+=\(--provenance\)/, "public workflow branch must add provenance");
+  assert.match(workflow, /publish_env\+=\(NPM_CONFIG_PROVENANCE=false\)/, "private workflow branch must disable implicit provenance");
+  assert.match(
+    workflow,
+    /npm pkg delete publishConfig\.provenance/,
+    "private workflow branch must remove static manifest provenance before publish",
+  );
+
   return {
     public: commandFor({ privateRepository: false }),
     private: commandFor({ privateRepository: true }),
     publicMutation: "npm publish --provenance --access public",
     privateEnvironment: "NPM_CONFIG_PROVENANCE=false",
+    privateManifestPreparation: "npm pkg delete publishConfig.provenance",
     privateMutationRejected: true,
   };
 }
