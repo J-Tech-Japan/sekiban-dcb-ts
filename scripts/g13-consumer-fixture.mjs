@@ -9,7 +9,14 @@ for (const packageDirectory of packageNames) {
   const packageName = `@sekiban/${packageDirectory}`;
   const packageJsonPath = `${root}packages/${packageDirectory}/package.json`;
   const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-  assert.equal(packageJson.private, true, `${packageName} must remain private`);
+  const shouldRemainPrivate = packageDirectory === "dcb-runtime";
+  assert.equal(
+    packageJson.private,
+    shouldRemainPrivate,
+    shouldRemainPrivate
+      ? `${packageName} must remain private`
+      : `${packageName} must be publishable for the matched release set`,
+  );
   assert.equal(packageJson.type, "module", `${packageName} must be ESM`);
   assert.equal(packageJson.sideEffects, false, `${packageName} must be tree-shakeable`);
   assert.ok(packageJson.exports?.["."], `${packageName} must expose its root entrypoint`);
