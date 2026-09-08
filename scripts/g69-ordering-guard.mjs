@@ -62,6 +62,8 @@ const lagBindMutant = `        message.eventId,
         tagsJson,
       ),
     ];`;
+const lagObservedAtAnchor = `                observed_at = excluded.observed_at`;
+const lagObservedAtMutant = `                observed_at = MAX(serialized_dcb_lag_estimates.observed_at, excluded.observed_at)`;
 
 const mutations = [
   {
@@ -88,6 +90,13 @@ const mutations = [
     testPattern: "lag estimate",
     replacements: [{ from: lagSqlAnchor, to: lagSqlMutant }, { from: lagBindAnchor, to: lagBindMutant }],
     reason: "removing the higher-SUID exclusion must not make a lower SUID update the public lag estimate",
+  },
+  {
+    name: "restore-monotonic-lag-observed-at",
+    file: storeFile,
+    testPattern: "PR-base incoming observed clock",
+    replacements: [{ from: lagObservedAtAnchor, to: lagObservedAtMutant }],
+    reason: "the PR-base estimator must retain the incoming observed clock; a monotonic MAX is a G69 lag semantic change",
   },
   {
     name: "omit-append-only-admission-receipt",

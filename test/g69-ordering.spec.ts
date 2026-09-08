@@ -515,6 +515,35 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     expect(lowerOps).toMatchObject({ first_arrived_at: 9_000, last_arrived_at: 11_000 });
   });
 
+  it("retains the PR-base incoming observed clock for a newer-SUID lag sample", async () => {
+    const database = pipeline();
+    const serviceId = `g69-lag-clock-${crypto.randomUUID()}`;
+    const tag = `room:g69-lag-clock-${crypto.randomUUID()}`;
+    const lineage = `g69-lag-clock-lineage-${crypto.randomUUID()}`;
+    const message = (label: string, suid: number): DownstreamOutboxMessage => g32Message({
+      serviceId,
+      allocatorLineageId: lineage,
+      tag,
+      eventTags: [tag],
+      eventType: "G69LagClockEvent",
+      payload: JSON.stringify({ label }),
+      eventId: `g69-lag-clock-${label}-${crypto.randomUUID()}`,
+      suid: g32Suid(suid),
+      attemptId: `g69-lag-clock-attempt-${label}-${crypto.randomUUID()}`,
+      enqueuedAt: 0,
+    });
+    const first = new D1EventStore(database);
+    await first.initialize();
+    await expect(first.recordDelivery(message("first", 10), 5_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    await expect(first.recordDelivery(message("newer", 20), 1_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    const lag = await database.prepare(
+      `SELECT estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = ?`,
+    ).bind(serviceId).first<Record<string, unknown>>();
+    // This is the unchanged PR-base estimator contract: the estimate remains
+    // the high sample, while the incoming observed clock is authoritative.
+    expect(lag).toMatchObject({ estimate_ms: 5_000, observed_at: 1_000 });
+  });
+
   it("runs the late-lower detector once per catch-up pass, not once per event", async () => {
     const database = pipeline();
     const serviceId = `g69-detector-cost-${crypto.randomUUID()}`;
