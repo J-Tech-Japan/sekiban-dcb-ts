@@ -210,3 +210,50 @@ head must still be evaluated by exact-head hosted CI; no gate is skipped or
 called green based on this classification.
 
 No Cloudflare, deployment, resource, or npm registry mutation occurred.
+
+## W173 F1 tag-path test repair
+
+Review 5143638302 identified one residual AC4 gap: `npm run test:g59` is the
+release pack/consumer gate, not the existing `@sekiban/dcb-domain` behavior
+suite. The exact workflow repair is committed at
+`fd5b9a2ec54097d49713a44d0a8c8f549c41f696`.
+
+Both release surfaces now execute the existing domain suite before any pack,
+release, dry-run or publish step:
+
+```text
+identity lines: head=$GITHUB_SHA, run_id=$GITHUB_RUN_ID,
+                workflow=$GITHUB_WORKFLOW
+command: npm run test:g28
+tag path:       .github/workflows/release-dcb-domain.yml
+PR preflight:   .github/workflows/dcb-domain-release-preflight.yml
+```
+
+`npm run test:g28` remains the repository command
+`npm run build:packages && vitest run --config vitest.config.ts
+test/dcb-domain.spec.ts`; it is not replaced by, skipped in favor of, or
+hidden inside the release-specific package/consumer checks. A failure exits
+the workflow before the conditional publish branch. The tag workflow's
+`GITHUB_SHA` is the tagged commit; the pull-request preflight logs its own
+workflow identity separately so the two contexts are not conflated.
+
+Exact-head local receipts at `fd5b9a2ec54097d49713a44d0a8c8f549c41f696`:
+
+```text
+NPM_CONFIG_CACHE=/tmp/sdt-g59-npm-cache npm run test:g28
+PASS — 1 test file, 20 tests
+NPM_CONFIG_CACHE=/tmp/sdt-g59-npm-cache npm run test:g59
+PASS — 23 packed files, 699358 bytes; consumer red/green receipts retained
+actionlint .github/workflows/release-dcb-domain.yml \
+  .github/workflows/dcb-domain-release-preflight.yml
+PASS
+git diff --check
+PASS
+```
+
+The credential-free `npm publish --dry-run --provenance --access public` proof,
+F2 consumer guards, F3 operator branches, and operator-only real publish
+boundary are unchanged. No npm publish, tag push, credential creation,
+deployment or host-state mutation occurred. The following docs-only evidence
+checkpoint records this repair; hosted exact-head CI is required before any
+operator release action.
