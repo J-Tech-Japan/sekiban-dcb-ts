@@ -6,17 +6,18 @@ consumer proof, typecheck and tests before it reaches the publish step.
 
 ## Operator setup
 
-Use one of these authentication paths in the `J-Tech-Japan/sekiban-dcb-ts`
+Use exactly one of these authentication paths in the `J-Tech-Japan/sekiban-dcb-ts`
 repository; the implementation child does not create or handle either
 credential:
 
-1. Register the npm trusted publisher for this repository and the workflow
-   file `.github/workflows/release-dcb-domain.yml`. Trusted publishing uses
-   GitHub Actions OIDC and the workflow's `id-token: write` permission.
-2. As the documented fallback, add an `NPM_TOKEN` repository secret and set
-   the repository variable `NPM_TRUSTED_PUBLISHING` only when trusted
-   publishing is configured. The workflow uses the secret only for the
-   operator-triggered tag run.
+1. Register the npm trusted publisher for repository
+   `J-Tech-Japan/sekiban-dcb-ts` and the workflow filename
+   `release-dcb-domain.yml` (npm asks for the filename, not the full
+   `.github/workflows/` path). Set the repository variable
+   `NPM_TRUSTED_PUBLISHING=true`. Trusted publishing uses GitHub Actions OIDC
+   and the workflow's `id-token: write` permission.
+2. As the fallback, add an `NPM_TOKEN` repository secret. Do not claim this
+   path is configured until the operator has supplied the secret.
 
 ## Release steps
 
@@ -29,15 +30,18 @@ git push origin dcb-domain-v0.1.0
 
 The tag workflow checks that the tag matches `packages/dcb-domain/package.json`,
 creates the GitHub release notes from `CHANGELOG.md`, runs the clean consumer
-proof, and publishes with:
+proof, runs `npm run test:g59` before any publish step, and publishes with:
 
 ```sh
 npm publish --provenance --access public
 ```
 
 If neither trusted publishing nor `NPM_TOKEN` is configured, the workflow
-instead runs `npm publish --dry-run --provenance --access public`, prints a
-clear operator notice, and exits successfully without publishing. The
+first runs the credential-free release-path proof
+`npm publish --dry-run --provenance --access public` and records the GitHub
+head, run id and command in the workflow log. It then runs the same dry-run
+fallback, prints a clear operator notice, and exits successfully without
+publishing. The
 `@sekiban/dcb-domain 0.1.0` changelog entry is included in the GitHub release
 notes, while the package tarball remains limited to `dist/**`, `README.md`,
 `LICENSE`, and `package.json`. The preflight guard documents a 1,000,000-byte

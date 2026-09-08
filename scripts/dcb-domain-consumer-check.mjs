@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const packageRoot = join(root, "packages", "dcb-domain");
+const packGuard = join(root, "scripts", "dcb-domain-pack-check.mjs");
 
 function run(command, args, cwd, { expectFailure = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -85,16 +86,50 @@ evolveTable(roomProjector, [{
 console.log("PASS clean consumer runtime");
 `;
 
-const deepImport = `import { command } from "@sekiban/dcb-domain/src/index.js";\nconsole.log(command);\n`;
+const shippedDeepImport = `import { command } from "@sekiban/dcb-domain/dist/index.js";\nconsole.log(command);\n`;
+
+async function expectedPackGuardFailure(label, mutate) {
+  const result = await mutate();
+  const output = `${result.stdout}\n${result.stderr}`;
+  if (!/SDT-G59 pack guard:/.test(output)) {
+    throw new Error(`${label} did not produce the pack-guard failure receipt:\n${output}`);
+  }
+  const reasonLine = output.split(/\r?\n/).find((line) => /Error: SDT-G59 pack guard:/.test(line));
+  return {
+    label,
+    status: result.status,
+    reason: reasonLine?.replace(/^.*Error: /, "") ?? "pack guard rejected as expected",
+  };
+}
+
+const redReceipts = [];
+const packageManifestPath = join(packageRoot, "package.json");
+const packageManifest = await readFile(packageManifestPath, "utf8");
+const strayPath = join(packageRoot, ".g59-stray-file-probe");
+
+try {
+  await writeFile(strayPath, "intentional C-12 red probe\n");
+  redReceipts.push(await expectedPackGuardFailure("stray-file", () => run(process.execPath, [packGuard], root, { expectFailure: true })));
+} finally {
+  await unlink(strayPath).catch(() => {});
+}
+
+try {
+  await writeFile(packageManifestPath, packageManifest.replace('"private": false', '"private": true'));
+  redReceipts.push(await expectedPackGuardFailure("pre-change-private-manifest", () => run(process.execPath, [packGuard], root, { expectFailure: true })));
+} finally {
+  await writeFile(packageManifestPath, packageManifest);
+}
 
 const temp = await mkdtemp(join(tmpdir(), "sdt-g59-consumer-"));
 try {
   await writeFile(join(temp, "package.json"), JSON.stringify({ private: true, type: "module" }, null, 2));
   await mkdir(join(temp, "src"), { recursive: true });
   await writeFile(join(temp, "tsconfig.node16.json"), tsconfig("Node16", "Node16", "dist-node16"));
-  await writeFile(join(temp, "tsconfig.bundler.json"), tsconfig("ESNext", "Bundler", "dist-bundler", true));
+  await writeFile(join(temp, "tsconfig.bundler.json"), tsconfig("ESNext", "Bundler", "dist-bundler"));
   await writeFile(join(temp, "src", "main.ts"), consumer);
-  await writeFile(join(temp, "deep-import.ts"), deepImport);
+  await writeFile(join(temp, "deep-import.ts"), shippedDeepImport);
+  await writeFile(join(temp, "shipped-deep-import.ts"), shippedDeepImport);
 
   const packed = JSON.parse((await run("npm", ["pack", "--json", "--pack-destination", temp], packageRoot)).stdout);
   const tarball = join(temp, packed[0].filename);
@@ -103,13 +138,33 @@ try {
   await run(join(temp, "node_modules", ".bin", "tsc"), ["-p", "tsconfig.node16.json"], temp);
   await run(join(temp, "node_modules", ".bin", "tsc"), ["-p", "tsconfig.bundler.json"], temp);
   await run("node", ["dist-node16/main.js"], temp);
+  await run("node", ["dist-bundler/main.js"], temp);
+  await run(join(root, "node_modules", ".bin", "esbuild"), ["src/main.ts", "--bundle", "--format=esm", "--platform=node", "--outfile=dist-bundler/bundle.js"], temp);
+  await run("node", ["dist-bundler/bundle.js"], temp);
 
-  const deep = await run(join(temp, "node_modules", ".bin", "tsc"), ["--noEmit", "--target", "ES2022", "--module", "Node16", "--moduleResolution", "Node16", "--strict", "--skipLibCheck", "deep-import.ts"], temp, { expectFailure: true });
-  const deepOutput = `${deep.stdout}\n${deep.stderr}`;
-  if (!/(not exported|cannot find module|not found)/i.test(deepOutput)) {
-    throw new Error(`Deep import failed for an unexpected reason:\n${deepOutput}`);
+  const deepNode16 = await run(join(temp, "node_modules", ".bin", "tsc"), ["--noEmit", "--target", "ES2022", "--module", "Node16", "--moduleResolution", "Node16", "--strict", "--skipLibCheck", "deep-import.ts"], temp, { expectFailure: true });
+  const deepBundler = await run(join(temp, "node_modules", ".bin", "tsc"), ["--noEmit", "--target", "ES2022", "--module", "ESNext", "--moduleResolution", "Bundler", "--strict", "--skipLibCheck", "shipped-deep-import.ts"], temp, { expectFailure: true });
+  for (const [label, result] of [["Node16", deepNode16], ["Bundler", deepBundler]]) {
+    const output = `${result.stdout}\n${result.stderr}`;
+    if (!/(not exported|cannot find module|not found|exports)/i.test(output)) {
+      throw new Error(`${label} shipped deep import failed for an unexpected reason:\n${output}`);
+    }
   }
-  console.log("PASS Node16 consumer, bundler consumer, runtime, and deep-import boundary");
+  redReceipts.push({
+    label: "shipped-dist-deep-import-node16-and-bundler",
+    status: 1,
+    reason: "package exports rejected @sekiban/dcb-domain/dist/index.js in both resolutions",
+  });
+  console.log(JSON.stringify({
+    status: "PASS",
+    greenReceipts: [
+      "Node16 emitted consumer compile/runtime",
+      "Bundler emitted consumer compile/runtime",
+      "esbuild bundle runtime",
+      "Node16 and Bundler shipped dist deep-import rejection",
+    ],
+    redReceipts,
+  }));
 } finally {
   await rm(temp, { recursive: true, force: true });
 }

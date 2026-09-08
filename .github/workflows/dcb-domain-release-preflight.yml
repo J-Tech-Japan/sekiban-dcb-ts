@@ -29,7 +29,20 @@ jobs:
       - run: npm ci
       - run: npm run build --workspace @sekiban/dcb-domain
       - run: npm run typecheck --workspace @sekiban/dcb-domain
+      - name: Run release package and consumer tests
+        run: npm run test:g59
       - run: node scripts/dcb-domain-pack-check.mjs
       - run: node scripts/dcb-domain-consumer-check.mjs
       - run: node scripts/dcb-domain-release-check.mjs dcb-domain-v0.1.0
       - run: node scripts/dcb-domain-release-notes.mjs dcb-domain-v0.1.0 "$RUNNER_TEMP/dcb-domain-release-notes.md"
+      - name: Credential-free release-path dry-run proof
+        working-directory: packages/dcb-domain
+        run: |
+          set -euo pipefail
+          {
+            echo "head=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "workflow=$GITHUB_WORKFLOW"
+            echo "command=npm publish --dry-run --provenance --access public"
+            npm publish --dry-run --provenance --access public
+          } 2>&1 | tee "$RUNNER_TEMP/dcb-domain-publish-dry-run.log"

@@ -88,10 +88,28 @@ The exact final operator publish command, from `packages/dcb-domain`, is:
 npm publish --provenance --access public
 ```
 
+The tag workflow now runs `npm run test:g59` before its pack/consumer checks
+and before either publish branch. It also runs the credential-free exact
+release-path proof `npm publish --dry-run --provenance --access public` on
+every tag run, logging `GITHUB_SHA`, `GITHUB_RUN_ID`, `GITHUB_WORKFLOW`, the
+exact command and npm's output before the conditional real publish step. The
+preflight workflow runs the same no-credential proof on pull requests.
+
+The clean-consumer guard now has both emitted consumers: Node16 and Bundler
+TypeScript output are executed, and an esbuild bundle is executed as well. It
+tests the shipped `dist/index.js` path (which exists in the tarball) under both
+Node16 and Bundler package resolution and requires the package exports map to
+reject it. C-12 red receipts run before the green receipt: a temporary stray
+package entry is rejected by the pack guard, and a temporary pre-change
+`private: true` manifest is rejected with `package must be public`; both files
+are restored before the positive pack/consumer proof.
+
 The operator sequence is to verify the ready PR, configure the trusted
-publisher or `NPM_TOKEN`, create and push `dcb-domain-v0.1.0`, then verify the
-public npm version and provenance badge. No `npm publish` command was invoked
-by this implementation checkpoint; only `npm pack --dry-run` was executed.
+publisher plus `NPM_TRUSTED_PUBLISHING=true`, or configure `NPM_TOKEN`, create
+and push `dcb-domain-v0.1.0`, then verify the public npm version and provenance
+badge. The npm trusted-publisher workflow value is the filename
+`release-dcb-domain.yml`. No real publish or tag push was performed by this
+implementation checkpoint; only credential-free dry-runs were executed.
 
 ## Existing aggregate-lane exceptions
 
