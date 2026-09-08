@@ -71,6 +71,17 @@ and its forced-red probe in `verify.needs`; `node scripts/g40-ci-coverage-check.
 passed against the resulting workflow. Hosted exact-head CI is the required
 post-push check and is recorded in the handoff artifact/PR once available.
 
+The first hosted run exposed a real compatibility gap in the pre-existing
+G13 boundary fixture: `npm run test:boundaries` still asserted that the client
+could depend only on core, while AC2 requires the exact matched core/domain
+runtime pair. The store/D1 portions of `ci-local-e2e` passed. Commit `9da054d`
+updates that guard to require exactly `@sekiban/dcb-core` and
+`@sekiban/dcb-domain`; it does not permit arbitrary dependencies. The focused
+boundary command, matched-set suite, lint, and diff check pass after that
+repair. The hosted run that exposed this was `34253795826`, job
+`102154365473`, `ci-local-e2e`; its terminal replacement run is the exact-head
+CI check for the pushed repair.
+
 No `npm publish`, tag push, credential creation, deployment, or runtime API
 operation was performed. The workflow's publish branches are operator-only;
 the unauthenticated branch is the credential-free `npm publish --dry-run
