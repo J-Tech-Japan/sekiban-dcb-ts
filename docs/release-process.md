@@ -29,8 +29,9 @@ git push origin dcb-domain-v0.1.0
 ```
 
 The tag workflow checks that the tag matches `packages/dcb-domain/package.json`,
-creates the GitHub release notes from `CHANGELOG.md`, runs the clean consumer
-proof, runs `npm run test:g59` before any publish step, and publishes with:
+creates the GitHub release notes from `CHANGELOG.md`, runs the existing
+`@sekiban/dcb-domain` suite with `npm run test:g28`, runs the clean consumer
+proof and `npm run test:g59` before any publish step, and publishes with:
 
 ```sh
 npm publish --provenance --access public

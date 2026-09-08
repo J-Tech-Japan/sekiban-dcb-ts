@@ -25,6 +25,14 @@ jobs:
       - run: node scripts/dcb-domain-release-check.mjs "$GITHUB_REF_NAME"
       - run: npm run build --workspace @sekiban/dcb-domain
       - run: npm run typecheck --workspace @sekiban/dcb-domain
+      - name: Run @sekiban/dcb-domain test suite before publish
+        run: |
+          set -euo pipefail
+          echo "head=$GITHUB_SHA"
+          echo "run_id=$GITHUB_RUN_ID"
+          echo "workflow=$GITHUB_WORKFLOW"
+          echo "command=npm run test:g28"
+          npm run test:g28
       - name: Run release package and consumer tests before publish
         run: npm run test:g59
       - run: node scripts/dcb-domain-pack-check.mjs
