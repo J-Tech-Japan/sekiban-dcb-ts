@@ -111,6 +111,44 @@ badge. The npm trusted-publisher workflow value is the filename
 `release-dcb-domain.yml`. No real publish or tag push was performed by this
 implementation checkpoint; only credential-free dry-runs were executed.
 
+## W172 review-repair receipts
+
+The scoped review repair source is `8c3341187dff2fc48cb9eb830f33d9af34bd9389`.
+The focused consumer command produced this green/red receipt on that exact
+source:
+
+```text
+NPM_CONFIG_CACHE=/tmp/sdt-g59-npm-cache node scripts/dcb-domain-consumer-check.mjs
+PASS
+green: Node16 emitted consumer compile/runtime; Bundler emitted consumer
+       compile/runtime; esbuild bundle runtime; Node16 and Bundler shipped
+       dist deep-import rejection
+red:   stray-file -> SDT-G59 pack guard: unexpected package entries:
+       .g59-stray-file-probe
+       pre-change-private-manifest -> SDT-G59 pack guard: package must be public
+       shipped-dist-deep-import-node16-and-bundler -> package exports rejected
+       @sekiban/dcb-domain/dist/index.js in both resolutions
+```
+
+The credential-free release-path proof was run without credentials and without
+publishing:
+
+```text
+head=8c3341187dff2fc48cb9eb830f33d9af34bd9389
+run_id=local-2026-09-08
+workflow=local-release-path-proof
+command=npm publish --dry-run --provenance --access public
+name: @sekiban/dcb-domain@0.1.0
+tarball: 23 files; package size 110.6 kB; unpacked size 699.4 kB
+shasum: 04fb7cfdc2d3d6682d0ed42162dc2366378f8cee
+publishing: https://registry.npmjs.org/ latest/public (dry-run)
+result: + @sekiban/dcb-domain@0.1.0
+```
+
+The workflows emit the same `head`, `run_id`, workflow name, exact command and
+full npm output into the hosted log before the conditional real publish step.
+No npm credential was created or used, and no tag or real publish was run.
+
 ## Existing aggregate-lane exceptions
 
 The first repository-wide attempt inherited the parent worktree's stale
