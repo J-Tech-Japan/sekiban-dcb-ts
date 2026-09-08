@@ -74,6 +74,7 @@ Passing results at source commit `9838d75`:
 |---|---|
 | `npm exec vitest run --config vitest.config.ts test/g69-ordering.spec.ts test/g31-waitfor.spec.ts --maxWorkers=1` | 2 files, 29 tests passed |
 | `npm run test:g69` | baseline green; 4 mutants red (detector, lag exclusion, receipt omission, awaited receipt) |
+| `npm run test:g25` | 3 tests passed after the narrow G69 `waitUntil` diagnostic-receipt test-contract repair; no same-execution safe follow-up is allowed |
 | `npm run test:g31` | 34 tests passed; budget `maxIterationSlots=126`, `maxPointReads=254` |
 | `npm run test:g44` | contract/8 tests passed; G44 production mutants red |
 | `npm run test:g60:direct` | 14 tests passed; six G60 mutants red |
@@ -100,3 +101,10 @@ an environment exception; no unrelated change was used to mask either one.
 Hosted exact-head CI is the remaining rereview gate. Its terminal result is
 reported in the canonical handoff for the immutable source/evidence head; this
 receipt is not amended after CI merely to change that status.
+
+The first hosted run at the pre-G25-compatibility head also exposed the
+full-suite-only signatures seen in the local aggregate: the existing G43 AC6
+alarm race and long-running G67/Tag/repair tests hitting the default 5-second
+Vitest budget. Focused G31/G69/G25 and all directly affected guards pass; these
+aggregate signatures are retained as runner/concurrency exceptions until the
+fresh exact-head CI run settles.
