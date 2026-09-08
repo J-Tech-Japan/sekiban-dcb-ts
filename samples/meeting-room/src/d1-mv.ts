@@ -930,15 +930,23 @@ export async function catchUpMeetingRoomMaterializedViews(
     };
     let result: MaterializedViewCatchUpResult;
     if (active === undefined) {
-      result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
-        maximumSuid: frontierSuid,
-        runOrderingDetector: options.runOrderingDetector === true,
-      });
+      if (options.runOrderingDetector === true) {
+        result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
+          maximumSuid: frontierSuid,
+          runOrderingDetector: true,
+        });
+      } else {
+        result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      }
     } else {
-      result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
-        maximumSuid: frontierSuid,
-        runOrderingDetector: options.runOrderingDetector === true,
-      });
+      if (options.runOrderingDetector === true) {
+        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
+          maximumSuid: frontierSuid,
+          runOrderingDetector: true,
+        });
+      } else {
+        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      }
     }
     observations.push({
       viewId: materializer.id,

@@ -264,6 +264,19 @@ The W168 exact-head CI run and terminal result are recorded in the handoff
 artifact below after push. No deployment, production operation, resource
 mutation, fence/SafeWindow/retry/drain change, or G32 operation was performed.
 
+The first exact-head run for the pushed shrink (`34190275690`, head
+`26afcb770969edeaaf485717625deca3b39016fb`) exposed two compatibility
+regressions in addition to its unrelated long-running G30/G32 jobs. The
+foundation job `101946742429` and local-e2e job `101946742743` both failed the
+existing `test/d1-mv.spec.ts` `ORDER_VIOLATION` case because the detector is no
+longer implicit on a direct runtime build. That test is now an explicit
+scheduled-detector invocation; the production Queue/fence kick remains
+detector-free. The G44 job `101946742569` failed only because the unchanged
+G58 W105 static guard no longer found the exact retained-frontier follow line
+after the option expansion; the non-detector branch now preserves that exact
+source shape. These are repaired compatibility findings, not softened
+assertions or gate changes.
+
 ## Verification
 
 Passing focused checks at the W168 source:

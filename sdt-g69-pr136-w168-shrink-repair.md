@@ -29,6 +29,10 @@ classification are required before rereview.
    scheduled detector cost is measured, and Queue-triggered detector cost is
    explicitly zero. The WAKE-166 false-positive cases and the four existing
    G69 mutant checks remain active.
+5. The first exact-head CI run exposed two source-shape compatibility issues:
+   the existing G19 detector proof now explicitly opts into the scheduled
+   detector, and the non-detector `d1-mv` follow branch preserves the exact
+   retained-frontier call shape required by the unchanged G58 W105 guard.
 
 ## Measured local costs and gates
 
@@ -48,6 +52,10 @@ classification are required before rereview.
   and post-admission guards remained green with their existing red mutants.
 - `npm run typecheck` and `npm run lint`: passed with the scoped option and
   scheduled-path changes.
+- After the compatibility repair, `test/d1-mv.spec.ts` passed 14/14,
+  `scripts/g58-reservation-safe-starvation-guard.mjs` passed its self-test and
+  post-change guard, and `npm run test:g44` passed its contract, 8 tests, and
+  four red production mutants.
 - `npm run typecheck`, `npm run lint`, and `git diff --check`: pass after the
   scoped edits.
 - Local NOSENTRY SQLite alarm/Hyperdrive diagnostics are environment output;
