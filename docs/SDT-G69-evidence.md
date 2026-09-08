@@ -353,6 +353,13 @@ guard/incident, base D1 lag-estimator semantics and unchanged public high-lag
 HTTP 500 test intact. It changes no fence, SafeWindow, retry, drain, G67
 assertion/timeout, deployment, production or G32 behavior.
 
+The repair was pushed at `8bcbe7a15ee0ce727099ec7f0964276dd1faaf5c`. Exact-head
+CI run [34219986968](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34219986968)
+was still in progress at 2026-09-08T11:34:41Z, with the G30/G32 jobs not yet
+terminal and no completed non-success job. The G30 core log was unavailable
+while active. This hosted runner state is recorded as a blocker; no rereview
+request is made until the run is terminal green.
+
 ## Verification
 
 Passing focused checks at the W169 source:
