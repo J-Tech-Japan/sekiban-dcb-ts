@@ -65,9 +65,12 @@ public repository the credential-free proof is one `npm publish --dry-run
 --provenance --access public` invocation per package; for this private
 repository it is one `npm publish --dry-run --access public` invocation per
 package, with `NPM_CONFIG_PROVENANCE=false` in the private publish environment
-to prevent npm's GitHub Actions auto-provenance behavior. A command-shape guard
-proves both branches and rejects a private command mutated to include
-`--provenance`.
+to prevent npm's GitHub Actions auto-provenance behavior. Because the package
+manifests also carry a public-release `publishConfig.provenance` setting, the
+private branch removes that field from each package in the isolated checkout
+with `npm pkg delete publishConfig.provenance` and verifies it is absent before
+publishing. A command-shape guard proves both branches and rejects a private
+command mutated to include `--provenance`.
 
 The operator chooses exactly one activation branch: register npm trusted
 publishing for the workflow filename `release-dcb-matched-set.yml` and set
@@ -81,10 +84,10 @@ git push origin dcb-v0.1.0
 (cd packages/dcb-core && npm publish --provenance --access public)
 (cd packages/dcb-domain && npm publish --provenance --access public)
 (cd packages/dcb-client && npm publish --provenance --access public)
-# private repository (the W177 path; keep npm provenance disabled):
-(cd packages/dcb-core && NPM_CONFIG_PROVENANCE=false npm publish --access public)
-(cd packages/dcb-domain && NPM_CONFIG_PROVENANCE=false npm publish --access public)
-(cd packages/dcb-client && NPM_CONFIG_PROVENANCE=false npm publish --access public)
+# private repository (the W177 path; remove static provenance and keep it disabled):
+(cd packages/dcb-core && npm pkg delete publishConfig.provenance && NPM_CONFIG_PROVENANCE=false npm publish --access public)
+(cd packages/dcb-domain && npm pkg delete publishConfig.provenance && NPM_CONFIG_PROVENANCE=false npm publish --access public)
+(cd packages/dcb-client && npm pkg delete publishConfig.provenance && NPM_CONFIG_PROVENANCE=false npm publish --access public)
 ```
 
 The workflow itself selects exactly one branch, so operators must not append
