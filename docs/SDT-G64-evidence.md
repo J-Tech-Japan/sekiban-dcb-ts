@@ -225,6 +225,42 @@ request or package publication occurred in that run. The follow-up changes the
 check to parse each package's `package.json` and assert that the
 `publishConfig.provenance` key is absent, which is the actual invariant.
 
+The corrected private release completed in run `34287237310`, job
+[`102265524965`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287237310/job/102265524965),
+from tag `dcb-v0.1.0` at merge commit
+`7353b987e94a999d60ec6b41b1df2387efb11ac5`. The workflow resolved
+`REPO_IS_PRIVATE=true`, ran the domain suite and all matched-set build/pack/
+consumer/command-shape/dry-run gates, and then published in the required order
+with the private command `npm publish --access public` (no `--provenance`):
+
+```text
++ @sekiban/dcb-core@0.1.0
++ @sekiban/dcb-domain@0.1.0
++ @sekiban/dcb-client@0.1.0
+```
+
+The release log contains no provenance-signing step in this successful private
+branch. The public branch remains independently guarded by the explicit
+`npm publish --provenance --access public` command and the self-test's public
+provenance red mutation. The registry now serves all three package manifests
+and tarballs without authentication:
+
+| Package | Registry manifest | Version | Tarball | Integrity |
+| --- | --- | --- | --- | --- |
+| `@sekiban/dcb-core` | https://registry.npmjs.org/@sekiban/dcb-core/0.1.0 | `0.1.0` | https://registry.npmjs.org/@sekiban/dcb-core/-/dcb-core-0.1.0.tgz | `sha512-oKglAPp8izwWNK2fyFg3T5uNdZE/9B3An7un+hzFO4ZlMzxYcvfo4qRUj/zUGKJ4C3csvJDVF0wmInDuv/0Olg==` |
+| `@sekiban/dcb-domain` | https://registry.npmjs.org/@sekiban/dcb-domain/0.1.0 | `0.1.0` | https://registry.npmjs.org/@sekiban/dcb-domain/-/dcb-domain-0.1.0.tgz | `sha512-2WY7QJOwRVCptHIt2gsVNsYsvcxX4mVU7HvoMMrDs+tBTvBDoXqg8tElYVIqLvt+yTP41rjEH8PxAFVlL9uEpA==` |
+| `@sekiban/dcb-client` | https://registry.npmjs.org/@sekiban/dcb-client/0.1.0 | `0.1.0` | https://registry.npmjs.org/@sekiban/dcb-client/-/dcb-client-0.1.0.tgz | `sha512-mXZtOK0BlaiEkAz8K6LXrkl9E4d7AH7l9XPDw/9I+a7kuTdTq1KLG2FODWsWM4ApfRv2BADXvj0KQhEOF5XopQ==` |
+```
+
+The package pages are `https://www.npmjs.com/package/@sekiban/dcb-core/v/0.1.0`,
+`https://www.npmjs.com/package/@sekiban/dcb-domain/v/0.1.0`, and
+`https://www.npmjs.com/package/@sekiban/dcb-client/v/0.1.0`. The existing clean
+three-package Node16/Bundler/esbuild V1 consumer and workspace typecheck remain
+the release proof; the release workflow's `test:g64` job reran those checks
+before publication. This is the successful publication receipt that supersedes
+the earlier E422/no-publication attempts; no additional tag movement was made
+after this release.
+
 The W176 G22 repair is explicitly a test-quality comparison normalization, not
 an unchanged-test claim: `test/g22-bootstrap-d1.spec.ts` excludes only
 driver-only timing metadata (`duration` and its sibling timing fields) from
