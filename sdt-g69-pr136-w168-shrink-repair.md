@@ -1,11 +1,11 @@
 # SDT-G69 PR136 W168 shrink repair
 
-Status: local repair complete; exact-head hosted CI and terminal C-14
-classification are required before rereview.
+Status: completed scoped shrink repair; exact-head hosted CI is terminal green.
 
 - Repository: `J-Tech-Japan/sekiban-dcb-ts`
 - PR: #136; issue #133 remains open and referenced
 - Starting PR head: `ca404bb77ee9b79713d40cdf358478adc1c5c566`
+- Repair source head tested by hosted CI: `54b87fdeae438cb262d92880d34da36ca8fcf400`
 - Scope: G69 shrink only. No deployment, production cohort, Wrangler,
   Cloudflare resource operation, G32 operation, fence/SafeWindow/retry/drain
   change, or G67 assertion/timeout change.
@@ -86,7 +86,17 @@ mutants, protected resources, and issue #133 status remain unchanged.
 
 ## Handoff
 
-The final pushed repair head and exact-head CI run/job terminal result will be
-filled into this receipt after the scoped commit/push and C-14 polling. The
-canonical worker/report transitions are separate from this artifact; no review,
-merge, or closeout action is performed here.
+The exact-head hosted run
+[34193530512](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34193530512)
+tested repair source head `54b87fdeae438cb262d92880d34da36ca8fcf400` and is
+terminal `SUCCESS`: 20/20 jobs, including aggregate `verify` job
+`101966143727`, are green. Relevant required jobs include foundation
+`101956289524`, G44 `101956289645`, G46 `101956289740`, G43
+`101956289635`, and both G30 jobs `101956289691` and `101956289702`.
+The two G30 jobs reached terminal success after the known long runner interval;
+no C-14 failure or product assertion remained on the exact head.
+
+This receipt is updated in an evidence-only follow-up after exact CI; the
+follow-up changes no source or tests and only pins the terminal result. No
+review, merge, closeout, deployment, or canonical worker transition is
+performed here.

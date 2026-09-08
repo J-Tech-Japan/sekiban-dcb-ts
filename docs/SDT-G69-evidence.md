@@ -262,9 +262,17 @@ for the shrink decision:
 - G44 G67 5,000 ms guard timeout: [job 101940978323](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978323), step `Run SDT-G67 event-driven safe-lane kick lane` failed.
 - G43 C-14 exception: [supplied job URL](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978202). At capture time the run was still in progress and failure logs were unavailable; GitHub's job metadata labels that supplied job `ci-foundation`, while the packet classifies it as the G43 C-14 exception. This is recorded verbatim rather than relabeled.
 
-The W168 exact-head CI run and terminal result are recorded in the handoff
-artifact below after push. No deployment, production operation, resource
-mutation, fence/SafeWindow/retry/drain change, or G32 operation was performed.
+The exact-head hosted run
+[34193530512](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34193530512)
+tested repair source head `54b87fdeae438cb262d92880d34da36ca8fcf400` and
+finished `SUCCESS` with 20/20 jobs, including aggregate `verify` job
+`101966143727`. The relevant required jobs were foundation
+`101956289524`, G44 `101956289645`, G46 `101956289740`, G43
+`101956289635`, and both G30 jobs `101956289691` and `101956289702`.
+The long G30 jobs eventually reached terminal success; no C-14 failure
+remained on the exact head. This paragraph is an evidence-only follow-up
+after exact CI. No deployment, production operation, resource mutation,
+fence/SafeWindow/retry/drain change, or G32 operation was performed.
 
 The first exact-head run for the pushed shrink (`34190275690`, head
 `26afcb770969edeaaf485717625deca3b39016fb`) exposed two compatibility
