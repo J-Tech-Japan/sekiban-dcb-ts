@@ -205,7 +205,13 @@ export async function runMeetingRoomSafeLanePass(
     const effectiveCatchUp = async (frontierSuid?: string | null): Promise<void> => {
       catchUpStartedAt = Date.now();
       try {
-        const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid, {
+          // The late-lower detector is retained only for explicit isolated
+          // proof tests. It is not affordable on either production safe-lane
+          // trigger, including the cron backstop; G44/G62 safe catch-up and
+          // the in-batch fail-closed order check remain unchanged.
+          runOrderingDetector: false,
+        });
         catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44
         // coverage decision. A completed pass may legitimately advance zero

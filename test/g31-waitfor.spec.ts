@@ -15,6 +15,12 @@ import failureMigration from "../migrations/mv/0004_unsafe_window_failure_findin
 import waitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import waitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 // @ts-expect-error Raw source fixture for the no-full-scan mutation oracle.
 import queryWorkerSource from "../packages/dcb-runtime/src/http/SerializedQueryWorker.ts?raw";
 import {
@@ -386,6 +392,7 @@ function flipRealD1WaitState(
       },
       hasTargetReceipt: (...args) => views.hasTargetReceipt(...args),
       hasCheckpointAheadFinding: (...args) => views.hasCheckpointAheadFinding(...args),
+      readOrderingQuarantine: (...args) => views.readOrderingQuarantine(...args),
       readWaitForState: async (...args) => {
         const result = await views.readWaitForState(...args);
         reads += 1;
@@ -435,7 +442,7 @@ describe("SDT-G31 d1-mv waitFor", () => {
   beforeAll(async () => {
     await d1().batch(statements(d1(), g32Migration as string));
     await applyG44D1Migration(d1());
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, waitReceiptMigration, waitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration]) {
       await mvDatabase().batch(statements(mvDatabase(), migration as string));
     }
   });
@@ -659,6 +666,56 @@ describe("SDT-G31 d1-mv waitFor", () => {
     expect(flipped.postWaitQueryRows()).toBe(0);
   });
 
+  it("returns typed quarantine when ordering opens during waitFor", async () => {
+    const serviceId = `g31-quarantine-flip-${crypto.randomUUID()}`;
+    const eventId = canonicalEventId("quarantine-flip-event");
+    const suid = canonicalSuid("suid-00000000000000000000000000000083");
+    const source = await sourceWithTarget(serviceId, eventId, suid);
+    const views = await activeView(serviceId);
+    await views.unsafeWindow().apply({ serviceId, viewId: VIEW_ID, generation: 0, eventId, suid, safeHead: "", updatedAt: 2, mutations: mutation(eventId, suid) });
+    const flipped = flipRealD1WaitState(views, () => views.recordOrderingQuarantine({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      checkpointSuid: suid,
+      lateSuid: canonicalSuid("suid-00000000000000000000000000000001"),
+      eventId,
+      classification: "LATE_LOWER_SUID",
+      observedAt: 3,
+    }));
+    const response = await queryD1(source, flipped.port, serviceId, suid);
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: "projection_ordering_quarantined" });
+    // The response-boundary quarantine check is an additional fail-closed
+    // read after waitFor; it must observe a quarantine opened during the wait.
+    expect(flipped.reads()).toBe(2);
+    expect(flipped.postWaitQueryRows()).toBe(0);
+  });
+
+  it("returns typed quarantine instead of 504 when ordering opens at the timeout boundary", async () => {
+    const serviceId = `g31-quarantine-timeout-${crypto.randomUUID()}`;
+    const source = new FakeSource();
+    const views = await activeView(serviceId);
+    const flipped = flipRealD1WaitState(views, () => views.recordOrderingQuarantine({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      checkpointSuid: canonicalSuid("suid-g31-quarantine-timeout-checkpoint"),
+      lateSuid: canonicalSuid("suid-g31-quarantine-timeout-late"),
+      eventId: canonicalEventId("g31-quarantine-timeout-event"),
+      classification: "LATE_LOWER_SUID",
+      observedAt: 3,
+    }));
+    let now = 0;
+    const response = await queryD1(source, flipped.port, serviceId, "suid-g31-quarantine-timeout-target", {
+      now: () => now,
+      sleep: async (milliseconds) => { now += milliseconds; },
+    });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: "projection_ordering_quarantined" });
+    expect(now).toBe(20_000);
+  });
+
   it("keeps a contradictory source target unavailable before any MV read", async () => {
     const source = new FakeSource();
     source.target = { kind: "unavailable", reason: "suid-contradiction" };
@@ -681,8 +738,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
     expect(result.sourceBudget.waitRowsRead).toBe(26);
     expect(result.viewBudget.waitRowsRead).toBe(26);
     expect(result.sourceBudget.statements).toBe(27); // one lag snapshot plus 26 source target probes
-    expect(result.viewBudget.statements).toBe(27); // one initial CHECKPOINT_AHEAD gate plus 26 MV wait probes
-    expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(53); // the empty initial checkpoint gate reads zero rows
+    expect(result.viewBudget.statements).toBe(30); // final generation/quarantine boundary reads plus the initial gate and 26 MV wait probes
+    expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(54); // the final generation/quarantine boundary reads one additional row
   });
 
   it("clock-advance honors the 120s ceiling exactly with actual D1 statement and rows-read budgets", async () => {
@@ -699,8 +756,8 @@ describe("SDT-G31 d1-mv waitFor", () => {
     expect(result.sourceBudget.waitRowsRead).toBe(126);
     expect(result.viewBudget.waitRowsRead).toBe(126);
     expect(result.sourceBudget.statements).toBe(127); // one lag snapshot plus 126 source target probes
-    expect(result.viewBudget.statements).toBe(127); // one initial CHECKPOINT_AHEAD gate plus 126 MV wait probes
-    expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(253); // the empty initial checkpoint gate reads zero rows
+    expect(result.viewBudget.statements).toBe(130); // final generation/quarantine boundary reads plus the initial gate and 126 MV wait probes
+    expect(result.sourceBudget.rowsRead + result.viewBudget.rowsRead).toBe(254); // the final generation/quarantine boundary reads one additional row
   });
 
   it("does not spend its final 120s poll slot before a healthy late receipt becomes visible", async () => {

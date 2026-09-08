@@ -18,6 +18,8 @@ export interface MaterializedViewCatchUpResult {
   readonly safeWindowMs: number;
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
+  /** Bounded late-lower detector query cost for this catch-up pass. */
+  readonly lateLowerQueryDurationMs: number;
   readonly indeterminate: boolean;
   /** The first source event withheld by the current safe-lane boundary. */
   readonly deferredEventSuid: string | null;
@@ -41,6 +43,8 @@ export interface MaterializedViewCatchUpHooks {
  */
 export interface MaterializedViewCatchUpOptions {
   readonly maximumSuid?: string | null;
+  /** Run the bounded late-lower detector only from scheduled maintenance. */
+  readonly runOrderingDetector?: boolean;
 }
 
 /**
@@ -97,6 +101,9 @@ export class MaterializedViewCatchUpRuntime {
     hooks: MaterializedViewCatchUpHooks = {},
     options: MaterializedViewCatchUpOptions = {},
   ): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string }> {
+    const effectiveRebuildId = rebuildId ?? `g69-rebuild-${crypto.randomUUID()}`;
+    const sourceBefore = await this.source.readAllEvents(serviceId, "");
+    const sourceBeforeProof = await sourceHistoryProof(sourceBefore);
     const candidate = await this.materializedViews.beginRebuild({
       serviceId,
       viewId: materializer.id,
@@ -104,7 +111,28 @@ export class MaterializedViewCatchUpRuntime {
       updatedAt: nowMs,
     });
     const result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks, options);
-    return { ...result, candidateGeneration: candidate.generation, rebuildId };
+    const sourceAfter = await this.source.readAllEvents(serviceId, "");
+    const sourceAfterProof = await sourceHistoryProof(sourceAfter);
+    if (
+      result.stopReason === null &&
+      !result.indeterminate &&
+      result.advancedSourceEvents === sourceBefore.length &&
+      sourceBeforeProof.digest === sourceAfterProof.digest
+    ) {
+      await this.materializedViews.markGenerationRebuilt({
+        serviceId,
+        viewId: materializer.id,
+        generation: candidate.generation,
+        verifiedAt: nowMs,
+        rebuildId: effectiveRebuildId,
+        sourceEventCount: sourceBeforeProof.eventIds.length,
+        sourceEventIds: sourceBeforeProof.eventIds,
+        sourceSuids: sourceBeforeProof.suids,
+        sourceMaxSuid: sourceBeforeProof.maxSuid,
+        sourceHistoryDigest: sourceBeforeProof.digest,
+      });
+    }
+    return { ...result, candidateGeneration: candidate.generation, rebuildId: effectiveRebuildId };
   }
 
   async promote(
@@ -179,6 +207,7 @@ export class MaterializedViewCatchUpRuntime {
           safeWindowMs: windowMs,
           advancedSourceEvents: 0,
           appliedEvents: 0,
+          lateLowerQueryDurationMs: 0,
           indeterminate: true,
           deferredEventSuid: null,
           deferredEventLastArrivedAt: null,
@@ -187,7 +216,23 @@ export class MaterializedViewCatchUpRuntime {
         };
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
-      await this.assertStrictOrder(serviceId, materializer.id, instance.lastSuid, sourceEvents);
+      await this.assertSourceBatchOrder(
+        serviceId,
+        materializer.id,
+        generation,
+        instance.lastSuid,
+        sourceEvents,
+      );
+      let lateLowerQueryDurationMs = 0;
+      if (options.runOrderingDetector === true) {
+        lateLowerQueryDurationMs = await this.detectLateLowerSuid(
+          serviceId,
+          materializer.id,
+          generation,
+          instance.lastSuid,
+          instance.updatedAt,
+        );
+      }
       let current = instance;
       let advancedSourceEvents = 0;
       let appliedEvents = 0;
@@ -206,6 +251,7 @@ export class MaterializedViewCatchUpRuntime {
             safeWindowMs: windowMs,
             advancedSourceEvents,
             appliedEvents,
+            lateLowerQueryDurationMs,
             indeterminate: false,
             deferredEventSuid: event.suid,
             deferredEventLastArrivedAt: event.lastArrivedAt,
@@ -222,6 +268,7 @@ export class MaterializedViewCatchUpRuntime {
             safeWindowMs: windowMs,
             advancedSourceEvents,
             appliedEvents,
+            lateLowerQueryDurationMs,
             indeterminate: false,
             deferredEventSuid: event.suid,
             deferredEventLastArrivedAt: event.lastArrivedAt,
@@ -280,6 +327,7 @@ export class MaterializedViewCatchUpRuntime {
           safeWindowMs: windowMs,
           advancedSourceEvents,
           appliedEvents,
+          lateLowerQueryDurationMs,
           indeterminate: false,
           deferredEventSuid: null,
           deferredEventLastArrivedAt: null,
@@ -291,7 +339,88 @@ export class MaterializedViewCatchUpRuntime {
     throw new MaterializedViewStoreError("apply", "MV_CAS_MISMATCH", "Materialized-view catch-up did not converge after concurrent updates");
   }
 
-  private async assertStrictOrder(serviceId: string, viewId: string, priorSuid: string, events: readonly StoredEvent[]): Promise<void> {
+  private async detectLateLowerSuid(
+    serviceId: string,
+    viewId: string,
+    generation: number,
+    priorSuid: string,
+    checkpointUpdatedAt: number,
+  ): Promise<number> {
+    let lateLowerQueryDurationMs = 0;
+    if (priorSuid.length > 0) {
+      const detectorStartedAt = Date.now();
+      const evidence = this.source.findLateLowerSuidEvidence === undefined
+        ? undefined
+        : await this.source.findLateLowerSuidEvidence(serviceId, priorSuid, checkpointUpdatedAt, generation);
+      const lateLower = evidence === undefined
+        ? await this.source.findLateLowerSuid?.(serviceId, priorSuid, checkpointUpdatedAt)
+        : evidence.kind === "late-lower-suid" ? evidence.event : undefined;
+      lateLowerQueryDurationMs = evidence?.durationMs ?? Math.max(0, Date.now() - detectorStartedAt);
+      if (evidence?.kind === "unknown") {
+        const incident = {
+          serviceId,
+          identityKey: `ORDERING_DETECTOR_UNKNOWN|${serviceId}|${viewId}|${generation}|${priorSuid}|${checkpointUpdatedAt}`,
+          classification: "ORDERING_DETECTOR_UNKNOWN" as const,
+          suid: priorSuid,
+          observedAt: checkpointUpdatedAt,
+        };
+        // The detector has not proved a bounded refusal condition. Persist an
+        // alarm-only incident and continue the existing safe-lane path; an
+        // unknown clock/provenance observation must never be promoted to a
+        // fabricated ordering violation or a guessed quarantine.
+        await this.source.appendDeliveryIncident(incident);
+        console.error("SDT-G69_ORDERING_DETECTOR_UNKNOWN", JSON.stringify({
+          ...incident,
+          reason: evidence.reason ?? "unknown",
+        }));
+      }
+      if (lateLower !== undefined) {
+        const incident = {
+          serviceId,
+          identityKey: `LATE_LOWER_SUID|${serviceId}|${viewId}|${priorSuid}|${lateLower.suid}|${lateLower.eventId}`,
+          classification: "ORDER_VIOLATION" as const,
+          suid: lateLower.suid,
+          eventId: lateLower.eventId,
+          incomingEventId: lateLower.eventId,
+          observedAt: lateLower.lastArrivedAt,
+        };
+        await this.source.appendDeliveryIncident(incident);
+        await this.materializedViews.recordOrderingQuarantine({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: priorSuid,
+          lateSuid: lateLower.suid,
+          eventId: lateLower.eventId,
+          classification: "LATE_LOWER_SUID",
+          observedAt: lateLower.lastArrivedAt,
+        });
+        console.error("SDT-G69_ORDERING_QUARANTINE", JSON.stringify({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: priorSuid,
+          lateSuid: lateLower.suid,
+          eventId: lateLower.eventId,
+          classification: "LATE_LOWER_SUID",
+        }));
+        throw new MaterializedViewStoreError(
+          "apply",
+          "MV_ORDERING_QUARANTINED",
+          "Materialized-view safe lane is quarantined for an ordering violation; rebuild and promote a generation",
+        );
+      }
+    }
+    return lateLowerQueryDurationMs;
+  }
+
+  private async assertSourceBatchOrder(
+    serviceId: string,
+    viewId: string,
+    generation: number,
+    priorSuid: string,
+    events: readonly StoredEvent[],
+  ): Promise<void> {
     let previous = priorSuid;
     for (const event of events) {
       if (compareSuid(previous, event.suid) >= 0) {
@@ -305,11 +434,52 @@ export class MaterializedViewCatchUpRuntime {
           observedAt: event.lastArrivedAt,
         };
         await this.source.appendDeliveryIncident(incident);
-        throw new MaterializedViewStoreError("apply", "MV_STORE_OPERATION_FAILED", "Materialized-view source was not strictly SUID ordered");
+        await this.materializedViews.recordOrderingQuarantine({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: previous,
+          lateSuid: event.suid,
+          eventId: event.eventId,
+          classification: "ORDER_VIOLATION",
+          observedAt: event.lastArrivedAt,
+        });
+        console.error("SDT-G69_ORDERING_QUARANTINE", JSON.stringify({
+          serviceId,
+          viewId,
+          generation,
+          checkpointSuid: previous,
+          lateSuid: event.suid,
+          eventId: event.eventId,
+          classification: "ORDER_VIOLATION",
+        }));
+        throw new MaterializedViewStoreError(
+          "apply",
+          "MV_ORDERING_QUARANTINED",
+          "Materialized-view safe lane is quarantined for an ordering violation; rebuild and promote a generation",
+        );
       }
       previous = event.suid;
     }
   }
+}
+
+async function sourceHistoryProof(events: readonly StoredEvent[]): Promise<{
+  readonly eventIds: string[];
+  readonly suids: string[];
+  readonly maxSuid: string;
+  readonly digest: string;
+}> {
+  const eventIds = events.map((event) => event.eventId);
+  const suids = events.map((event) => event.suid);
+  const maxSuid = events.reduce(
+    (maximum, event) => maximum === "" || compareSuid(event.suid, maximum) > 0 ? event.suid : maximum,
+    "",
+  );
+  const canonical = events.map((event) => `${event.eventId}\u0000${event.suid}`).join("\n");
+  const digestBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  const digest = [...new Uint8Array(digestBytes)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  return { eventIds, suids, maxSuid, digest };
 }
 
 function compareSuid(left: string, right: string): number {

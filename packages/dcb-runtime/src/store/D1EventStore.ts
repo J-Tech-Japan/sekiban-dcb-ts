@@ -1,4 +1,5 @@
 import { decayedLagEstimateMs } from "../safeWindow";
+import { appendG69AdmissionAttempt, type G69AdmissionAttemptReceipt, type G69AdmissionAttemptStatus } from "../diagnostics/G69AdmissionAttempt";
 import type { WaitForTargetLookup, WaitForTargetSourcePort } from "../query/ProjectionQueryStore";
 import type { DeliverySource, DownstreamOutboxMessage } from "../downstream/types";
 import { resolveDeliveryIdentity } from "../eventIdentity";
@@ -8,6 +9,7 @@ import {
   CanonicalEventIdentityConflictError,
   type DeliveryIncident,
   type DeliveryIncidentClassification,
+  type DeliveryAttemptContext,
   type DeliveryLagRecord,
   type DeliveryOutcome,
   type DetectorStore,
@@ -49,13 +51,21 @@ export interface D1StoreOptions {
     statement: D1PreparedStatement,
     database: D1Database,
   ) => D1PreparedStatement;
+  /**
+   * Test-only delay seam for proving G69 evidence never gates core admission.
+   * Production composition leaves this unset.
+   */
+  readonly beforeG69AdmissionAttempt?: () => void | Promise<void>;
 }
 
 /** A contradictory EventId identity is a typed fail-closed outcome. */
 export class D1IdentityConflictError extends CanonicalEventIdentityConflictError {
-  constructor(message: string) {
+  readonly beforeMutation: boolean;
+
+  constructor(message: string, beforeMutation = false) {
     super("d1", "", message);
     this.name = "D1IdentityConflictError";
+    this.beforeMutation = beforeMutation;
   }
 }
 
@@ -72,6 +82,10 @@ function asNumber(value: unknown, name: string): number {
   const number = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(number)) throw new Error(`D1 ${name} was not a safe integer`);
   return number;
+}
+
+function errorText(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 256);
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -183,7 +197,7 @@ function findingFrom(row: D1Row): InconsistencyFinding {
 
 function incidentClassification(value: unknown): DeliveryIncidentClassification {
   const classification = asString(value, "classification");
-  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH") {
+  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH" && classification !== "ORDERING_DETECTOR_UNKNOWN") {
     throw new Error("D1 delivery incident classification was invalid");
   }
   return classification;
@@ -292,7 +306,51 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     this.initialized = true;
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
+  async recordDelivery(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource: DeliverySource = "queue",
+    attemptContext?: DeliveryAttemptContext,
+  ): Promise<DeliveryOutcome> {
+    this.ready();
+    const mutationAttemptId = `admission-${crypto.randomUUID()}`;
+    let result: DeliveryOutcome | undefined;
+    let failure: { readonly error: unknown } | undefined;
+    try {
+      result = await this.recordDeliveryCore(message, arrivedAt, deliverySource, mutationAttemptId);
+    } catch (error) {
+      failure = { error };
+    }
+    const retryReason = failure === undefined ? null : errorText(failure.error);
+    // A canonical identity rejection is a complete fail-before-batch
+    // boundary: not even diagnostic-table INSERT/trim work may be scheduled
+    // for this invocation. Other outcomes retain the diagnostic-only receipt,
+    // but it remains outside the awaited delivery turn and invocation-owned.
+    const suppressDiagnostic = failure?.error instanceof D1IdentityConflictError && failure.error.beforeMutation;
+    if (!suppressDiagnostic) {
+      const diagnostic = Promise.resolve().then(() => this.bestEffortG69AdmissionAttempt(
+        message,
+        arrivedAt,
+        deliverySource,
+        attemptContext,
+        mutationAttemptId,
+        result,
+        failure,
+        retryReason,
+      ));
+      if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);
+      else void diagnostic;
+    }
+    if (failure !== undefined) throw failure.error;
+    return result!;
+  }
+
+  private async recordDeliveryCore(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource: DeliverySource = "queue",
+    mutationAttemptId = `admission-${crypto.randomUUID()}`,
+  ): Promise<DeliveryOutcome> {
     this.ready();
     // G44 source facts belong to a Tag outbox obligation.  The fenced G22
     // bootstrap import path has no Tag source partition to acknowledge, so it
@@ -316,6 +374,10 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       throw new D1IdentityConflictError(`EventId ${message.eventId} timestamp is not canonical UTC ISO-8601`);
     }
     const metadata = metadataForDelivery(message, deliverySource);
+    // This is the pre-existing correctness preflight for canonical identity
+    // conflicts. It is not G69 diagnostic work: it must remain before the
+    // durable batch so a conflicting replay cannot write incidents, receipts,
+    // or event-arrival state.
     const storedBefore = await this.eventById(message.serviceId, message.eventId);
     const incomingEventType = identity.key;
     const eventTags = [...message.eventTags];
@@ -331,7 +393,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       storedBefore.correlationId !== metadata.correlationId ||
       storedBefore.executedUser !== metadata.executedUser
     )) {
-      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`);
+      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`, true);
     }
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const statements: D1PreparedStatement[] = [
@@ -541,8 +603,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       ),
       this.database.prepare(
         `INSERT INTO dcb_event_ops
-           ("ServiceId", "Id", "AttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs")
-         SELECT ?, ?, ?, ?, ?, ?, ?
+           ("ServiceId", "Id", "AttemptId", "FirstAdmissionAttemptId", "LastAdmissionAttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs", "FirstArrivedSource", "LastArrivedSource")
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (
             SELECT 1 FROM dcb_events
              WHERE "ServiceId" = ? AND "Id" = ?
@@ -552,15 +614,26 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
          ON CONFLICT ("ServiceId", "Id") DO UPDATE
            SET "FirstArrivedAt" = MIN(dcb_event_ops."FirstArrivedAt", excluded."FirstArrivedAt"),
                "LastArrivedAt" = MAX(dcb_event_ops."LastArrivedAt", excluded."LastArrivedAt"),
-               "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs")`,
+               "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs"),
+               "FirstAdmissionAttemptId" = COALESCE(dcb_event_ops."FirstAdmissionAttemptId", excluded."FirstAdmissionAttemptId"),
+               "LastAdmissionAttemptId" = excluded."LastAdmissionAttemptId",
+               "FirstArrivedSource" = dcb_event_ops."FirstArrivedSource",
+               "LastArrivedSource" = CASE
+                 WHEN excluded."LastArrivedAt" > dcb_event_ops."LastArrivedAt" THEN excluded."LastArrivedSource"
+                 ELSE dcb_event_ops."LastArrivedSource"
+               END`,
       ).bind(
         message.serviceId,
         message.eventId,
         message.attemptId,
+        mutationAttemptId,
+        mutationAttemptId,
         message.allocatorLineageId,
         arrivedAt,
         arrivedAt,
         lagMs,
+        deliverySource,
+        deliverySource,
         message.serviceId,
         message.eventId,
         message.suid,
@@ -685,7 +758,11 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       stored.payload !== message.payload ||
       JSON.stringify(stored.eventTags) !== tagsJson ||
       stored.eventType !== incomingEventType ||
-      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest)
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest) ||
+      stored.timestamp !== timestamp ||
+      stored.causationId !== metadata.causationId ||
+      stored.correlationId !== metadata.correlationId ||
+      stored.executedUser !== metadata.executedUser
     ) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its durable D1 identity`);
     }
@@ -695,7 +772,17 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         throw new Error(`D1 event ${message.eventId} has no readable global receipt/membership join`);
       }
     }
-    return { outcome: "stored", kind: "stored", event: stored };
+    // Mutation-owned admission evidence is diagnostic. It is read by the
+    // invocation-lifetime receipt after this core result is returned, never
+    // on the awaited delivery path. Without a pre-read, duplicate status is
+    // deliberately unverified here; the off-path receipt may classify it
+    // from mutation-owned attempt identities.
+    return {
+      outcome: "stored",
+      kind: "stored",
+      event: stored,
+      mutationEvidence: "unverified",
+    };
   }
 
   async readGlobalReceiptJoin(message: DownstreamOutboxMessage): Promise<GlobalReceiptJoin | undefined> {
@@ -762,6 +849,135 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       since,
     );
     return Promise.all(rows.map((row) => this.eventFromRow(row)));
+  }
+
+  /**
+   * G69 strict-order detector: find an event admitted after a projection
+   * checkpoint whose opaque SUID is lower than that checkpoint. A replay of
+   * an event already known before the checkpoint is deliberately excluded by
+   * FirstArrivedAt, so the detector reports new lower-SUID admission rather
+   * than ordinary Queue redelivery.
+   */
+  async findLateLowerSuid(
+    serviceId: string,
+    checkpointSuid: string,
+    checkpointUpdatedAt: number,
+  ): Promise<StoredEvent | undefined> {
+    const evidence = await this.findLateLowerSuidEvidence(serviceId, checkpointSuid, checkpointUpdatedAt);
+    return evidence.kind === "late-lower-suid" ? evidence.event : undefined;
+  }
+
+  async findLateLowerSuidEvidence(
+    serviceId: string,
+    checkpointSuid: string,
+    checkpointUpdatedAt: number,
+    generation?: number,
+  ): Promise<{
+    readonly kind: "late-lower-suid" | "replay" | "miss" | "unknown";
+    readonly event?: StoredEvent;
+    readonly reason?: string;
+    readonly durationMs?: number;
+  }> {
+    const detectorStartedAt = Date.now();
+    const finish = (result: {
+      readonly kind: "late-lower-suid" | "replay" | "miss" | "unknown";
+      readonly event?: StoredEvent;
+      readonly reason?: string;
+    }) => ({ ...result, durationMs: Math.max(0, Date.now() - detectorStartedAt) });
+    this.ready();
+    // Generation ownership is enforced at the MV/quarantine boundary; the
+    // source evidence itself is generation-independent and must remain
+    // auditable across a generation transition. A malformed generation is
+    // still an untrusted clock/context observation, never a reason to open a
+    // quarantine.
+    if (generation !== undefined && (!Number.isSafeInteger(generation) || generation < 0)) {
+      return finish({ kind: "unknown", reason: "generation-invalid" });
+    }
+    if (checkpointSuid.length === 0) return finish({ kind: "miss" });
+    if (!Number.isSafeInteger(checkpointUpdatedAt) || checkpointUpdatedAt < 0) {
+      return finish({ kind: "unknown", reason: "checkpoint-clock-invalid" });
+    }
+    try {
+      assertSortableUniqueId(checkpointSuid);
+      // The old detector materialized every lower-SUID row and then issued an
+      // event lookup for each candidate. Keep the proven-wins ordering, but
+      // make the normal path bounded: each classification is a single LIMIT 1
+      // indexed source/arrival probe, followed by at most one event read.
+      const proven = await this.database.prepare(
+        `SELECT e."Id" AS event_id
+           FROM dcb_events e
+           JOIN dcb_event_ops o
+             ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+          WHERE e."ServiceId" = ?
+            AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
+            AND o."FirstArrivedAt" > ?
+            AND o."FirstArrivedAt" >= 0
+            AND o."LastArrivedAt" >= o."FirstArrivedAt"
+            AND o."FirstArrivedSource" IN ('queue', 'fast')
+          ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC
+          LIMIT 1`,
+      ).bind(serviceId, checkpointSuid, checkpointUpdatedAt).first<D1Row>();
+      if (proven !== null && proven !== undefined) {
+        const event = await this.eventById(serviceId, asString(proven.event_id, "late_lower_suid.event_id"));
+        return event === undefined
+          ? finish({ kind: "unknown", reason: "late-event-row-disappeared" })
+          : finish({ kind: "late-lower-suid", event });
+      }
+
+      // Unknown evidence is checked after proven evidence so an uncertain
+      // row cannot hide a later independently proven violation.
+      const uncertain = await this.database.prepare(
+        `SELECT o."FirstArrivedAt" AS first_arrived_at,
+                o."LastArrivedAt" AS last_arrived_at,
+                o."FirstArrivedSource" AS first_arrived_source
+           FROM dcb_events e
+           JOIN dcb_event_ops o
+             ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+          WHERE e."ServiceId" = ?
+            AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
+            AND (
+              o."FirstArrivedAt" < 0
+              OR o."LastArrivedAt" < o."FirstArrivedAt"
+              OR (
+                o."FirstArrivedAt" > ?
+                AND COALESCE(o."FirstArrivedSource", 'unknown') NOT IN ('queue', 'fast')
+              )
+            )
+          ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC
+          LIMIT 1`,
+      ).bind(serviceId, checkpointSuid, checkpointUpdatedAt).first<D1Row>();
+      if (uncertain !== null && uncertain !== undefined) {
+        const first = asNumber(uncertain.first_arrived_at, "late_lower_suid.first_arrived_at");
+        const last = asNumber(uncertain.last_arrived_at, "late_lower_suid.last_arrived_at");
+        return finish({
+          kind: "unknown",
+          reason: first < 0 || last < first ? "arrival-clock-rollback" : "arrival-provenance-untrusted",
+        });
+      }
+
+      const replay = await this.database.prepare(
+        `SELECT e."Id" AS event_id
+           FROM dcb_events e
+           JOIN dcb_event_ops o
+             ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+          WHERE e."ServiceId" = ?
+            AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
+            AND o."FirstArrivedAt" <= ?
+            AND o."LastArrivedAt" > ?
+            AND o."LastArrivedSource" IN ('queue', 'fast')
+          ORDER BY o."LastArrivedAt" DESC,
+                   e."SortableUniqueId" COLLATE BINARY ASC,
+                   e."Id" COLLATE BINARY ASC
+          LIMIT 1`,
+      ).bind(serviceId, checkpointSuid, checkpointUpdatedAt, checkpointUpdatedAt).first<D1Row>();
+      if (replay === null || replay === undefined) return finish({ kind: "miss" });
+      const event = await this.eventById(serviceId, asString(replay.event_id, "replay.event_id"));
+      return event === undefined
+        ? finish({ kind: "unknown", reason: "replay-event-row-disappeared" })
+        : finish({ kind: "replay", event });
+    } catch (error) {
+      return finish({ kind: "unknown", reason: errorText(error) });
+    }
   }
 
   /**
@@ -1204,6 +1420,144 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       identityKey,
     );
     return rows[0] === undefined ? undefined : incidentFrom(rows[0]);
+  }
+
+  private async eventArrivalOps(serviceId: string, eventId: string): Promise<{
+    readonly firstArrivedAt: number;
+    readonly lastArrivedAt: number;
+  } | undefined> {
+    const row = await this.database.prepare(
+      `SELECT "FirstArrivedAt" AS first_arrived_at, "LastArrivedAt" AS last_arrived_at
+         FROM dcb_event_ops
+        WHERE "ServiceId" = ? AND "Id" = ?`,
+    ).bind(serviceId, eventId).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    return {
+      firstArrivedAt: asNumber(row.first_arrived_at, "event_ops.first_arrived_at"),
+      lastArrivedAt: asNumber(row.last_arrived_at, "event_ops.last_arrived_at"),
+    };
+  }
+
+  private async admissionMutationEvidence(
+    serviceId: string,
+    eventId: string,
+    mutationAttemptId: string,
+  ): Promise<"first-admission" | "duplicate-admission" | "unverified"> {
+    const row = await this.database.prepare(
+      `SELECT "FirstAdmissionAttemptId" AS first_admission_attempt_id,
+              "LastAdmissionAttemptId" AS last_admission_attempt_id
+         FROM dcb_event_ops
+        WHERE "ServiceId" = ? AND "Id" = ?`,
+    ).bind(serviceId, eventId).first<D1Row>();
+    const first = row?.first_admission_attempt_id === null || row?.first_admission_attempt_id === undefined
+      ? undefined
+      : asString(row.first_admission_attempt_id, "event_ops.first_admission_attempt_id");
+    const last = row?.last_admission_attempt_id === null || row?.last_admission_attempt_id === undefined
+      ? undefined
+      : asString(row.last_admission_attempt_id, "event_ops.last_admission_attempt_id");
+    if (first === mutationAttemptId) return "first-admission";
+    if (last === mutationAttemptId) return "duplicate-admission";
+    return "unverified";
+  }
+
+  private async bestEffortG69AdmissionAttempt(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource: DeliverySource,
+    attemptContext: DeliveryAttemptContext | undefined,
+    mutationAttemptId: string,
+    result: DeliveryOutcome | undefined,
+    failure: { readonly error: unknown } | undefined,
+    retryReason: string | null,
+  ): Promise<void> {
+    const diagnosticStartedAt = Date.now();
+    const receiptCostMs = (): number => Math.max(0, Date.now() - diagnosticStartedAt);
+    const appendFailedDiagnostic = async (reason: string): Promise<void> => {
+      try {
+        await appendG69AdmissionAttempt(this.database, {
+          serviceId: message.serviceId,
+          eventId: message.eventId,
+          suid: message.suid,
+          tag: message.tag,
+          deliverySource,
+          queueMessageId: attemptContext?.queueMessageId ?? null,
+          attemptId: message.attemptId,
+          allocatorLineageId: message.allocatorLineageId,
+          obligationSequence: message.completeness.obligationSequence,
+          enqueuedAt: message.enqueuedAt,
+          observedAt: Date.now(),
+          arrivedAt,
+          firstArrivedAtBefore: null,
+          lastArrivedAtBefore: null,
+          firstArrivedAtAfter: null,
+          lastArrivedAtAfter: null,
+          beforeObservedAt: null,
+          afterObservedAt: null,
+          observationConsistency: "unverified",
+          mutationEvidence: "unverified",
+          diagnosticDurationMs: receiptCostMs(),
+          status: "failed",
+          retryReason: reason,
+        });
+      } catch {
+        // The diagnostic table remains best effort even when its own failure
+        // prevents a failed-observation row from being retained.
+      }
+    };
+    try {
+      try {
+        await this.options.beforeG69AdmissionAttempt?.();
+      } catch (error) {
+        await appendFailedDiagnostic(errorText(error));
+        return;
+      }
+      const afterObservedAt = Date.now();
+      const afterResult = this.eventArrivalOps(message.serviceId, message.eventId)
+        .then((after) => ({ after, failed: false as const }))
+        .catch(() => ({ after: undefined, failed: true as const }));
+      const mutationResult = this.admissionMutationEvidence(message.serviceId, message.eventId, mutationAttemptId)
+        .then((evidence) => ({ evidence, failed: false as const }))
+        .catch(() => ({ evidence: "unverified" as const, failed: true as const }));
+      const [{ after, failed: afterReadFailed }, { evidence: observedMutationEvidence }] = await Promise.all([afterResult, mutationResult]);
+      const status: G69AdmissionAttemptStatus = failure !== undefined
+        ? "failed"
+        : result?.outcome === "stored"
+          ? observedMutationEvidence === "duplicate-admission" ? "duplicate" : "stored"
+          : result?.outcome ?? "failed";
+      const finalObservationConsistency: G69AdmissionAttemptReceipt["observationConsistency"] = afterReadFailed
+        ? "after-read-failed"
+        : after === undefined
+          ? "unverified"
+          : "after-admission";
+      await appendG69AdmissionAttempt(this.database, {
+        serviceId: message.serviceId,
+        eventId: message.eventId,
+        suid: message.suid,
+        tag: message.tag,
+        deliverySource,
+        queueMessageId: attemptContext?.queueMessageId ?? null,
+        attemptId: message.attemptId,
+        allocatorLineageId: message.allocatorLineageId,
+        obligationSequence: message.completeness.obligationSequence,
+        enqueuedAt: message.enqueuedAt,
+        observedAt: afterObservedAt,
+        arrivedAt,
+        firstArrivedAtBefore: null,
+        lastArrivedAtBefore: null,
+        firstArrivedAtAfter: after?.firstArrivedAt ?? null,
+        lastArrivedAtAfter: after?.lastArrivedAt ?? null,
+        beforeObservedAt: null,
+        afterObservedAt,
+        observationConsistency: finalObservationConsistency,
+        mutationEvidence: observedMutationEvidence,
+        diagnosticDurationMs: receiptCostMs(),
+        status,
+        retryReason,
+      });
+    } catch {
+      // Diagnostic evidence is strictly best effort. It must not alter the
+      // durable event, Queue disposition, G44 receipt, or safe frontier.
+    }
   }
 
   private ready(): void {

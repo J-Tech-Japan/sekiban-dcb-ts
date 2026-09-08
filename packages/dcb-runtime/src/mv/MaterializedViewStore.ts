@@ -25,6 +25,8 @@ export type MaterializedViewStoreErrorCode =
   | "MV_GENERATION_INVALID"
   | "MV_PATCH_ROW_MISSING"
   | "MV_VALUE_INVALID"
+  | "MV_ORDERING_QUARANTINED"
+  | "MV_REBUILD_NOT_VERIFIED"
   | "MV_STORE_OPERATION_FAILED";
 
 export class MaterializedViewStoreError extends Error {
@@ -69,6 +71,14 @@ export interface MaterializedViewInstance {
   readonly lastSuid: string;
   readonly definitionVersion: number;
   readonly updatedAt: number;
+  /** Non-null only after a complete, explicit rebuild proof for this generation. */
+  readonly rebuildVerifiedAt: number | null;
+  readonly rebuildRecoveryId: string | null;
+  readonly rebuildIncidentIdentity: string | null;
+  readonly rebuildIncidentGeneration: number | null;
+  readonly rebuildSourceEventCount: number | null;
+  readonly rebuildSourceMaxSuid: string | null;
+  readonly rebuildSourceHistoryDigest: string | null;
 }
 
 export interface MaterializedViewRow {
@@ -173,6 +183,22 @@ export interface MaterializedViewWaitForState {
   readonly poison: boolean;
 }
 
+export type MaterializedViewOrderingQuarantineClassification = "LATE_LOWER_SUID" | "ORDER_VIOLATION";
+
+export interface MaterializedViewOrderingQuarantine {
+  readonly serviceId: string;
+  readonly viewId: string;
+  readonly generation: number;
+  readonly checkpointSuid: string;
+  readonly lateSuid: string;
+  readonly eventId: string;
+  readonly classification: MaterializedViewOrderingQuarantineClassification;
+  readonly status: "open" | "resolved";
+  readonly observedAt: number;
+  readonly resolvedAt: number | null;
+  readonly incidentIdentity: string | null;
+}
+
 function asString(value: unknown, name: string): string {
   if (typeof value !== "string") throw new Error(`MV ${name} was not a string`);
   return value;
@@ -217,6 +243,27 @@ function instanceFrom(row: D1Row): MaterializedViewInstance {
     lastSuid: asString(row.last_suid, "last_suid"),
     definitionVersion: asInteger(row.definition_version, "definition_version"),
     updatedAt: asInteger(row.updated_at, "updated_at"),
+    rebuildVerifiedAt: row.rebuild_verified_at === null || row.rebuild_verified_at === undefined
+      ? null
+      : asInteger(row.rebuild_verified_at, "rebuild_verified_at"),
+    rebuildRecoveryId: row.rebuild_recovery_id === null || row.rebuild_recovery_id === undefined
+      ? null
+      : asString(row.rebuild_recovery_id, "rebuild_recovery_id"),
+    rebuildIncidentIdentity: row.rebuild_incident_identity === null || row.rebuild_incident_identity === undefined
+      ? null
+      : asString(row.rebuild_incident_identity, "rebuild_incident_identity"),
+    rebuildIncidentGeneration: row.rebuild_incident_generation === null || row.rebuild_incident_generation === undefined
+      ? null
+      : asInteger(row.rebuild_incident_generation, "rebuild_incident_generation"),
+    rebuildSourceEventCount: row.rebuild_source_event_count === null || row.rebuild_source_event_count === undefined
+      ? null
+      : asInteger(row.rebuild_source_event_count, "rebuild_source_event_count"),
+    rebuildSourceMaxSuid: row.rebuild_source_max_suid === null || row.rebuild_source_max_suid === undefined
+      ? null
+      : asString(row.rebuild_source_max_suid, "rebuild_source_max_suid"),
+    rebuildSourceHistoryDigest: row.rebuild_source_history_digest === null || row.rebuild_source_history_digest === undefined
+      ? null
+      : asString(row.rebuild_source_history_digest, "rebuild_source_history_digest"),
   };
 }
 
@@ -266,6 +313,7 @@ export class D1MaterializedViewStore {
     await this.database.prepare("SELECT 1 FROM mv_instances LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_atomic_guards LIMIT 1").all();
     await this.database.prepare("SELECT 1 FROM mv_checkpoint_ahead_findings LIMIT 1").all();
+    await this.database.prepare("SELECT 1 FROM mv_ordering_quarantines LIMIT 1").all();
     this.initialized = true;
   }
 
@@ -333,7 +381,10 @@ export class D1MaterializedViewStore {
   async readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined> {
     this.ready("initialize");
     const row = await this.database.prepare(
-      `SELECT service_id, view_id, generation, status, last_suid, definition_version, updated_at
+      `SELECT service_id, view_id, generation, status, last_suid, definition_version, updated_at,
+              rebuild_verified_at, rebuild_recovery_id, rebuild_incident_identity,
+              rebuild_incident_generation, rebuild_source_event_count,
+              rebuild_source_max_suid, rebuild_source_history_digest
          FROM mv_instances WHERE service_id = ? AND view_id = ? AND generation = ?`,
     ).bind(serviceId, viewId, generation).first<D1Row>();
     return row === null || row === undefined ? undefined : instanceFrom(row);
@@ -343,7 +394,11 @@ export class D1MaterializedViewStore {
     this.ready("initialize");
     const row = await this.database.prepare(
       `SELECT instance.service_id, instance.view_id, instance.generation, instance.status,
-              instance.last_suid, instance.definition_version, instance.updated_at
+              instance.last_suid, instance.definition_version, instance.updated_at,
+              instance.rebuild_verified_at, instance.rebuild_recovery_id,
+              instance.rebuild_incident_identity, instance.rebuild_incident_generation,
+              instance.rebuild_source_event_count, instance.rebuild_source_max_suid,
+              instance.rebuild_source_history_digest
          FROM mv_active_generations pointer
          JOIN mv_instances instance
            ON instance.service_id = pointer.service_id
@@ -465,6 +520,12 @@ export class D1MaterializedViewStore {
     const active = await this.readActive(serviceId, viewId);
     if (active === undefined) return { rows: [], totalCount: 0, readHead: "" };
     const selected = options.generation ?? active.generation;
+    const selectedInstance = selected === active.generation
+      ? active
+      : await this.readInstance(serviceId, viewId, selected);
+    if (selectedInstance === undefined) {
+      throw new MaterializedViewStoreError("initialize", "MV_INSTANCE_MISSING", "Requested materialized-view generation is unavailable");
+    }
     const limit = options.limit === null ? -1 : options.limit === undefined ? 100 : options.limit;
     const offset = options.offset ?? 0;
     if (!Number.isSafeInteger(limit) || limit < -1 || !Number.isSafeInteger(offset) || offset < 0) {
@@ -491,7 +552,7 @@ export class D1MaterializedViewStore {
          )
          SELECT row_key, value_json, row_version, source_suid, total_count FROM live
          ORDER BY source_suid COLLATE BINARY ${direction}, row_key COLLATE BINARY ${direction} LIMIT ? OFFSET ?`,
-      ).bind(serviceId, viewId, selected, serviceId, viewId, selected, active.lastSuid, limit, offset).all<D1Row>()
+      ).bind(serviceId, viewId, selected, serviceId, viewId, selected, selectedInstance.lastSuid, limit, offset).all<D1Row>()
       : await this.database.prepare(
         `WITH live AS (
            SELECT row_key, value_json, row_version, source_suid, COUNT(*) OVER() AS total_count FROM mv_rows
@@ -514,7 +575,7 @@ export class D1MaterializedViewStore {
       totalCount: result.results.length === 0 ? 0 : asInteger(result.results[0]!.total_count, "total_count"),
       // Safe reads report the active checkpoint even for an empty page. Unsafe
       // reads instead report only what this page actually reflected.
-      readHead: options.consistency === "unsafe" ? maxReflectedSuid(rows) : active.lastSuid,
+      readHead: options.consistency === "unsafe" ? maxReflectedSuid(rows) : selectedInstance.lastSuid,
     };
   }
 
@@ -715,6 +776,179 @@ export class D1MaterializedViewStore {
     return result?.present === 1;
   }
 
+  /** Open quarantine is keyed to the active generation; old generations are not a public read gate. */
+  async readOrderingQuarantine(serviceId: string, viewId: string): Promise<MaterializedViewOrderingQuarantine | undefined> {
+    this.ready("initialize");
+    const row = await this.database.prepare(
+      `SELECT quarantine.service_id, quarantine.view_id, quarantine.generation,
+              quarantine.checkpoint_suid, quarantine.late_suid, quarantine.event_id,
+              quarantine.classification, quarantine.status, quarantine.observed_at,
+              quarantine.resolved_at, quarantine.incident_identity
+         FROM mv_ordering_quarantines quarantine
+         JOIN mv_active_generations active
+           ON active.service_id = quarantine.service_id
+          AND active.view_id = quarantine.view_id
+          AND active.generation = quarantine.generation
+        WHERE quarantine.service_id = ? AND quarantine.view_id = ? AND quarantine.status = 'open'
+        LIMIT 1`,
+    ).bind(serviceId, viewId).first<D1Row>();
+    if (row === null || row === undefined) return undefined;
+    const classification = asString(row.classification, "ordering_quarantine.classification");
+    if (classification !== "LATE_LOWER_SUID" && classification !== "ORDER_VIOLATION") {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view ordering quarantine classification was invalid");
+    }
+    const status = asString(row.status, "ordering_quarantine.status");
+    if (status !== "open" && status !== "resolved") {
+      throw new MaterializedViewStoreError("initialize", "MV_STORE_OPERATION_FAILED", "Materialized-view ordering quarantine status was invalid");
+    }
+    return {
+      serviceId: asString(row.service_id, "ordering_quarantine.service_id"),
+      viewId: asString(row.view_id, "ordering_quarantine.view_id"),
+      generation: asInteger(row.generation, "ordering_quarantine.generation"),
+      checkpointSuid: asString(row.checkpoint_suid, "ordering_quarantine.checkpoint_suid"),
+      lateSuid: asString(row.late_suid, "ordering_quarantine.late_suid"),
+      eventId: asString(row.event_id, "ordering_quarantine.event_id"),
+      classification,
+      status,
+      observedAt: asInteger(row.observed_at, "ordering_quarantine.observed_at"),
+      resolvedAt: row.resolved_at === null || row.resolved_at === undefined
+        ? null
+        : asInteger(row.resolved_at, "ordering_quarantine.resolved_at"),
+      incidentIdentity: row.incident_identity === null || row.incident_identity === undefined
+        ? null
+        : asString(row.incident_identity, "ordering_quarantine.incident_identity"),
+    };
+  }
+
+  async readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined> {
+    this.ready("initialize");
+    return (await this.readActive(serviceId, viewId))?.generation;
+  }
+
+  /** Persist the detector result before stopping the safe pass. Repeated observations are idempotent. */
+  async recordOrderingQuarantine(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly generation: number;
+    readonly checkpointSuid: string;
+    readonly lateSuid: string;
+    readonly eventId: string;
+    readonly classification: MaterializedViewOrderingQuarantineClassification;
+    readonly observedAt: number;
+  }): Promise<void> {
+    this.ready("apply");
+    this.validateGeneration(input.generation, "apply");
+    const incidentIdentity = `${input.classification}|${input.serviceId}|${input.viewId}|${input.checkpointSuid}|${input.lateSuid}|${input.eventId}`;
+    await this.database.prepare(
+      `INSERT INTO mv_ordering_quarantines
+         (service_id, view_id, generation, checkpoint_suid, late_suid, event_id, classification, status, observed_at, resolved_at, incident_identity)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, NULL, ?)
+       ON CONFLICT (service_id, view_id, generation) DO UPDATE SET
+         checkpoint_suid = excluded.checkpoint_suid,
+         late_suid = excluded.late_suid,
+         event_id = excluded.event_id,
+         classification = excluded.classification,
+         status = 'open',
+         observed_at = MIN(mv_ordering_quarantines.observed_at, excluded.observed_at),
+         resolved_at = NULL,
+         incident_identity = excluded.incident_identity`,
+    ).bind(
+      input.serviceId,
+      input.viewId,
+      input.generation,
+      input.checkpointSuid,
+      input.lateSuid,
+      input.eventId,
+      input.classification,
+      input.observedAt,
+      incidentIdentity,
+    ).run();
+  }
+
+  /**
+   * Mark a candidate only after the real rebuild path observed the complete
+   * source history. The proof is incident-bound when an ordering quarantine is
+   * open, and an empty row set is valid when the source history itself is
+   * complete (for example, a rebuild whose materializer deletes every row).
+   */
+  async markGenerationRebuilt(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly generation: number;
+    readonly verifiedAt: number;
+    readonly rebuildId: string;
+    readonly sourceEventCount: number;
+    readonly sourceEventIds: readonly string[];
+    readonly sourceSuids: readonly string[];
+    readonly sourceMaxSuid: string;
+    readonly sourceHistoryDigest: string;
+  }): Promise<void> {
+    this.ready("promote");
+    this.validateGeneration(input.generation, "promote");
+    if (
+      input.rebuildId.length === 0 ||
+      !Number.isSafeInteger(input.sourceEventCount) || input.sourceEventCount < 0 ||
+      input.sourceEventIds.length !== input.sourceEventCount ||
+      input.sourceSuids.length !== input.sourceEventCount ||
+      (input.sourceEventCount === 0 ? input.sourceMaxSuid !== "" : input.sourceMaxSuid.length === 0) ||
+      input.sourceHistoryDigest.length === 0
+    ) {
+      throw new MaterializedViewStoreError("promote", "MV_REBUILD_NOT_VERIFIED", "Rebuild proof does not describe a complete source history");
+    }
+    const quarantine = await this.database.prepare(
+      `SELECT generation, incident_identity, event_id, late_suid
+         FROM mv_ordering_quarantines
+        WHERE service_id = ? AND view_id = ? AND status = 'open'
+        ORDER BY generation DESC LIMIT 1`,
+    ).bind(input.serviceId, input.viewId).first<D1Row>();
+    const incidentGeneration = quarantine === null || quarantine === undefined
+      ? null
+      : asInteger(quarantine.generation, "rebuild.incident_generation");
+    const incidentIdentity = quarantine === null || quarantine === undefined
+      ? null
+      : typeof quarantine.incident_identity === "string" && quarantine.incident_identity.length > 0
+        ? quarantine.incident_identity
+        : null;
+    if (quarantine !== null && quarantine !== undefined) {
+      if (incidentIdentity === null) {
+        throw new MaterializedViewStoreError("promote", "MV_REBUILD_NOT_VERIFIED", "Ordering quarantine has no durable incident identity");
+      }
+      const incidentEventId = asString(quarantine.event_id, "rebuild.incident_event_id");
+      const incidentLateSuid = asString(quarantine.late_suid, "rebuild.incident_late_suid");
+      if (!input.sourceEventIds.includes(incidentEventId) || !input.sourceSuids.includes(incidentLateSuid)) {
+        throw new MaterializedViewStoreError("promote", "MV_REBUILD_NOT_VERIFIED", "Rebuild source history does not include the quarantined event");
+      }
+    }
+    const result = await this.database.prepare(
+      `UPDATE mv_instances
+          SET rebuild_verified_at = ?,
+              rebuild_recovery_id = ?,
+              rebuild_incident_identity = ?,
+              rebuild_incident_generation = ?,
+              rebuild_source_event_count = ?,
+              rebuild_source_max_suid = ?,
+              rebuild_source_history_digest = ?
+        WHERE service_id = ? AND view_id = ? AND generation = ?
+          AND status = 'candidate'
+          AND last_suid COLLATE BINARY = ? COLLATE BINARY`,
+    ).bind(
+      input.verifiedAt,
+      input.rebuildId,
+      incidentIdentity,
+      incidentGeneration,
+      input.sourceEventCount,
+      input.sourceMaxSuid,
+      input.sourceHistoryDigest,
+      input.serviceId,
+      input.viewId,
+      input.generation,
+      input.sourceMaxSuid,
+    ).run();
+    if ((result.meta?.changes ?? 0) !== 1) {
+      throw new MaterializedViewStoreError("promote", "MV_REBUILD_NOT_VERIFIED", "Candidate generation does not match the complete rebuild source history");
+    }
+  }
+
   /**
    * Apply rows/index entries and advance one generation checkpoint atomically.
    * The guard row intentionally uses a NOT NULL failure to abort a stale CAS.
@@ -875,7 +1109,14 @@ export class D1MaterializedViewStore {
     }
     statements.push(this.database.prepare(
       `UPDATE mv_instances
-          SET last_suid = ?, definition_version = ?, updated_at = ?
+          SET last_suid = ?, definition_version = ?, updated_at = MAX(updated_at, ?),
+              rebuild_verified_at = NULL,
+              rebuild_recovery_id = NULL,
+              rebuild_incident_identity = NULL,
+              rebuild_incident_generation = NULL,
+              rebuild_source_event_count = NULL,
+              rebuild_source_max_suid = NULL,
+              rebuild_source_history_digest = NULL
         WHERE service_id = ? AND view_id = ? AND generation = ?`,
     ).bind(
       input.lastSuid,
@@ -915,8 +1156,26 @@ export class D1MaterializedViewStore {
         `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
          SELECT ?, CASE WHEN EXISTS (
            SELECT 1 FROM mv_instances candidate
-            WHERE candidate.service_id = ? AND candidate.view_id = ?
+           WHERE candidate.service_id = ? AND candidate.view_id = ?
               AND candidate.generation = ? AND candidate.status = 'candidate'
+              AND (
+                NOT EXISTS (
+                   SELECT 1 FROM mv_ordering_quarantines open_quarantine
+                   WHERE open_quarantine.service_id = candidate.service_id
+                     AND open_quarantine.view_id = candidate.view_id
+                     AND open_quarantine.status = 'open'
+                )
+                OR EXISTS (
+                  SELECT 1 FROM mv_ordering_quarantines open_quarantine
+                   WHERE open_quarantine.service_id = candidate.service_id
+                     AND open_quarantine.view_id = candidate.view_id
+                     AND open_quarantine.status = 'open'
+                     AND open_quarantine.incident_identity IS NOT NULL
+                     AND candidate.rebuild_verified_at IS NOT NULL
+                     AND candidate.rebuild_incident_generation = open_quarantine.generation
+                     AND candidate.rebuild_incident_identity = open_quarantine.incident_identity
+                )
+              )
          ) AND (
            (? IS NULL AND NOT EXISTS (
              SELECT 1 FROM mv_active_generations existing
@@ -954,6 +1213,29 @@ export class D1MaterializedViewStore {
          VALUES (?, ?, ?, ?)
          ON CONFLICT (service_id, view_id) DO UPDATE SET generation = excluded.generation, updated_at = excluded.updated_at`,
       ).bind(input.serviceId, input.viewId, input.candidateGeneration, input.updatedAt),
+      // A successful rebuild/promotion is the explicit recovery action for an
+      // open ordering quarantine. The active-generation pointer changes in the
+      // same batch, so a safe read never observes a cleared gate on the old
+      // generation with the new generation still unproven.
+      this.database.prepare(
+        `UPDATE mv_ordering_quarantines
+            SET status = 'resolved', resolved_at = ?
+          WHERE service_id = ? AND view_id = ? AND status = 'open' AND generation <> ?
+            AND incident_identity = (
+              SELECT candidate.rebuild_incident_identity
+                FROM mv_instances candidate
+               WHERE candidate.service_id = ? AND candidate.view_id = ?
+                 AND candidate.generation = ? AND candidate.status = 'active'
+            )`,
+      ).bind(
+        input.updatedAt,
+        input.serviceId,
+        input.viewId,
+        input.candidateGeneration,
+        input.serviceId,
+        input.viewId,
+        input.candidateGeneration,
+      ),
       this.database.prepare("DELETE FROM mv_atomic_guards WHERE operation_id = ?").bind(operation),
     ];
     try {
@@ -1028,6 +1310,9 @@ export type MaterializedViewStore = Pick<
   | "queryRowsWithTotal"
   | "readListPage"
   | "hasTargetReceipt"
+  | "readOrderingQuarantine"
+  | "recordOrderingQuarantine"
+  | "markGenerationRebuilt"
   | "readWaitForState"
   | "recordCheckpointAhead"
   | "hasCheckpointAheadFinding"

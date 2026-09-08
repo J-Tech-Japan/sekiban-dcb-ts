@@ -25,6 +25,18 @@ import g67SafeLanePassOwnershipMigration from "../../migrations/d1/g32/0012_g67_
 import g67SafeLaneCatchUpObservationsMigration from "../../migrations/d1/g32/0013_g67_safe_lane_catch_up_observations.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import g67SafeLaneFenceExpiryMigration from "../../migrations/d1/g32/0014_g67_safe_lane_fence_expiry.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69AdmissionAttemptMigration from "../../migrations/d1/g32/0015_g69_admission_attempts.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69Consultation003Migration from "../../migrations/d1/g32/0016_g69_consultation003.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69ReceiptIdentityMigration from "../../migrations/d1/g32/0017_g69_receipt_identity.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69MutationEvidenceMigration from "../../migrations/d1/g32/0018_g69_mutation_evidence.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69MutationReceiptLabelMigration from "../../migrations/d1/g32/0019_g69_mutation_receipt_label.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69HotpathCostsMigration from "../../migrations/d1/g32/0020_g69_hotpath_costs.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -105,5 +117,44 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).all<{ name: string }>();
   if (!safeLanePassFenceExpiryColumns.results.some((row) => row.name === "stop_deadline_at")) {
     await database.batch(statements(database, g67SafeLaneFenceExpiryMigration as string));
+  }
+  const g69AdmissionAttempts = await database.prepare(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'serialized_dcb_g69_admission_attempts'",
+  ).first<{ name: string }>();
+  if (g69AdmissionAttempts === null || g69AdmissionAttempts === undefined) {
+    await database.batch(statements(database, g69AdmissionAttemptMigration as string));
+  }
+  const g69ConsultationColumns = await database.prepare(
+    "PRAGMA table_info(serialized_dcb_g69_admission_attempts)",
+  ).all<{ name: string }>();
+  const eventOpsColumns = await database.prepare("PRAGMA table_info(dcb_event_ops)").all<{ name: string }>();
+  if (
+    !g69ConsultationColumns.results.some((row) => row.name === "before_observed_at") ||
+    !eventOpsColumns.results.some((row) => row.name === "FirstArrivedSource")
+  ) {
+    await database.batch(statements(database, g69Consultation003Migration as string));
+  }
+  const queueMessageColumn = await database.prepare("PRAGMA table_info(serialized_dcb_g69_admission_attempts)").all<{ name: string; notnull: number }>();
+  if (queueMessageColumn.results.some((row) => row.name === "queue_message_id" && row.notnull === 1)) {
+    await database.batch(statements(database, g69ReceiptIdentityMigration as string));
+  }
+  const mutationEvidenceColumns = await database.prepare("PRAGMA table_info(dcb_event_ops)").all<{ name: string }>();
+  if (
+    !mutationEvidenceColumns.results.some((row) => row.name === "FirstAdmissionAttemptId") ||
+    !mutationEvidenceColumns.results.some((row) => row.name === "LastAdmissionAttemptId")
+  ) {
+    await database.batch(statements(database, g69MutationEvidenceMigration as string));
+  }
+  const g69MutationReceiptColumns = await database.prepare(
+    "PRAGMA table_info(serialized_dcb_g69_admission_attempts)",
+  ).all<{ name: string }>();
+  if (!g69MutationReceiptColumns.results.some((row) => row.name === "mutation_evidence")) {
+    await database.batch(statements(database, g69MutationReceiptLabelMigration as string));
+  }
+  const g69HotpathCostColumns = await database.prepare(
+    "PRAGMA table_info(serialized_dcb_g69_admission_attempts)",
+  ).all<{ name: string }>();
+  if (!g69HotpathCostColumns.results.some((row) => row.name === "diagnostic_duration_ms")) {
+    await database.batch(statements(database, g69HotpathCostsMigration as string));
   }
 }

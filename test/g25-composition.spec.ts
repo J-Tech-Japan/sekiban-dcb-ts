@@ -14,6 +14,12 @@ import unsafeFailureMigration from "../migrations/mv/0004_unsafe_window_failure_
 import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 // @ts-expect-error Vite raw migration fixture.
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message, g32Suid } from "./helpers/g32-fixtures";
@@ -114,7 +120,7 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
   beforeAll(async () => {
     await database().batch(statements(g32Migration as string, database()));
     await applyG44D1Migration(database());
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, unsafeFailureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration, rebuildProofMigration]) {
       await mvDatabase().batch(statements(migration as string, mvDatabase()));
     }
   });
@@ -126,7 +132,10 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     expect(stored.acked).toBe(1); expect(stored.retried).toBe(0);
     // G55 must not start safe follow in the same Queue execution: it would
     // collect the just-applied unsafe row before an app list can observe it.
-    expect(stored.waits).toEqual([]);
+    // G69's diagnostic receipt is the only waitUntil work here and is not a
+    // safe-lane kick; await it before inspecting the diagnostic ledger.
+    expect(stored.waits).toHaveLength(1);
+    await Promise.all(stored.waits);
     const views = new D1MaterializedViewStore(mvDatabase()); await views.initialize();
     const page = await views.queryRowsWithTotal(serviceId, "ReservationProjector", { limit: 20 });
     expect(page.totalCount).toBe(1);
@@ -147,7 +156,8 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     const nonStored = { ...message(serviceId, "non-stored"), suid: queued.suid };
     const rejected = await invokeDeployedQueue(nonStored, serviceId);
     expect(rejected.acked).toBe(1); expect(rejected.retried).toBe(0);
-    expect(rejected.waits).toEqual([]);
+    expect(rejected.waits).toHaveLength(1);
+    await Promise.all(rejected.waits);
     expect((await views.queryRowsWithTotal(serviceId, "ReservationProjector", { limit: 20 })).totalCount).toBe(1);
   });
 
@@ -177,7 +187,8 @@ describe("SDT-G25 unsafe-window consumer composition", () => {
     const attempts = await Promise.all([1, 2, 3].map((attempt) => invokeDeployedQueue(queued, serviceId, attempt)));
     expect(attempts.map((result) => result.acked)).toEqual([0, 0, 0]);
     expect(attempts.map((result) => result.retried)).toEqual([1, 1, 1]);
-    expect(attempts.flatMap((result) => result.waits)).toEqual([]);
+    expect(attempts.every((result) => result.waits.length === 1)).toBe(true);
+    await Promise.all(attempts.flatMap((result) => result.waits));
 
     const finding = await mvDatabase().prepare(
       `SELECT service_id, view_id, event_id, suid, classification, COUNT(*) OVER () AS total

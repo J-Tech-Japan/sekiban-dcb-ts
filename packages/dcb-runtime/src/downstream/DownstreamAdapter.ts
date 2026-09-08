@@ -49,6 +49,8 @@ export interface DownstreamAdapterOptions extends DeliveryCoreOptions {
    * callback must register any work with the active ExecutionContext.
    */
   readonly afterStoredQueueDelivery?: (input: AfterStoredQueueDeliveryInput) => void;
+  /** Invocation owner for bounded G69 diagnostic retention. */
+  readonly g69AdmissionAttemptWaitUntil?: (promise: Promise<void>) => void;
 }
 
 export type AdapterOptions = DownstreamAdapterOptions;
@@ -318,6 +320,10 @@ export async function handleDownstreamQueue(
           ...sourceAcknowledgementOptions(env, options),
           store,
           clock,
+          g69AdmissionAttempt: {
+            queueMessageId: queued.id,
+            waitUntil: options.g69AdmissionAttemptWaitUntil,
+          },
         });
         console.log("downstream_queue_delivery", {
           correlationId: outcome.correlationId,

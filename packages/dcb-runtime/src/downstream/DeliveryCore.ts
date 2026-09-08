@@ -6,6 +6,7 @@ import { systemPipelineClock } from "./types";
 import type { StoreProvider } from "../store/provider";
 import type { StoreProviderEnvironment } from "../store/provider";
 import type { GlobalReceiptJoin, PipelineStore, StoredEvent } from "../store/types";
+import type { DeliveryAttemptContext } from "../store/types";
 import { observeG60PostAdmission, type G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 export type DeliveryViewFailureClass =
@@ -79,6 +80,8 @@ export interface DeliveryCoreOptions {
   readonly views?: readonly DeliveryViewHandler[];
   /** Internal G60 hop observation; it is never a delivery decision input. */
   readonly durableHopObserver?: G60DurableHopObserver;
+  /** G69 diagnostic ownership only; core admission never awaits this work. */
+  readonly g69AdmissionAttempt?: DeliveryAttemptContext;
   /** Compatibility hook for callers that have not adopted a view handler yet. */
   readonly onStored?: (input: {
     readonly message: DownstreamOutboxMessage;
@@ -310,7 +313,7 @@ export async function processDeliveryCore(
   let outcome;
   try {
     // Normative step 1: durable EventStore record before any detector or view.
-    outcome = await store.recordDelivery(message, arrivedAt, source);
+    outcome = await store.recordDelivery(message, arrivedAt, source, options.g69AdmissionAttempt);
     options.durableHopObserver?.observe({
       stage: "record-delivery-batch-committed",
       serviceId: message.serviceId,

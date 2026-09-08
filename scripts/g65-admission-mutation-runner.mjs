@@ -53,6 +53,32 @@ function mutate(source) {
     source,
     "if (storedBefore !== undefined && (",
     "if (false && storedBefore !== undefined && (",
+    "storedBefore identity-conflict guard",
+  );
+  mutant = replaceOnce(
+    mutant,
+    `if (
+      stored.suid !== message.suid ||
+      stored.payload !== message.payload ||
+      JSON.stringify(stored.eventTags) !== tagsJson ||
+      stored.eventType !== incomingEventType ||
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest) ||
+      stored.timestamp !== timestamp ||
+      stored.causationId !== metadata.causationId ||
+      stored.correlationId !== metadata.correlationId ||
+      stored.executedUser !== metadata.executedUser
+    ) {`,
+    `if (false && (
+      stored.suid !== message.suid ||
+      stored.payload !== message.payload ||
+      JSON.stringify(stored.eventTags) !== tagsJson ||
+      stored.eventType !== incomingEventType ||
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest) ||
+      stored.timestamp !== timestamp ||
+      stored.causationId !== metadata.causationId ||
+      stored.correlationId !== metadata.correlationId ||
+      stored.executedUser !== metadata.executedUser
+    )) {`,
     "stored identity-conflict guard",
   );
   mutant = replaceOnce(
@@ -97,7 +123,7 @@ function main() {
       output: mutantResult.output,
     },
     green: { status: "green", exitCode: before.status },
-    mutant: "removed storedBefore identity rejection and changed event conflict DO NOTHING to overwrite",
+    mutant: "removed both preflight and post-batch identity rejection and changed event conflict DO NOTHING to overwrite",
   };
   writeReceipt(receiptPath, receipt);
   process.stdout.write(`${JSON.stringify(receipt)}\n`);

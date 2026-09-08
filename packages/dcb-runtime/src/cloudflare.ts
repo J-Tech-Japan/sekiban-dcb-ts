@@ -445,6 +445,7 @@ export function createCloudflareOnlyRuntimeWorker(
         storeProvider,
         views: options.deliveryViews?.({ env, ctx }) ?? [],
         durableHopObserver,
+        g69AdmissionAttemptWaitUntil: (promise) => ctx.waitUntil(promise),
         afterDelivery: options.afterStoredDownstreamDelivery === undefined
           ? undefined
           : ({ message, event, arrivedAt, source, result }) => options.afterStoredDownstreamDelivery!({ message, event, arrivedAt, env, ctx, source, result }),

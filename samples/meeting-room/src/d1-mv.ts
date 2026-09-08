@@ -73,6 +73,7 @@ export interface MeetingRoomSafeLaneCatchUpObservation {
   readonly afterSuid: string;
   readonly dynamicLagBoundMs: number;
   readonly safeWindowMs: number;
+  readonly lateLowerQueryDurationMs: number;
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
   /** Exact source events applied by this view in this pass, with observed clocks. */
@@ -908,6 +909,7 @@ export async function catchUpMeetingRoomMaterializedViews(
   env: MeetingRoomD1Env,
   serviceId = requiredServiceId(env),
   frontierSuid: string | null | undefined = undefined,
+  options: { readonly runOrderingDetector?: boolean } = {},
 ): Promise<readonly MeetingRoomSafeLaneCatchUpObservation[]> {
   const { runtime, views } = await openMaterializedViews(env);
   const observations: MeetingRoomSafeLaneCatchUpObservation[] = [];
@@ -928,9 +930,23 @@ export async function catchUpMeetingRoomMaterializedViews(
     };
     let result: MaterializedViewCatchUpResult;
     if (active === undefined) {
-      result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      if (options.runOrderingDetector === true) {
+        result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
+          maximumSuid: frontierSuid,
+          runOrderingDetector: true,
+        });
+      } else {
+        result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      }
     } else {
-      result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      if (options.runOrderingDetector === true) {
+        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
+          maximumSuid: frontierSuid,
+          runOrderingDetector: true,
+        });
+      } else {
+        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      }
     }
     observations.push({
       viewId: materializer.id,
@@ -938,6 +954,7 @@ export async function catchUpMeetingRoomMaterializedViews(
       afterSuid: result.instance.lastSuid,
       dynamicLagBoundMs: result.dynamicLagBoundMs,
       safeWindowMs: result.safeWindowMs,
+      lateLowerQueryDurationMs: result.lateLowerQueryDurationMs,
       advancedSourceEvents: result.advancedSourceEvents,
       appliedEvents: result.appliedEvents,
       appliedEventDetails: appliedEventDetails.map((event) => ({

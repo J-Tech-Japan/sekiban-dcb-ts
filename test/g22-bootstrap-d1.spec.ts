@@ -43,16 +43,26 @@ describe("SDT-G22 D1 bootstrap provider adapter", () => {
     });
     const initialStore = new D1EventStore(database());
     await initialStore.initialize();
-    await initialStore.recordDelivery(canonical, 2_000);
+    const initialDiagnosticPromises: Promise<void>[] = [];
+    await initialStore.recordDelivery(canonical, 2_000, "queue", {
+      waitUntil: (promise) => initialDiagnosticPromises.push(promise),
+    });
+    await Promise.all(initialDiagnosticPromises);
     const snapshot = async () => ({
       events: await initialStore.readAllEvents(serviceId, ""),
       lag: await initialStore.currentLagBound(serviceId, 2_000),
       pending: await initialStore.listPending(serviceId),
       findings: await initialStore.listFindings(serviceId),
       incidents: await initialStore.listDeliveryIncidents(serviceId),
+      diagnosticAttempts: await database().prepare(
+        `SELECT sequence, event_id, receipt_status, mutation_evidence
+           FROM serialized_dcb_g69_admission_attempts
+          WHERE service_id = ? ORDER BY sequence`,
+      ).bind(serviceId).all<Record<string, unknown>>(),
     });
     const before = await snapshot();
     let recordBatchStarts = 0;
+    const deferredDiagnosticPromises: Promise<void>[] = [];
     const guardedStore = new D1EventStore(database(), {
       beforeBatch: (operation, statements) => {
         if (operation === "recordDelivery") recordBatchStarts += 1;
@@ -60,9 +70,12 @@ describe("SDT-G22 D1 bootstrap provider adapter", () => {
       },
     });
     await guardedStore.initialize();
-    await expect(guardedStore.recordDelivery({ ...canonical, eventType: "OrderPlacedRenamed" }, 2_001))
-      .rejects.toBeInstanceOf(D1IdentityConflictError);
+    const rejected = guardedStore.recordDelivery({ ...canonical, eventType: "OrderPlacedRenamed" }, 2_001, "queue", {
+      waitUntil: (promise) => deferredDiagnosticPromises.push(promise),
+    });
+    await expect(rejected).rejects.toBeInstanceOf(D1IdentityConflictError);
     expect(recordBatchStarts).toBe(0);
+    expect(deferredDiagnosticPromises).toHaveLength(0);
     expect(await snapshot()).toEqual(before);
   });
 });
