@@ -1,6 +1,6 @@
 # SDT-G70 evidence
 
-Status: local implementation checkpoint. No Wrangler, Cloudflare deployment, resource mutation, tag, npm publish, credential operation, or production cohort was performed.
+Status: local implementation checkpoint, pushed at `d39e641` (full SHA recorded in the sender artifact). No Wrangler, Cloudflare deployment, resource mutation, tag, npm publish, credential operation, or production cohort was performed.
 
 ## Guarantee and boundary
 
