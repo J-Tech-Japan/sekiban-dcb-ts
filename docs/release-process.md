@@ -52,3 +52,28 @@ dry-run is recorded in the SDT-G59 evidence).
 After a real publish, the operator verifies the package page on
 npmjs.com, the `0.1.0` version, public access, and the provenance badge before
 announcing the release.
+
+## Matched core/domain/client release
+
+Issue #120 releases the matched `0.1.0` set in dependency order:
+`@sekiban/dcb-core`, `@sekiban/dcb-domain`, then `@sekiban/dcb-client`.
+The tag-triggered workflow is `.github/workflows/release-dcb-matched-set.yml`
+and the exact tag is `dcb-v0.1.0`. It runs `npm run test:g28` and the complete
+matched-set build, tarball and consumer proof before any publish step. The
+credential-free proof is one `npm publish --dry-run --provenance --access
+public` invocation per package.
+
+The operator chooses exactly one activation branch: register npm trusted
+publishing for the workflow filename `release-dcb-matched-set.yml` and set
+`NPM_TRUSTED_PUBLISHING=true`, or provide the operator-managed `NPM_TOKEN`
+secret. The later operator commands are:
+
+```sh
+git tag dcb-v0.1.0
+git push origin dcb-v0.1.0
+(cd packages/dcb-core && npm publish --provenance --access public)
+(cd packages/dcb-domain && npm publish --provenance --access public)
+(cd packages/dcb-client && npm publish --provenance --access public)
+```
+
+This implementation checkpoint performs none of those tag or publish actions.

@@ -86,6 +86,12 @@
     "test:g59:pack": "npm run build:dcb-domain && node scripts/dcb-domain-pack-check.mjs",
     "test:g59:consumer": "node scripts/dcb-domain-consumer-check.mjs",
     "test:g59": "npm run test:g59:pack && npm run test:g59:consumer",
+    "test:g64:build": "npm run build --workspace @sekiban/dcb-core && npm run build --workspace @sekiban/dcb-domain && npm run build --workspace @sekiban/dcb-client",
+    "test:g64:pack": "node scripts/dcb-matched-set-pack-check.mjs",
+    "test:g64:consumer": "node scripts/dcb-matched-set-consumer-check.mjs",
+    "test:g64:publish-dry-run": "node scripts/dcb-matched-set-publish-dry-run.mjs",
+    "test:g64": "npm run test:g64:build && npm run test:g64:pack && npm run test:g64:consumer && node scripts/dcb-matched-set-release-check.mjs dcb-v0.1.0 && npm run test:g64:publish-dry-run",
+    "test:g64:forced-red": "npm run test:g64 && node -e \"if (process.env.SDT_G64_FORCE_FAILURE === '1') throw new Error('SDT-G64 forced-red CI wiring proof')\"",
     "test:g29:mapping": "npm run build:packages && vitest run --config vitest.config.ts test/g29-mapping.spec.ts && npm run test:g29:mapping:runner",
     "test:g29:mapping:runner": "node scripts/g29-mapping-contract.mjs",
     "test:g29:mapping:forced-red": "npm run test:g29:mapping && node -e \"if (process.env.SDT_G29_MAPPING_FORCE_FAILURE === '1') throw new Error('SDT-G29 mapping forced-red CI wiring proof')\"",
@@ -179,7 +185,7 @@
     "test:g21:forced-red": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
     "build:g20": "npm run build:packages && wrangler deploy --config samples/meeting-room/wrangler.cloudflare-only.jsonc --dry-run --outdir .artifacts/g20-cloudflare-build --outfile .artifacts/g20-cloudflare-build/worker.js --metafile .artifacts/g20-cloudflare-build/bundle-meta.json",
     "test:watch": "vitest --config vitest.config.ts",
-    "check": "npm run lint && npm run typecheck && npm run test:g28:compile-fail && npm run test:g28:boundaries && npm run test:g28:boundary:source && npm run test:g28:boundary:negative && npm run test:g28:boundary:package && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g26 && npm run test:g27 && npm run test:g28 && npm run test:g29:domain-source && npm run test:g29:authoring-doc && npm run test:g29:mapping && npm run test:g29:delivery && npm run test:g29:diagnostics && npm run test:g29:compatibility && npm run test:g29:sample && npm run test:g31 && npm run test:g32 && npm run test:g26:topology && npm run test:g20:candidate && npm run test:g29:candidate && npm run test:g31:candidate && npm run test:g32:candidate && npm run test:g37:evidence && npm run test:g42 && npm run test:g44 && npm run test:g45 && npm run test:g46 && npm run test:g49 && npm run test:g41"
+    "check": "npm run lint && npm run typecheck && npm run test:g28:compile-fail && npm run test:g28:boundaries && npm run test:g28:boundary:source && npm run test:g28:boundary:negative && npm run test:g28:boundary:package && npm test && npm run test:store-contract && npm run test:d1 && npm run test:mv && npm run test:cosmos-wiring && npm run test:boundaries && npm run test:consumer && npm run test:g20 && npm run test:g20:gate && npm run test:g25 && npm run test:g26 && npm run test:g27 && npm run test:g28 && npm run test:g29:domain-source && npm run test:g29:authoring-doc && npm run test:g29:mapping && npm run test:g29:delivery && npm run test:g29:diagnostics && npm run test:g29:compatibility && npm run test:g29:sample && npm run test:g31 && npm run test:g32 && npm run test:g26:topology && npm run test:g20:candidate && npm run test:g29:candidate && npm run test:g31:candidate && npm run test:g32:candidate && npm run test:g37:evidence && npm run test:g42 && npm run test:g44 && npm run test:g45 && npm run test:g46 && npm run test:g49 && npm run test:g41 && npm run test:g64"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "0.22.0",

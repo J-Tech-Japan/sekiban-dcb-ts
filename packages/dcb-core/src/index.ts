@@ -569,4 +569,4 @@ export function defineDomain(options: DomainDefinitionOptions): DomainDefinition
   });
 }
 
-export * from "./materializedView";
+export * from "./materializedView.js";

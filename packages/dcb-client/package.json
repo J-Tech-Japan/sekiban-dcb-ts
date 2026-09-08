@@ -1,8 +1,22 @@
 {
   "name": "@sekiban/dcb-client",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Typed Serialized DCB V1 client and claim-ledger executor.",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts.git",
+    "directory": "packages/dcb-client"
+  },
+  "homepage": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/tree/main/packages/dcb-client#readme",
+  "bugs": {
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues"
+  },
+  "keywords": ["sekiban", "dcb", "client", "executor"],
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -12,12 +26,14 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
-  "dependencies": {
-    "@sekiban/dcb-core": "file:../dcb-core"
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
-  "devDependencies": {
-    "@sekiban/dcb-domain": "file:../dcb-domain"
+  "dependencies": {
+    "@sekiban/dcb-core": "0.1.0",
+    "@sekiban/dcb-domain": "0.1.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",

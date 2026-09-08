@@ -1,0 +1,49 @@
+name: Release matched DCB package set
+
+on:
+  push:
+    tags:
+      - "dcb-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NPM_TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Verify the dependency-ordered matched release tag
+        run: node scripts/dcb-matched-set-release-check.mjs "${GITHUB_REF_NAME}"
+      - name: Run the relevant domain suite before any publish step
+        run: npm run test:g28
+      - name: Run matched-set build, tarball and consumer gates
+        run: npm run test:g64
+      - name: Credential-free dry-run of every publish path
+        run: npm run test:g64:publish-dry-run
+      - name: Publish the matched set with provenance or retain verified dry-run fallback
+        run: |
+          set -euo pipefail
+          if [[ "${NPM_TRUSTED_PUBLISHING}" == "true" || -n "${NODE_AUTH_TOKEN}" ]]; then
+            for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
+              echo "publish: ${package}"
+              (cd "${package}" && npm publish --provenance --access public)
+            done
+          else
+            echo "NPM_TRUSTED_PUBLISHING is not true and NPM_TOKEN is not configured; no package was published."
+            echo "The credential-free dry-run above is the verified fallback."
+          fi
