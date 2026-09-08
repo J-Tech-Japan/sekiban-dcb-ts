@@ -31,17 +31,36 @@ jobs:
         run: node scripts/dcb-matched-set-release-check.mjs "${GITHUB_REF_NAME}"
       - name: Run the relevant domain suite before any publish step
         run: npm run test:g28
+      - name: Detect repository visibility for npm provenance policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repository_private="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.private')"
+          case "${repository_private}" in
+            true|false) ;;
+            *) echo "Unexpected repository visibility response: ${repository_private}" >&2; exit 1 ;;
+          esac
+          echo "REPO_IS_PRIVATE=${repository_private}" >> "${GITHUB_ENV}"
+          echo "repository visibility: $([[ "${repository_private}" == "true" ]] && echo private || echo public)"
       - name: Run matched-set build, tarball and consumer gates
         run: npm run test:g64
+      - name: Run publish command-shape guards
+        run: npm run test:g64:publish-shape
       - name: Credential-free dry-run of every publish path
         run: npm run test:g64:publish-dry-run
       - name: Publish the matched set with provenance or retain verified dry-run fallback
         run: |
           set -euo pipefail
+          publish_args=(--access public)
+          if [[ "${REPO_IS_PRIVATE}" == "false" ]]; then
+            publish_args+=(--provenance)
+          fi
           if [[ "${NPM_TRUSTED_PUBLISHING}" == "true" || -n "${NODE_AUTH_TOKEN}" ]]; then
             for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
               echo "publish: ${package}"
-              (cd "${package}" && npm publish --provenance --access public)
+              echo "command: npm publish ${publish_args[*]}"
+              (cd "${package}" && npm publish "${publish_args[@]}")
             done
           else
             echo "NPM_TRUSTED_PUBLISHING is not true and NPM_TOKEN is not configured; no package was published."

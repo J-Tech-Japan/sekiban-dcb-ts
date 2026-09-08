@@ -59,9 +59,13 @@ Issue #120 releases the matched `0.1.0` set in dependency order:
 `@sekiban/dcb-core`, `@sekiban/dcb-domain`, then `@sekiban/dcb-client`.
 The tag-triggered workflow is `.github/workflows/release-dcb-matched-set.yml`
 and the exact tag is `dcb-v0.1.0`. It runs `npm run test:g28` and the complete
-matched-set build, tarball and consumer proof before any publish step. The
-credential-free proof is one `npm publish --dry-run --provenance --access
-public` invocation per package.
+matched-set build, tarball and consumer proof before any publish step. It then
+reads the repository's live `.private` value through the GitHub API. For a
+public repository the credential-free proof is one `npm publish --dry-run
+--provenance --access public` invocation per package; for this private
+repository it is one `npm publish --dry-run --access public` invocation per
+package. A command-shape guard proves both branches and rejects a private
+command mutated to include `--provenance`.
 
 The operator chooses exactly one activation branch: register npm trusted
 publishing for the workflow filename `release-dcb-matched-set.yml` and set
@@ -71,9 +75,19 @@ secret. The later operator commands are:
 ```sh
 git tag dcb-v0.1.0
 git push origin dcb-v0.1.0
+# public repository:
 (cd packages/dcb-core && npm publish --provenance --access public)
 (cd packages/dcb-domain && npm publish --provenance --access public)
 (cd packages/dcb-client && npm publish --provenance --access public)
+# private repository (the W177 path):
+(cd packages/dcb-core && npm publish --access public)
+(cd packages/dcb-domain && npm publish --access public)
+(cd packages/dcb-client && npm publish --access public)
 ```
+
+The workflow itself selects exactly one branch, so operators must not append
+`--provenance` to the private path. It retains the two approved credential
+branches: trusted publishing registered for `release-dcb-matched-set.yml`
+with `NPM_TRUSTED_PUBLISHING=true`, or an operator-managed `NPM_TOKEN`.
 
 This implementation checkpoint performs none of those tag or publish actions.
