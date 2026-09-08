@@ -59,12 +59,19 @@ const open = command({
 });
 toRuntimeDomain(domain({ events: [opened], projectors: [roomProjector], commands: [open] }));
 
-const requests: Array<{ url: string; body: unknown }> = [];
+const requests: Array<{ url: string; body: unknown; rawBody: string | undefined }> = [];
+const expectedCommit = {
+  version: 1,
+  eventCandidates: [{ payload: "eyJyb29tSWQiOiJyb29tLTEifQ==", eventPayloadName: "RoomOpened", tags: ["room:room-1"] }],
+  consistencyTags: [{ tag: "room:room-1", lastSortableUniqueId: "" }],
+};
+const expectedCommitBody = JSON.stringify(expectedCommit);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
-  const body = init?.body === undefined ? undefined : JSON.parse(String(init.body));
-  requests.push({ url, body });
+  const rawBody = init?.body === undefined ? undefined : String(init.body);
+  const body = rawBody === undefined ? undefined : JSON.parse(rawBody);
+  requests.push({ url, body, rawBody });
   if (url.endsWith("/tag-state")) return json({ payload: "eyJzdGF0dXMiOiJlbXB0eSJ9", version: 0, lastSortedUniqueId: "", tagGroup: "room", tagContent: "room-1", tagProjector: "room" });
   if (url.endsWith("/tag-latest-sortable")) return json({ exists: false, lastSortableUniqueId: "" });
   if (url.endsWith("/commit")) return json({ writtenEvents: [{ sortableUniqueIdValue: "000000000000000000000000000001" }], tagWriteResults: [], head: "000000000000000000000000000001" });
@@ -76,12 +83,12 @@ const result = await executor.execute(open, { roomId: "room-1" });
 equal(result.kind, "committed");
 const commit = requests.find((request) => request.url.endsWith("/commit"));
 assert(commit, "commit request was not observed");
-deepEqual(commit.body, {
-  version: 1,
-  eventCandidates: [{ payload: "eyJyb29tSWQiOiJyb29tLTEifQ==", eventPayloadName: "RoomOpened", tags: ["room:room-1"] }],
-  consistencyTags: [{ tag: "room:room-1", lastSortableUniqueId: "" }],
-});
-console.log("PASS V1 executor/domain consumer");
+deepEqual(commit.body, expectedCommit);
+equal(commit.rawBody, expectedCommitBody);
+const actualBytes = Array.from(new TextEncoder().encode(commit.rawBody));
+const expectedBytes = Array.from(new TextEncoder().encode(expectedCommitBody));
+deepEqual(actualBytes, expectedBytes);
+console.log(JSON.stringify({ status: "PASS", rawV1Body: commit.rawBody, rawV1Bytes: actualBytes }));
 `;
 
 const deepImports = [
@@ -132,11 +139,11 @@ try {
   const tsc = join(temp, "node_modules", ".bin", "tsc");
   await run(tsc, ["-p", "tsconfig.node16.json"], temp);
   await run(tsc, ["-p", "tsconfig.bundler.json"], temp);
-  await run("node", ["dist-node16/main.js"], temp);
-  await run("node", ["dist-bundler/main.js"], temp);
+  const node16 = await run("node", ["dist-node16/main.js"], temp);
+  const bundler = await run("node", ["dist-bundler/main.js"], temp);
   const esbuild = join(root, "node_modules", ".bin", "esbuild");
   await run(esbuild, ["src/main.ts", "--bundle", "--format=esm", "--platform=node", "--outfile=dist-bundler/bundle.js"], temp);
-  await run("node", ["dist-bundler/bundle.js"], temp);
+  const bundled = await run("node", ["dist-bundler/bundle.js"], temp);
 
   for (const resolution of [["Node16", "Node16", "Node16"], ["Bundler", "ESNext", "Bundler"]]) {
     const [label, module, moduleResolution] = resolution;
@@ -148,7 +155,12 @@ try {
       redReceipts.push({ label: `shipped-dist-deep-import-${packageName}-${label}`, status: result.status, expected: `package exports rejected @sekiban/${packageName}/dist/index.js` });
     }
   }
-  console.log(JSON.stringify({ status: "PASS", greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime"], redReceipts }, null, 2));
+  console.log(JSON.stringify({
+    status: "PASS",
+    greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime"],
+    rawV1Receipts: [node16.stdout.trim(), bundler.stdout.trim(), bundled.stdout.trim()],
+    redReceipts,
+  }, null, 2));
 } finally {
   if (process.env.SDT_G64_KEEP_TEMP === "1") console.error(`kept consumer temp directory: ${temp}`);
   else await rm(temp, { recursive: true, force: true });

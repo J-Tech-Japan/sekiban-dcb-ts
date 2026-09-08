@@ -34,12 +34,7 @@ jobs:
       - name: Run matched-set build, tarball and consumer gates
         run: npm run test:g64
       - name: Credential-free dry-run of every publish path
-        run: |
-          set -euo pipefail
-          for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
-            echo "dry-run: ${package}"
-            (cd "${package}" && npm publish --dry-run --provenance --access public)
-          done
+        run: npm run test:g64:publish-dry-run
       - name: Publish the matched set with provenance or retain verified dry-run fallback
         run: |
           set -euo pipefail

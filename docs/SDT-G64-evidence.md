@@ -11,9 +11,9 @@ behavior. The matched release set is `@sekiban/dcb-core`,
 | --- | --- |
 | AC1 package metadata and matched dependencies | `scripts/dcb-matched-set-pack-check.mjs` checks public metadata, exact versions, `@sekiban/dcb-client` runtime dependencies, exports, license and package allowlists. |
 | AC2 tarball contents | The pack guard runs `npm pack --dry-run --json` for all three packages and rejects source/config/map leakage. |
-| AC3 consumer compatibility | The consumer guard installs the three tarballs outside the workspace, compiles/runs a real `createSekibanExecutor` V1 command under Node16 and Bundler resolution, and runs an esbuild bundle. |
+| AC3 consumer compatibility | The consumer guard installs the three tarballs outside the workspace, compiles/runs a real `createSekibanExecutor` V1 command under Node16 and Bundler resolution, runs an esbuild bundle, and compares the raw UTF-8 V1 commit body bytes. |
 | AC4 negative boundaries | Red probes reject a stray package file, a private pre-change manifest, and `@sekiban/dcb-domain/dist/index.js` under Node16 and Bundler package exports. |
-| AC5 release workflow | `.github/workflows/release-dcb-matched-set.yml` verifies the tag, runs the domain suite and matched-set gates before any publish step, then runs a credential-free provenance dry-run. |
+| AC5 release workflow | `.github/workflows/release-dcb-matched-set.yml` verifies the tag, runs the domain suite and matched-set gates before any publish step, then runs `scripts/dcb-matched-set-publish-dry-run.mjs` in core → domain → client order for a credential-free provenance dry-run. |
 | AC6 dependency order | The workflow publishes core, domain, then client, with the release guard requiring `dcb-v0.1.0`. |
 | AC7 provenance activation | The workflow supports npm trusted publishing with `NPM_TRUSTED_PUBLISHING=true` and `id-token: write`, or the operator-supplied `NPM_TOKEN` fallback. |
 | AC8 operator handoff | Exact later tag and publish commands are recorded below; this checkpoint does not execute them. |
@@ -40,8 +40,9 @@ location and is not a release credential or a test wrapper.
 ```text
 NPM_CONFIG_CACHE=... npm run test:g64                         PASS
   build: core/domain/client; pack: all 3 exact allowlists and <=1 MB;
-  consumer: Node16 + Bundler + esbuild V1 compile/runtime PASS;
-  release guard: dcb-v0.1.0 order core -> domain -> client PASS
+  consumer: Node16 + Bundler + esbuild V1 compile/runtime and raw-byte PASS;
+  release guard: dcb-v0.1.0 order core -> domain -> client PASS;
+  publish dry-run: all 3 npm publish --dry-run commands status 0
   expected red probes: stray core/client, private pre-change manifest,
     and six shipped dist deep-import Node16/Bundler probes all detected
 NPM_CONFIG_CACHE=... SDT_G64_FORCE_FAILURE=1 npm run test:g64:forced-red
@@ -54,6 +55,30 @@ NPM_CONFIG_CACHE=... npm run test:g59                     PASS
 node scripts/g40-ci-coverage-check.mjs                   PASS
 git diff --cached --check                                 PASS
 ```
+
+The packaged facade emitted the same raw V1 request in Node16, Bundler, and
+esbuild consumers:
+
+```text
+{"version":1,"eventCandidates":[{"payload":"eyJyb29tSWQiOiJyb29tLTEifQ==","eventPayloadName":"RoomOpened","tags":["room:room-1"]}],"consistencyTags":[{"tag":"room:room-1","lastSortableUniqueId":""}]}
+```
+
+The assertion compares UTF-8 bytes, not a decoded object: byte length `199`,
+SHA-256 `5c46a252c8d4136de1c0d842ba39732cbb58983957488053431639ebfa2c2695`.
+The raw dry-run script records each command's stdout/stderr and status. The
+fresh receipt had status `0` for all three packages, in order:
+
+```text
+@sekiban/dcb-core  sekiban-dcb-core-0.1.0.tgz  package 11.1 kB  unpacked 51.6 kB  shasum 229ec62ef961eaa269d2cff226312ebe83c17309
+@sekiban/dcb-domain sekiban-dcb-domain-0.1.0.tgz package 110.6 kB unpacked 699.4 kB shasum 04fb7cfdc2d3d6682d0ed42162dc2366378f8cee
+@sekiban/dcb-client sekiban-dcb-client-0.1.0.tgz package 99.7 kB  unpacked 638.4 kB shasum e63e66604feee26725a4d8d452a9ab3152e2dc50
+each: npm publish --dry-run --provenance --access public
+each: npm notice Publishing to https://registry.npmjs.org/ with tag latest and public access (dry-run)
+```
+
+The npm dry-run emitted only package metadata normalization warnings for the
+repository URL; it did not publish a package. The real tag/publish path remains
+operator-only.
 
 The repository-wide `npm test` was also run without changing its assertions,
 timeouts, or retry behavior. It returned `6 failed, 88 passed, 1 skipped`
