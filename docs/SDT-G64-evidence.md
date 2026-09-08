@@ -4,7 +4,10 @@ This document records the release-preparation proof for issue #120. The original
 W174/W176 source checkpoints did not publish packages, create credentials, or
 create a tag. W177 repairs the tag workflow so an operator can publish the
 matched set safely from this private repository; the workflow still changes no
-runtime API behavior. The matched release set is `@sekiban/dcb-core`,
+runtime API behavior. For a private repository, the workflow both omits the
+explicit `--provenance` flag and sets `NPM_CONFIG_PROVENANCE=false` because npm
+can otherwise auto-enable provenance inside GitHub Actions. The matched release
+set is `@sekiban/dcb-core`,
 `@sekiban/dcb-domain`, and `@sekiban/dcb-client`, all at `0.1.0`.
 
 ## Acceptance map
@@ -15,9 +18,9 @@ runtime API behavior. The matched release set is `@sekiban/dcb-core`,
 | AC2 dependency correctness | The pack guard checks that client runtime dependencies are exactly `@sekiban/dcb-core` and `@sekiban/dcb-domain` at the matched version, and that no workspace/file/link specifier leaks into the release set. |
 | AC3 tarball guards | The pack guard runs `npm pack --dry-run --json` for all three packages, enforces the exact `dist/**`, README.md, LICENSE, and package.json allowlist and size bound, and detects stray-file mutations. |
 | AC4 clean-consumer proof | The consumer guard installs the three tarballs outside the workspace, compiles/runs a real `createSekibanExecutor` V1 command under Node16 and Bundler resolution, runs an esbuild bundle, compares raw UTF-8 V1 commit bytes, and rejects undeclared deep imports. |
-| AC5 release workflow | `.github/workflows/release-dcb-matched-set.yml` verifies the tag, detects repository visibility at runtime, runs the relevant domain/matched-set gates before any publish step, and uses a credential-free visibility-matched dry-run in core → domain → client order. Provenance is requested only for public repositories. |
+| AC5 release workflow | `.github/workflows/release-dcb-matched-set.yml` verifies the tag, detects repository visibility at runtime, runs the relevant domain/matched-set gates before any publish step, and uses a credential-free visibility-matched dry-run in core → domain → client order. Provenance is requested only for public repositories; private publishing also disables npm's implicit GitHub Actions provenance. |
 | AC6 downstream-consumer documentation | `docs/release-process.md` and this evidence document explain the matched install/release procedure for the SekibanWasmRuntime consumer, including the exact package order and operator-only activation. |
-| AC7 scope boundary | The sample, runtime API, `@sekiban/dcb-runtime`, and existing guards remain untouched; no deployment, tag, credential, or real publish operation occurs in this PR. |
+| AC7 scope boundary | The sample, runtime API, `@sekiban/dcb-runtime`, and existing guards remain untouched. The source PR creates no credentials or deployment; the separately authorized operator release is recorded below. |
 | AC8 lifecycle | The dedicated branch, non-draft PR, worker lifecycle receipts, exact-head CI, and evidence document are recorded; no lifecycle gate is weakened or timeout-inflated. |
 
 ## Downstream consumer installation
@@ -96,11 +99,15 @@ The W177 command-shape guard runs both policy branches. Its green receipt is:
 node scripts/dcb-matched-set-publish-dry-run.mjs --self-test       PASS
 public:  npm publish --dry-run --provenance --access public
 private: npm publish --dry-run --access public
+private environment: NPM_CONFIG_PROVENANCE=false
 private provenance mutation: rejected (private publish must omit provenance)
 ```
 
-The private branch retains `--access public`; it omits only the unsupported
-provenance flag. The public branch retains both public access and provenance.
+The private branch retains `--access public`; it omits the unsupported
+provenance flag and explicitly sets `NPM_CONFIG_PROVENANCE=false` so npm cannot
+silently add a provenance bundle in GitHub Actions. The public branch retains
+both public access and provenance. The self-test covers both the command and
+the private environment policy.
 The workflow obtains `.private` from the live GitHub repository API before the
 matched-set gates and exports the result as `REPO_IS_PRIVATE`; it fails closed
 on any response other than the literal `true` or `false`. The publish step
@@ -163,6 +170,27 @@ The job exited before domain/client publication; `npm view
 published by that attempt. This is retained as a failed historical receipt,
 not a passing release proof.
 
+The first retry after the workflow repair proved that omitting the command-line
+flag alone was insufficient for an actual GitHub Actions publish. The tag was
+already on the merged W177 head, and run `34283301334`, job
+[`102252928900`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34283301334/job/102252928900),
+reported `REPO_IS_PRIVATE=true`; all pre-publish gates and the private dry-run
+passed. The publish step printed the private command
+`npm publish --access public`, but npm still emitted a provenance bundle and
+the registry returned:
+
+```text
+npm notice publish Signed provenance statement with source and build information from GitHub Actions
+npm notice publish Provenance statement published to transparency log: https://search.sigstore.dev/?logIndex=2762463837
+npm error code E422
+npm error 422 Unprocessable Entity - PUT https://registry.npmjs.org/@sekiban%2fdcb-core - Error verifying sigstore provenance bundle: Unsupported GitHub Actions source repository visibility: "private". Only public source repositories are supported when publishing with provenance.
+```
+
+The run exited before domain/client publication and no package was published.
+The follow-up repair sets `NPM_CONFIG_PROVENANCE=false` only for the private
+authenticated branch while keeping the public branch's explicit
+`--provenance` behavior unchanged.
+
 The W176 G22 repair is explicitly a test-quality comparison normalization, not
 an unchanged-test claim: `test/g22-bootstrap-d1.spec.ts` excludes only
 driver-only timing metadata (`duration` and its sibling timing fields) from
@@ -201,9 +229,9 @@ For this private repository the corresponding authenticated commands are the
 same dependency order with provenance omitted:
 
 ```sh
-(cd packages/dcb-core && npm publish --access public)
-(cd packages/dcb-domain && npm publish --access public)
-(cd packages/dcb-client && npm publish --access public)
+NPM_CONFIG_PROVENANCE=false npm publish --access public  # core
+NPM_CONFIG_PROVENANCE=false npm publish --access public  # domain
+NPM_CONFIG_PROVENANCE=false npm publish --access public  # client
 ```
 
 The trusted-publisher path registers the exact workflow filename
