@@ -30,14 +30,51 @@ transport and checks the serialized V1 envelope bytes.
 
 ## Local receipts
 
-The exact command/output receipts are filled after the checkpoint gates run:
+The implementation checkpoint is `e0ffe8c` on branch
+`claude/sdt-g64-npm-matched-set-claim-recovery-w174`; the evidence-only
+follow-up that pins this receipt is the final head of this PR. The focused
+receipts were run with `NPM_CONFIG_CACHE=/private/tmp/sdt-g64-npm-cache`
+because the host npm cache is root-owned; this changes only the local cache
+location and is not a release credential or a test wrapper.
 
 ```text
-commit: pending
-branch: claude/sdt-g64-npm-matched-set-claim-recovery-w174
-commands: npm run test:g64; npm run lint; npm run typecheck; npm run test:g28; npm run test:g40:coverage
-npm-publish: not run; workflow dry-run only
+NPM_CONFIG_CACHE=... npm run test:g64                         PASS
+  build: core/domain/client; pack: all 3 exact allowlists and <=1 MB;
+  consumer: Node16 + Bundler + esbuild V1 compile/runtime PASS;
+  release guard: dcb-v0.1.0 order core -> domain -> client PASS
+  expected red probes: stray core/client, private pre-change manifest,
+    and six shipped dist deep-import Node16/Bundler probes all detected
+NPM_CONFIG_CACHE=... SDT_G64_FORCE_FAILURE=1 npm run test:g64:forced-red
+  inner command exited 1 at the intentional forced failure; wrapper classified
+  the failure as expected (the guard did not escape)
+NPM_CONFIG_CACHE=... npm run lint                         PASS
+NPM_CONFIG_CACHE=... npm run typecheck                    PASS
+NPM_CONFIG_CACHE=... npm run test:g28                     PASS (20/20)
+NPM_CONFIG_CACHE=... npm run test:g59                     PASS
+node scripts/g40-ci-coverage-check.mjs                   PASS
+git diff --cached --check                                 PASS
 ```
+
+The repository-wide `npm test` was also run without changing its assertions,
+timeouts, or retry behavior. It returned `6 failed, 88 passed, 1 skipped`
+files and `7 failed, 789 passed, 1 skipped` tests. The failures were the
+pre-existing/local timing and runner signatures in `test/commit.spec.ts`
+(allocation/cancellation timeout), `test/g43-measurement.spec.ts` (row-read
+spread), `test/g43-tag-sql.spec.ts` (AC6 alarm re-arm),
+`test/g67-safe-lane.spec.ts` (unchanged 5,000 ms guard), `test/repair.spec.ts`
+(re-query and scan timeouts), and `test/tag.spec.ts` (G5 timeout), alongside
+the known teardown/Hyperdrive local-environment messages. No G64 test failed;
+these exceptions are not called green and no gate was weakened.
+
+The local CI-equivalent coverage inventory includes the new `ci-g64` command
+and its forced-red probe in `verify.needs`; `node scripts/g40-ci-coverage-check.mjs`
+passed against the resulting workflow. Hosted exact-head CI is the required
+post-push check and is recorded in the handoff artifact/PR once available.
+
+No `npm publish`, tag push, credential creation, deployment, or runtime API
+operation was performed. The workflow's publish branches are operator-only;
+the unauthenticated branch is the credential-free `npm publish --dry-run
+--provenance --access public` proof.
 
 The red probes are expected to fail in the mutated pre-change fixture and are
 green only when the guard detects that failure. The clean receipts must show
