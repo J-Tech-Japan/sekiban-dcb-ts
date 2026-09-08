@@ -368,9 +368,27 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       throw new D1IdentityConflictError(`EventId ${message.eventId} timestamp is not canonical UTC ISO-8601`);
     }
     const metadata = metadataForDelivery(message, deliverySource);
+    // This is the pre-existing correctness preflight for canonical identity
+    // conflicts. It is not G69 diagnostic work: it must remain before the
+    // durable batch so a conflicting replay cannot write incidents, receipts,
+    // or event-arrival state.
+    const storedBefore = await this.eventById(message.serviceId, message.eventId);
     const incomingEventType = identity.key;
     const eventTags = [...message.eventTags];
     const tagsJson = JSON.stringify(eventTags);
+    if (storedBefore !== undefined && (
+      storedBefore.eventType !== incomingEventType ||
+      storedBefore.suid !== message.suid ||
+      storedBefore.payload !== message.payload ||
+      JSON.stringify(storedBefore.eventTags) !== tagsJson ||
+      (requiresGlobalReceipt && storedBefore.eventDigest !== undefined && storedBefore.eventDigest !== message.completeness.eventDigest) ||
+      storedBefore.timestamp !== timestamp ||
+      storedBefore.causationId !== metadata.causationId ||
+      storedBefore.correlationId !== metadata.correlationId ||
+      storedBefore.executedUser !== metadata.executedUser
+    )) {
+      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`);
+    }
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const statements: D1PreparedStatement[] = [
       this.database.prepare(

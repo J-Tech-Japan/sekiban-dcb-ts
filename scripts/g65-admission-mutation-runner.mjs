@@ -51,6 +51,12 @@ function replaceOnce(source, from, to, label) {
 function mutate(source) {
   let mutant = replaceOnce(
     source,
+    "if (storedBefore !== undefined && (",
+    "if (false && storedBefore !== undefined && (",
+    "storedBefore identity-conflict guard",
+  );
+  mutant = replaceOnce(
+    mutant,
     `if (
       stored.suid !== message.suid ||
       stored.payload !== message.payload ||
@@ -117,7 +123,7 @@ function main() {
       output: mutantResult.output,
     },
     green: { status: "green", exitCode: before.status },
-    mutant: "removed storedBefore identity rejection and changed event conflict DO NOTHING to overwrite",
+    mutant: "removed both preflight and post-batch identity rejection and changed event conflict DO NOTHING to overwrite",
   };
   writeReceipt(receiptPath, receipt);
   process.stdout.write(`${JSON.stringify(receipt)}\n`);
