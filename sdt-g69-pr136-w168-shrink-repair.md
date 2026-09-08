@@ -16,9 +16,9 @@ classification are required before rereview.
    a higher SUID already exists for the service. The public high-lag fail-closed
    behavior is therefore retained. `test/read.spec.ts` was not changed and its
    expected HTTP 500 remains green.
-2. Added an explicit `runOrderingDetector` catch-up option. Only the scheduled
-   `cron` maintenance pass enables the bounded late-lower detector. Queue /
-   delivery, fence-expiry, and coverage-retry kicks retain the existing
+2. Added an explicit `runOrderingDetector` catch-up option for isolated proof
+   tests, but disabled it on every production safe-lane trigger. Queue /
+   delivery, fence-expiry, coverage-retry, and cron kicks retain the existing
    SafeWindow/frontier catch-up and do not execute the detector query. The
    existing in-batch strict-order check remains fail-closed when a lower row is
    directly present in the fetched source batch.
@@ -26,9 +26,9 @@ classification are required before rereview.
    path. It remains best-effort, bounded-retention, and diagnostic-only; it
    does not provide allocation closure or alter Queue disposition.
 4. Updated the G69 guard/test so removal of the restored lag exclusion is red,
-   scheduled detector cost is measured, and Queue-triggered detector cost is
-   explicitly zero. The WAKE-166 false-positive cases and the four existing
-   G69 mutant checks remain active.
+   the isolated scheduled-maintenance detector proof cost is measured, and
+   Queue-triggered detector cost is explicitly zero. The WAKE-166
+   false-positive cases and the four existing G69 mutant checks remain active.
 5. The first exact-head CI run exposed two source-shape compatibility issues:
    the existing G19 detector proof now explicitly opts into the scheduled
    detector, and the non-detector `d1-mv` follow branch preserves the exact
@@ -56,6 +56,12 @@ classification are required before rereview.
   `scripts/g58-reservation-safe-starvation-guard.mjs` passed its self-test and
   post-change guard, and `npm run test:g44` passed its contract, 8 tests, and
   four red production mutants.
+- Exact run `34192281814` then failed the unchanged G67 AC3 5,000 ms guard in
+  foundation job `101952616110` at `test/g67-safe-lane.spec.ts:731`; this is
+  the measured detector unaffordability receipt required by WAKE-168. The
+  detector is therefore removed from the production cron path too; its
+  isolated false-positive/ordering tests remain explicit and the G67 timeout
+  remains unchanged.
 - `npm run typecheck`, `npm run lint`, and `git diff --check`: pass after the
   scoped edits.
 - Local NOSENTRY SQLite alarm/Hyperdrive diagnostics are environment output;

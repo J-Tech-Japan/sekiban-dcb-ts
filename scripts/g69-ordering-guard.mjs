@@ -123,7 +123,7 @@ function vitestPath() {
 }
 
 function runOracle(pattern) {
-  const args = [vitestPath(), "run", "--config", configFile, "--no-cache", "--maxWorkers=1", testFile, "--testNamePattern", pattern];
+  const args = [vitestPath(), "run", "--config", configFile, "--no-cache", "--pool=forks", "--maxWorkers=1", "--no-file-parallelism", "--disableConsoleIntercept", testFile, "--testNamePattern", pattern];
   const result = spawnSync(process.execPath, args, {
     cwd: root,
     encoding: "utf8",

@@ -206,10 +206,11 @@ export async function runMeetingRoomSafeLanePass(
       catchUpStartedAt = Date.now();
       try {
         const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid, {
-          // A Queue/fence kick remains on the latency-sensitive path and
-          // performs the existing safe catch-up only. The bounded detector is
-          // scheduled-maintenance diagnostics, never a hot-path prerequisite.
-          runOrderingDetector: effectiveTrigger === "cron",
+          // The late-lower detector is retained only for explicit isolated
+          // proof tests. It is not affordable on either production safe-lane
+          // trigger, including the cron backstop; G44/G62 safe catch-up and
+          // the in-batch fail-closed order check remain unchanged.
+          runOrderingDetector: false,
         });
         catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44

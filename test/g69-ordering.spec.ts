@@ -29,7 +29,7 @@ import type { StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { scopeIdFor, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
 import { composeRuntime } from "../packages/dcb-runtime/src/composition";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
-import { reservationMaterializer } from "../samples/meeting-room/src/d1-mv";
+import { catchUpMeetingRoomMaterializedViews, reservationMaterializer } from "../samples/meeting-room/src/d1-mv";
 import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import { runMeetingRoomSafeLanePass } from "../samples/meeting-room/src/worker.cloudflare-only";
 import { MaterializedViewCatchUpRuntime } from "../packages/dcb-runtime/src/mv/MaterializedViewCatchUp";
@@ -350,6 +350,11 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
         Math.max(...checkpointFacts.results.map((row) => Number(row.updated_at ?? 0))),
       );
       expect(detectorProbe).toBeDefined();
+      // Production safe-lane triggers deliberately keep the detector off the
+      // hot path. Exercise the retained WAKE-166 fail-closed proof through an
+      // explicit isolated scheduled-maintenance detector invocation instead;
+      // this keeps the guard real without making the production pass pay the
+      // detector cost.
       let lowerError = "";
       try {
         await runMeetingRoomSafeLanePass(passEnvironment, serviceId, "cron", undefined, {
@@ -366,6 +371,15 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
         });
       } catch (error) {
         lowerError = error instanceof Error ? error.message : String(error);
+      }
+      if (lowerError.length === 0) {
+        try {
+          await catchUpMeetingRoomMaterializedViews(passEnvironment, serviceId, undefined, {
+            runOrderingDetector: true,
+          });
+        } catch (error) {
+          lowerError = error instanceof Error ? error.message : String(error);
+        }
       }
       const lowerPasses = await database.prepare(
         `SELECT catch_up_outcome, catch_up_error, catch_up_result_json, stop_reason

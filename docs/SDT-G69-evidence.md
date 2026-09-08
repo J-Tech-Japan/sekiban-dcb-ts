@@ -175,16 +175,17 @@ catch-up or public query. The focused tests cover omitted and awaited-receipt
 mutants, failure, concurrency, replay, retention, and a non-negative persisted
 per-attempt cost.
 
-The late-lower detector is now enabled only for the scheduled-maintenance
-pass. Queue/delivery, fence-expiry, and coverage-retry kicks pass
-`runOrderingDetector=false`, so their `lateLowerQueryDurationMs` is `0`; the
-existing in-batch strict-order check still preserves the fail-closed incident
+The late-lower detector is not on any production safe-lane path in the final
+W168 shrink: Queue/delivery, fence-expiry, coverage-retry, and cron kicks all
+pass `runOrderingDetector=false`, so their `lateLowerQueryDurationMs` is `0`;
+the existing in-batch strict-order check still preserves the fail-closed incident
 and quarantine boundary when a lower row is directly present in that source
-batch. Scheduled maintenance uses one bounded `LIMIT 1` proven/unknown/replay
-probe before its event-application loop rather than materializing every
-lower-SUID row or issuing an N+1 event lookup. Its observed
-`lateLowerQueryDurationMs` is carried in `catch_up_result_json` and is the
-scheduled-path cost measurement. A proven lower-SUID witness is queried before
+batch. The explicit `runOrderingDetector=true` option is retained only for
+isolated scheduled-maintenance proof tests. Those tests use one bounded `LIMIT
+1` proven/unknown/replay probe before their event-application loop rather than
+materializing every lower-SUID row or issuing an N+1 event lookup. Their
+observed `lateLowerQueryDurationMs` is the measured scheduled-proof cost, not a
+production latency budget. A proven lower-SUID witness is queried before
 unknown evidence so an uncertain row cannot hide a real violation. The
 diagnostic receipt and detector provide no allocator closure, ordering proof
 beyond their stated incident boundary, or permission to relax G44/G62.
@@ -214,44 +215,45 @@ post-admission, best-effort and attached to the invocation lifetime through
 `waitUntil` (or a detached promise in local tests). The receipt records the
 nullable post-admission mutation result and `diagnostic_duration_ms`; it is
 bounded diagnostic retention and explicitly provides no allocation closure.
-W168 moves the late-lower detector out of delivery/fence-expiry/coverage-retry
-catch-up and into the scheduled-maintenance (`cron`) pass only. It still runs
-once before that pass's event loop, uses bounded proven/unknown/replay `LIMIT 1`
-probes in proven-first order, and carries its observed
-`lateLowerQueryDurationMs` through `catch_up_result_json`. The Queue kick ledger
-now records zero detector-query cost, while the scheduled path records the
-actual query cost. It remains diagnostic-only and does not change G44/G62
-certification.
+W168 first moved the late-lower detector out of every kicked production
+safe-lane catch-up. The exact follow-up hosted run still timed out the
+unchanged G67 AC3 guard, so the final shrink also removes it from the
+production cron backstop. The explicit `runOrderingDetector` option remains
+only for isolated ordering proof tests; Queue, delivery, fence-expiry,
+coverage-retry, and cron passes do not execute the detector query. The
+in-batch strict-order check and G44/G62 certification remain unchanged.
 
-The focused receipt observed diagnostic receipt cost `1 ms`. W168 observed
-scheduled detector query cost `0–1 ms` (`detectorCalls=1` for a two-event
-scheduled follow-up pass) and `0 ms` on the Queue-triggered pass. These are
-local observed clocks, not a production allocation or latency guarantee. The
-unchanged `npm run test:g67` command passes its 11/11 behavior tests; all seven
-existing G67 mutation probes remain red. No G67 assertion, budget, timeout,
-scheduler, fence, SafeWindow, retry or drain behavior was changed. Because the
-unchanged G67 AC3 guard passes after detector removal from the kick path, the
-detector is retained for scheduled maintenance; no further removal is needed.
+The focused receipt observed diagnostic receipt cost `1 ms`; isolated detector
+proof measured `0–1 ms` on its scheduled follow-up and `0 ms` on the Queue
+trigger. These are local observed clocks, not a production allocation or
+latency guarantee. The unchanged local `npm run test:g67` command passes its
+11/11 behavior tests and all seven mutation probes remain red, but hosted exact
+run `34192281814` timed out the unchanged G67 AC3 at 5,000 ms in foundation job
+`101952616110`. Under WAKE-168 this is the measured unaffordability receipt:
+the detector is removed from the production cron path too. No G67 assertion,
+budget, timeout, scheduler, fence, SafeWindow, retry or drain behavior was
+changed.
 
 ## W168 shrink repair and retained CI receipts
 
 The W168 source repair starts from exact PR head
 `ca404bb77ee9b79713d40cdf358478adc1c5c566`. It restores the pre-G69 D1
 high-SUID lag-estimate exclusion and makes `test/read.spec.ts` remain unchanged;
-the public high-lag fail-closed expectation remains HTTP 500. It also makes the
-late-lower detector opt-in to the `cron` scheduled-maintenance path. Queue,
-fence-expiry, and coverage-retry passes retain the existing catch-up and
-fail-closed in-batch order check without paying the detector query. No
-G67 timeout/assertion was changed. The bounded append-only admission-attempt
+the public high-lag fail-closed expectation remains HTTP 500. The late-lower
+detector is disabled on every production safe-lane trigger, including cron;
+its explicit runtime option is retained only for isolated ordering proof.
+Queue, fence-expiry, and coverage-retry passes retain the existing catch-up and
+fail-closed in-batch order check without paying the detector query. No G67
+timeout/assertion was changed. The bounded append-only admission-attempt
 receipt remains off the awaited delivery path and is diagnostic-only with
 bounded retention; it does not provide allocation closure.
 
-The unchanged G67 AC3 local guard passes after this shrink (`11/11` behavior
-tests; seven mutation probes red), so the detector was not removed from
-scheduled maintenance. The scheduled local query cost was `0–1 ms`; the
-Queue-triggered catch-up observations recorded `0 ms`. These are local observed
-clocks, not deployed guarantees. AC4/AC5 remain outstanding and issue #133
-remains open/referenced.
+The unchanged local G67 AC3 guard passes (`11/11` behavior tests; seven
+mutation probes red), but hosted run `34192281814` timed out that unchanged
+5,000 ms guard in foundation job `101952616110`. The detector is therefore
+removed from production scheduled maintenance too; the isolated detector cost
+measurements are not treated as a deployable budget. AC4/AC5 remain outstanding
+and issue #133 remains open/referenced.
 
 The previous exact-head hosted run `34188299398` is retained as C-14 evidence
 for the shrink decision:
