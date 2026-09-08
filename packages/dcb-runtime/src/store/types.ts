@@ -51,10 +51,19 @@ export interface StoredEvent {
   arrivals: DeliveryLagRecord[];
 }
 
+/** Per-invocation diagnostic ownership; never part of admission semantics. */
+export interface DeliveryAttemptContext {
+  /** The platform Queue wrapper identity, when the caller has one. */
+  readonly queueMessageId?: string | null;
+  /** Registers diagnostic work with the current invocation lifetime. */
+  readonly waitUntil?: (promise: Promise<void>) => void;
+}
+
 export const DELIVERY_INCIDENT_CLASSIFICATIONS = [
   "SUID_COLLISION",
   "ORDER_VIOLATION",
   "LINEAGE_MISMATCH",
+  "ORDERING_DETECTOR_UNKNOWN",
 ] as const;
 
 export type DeliveryIncidentClassification = (typeof DELIVERY_INCIDENT_CLASSIFICATIONS)[number];
@@ -74,7 +83,7 @@ export interface DeliveryIncident {
 }
 
 export type DeliveryOutcome =
-  | { outcome: "stored"; kind: "stored"; event: StoredEvent }
+  | { outcome: "stored"; kind: "stored"; event: StoredEvent; duplicate?: boolean }
   | { outcome: "suid-collision"; kind: "suid-collision"; incident: DeliveryIncident }
   | { outcome: "lineage-mismatch"; kind: "lineage-mismatch"; incident: DeliveryIncident };
 
@@ -149,7 +158,12 @@ export interface InconsistencyFinding {
 /** Adapter-only persistence port. The detector deliberately does not receive it. */
 export interface EventStore {
   initialize(): Promise<void>;
-  recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource?: DeliverySource): Promise<DeliveryOutcome>;
+  recordDelivery(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource?: DeliverySource,
+    attemptContext?: DeliveryAttemptContext,
+  ): Promise<DeliveryOutcome>;
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   /** Conformance-only read diagnostic; production callers must not use it. */
@@ -200,6 +214,12 @@ export interface ProjectionStore {
   readAllEvents(serviceId: string, since: string): Promise<StoredEvent[]>;
   /** Optional D1-backed detector for a newly admitted lower SUID. */
   findLateLowerSuid?(serviceId: string, checkpointSuid: string, checkpointUpdatedAt: number): Promise<StoredEvent | undefined>;
+  /** Structured detector result; unknown evidence must not become a refusal. */
+  findLateLowerSuidEvidence?(serviceId: string, checkpointSuid: string, checkpointUpdatedAt: number, generation?: number): Promise<{
+    readonly kind: "late-lower-suid" | "replay" | "miss" | "unknown";
+    readonly event?: StoredEvent;
+    readonly reason?: string;
+  }>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   listProjectionTags(serviceId: string): Promise<string[]>;
   readProjectionCheckpoint(serviceId: string, projectionId: string): Promise<ProjectionCheckpoint | undefined>;

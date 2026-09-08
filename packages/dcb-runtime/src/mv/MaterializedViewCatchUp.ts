@@ -104,6 +104,15 @@ export class MaterializedViewCatchUpRuntime {
       updatedAt: nowMs,
     });
     const result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks, options);
+    if (result.stopReason === null && !result.indeterminate && result.appliedEvents > 0) {
+      await this.materializedViews.markGenerationRebuilt({
+        serviceId,
+        viewId: materializer.id,
+        generation: candidate.generation,
+        verifiedAt: nowMs,
+        appliedEvents: result.appliedEvents,
+      });
+    }
     return { ...result, candidateGeneration: candidate.generation, rebuildId };
   }
 
@@ -300,7 +309,30 @@ export class MaterializedViewCatchUpRuntime {
     events: readonly StoredEvent[],
   ): Promise<void> {
     if (priorSuid.length > 0) {
-      const lateLower = await this.source.findLateLowerSuid?.(serviceId, priorSuid, checkpointUpdatedAt);
+      const evidence = this.source.findLateLowerSuidEvidence === undefined
+        ? undefined
+        : await this.source.findLateLowerSuidEvidence(serviceId, priorSuid, checkpointUpdatedAt, generation);
+      const lateLower = evidence === undefined
+        ? await this.source.findLateLowerSuid?.(serviceId, priorSuid, checkpointUpdatedAt)
+        : evidence.kind === "late-lower-suid" ? evidence.event : undefined;
+      if (evidence?.kind === "unknown") {
+        const incident = {
+          serviceId,
+          identityKey: `ORDERING_DETECTOR_UNKNOWN|${serviceId}|${viewId}|${generation}|${priorSuid}|${checkpointUpdatedAt}`,
+          classification: "ORDERING_DETECTOR_UNKNOWN" as const,
+          suid: priorSuid,
+          observedAt: checkpointUpdatedAt,
+        };
+        // The detector has not proved a bounded refusal condition. Persist an
+        // alarm-only incident and continue the existing safe-lane path; an
+        // unknown clock/provenance observation must never be promoted to a
+        // fabricated ordering violation or a guessed quarantine.
+        await this.source.appendDeliveryIncident(incident);
+        console.error("SDT-G69_ORDERING_DETECTOR_UNKNOWN", JSON.stringify({
+          ...incident,
+          reason: evidence.reason ?? "unknown",
+        }));
+      }
       if (lateLower !== undefined) {
         const incident = {
           serviceId,

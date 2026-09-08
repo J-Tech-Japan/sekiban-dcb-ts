@@ -9,6 +9,7 @@ import {
   CanonicalEventIdentityConflictError,
   type DeliveryIncident,
   type DeliveryIncidentClassification,
+  type DeliveryAttemptContext,
   type DeliveryLagRecord,
   type DeliveryOutcome,
   type DetectorStore,
@@ -193,7 +194,7 @@ function findingFrom(row: D1Row): InconsistencyFinding {
 
 function incidentClassification(value: unknown): DeliveryIncidentClassification {
   const classification = asString(value, "classification");
-  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH") {
+  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH" && classification !== "ORDERING_DETECTOR_UNKNOWN") {
     throw new Error("D1 delivery incident classification was invalid");
   }
   return classification;
@@ -302,14 +303,21 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     this.initialized = true;
   }
 
-  async recordDelivery(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
+  async recordDelivery(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource: DeliverySource = "queue",
+    attemptContext?: DeliveryAttemptContext,
+  ): Promise<DeliveryOutcome> {
     this.ready();
     // Start the diagnostic pre-read concurrently, but never await it on the
     // core admission path.  If it finishes after core admission, the receipt
     // marks the before-state unverified instead of claiming allocation closure.
     const beforePromise = this.eventArrivalOps(message.serviceId, message.eventId)
-      .then((values) => values === undefined ? undefined : { values, observedAt: Date.now() })
-      .catch(() => undefined);
+      .then((values) => values === undefined
+        ? { kind: "absent" as const, observedAt: Date.now() }
+        : { kind: "present" as const, values, observedAt: Date.now() })
+      .catch((error) => ({ kind: "failed" as const, observedAt: Date.now(), error: errorText(error) }));
     let result: DeliveryOutcome | undefined;
     let failure: { readonly error: unknown } | undefined;
     try {
@@ -319,18 +327,21 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     }
     const coreCompletedAt = Date.now();
     const status: G69AdmissionAttemptStatus = failure === undefined
-      ? result!.outcome === "stored" ? "stored" : result!.outcome
+      ? result!.outcome === "stored" ? (result!.duplicate === true ? "duplicate" : "stored") : result!.outcome
       : "failed";
     const retryReason = failure === undefined ? null : errorText(failure.error);
-    void this.bestEffortG69AdmissionAttempt(
+    const diagnostic = this.bestEffortG69AdmissionAttempt(
       message,
       arrivedAt,
       deliverySource,
+      attemptContext,
       beforePromise,
       coreCompletedAt,
       status,
       retryReason,
     );
+    if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);
+    else void diagnostic;
     if (failure !== undefined) throw failure.error;
     return result!;
   }
@@ -593,7 +604,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
                AND "Payload" = ? AND "EventType" = ? AND "Tags" = ?
           )
          ON CONFLICT ("ServiceId", "Id") DO UPDATE
-           SET "FirstArrivedAt" = dcb_event_ops."FirstArrivedAt",
+           SET "FirstArrivedAt" = MIN(dcb_event_ops."FirstArrivedAt", excluded."FirstArrivedAt"),
                "LastArrivedAt" = MAX(dcb_event_ops."LastArrivedAt", excluded."LastArrivedAt"),
                "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs"),
                "FirstArrivedSource" = dcb_event_ops."FirstArrivedSource",
@@ -685,7 +696,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
                   MAX(0, excluded.observed_at - serialized_dcb_lag_estimates.observed_at), 0),
               excluded.estimate_ms
             ),
-                observed_at = excluded.observed_at`,
+                observed_at = MAX(serialized_dcb_lag_estimates.observed_at, excluded.observed_at)`,
       ).bind(
         message.serviceId,
         lagMs,
@@ -739,7 +750,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         throw new Error(`D1 event ${message.eventId} has no readable global receipt/membership join`);
       }
     }
-    return { outcome: "stored", kind: "stored", event: stored };
+    return { outcome: "stored", kind: "stored", event: stored, ...(storedBefore === undefined ? {} : { duplicate: true }) };
   }
 
   async readGlobalReceiptJoin(message: DownstreamOutboxMessage): Promise<GlobalReceiptJoin | undefined> {
@@ -820,25 +831,68 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     checkpointSuid: string,
     checkpointUpdatedAt: number,
   ): Promise<StoredEvent | undefined> {
+    const evidence = await this.findLateLowerSuidEvidence(serviceId, checkpointSuid, checkpointUpdatedAt);
+    return evidence.kind === "late-lower-suid" ? evidence.event : undefined;
+  }
+
+  async findLateLowerSuidEvidence(
+    serviceId: string,
+    checkpointSuid: string,
+    checkpointUpdatedAt: number,
+    generation?: number,
+  ): Promise<{
+    readonly kind: "late-lower-suid" | "replay" | "miss" | "unknown";
+    readonly event?: StoredEvent;
+    readonly reason?: string;
+  }> {
     this.ready();
-    if (checkpointSuid.length === 0) return undefined;
-    assertSortableUniqueId(checkpointSuid);
-    const row = await this.database.prepare(
-      `SELECT e."Id" AS event_id
-         FROM dcb_events e
-         JOIN dcb_event_ops o
-           ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
-        WHERE e."ServiceId" = ?
-          AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
-          AND o."FirstArrivedAt" > ?
-          AND o."FirstArrivedAt" <= o."LastArrivedAt"
-          AND o."FirstArrivedAt" >= 0
-          AND o."FirstArrivedSource" IN ('queue', 'fast')
-        ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC
-        LIMIT 1`,
-    ).bind(serviceId, checkpointSuid, checkpointUpdatedAt).first<D1Row>();
-    if (row === null || row === undefined) return undefined;
-    return this.eventById(serviceId, asString(row.event_id, "late_lower_suid.event_id"));
+    // Generation ownership is enforced at the MV/quarantine boundary; the
+    // source evidence itself is generation-independent and must remain
+    // auditable across a generation transition.
+    void generation;
+    if (checkpointSuid.length === 0) return { kind: "miss" };
+    if (!Number.isSafeInteger(checkpointUpdatedAt) || checkpointUpdatedAt < 0) {
+      return { kind: "unknown", reason: "checkpoint-clock-invalid" };
+    }
+    try {
+      assertSortableUniqueId(checkpointSuid);
+      const rows = await this.database.prepare(
+        `SELECT e."Id" AS event_id,
+                o."FirstArrivedAt" AS first_arrived_at,
+                o."LastArrivedAt" AS last_arrived_at,
+                o."FirstArrivedSource" AS first_arrived_source,
+                o."LastArrivedSource" AS last_arrived_source
+           FROM dcb_events e
+           JOIN dcb_event_ops o
+             ON o."ServiceId" = e."ServiceId" AND o."Id" = e."Id"
+          WHERE e."ServiceId" = ?
+            AND e."SortableUniqueId" COLLATE BINARY < ? COLLATE BINARY
+          ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC`,
+      ).bind(serviceId, checkpointSuid).all<D1Row>();
+      let replay: StoredEvent | undefined;
+      for (const row of rows.results) {
+        const first = asNumber(row.first_arrived_at, "late_lower_suid.first_arrived_at");
+        const last = asNumber(row.last_arrived_at, "late_lower_suid.last_arrived_at");
+        const firstSource = asString(row.first_arrived_source, "late_lower_suid.first_arrived_source");
+        const lastSource = asString(row.last_arrived_source, "late_lower_suid.last_arrived_source");
+        if (first < 0 || last < first) return { kind: "unknown", reason: "arrival-clock-rollback" };
+        if (first > checkpointUpdatedAt) {
+          if (firstSource !== "queue" && firstSource !== "fast") {
+            return { kind: "unknown", reason: "arrival-provenance-untrusted" };
+          }
+          const event = await this.eventById(serviceId, asString(row.event_id, "late_lower_suid.event_id"));
+          return event === undefined
+            ? { kind: "unknown", reason: "late-event-row-disappeared" }
+            : { kind: "late-lower-suid", event };
+        }
+        if (last > checkpointUpdatedAt && (lastSource === "queue" || lastSource === "fast")) {
+          replay = await this.eventById(serviceId, asString(row.event_id, "late_lower_suid.event_id"));
+        }
+      }
+      return replay === undefined ? { kind: "miss" } : { kind: "replay", event: replay };
+    } catch (error) {
+      return { kind: "unknown", reason: errorText(error) };
+    }
   }
 
   /**
@@ -1303,9 +1357,12 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     message: DownstreamOutboxMessage,
     arrivedAt: number,
     deliverySource: DeliverySource,
+    attemptContext: DeliveryAttemptContext | undefined,
     beforePromise: Promise<{
-      readonly values: { readonly firstArrivedAt: number; readonly lastArrivedAt: number };
+      readonly kind: "present" | "absent" | "failed";
+      readonly values?: { readonly firstArrivedAt: number; readonly lastArrivedAt: number };
       readonly observedAt: number;
+      readonly error?: string;
     } | undefined>,
     coreCompletedAt: number,
     status: G69AdmissionAttemptStatus,
@@ -1314,23 +1371,38 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     try {
       await this.options.beforeG69AdmissionAttempt?.();
       const beforeObservation = await beforePromise;
-      const before = beforeObservation !== undefined && beforeObservation.observedAt <= coreCompletedAt
+      const before = beforeObservation?.kind === "present" && beforeObservation.observedAt <= coreCompletedAt
         ? beforeObservation.values
         : undefined;
       const observationConsistency: G69AdmissionAttemptReceipt["observationConsistency"] = beforeObservation === undefined
-        ? "before-core-absent"
-        : before === undefined
-          ? "before-read-after-core"
-          : "before-core";
+        ? "unverified"
+        : beforeObservation.kind === "failed"
+          ? "before-read-failed"
+          : beforeObservation.observedAt > coreCompletedAt
+            ? "before-read-after-core"
+            : beforeObservation.kind === "absent"
+              ? "before-core-absent"
+              : before === undefined
+                ? "unverified"
+                : "before-core";
       const afterObservedAt = Date.now();
-      const after = await this.eventArrivalOps(message.serviceId, message.eventId);
+      let after: { readonly firstArrivedAt: number; readonly lastArrivedAt: number } | undefined;
+      let afterReadFailed = false;
+      try {
+        after = await this.eventArrivalOps(message.serviceId, message.eventId);
+      } catch {
+        afterReadFailed = true;
+      }
+      const finalObservationConsistency: G69AdmissionAttemptReceipt["observationConsistency"] = afterReadFailed
+        ? "after-read-failed"
+        : observationConsistency;
       await appendG69AdmissionAttempt(this.database, {
         serviceId: message.serviceId,
         eventId: message.eventId,
         suid: message.suid,
         tag: message.tag,
         deliverySource,
-        queueMessageId: message.attemptId,
+        queueMessageId: attemptContext?.queueMessageId ?? null,
         attemptId: message.attemptId,
         allocatorLineageId: message.allocatorLineageId,
         obligationSequence: message.completeness.obligationSequence,
@@ -1343,7 +1415,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         lastArrivedAtAfter: after?.lastArrivedAt ?? null,
         beforeObservedAt: beforeObservation?.observedAt ?? null,
         afterObservedAt,
-        observationConsistency,
+        observationConsistency: finalObservationConsistency,
         status,
         retryReason,
       });

@@ -16,7 +16,10 @@ import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 import { D1EventStore, D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1";
+import { appendG69AdmissionAttempt, type G69AdmissionAttemptReceipt } from "../packages/dcb-runtime/src/diagnostics/G69AdmissionAttempt";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { scopeIdFor } from "../packages/dcb-runtime/src/cloudflare";
@@ -146,7 +149,9 @@ async function pendingDeliveries(serviceId: string, tags: readonly string[], now
 function messageBatch(messages: readonly DownstreamOutboxMessage[], timestamp: number): MessageBatch<unknown> {
   return {
     messages: messages.map((body) => ({
-      id: body.attemptId,
+      // The Queue wrapper identity is distinct from the envelope attempt
+      // identity; the receipt must not manufacture one from the other.
+      id: `queue-wrapper:${body.attemptId}`,
       timestamp: new Date(timestamp),
       attempts: 1,
       body,
@@ -177,7 +182,7 @@ beforeAll(async () => {
   await database.batch(statements(database, pipelineMigration as string));
   await applyG44D1Migration(database);
   const mv = materializedViews();
-  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration]) {
+  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration]) {
     await mv.batch(statements(mv, migration as string));
   }
 });
@@ -277,6 +282,11 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       ).bind(serviceId).all<Record<string, unknown>>();
       const source = new D1EventStore(database);
       await source.initialize();
+      const lowerEvidence = await source.findLateLowerSuidEvidence(serviceId, higherEvent.sortableUniqueIdValue, Math.max(...checkpointFacts.results.map((row) => Number(row.updated_at ?? 0))));
+      expect(lowerEvidence).toMatchObject({ kind: "late-lower-suid", event: { eventId: lowerEvent.id } });
+      expect(lowerFacts.results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ event_id: lowerEvent.id, first_arrived_at: lowerArrival, last_arrived_at: lowerArrival }),
+      ]));
       const detectorProbe = await source.findLateLowerSuid(
         serviceId,
         higherEvent.sortableUniqueIdValue,
@@ -305,13 +315,13 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
            FROM serialized_dcb_safe_lane_passes
           WHERE service_id = ? ORDER BY scheduled_at ASC, pass_id ASC`,
       ).bind(serviceId).all<Record<string, unknown>>();
+      expect(lowerPasses.results.length).toBeGreaterThanOrEqual(2);
       // Queue delivery schedules its own non-blocking safe-lane kick. The
       // explicit proof pass and that kick may race, so the latest row is not
       // the ordering oracle. The durable quarantine/incident is the oracle;
       // at least one pass must expose the typed fail-closed boundary when the
       // race is serialized through the catch-up body.
-      expect(lowerPasses.results.some((row) => row.catch_up_outcome === "failed" && row.stop_reason === "pass_failed" && String(row.catch_up_error ?? "").includes("quarantined"))).toBe(true);
-      if (lowerError.length > 0) expect(lowerError).toContain("quarantined");
+      expect(lowerError).toContain("quarantined");
 
       const incident = await database.prepare(
         `SELECT classification, identity_key, event_id, incoming_event_id, suid
@@ -352,7 +362,8 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       ).bind(serviceId).all<Record<string, unknown>>();
       expect(receiptRows.results.length).toBeGreaterThanOrEqual(4);
       expect(receiptRows.results.every((row) => row.delivery_source === "queue")).toBe(true);
-      expect(receiptRows.results.every((row) => row.attempt_id === row.queue_message_id)).toBe(true);
+      expect(receiptRows.results.every((row) => typeof row.queue_message_id === "string" && row.queue_message_id.length > 0)).toBe(true);
+      expect(receiptRows.results.every((row) => row.attempt_id !== row.queue_message_id)).toBe(true);
       expect(receiptRows.results.every((row) => row.clock_origin === "Date.now epoch ms")).toBe(true);
       expect(receiptRows.results.some((row) => row.receipt_status === "stored")).toBe(true);
       console.log(`G69_ORDERING_PROOF ${JSON.stringify({
@@ -404,6 +415,9 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     await expect(store.recordDelivery(high, 2_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
     await expect(store.recordDelivery(lower, 10_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
     await expect(store.recordDelivery(lower, 11_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    // A replay with a decreasing observed clock preserves FirstArrivedAt as
+    // the durable minimum while LastArrivedAt remains the observed maximum.
+    await expect(store.recordDelivery(lower, 9_000, "queue")).resolves.toMatchObject({ outcome: "stored", duplicate: true });
     await settleDiagnosticReceipts();
     const lag = await database.prepare(
       `SELECT estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = ?`,
@@ -414,7 +428,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
               MAX(last_arrived_at_after) AS last_after
          FROM serialized_dcb_g69_admission_attempts WHERE service_id = ?`,
     ).bind(serviceId).first<Record<string, unknown>>();
-    expect(receipts).toMatchObject({ count: 3, first_before: 10_000, last_after: 11_000 });
+    expect(receipts).toMatchObject({ count: 4, first_before: 10_000, last_after: 11_000 });
   });
 
   it("returns core admission while the bounded diagnostic receipt is still pending", async () => {
@@ -434,13 +448,100 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       beforeG69AdmissionAttempt: async () => receiptGate,
     });
     await store.initialize();
+    const receiptPromises: Promise<void>[] = [];
+    const queueMessageId = `queue-wrapper:${message.attemptId}`;
     const outcome = await Promise.race([
-      store.recordDelivery(message, 2_000, "queue").then(() => "core-returned" as const),
+      store.recordDelivery(message, 2_000, "queue", {
+        queueMessageId,
+        waitUntil: (promise) => receiptPromises.push(promise),
+      }).then(() => "core-returned" as const),
       new Promise<"receipt-blocked">((resolve) => setTimeout(() => resolve("receipt-blocked"), 500)),
     ]);
     expect(outcome).toBe("core-returned");
+    expect(receiptPromises).toHaveLength(1);
     releaseReceipt?.();
-    await settleDiagnosticReceipts();
+    await receiptPromises[0];
+  });
+
+  it("keeps diagnostic failure best-effort, identifies concurrent/replayed delivery, and bounds retention", async () => {
+    const database = pipeline();
+    const serviceId = `g69-receipt-lifecycle-${crypto.randomUUID()}`;
+    const message = g32Message({
+      serviceId,
+      tag: `room:g69-receipt-lifecycle-${crypto.randomUUID()}`,
+      eventId: g32EventId(`g69-receipt-failure-${crypto.randomUUID()}`),
+      suid: g32Suid(700),
+      allocatorLineageId: `g69-receipt-lineage-${crypto.randomUUID()}`,
+    });
+    const failingStore = new D1EventStore(database, {
+      beforeG69AdmissionAttempt: async () => { throw new Error("diagnostic-failure-fixture"); },
+    });
+    await failingStore.initialize();
+    await expect(failingStore.recordDelivery(message, 7_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
+    await expect(database.prepare(
+      `SELECT COUNT(*) AS count FROM serialized_dcb_g69_admission_attempts WHERE service_id = ?`,
+    ).bind(serviceId).first<Record<string, unknown>>()).resolves.toMatchObject({ count: 0 });
+
+    const store = new D1EventStore(database);
+    await store.initialize();
+    const diagnosticPromises: Promise<void>[] = [];
+    const concurrentResults = await Promise.all([
+      store.recordDelivery(message, 7_001, "queue", { queueMessageId: "queue-concurrent-a", waitUntil: (promise) => diagnosticPromises.push(promise) }),
+      store.recordDelivery(message, 7_002, "queue", { queueMessageId: "queue-concurrent-b", waitUntil: (promise) => diagnosticPromises.push(promise) }),
+    ]);
+    await store.recordDelivery(message, 7_003, "queue", { queueMessageId: "queue-replay", waitUntil: (promise) => diagnosticPromises.push(promise) });
+    await Promise.all(diagnosticPromises);
+    expect(concurrentResults.every((result) => result.outcome === "stored")).toBe(true);
+    const lifecycleRows = await database.prepare(
+      `SELECT queue_message_id, attempt_id, receipt_status, observation_consistency
+         FROM serialized_dcb_g69_admission_attempts
+        WHERE service_id = ? ORDER BY sequence`,
+    ).bind(serviceId).all<Record<string, unknown>>();
+    expect(lifecycleRows.results).toHaveLength(3);
+    expect(lifecycleRows.results.map((row) => row.queue_message_id)).toEqual([
+      "queue-concurrent-a", "queue-concurrent-b", "queue-replay",
+    ]);
+    expect(lifecycleRows.results.every((row) => row.attempt_id !== row.queue_message_id)).toBe(true);
+    expect(lifecycleRows.results.every((row) => row.observation_consistency !== undefined)).toBe(true);
+
+    const retentionServiceId = `g69-retention-${crypto.randomUUID()}`;
+    const retentionReceipt: G69AdmissionAttemptReceipt = {
+      serviceId: retentionServiceId,
+      eventId: message.eventId,
+      suid: message.suid,
+      tag: message.tag,
+      deliverySource: "queue",
+      queueMessageId: "queue-retention",
+      attemptId: message.attemptId,
+      allocatorLineageId: message.allocatorLineageId,
+      obligationSequence: 1,
+      enqueuedAt: 1,
+      observedAt: 1,
+      arrivedAt: 1,
+      firstArrivedAtBefore: null,
+      lastArrivedAtBefore: null,
+      firstArrivedAtAfter: 1,
+      lastArrivedAtAfter: 1,
+      beforeObservedAt: 1,
+      afterObservedAt: 1,
+      observationConsistency: "before-core-absent",
+      status: "stored",
+      retryReason: null,
+    };
+    for (let index = 0; index < 513; index += 1) {
+      await appendG69AdmissionAttempt(database, {
+        ...retentionReceipt,
+        eventId: `${message.eventId.slice(0, -3)}${String(index).padStart(3, "0")}`,
+        attemptId: `retention-attempt-${index}`,
+        observedAt: index + 1,
+      });
+    }
+    await expect(database.prepare(
+      `SELECT COUNT(*) AS count,
+              MIN(attempt_id) AS oldest_attempt,
+              SUM(CASE WHEN attempt_id = 'retention-attempt-0' THEN 1 ELSE 0 END) AS dropped_oldest
+         FROM serialized_dcb_g69_admission_attempts WHERE service_id = ?`,
+    ).bind(retentionServiceId).first<Record<string, unknown>>()).resolves.toMatchObject({ count: 512, oldest_attempt: "retention-attempt-1", dropped_oldest: 0 });
   });
 
   it("excludes equal-ms, delayed-admission, overwrite, replay, rollback, import, and generation false positives", async () => {
@@ -457,10 +558,8 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     });
     const earlier = message("earlier", 10);
     const equalMs = message("equal-ms", 15);
-    const imported = message("imported", 14);
     const delayedAdmission = message("delayed-admission", 11);
     const rollback = message("rollback", 13);
-    const replay = message("replay", 12);
     const checkpoint = message("checkpoint", 20);
     const store = new D1EventStore(database);
     await store.initialize();
@@ -471,32 +570,64 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     await store.recordDelivery(checkpoint, 150, "queue");
     // Equal-ms arrival is not strictly after the checkpoint observation.
     await store.recordDelivery(equalMs, 150, "queue");
-    await store.recordDelivery(imported, 500, "import");
     await store.recordDelivery(rollback, 800, "queue");
-    await store.recordDelivery(delayedAdmission, 900, "queue");
+
+    // Equal-ms and delayed-admission/replay are distinguishable from an
+    // ordinary miss. A later checkpoint observation removes every candidate
+    // without using authored timestamps as a substitute for arrival clocks.
+    await expect(store.findLateLowerSuidEvidence(serviceId, checkpoint.suid, 150)).resolves.toMatchObject({ kind: "late-lower-suid" });
+    await expect(store.findLateLowerSuidEvidence(serviceId, checkpoint.suid, 950)).resolves.toMatchObject({ kind: "miss" });
+
+    // A rollback is unknown rather than a guessed refusal.
     await database.prepare(
       `UPDATE dcb_event_ops SET "FirstArrivedAt" = ?, "LastArrivedAt" = ?
         WHERE "ServiceId" = ? AND "Id" = ?`,
     ).bind(800, 700, serviceId, rollback.eventId).run();
-
-    // Equal-ms, delayed-admission/replay, imported provenance, and a
-    // rolled-back clock are all excluded before the genuine late lower row.
-    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 150)).resolves.toBeUndefined();
-
-    await store.recordDelivery(replay, 600, "queue");
-    await store.recordDelivery(replay, 900, "queue");
-
-    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 150)).resolves.toMatchObject({ eventId: replay.eventId });
-    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 300)).resolves.toMatchObject({ eventId: replay.eventId });
-    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 400)).resolves.toMatchObject({ eventId: replay.eventId });
-    // A later checkpoint observation overwrites the comparison clock and
-    // removes the old candidate; the detector never uses authored timestamps.
-    await expect(store.findLateLowerSuid(serviceId, checkpoint.suid, 950)).resolves.toBeUndefined();
+    await expect(store.findLateLowerSuidEvidence(serviceId, checkpoint.suid, 150)).resolves.toMatchObject({ kind: "unknown", reason: "arrival-clock-rollback" });
+    const importedServiceId = `g69-import-${crypto.randomUUID()}`;
+    const importedStore = new D1EventStore(database);
+    await importedStore.initialize();
+    const importedCheckpoint = g32Message({
+      serviceId: importedServiceId,
+      tag: `room:g69-import-${crypto.randomUUID()}`,
+      eventId: g32EventId(`g69-import-checkpoint-${crypto.randomUUID()}`),
+      suid: g32Suid(20),
+      allocatorLineageId: `g69-import-lineage-${crypto.randomUUID()}`,
+    });
+    const importedEvent = g32Message({
+      ...importedCheckpoint,
+      eventId: g32EventId(`g69-import-event-${crypto.randomUUID()}`),
+      suid: g32Suid(12),
+    });
+    await importedStore.recordDelivery(importedEvent, 500, "import");
+    await expect(importedStore.findLateLowerSuidEvidence(importedServiceId, importedCheckpoint.suid, 150)).resolves.toMatchObject({ kind: "unknown", reason: "arrival-provenance-untrusted" });
+    // Isolate a genuine replay: the event was observed before the checkpoint
+    // and restamped after it, so the detector reports replay rather than a
+    // new late-lower allocation witness.
+    const replayServiceId = `g69-replay-${crypto.randomUUID()}`;
+    const replayStore = new D1EventStore(database);
+    await replayStore.initialize();
+    const replayCheckpoint = g32Message({
+      serviceId: replayServiceId,
+      tag: `room:g69-replay-${crypto.randomUUID()}`,
+      eventId: g32EventId(`g69-replay-checkpoint-${crypto.randomUUID()}`),
+      suid: g32Suid(20),
+      allocatorLineageId: `g69-replay-lineage-${crypto.randomUUID()}`,
+    });
+    const replayEvent = g32Message({
+      ...replayCheckpoint,
+      eventId: g32EventId(`g69-replay-event-${crypto.randomUUID()}`),
+      suid: g32Suid(12),
+    });
+    await replayStore.recordDelivery(replayEvent, 100, "queue");
+    await replayStore.recordDelivery(replayCheckpoint, 150, "queue");
+    await replayStore.recordDelivery(replayEvent, 900, "queue");
+    await expect(replayStore.findLateLowerSuidEvidence(replayServiceId, replayCheckpoint.suid, 150)).resolves.toMatchObject({ kind: "replay", event: { eventId: replayEvent.eventId } });
     const replayOps = await database.prepare(
       `SELECT "FirstArrivedAt" AS first_arrived_at, "LastArrivedAt" AS last_arrived_at
          FROM dcb_event_ops WHERE "ServiceId" = ? AND "Id" = ?`,
-    ).bind(serviceId, replay.eventId).first<Record<string, unknown>>();
-    expect(replayOps).toMatchObject({ first_arrived_at: 600, last_arrived_at: 900 });
+    ).bind(replayServiceId, replayEvent.eventId).first<Record<string, unknown>>();
+    expect(replayOps).toMatchObject({ first_arrived_at: 100, last_arrived_at: 900 });
     const views = new D1MaterializedViewStore(materializedViews());
     await views.initialize();
     const recoveryService = `g69-generation-${crypto.randomUUID()}`;
@@ -506,14 +637,34 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       viewId: "RoomProjector",
       generation: 0,
       checkpointSuid: checkpoint.suid,
-      lateSuid: replay.suid,
-      eventId: replay.eventId,
+      lateSuid: replayEvent.suid,
+      eventId: replayEvent.eventId,
       classification: "LATE_LOWER_SUID",
       observedAt: 2,
     });
     await views.createCandidate({ serviceId: recoveryService, viewId: "RoomProjector", generation: 1, definitionVersion: 1, updatedAt: 3 });
+    await expect(views.promoteGeneration({ serviceId: recoveryService, viewId: "RoomProjector", candidateGeneration: 1, expectedActiveGeneration: 0, updatedAt: 4 })).rejects.toMatchObject({ code: "MV_PROMOTION_CAS_MISMATCH" });
+    await expect(views.readOrderingQuarantine(recoveryService, "RoomProjector")).resolves.toMatchObject({ status: "open" });
+    await materializedViews().prepare(
+      `INSERT INTO mv_rows
+         (service_id, view_id, generation, row_key, value_json, row_version, source_suid)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      recoveryService,
+      "RoomProjector",
+      1,
+      replayEvent.eventId,
+      JSON.stringify({ eventId: replayEvent.eventId, suid: replayEvent.suid }),
+      1,
+      replayEvent.suid,
+    ).run();
+    await materializedViews().prepare(
+      `UPDATE mv_instances SET last_suid = ? WHERE service_id = ? AND view_id = ? AND generation = ?`,
+    ).bind(replayEvent.suid, recoveryService, "RoomProjector", 1).run();
+    await views.markGenerationRebuilt({ serviceId: recoveryService, viewId: "RoomProjector", generation: 1, verifiedAt: 4, appliedEvents: 1 });
     await views.promoteGeneration({ serviceId: recoveryService, viewId: "RoomProjector", candidateGeneration: 1, expectedActiveGeneration: 0, updatedAt: 4 });
     await expect(views.readOrderingQuarantine(recoveryService, "RoomProjector")).resolves.toBeUndefined();
+    await expect(views.readListPage(recoveryService, "RoomProjector", { consistency: "safe", limit: null })).resolves.toMatchObject({ rows: [{ rowKey: replayEvent.eventId, sourceSuid: replayEvent.suid }] });
     const resolved = await materializedViews().prepare(
       `SELECT status, resolved_at FROM mv_ordering_quarantines WHERE service_id = ? AND generation = 0`,
     ).bind(recoveryService).first<Record<string, unknown>>();

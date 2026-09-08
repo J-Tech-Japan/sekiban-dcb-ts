@@ -21,8 +21,8 @@ export interface G69AdmissionAttemptReceipt {
   readonly suid: string;
   readonly tag: string;
   readonly deliverySource: DeliverySource;
-  /** The current envelope's attemptId is the durable Queue message identity. */
-  readonly queueMessageId: string;
+  /** Platform Queue wrapper identity; null when the transport did not expose one. */
+  readonly queueMessageId: string | null;
   readonly attemptId: string;
   readonly allocatorLineageId: string;
   readonly obligationSequence: number;
@@ -38,7 +38,13 @@ export interface G69AdmissionAttemptReceipt {
   /** Timestamp captured immediately before the diagnostic after-read. */
   readonly afterObservedAt: number | null;
   /** Explicitly distinguishes a usable before-core observation from a late/missing read. */
-  readonly observationConsistency: "before-core" | "before-core-absent" | "before-read-after-core" | "unverified";
+  readonly observationConsistency:
+    | "before-core"
+    | "before-core-absent"
+    | "before-read-after-core"
+    | "before-read-failed"
+    | "after-read-failed"
+    | "unverified";
   readonly status: G69AdmissionAttemptStatus;
   readonly retryReason: string | null;
 }

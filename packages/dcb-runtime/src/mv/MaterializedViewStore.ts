@@ -26,6 +26,7 @@ export type MaterializedViewStoreErrorCode =
   | "MV_PATCH_ROW_MISSING"
   | "MV_VALUE_INVALID"
   | "MV_ORDERING_QUARANTINED"
+  | "MV_REBUILD_NOT_VERIFIED"
   | "MV_STORE_OPERATION_FAILED";
 
 export class MaterializedViewStoreError extends Error {
@@ -70,6 +71,8 @@ export interface MaterializedViewInstance {
   readonly lastSuid: string;
   readonly definitionVersion: number;
   readonly updatedAt: number;
+  /** Non-null only after a complete, explicit rebuild proof for this generation. */
+  readonly rebuildVerifiedAt: number | null;
 }
 
 export interface MaterializedViewRow {
@@ -233,6 +236,9 @@ function instanceFrom(row: D1Row): MaterializedViewInstance {
     lastSuid: asString(row.last_suid, "last_suid"),
     definitionVersion: asInteger(row.definition_version, "definition_version"),
     updatedAt: asInteger(row.updated_at, "updated_at"),
+    rebuildVerifiedAt: row.rebuild_verified_at === null || row.rebuild_verified_at === undefined
+      ? null
+      : asInteger(row.rebuild_verified_at, "rebuild_verified_at"),
   };
 }
 
@@ -350,7 +356,7 @@ export class D1MaterializedViewStore {
   async readInstance(serviceId: string, viewId: string, generation: number): Promise<MaterializedViewInstance | undefined> {
     this.ready("initialize");
     const row = await this.database.prepare(
-      `SELECT service_id, view_id, generation, status, last_suid, definition_version, updated_at
+      `SELECT service_id, view_id, generation, status, last_suid, definition_version, updated_at, rebuild_verified_at
          FROM mv_instances WHERE service_id = ? AND view_id = ? AND generation = ?`,
     ).bind(serviceId, viewId, generation).first<D1Row>();
     return row === null || row === undefined ? undefined : instanceFrom(row);
@@ -360,7 +366,7 @@ export class D1MaterializedViewStore {
     this.ready("initialize");
     const row = await this.database.prepare(
       `SELECT instance.service_id, instance.view_id, instance.generation, instance.status,
-              instance.last_suid, instance.definition_version, instance.updated_at
+              instance.last_suid, instance.definition_version, instance.updated_at, instance.rebuild_verified_at
          FROM mv_active_generations pointer
          JOIN mv_instances instance
            ON instance.service_id = pointer.service_id
@@ -773,6 +779,11 @@ export class D1MaterializedViewStore {
     };
   }
 
+  async readActiveGeneration(serviceId: string, viewId: string): Promise<number | undefined> {
+    this.ready("initialize");
+    return (await this.readActive(serviceId, viewId))?.generation;
+  }
+
   /** Persist the detector result before stopping the safe pass. Repeated observations are idempotent. */
   async recordOrderingQuarantine(input: {
     readonly serviceId: string;
@@ -808,6 +819,36 @@ export class D1MaterializedViewStore {
       input.classification,
       input.observedAt,
     ).run();
+  }
+
+  /** Mark a candidate only after a complete catch-up produced durable rows. */
+  async markGenerationRebuilt(input: {
+    readonly serviceId: string;
+    readonly viewId: string;
+    readonly generation: number;
+    readonly verifiedAt: number;
+    readonly appliedEvents: number;
+  }): Promise<void> {
+    this.ready("promote");
+    this.validateGeneration(input.generation, "promote");
+    if (!Number.isSafeInteger(input.appliedEvents) || input.appliedEvents <= 0) {
+      throw new MaterializedViewStoreError("promote", "MV_REBUILD_NOT_VERIFIED", "A rebuild with no applied source events cannot prove recovery");
+    }
+    const result = await this.database.prepare(
+      `UPDATE mv_instances
+          SET rebuild_verified_at = ?
+        WHERE service_id = ? AND view_id = ? AND generation = ?
+          AND status = 'candidate' AND last_suid <> ''
+          AND EXISTS (
+            SELECT 1 FROM mv_rows rows
+             WHERE rows.service_id = mv_instances.service_id
+               AND rows.view_id = mv_instances.view_id
+               AND rows.generation = mv_instances.generation
+          )`,
+    ).bind(input.verifiedAt, input.serviceId, input.viewId, input.generation).run();
+    if ((result.meta?.changes ?? 0) !== 1) {
+      throw new MaterializedViewStoreError("promote", "MV_REBUILD_NOT_VERIFIED", "Candidate generation has no verified rebuilt row set");
+    }
   }
 
   /**
@@ -970,7 +1011,7 @@ export class D1MaterializedViewStore {
     }
     statements.push(this.database.prepare(
       `UPDATE mv_instances
-          SET last_suid = ?, definition_version = ?, updated_at = ?
+          SET last_suid = ?, definition_version = ?, updated_at = MAX(updated_at, ?)
         WHERE service_id = ? AND view_id = ? AND generation = ?`,
     ).bind(
       input.lastSuid,
@@ -1010,8 +1051,17 @@ export class D1MaterializedViewStore {
         `INSERT INTO mv_atomic_guards (operation_id, checkpoint_match)
          SELECT ?, CASE WHEN EXISTS (
            SELECT 1 FROM mv_instances candidate
-            WHERE candidate.service_id = ? AND candidate.view_id = ?
+           WHERE candidate.service_id = ? AND candidate.view_id = ?
               AND candidate.generation = ? AND candidate.status = 'candidate'
+              AND (
+                NOT EXISTS (
+                  SELECT 1 FROM mv_ordering_quarantines open_quarantine
+                   WHERE open_quarantine.service_id = candidate.service_id
+                     AND open_quarantine.view_id = candidate.view_id
+                     AND open_quarantine.status = 'open'
+                )
+                OR candidate.rebuild_verified_at IS NOT NULL
+              )
          ) AND (
            (? IS NULL AND NOT EXISTS (
              SELECT 1 FROM mv_active_generations existing
@@ -1134,6 +1184,7 @@ export type MaterializedViewStore = Pick<
   | "hasTargetReceipt"
   | "readOrderingQuarantine"
   | "recordOrderingQuarantine"
+  | "markGenerationRebuilt"
   | "readWaitForState"
   | "recordCheckpointAhead"
   | "hasCheckpointAheadFinding"

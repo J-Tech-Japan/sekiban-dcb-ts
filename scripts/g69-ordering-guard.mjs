@@ -63,8 +63,8 @@ const mutations = [
     file: catchUpFile,
     testPattern: "real allocation race",
     replacements: [{
-      from: "      const lateLower = await this.source.findLateLowerSuid?.(serviceId, priorSuid, checkpointUpdatedAt);",
-      to: "      const lateLower = undefined;",
+      from: "        : evidence.kind === \"late-lower-suid\" ? evidence.event : undefined;",
+      to: "        : undefined;",
     }],
     reason: "the real lower-after-higher allocator proof must fail closed",
   },
@@ -90,8 +90,8 @@ const mutations = [
     file: storeFile,
     testPattern: "returns core admission",
     replacements: [{
-      from: "    void this.bestEffortG69AdmissionAttempt(",
-      to: "    await this.bestEffortG69AdmissionAttempt(",
+      from: "    if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);",
+      to: "    await diagnostic;",
     }],
     reason: "a stalled diagnostic observation must not hold core admission or Queue disposition",
   },

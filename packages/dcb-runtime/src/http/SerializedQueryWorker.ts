@@ -438,6 +438,8 @@ export async function handleSerializedQuery(
     let waitStore: QueryProjectionStore | undefined = options.store;
     let selection: QueryBackingSelection;
     let d1MaterializedView: MaterializedViewQueryPort | undefined;
+    let safeReadGeneration: number | undefined;
+    let d1SafeRead = false;
     if (backing === "d1-mv") {
       const materializedView = options.materializedViewQueryPort ??
         (env.D1_MV === undefined ? undefined : new D1MaterializedViewStore(env.D1_MV));
@@ -449,6 +451,7 @@ export async function handleSerializedQuery(
       selection = selectQueryBacking({ backing, materializedView });
       const orderingQuarantine = await materializedView.readOrderingQuarantine?.(serviceId, viewId);
       const safeRead = pagination.value?.consistency !== "unsafe";
+      d1SafeRead = safeRead;
       if (safeRead && orderingQuarantine !== undefined) {
         return error(
           503,
@@ -456,6 +459,7 @@ export async function handleSerializedQuery(
           "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
         );
       }
+      if (safeRead) safeReadGeneration = await materializedView.readActiveGeneration?.(serviceId, viewId);
       if (await materializedView.hasCheckpointAheadFinding?.(serviceId, viewId)) {
         return error(503, "projection_unavailable", "The D1 materialized-view query projection is unavailable");
       }
@@ -512,10 +516,36 @@ export async function handleSerializedQuery(
           "Projection did not reach the requested sortableUniqueId within the published SafeWindow; refresh this read to inspect current state",
         );
       }
+      // Quarantine can be created while waitFor is polling. Re-check the
+      // active generation at the response boundary; an early check alone can
+      // return a 200 after the ordering detector has already opened a gate.
+      if (d1SafeRead && d1MaterializedView !== undefined) {
+        const boundaryQuarantine = await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId);
+        if (boundaryQuarantine !== undefined) {
+          return error(
+            503,
+            "projection_ordering_quarantined",
+            "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+          );
+        }
+        safeReadGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId) ?? safeReadGeneration;
+      }
+    }
+    if (d1SafeRead && parsed.value.waitForSortableUniqueId === undefined && d1MaterializedView !== undefined) {
+      const boundaryQuarantine = await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId);
+      if (boundaryQuarantine !== undefined) {
+        return error(
+          503,
+          "projection_ordering_quarantined",
+          "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+        );
+      }
+      safeReadGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId) ?? safeReadGeneration;
     }
     const requestedPage = pagination.value;
     if (requestedPage !== undefined && selection.backing === "d1-mv" && selection.store.readListPage !== undefined) {
       const page = await selection.store.readListPage(serviceId, viewId, {
+        ...(safeReadGeneration === undefined ? {} : { generation: safeReadGeneration }),
         limit: requestedPage.pageSize,
         offset: (requestedPage.currentPage - 1) * requestedPage.pageSize,
         ...(requestedPage.newestFirst ? { descending: true } : {}),
@@ -543,8 +573,9 @@ export async function handleSerializedQuery(
       viewId,
       definition,
       requestedPage === undefined || !supportsServerPaging
-        ? { limit: null }
+        ? { limit: null, ...(safeReadGeneration === undefined ? {} : { generation: safeReadGeneration }) }
         : {
+          ...(safeReadGeneration === undefined ? {} : { generation: safeReadGeneration }),
           limit: requestedPage.pageSize,
           offset: (requestedPage.currentPage - 1) * requestedPage.pageSize,
           ...(requestedPage.newestFirst ? { descending: true } : {}),

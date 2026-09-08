@@ -57,14 +57,19 @@ an environment-only alarm receipt, not a deployed scheduling result.
 
 ## AC2: detector and quarantine semantics
 
-`D1EventStore.findLateLowerSuid` now identifies a lower SUID whose **first
-durable normal-delivery arrival** is strictly after the active MV checkpoint
-clock. It does not promote imported or repaired history to an ordering witness,
-does not treat equal-millisecond arrival as later, requires a non-rolled-back
-arrival pair, and preserves the first-arrival value on replay. The intended
-late-lower lag-estimate repair is a safety/latency change, not happy-path
-neutral: a lower-SUID arrival is no longer discarded merely because a higher
-SUID already exists, so the decayed estimate can represent that observed lag.
+`D1EventStore.findLateLowerSuidEvidence` now reports a structured
+`late-lower-suid`, `replay`, `miss`, or `unknown` result for a lower SUID whose
+**first durable normal-delivery arrival** is strictly after the active MV
+checkpoint clock. The detector is exercised through the real allocator-to-Tag-
+to-D1 path and the public safe behavior; it is not a synthetic SETTLED result.
+It does not promote imported or repaired history to an ordering witness, does
+not treat equal-millisecond arrival as later, requires a non-rolled-back
+arrival pair, and preserves the first-arrival value on replay. Rollback,
+invalid checkpoint state, and untrusted provenance remain `unknown` and are
+incident/alarm-only rather than an unsafe refusal. The intended late-lower
+lag-estimate repair is a safety/latency change, not happy-path neutral: a
+lower-SUID arrival is no longer discarded merely because a higher SUID already
+exists, so the decayed estimate can represent that observed lag.
 The focused local measurement records the lower/replayed observation in the
 estimate (`estimate_ms=2000`, `observed_at=11000` in the deterministic test),
 and the old higher-SUID exclusion mutant is red.
@@ -75,9 +80,15 @@ incident and persists `mv_ordering_quarantines` keyed by
 classification, and observed time. A structured
 `SDT-G69_ORDERING_QUARANTINE` error log is emitted for alerting. The public D1
 MV safe query validates the active-generation row and returns HTTP 503 with
-`code=projection_ordering_quarantined` before exposing a safe result. An
-explicit unsafe read remains available for diagnosis; it does not certify the
-safe lane.
+`code=projection_ordering_quarantined` before exposing a safe result. The
+generation is checked again at the read boundary after `waitFor`; a quarantine
+that appears while the read is waiting therefore returns the same typed 503
+instead of a stale safe result. An explicit unsafe read remains available for
+diagnosis; it does not certify the safe lane. A generation transition cannot
+clear an open quarantine until a positive, non-empty, fully applied rebuild is
+marked verified; an empty or incomplete candidate is rejected. The recovery
+test proves that rebuilt rows restore safe reads and that old-generation
+quarantine does not leak into a new generation.
 
 Recovery is explicit: a rebuilt candidate generation is promoted atomically
 with the active-generation pointer, and open quarantine rows on older
@@ -102,15 +113,19 @@ The detector has explicit false-positive coverage for:
 
 The `serialized_dcb_g69_admission_attempts` ledger remains diagnostic only.
 `recordDelivery` starts the before-read concurrently, completes core admission,
-then schedules best-effort receipt observation outside the awaited core path.
-The receipt records before/after arrival values, observation clocks, an explicit
-`observation_consistency` classification, status and retry reason. A stalled
-diagnostic hook therefore cannot delay core admission or Queue disposition.
-Retention is bounded to the newest 512 rows per service in the same diagnostic
-batch. The receipt is not an allocation-closure proof and is not read by
-DeliveryCore, Queue retry/DLQ logic, G44 coverage, MV catch-up or public query.
-The non-blocking test holds the diagnostic hook pending while core admission
-returns, and the receipt-omission plus awaited-receipt mutants are red.
+then schedules best-effort receipt observation through the invocation's
+`waitUntil` lifetime (or a detached promise in the local store test), outside
+the awaited core path. The receipt keeps the actual nullable Queue wrapper ID
+separate from the envelope `attempt_id`, records before/after arrival values,
+observed clocks, an explicit `observation_consistency` classification, and
+honest `stored`/`duplicate`/collision/`failed` statuses plus retry reason.
+Consequently concurrent and replayed deliveries are distinguishable, a
+diagnostic failure remains best-effort, and a stalled receipt cannot delay core
+admission or Queue disposition. Retention is bounded to the newest 512 rows per
+service in the same diagnostic batch. The receipt is not an allocation-closure
+proof and is not read by DeliveryCore, Queue retry/DLQ logic, G44 coverage, MV
+catch-up or public query. The focused tests cover omitted and awaited-receipt
+mutants, failure, concurrency, replay and retention.
 
 ## Preserved boundaries and status
 
@@ -127,21 +142,42 @@ or an allocation-to-arrival bound. Those require the later G69 acceptance work.
 
 Passing focused checks at the W166 source:
 
+- `npm exec vitest run --config vitest.config.ts
+  test/g69-ordering.spec.ts test/g31-waitfor.spec.ts --maxWorkers=1`: 2
+  files, 29 tests passed, including the real allocator proof, the
+  quarantine-during-`waitFor` 503, rebuild/generation isolation, decreasing
+  timestamp replay, and diagnostic failure/concurrency/replay/retention.
 - `npm run test:g69`: baseline green; four mutants red and restored:
   omitted late-lower detector, restored higher-SUID lag exclusion, omitted
   append-only receipt, and awaited diagnostic receipt on the core path.
-- `vitest run --config vitest.g69.config.ts --no-cache --maxWorkers=1
-  test/g55-read-visibility.spec.ts test/g69-ordering.spec.ts`: 2 files, 8
-  tests passed.
-- `npm run build --workspace packages/dcb-runtime`: pass.
+- `npm run test:g31`: 34 tests passed; wait budget remained
+  `maxIterationSlots=126`, `maxPointReads=254`.
+- `npm run test:g44`: contract and 8 tests passed; all G44 production mutants
+  red.
+- `npm run test:g60:direct`: 14 tests passed; all six G60 mutants red.
+- `npm run test:g60:unsafe-writer`: 4 tests passed; unsafe-writer guards and
+  mutants red.
+- `npm run test:g61`: green guard, pre-fix probe red, and mutant probe red.
+- `npm run test:g62`: green guard and all scheduled-maintenance mutants red.
+- `npm run test:g65`: 17 tests passed; G65 guard and six mutants red.
+- `npm run test:g67`: 11 tests passed; red-before-green and all seven mutants
+  red.
+- `npm run test:d1`: 12 tests passed.
+- `npm run test:mv`: 18 tests passed.
+- `npm run build --workspace @sekiban/dcb-runtime`: pass.
+- `npm run build:packages`, `npm run typecheck`, and `npm run lint`: pass in
+  the checkout-local dependency context.
 
-The full CI-equivalent lane set is required before the repair push. The known
-isolated-worktree exception remains separate: workspace aggregate
-`build:packages`/typecheck can resolve stale parent declarations and report
-`ExecuteCommandResult`, `SnapshotReader.head`, and already-landed G60/G65/G67
-exports/options as missing. Such lanes are recorded as blocked environment
-exceptions and are never called green; no unrelated package or sample change
-is used to mask them. Hosted exact-head CI must be green before rereview.
+`npm run test:g58` passed its 5 files/15 tests and earlier guards, then stopped
+at the existing `scripts/g58-safe-lane-diagnosis-guard.mjs` W96 witness:
+`same-tick frontier witness remains red (exit null); inspect
+.artifacts/sdt-g58-w97-green-guard.json`. This is a G58 runner/environment
+exception outside this repair, not called green and not modified here. The
+known isolated-worktree stale-parent exception remains separately documented:
+an aggregate `build:packages`/typecheck in that context can report missing
+`ExecuteCommandResult`, `SnapshotReader.head`, and already-landed
+G60/G65/G67 exports/options. No unrelated package or sample change masks an
+exception. Hosted exact-head CI is required before rereview.
 
 The complete red/green receipt remains at
 `.artifacts/sdt-g69-ordering-red-green.json`. Earlier W164/W165 receipts remain

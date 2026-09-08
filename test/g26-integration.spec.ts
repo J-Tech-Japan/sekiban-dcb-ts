@@ -16,6 +16,8 @@ import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/mv/MaterializedViewStore";
 import { UnsafeWindowMaterializedViewStore } from "../packages/dcb-runtime/src/mv/UnsafeWindowMaterializedView";
 import { processDeliveryCore, type DeliveryCoreResult, type DeliveryViewHandler } from "../packages/dcb-runtime/src/downstream/DeliveryCore";
@@ -328,7 +330,7 @@ describe("SDT-G26 real pipeline/MV/outbox convergence", () => {
     await pipeline.batch(statements(pipeline, g32Migration as string));
     await applyG44D1Migration(pipeline);
     const mv = database("D1_MV");
-    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration]) {
+    for (const migration of [mvMigration, unsafeMigration, hardeningMigration, failureMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration]) {
       await mv.batch(statements(mv, migration as string));
     }
   });

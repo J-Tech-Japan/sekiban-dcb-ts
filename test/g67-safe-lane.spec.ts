@@ -16,6 +16,8 @@ import g31WaitReceiptMigration from "../migrations/mv/0005_g31_wait_receipts.sql
 import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 import type { GlobalCompletenessCoverage } from "../packages/dcb-runtime/src/completeness/types";
 import { createCloudflareOnlyRuntimeWorker, scopeIdFor, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
@@ -237,7 +239,7 @@ beforeAll(async () => {
   if (database === undefined) throw new Error("G67 requires the D1 pipeline binding");
   await database.batch(statements(database, pipelineMigration as string));
   await applyG44D1Migration(database);
-  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration]) {
+  for (const migration of [mvMigration, unsafeMvMigration, hardeningMvMigration, unsafeFailureMvMigration, g31WaitReceiptMigration, g31WaitPoisonMigration, orderingQuarantineMigration, rebuildVerificationMigration]) {
     await mvDatabase().batch(statements(mvDatabase(), migration as string));
   }
 });

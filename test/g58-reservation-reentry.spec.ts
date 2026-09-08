@@ -14,6 +14,8 @@ import migration0005 from "../migrations/mv/0005_g31_wait_receipts.sql?raw";
 import migration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import {
   D1MaterializedViewStore,
@@ -138,6 +140,7 @@ describe("SDT-G58 ReservationProjector unsafe-kick re-entry", () => {
     await database().batch(statements(migration0005 as string));
     await database().batch(statements(migration0006 as string));
     await database().batch(statements(migration0007 as string));
+    await database().batch(statements(migration0008 as string));
   });
 
   it("re-arms a partially settled kick and re-enters after the first unsafe event ages", async () => {

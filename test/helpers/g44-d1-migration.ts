@@ -29,6 +29,8 @@ import g67SafeLaneFenceExpiryMigration from "../../migrations/d1/g32/0014_g67_sa
 import g69AdmissionAttemptMigration from "../../migrations/d1/g32/0015_g69_admission_attempts.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import g69Consultation003Migration from "../../migrations/d1/g32/0016_g69_consultation003.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69ReceiptIdentityMigration from "../../migrations/d1/g32/0017_g69_receipt_identity.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -125,5 +127,9 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
     !eventOpsColumns.results.some((row) => row.name === "FirstArrivedSource")
   ) {
     await database.batch(statements(database, g69Consultation003Migration as string));
+  }
+  const queueMessageColumn = await database.prepare("PRAGMA table_info(serialized_dcb_g69_admission_attempts)").all<{ name: string; notnull: number }>();
+  if (queueMessageColumn.results.some((row) => row.name === "queue_message_id" && row.notnull === 1)) {
+    await database.batch(statements(database, g69ReceiptIdentityMigration as string));
   }
 }

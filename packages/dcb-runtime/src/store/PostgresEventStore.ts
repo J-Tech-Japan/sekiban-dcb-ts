@@ -257,7 +257,7 @@ function findingFrom(row: DbRow): InconsistencyFinding {
 
 function incidentClassification(value: unknown): DeliveryIncidentClassification {
   const classification = asString(value, "classification");
-  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH") {
+  if (classification !== "SUID_COLLISION" && classification !== "ORDER_VIOLATION" && classification !== "LINEAGE_MISMATCH" && classification !== "ORDERING_DETECTOR_UNKNOWN") {
     throw new Error("Postgres delivery incident classification was invalid");
   }
   return classification;
