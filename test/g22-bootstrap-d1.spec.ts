@@ -15,6 +15,27 @@ function database(): D1Database {
   return binding;
 }
 
+// D1 result metadata contains both semantic mutation/query facts and
+// provider-driver observations.  The latter are not durable state: Miniflare
+// can report a different duration (or routing/retry metadata) for the same
+// unchanged query.  Keep every result and semantic meta field in snapshots,
+// while excluding only those non-semantic driver fields.
+const D1_DRIVER_ONLY_META_KEYS = new Set([
+  "duration",
+  "served_by_region",
+  "served_by_colo",
+  "served_by_primary",
+  "timings",
+  "total_attempts",
+]);
+
+function semanticD1Result<T extends { readonly meta: Record<string, unknown> }>(result: T): Omit<T, "meta"> & { readonly meta: Record<string, unknown> } {
+  const meta = Object.fromEntries(
+    Object.entries(result.meta).filter(([key]) => !D1_DRIVER_ONLY_META_KEYS.has(key)),
+  );
+  return { ...result, meta };
+}
+
 describe("SDT-G22 D1 bootstrap provider adapter", () => {
   beforeAll(async () => {
     const statements = (g32Migration as string).replace(/^\s*--.*$/gm, "").split(";").map((statement) => statement.trim()).filter(Boolean);
@@ -54,11 +75,11 @@ describe("SDT-G22 D1 bootstrap provider adapter", () => {
       pending: await initialStore.listPending(serviceId),
       findings: await initialStore.listFindings(serviceId),
       incidents: await initialStore.listDeliveryIncidents(serviceId),
-      diagnosticAttempts: await database().prepare(
+      diagnosticAttempts: semanticD1Result(await database().prepare(
         `SELECT sequence, event_id, receipt_status, mutation_evidence
            FROM serialized_dcb_g69_admission_attempts
           WHERE service_id = ? ORDER BY sequence`,
-      ).bind(serviceId).all<Record<string, unknown>>(),
+      ).bind(serviceId).all<Record<string, unknown>>()),
     });
     const before = await snapshot();
     let recordBatchStarts = 0;
