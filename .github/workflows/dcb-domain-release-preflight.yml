@@ -1,0 +1,56 @@
+name: SDT-G59 domain release preflight
+
+on:
+  pull_request:
+    paths:
+      - "packages/dcb-domain/**"
+      - "scripts/dcb-domain-*.mjs"
+      - "docs/release-process.md"
+      - "docs/SDT-G59-evidence.md"
+      - "CHANGELOG.md"
+      - ".github/workflows/release-dcb-domain.yml"
+      - ".github/workflows/dcb-domain-release-preflight.yml"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dcb-domain-release-preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace @sekiban/dcb-domain
+      - run: npm run typecheck --workspace @sekiban/dcb-domain
+      - name: Run @sekiban/dcb-domain test suite before publish
+        run: |
+          set -euo pipefail
+          echo "head=$GITHUB_SHA"
+          echo "run_id=$GITHUB_RUN_ID"
+          echo "workflow=$GITHUB_WORKFLOW"
+          echo "command=npm run test:g28"
+          npm run test:g28
+      - name: Run release package and consumer tests
+        run: npm run test:g59
+      - run: node scripts/dcb-domain-pack-check.mjs
+      - run: node scripts/dcb-domain-consumer-check.mjs
+      - run: node scripts/dcb-domain-release-check.mjs dcb-domain-v0.1.0
+      - run: node scripts/dcb-domain-release-notes.mjs dcb-domain-v0.1.0 "$RUNNER_TEMP/dcb-domain-release-notes.md"
+      - name: Credential-free release-path dry-run proof
+        working-directory: packages/dcb-domain
+        run: |
+          set -euo pipefail
+          {
+            echo "head=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "workflow=$GITHUB_WORKFLOW"
+            echo "command=npm publish --dry-run --provenance --access public"
+            npm publish --dry-run --provenance --access public
+          } 2>&1 | tee "$RUNNER_TEMP/dcb-domain-publish-dry-run.log"

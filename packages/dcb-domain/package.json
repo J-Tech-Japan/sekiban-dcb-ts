@@ -1,8 +1,22 @@
 {
   "name": "@sekiban/dcb-domain",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Runtime-free schema-first DCB domain authoring surface.",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts.git",
+    "directory": "packages/dcb-domain"
+  },
+  "homepage": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/tree/main/packages/dcb-domain#readme",
+  "bugs": {
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues"
+  },
+  "keywords": ["sekiban", "dcb", "domain", "event-sourcing"],
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -16,12 +30,17 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "dependencies": {
     "zod": "4.4.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --outfile=dist/testing.js",
+    "prepack": "node ../../scripts/dcb-domain-prepare-package.mjs && node ../../scripts/dcb-domain-fix-declarations.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }
