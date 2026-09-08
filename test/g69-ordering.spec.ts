@@ -244,6 +244,12 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
           WHERE service_id = ? ORDER BY scheduled_at DESC, pass_id DESC LIMIT 1`,
       ).bind(serviceId).first<Record<string, unknown>>();
       expect(higherPass).toMatchObject({ coverage_kind: "SETTLED", catch_up_outcome: "completed" });
+      const higherCatchUp = JSON.parse(String(higherPass?.catch_up_result_json)) as Array<{ lateLowerQueryDurationMs?: unknown }>;
+      expect(higherCatchUp.length).toBeGreaterThan(0);
+      expect(higherCatchUp.every((observation) => typeof observation.lateLowerQueryDurationMs === "number" && observation.lateLowerQueryDurationMs >= 0)).toBe(true);
+      console.log("G69_HOTPATH_COSTS", JSON.stringify({
+        lateLowerQueryDurationMs: higherCatchUp.map((observation) => observation.lateLowerQueryDurationMs),
+      }));
       const views = new D1MaterializedViewStore(materializedViews());
       await views.initialize();
       const higherSafeRows = await views.readListPage(serviceId, "ReservationProjector", { consistency: "safe", limit: null });
@@ -430,16 +436,69 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     expect(lag).toMatchObject({ estimate_ms: 2_000, observed_at: 11_000 });
     const receipts = await database.prepare(
       `SELECT COUNT(*) AS count, MIN(first_arrived_at_before) AS first_before,
-              MAX(last_arrived_at_after) AS last_after
+              MAX(last_arrived_at_after) AS last_after,
+              MAX(diagnostic_duration_ms) AS diagnostic_duration_ms
          FROM serialized_dcb_g69_admission_attempts WHERE service_id = ?`,
-    ).bind(serviceId).first<Record<string, unknown>>();
+      ).bind(serviceId).first<Record<string, unknown>>();
     expect(receipts).toMatchObject({ count: 4, last_after: 11_000 });
-    expect([null, 10_000]).toContain(receipts?.first_before ?? null);
+    expect(receipts?.first_before ?? null).toBe(null);
+    expect(Number(receipts?.diagnostic_duration_ms)).toBeGreaterThanOrEqual(0);
+    console.log("G69_HOTPATH_COSTS", JSON.stringify({
+      diagnosticDurationMs: Number(receipts?.diagnostic_duration_ms),
+    }));
     const lowerOps = await database.prepare(
       `SELECT "FirstArrivedAt" AS first_arrived_at, "LastArrivedAt" AS last_arrived_at
          FROM dcb_event_ops WHERE "ServiceId" = ? AND "Id" = ?`,
     ).bind(serviceId, lower.eventId).first<Record<string, unknown>>();
     expect(lowerOps).toMatchObject({ first_arrived_at: 9_000, last_arrived_at: 11_000 });
+  });
+
+  it("runs the late-lower detector once per catch-up pass, not once per event", async () => {
+    const database = pipeline();
+    const serviceId = `g69-detector-cost-${crypto.randomUUID()}`;
+    const tag = `room:g69-detector-cost-${crypto.randomUUID()}`;
+    const lineage = `g69-detector-cost-lineage-${crypto.randomUUID()}`;
+    const messages = [1, 2, 3].map((ordinal) => g32Message({
+      serviceId,
+      allocatorLineageId: lineage,
+      tag,
+      eventTags: [tag],
+      eventType: "G69DetectorCostEvent",
+      payload: JSON.stringify({ detector: "cost" }),
+      eventId: `g69-detector-cost-${ordinal}-${crypto.randomUUID()}`,
+      suid: g32Suid(ordinal),
+      attemptId: `g69-detector-cost-attempt-${ordinal}-${crypto.randomUUID()}`,
+    }));
+    const source = new D1EventStore(database);
+    await source.initialize();
+    let detectorCalls = 0;
+    const originalDetector = source.findLateLowerSuidEvidence.bind(source);
+    source.findLateLowerSuidEvidence = async (...args) => {
+      detectorCalls += 1;
+      return originalDetector(...args);
+    };
+    const views = new D1MaterializedViewStore(materializedViews());
+    await views.initialize();
+    const runtime = new MaterializedViewCatchUpRuntime(source, views);
+    const materializer = defineRowMaterializer<StoredEvent>({
+      id: "G69DetectorCostProjector",
+      version: 1,
+      indexDescriptors: [],
+      materialize: (event) => ({ rowUpserts: [{ rowKey: event.eventId, value: { suid: event.suid } }] }),
+    });
+    await source.recordDelivery(messages[0]!, 0, "queue");
+    await runtime.build(serviceId, materializer, 100_000);
+    await source.recordDelivery(messages[1]!, 0, "queue");
+    await source.recordDelivery(messages[2]!, 0, "queue");
+    const result = await runtime.follow(serviceId, materializer, 100_000);
+    expect(result.advancedSourceEvents).toBe(2);
+    expect(detectorCalls).toBe(1);
+    expect(result.lateLowerQueryDurationMs).toBeGreaterThanOrEqual(0);
+    console.log("G69_HOTPATH_COSTS", JSON.stringify({
+      detectorCalls,
+      lateLowerQueryDurationMs: result.lateLowerQueryDurationMs,
+      advancedSourceEvents: result.advancedSourceEvents,
+    }));
   });
 
   it("returns core admission while the bounded diagnostic receipt is still pending", async () => {
@@ -504,7 +563,8 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     await Promise.all(diagnosticPromises);
     expect(concurrentResults.every((result) => result.outcome === "stored")).toBe(true);
     const lifecycleRows = await database.prepare(
-      `SELECT queue_message_id, attempt_id, receipt_status, observation_consistency, mutation_evidence
+      `SELECT queue_message_id, attempt_id, receipt_status, observation_consistency,
+              mutation_evidence, diagnostic_duration_ms
          FROM serialized_dcb_g69_admission_attempts
         WHERE service_id = ? ORDER BY sequence`,
     ).bind(serviceId).all<Record<string, unknown>>();
@@ -515,6 +575,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     expect(lifecycleRows.results.every((row) => row.attempt_id !== row.queue_message_id)).toBe(true);
     expect(lifecycleRows.results.every((row) => row.observation_consistency !== undefined)).toBe(true);
     expect(lifecycleRows.results.every((row) => row.mutation_evidence !== undefined)).toBe(true);
+    expect(lifecycleRows.results.every((row) => Number(row.diagnostic_duration_ms) >= 0)).toBe(true);
 
     const retentionServiceId = `g69-retention-${crypto.randomUUID()}`;
     const retentionReceipt: G69AdmissionAttemptReceipt = {
@@ -538,6 +599,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       afterObservedAt: 1,
       observationConsistency: "before-admission-absent",
       mutationEvidence: "unverified",
+      diagnosticDurationMs: 0,
       status: "stored",
       retryReason: null,
     };

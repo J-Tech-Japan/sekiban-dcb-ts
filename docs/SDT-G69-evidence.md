@@ -118,20 +118,34 @@ The detector has explicit false-positive coverage for:
 ## AC3: non-blocking admission-attempt receipt
 
 The `serialized_dcb_g69_admission_attempts` ledger remains diagnostic only.
-`recordDelivery` starts the before-read concurrently, completes core admission,
-then schedules best-effort receipt observation through the invocation's
-`waitUntil` lifetime (or a detached promise in the local store test), outside
-the awaited core path. The receipt keeps the actual nullable Queue wrapper ID
-separate from the envelope `attempt_id`, records before/after arrival values,
-observed clocks, an explicit `observation_consistency` classification, and
-honest `stored`/`duplicate`/collision/`failed` statuses plus retry reason.
+`recordDelivery` performs no diagnostic pre-read and does not await the
+mutation-evidence query. It completes the durable core admission first, then
+schedules best-effort receipt observation through the invocation's `waitUntil`
+lifetime (or a detached promise in the local store test), outside the awaited
+core path. The receipt keeps the actual nullable Queue wrapper ID separate from
+the envelope `attempt_id`, records the post-admission arrival values, observed
+clocks, an explicit `observation_consistency` classification, and honest
+`stored`/`duplicate`/collision/`failed` statuses plus retry reason. The
+`diagnostic_duration_ms` field records the per-attempt diagnostic and receipt
+preparation cost before the append is issued; it is not an admission clock.
 Consequently concurrent and replayed deliveries are distinguishable, a
 diagnostic failure remains best-effort, and a stalled receipt cannot delay core
 admission or Queue disposition. Retention is bounded to the newest 512 rows per
 service in the same diagnostic batch. The receipt is not an allocation-closure
 proof and is not read by DeliveryCore, Queue retry/DLQ logic, G44 coverage, MV
 catch-up or public query. The focused tests cover omitted and awaited-receipt
-mutants, failure, concurrency, replay and retention.
+mutants, failure, concurrency, replay, retention, and a non-negative persisted
+per-attempt cost.
+
+The late-lower detector is called once before the event-application loop for
+each catch-up pass. Its normal D1 path uses bounded `LIMIT 1` proven, unknown,
+and replay probes rather than materializing every lower-SUID row or issuing an
+N+1 event lookup. The resulting `lateLowerQueryDurationMs` is carried in each
+materialized-view observation and therefore in the durable
+`catch_up_result_json` pass ledger. A proven lower-SUID witness is queried
+before unknown evidence so an uncertain row cannot hide a real violation. These
+diagnostics measure and attribute hot-path cost only; they do not provide
+allocator closure, ordering proof, or permission to relax G44/G62.
 
 ## Preserved boundaries and status
 
@@ -144,12 +158,38 @@ The W164 allocator witness and the W166-2 repair are local structural evidence.
 It does not establish zero production detections, deployed safe-read behavior,
 or an allocation-to-arrival bound. Those require the later G69 acceptance work.
 
+## W167: G67 AC3 hot-path repair
+
+The hosted G44 failure at exact pre-repair head `946ffe6` was the unchanged
+G67 AC3 5,000 ms guard at `test/g67-safe-lane.spec.ts:731`. The G69 path was
+causal: `recordDeliveryCore` awaited an admission-mutation diagnostic pre-read,
+and the late-lower detector performed a full scan plus per-row lookups. Neither
+diagnostic was part of durable admission, but both ran on the delivery path.
+
+W167 removes that awaited work without changing admission semantics. Core
+admission now returns after the durable mutation; the diagnostic receipt is
+post-admission, best-effort and attached to the invocation lifetime through
+`waitUntil` (or a detached promise in local tests). The receipt records the
+nullable post-admission mutation result and `diagnostic_duration_ms`; it is
+bounded diagnostic retention and explicitly provides no allocation closure.
+The late-lower detector runs once before each catch-up event loop, uses bounded
+proven/unknown/replay `LIMIT 1` probes in proven-first order, and carries its
+observed `lateLowerQueryDurationMs` through `catch_up_result_json`. It is also
+diagnostic only and does not change G44/G62 certification.
+
+The focused W167 receipt observed diagnostic receipt cost `1 ms`, and detector
+costs `0–1 ms` (`detectorCalls=1` for a two-event follow-up pass). These are
+local observed clocks, not a production allocation or latency guarantee. The
+unchanged `npm run test:g67` command now passes its 11/11 behavior tests; all
+seven existing G67 mutation probes remain red. No G67 assertion, budget,
+timeout, scheduler, fence, SafeWindow, retry or drain behavior was changed.
+
 ## Verification
 
-Passing focused checks at the W166-2 source:
+Passing focused checks at the W167 source:
 
 - `npx vitest run test/g69-ordering.spec.ts --pool=forks --maxWorkers=1
-  --no-file-parallelism`: 1 file, 5 tests passed. This covers the real
+  --no-file-parallelism`: 1 file, 6 tests passed. This covers the real
   allocator-to-Tag-to-D1 witness, mixed unknown/proven detector scanning,
   decreasing-timestamp MIN replay, generation/public-read clocks, typed
   quarantine during `waitFor`, complete real rebuild recovery (including
@@ -174,11 +214,10 @@ Passing focused checks at the W166-2 source:
 - `npm run test:g65`: 17 tests passed; G65 guard and its six mutants remained
   red as expected.
 - `npx vitest run test/g67-safe-lane.spec.ts --pool=forks --maxWorkers=1
-  --no-file-parallelism`: 11 tests passed. The normal `npm run test:g67`
-  aggregate did not pass: its parallel runner timed out the cron-disabled
-  paced test at 5,004ms and its mutation probes recorded the expected red
-  failures. This is retained as a runner/parallelism exception, not called
-  green and not fixed here.
+  --no-file-parallelism` and the unchanged `npm run test:g67`: 11/11 behavior
+  tests passed and all seven mutation probes were red. The earlier exact-head
+  timeout is retained as the causal pre-repair receipt; it is not used to
+  relax the 5,000 ms guard.
 - `npm run typecheck` and `npm run lint`: pass after the final source edits.
 
 The cache-corrected full aggregate was run as

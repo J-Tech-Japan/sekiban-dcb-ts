@@ -35,6 +35,8 @@ import g69ReceiptIdentityMigration from "../../migrations/d1/g32/0017_g69_receip
 import g69MutationEvidenceMigration from "../../migrations/d1/g32/0018_g69_mutation_evidence.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import g69MutationReceiptLabelMigration from "../../migrations/d1/g32/0019_g69_mutation_receipt_label.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import g69HotpathCostsMigration from "../../migrations/d1/g32/0020_g69_hotpath_costs.sql?raw";
 
 function statements(database: D1Database, sql: string): D1PreparedStatement[] {
   return sql.replace(/^\s*--.*$/gm, "")
@@ -148,5 +150,11 @@ export async function applyG44D1Migration(database: D1Database): Promise<void> {
   ).all<{ name: string }>();
   if (!g69MutationReceiptColumns.results.some((row) => row.name === "mutation_evidence")) {
     await database.batch(statements(database, g69MutationReceiptLabelMigration as string));
+  }
+  const g69HotpathCostColumns = await database.prepare(
+    "PRAGMA table_info(serialized_dcb_g69_admission_attempts)",
+  ).all<{ name: string }>();
+  if (!g69HotpathCostColumns.results.some((row) => row.name === "diagnostic_duration_ms")) {
+    await database.batch(statements(database, g69HotpathCostsMigration as string));
   }
 }

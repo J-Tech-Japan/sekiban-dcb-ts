@@ -73,6 +73,7 @@ export interface MeetingRoomSafeLaneCatchUpObservation {
   readonly afterSuid: string;
   readonly dynamicLagBoundMs: number;
   readonly safeWindowMs: number;
+  readonly lateLowerQueryDurationMs: number;
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
   /** Exact source events applied by this view in this pass, with observed clocks. */
@@ -938,6 +939,7 @@ export async function catchUpMeetingRoomMaterializedViews(
       afterSuid: result.instance.lastSuid,
       dynamicLagBoundMs: result.dynamicLagBoundMs,
       safeWindowMs: result.safeWindowMs,
+      lateLowerQueryDurationMs: result.lateLowerQueryDurationMs,
       advancedSourceEvents: result.advancedSourceEvents,
       appliedEvents: result.appliedEvents,
       appliedEventDetails: appliedEventDetails.map((event) => ({

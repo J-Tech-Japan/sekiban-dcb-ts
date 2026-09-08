@@ -225,6 +225,8 @@ export interface ProjectionStore {
     readonly kind: "late-lower-suid" | "replay" | "miss" | "unknown";
     readonly event?: StoredEvent;
     readonly reason?: string;
+    /** Duration of the bounded detector query, when the provider measures it. */
+    readonly durationMs?: number;
   }>;
   currentLagBound(serviceId: string, nowMs?: number): Promise<number>;
   listProjectionTags(serviceId: string): Promise<string[]>;

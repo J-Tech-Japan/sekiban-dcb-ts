@@ -18,6 +18,8 @@ export interface MaterializedViewCatchUpResult {
   readonly safeWindowMs: number;
   readonly advancedSourceEvents: number;
   readonly appliedEvents: number;
+  /** Bounded late-lower detector query cost for this catch-up pass. */
+  readonly lateLowerQueryDurationMs: number;
   readonly indeterminate: boolean;
   /** The first source event withheld by the current safe-lane boundary. */
   readonly deferredEventSuid: string | null;
@@ -203,6 +205,7 @@ export class MaterializedViewCatchUpRuntime {
           safeWindowMs: windowMs,
           advancedSourceEvents: 0,
           appliedEvents: 0,
+          lateLowerQueryDurationMs: 0,
           indeterminate: true,
           deferredEventSuid: null,
           deferredEventLastArrivedAt: null,
@@ -211,7 +214,15 @@ export class MaterializedViewCatchUpRuntime {
         };
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
-      await this.assertStrictOrder(serviceId, materializer.id, generation, instance.lastSuid, instance.updatedAt, sourceEvents);
+      let lateLowerQueryDurationMs = 0;
+      lateLowerQueryDurationMs = await this.assertStrictOrder(
+        serviceId,
+        materializer.id,
+        generation,
+        instance.lastSuid,
+        instance.updatedAt,
+        sourceEvents,
+      );
       let current = instance;
       let advancedSourceEvents = 0;
       let appliedEvents = 0;
@@ -230,6 +241,7 @@ export class MaterializedViewCatchUpRuntime {
             safeWindowMs: windowMs,
             advancedSourceEvents,
             appliedEvents,
+            lateLowerQueryDurationMs,
             indeterminate: false,
             deferredEventSuid: event.suid,
             deferredEventLastArrivedAt: event.lastArrivedAt,
@@ -246,6 +258,7 @@ export class MaterializedViewCatchUpRuntime {
             safeWindowMs: windowMs,
             advancedSourceEvents,
             appliedEvents,
+            lateLowerQueryDurationMs,
             indeterminate: false,
             deferredEventSuid: event.suid,
             deferredEventLastArrivedAt: event.lastArrivedAt,
@@ -304,6 +317,7 @@ export class MaterializedViewCatchUpRuntime {
           safeWindowMs: windowMs,
           advancedSourceEvents,
           appliedEvents,
+          lateLowerQueryDurationMs,
           indeterminate: false,
           deferredEventSuid: null,
           deferredEventLastArrivedAt: null,
@@ -322,14 +336,17 @@ export class MaterializedViewCatchUpRuntime {
     priorSuid: string,
     checkpointUpdatedAt: number,
     events: readonly StoredEvent[],
-  ): Promise<void> {
+  ): Promise<number> {
+    let lateLowerQueryDurationMs = 0;
     if (priorSuid.length > 0) {
+      const detectorStartedAt = Date.now();
       const evidence = this.source.findLateLowerSuidEvidence === undefined
         ? undefined
         : await this.source.findLateLowerSuidEvidence(serviceId, priorSuid, checkpointUpdatedAt, generation);
       const lateLower = evidence === undefined
         ? await this.source.findLateLowerSuid?.(serviceId, priorSuid, checkpointUpdatedAt)
         : evidence.kind === "late-lower-suid" ? evidence.event : undefined;
+      lateLowerQueryDurationMs = evidence?.durationMs ?? Math.max(0, Date.now() - detectorStartedAt);
       if (evidence?.kind === "unknown") {
         const incident = {
           serviceId,
@@ -425,6 +442,7 @@ export class MaterializedViewCatchUpRuntime {
       }
       previous = event.suid;
     }
+    return lateLowerQueryDurationMs;
   }
 }
 

@@ -47,6 +47,8 @@ export interface G69AdmissionAttemptReceipt {
     | "unverified";
   /** Mutation-owned classification; never inferred from the diagnostic read. */
   readonly mutationEvidence: "first-admission" | "duplicate-admission" | "unverified";
+  /** Elapsed diagnostic/receipt preparation cost before the append is issued. */
+  readonly diagnosticDurationMs: number;
   readonly status: G69AdmissionAttemptStatus;
   readonly retryReason: string | null;
 }
@@ -64,8 +66,8 @@ export async function appendG69AdmissionAttempt(
         first_arrived_at_before, last_arrived_at_before,
         first_arrived_at_after, last_arrived_at_after,
         before_observed_at, after_observed_at, observation_consistency,
-        mutation_evidence, receipt_status, retry_reason, clock_origin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        mutation_evidence, diagnostic_duration_ms, receipt_status, retry_reason, clock_origin)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     receipt.serviceId,
     receipt.eventId,
@@ -87,6 +89,7 @@ export async function appendG69AdmissionAttempt(
     receipt.afterObservedAt,
     receipt.observationConsistency,
     receipt.mutationEvidence,
+    receipt.diagnosticDurationMs,
     receipt.status,
     receipt.retryReason,
     "Date.now epoch ms",
