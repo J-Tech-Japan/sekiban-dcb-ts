@@ -1,7 +1,8 @@
 # SDT-G64-PR139-AC1-G13-FIXTURE-REPAIR-W174
 
-Status: completed — the narrow G13 consumer-fixture contract repair is pushed
-to PR #139.
+Status: blocked — the narrow G13 consumer-fixture contract repair is pushed
+to PR #139, but canonical repair lifecycle state is stale and refused the
+completion transition.
 
 ## Head and scope
 
@@ -9,6 +10,8 @@ to PR #139.
 - Requested starting head: `21a623630d7d3bc05708a52462322157973e8624`
 - Source repair commit: `d5bbd5e77b9a8125cae9ebe88dcf2698f359abdd`
 - Branch: `claude/sdt-g64-npm-matched-set-claim-recovery-w174`
+- Evidence/receipt head before the lifecycle repair attempt:
+  `9b629305f7e4bf70956da351b95550880e2e2a6e`
 - The source change is limited to `scripts/g13-consumer-fixture.mjs`.
 
 ## Finding and precise repair
@@ -55,4 +58,35 @@ in `docs/SDT-G64-evidence.md`. No npm publish, tag, credentials, deployment,
 runtime API change, G32 mutation, or host-state operation occurred.
 
 The receipt is committed after the source repair; the exact final branch SHA
-is reported with the canonical repair transition.
+is reported with the canonical report below.
+
+## Canonical lifecycle blocker
+
+`intent-cli worker pr-comment-preflight --repo J-Tech-Japan/sekiban-dcb-ts
+--pr 139 --format json` returned `classification=repair-required` with two
+actionable comments, but the PR labels were already `intent-target` and
+`intent-pr-rereview-ready` (no `intent-pr-request-update`). The canonical
+completion attempt:
+
+```text
+intent-cli worker complete --kind pr --number 139
+  --repo J-Tech-Japan/sekiban-dcb-ts --outcome repair-pushed --write --format json
+exit 2
+complete.stale.not-claimed: PR does not carry 'intent-pr-update-in-progress'
+complete.stale.already-completed: PR already carries 'intent-pr-rereview-ready'
+```
+
+The one canonical claim check also refused without mutation:
+
+```text
+intent-cli worker claim --kind pr --number 139
+  --repo J-Tech-Japan/sekiban-dcb-ts --write --format json
+exit 2
+claim.missing.intent-pr-request-update
+claim.stale.already-rereview-ready
+```
+
+No label was edited manually. Orchestration must reconcile the stale
+request-update/rereview lifecycle before a canonical `repair-pushed`
+completion can be applied; the source repair and focused evidence are not
+blocked.
