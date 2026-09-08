@@ -1,8 +1,22 @@
 {
   "name": "@sekiban/dcb-core",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "description": "Cloudflare-independent Serialized DCB definitions and domain algebra.",
+  "license": "Elastic-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts.git",
+    "directory": "packages/dcb-core"
+  },
+  "homepage": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/tree/main/packages/dcb-core#readme",
+  "bugs": {
+    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues"
+  },
+  "keywords": ["sekiban", "dcb", "core", "serialized-dcb"],
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "sideEffects": false,
   "exports": {
@@ -12,7 +26,11 @@
     }
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": ["dist", "README.md", "LICENSE"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"

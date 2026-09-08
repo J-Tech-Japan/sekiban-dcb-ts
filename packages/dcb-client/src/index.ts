@@ -568,4 +568,4 @@ export const createSerializedDcbClient = (baseUrl: string, fetchImpl?: typeof fe
 
 export type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput };
 
-export * from "./executor";
+export * from "./executor.js";
