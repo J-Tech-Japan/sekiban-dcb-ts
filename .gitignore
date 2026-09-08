@@ -2,6 +2,7 @@ node_modules/
 .intent-cli/
 dist/
 packages/*/dist/
+/packages/dcb-domain/LICENSE
 tools/**/bin/
 tools/**/obj/
 .wrangler/

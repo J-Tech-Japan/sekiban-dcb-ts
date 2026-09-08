@@ -1,0 +1,51 @@
+name: Release @sekiban/dcb-domain
+
+on:
+  push:
+    tags:
+      - "dcb-domain-v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: node scripts/dcb-domain-release-check.mjs "$GITHUB_REF_NAME"
+      - run: npm run build --workspace @sekiban/dcb-domain
+      - run: npm run typecheck --workspace @sekiban/dcb-domain
+      - run: node scripts/dcb-domain-pack-check.mjs
+      - run: node scripts/dcb-domain-consumer-check.mjs
+      - run: node scripts/dcb-domain-release-notes.mjs "$GITHUB_REF_NAME" "$RUNNER_TEMP/dcb-domain-release-notes.md"
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "@sekiban/dcb-domain $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/dcb-domain-release-notes.md"
+          else
+            gh release create "$GITHUB_REF_NAME" --title "@sekiban/dcb-domain $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/dcb-domain-release-notes.md"
+          fi
+      - name: Publish with provenance or verified dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHING: ${{ vars.NPM_TRUSTED_PUBLISHING }}
+        working-directory: packages/dcb-domain
+        run: |
+          if [[ -n "${NODE_AUTH_TOKEN:-}" || "${NPM_TRUSTED_PUBLISHING:-}" == "true" ]]; then
+            npm publish --provenance --access public
+          else
+            echo "NPM_TOKEN/trusted publisher is not configured; no publish was attempted. Running the exact operator dry-run instead."
+            npm publish --dry-run --provenance --access public
+          fi

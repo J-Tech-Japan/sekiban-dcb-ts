@@ -4,6 +4,15 @@
 Sekiban DCB domains. It depends on `zod` only and does not import the runtime,
 storage, transport, or host APIs.
 
+## Install
+
+```sh
+npm install @sekiban/dcb-domain zod
+```
+
+The package is ESM-only and supports Node.js 20 or newer. The `zod` runtime
+dependency is pinned to `4.4.3` for the 0.1.x line.
+
 ```ts
 import { z } from "zod";
 import {
@@ -21,7 +30,6 @@ import {
 const order = tagFamily("order");
 const placed = event("OrderPlaced", z.object({ orderId: z.string() }), {
   tags: (value) => [order.of(value.orderId)],
-  version: 2,
 });
 
 const orderProjector = projector({
@@ -70,4 +78,27 @@ available from `@sekiban/dcb-domain/testing`.
 
 The package boundary is enforced in CI by the dedicated compile-fail project,
 source import/global checks, negative fixtures, and an `npm pack --dry-run`
-inspection. The package has no runtime dependency by design.
+inspection. Its only runtime dependency is the pinned `zod` package.
+
+## Versioning
+
+The package follows semver while the major version is `0`: minor releases may
+add public authoring capabilities, and patch releases are limited to fixes and
+documentation. The public surface is frozen to the following entrypoints and
+helpers for the `0.1.x` line:
+
+- Main entrypoint: `domain`, `event`, `eventUnion`, `projector`, `stateUnion`,
+  `command`, `done`, `none`, `reject`, `read`, `readExists`, `Session`,
+  portable-snapshot serialization, the five boundary parsers, and the
+  runtime-domain bridge (`toRuntimeDomain`).
+- Testing entrypoint: `given`, `evolveTable`, and `evolve` from
+  `@sekiban/dcb-domain/testing`.
+- No deep imports beyond `.` and `./testing` are supported.
+
+The earlier `@sekiban/core` and related packages belong to the older
+sekiban-ts line; they are not dependencies or aliases for this package.
+
+The first public release is `0.1.0`. The repository tag
+`dcb-domain-v0.1.0` drives the provenance-enabled release workflow. The final
+`npm publish --provenance --access public` is an operator action performed
+only after the trusted publisher or `NPM_TOKEN` fallback has been configured.

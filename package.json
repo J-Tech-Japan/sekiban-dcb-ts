@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "build:packages": "npm run build --workspaces --if-present",
+    "build:dcb-domain": "npm run build --workspace @sekiban/dcb-domain",
     "build": "npm run build:packages && wrangler deploy --dry-run",
     "deploy:g11": "bash scripts/deploy/g11-deploy.sh",
     "conformance:g11": "bash scripts/deploy/g11-conformance.sh",
@@ -82,6 +83,9 @@
     "test:g28:boundary:negative": "node scripts/dcb-domain-boundary-check.mjs --gate negative-fixtures",
     "test:g28:boundary:package": "node scripts/dcb-domain-boundary-check.mjs --gate package-manifest",
     "test:g28:forced-red": "npm run test:g28 && node -e \"if (process.env.SDT_G28_FORCE_FAILURE === '1') throw new Error('SDT-G28 forced-red CI wiring proof')\"",
+    "test:g59:pack": "npm run build:dcb-domain && node scripts/dcb-domain-pack-check.mjs",
+    "test:g59:consumer": "node scripts/dcb-domain-consumer-check.mjs",
+    "test:g59": "npm run test:g59:pack && npm run test:g59:consumer",
     "test:g29:mapping": "npm run build:packages && vitest run --config vitest.config.ts test/g29-mapping.spec.ts && npm run test:g29:mapping:runner",
     "test:g29:mapping:runner": "node scripts/g29-mapping-contract.mjs",
     "test:g29:mapping:forced-red": "npm run test:g29:mapping && node -e \"if (process.env.SDT_G29_MAPPING_FORCE_FAILURE === '1') throw new Error('SDT-G29 mapping forced-red CI wiring proof')\"",
