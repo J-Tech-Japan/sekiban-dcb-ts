@@ -53,14 +53,21 @@ jobs:
         run: |
           set -euo pipefail
           publish_args=(--access public)
+          publish_env=()
           if [[ "${REPO_IS_PRIVATE}" == "false" ]]; then
             publish_args+=(--provenance)
+          else
+            # npm may auto-enable provenance in GitHub Actions even when the
+            # flag is omitted. Private source repositories are rejected by
+            # the npm registry for that bundle, so disable that implicit
+            # behavior while retaining the plain public-access command.
+            publish_env+=(NPM_CONFIG_PROVENANCE=false)
           fi
           if [[ "${NPM_TRUSTED_PUBLISHING}" == "true" || -n "${NODE_AUTH_TOKEN}" ]]; then
             for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
               echo "publish: ${package}"
               echo "command: npm publish ${publish_args[*]}"
-              (cd "${package}" && npm publish "${publish_args[@]}")
+              (cd "${package}" && env "${publish_env[@]}" npm publish "${publish_args[@]}")
             done
           else
             echo "NPM_TRUSTED_PUBLISHING is not true and NPM_TOKEN is not configured; no package was published."

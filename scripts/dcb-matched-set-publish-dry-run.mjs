@@ -25,6 +25,10 @@ export function commandFor(options) {
   return ["npm", ...publishArguments(options)].join(" ");
 }
 
+export function publishEnvironment({ privateRepository }) {
+  return privateRepository ? { NPM_CONFIG_PROVENANCE: "false" } : {};
+}
+
 function parseRepositoryVisibility(argv, env) {
   const privateRequested = argv.includes("--repository-private");
   const publicRequested = argv.includes("--repository-public");
@@ -61,6 +65,10 @@ function assertCommandShape() {
   assert.equal(publicDryRun.at(-1), "public");
   assert.equal(privateDryRun.at(-2), "--access");
   assert.equal(privateDryRun.at(-1), "public");
+  assert.deepEqual(publishEnvironment({ privateRepository: false }), {});
+  assert.deepEqual(publishEnvironment({ privateRepository: true }), {
+    NPM_CONFIG_PROVENANCE: "false",
+  });
 
   const privateProvenanceMutation = [...privatePublish, "--provenance"];
   assert(
@@ -79,6 +87,7 @@ function assertCommandShape() {
     public: commandFor({ privateRepository: false }),
     private: commandFor({ privateRepository: true }),
     publicMutation: "npm publish --provenance --access public",
+    privateEnvironment: "NPM_CONFIG_PROVENANCE=false",
     privateMutationRejected: true,
   };
 }
@@ -96,6 +105,7 @@ const receipts = [];
 
 for (const [name, relativeDirectory] of packages) {
   const env = { ...process.env };
+  Object.assign(env, publishEnvironment({ privateRepository }));
   if (env.NPM_CONFIG_CACHE !== undefined) env.npm_config_cache = env.NPM_CONFIG_CACHE;
   const result = spawnSync(
     "npm",
