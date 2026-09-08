@@ -19,6 +19,8 @@ export interface AllocatedCommitCandidate extends SerializedCommitCandidate {
   eventId: string;
   suid: string;
   timestamp: string;
+  /** Allocator candidate identity used only by G70 obligation resolution. */
+  candidateIndex?: number;
 }
 
 /**

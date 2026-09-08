@@ -909,7 +909,7 @@ export async function catchUpMeetingRoomMaterializedViews(
   env: MeetingRoomD1Env,
   serviceId = requiredServiceId(env),
   frontierSuid: string | null | undefined = undefined,
-  options: { readonly runOrderingDetector?: boolean } = {},
+  options: { readonly runOrderingDetector?: boolean; readonly closedPrefixSuid?: string | null } = {},
 ): Promise<readonly MeetingRoomSafeLaneCatchUpObservation[]> {
   const { runtime, views } = await openMaterializedViews(env);
   const observations: MeetingRoomSafeLaneCatchUpObservation[] = [];
@@ -933,19 +933,21 @@ export async function catchUpMeetingRoomMaterializedViews(
       if (options.runOrderingDetector === true) {
         result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
           maximumSuid: frontierSuid,
+          closedPrefixSuid: options.closedPrefixSuid,
           runOrderingDetector: true,
         });
       } else {
-        result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+        result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid, closedPrefixSuid: options.closedPrefixSuid });
       }
     } else {
       if (options.runOrderingDetector === true) {
         result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
           maximumSuid: frontierSuid,
+          closedPrefixSuid: options.closedPrefixSuid,
           runOrderingDetector: true,
         });
       } else {
-        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid, closedPrefixSuid: options.closedPrefixSuid });
       }
     }
     observations.push({

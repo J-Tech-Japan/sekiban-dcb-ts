@@ -3,6 +3,9 @@ import type {
   AllocationCandidate,
   AllocationVector,
   AllocatorState,
+  ClosedPrefixCertificate,
+  IssuanceObligation,
+  IssuanceObligationDisposition,
 } from "./types";
 import {
   allocateOrderRange,
@@ -26,6 +29,8 @@ import { beginDurableObjectHandlerObservation, type DurableObjectHandlerObservat
 
 const STATE_KEY = "allocator-state";
 const ATTEMPT_KEY_PREFIX = "attempt:";
+const ISSUANCE_OBLIGATIONS_KEY = "issuance-obligations";
+const CLOSED_PREFIX_META_KEY = "closed-prefix-meta";
 const ROLLBACK_WARNING_WINDOW_MS = 1_000n;
 
 type JsonObject = Record<string, unknown>;
@@ -39,6 +44,29 @@ interface AllocateInput {
   bootstrapEpoch?: number;
 }
 interface SeedInput { importId: string; leaseEpoch: number; highWatermark: string; }
+
+interface ClosedPrefixMeta {
+  readonly version: 1;
+  readonly allocatorLineageId: string;
+  readonly migrationStatus: "new" | "reconciled";
+  readonly migrationProofId: string | null;
+}
+
+interface ResolveObligationInput {
+  readonly attemptId: string;
+  readonly candidateIndex: number;
+  readonly eventId: string;
+  readonly suid: string;
+  readonly allocatorLineageId: string;
+  readonly tag: string;
+  readonly disposition: IssuanceObligationDisposition;
+}
+
+interface ReconcileCutInput {
+  readonly allocatorLineageId: string;
+  readonly proofId: string;
+  readonly obligations: Array<Pick<IssuanceObligation, "attemptId" | "candidateIndex" | "eventId" | "suid" | "targetTags">>;
+}
 
 interface AllocationSuccess {
   vector: AllocationVector;
@@ -79,6 +107,10 @@ function currentState(allocatorLineageId: string): AllocatorState {
   return { schemaVersion: 5, allocatorLineageId, allocatedWatermark: null, bootstrapSeed: null, lastRollbackWarningFingerprint: null };
 }
 
+function currentClosedPrefixMeta(allocatorLineageId: string): ClosedPrefixMeta {
+  return { version: 1, allocatorLineageId, migrationStatus: "new", migrationProofId: null };
+}
+
 /** G32 is a fresh allocator namespace; an old durable state is never upgraded. */
 function assertG32State(state: AllocatorState | undefined): void {
   if (state === undefined) return;
@@ -87,6 +119,12 @@ function assertG32State(state: AllocatorState | undefined): void {
   }
   if (state.allocatedWatermark !== null) assertSortableUniqueId(state.allocatedWatermark);
   if (state.bootstrapSeed !== null) assertSortableUniqueId(state.bootstrapSeed.highWatermark);
+}
+
+function targetTagsFrom(value: unknown): string[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || !value.every(isNonEmptyString)) return undefined;
+  return [...new Set(value)];
 }
 
 function seedFrom(value: unknown): { value?: SeedInput; error?: string } {
@@ -126,9 +164,12 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
     ) {
       return { error: "each candidate needs a non-negative candidateIndex and non-empty eventId" };
     }
+    const targetTags = targetTagsFrom(rawCandidate.targetTags);
+    if (targetTags === undefined) return { error: "targetTags must be an array of non-empty strings" };
     candidates.push({
       candidateIndex: rawCandidate.candidateIndex,
       eventId: rawCandidate.eventId,
+      targetTags,
     });
   }
 
@@ -154,6 +195,76 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
   return { value: { attemptId: value.attemptId, candidates: ordered, faultInjection, ...bootstrap } };
 }
 
+function parseResolution(value: unknown): { value?: ResolveObligationInput; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.attemptId) || !isNonNegativeInteger(value.candidateIndex) ||
+      !isNonEmptyString(value.eventId) || !isNonEmptyString(value.suid) || !isNonEmptyString(value.allocatorLineageId) ||
+      !isNonEmptyString(value.tag) || (value.disposition !== "installed" && value.disposition !== "fenced")) {
+    return { error: "attemptId, candidateIndex, eventId, suid, allocatorLineageId, tag, and disposition are required" };
+  }
+  try { assertSortableUniqueId(value.suid); } catch { return { error: "suid must be a valid allocator SUID" }; }
+  return { value: {
+    attemptId: value.attemptId,
+    candidateIndex: value.candidateIndex,
+    eventId: value.eventId,
+    suid: value.suid,
+    allocatorLineageId: value.allocatorLineageId,
+    tag: value.tag,
+    disposition: value.disposition,
+  } };
+}
+
+function parseReconcileCut(value: unknown): { value?: ReconcileCutInput; error?: string } {
+  if (!isObject(value) || !isNonEmptyString(value.allocatorLineageId) || !isNonEmptyString(value.proofId) || !Array.isArray(value.obligations)) {
+    return { error: "allocatorLineageId, proofId, and obligations are required" };
+  }
+  const obligations: ReconcileCutInput["obligations"] = [];
+  for (const raw of value.obligations) {
+    if (!isObject(raw) || !isNonEmptyString(raw.attemptId) || !isNonNegativeInteger(raw.candidateIndex) ||
+        !isNonEmptyString(raw.eventId) || !isNonEmptyString(raw.suid)) {
+      return { error: "each reconciliation obligation needs attemptId, candidateIndex, eventId, and suid" };
+    }
+    const targetTags = targetTagsFrom(raw.targetTags);
+    if (targetTags === undefined || targetTags.length === 0) return { error: "reconciliation obligations need targetTags" };
+    try { assertSortableUniqueId(raw.suid); } catch { return { error: "reconciliation obligation suid is invalid" }; }
+    obligations.push({ attemptId: raw.attemptId, candidateIndex: raw.candidateIndex, eventId: raw.eventId, suid: raw.suid, targetTags });
+  }
+  return { value: { allocatorLineageId: value.allocatorLineageId, proofId: value.proofId, obligations } };
+}
+
+function closedPrefixCertificate(
+  state: AllocatorState,
+  meta: ClosedPrefixMeta | undefined,
+  obligations: IssuanceObligation[],
+): ClosedPrefixCertificate {
+  if (meta === undefined || meta.allocatorLineageId !== state.allocatorLineageId) {
+    return {
+      certificateVersion: 1,
+      status: "unreconciled",
+      allocatorLineageId: state.allocatorLineageId,
+      closedPrefixSuid: null,
+      unresolvedCount: obligations.filter((obligation) => obligation.status !== "resolved").length,
+      generatedAt: Date.now(),
+      migrationProofId: null,
+    };
+  }
+  const ordered = [...obligations].sort((left, right) => {
+    const leftTicks = decodeSuid(left.suid);
+    const rightTicks = decodeSuid(right.suid);
+    return leftTicks < rightTicks ? -1 : leftTicks > rightTicks ? 1 : 0;
+  });
+  const firstUnresolved = ordered.findIndex((obligation) => obligation.status !== "resolved");
+  const closed = firstUnresolved < 0 ? ordered : ordered.slice(0, firstUnresolved);
+  return {
+    certificateVersion: 1,
+    status: "ready",
+    allocatorLineageId: state.allocatorLineageId,
+    closedPrefixSuid: closed.length === 0 ? null : closed[closed.length - 1]!.suid,
+    unresolvedCount: ordered.filter((obligation) => obligation.status !== "resolved").length,
+    generatedAt: Date.now(),
+    migrationProofId: meta.migrationProofId,
+  };
+}
+
 /**
  * A single service-wide allocator. Every allocation uses this one Durable
  * Object instance, so the transaction that writes an attempt vector and the
@@ -162,6 +273,8 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
 export class AllocatorDurableObject implements DurableObject {
   /** Observation-only; it is never serialized into Durable Object storage. */
   private readonly activation = new DurableObjectActivation();
+  /** Invalidated by every obligation/state mutation; safe reads never call the allocator remotely. */
+  private closedPrefixCache: ClosedPrefixCertificate | undefined;
 
   constructor(
     private readonly ctx: DurableObjectState,
@@ -212,6 +325,18 @@ export class AllocatorDurableObject implements DurableObject {
         return initialized;
       });
       return json(state);
+    }
+    if (request.method === "GET" && url.pathname === "/closed-prefix") {
+      return this.readClosedPrefix();
+    }
+    if (request.method === "GET" && url.pathname === "/obligations") {
+      return json(await this.ctx.storage.get<IssuanceObligation[]>(ISSUANCE_OBLIGATIONS_KEY) ?? []);
+    }
+    if (request.method === "POST" && url.pathname === "/obligations/resolve") {
+      return this.resolveObligation(request);
+    }
+    if (request.method === "POST" && url.pathname === "/reconcile-cut") {
+      return this.reconcileCut(request);
     }
     if (request.method === "GET" && url.pathname.startsWith("/attempts/")) {
       return enterNativeActorHandleSpan(
@@ -295,6 +420,7 @@ export class AllocatorDurableObject implements DurableObject {
       const result = await this.ctx.storage.transaction(async (txn): Promise<AllocationSuccess> => {
         const existing = await txn.get<AllocationVector>(attemptKey(input.attemptId));
         const persistedState = await txn.get<AllocatorState>(STATE_KEY);
+        const persistedMeta = await txn.get<ClosedPrefixMeta>(CLOSED_PREFIX_META_KEY);
         assertG32State(persistedState);
         const lineage = persistedState?.allocatorLineageId || newAllocatorLineageId();
         if (existing !== undefined) {
@@ -316,6 +442,19 @@ export class AllocatorDurableObject implements DurableObject {
         const state = persistedState === undefined
           ? currentState(lineage)
           : { ...persistedState, allocatorLineageId: lineage, schemaVersion: 5 as const, bootstrapSeed: persistedState.bootstrapSeed ?? null, lastRollbackWarningFingerprint: persistedState.lastRollbackWarningFingerprint ?? null };
+        if (persistedMeta !== undefined && persistedMeta.allocatorLineageId !== lineage) {
+          throw new SortableUniqueIdError("SUID_INVALID", "allocator lineage changed before issuance reconciliation");
+        }
+        const hasG70TargetMembership = input.candidates.some((candidate) => (candidate.targetTags?.length ?? 0) > 0);
+        if (persistedMeta === undefined && persistedState?.allocatedWatermark !== null && persistedState?.allocatedWatermark !== undefined && hasG70TargetMembership) {
+          throw new SortableUniqueIdError("SUID_INVALID", "allocator requires a reconciliation cut before new allocation");
+        }
+        // Direct legacy allocator callers do not have source membership and
+        // therefore cannot establish a G70 certificate. Keep their vector
+        // compatibility, but leave the namespace unreconciled for the safe
+        // lane instead of minting a fiat certificate.
+        const closedPrefixMeta = persistedMeta ?? (hasG70TargetMembership ? currentClosedPrefixMeta(lineage) : undefined);
+        const previousObligations = await txn.get<IssuanceObligation[]>(ISSUANCE_OBLIGATIONS_KEY) ?? [];
         // This is intentionally before the first transaction write. A clock
         // failure therefore cannot leave a vector, watermark, or warning fact.
         let clockTick: bigint;
@@ -341,6 +480,7 @@ export class AllocatorDurableObject implements DurableObject {
         const vector: AllocationVector = {
           attemptId: input.attemptId,
           allocatorLineageId: lineage,
+          issuanceObligationVersion: 1,
           candidates,
           // Diagnostic presentation only; ordering is the ordinal above.
           allocatedAt: diagnosticAllocatedAt(range.base),
@@ -352,12 +492,32 @@ export class AllocatorDurableObject implements DurableObject {
           bootstrapSeed: state.bootstrapSeed ?? null,
           lastRollbackWarningFingerprint: shouldWarn ? warningFingerprint : state.lastRollbackWarningFingerprint ?? null,
         };
+        const obligations: IssuanceObligation[] = [
+          ...previousObligations,
+          ...candidates.map((candidate) => ({
+            attemptId: input.attemptId,
+            candidateIndex: candidate.candidateIndex,
+            eventId: candidate.eventId,
+            suid: candidate.suid,
+            allocatorLineageId: lineage,
+            targetTags: [...new Set(candidate.targetTags ?? [])],
+            installedTags: [],
+            fencedTags: [],
+            // An allocation with no source participants is already closed by
+            // the vacuous participant rule. Public CommitWorker allocations
+            // always carry their concrete Tag set; this keeps the allocator's
+            // older direct callers compatible without inventing a participant.
+            status: (candidate.targetTags?.length === 0 ? "resolved" : "unresolved") as "resolved" | "unresolved",
+          })),
+        ];
 
         await txn.put(attemptKey(input.attemptId), vector);
         if (input.faultInjection === "between-vector-and-watermark") {
           throw new AllocationTransactionFault("Simulated interruption before transaction commit");
         }
         await txn.put(STATE_KEY, updatedState);
+        await txn.put(ISSUANCE_OBLIGATIONS_KEY, obligations);
+        if (closedPrefixMeta !== undefined) await txn.put(CLOSED_PREFIX_META_KEY, closedPrefixMeta);
         return {
           vector,
           created: true,
@@ -371,6 +531,7 @@ export class AllocatorDurableObject implements DurableObject {
           } : {}),
         };
       });
+      this.closedPrefixCache = undefined;
       if (result.rollbackWarning !== undefined) {
         try {
           console.warn(JSON.stringify({ type: "allocator_clock_rollback", ...result.rollbackWarning }));
@@ -398,6 +559,109 @@ export class AllocatorDurableObject implements DurableObject {
     }
   }
 
+  private async readClosedPrefix(): Promise<Response> {
+    if (this.closedPrefixCache !== undefined) return json(this.closedPrefixCache);
+    const result = await this.ctx.storage.transaction(async (txn): Promise<ClosedPrefixCertificate> => {
+      let state = await txn.get<AllocatorState>(STATE_KEY);
+      if (state === undefined) {
+        state = currentState(newAllocatorLineageId());
+        await txn.put(STATE_KEY, state);
+      }
+      assertG32State(state);
+      let meta = await txn.get<ClosedPrefixMeta>(CLOSED_PREFIX_META_KEY);
+      const obligations = await txn.get<IssuanceObligation[]>(ISSUANCE_OBLIGATIONS_KEY) ?? [];
+      // A non-empty legacy allocator has vectors but no G70 obligation index.
+      // It is deliberately unreconciled rather than silently treated as closed.
+      if (meta === undefined && state.allocatedWatermark !== null) {
+        return closedPrefixCertificate(state, undefined, obligations);
+      }
+      if (meta?.migrationStatus === "new" && state.bootstrapSeed !== null) {
+        return {
+          certificateVersion: 1,
+          status: "unreconciled",
+          allocatorLineageId: state.allocatorLineageId,
+          closedPrefixSuid: null,
+          unresolvedCount: obligations.filter((obligation) => obligation.status !== "resolved").length,
+          generatedAt: Date.now(),
+          migrationProofId: null,
+        };
+      }
+      if (meta === undefined) {
+        meta = currentClosedPrefixMeta(state.allocatorLineageId);
+        await txn.put(CLOSED_PREFIX_META_KEY, meta);
+      }
+      return closedPrefixCertificate(state, meta, obligations);
+    });
+    this.closedPrefixCache = result;
+    return json(result);
+  }
+
+  private async resolveObligation(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json<unknown>(); } catch { return error(400, "invalid_issuance_resolution", "Request body must be JSON"); }
+    const parsed = parseResolution(body);
+    if (parsed.value === undefined) return error(400, "invalid_issuance_resolution", parsed.error ?? "Invalid issuance resolution");
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<{ status: number; body: unknown; changed?: boolean }> => {
+      const state = await txn.get<AllocatorState>(STATE_KEY);
+      if (state === undefined || state.allocatorLineageId !== input.allocatorLineageId) return { status: 409, body: { code: "issuance_lineage_mismatch", error: "Issuance lineage is not current" } };
+      const obligations = await txn.get<IssuanceObligation[]>(ISSUANCE_OBLIGATIONS_KEY) ?? [];
+      const index = obligations.findIndex((obligation) => obligation.attemptId === input.attemptId && obligation.candidateIndex === input.candidateIndex);
+      if (index < 0) return { status: 404, body: { code: "issuance_obligation_not_found", error: "Issuance obligation was not found" } };
+      const obligation = obligations[index]!;
+      if (obligation.eventId !== input.eventId || obligation.suid !== input.suid) return { status: 409, body: { code: "issuance_identity_mismatch", error: "Issuance identity does not match the durable obligation" } };
+      if (!obligation.targetTags.includes(input.tag)) return { status: 409, body: { code: "issuance_tag_mismatch", error: "Tag is not a required issuance participant" } };
+      const installedTags = input.disposition === "installed" && !obligation.installedTags.includes(input.tag)
+        ? [...obligation.installedTags, input.tag]
+        : obligation.installedTags;
+      const fencedTags = input.disposition === "fenced" && !obligation.fencedTags.includes(input.tag)
+        ? [...obligation.fencedTags, input.tag]
+        : obligation.fencedTags;
+      const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));
+      const updated: IssuanceObligation = { ...obligation, installedTags, fencedTags, status: resolved ? "resolved" : "unresolved" };
+      if (JSON.stringify(updated) !== JSON.stringify(obligation)) {
+        const next = [...obligations]; next[index] = updated;
+        await txn.put(ISSUANCE_OBLIGATIONS_KEY, next);
+      }
+      return { status: 200, body: updated, changed: JSON.stringify(updated) !== JSON.stringify(obligation) };
+    });
+    if (result.status === 200 && result.changed === true) this.closedPrefixCache = undefined;
+    return json(result.body, result.status);
+  }
+
+  private async reconcileCut(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json<unknown>(); } catch { return error(400, "invalid_reconciliation_cut", "Request body must be JSON"); }
+    const parsed = parseReconcileCut(body);
+    if (parsed.value === undefined) return error(400, "invalid_reconciliation_cut", parsed.error ?? "Invalid reconciliation cut");
+    const input = parsed.value;
+    const result = await this.ctx.storage.transaction(async (txn): Promise<{ status: number; body: unknown }> => {
+      const state = await txn.get<AllocatorState>(STATE_KEY);
+      if (state === undefined || state.allocatorLineageId !== input.allocatorLineageId) return { status: 409, body: { code: "issuance_lineage_mismatch", error: "Reconciliation lineage is not current" } };
+      const existingMeta = await txn.get<ClosedPrefixMeta>(CLOSED_PREFIX_META_KEY);
+      const existingObligations = await txn.get<IssuanceObligation[]>(ISSUANCE_OBLIGATIONS_KEY) ?? [];
+      const legacyCutRequired = state.bootstrapSeed !== null ||
+        (state.allocatedWatermark !== null && (existingMeta === undefined || existingObligations.length === 0));
+      if (!legacyCutRequired) return { status: 409, body: { code: "reconciliation_not_required", error: "Current allocator has no legacy cut" } };
+      const current = existingObligations;
+      const imported: IssuanceObligation[] = input.obligations.map((obligation) => ({
+        ...obligation,
+        targetTags: [...new Set(obligation.targetTags)],
+        installedTags: [],
+        fencedTags: [],
+        allocatorLineageId: input.allocatorLineageId,
+        status: "unresolved" as const,
+      }));
+      const all = current.length === 0 ? imported : current;
+      await txn.put(ISSUANCE_OBLIGATIONS_KEY, all);
+      const meta: ClosedPrefixMeta = { version: 1, allocatorLineageId: input.allocatorLineageId, migrationStatus: "reconciled", migrationProofId: input.proofId };
+      await txn.put(CLOSED_PREFIX_META_KEY, meta);
+      return { status: 201, body: meta };
+    });
+    if (result.status === 201) this.closedPrefixCache = undefined;
+    return json(result.body, result.status);
+  }
+
   /** One transaction: only a never-used allocator can establish bootstrap successor state. */
   private async seedAfter(request: Request): Promise<Response> {
     let body: unknown; try { body = await request.json<unknown>(); } catch { return error(400, "invalid_bootstrap_seed", "Request body must be JSON"); }
@@ -414,8 +678,24 @@ export class AllocatorDurableObject implements DurableObject {
       }
       if (state.allocatedWatermark !== null) return { status: 409, body: { code: "allocator_seed_rejected", error: "allocator already allocating" } };
       const updated: AllocatorState = { ...state, allocatedWatermark: input.highWatermark, bootstrapSeed: input };
-      await txn.put(STATE_KEY, updated); return { status: 201, body: updated };
+      await txn.put(STATE_KEY, updated);
+      await txn.put(CLOSED_PREFIX_META_KEY, currentClosedPrefixMeta(state.allocatorLineageId));
+      return { status: 201, body: updated };
     });
+    if (result.status === 201) this.closedPrefixCache = undefined;
     return json(result.body, result.status);
+  }
+}
+
+/** Read the background-safe-pass certificate through an already scoped stub. */
+export async function readClosedPrefixCertificate(
+  allocator: DurableObjectStub,
+): Promise<ClosedPrefixCertificate | undefined> {
+  try {
+    const response = await allocator.fetch(new Request("https://allocator.internal/closed-prefix"));
+    if (!response.ok) return undefined;
+    return await response.json<ClosedPrefixCertificate>();
+  } catch {
+    return undefined;
   }
 }

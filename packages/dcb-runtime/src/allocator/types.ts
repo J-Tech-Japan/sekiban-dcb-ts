@@ -1,10 +1,42 @@
 export interface AllocationCandidate {
   candidateIndex: number;
   eventId: string;
+  /** Source Tag membership that must durably accept or fence this issuance. */
+  targetTags?: string[];
 }
 
 export interface AllocatedCandidate extends AllocationCandidate {
   suid: string;
+}
+
+export type IssuanceObligationDisposition = "installed" | "fenced";
+
+/**
+ * Durable issuance authority for one allocator candidate.  The obligation
+ * is written in the same Durable Object transaction as the vector and
+ * watermark; elapsed time, a response, or a single Tag can never close it.
+ */
+export interface IssuanceObligation {
+  attemptId: string;
+  candidateIndex: number;
+  eventId: string;
+  suid: string;
+  allocatorLineageId: string;
+  targetTags: string[];
+  installedTags: string[];
+  fencedTags: string[];
+  status: "unresolved" | "resolved";
+}
+
+export interface ClosedPrefixCertificate {
+  certificateVersion: 1;
+  status: "ready" | "unreconciled";
+  allocatorLineageId: string;
+  closedPrefixSuid: string | null;
+  unresolvedCount: number;
+  generatedAt: number;
+  /** Explicitly records why a legacy namespace is not yet safe. */
+  migrationProofId: string | null;
 }
 
 /**
@@ -15,6 +47,8 @@ export interface AllocationVector {
   attemptId: string;
   /** Durable allocator lineage token; it changes when the allocator DO is recreated. */
   allocatorLineageId: string;
+  /** Presence marks a vector written by the G70 obligation-aware allocator. */
+  issuanceObligationVersion?: 1;
   candidates: AllocatedCandidate[];
   allocatedAt: string;
 }

@@ -67,6 +67,8 @@ export interface ProjectionPollOptions {
    * `undefined` retains the unbounded FULL/on-demand behavior.
    */
   maximumSuid?: string | null;
+  /** Allocator-issued closed-prefix certificate; null is fail-closed. */
+  closedPrefixSuid?: string | null;
   serviceIdentityProvider?: ServiceIdentityProvider;
   /** Observation-only lifecycle sink; it cannot alter projection decisions. */
   observer?: LiveProjectionPollObserver;
@@ -205,14 +207,14 @@ export async function pollLiveProjections(
             identity.value,
             attemptedAt,
             {},
-            { maximumSuid: options.maximumSuid },
+            { maximumSuid: options.maximumSuid, closedPrefixSuid: options.closedPrefixSuid },
           ));
         }
       }
       await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
       return results;
     }
-    const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);
+    const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid, options.closedPrefixSuid);
     await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
     return results;
   } catch (error) {

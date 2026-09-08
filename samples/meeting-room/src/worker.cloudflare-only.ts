@@ -14,6 +14,7 @@ import {
   parseG42JournalProbeRequest,
   prepareG42JournalProbeTrial,
   readDirectDoorbellConfig,
+  readClosedPrefixCertificate,
   requireServiceIdentity,
   runG42JournalProbeTrial,
   scopeIdFor,
@@ -201,6 +202,22 @@ export async function runMeetingRoomSafeLanePass(
       return reconciler.coverage(serviceId, Date.now());
     })();
     coverage = computedCoverage;
+    const allocator = env.ALLOCATOR === undefined ? undefined : env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    const closedPrefixCertificate = allocator === undefined
+      ? undefined
+      : await readClosedPrefixCertificate(allocator);
+    // A deployed G70 pass is fail-closed when the allocator certificate is
+    // unavailable or still on an unreconciled migration cut. Unit-only
+    // callers without an allocator retain their existing explicit seam.
+    const closedPrefixSuid = allocator === undefined
+      ? undefined
+      : closedPrefixCertificate?.status === "ready"
+        ? closedPrefixCertificate.closedPrefixSuid
+        : null;
     safeHeadsBeforeJson = await bestEffortSafeLaneHeads(env, serviceId);
     const effectiveCatchUp = async (frontierSuid?: string | null): Promise<void> => {
       catchUpStartedAt = Date.now();
@@ -211,6 +228,7 @@ export async function runMeetingRoomSafeLanePass(
           // trigger, including the cron backstop; G44/G62 safe catch-up and
           // the in-batch fail-closed order check remain unchanged.
           runOrderingDetector: false,
+          closedPrefixSuid,
         });
         catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44

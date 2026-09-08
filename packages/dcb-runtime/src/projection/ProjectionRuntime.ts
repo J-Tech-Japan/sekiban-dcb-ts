@@ -58,6 +58,8 @@ export interface CatchUpHooks {
  */
 export interface ProjectionCatchUpOptions {
   readonly maximumSuid?: string | null;
+  /** Allocator-issued closed-prefix certificate; null is fail-closed. */
+  readonly closedPrefixSuid?: string | null;
 }
 
 export interface CatchUpResult {
@@ -213,6 +215,11 @@ export class ProjectionRuntime {
           await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
         }
+        if (options.closedPrefixSuid === null || (
+          options.closedPrefixSuid !== undefined && compareSuid(event.suid, options.closedPrefixSuid) > 0
+        )) {
+          break;
+        }
         // A G44 BLOCK/UNSETTLED tick may still poll live projections, but it
         // must remain fenced by the last settled source frontier. `null`
         // deliberately permits no source advancement; it is not an empty
@@ -280,6 +287,7 @@ export class ProjectionRuntime {
     serviceId: string,
     nowMs: number,
     maximumSuid?: string | null,
+    closedPrefixSuid?: string | null,
   ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
     const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
@@ -297,7 +305,7 @@ export class ProjectionRuntime {
         const job = jobs[index];
         if (job === undefined) return;
         const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
-        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid });
+        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid, closedPrefixSuid });
       }
     };
     const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);

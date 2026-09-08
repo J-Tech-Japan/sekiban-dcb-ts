@@ -38,6 +38,7 @@ import type { G60DurableHopObserver } from "../diagnostics/G60DurableHop";
 
 const INITIAL_OWNER_EPOCH = 0;
 const MAX_WRITE_ATTEMPTS = 2;
+const MAX_ISSUANCE_RESOLUTION_ATTEMPTS = 3;
 const OUTCOME_UNDETERMINED_ERROR =
   "Commit outcome is undetermined; reread tag heads and event/query state before retrying because blind retry may create duplicate events.";
 type JsonObject = Record<string, unknown>;
@@ -81,6 +82,8 @@ export interface CommitWorkerHooks {
   workerObservationSink?: ObservationLogSink;
   /** G60 internal durable hop observation; never changes the V1 wire. */
   durableHopObserver?: G60DurableHopObserver;
+  /** G70 derived obligation resolution; Cloudflare registers it with waitUntil. */
+  issuanceResolutionWaitUntil?: (promise: Promise<void>) => void;
   /** Host/deployment identity seam; absent callers receive the env-backed default. */
   serviceIdentityProvider?: ServiceIdentityProvider;
 }
@@ -628,8 +631,14 @@ export class CommitWorker {
       );
     }
     const allocatedCandidates = this.withAllocatedSuids(candidates, allocation);
+    const issuanceObligationAware = allocation.issuanceObligationVersion === 1;
     if (allocatedCandidates === undefined) {
       await this.cancelReservations([...reservations.successes.keys()], attemptId, fault, traceState?.scope);
+      // Allocation succeeded, but the response could not be joined back to
+      // the request candidates.  Do not materialize Tag fences before the
+      // first append: the allocator obligation remains unresolved and keeps
+      // the safe certificate closed until an operator/recovery path can
+      // identify the exact participants.
       return this.noApplicationOutcome(attemptId, fault !== undefined);
     }
     // Allocation supplies the exact EventId/SUID pair needed by the durable
@@ -649,9 +658,11 @@ export class CommitWorker {
     await this.retiredJournalMilestone("S05b", traceState?.scope, 1);
     if (fault === "journal-cas-after-allocator") {
       // This retained fault marks the allocation-to-first-append crash
-      // boundary.  With no Journal alarm, tags receive the same best-effort
-      // tombstone barrier immediately and retain their own expiry alarm.
+      // boundary.  With no Journal alarm, the allocator obligation is the
+      // durable fence.  Do not create Tag state before the first append: the
+      // historical crash contract requires every Tag to remain byte-empty.
       await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(input.allTags));
       return this.noApplicationOutcome(attemptId, true);
     }
 
@@ -662,6 +673,11 @@ export class CommitWorker {
     // The same service epoch obtained at admission must still be current.
     if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch, traceState?.scope, "S10")) === undefined) {
       await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      // As above, the allocator-side obligation fences issuance without
+      // creating a pre-append Tag row.  The public safe lane remains closed
+      // until the obligation is resolved or a later reconciliation cut
+      // explicitly proves the participant disposition.
+      if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(input.allTags));
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap fencing epoch changed before commit write"), attemptId, fault !== undefined);
     }
 
@@ -682,7 +698,17 @@ export class CommitWorker {
       // This is the direct replacement for Journal reconciliation's
       // /fence/install loop: G44 can discover the incomplete source universe
       // without a delivery, and G45/G46 retain a readable fenced frontier.
-      if (!await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope)) {
+      const fencesInstalled = await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope);
+      if (issuanceObligationAware) {
+        await this.scheduleIssuanceResolution(
+          allocatedCandidates,
+          attemptId,
+          allocation.allocatorLineageId,
+          writes.committedTags,
+          fencesInstalled ? new Set(writes.pendingTags) : new Set(),
+        );
+      }
+      if (!fencesInstalled) {
         return this.noApplicationOutcome(attemptId, true);
       }
       if (
@@ -703,6 +729,7 @@ export class CommitWorker {
       return this.partialWriteOutcome(input, allocatedCandidates, writes, attemptId, fault !== undefined);
     }
     await this.retiredJournalMilestone("S05d", traceState?.scope, 3);
+    if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(input.allTags), new Set());
     if (fault === "sealing-after-cas") {
       // The all-tags-written/response-lost boundary has no single terminal
       // Journal response.  Durable tag receipts and G44 reconciliation are
@@ -905,7 +932,7 @@ export class CommitWorker {
   }
 
   private async allocate(
-    candidates: Array<{ eventId: string }>,
+    candidates: Array<{ eventId: string; tags: string[] }>,
     attemptId: string,
     fault: CommitTestFault | undefined,
     bootstrapEpoch: number,
@@ -922,7 +949,7 @@ export class CommitWorker {
         serviceId: this.serviceId,
         bootstrapCommandId: attemptId,
         bootstrapEpoch,
-        candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId })),
+        candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId, targetTags: candidate.tags })),
         faultInjection: fault === "allocator-commit" ? "between-vector-and-watermark" : undefined,
       }, traceScope, "S08");
       if (result.response.status >= 200 && result.response.status < 300 && result.body !== undefined) {
@@ -959,14 +986,92 @@ export class CommitWorker {
     if (vector.candidates.length !== candidates.length) {
       return undefined;
     }
-    const suids = new Map(vector.candidates.map((candidate) => [candidate.eventId, candidate.suid]));
-    const allocated = candidates.map((candidate) => {
-      const suid = suids.get(candidate.eventId);
-      return suid === undefined ? undefined : { ...candidate, suid };
+    const suids = new Map(vector.candidates.map((candidate) => [candidate.eventId, { suid: candidate.suid, candidateIndex: candidate.candidateIndex }]));
+    const allocated: AllocatedCommitCandidate[] = [];
+    for (const candidate of candidates) {
+      const allocation = suids.get(candidate.eventId);
+      if (allocation === undefined) return undefined;
+      allocated.push({ ...candidate, suid: allocation.suid, candidateIndex: allocation.candidateIndex });
+    }
+    return allocated;
+  }
+
+  /**
+   * Resolve issuance only after the Tag append/fence facts are durable. The
+   * allocator certificate is never a response dependency in the deployed
+   * Worker: Cloudflare supplies waitUntil; direct unit callers await it so
+   * the public acceptance proof can inspect the durable certificate.
+   */
+  private async scheduleIssuanceResolution(
+    candidates: readonly AllocatedCommitCandidate[],
+    attemptId: string,
+    allocatorLineageId: string,
+    installedTags: ReadonlySet<string>,
+    fencedTags: ReadonlySet<string>,
+  ): Promise<void> {
+    const resolution = this.resolveIssuance(candidates, attemptId, allocatorLineageId, installedTags, fencedTags);
+    if (this.hooks.issuanceResolutionWaitUntil !== undefined) {
+      this.hooks.issuanceResolutionWaitUntil(resolution);
+      return;
+    }
+    await resolution;
+  }
+
+  private async resolveIssuance(
+    candidates: readonly AllocatedCommitCandidate[],
+    attemptId: string,
+    allocatorLineageId: string,
+    installedTags: ReadonlySet<string>,
+    fencedTags: ReadonlySet<string>,
+  ): Promise<void> {
+    if (candidates.length === 0) return;
+    const allocator = this.env.ALLOCATOR.get(scopeIdFor(this.env.ALLOCATOR, {
+      serviceId: this.serviceId,
+      doClass: "allocator",
+      identity: this.hooks.allocatorScopeIdentity ?? "allocator",
+    }));
+    const resolutions = candidates.flatMap((candidate) => {
+      const candidateIndex = candidate.candidateIndex;
+      if (candidateIndex === undefined) return [];
+      return candidate.tags.flatMap((tag) => {
+        const disposition: "installed" | "fenced" | undefined = installedTags.has(tag) ? "installed" : fencedTags.has(tag) ? "fenced" : undefined;
+        if (disposition === undefined) return [];
+        const body = {
+          attemptId,
+          candidateIndex,
+          eventId: candidate.eventId,
+          suid: candidate.suid,
+          allocatorLineageId,
+          tag,
+          disposition,
+        };
+        return [this.resolveIssuanceParticipant(allocator, body)];
+      });
     });
-    return allocated.every((candidate): candidate is AllocatedCommitCandidate => candidate !== undefined)
-      ? allocated
-      : undefined;
+    await Promise.all(resolutions);
+  }
+
+  private async resolveIssuanceParticipant(
+    allocator: DurableObjectStub,
+    body: {
+      readonly attemptId: string;
+      readonly candidateIndex: number;
+      readonly eventId: string;
+      readonly suid: string;
+      readonly allocatorLineageId: string;
+      readonly tag: string;
+      readonly disposition: "installed" | "fenced";
+    },
+  ): Promise<void> {
+    for (let attempt = 0; attempt < MAX_ISSUANCE_RESOLUTION_ATTEMPTS; attempt += 1) {
+      try {
+        const result = await this.postJson(allocator, "/obligations/resolve", body);
+        if (result.response.ok) return;
+      } catch {
+        // A failed diagnostic hop never changes the commit result. The
+        // durable obligation remains unresolved and keeps the safe lane shut.
+      }
+    }
   }
 
   private async appendAllTags(

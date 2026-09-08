@@ -145,6 +145,8 @@
     "test:g65:forced-red": "npm run test:g65 && node -e \"if (process.env.SDT_G65_FORCE_FAILURE === '1') throw new Error('SDT-G65 forced-red CI wiring proof')\"",
     "test:g67": "npm run build:packages && vitest run --config vitest.config.ts test/g67-safe-lane.spec.ts && node scripts/g67-safe-lane-guard.mjs --self-test && node scripts/g67-safe-lane-guard.mjs --pre-fix && node scripts/g67-safe-lane-guard.mjs",
     "test:g69": "node scripts/g69-ordering-guard.mjs --self-test && node scripts/g69-ordering-guard.mjs",
+    "test:g70": "npm run build:packages && vitest run --config vitest.config.ts test/g70-allocator-closed-prefix.spec.ts test/allocator.spec.ts && node scripts/g70-allocator-closed-prefix-guard.mjs --self-test && node scripts/g70-allocator-closed-prefix-guard.mjs",
+    "test:g70:forced-red": "npm run test:g70 && node -e \"if (process.env.SDT_G70_FORCE_FAILURE === '1') throw new Error('SDT-G70 forced-red CI wiring proof')\"",
     "test:g67:forced-red": "npm run test:g67 && node -e \"if (process.env.SDT_G67_FORCE_FAILURE === '1') throw new Error('SDT-G67 forced-red CI wiring proof')\"",
     "e2e:g66": "node scripts/deploy/g66-e2e.mjs",
     "test:g66": "node scripts/deploy/g66-e2e.mjs --self-test && node scripts/g66-e2e-guard.mjs --self-test && vitest run --config vitest.config.ts test/g66-e2e.spec.ts",

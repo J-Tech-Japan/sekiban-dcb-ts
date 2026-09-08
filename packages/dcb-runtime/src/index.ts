@@ -1,5 +1,5 @@
 import type { DomainDefinition } from "@sekiban/dcb-core";
-import { AllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { AllocatorDurableObject, readClosedPrefixCertificate } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
@@ -82,7 +82,8 @@ export type {
 export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } from "./mv/UnsafeWindowMaterializedView";
 export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
 
-export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
+export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject, readClosedPrefixCertificate };
+export type { AllocationCandidate, AllocatedCandidate, AllocationVector, AllocatorState, ClosedPrefixCertificate, IssuanceObligation, IssuanceObligationDisposition } from "./allocator/types";
 export {
   CommitTrace,
   CommitTraceScope,
@@ -345,6 +346,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
           commitTraceSink: createCommitTraceConsoleSink({
             platformRequestId: request.headers.get("cf-ray") ?? undefined,
           }),
+          issuanceResolutionWaitUntil: (promise) => ctx.waitUntil(promise),
           serviceIdentityProvider: serviceIdentity,
         });
       }
@@ -475,9 +477,20 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
 
     async scheduled(_controller, env): Promise<void> {
       const serviceIdentity = options.serviceIdentityProvider ?? envServiceIdentity(env);
-      requireServiceIdentity(serviceIdentity);
+      const serviceId = requireServiceIdentity(serviceIdentity);
       await stabilizeDownstream(env, { storeProvider }, undefined, serviceIdentity);
-      await pollLiveProjections(env, { registry: composition.projectors, storeProvider, serviceIdentityProvider: serviceIdentity });
+      const allocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+        serviceId,
+        doClass: "allocator",
+        identity: "allocator",
+      }));
+      const closedPrefixCertificate = await readClosedPrefixCertificate(allocator);
+      await pollLiveProjections(env, {
+        registry: composition.projectors,
+        storeProvider,
+        serviceIdentityProvider: serviceIdentity,
+        closedPrefixSuid: closedPrefixCertificate?.status === "ready" ? closedPrefixCertificate.closedPrefixSuid : null,
+      });
     },
   };
 }

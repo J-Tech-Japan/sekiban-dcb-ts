@@ -25,7 +25,7 @@ export interface MaterializedViewCatchUpResult {
   readonly deferredEventSuid: string | null;
   readonly deferredEventLastArrivedAt: number | null;
   readonly deferredDeadlineAt: number | null;
-  readonly stopReason: "safe_window_fence" | "safe_window_ceiling" | "frontier_fence" | null;
+  readonly stopReason: "safe_window_fence" | "safe_window_ceiling" | "frontier_fence" | "issuance_fence" | null;
 }
 
 export interface MaterializedViewCatchUpHooks {
@@ -43,6 +43,8 @@ export interface MaterializedViewCatchUpHooks {
  */
 export interface MaterializedViewCatchUpOptions {
   readonly maximumSuid?: string | null;
+  /** Allocator-issued closed-prefix certificate; null is fail-closed. */
+  readonly closedPrefixSuid?: string | null;
   /** Run the bounded late-lower detector only from scheduled maintenance. */
   readonly runOrderingDetector?: boolean;
 }
@@ -238,6 +240,23 @@ export class MaterializedViewCatchUpRuntime {
       let appliedEvents = 0;
       let conflicted = false;
       for (const event of sourceEvents) {
+        if (options.closedPrefixSuid === null || (
+          options.closedPrefixSuid !== undefined && compareSuid(event.suid, options.closedPrefixSuid) > 0
+        )) {
+          return {
+            instance: current,
+            dynamicLagBoundMs,
+            safeWindowMs: windowMs,
+            advancedSourceEvents,
+            appliedEvents,
+            lateLowerQueryDurationMs,
+            indeterminate: false,
+            deferredEventSuid: event.suid,
+            deferredEventLastArrivedAt: event.lastArrivedAt,
+            deferredDeadlineAt: null,
+            stopReason: "issuance_fence",
+          };
+        }
         // A G44 BLOCK tick may drain only through the last FULL snapshot's
         // high-water mark.  Do not skip an earlier row or treat a later one
         // as a new safe frontier; either would violate the source ordering

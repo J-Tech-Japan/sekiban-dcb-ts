@@ -8,7 +8,7 @@
  * unchanged Postgres composition.
  */
 import type { DomainDefinition } from "@sekiban/dcb-core";
-import { AllocatorDurableObject as RuntimeAllocatorDurableObject } from "./allocator/AllocatorDurableObject";
+import { AllocatorDurableObject as RuntimeAllocatorDurableObject, readClosedPrefixCertificate as readRuntimeClosedPrefixCertificate } from "./allocator/AllocatorDurableObject";
 import { BootstrapCoordinatorDurableObject as RuntimeBootstrapCoordinatorDurableObject } from "./bootstrap/BootstrapCoordinatorDurableObject";
 import { handleOperatorBootstrap } from "./bootstrap/OperatorBootstrap";
 import { handleOperatorRepair } from "./cli/OperatorRepairCli";
@@ -45,6 +45,14 @@ import {
   requireServiceIdentity,
   type ServiceIdentityProvider,
 } from "./service/ServiceIdentityProvider";
+export {
+  readRuntimeClosedPrefixCertificate as readClosedPrefixCertificate,
+};
+export type {
+  ClosedPrefixCertificate,
+  IssuanceObligation,
+  IssuanceObligationDisposition,
+} from "./allocator/types";
 export {
   createG60DurableHopObserver,
   observeG60UnsafeWriter,
@@ -292,6 +300,7 @@ export function createCloudflareOnlyRuntimeWorker(
             platformRequestId: request.headers.get("cf-ray") ?? undefined,
           }),
           durableHopObserver,
+          issuanceResolutionWaitUntil: (promise) => ctx.waitUntil(promise),
           serviceIdentityProvider: serviceIdentity,
         });
       }
@@ -467,11 +476,18 @@ export function createCloudflareOnlyRuntimeWorker(
       // remains retryable, but the poll still runs so retained safe work and
       // projection liveness are not starved on a BLOCK tick.
       const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });
+      const allocator = env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+        serviceId,
+        doClass: "allocator",
+        identity: "allocator",
+      }));
+      const closedPrefixCertificate = await readRuntimeClosedPrefixCertificate(allocator);
       await pollLiveProjections(env, {
         registry: composition.projectors,
         storeProvider,
         serviceIdentityProvider: serviceIdentity,
         maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),
+        closedPrefixSuid: closedPrefixCertificate?.status === "ready" ? closedPrefixCertificate.closedPrefixSuid : null,
         observer: options.liveProjectionPollObserver,
       });
     },

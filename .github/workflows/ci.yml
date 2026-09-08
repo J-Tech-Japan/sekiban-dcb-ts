@@ -337,6 +337,14 @@ jobs:
             echo "SDT-G65 forced-red probe unexpectedly passed"
             exit 1
           fi
+      - name: Run SDT-G70 allocator closed-prefix and public acceptance lane
+        run: npm run test:g70
+      - name: Prove SDT-G70 forced-red CI reachability
+        run: |
+          if SDT_G70_FORCE_FAILURE=1 npm run test:g70:forced-red; then
+            echo "SDT-G70 forced-red probe unexpectedly passed"
+            exit 1
+          fi
 
   ci-g29:
     runs-on: ubuntu-latest
