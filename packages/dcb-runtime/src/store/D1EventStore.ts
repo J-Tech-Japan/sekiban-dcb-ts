@@ -688,6 +688,10 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
                    OR contradictory."Payload" <> ? OR contradictory."EventType" <> ?
                    OR contradictory."Tags" <> ?)
             )
+            AND NOT EXISTS (
+              SELECT 1 FROM dcb_events prior
+               WHERE prior."ServiceId" = ? AND prior."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY
+            )
          ON CONFLICT (service_id) DO UPDATE
             SET estimate_ms = MAX(
               MAX(serialized_dcb_lag_estimates.estimate_ms -
@@ -711,6 +715,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.payload,
         incomingEventType,
         tagsJson,
+        message.serviceId,
+        message.suid,
       ),
     ];
     await this.batch("recordDelivery", statements);

@@ -292,6 +292,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       const higherCatchUp = JSON.parse(String(higherPass?.catch_up_result_json)) as Array<{ lateLowerQueryDurationMs?: unknown }>;
       expect(higherCatchUp.length).toBeGreaterThan(0);
       expect(higherCatchUp.every((observation) => typeof observation.lateLowerQueryDurationMs === "number" && observation.lateLowerQueryDurationMs >= 0)).toBe(true);
+      expect(higherCatchUp.every((observation) => observation.lateLowerQueryDurationMs === 0)).toBe(true);
       console.log("G69_HOTPATH_COSTS", JSON.stringify({
         lateLowerQueryDurationMs: higherCatchUp.map((observation) => observation.lateLowerQueryDurationMs),
       }));
@@ -351,10 +352,10 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       expect(detectorProbe).toBeDefined();
       let lowerError = "";
       try {
-        await runMeetingRoomSafeLanePass(passEnvironment, serviceId, "delivery", undefined, {
+        await runMeetingRoomSafeLanePass(passEnvironment, serviceId, "cron", undefined, {
           passId: `g69-lower:${crypto.randomUUID()}`,
           scheduledAt: lowerArrival,
-          trigger: "delivery",
+          trigger: "cron",
           owner: {
             eventId: lowerEvent.id,
             suid: lowerEvent.sortableUniqueIdValue,
@@ -478,7 +479,9 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     const lag = await database.prepare(
       `SELECT estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = ?`,
     ).bind(serviceId).first<Record<string, unknown>>();
-    expect(lag).toMatchObject({ estimate_ms: 2_000, observed_at: 11_000 });
+    // A lower-SUID delivery must not make the public lag estimate forget the
+    // existing higher-SUID backlog. This is the pre-G69 fail-closed rule.
+    expect(lag).toMatchObject({ estimate_ms: 1_000, observed_at: 2_000 });
     const receipts = await database.prepare(
       `SELECT COUNT(*) AS count, MIN(first_arrived_at_before) AS first_before,
               MAX(last_arrived_at_after) AS last_after,
@@ -535,7 +538,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     await runtime.build(serviceId, materializer, 100_000);
     await source.recordDelivery(messages[1]!, 0, "queue");
     await source.recordDelivery(messages[2]!, 0, "queue");
-    const result = await runtime.follow(serviceId, materializer, 100_000);
+    const result = await runtime.follow(serviceId, materializer, 100_000, {}, { runOrderingDetector: true });
     expect(result.advancedSourceEvents).toBe(2);
     expect(detectorCalls).toBe(1);
     expect(result.lateLowerQueryDurationMs).toBeGreaterThanOrEqual(0);
@@ -588,7 +591,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       // The logical clock is deliberately beyond the unchanged 20-second
       // SafeWindow floor so generation application, not a detector-only
       // shortcut, establishes the real checkpoint used by each case.
-      const built = await runtime.build(serviceId, reservationMaterializer, 200_000);
+      const built = await runtime.build(serviceId, reservationMaterializer, 200_000, {}, { runOrderingDetector: true });
       expect(built.instance.generation).toBe(0);
       expect(built.instance.lastSuid).toBe(higher.suid);
 
@@ -631,14 +634,14 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       // exercise the detector against the durable generation timestamp.
       const lower = generationMessage(serviceId, 10, "captured-before-admission-lower");
       await source.recordDelivery(lower, 199_000, "queue");
-      await runtime.follow(serviceId, reservationMaterializer, 220_000);
+      await runtime.follow(serviceId, reservationMaterializer, 220_000, {}, { runOrderingDetector: true });
       return { classification: "miss", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
     });
 
     await runCase("equal-millisecond", async ({ source, runtime, serviceId, higher }) => {
       const lower = generationMessage(serviceId, 10, "equal-millisecond-lower");
       await source.recordDelivery(lower, 200_000, "queue");
-      await runtime.follow(serviceId, reservationMaterializer, 220_000);
+      await runtime.follow(serviceId, reservationMaterializer, 220_000, {}, { runOrderingDetector: true });
       return { classification: "miss", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
     });
 
@@ -647,7 +650,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       const later = generationMessage(serviceId, 30, "checkpoint-overwrite-later");
       await source.recordDelivery(lower, 199_000, "queue");
       await source.recordDelivery(later, 210_000, "queue");
-      const followed = await runtime.follow(serviceId, reservationMaterializer, 400_000);
+      const followed = await runtime.follow(serviceId, reservationMaterializer, 400_000, {}, { runOrderingDetector: true });
       expect(followed.instance.lastSuid).toBe(later.suid);
       return { classification: "miss", quarantine: false, expectedCheckpointSuid: later.suid, safeStatus: 200, unsafeStatus: 200, error: null };
     });
@@ -656,7 +659,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       const lower = generationMessage(serviceId, 10, "decreasing-replay-lower");
       await source.recordDelivery(lower, 199_000, "queue");
       await source.recordDelivery(lower, 210_000, "queue");
-      await runtime.follow(serviceId, reservationMaterializer, 230_000);
+      await runtime.follow(serviceId, reservationMaterializer, 230_000, {}, { runOrderingDetector: true });
       return { classification: "replay", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
     });
 
@@ -669,7 +672,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
                 "FirstArrivedSource" = 'queue', "LastArrivedSource" = 'queue'
           WHERE "ServiceId" = ? AND "Id" = ?`,
       ).bind(199_000, 198_000, serviceId, lower.eventId).run();
-      await runtime.follow(serviceId, reservationMaterializer, 230_000);
+      await runtime.follow(serviceId, reservationMaterializer, 230_000, {}, { runOrderingDetector: true });
       const incident = await database.prepare(
         `SELECT classification FROM serialized_dcb_delivery_incidents
           WHERE service_id = ? AND classification = 'ORDERING_DETECTOR_UNKNOWN'
@@ -684,7 +687,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       await source.recordDelivery(lower, 202_000, "queue");
       let error: string | null = null;
       try {
-        await runtime.follow(serviceId, reservationMaterializer, 230_000);
+        await runtime.follow(serviceId, reservationMaterializer, 230_000, {}, { runOrderingDetector: true });
       } catch (caught) {
         error = caught instanceof Error ? caught.message : String(caught);
       }

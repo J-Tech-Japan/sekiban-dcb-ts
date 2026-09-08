@@ -66,13 +66,13 @@ It does not promote imported or repaired history to an ordering witness, does
 not treat equal-millisecond arrival as later, requires a non-rolled-back
 arrival pair, and preserves the first-arrival value on replay. Rollback,
 invalid checkpoint state, and untrusted provenance remain `unknown` and are
-incident/alarm-only rather than an unsafe refusal. The intended late-lower
-lag-estimate repair is a safety/latency change, not happy-path neutral: a
-lower-SUID arrival is no longer discarded merely because a higher SUID already
-exists, so the decayed estimate can represent that observed lag.
-The focused local measurement records the lower/replayed observation in the
-estimate (`estimate_ms=2000`, `observed_at=11000` in the deterministic test),
-and the old higher-SUID exclusion mutant is red.
+incident/alarm-only rather than an unsafe refusal. W168 removes the G69
+lag-estimate change: the D1 estimator again excludes a delivery when a higher
+SUID already exists for the service. The deterministic replay test therefore
+retains the earlier estimate (`estimate_ms=1000`, `observed_at=2000`) instead
+of letting the lower/replayed observation raise it. The restored higher-SUID
+exclusion mutant is red. This preserves the existing public high-lag
+fail-closed behavior; no lag estimate or SafeWindow contract was changed.
 
 On detection, the safe-lane catch-up path appends the existing delivery
 incident and persists `mv_ordering_quarantines` keyed by
@@ -175,15 +175,19 @@ catch-up or public query. The focused tests cover omitted and awaited-receipt
 mutants, failure, concurrency, replay, retention, and a non-negative persisted
 per-attempt cost.
 
-The late-lower detector is called once before the event-application loop for
-each catch-up pass. Its normal D1 path uses bounded `LIMIT 1` proven, unknown,
-and replay probes rather than materializing every lower-SUID row or issuing an
-N+1 event lookup. The resulting `lateLowerQueryDurationMs` is carried in each
-materialized-view observation and therefore in the durable
-`catch_up_result_json` pass ledger. A proven lower-SUID witness is queried
-before unknown evidence so an uncertain row cannot hide a real violation. These
-diagnostics measure and attribute hot-path cost only; they do not provide
-allocator closure, ordering proof, or permission to relax G44/G62.
+The late-lower detector is now enabled only for the scheduled-maintenance
+pass. Queue/delivery, fence-expiry, and coverage-retry kicks pass
+`runOrderingDetector=false`, so their `lateLowerQueryDurationMs` is `0`; the
+existing in-batch strict-order check still preserves the fail-closed incident
+and quarantine boundary when a lower row is directly present in that source
+batch. Scheduled maintenance uses one bounded `LIMIT 1` proven/unknown/replay
+probe before its event-application loop rather than materializing every
+lower-SUID row or issuing an N+1 event lookup. Its observed
+`lateLowerQueryDurationMs` is carried in `catch_up_result_json` and is the
+scheduled-path cost measurement. A proven lower-SUID witness is queried before
+unknown evidence so an uncertain row cannot hide a real violation. The
+diagnostic receipt and detector provide no allocator closure, ordering proof
+beyond their stated incident boundary, or permission to relax G44/G62.
 
 ## Preserved boundaries and status
 
@@ -196,12 +200,12 @@ The W164 allocator witness and the W166-2 repair are local structural evidence.
 It does not establish zero production detections, deployed safe-read behavior,
 or an allocation-to-arrival bound. Those require the later G69 acceptance work.
 
-## W167: G67 AC3 hot-path repair
+## W167 (historical): G67 AC3 hot-path repair
 
 The hosted G44 failure at exact pre-repair head `946ffe6` was the unchanged
 G67 AC3 5,000 ms guard at `test/g67-safe-lane.spec.ts:731`. The G69 path was
 causal: `recordDeliveryCore` awaited an admission-mutation diagnostic pre-read,
-and the late-lower detector performed a full scan plus per-row lookups. Neither
+and the late-lower detector ran on every delivery-path catch-up. Neither
 diagnostic was part of durable admission, but both ran on the delivery path.
 
 W167 removes that awaited work without changing admission semantics. Core
@@ -210,21 +214,59 @@ post-admission, best-effort and attached to the invocation lifetime through
 `waitUntil` (or a detached promise in local tests). The receipt records the
 nullable post-admission mutation result and `diagnostic_duration_ms`; it is
 bounded diagnostic retention and explicitly provides no allocation closure.
-The late-lower detector runs once before each catch-up event loop, uses bounded
-proven/unknown/replay `LIMIT 1` probes in proven-first order, and carries its
-observed `lateLowerQueryDurationMs` through `catch_up_result_json`. It is also
-diagnostic only and does not change G44/G62 certification.
+W168 moves the late-lower detector out of delivery/fence-expiry/coverage-retry
+catch-up and into the scheduled-maintenance (`cron`) pass only. It still runs
+once before that pass's event loop, uses bounded proven/unknown/replay `LIMIT 1`
+probes in proven-first order, and carries its observed
+`lateLowerQueryDurationMs` through `catch_up_result_json`. The Queue kick ledger
+now records zero detector-query cost, while the scheduled path records the
+actual query cost. It remains diagnostic-only and does not change G44/G62
+certification.
 
-The focused W167 receipt observed diagnostic receipt cost `1 ms`, and detector
-costs `0–1 ms` (`detectorCalls=1` for a two-event follow-up pass). These are
+The focused receipt observed diagnostic receipt cost `1 ms`. W168 observed
+scheduled detector query cost `0–1 ms` (`detectorCalls=1` for a two-event
+scheduled follow-up pass) and `0 ms` on the Queue-triggered pass. These are
 local observed clocks, not a production allocation or latency guarantee. The
-unchanged `npm run test:g67` command now passes its 11/11 behavior tests; all
-seven existing G67 mutation probes remain red. No G67 assertion, budget,
-timeout, scheduler, fence, SafeWindow, retry or drain behavior was changed.
+unchanged `npm run test:g67` command passes its 11/11 behavior tests; all seven
+existing G67 mutation probes remain red. No G67 assertion, budget, timeout,
+scheduler, fence, SafeWindow, retry or drain behavior was changed. Because the
+unchanged G67 AC3 guard passes after detector removal from the kick path, the
+detector is retained for scheduled maintenance; no further removal is needed.
+
+## W168 shrink repair and retained CI receipts
+
+The W168 source repair starts from exact PR head
+`ca404bb77ee9b79713d40cdf358478adc1c5c566`. It restores the pre-G69 D1
+high-SUID lag-estimate exclusion and makes `test/read.spec.ts` remain unchanged;
+the public high-lag fail-closed expectation remains HTTP 500. It also makes the
+late-lower detector opt-in to the `cron` scheduled-maintenance path. Queue,
+fence-expiry, and coverage-retry passes retain the existing catch-up and
+fail-closed in-batch order check without paying the detector query. No
+G67 timeout/assertion was changed. The bounded append-only admission-attempt
+receipt remains off the awaited delivery path and is diagnostic-only with
+bounded retention; it does not provide allocation closure.
+
+The unchanged G67 AC3 local guard passes after this shrink (`11/11` behavior
+tests; seven mutation probes red), so the detector was not removed from
+scheduled maintenance. The scheduled local query cost was `0–1 ms`; the
+Queue-triggered catch-up observations recorded `0 ms`. These are local observed
+clocks, not deployed guarantees. AC4/AC5 remain outstanding and issue #133
+remains open/referenced.
+
+The previous exact-head hosted run `34188299398` is retained as C-14 evidence
+for the shrink decision:
+
+- G46 public fail-closed regression: [job 101940978295](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978295), step `Run SDT-G46 bounded TagState cache/replay lane` failed.
+- G44 G67 5,000 ms guard timeout: [job 101940978323](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978323), step `Run SDT-G67 event-driven safe-lane kick lane` failed.
+- G43 C-14 exception: [supplied job URL](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978202). At capture time the run was still in progress and failure logs were unavailable; GitHub's job metadata labels that supplied job `ci-foundation`, while the packet classifies it as the G43 C-14 exception. This is recorded verbatim rather than relabeled.
+
+The W168 exact-head CI run and terminal result are recorded in the handoff
+artifact below after push. No deployment, production operation, resource
+mutation, fence/SafeWindow/retry/drain change, or G32 operation was performed.
 
 ## Verification
 
-Passing focused checks at the W167 source:
+Passing focused checks at the W168 source:
 
 - `npx vitest run test/g69-ordering.spec.ts --pool=forks --maxWorkers=1
   --no-file-parallelism --disableConsoleIntercept`: 1 file, 7 tests passed.
@@ -240,6 +282,9 @@ Passing focused checks at the W167 source:
 - `npm run test:g69`: green; four accepted mutants are red: omitted
   late-lower detector, restored higher-SUID lag exclusion, omitted append-only
   receipt, and awaited diagnostic receipt on the core path.
+- `npm run test:g46`: green; 4 files/31 tests passed and all nine G46
+  production mutation probes were red. `test/read.spec.ts` is unchanged and
+  retains its expected public HTTP 500 high-lag assertion.
 - `npm run test:g44`: contract and 8 tests passed; all G44 production mutants
   red.
 - `npm run test:g43`: 3 files, 20 tests passed; the five production mutants

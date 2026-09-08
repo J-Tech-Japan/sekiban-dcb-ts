@@ -43,6 +43,8 @@ export interface MaterializedViewCatchUpHooks {
  */
 export interface MaterializedViewCatchUpOptions {
   readonly maximumSuid?: string | null;
+  /** Run the bounded late-lower detector only from scheduled maintenance. */
+  readonly runOrderingDetector?: boolean;
 }
 
 /**
@@ -215,14 +217,16 @@ export class MaterializedViewCatchUpRuntime {
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
       let lateLowerQueryDurationMs = 0;
-      lateLowerQueryDurationMs = await this.assertStrictOrder(
-        serviceId,
-        materializer.id,
-        generation,
-        instance.lastSuid,
-        instance.updatedAt,
-        sourceEvents,
-      );
+      if (options.runOrderingDetector === true) {
+        lateLowerQueryDurationMs = await this.assertStrictOrder(
+          serviceId,
+          materializer.id,
+          generation,
+          instance.lastSuid,
+          instance.updatedAt,
+          sourceEvents,
+        );
+      }
       let current = instance;
       let advancedSourceEvents = 0;
       let appliedEvents = 0;

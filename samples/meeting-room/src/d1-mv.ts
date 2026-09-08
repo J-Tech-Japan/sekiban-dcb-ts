@@ -909,6 +909,7 @@ export async function catchUpMeetingRoomMaterializedViews(
   env: MeetingRoomD1Env,
   serviceId = requiredServiceId(env),
   frontierSuid: string | null | undefined = undefined,
+  options: { readonly runOrderingDetector?: boolean } = {},
 ): Promise<readonly MeetingRoomSafeLaneCatchUpObservation[]> {
   const { runtime, views } = await openMaterializedViews(env);
   const observations: MeetingRoomSafeLaneCatchUpObservation[] = [];
@@ -929,9 +930,15 @@ export async function catchUpMeetingRoomMaterializedViews(
     };
     let result: MaterializedViewCatchUpResult;
     if (active === undefined) {
-      result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
+        maximumSuid: frontierSuid,
+        runOrderingDetector: options.runOrderingDetector === true,
+      });
     } else {
-      result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });
+      result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
+        maximumSuid: frontierSuid,
+        runOrderingDetector: options.runOrderingDetector === true,
+      });
     }
     observations.push({
       viewId: materializer.id,

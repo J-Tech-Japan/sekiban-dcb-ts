@@ -205,7 +205,12 @@ export async function runMeetingRoomSafeLanePass(
     const effectiveCatchUp = async (frontierSuid?: string | null): Promise<void> => {
       catchUpStartedAt = Date.now();
       try {
-        const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid);
+        const observations = await catchUpMeetingRoomMaterializedViews(env, serviceId, frontierSuid, {
+          // A Queue/fence kick remains on the latency-sensitive path and
+          // performs the existing safe catch-up only. The bounded detector is
+          // scheduled-maintenance diagnostics, never a hot-path prerequisite.
+          runOrderingDetector: effectiveTrigger === "cron",
+        });
         catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44
         // coverage decision. A completed pass may legitimately advance zero

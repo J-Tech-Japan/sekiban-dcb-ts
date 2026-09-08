@@ -26,6 +26,10 @@ const lagSqlAnchor = `            AND NOT EXISTS (
                    OR contradictory."Payload" <> ? OR contradictory."EventType" <> ?
                    OR contradictory."Tags" <> ?)
             )
+            AND NOT EXISTS (
+              SELECT 1 FROM dcb_events prior
+               WHERE prior."ServiceId" = ? AND prior."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY
+            )
          ON CONFLICT (service_id) DO UPDATE`;
 const lagSqlMutant = `            AND NOT EXISTS (
               SELECT 1 FROM dcb_events contradictory
@@ -34,17 +38,14 @@ const lagSqlMutant = `            AND NOT EXISTS (
                    OR contradictory."Payload" <> ? OR contradictory."EventType" <> ?
                    OR contradictory."Tags" <> ?)
             )
-            AND NOT EXISTS (
-              SELECT 1 FROM dcb_events prior
-               WHERE prior."ServiceId" = ?
-                 AND prior."SortableUniqueId" COLLATE BINARY > ? COLLATE BINARY
-            )
          ON CONFLICT (service_id) DO UPDATE`;
 const lagBindAnchor = `        message.eventId,
         message.suid,
         message.payload,
         incomingEventType,
         tagsJson,
+        message.serviceId,
+        message.suid,
       ),
     ];`;
 const lagBindMutant = `        message.eventId,
@@ -52,8 +53,6 @@ const lagBindMutant = `        message.eventId,
         message.payload,
         incomingEventType,
         tagsJson,
-        message.serviceId,
-        message.suid,
       ),
     ];`;
 
@@ -73,7 +72,7 @@ const mutations = [
     file: storeFile,
     testPattern: "lag estimate",
     replacements: [{ from: lagSqlAnchor, to: lagSqlMutant }, { from: lagBindAnchor, to: lagBindMutant }],
-    reason: "a lower SUID and its replay must still update the observed lag estimate",
+    reason: "removing the higher-SUID exclusion must not make a lower SUID update the public lag estimate",
   },
   {
     name: "omit-append-only-admission-receipt",
