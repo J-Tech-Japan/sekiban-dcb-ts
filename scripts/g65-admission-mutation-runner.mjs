@@ -51,8 +51,28 @@ function replaceOnce(source, from, to, label) {
 function mutate(source) {
   let mutant = replaceOnce(
     source,
-    "if (storedBefore !== undefined && (",
-    "if (false && storedBefore !== undefined && (",
+    `if (
+      stored.suid !== message.suid ||
+      stored.payload !== message.payload ||
+      JSON.stringify(stored.eventTags) !== tagsJson ||
+      stored.eventType !== incomingEventType ||
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest) ||
+      stored.timestamp !== timestamp ||
+      stored.causationId !== metadata.causationId ||
+      stored.correlationId !== metadata.correlationId ||
+      stored.executedUser !== metadata.executedUser
+    ) {`,
+    `if (false && (
+      stored.suid !== message.suid ||
+      stored.payload !== message.payload ||
+      JSON.stringify(stored.eventTags) !== tagsJson ||
+      stored.eventType !== incomingEventType ||
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest) ||
+      stored.timestamp !== timestamp ||
+      stored.causationId !== metadata.causationId ||
+      stored.correlationId !== metadata.correlationId ||
+      stored.executedUser !== metadata.executedUser
+    )) {`,
     "stored identity-conflict guard",
   );
   mutant = replaceOnce(

@@ -319,7 +319,11 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       failure = { error };
     }
     const retryReason = failure === undefined ? null : errorText(failure.error);
-    const diagnostic = this.bestEffortG69AdmissionAttempt(
+    // Keep diagnostic preparation outside the awaited delivery turn. The
+    // receipt is invocation-lifetime evidence; neither its pre-read nor its
+    // append may start while recordDelivery is still deciding Queue
+    // disposition or the public response.
+    const diagnostic = Promise.resolve().then(() => this.bestEffortG69AdmissionAttempt(
       message,
       arrivedAt,
       deliverySource,
@@ -328,7 +332,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       result,
       failure,
       retryReason,
-    );
+    ));
     if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);
     else void diagnostic;
     if (failure !== undefined) throw failure.error;
@@ -364,23 +368,9 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       throw new D1IdentityConflictError(`EventId ${message.eventId} timestamp is not canonical UTC ISO-8601`);
     }
     const metadata = metadataForDelivery(message, deliverySource);
-    const storedBefore = await this.eventById(message.serviceId, message.eventId);
     const incomingEventType = identity.key;
     const eventTags = [...message.eventTags];
     const tagsJson = JSON.stringify(eventTags);
-    if (storedBefore !== undefined && (
-      storedBefore.eventType !== incomingEventType ||
-      storedBefore.suid !== message.suid ||
-      storedBefore.payload !== message.payload ||
-      JSON.stringify(storedBefore.eventTags) !== tagsJson ||
-      (requiresGlobalReceipt && storedBefore.eventDigest !== undefined && storedBefore.eventDigest !== message.completeness.eventDigest) ||
-      storedBefore.timestamp !== timestamp ||
-      storedBefore.causationId !== metadata.causationId ||
-      storedBefore.correlationId !== metadata.correlationId ||
-      storedBefore.executedUser !== metadata.executedUser
-    )) {
-      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`);
-    }
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const statements: D1PreparedStatement[] = [
       this.database.prepare(
@@ -744,7 +734,11 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       stored.payload !== message.payload ||
       JSON.stringify(stored.eventTags) !== tagsJson ||
       stored.eventType !== incomingEventType ||
-      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest)
+      (requiresGlobalReceipt && stored.eventDigest !== message.completeness.eventDigest) ||
+      stored.timestamp !== timestamp ||
+      stored.causationId !== metadata.causationId ||
+      stored.correlationId !== metadata.correlationId ||
+      stored.executedUser !== metadata.executedUser
     ) {
       throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its durable D1 identity`);
     }
@@ -756,13 +750,13 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     }
     // Mutation-owned admission evidence is diagnostic. It is read by the
     // invocation-lifetime receipt after this core result is returned, never
-    // on the awaited delivery path. A pre-existing canonical event remains a
-    // useful duplicate hint without making the diagnostic query authoritative.
+    // on the awaited delivery path. Without a pre-read, duplicate status is
+    // deliberately unverified here; the off-path receipt may classify it
+    // from mutation-owned attempt identities.
     return {
       outcome: "stored",
       kind: "stored",
       event: stored,
-      duplicate: storedBefore !== undefined,
       mutationEvidence: "unverified",
     };
   }

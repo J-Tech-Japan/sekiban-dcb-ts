@@ -488,7 +488,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     await expect(store.recordDelivery(lower, 11_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
     // A replay with a decreasing observed clock preserves FirstArrivedAt as
     // the durable minimum while LastArrivedAt remains the observed maximum.
-    await expect(store.recordDelivery(lower, 9_000, "queue")).resolves.toMatchObject({ outcome: "stored", duplicate: true });
+    await expect(store.recordDelivery(lower, 9_000, "queue")).resolves.toMatchObject({ outcome: "stored", mutationEvidence: "unverified" });
     await settleDiagnosticReceipts();
     const lag = await database.prepare(
       `SELECT estimate_ms, observed_at FROM serialized_dcb_lag_estimates WHERE service_id = ?`,
@@ -763,13 +763,18 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       allocatorLineageId: `g69-nonblocking-lineage-${crypto.randomUUID()}`,
     });
     let releaseReceipt: (() => void) | undefined;
+    let diagnosticStarted = false;
     const receiptGate = new Promise<void>((resolve) => { releaseReceipt = resolve; });
     const store = new D1EventStore(database, {
-      beforeG69AdmissionAttempt: async () => receiptGate,
+      beforeG69AdmissionAttempt: async () => {
+        diagnosticStarted = true;
+        return receiptGate;
+      },
     });
     await store.initialize();
     const receiptPromises: Promise<void>[] = [];
     const queueMessageId = `queue-wrapper:${message.attemptId}`;
+    const coreStartedAt = performance.now();
     const outcome = await Promise.race([
       store.recordDelivery(message, 2_000, "queue", {
         queueMessageId,
@@ -777,8 +782,17 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       }).then(() => "core-returned" as const),
       new Promise<"receipt-blocked">((resolve) => setTimeout(() => resolve("receipt-blocked"), 500)),
     ]);
+    const coreDurationMs = Math.max(0, performance.now() - coreStartedAt);
     expect(outcome).toBe("core-returned");
     expect(receiptPromises).toHaveLength(1);
+    // The diagnostic may start in the first continuation after core returns,
+    // but it is already owned by waitUntil and cannot hold this result.
+    expect(diagnosticStarted).toBe(true);
+    console.log("G69_HOTPATH_COSTS", JSON.stringify({
+      coreAdmissionDurationMs: coreDurationMs,
+      diagnosticOwnedByWaitUntil: true,
+      diagnosticWasPendingAtRegistration: true,
+    }));
     releaseReceipt?.();
     await receiptPromises[0];
   });
@@ -826,6 +840,12 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
     expect(lifecycleRows.results.every((row) => row.observation_consistency !== undefined)).toBe(true);
     expect(lifecycleRows.results.every((row) => row.mutation_evidence !== undefined)).toBe(true);
     expect(lifecycleRows.results.every((row) => Number(row.diagnostic_duration_ms) >= 0)).toBe(true);
+    const diagnosticDurationsMs = lifecycleRows.results.map((row) => Number(row.diagnostic_duration_ms));
+    console.log("G69_ADMISSION_RECEIPT_COSTS", JSON.stringify({
+      count: diagnosticDurationsMs.length,
+      durationsMs: diagnosticDurationsMs,
+      maxMs: Math.max(...diagnosticDurationsMs),
+    }));
 
     const retentionServiceId = `g69-retention-${crypto.randomUUID()}`;
     const retentionReceipt: G69AdmissionAttemptReceipt = {
