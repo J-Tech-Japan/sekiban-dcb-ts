@@ -85,5 +85,17 @@ issue closure occurred. The existing PR branch was preserved.
 
 The canonical worker claim was attempted and refused without mutation because
 the PR already carried `intent-pr-rereview-ready` and did not carry
-`intent-pr-request-update`; no manual label change was made. The canonical
-repair-pushed/rereview transition result is recorded after the final push.
+`intent-pr-request-update`. The canonical `worker result-summary` with
+`--outcome repair-pushed` completed and identified the same rereview-ready
+swap. The canonical `worker complete --outcome repair-pushed --write` then
+refused without mutation with `complete.stale.not-claimed` and
+`complete.stale.already-completed`, because the PR was already in the target
+state. No manual label change was made.
+
+Immediately before this final handoff note, read-only GitHub verification
+reported PR head `d6b42273a316c9d41b61bfa3d808b95f10f04282`, branch
+`claude/sdt-g64-npm-matched-set-claim-recovery-w174`, open/non-draft, labels
+`intent-target` and `intent-pr-rereview-ready`. The push started a fresh exact-
+head CI run; at verification, `ci-g64`, `ci-g42`, and `ci-coverage` were
+green while the remaining checks were in progress. No hosted rerun was
+requested by this diagnosis task.
