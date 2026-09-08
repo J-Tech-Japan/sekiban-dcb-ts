@@ -56,6 +56,6 @@ The tag workflow repeats the gates and uses that command only when operator
 credentials/configuration exists; otherwise it executes the documented
 `npm publish --dry-run --provenance --access public` no-publish path.
 
-The evidence-only follow-up commit containing this finalized handoff is the
-branch tip reported with the canonical completion report. No Cloudflare,
-deployment, registry, credential, or resource action was performed.
+The final release-prep checkpoint is the pushed branch tip reported with the
+canonical completion report. No Cloudflare, deployment, registry, credential,
+or resource action was performed.

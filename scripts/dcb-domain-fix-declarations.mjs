@@ -24,4 +24,4 @@ async function visit(directory) {
 }
 
 await visit(declarationRoot);
-console.log(JSON.stringify({ status: "PASS", declarations: "node16-compatible-relative-specifiers" }));
+console.error(JSON.stringify({ status: "PASS", declarations: "node16-compatible-relative-specifiers" }));

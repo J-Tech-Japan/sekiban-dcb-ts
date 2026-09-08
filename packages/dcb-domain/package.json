@@ -39,7 +39,8 @@
     "zod": "4.4.3"
   },
   "scripts": {
-    "build": "node ../../scripts/dcb-domain-prepare-package.mjs && tsc -p tsconfig.build.json && node ../../scripts/dcb-domain-fix-declarations.mjs && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --outfile=dist/testing.js",
+    "build": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --outfile=dist/testing.js",
+    "prepack": "node ../../scripts/dcb-domain-prepare-package.mjs && node ../../scripts/dcb-domain-fix-declarations.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

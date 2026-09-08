@@ -24,10 +24,10 @@ LICENSE
 package.json
 ```
 
-The package build prepares a copy of the repository Elastic License into the
-package before compiling. Declaration specifiers are made Node16-compatible
-after declaration emit; this keeps the source authoring imports unchanged and
-lets an installed package resolve its `dist/*.d.ts` graph under Node16.
+The package `prepack` hook prepares a copy of the repository Elastic License
+and makes declaration specifiers Node16-compatible after declaration emit. This
+keeps the pre-existing workspace `build` command unchanged for the G40 CI
+inventory while ensuring every pack/publish tarball has the release files.
 
 ## Release-prep receipts
 
@@ -51,7 +51,7 @@ The release-specific `test:g59` gate performs all of the following:
 ```text
 build @sekiban/dcb-domain                          PASS
 dcb-domain-pack-check                               PASS
-  files: 23; unpacked size: 699343 bytes; ceiling: 1000000 bytes
+  files: 23; unpacked size: 699358 bytes; ceiling: 1000000 bytes
   required: package.json, README.md, LICENSE, dist/index.js/.d.ts,
             dist/testing.js/.d.ts
   source/fixtures/maps absent from tarball; no unexpected entries
@@ -120,5 +120,37 @@ included existing Vitest/Workers teardown and alarm-race diagnostics. The
 aggregate result is therefore not claimed green; hosted CI is the authoritative
 release gate and must be green before release publication. No G59-specific
 release gate depends on these failures.
+
+## Hosted exact-head repair checkpoint
+
+The first hosted PR run was `34232255964` at the pre-repair evidence head. Its
+release-specific preflight passed:
+
+```text
+dcb-domain-release-preflight
+https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34232256007/job/102081058554
+PASS
+```
+
+The repository-wide coverage lane initially failed because the G59 package
+`build` script had changed the existing command inventory. The exact failure
+was `ci-coverage`, job
+`https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34232255964/job/102081059970`:
+G40 reported the pre-existing build command as missing. The repair restores
+that command byte-for-byte and moves release-only preparation to `prepack`;
+the local G40 guard now reports `missing: []`.
+
+The same pre-repair run also exposed unrelated inherited failures outside the
+G59 range: `ci-g21-g25`, job
+`https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34232255964/job/102081060302`,
+failed unchanged `test/g22-bootstrap-d1.spec.ts` canonical-key divergence
+(expected zero mutation, received one), and `ci-g46`, job
+`https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34232255964/job/102081060399`,
+failed unchanged `test/read.spec.ts` high-lag fail-closed behavior (expected
+HTTP 500, received 200). `git diff origin/main...HEAD` contains neither
+`test/read.spec.ts` nor the runtime/G22 implementation paths, so these are
+recorded as inherited lane exceptions rather than G59 findings. The repaired
+head must still be evaluated by exact-head hosted CI; no gate is skipped or
+called green based on this classification.
 
 No Cloudflare, deployment, resource, or npm registry mutation occurred.
