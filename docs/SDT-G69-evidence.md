@@ -115,6 +115,44 @@ The detector has explicit false-positive coverage for:
   incident resolves the old generation’s quarantine; a malformed generation
   context is alarm-only.
 
+## W167 F1: real generation and public-reader clock proof
+
+The former named-clock checks were not sufficient because they called the
+detector with literal checkpoint clocks. The bounded F1 repair adds a separate
+real-D1 matrix in `test/g69-ordering.spec.ts`. Each case creates a real
+`ReservationProjector` generation, admits source rows through
+`D1EventStore.recordDelivery`, applies or follows the generation through
+`MaterializedViewCatchUpRuntime`, reads the resulting checkpoint and detector
+classification from durable state, and crosses the public V1
+`handleSerializedQuery` boundary against the same D1 MV. No test supplies a
+detector checkpoint as a substitute for generation application.
+
+| schedule | generation/checkpoint assertion | detector classification | durable quarantine | public safe / unsafe status |
+| --- | --- | --- | --- | --- |
+| captured-before-admission | generation 0 remains at the higher SUID | `miss` | absent | 200 / 200 |
+| equal-millisecond | generation 0 remains at the higher SUID | `miss` | absent | 200 / 200 |
+| checkpoint overwrite | generation 0 advances to the later higher SUID through a second real follow | `miss` | absent | 200 / 200 |
+| decreasing replay | generation 0 remains at the higher SUID; FirstArrivedAt remains the earlier observed value | `replay` | absent | 200 / 200 |
+| clock rollback | generation 0 remains at the higher SUID | `unknown` (`arrival-clock-rollback` alarm) | absent | 200 / 200 |
+| genuine late-lower control | generation 0 remains at the higher SUID | `late-lower-suid` | open generation-bound quarantine | typed 503 `projection_ordering_quarantined` / 200 |
+
+The late-lower control is the genuine refusal oracle: the lower event is
+admitted after the higher generation checkpoint with a later observed first
+arrival, the real follow persists the ordering incident/quarantine, the safe
+reader returns the typed 503, and the explicit unsafe reader remains usable.
+Every row asserts the generation, classification, quarantine presence or
+absence, and both public statuses.
+
+The schedule uses deterministic injected observed arrival times at the real
+`recordDelivery` boundary so the cases run quickly and repeatably; it is not a
+claim about wall-clock production timing. The normal D1 admission path cannot
+produce a rollback pair because it preserves FirstArrivedAt MIN and LastArrivedAt
+MAX, so the rollback case uses an explicit imported/repair-style SQL clock
+corruption after a real generation checkpoint and verifies the resulting
+alarm-only `unknown` classification. This limitation is recorded rather than
+presented as a production clock incident. No runtime, SafeWindow, fence,
+retry, drain, or G67 behavior changed in this proof-only repair.
+
 ## AC3: non-blocking admission-attempt receipt
 
 The `serialized_dcb_g69_admission_attempts` ledger remains diagnostic only.
@@ -189,7 +227,8 @@ timeout, scheduler, fence, SafeWindow, retry or drain behavior was changed.
 Passing focused checks at the W167 source:
 
 - `npx vitest run test/g69-ordering.spec.ts --pool=forks --maxWorkers=1
-  --no-file-parallelism`: 1 file, 6 tests passed. This covers the real
+  --no-file-parallelism --disableConsoleIntercept`: 1 file, 7 tests passed.
+  This covers the real
   allocator-to-Tag-to-D1 witness, mixed unknown/proven detector scanning,
   decreasing-timestamp MIN replay, generation/public-read clocks, typed
   quarantine during `waitFor`, complete real rebuild recovery (including

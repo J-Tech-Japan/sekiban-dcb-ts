@@ -26,7 +26,11 @@ import { appendG69AdmissionAttempt, type G69AdmissionAttemptReceipt } from "../p
 import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import type { StoredEvent } from "../packages/dcb-runtime/src/store/types";
-import { scopeIdFor } from "../packages/dcb-runtime/src/cloudflare";
+import { scopeIdFor, TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/cloudflare";
+import { composeRuntime } from "../packages/dcb-runtime/src/composition";
+import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
+import { reservationMaterializer } from "../samples/meeting-room/src/d1-mv";
+import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import { runMeetingRoomSafeLanePass } from "../samples/meeting-room/src/worker.cloudflare-only";
 import { MaterializedViewCatchUpRuntime } from "../packages/dcb-runtime/src/mv/MaterializedViewCatchUp";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
@@ -179,6 +183,47 @@ async function deliver(
   await handleDownstreamQueue(messageBatch(messages, timestamp), runtimeEnv as never, {
     store: new D1EventStore(database),
     clock: { now: () => timestamp },
+  });
+}
+
+function generationMessage(
+  serviceId: string,
+  ordinal: number,
+  label: string,
+): DownstreamOutboxMessage {
+  const reservationId = `reservation:g69-generation-${label}-${crypto.randomUUID()}`;
+  const tag = reservationId;
+  return g32Message({
+    serviceId,
+    allocatorLineageId: `g69-generation-lineage-${serviceId}`,
+    tag,
+    eventId: `g69-generation-${label}-${crypto.randomUUID()}`,
+    suid: g32Suid(ordinal),
+    payload: JSON.stringify({ roomId: `room:g69-generation-${label}`, reservationId, userId: "g69-generation-user" }),
+    eventTags: [tag],
+    eventType: "RoomReserved",
+    enqueuedAt: 100_000,
+  });
+}
+
+async function publicGenerationRead(
+  serviceId: string,
+  mvDatabase: D1Database,
+  consistency: "safe" | "unsafe",
+): Promise<Response> {
+  const composition = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
+  return handleSerializedQuery(new Request("https://g69-generation.test/api/sekiban/serialized/list-query", {
+    method: "POST",
+    headers: { "content-type": "application/json", [TEST_SERVICE_ID_HEADER]: serviceId },
+    body: JSON.stringify({
+      queryType: "GetReservationListQuery",
+      queryParamsJson: JSON.stringify({ PageNumber: 1, PageSize: 20, consistency }),
+    }),
+  }), {}, {
+    registry: composition.queries,
+    projectors: composition.projectors,
+    queryBacking: "d1-mv",
+    materializedViewQueryPort: new D1MaterializedViewStore(mvDatabase),
   });
 }
 
@@ -499,6 +544,165 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       lateLowerQueryDurationMs: result.lateLowerQueryDurationMs,
       advancedSourceEvents: result.advancedSourceEvents,
     }));
+  });
+
+  it("drives clock schedules through real MV generations and the public safe reader", async () => {
+    const database = pipeline();
+    const mv = materializedViews();
+    const cases: Array<{
+      readonly name: string;
+      readonly classification: "miss" | "replay" | "unknown" | "late-lower-suid";
+      readonly checkpointSuid: string;
+      readonly generation: number;
+      readonly quarantine: boolean;
+      readonly safeStatus: number;
+      readonly unsafeStatus: number;
+      readonly error: string | null;
+    }> = [];
+
+    const runCase = async (
+      name: string,
+      arrange: (input: {
+        readonly source: D1EventStore;
+        readonly views: D1MaterializedViewStore;
+        readonly runtime: MaterializedViewCatchUpRuntime;
+        readonly serviceId: string;
+        readonly higher: DownstreamOutboxMessage;
+      }) => Promise<{
+        readonly classification: "miss" | "replay" | "unknown" | "late-lower-suid";
+        readonly quarantine: boolean;
+        readonly expectedCheckpointSuid: string;
+        readonly safeStatus: number;
+        readonly unsafeStatus: number;
+        readonly error: string | null;
+      }>,
+    ): Promise<void> => {
+      const serviceId = `g69-generation-boundary-${name}-${crypto.randomUUID()}`;
+      const source = new D1EventStore(database);
+      const views = new D1MaterializedViewStore(mv);
+      const runtime = new MaterializedViewCatchUpRuntime(source, views);
+      await source.initialize();
+      await views.initialize();
+      const higher = generationMessage(serviceId, 20, `${name}-higher`);
+      await expect(source.recordDelivery(higher, 100_000, "queue")).resolves.toMatchObject({ outcome: "stored" });
+      // The logical clock is deliberately beyond the unchanged 20-second
+      // SafeWindow floor so generation application, not a detector-only
+      // shortcut, establishes the real checkpoint used by each case.
+      const built = await runtime.build(serviceId, reservationMaterializer, 200_000);
+      expect(built.instance.generation).toBe(0);
+      expect(built.instance.lastSuid).toBe(higher.suid);
+
+      const outcome = await arrange({ source, views, runtime, serviceId, higher });
+      const active = await views.readActive(serviceId, reservationMaterializer.id);
+      expect(active).toBeDefined();
+      const detector = await source.findLateLowerSuidEvidence(
+        serviceId,
+        higher.suid,
+        active?.updatedAt ?? 0,
+        active?.generation,
+      );
+      const quarantine = await views.readOrderingQuarantine(serviceId, reservationMaterializer.id);
+      const safe = await publicGenerationRead(serviceId, mv, "safe");
+      const unsafe = await publicGenerationRead(serviceId, mv, "unsafe");
+      expect(active?.generation).toBe(0);
+      expect(active?.lastSuid).toBe(outcome.expectedCheckpointSuid);
+      expect(detector.kind).toBe(outcome.classification);
+      expect(quarantine !== undefined).toBe(outcome.quarantine);
+      expect(safe.status).toBe(outcome.safeStatus);
+      expect(unsafe.status, `${name} unsafe response: ${await unsafe.clone().text()}`).toBe(outcome.unsafeStatus);
+      if (outcome.quarantine) {
+        await expect(safe.json()).resolves.toMatchObject({ code: "projection_ordering_quarantined" });
+      }
+      cases.push({
+        name,
+        classification: detector.kind,
+        checkpointSuid: active?.lastSuid ?? "",
+        generation: active?.generation ?? -1,
+        quarantine: quarantine !== undefined,
+        safeStatus: safe.status,
+        unsafeStatus: unsafe.status,
+        error: outcome.error,
+      });
+    };
+
+    await runCase("captured-before-admission", async ({ source, runtime, serviceId, higher }) => {
+      // The lower event's observed arrival is before the checkpoint's actual
+      // generation application. It is admitted after the application only to
+      // exercise the detector against the durable generation timestamp.
+      const lower = generationMessage(serviceId, 10, "captured-before-admission-lower");
+      await source.recordDelivery(lower, 199_000, "queue");
+      await runtime.follow(serviceId, reservationMaterializer, 220_000);
+      return { classification: "miss", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
+    });
+
+    await runCase("equal-millisecond", async ({ source, runtime, serviceId, higher }) => {
+      const lower = generationMessage(serviceId, 10, "equal-millisecond-lower");
+      await source.recordDelivery(lower, 200_000, "queue");
+      await runtime.follow(serviceId, reservationMaterializer, 220_000);
+      return { classification: "miss", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
+    });
+
+    await runCase("checkpoint-overwrite", async ({ source, runtime, serviceId }) => {
+      const lower = generationMessage(serviceId, 10, "checkpoint-overwrite-lower");
+      const later = generationMessage(serviceId, 30, "checkpoint-overwrite-later");
+      await source.recordDelivery(lower, 199_000, "queue");
+      await source.recordDelivery(later, 210_000, "queue");
+      const followed = await runtime.follow(serviceId, reservationMaterializer, 400_000);
+      expect(followed.instance.lastSuid).toBe(later.suid);
+      return { classification: "miss", quarantine: false, expectedCheckpointSuid: later.suid, safeStatus: 200, unsafeStatus: 200, error: null };
+    });
+
+    await runCase("decreasing-replay", async ({ source, runtime, serviceId, higher }) => {
+      const lower = generationMessage(serviceId, 10, "decreasing-replay-lower");
+      await source.recordDelivery(lower, 199_000, "queue");
+      await source.recordDelivery(lower, 210_000, "queue");
+      await runtime.follow(serviceId, reservationMaterializer, 230_000);
+      return { classification: "replay", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
+    });
+
+    await runCase("clock-rollback", async ({ source, runtime, serviceId, higher }) => {
+      const lower = generationMessage(serviceId, 10, "clock-rollback-lower");
+      await source.recordDelivery(lower, 199_000, "queue");
+      await database.prepare(
+        `UPDATE dcb_event_ops
+            SET "FirstArrivedAt" = ?, "LastArrivedAt" = ?,
+                "FirstArrivedSource" = 'queue', "LastArrivedSource" = 'queue'
+          WHERE "ServiceId" = ? AND "Id" = ?`,
+      ).bind(199_000, 198_000, serviceId, lower.eventId).run();
+      await runtime.follow(serviceId, reservationMaterializer, 230_000);
+      const incident = await database.prepare(
+        `SELECT classification FROM serialized_dcb_delivery_incidents
+          WHERE service_id = ? AND classification = 'ORDERING_DETECTOR_UNKNOWN'
+          ORDER BY observed_at DESC LIMIT 1`,
+      ).bind(serviceId).first<{ classification?: unknown }>();
+      expect(incident?.classification).toBe("ORDERING_DETECTOR_UNKNOWN");
+      return { classification: "unknown", quarantine: false, expectedCheckpointSuid: higher.suid, safeStatus: 200, unsafeStatus: 200, error: null };
+    });
+
+    await runCase("late-lower-control", async ({ source, runtime, serviceId, higher, views }) => {
+      const lower = generationMessage(serviceId, 10, "late-lower-control");
+      await source.recordDelivery(lower, 202_000, "queue");
+      let error: string | null = null;
+      try {
+        await runtime.follow(serviceId, reservationMaterializer, 230_000);
+      } catch (caught) {
+        error = caught instanceof Error ? caught.message : String(caught);
+      }
+      expect(error).toContain("quarantined");
+      const active = await views.readActive(serviceId, reservationMaterializer.id);
+      expect(active?.lastSuid).toBe(higher.suid);
+      return { classification: "late-lower-suid", quarantine: true, expectedCheckpointSuid: higher.suid, safeStatus: 503, unsafeStatus: 200, error };
+    });
+
+    expect(cases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "captured-before-admission", generation: 0, quarantine: false, safeStatus: 200, unsafeStatus: 200 }),
+      expect.objectContaining({ name: "equal-millisecond", generation: 0, quarantine: false, safeStatus: 200, unsafeStatus: 200 }),
+      expect.objectContaining({ name: "checkpoint-overwrite", generation: 0, quarantine: false, safeStatus: 200, unsafeStatus: 200 }),
+      expect.objectContaining({ name: "decreasing-replay", classification: "replay", generation: 0, quarantine: false, safeStatus: 200, unsafeStatus: 200 }),
+      expect.objectContaining({ name: "clock-rollback", classification: "unknown", generation: 0, quarantine: false, safeStatus: 200, unsafeStatus: 200 }),
+      expect.objectContaining({ name: "late-lower-control", classification: "late-lower-suid", generation: 0, quarantine: true, safeStatus: 503, unsafeStatus: 200 }),
+    ]));
+    console.log("G69_REAL_GENERATION_PUBLIC_PROOF", JSON.stringify(cases));
   });
 
   it("returns core admission while the bounded diagnostic receipt is still pending", async () => {
