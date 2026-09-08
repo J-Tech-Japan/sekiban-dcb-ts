@@ -25,7 +25,11 @@ const runtimePackage = JSON.parse(await readFile(`${root}packages/dcb-runtime/pa
 const clientPackage = JSON.parse(await readFile(`${root}packages/dcb-client/package.json`, "utf8"));
 assert.deepEqual(Object.keys(corePackage.dependencies ?? {}), [], "dcb-core must have no runtime dependencies");
 assert.deepEqual(Object.keys(runtimePackage.dependencies ?? {}), ["@sekiban/dcb-core"], "runtime may depend only on core");
-assert.deepEqual(Object.keys(clientPackage.dependencies ?? {}), ["@sekiban/dcb-core"], "client may depend only on core");
+assert.deepEqual(
+  Object.keys(clientPackage.dependencies ?? {}),
+  ["@sekiban/dcb-core", "@sekiban/dcb-domain"],
+  "client may depend only on the matched core/domain set",
+);
 assert.ok(runtimePackage.exports?.["./cosmos"], "Cosmos must be an explicit runtime export subpath");
 assert.ok(runtimePackage.exports?.["./d1"], "D1 must be an explicit runtime export subpath");
 assert.ok(runtimePackage.exports?.["./d1-mv"], "D1 MV must be an explicit runtime export subpath");
