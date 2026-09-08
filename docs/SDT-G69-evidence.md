@@ -85,18 +85,23 @@ generation is checked again at the read boundary after `waitFor`; a quarantine
 that appears while the read is waiting therefore returns the same typed 503
 instead of a stale safe result. An explicit unsafe read remains available for
 diagnosis; it does not certify the safe lane. A generation transition cannot
-clear an open quarantine until a positive, non-empty, fully applied rebuild is
-marked verified; an empty or incomplete candidate is rejected. The recovery
-test proves that rebuilt rows restore safe reads and that old-generation
-quarantine does not leak into a new generation.
+clear an open quarantine until a complete, incident-bound rebuild from the
+real source/rebuild path is marked verified. An incomplete source history,
+stale proof, or candidate whose checkpoint does not match that history is
+rejected. Empty materialized output is valid when the complete source history
+was applied and the materializer legitimately deletes every row. The recovery
+test proves that a complete rebuild restores safe reads and that
+old-generation quarantine does not leak into a new generation.
 
 Recovery is explicit: a rebuilt candidate generation is promoted atomically
 with the active-generation pointer, and open quarantine rows on older
 generations are marked resolved in that same batch. The new generation must be
 rebuilt/promoted; no read path clears the quarantine. The local public-read
-test proves the typed 503/unsafe distinction, and the ordering proof proves the
-durable incident/quarantine. This is a validated local fail-closed path, not a
-deployed alert or recovery claim.
+tests prove the typed 503/unsafe distinction, wait-boundary quarantine, and
+generation consistency; the ordering proof proves the durable
+incident/quarantine, complete source-history binding, valid empty output,
+stale-proof invalidation, and formerly skipped rows restoring safe reads. This
+is a validated local fail-closed path, not a deployed alert or recovery claim.
 
 The detector has explicit false-positive coverage for:
 
@@ -106,8 +111,9 @@ The detector has explicit false-positive coverage for:
 - replay preserving `MIN(FirstArrivedAt)` while increasing `LastArrivedAt`;
 - a clock rollback where `FirstArrivedAt > LastArrivedAt`;
 - imported or repaired timestamps whose source provenance is `unknown`/`import`;
-- generation transition, where promotion resolves only the old generation’s
-  quarantine.
+- generation transition, where only a verified promotion bound to the old
+  incident resolves the old generation’s quarantine; a malformed generation
+  context is alarm-only.
 
 ## AC3: non-blocking admission-attempt receipt
 
@@ -134,39 +140,57 @@ semantics, Queue disposition/retry/drain behavior, the first-arrival-fence
 decision, deployment/production resources and G32 resources are unchanged.
 AC4/AC5 are not claimed; the PR references #133 rather than closing it.
 
-The W164 allocator witness and the W166 repair are local structural evidence.
+The W164 allocator witness and the W166-2 repair are local structural evidence.
 It does not establish zero production detections, deployed safe-read behavior,
 or an allocation-to-arrival bound. Those require the later G69 acceptance work.
 
 ## Verification
 
-Passing focused checks at the W166 source:
+Passing focused checks at the W166-2 source:
 
-- `npm exec vitest run --config vitest.config.ts
-  test/g69-ordering.spec.ts test/g31-waitfor.spec.ts --maxWorkers=1`: 2
-  files, 29 tests passed, including the real allocator proof, the
-  quarantine-during-`waitFor` 503, rebuild/generation isolation, decreasing
-  timestamp replay, and diagnostic failure/concurrency/replay/retention.
-- `npm run test:g69`: baseline green; four mutants red and restored:
-  omitted late-lower detector, restored higher-SUID lag exclusion, omitted
-  append-only receipt, and awaited diagnostic receipt on the core path.
-- `npm run test:g31`: 34 tests passed; wait budget remained
-  `maxIterationSlots=126`, `maxPointReads=254`.
+- `npx vitest run test/g69-ordering.spec.ts --pool=forks --maxWorkers=1
+  --no-file-parallelism`: 1 file, 5 tests passed. This covers the real
+  allocator-to-Tag-to-D1 witness, mixed unknown/proven detector scanning,
+  decreasing-timestamp MIN replay, generation/public-read clocks, typed
+  quarantine during `waitFor`, complete real rebuild recovery (including
+  valid empty output), stale/incomplete proof rejection, and diagnostic
+  failure/concurrency/replay/retention.
+- `npx vitest run test/g31-waitfor.spec.ts test/g55-read-visibility.spec.ts
+  --pool=forks --maxWorkers=1 --no-file-parallelism`: 2 files, 30 tests
+  passed, including timeout-quarantine and generation-change boundary reads.
+- `npm run test:g69`: green; four accepted mutants are red: omitted
+  late-lower detector, restored higher-SUID lag exclusion, omitted append-only
+  receipt, and awaited diagnostic receipt on the core path.
 - `npm run test:g44`: contract and 8 tests passed; all G44 production mutants
   red.
-- `npm run test:g60:direct`: 14 tests passed; all six G60 mutants red.
-- `npm run test:g60:unsafe-writer`: 4 tests passed; unsafe-writer guards and
-  mutants red.
+- `npm run test:g43`: 3 files, 20 tests passed; the five production mutants
+  were red. The output includes the known G43 crash/teardown diagnostics, but
+  the command exited 0.
+- `npm run test:g60:required`: direct 14 tests, unsafe-writer 4 tests, and
+  all Queue/durable-hop/post-admission checks passed; all six unchanged G60
+  mutants were red.
 - `npm run test:g61`: green guard, pre-fix probe red, and mutant probe red.
 - `npm run test:g62`: green guard and all scheduled-maintenance mutants red.
-- `npm run test:g65`: 17 tests passed; G65 guard and six mutants red.
-- `npm run test:g67`: 11 tests passed; red-before-green and all seven mutants
-  red.
-- `npm run test:d1`: 12 tests passed.
-- `npm run test:mv`: 18 tests passed.
-- `npm run build --workspace @sekiban/dcb-runtime`: pass.
-- `npm run build:packages`, `npm run typecheck`, and `npm run lint`: pass in
-  the checkout-local dependency context.
+- `npm run test:g65`: 17 tests passed; G65 guard and its six mutants remained
+  red as expected.
+- `npx vitest run test/g67-safe-lane.spec.ts --pool=forks --maxWorkers=1
+  --no-file-parallelism`: 11 tests passed. The normal `npm run test:g67`
+  aggregate did not pass: its parallel runner timed out the cron-disabled
+  paced test at 5,004ms and its mutation probes recorded the expected red
+  failures. This is retained as a runner/parallelism exception, not called
+  green and not fixed here.
+- `npm run typecheck` and `npm run lint`: pass after the final source edits.
+
+The cache-corrected full aggregate was run as
+`NPM_CONFIG_CACHE=/private/tmp/sdt-g69-npm-cache npm run check`. It passed
+lint, typecheck and all G28 boundary gates, then stopped in the default
+parallel `npm test` stage: 90 files passed, 4 failed, 1 skipped (788 passed,
+5 failed, 1 skipped). The five failures were the existing 5-second/default
+parallel timing signatures in `test/commit.spec.ts` AC7, `test/g67-safe-lane.spec.ts`
+AC3, `test/repair.spec.ts` (15-second crash/race sweep and 5-second checkpoint),
+and `test/tag.spec.ts` G5. The G43 alarm race is separately covered by the
+focused command above. No failure identified a G69 assertion; no timeout or
+fixture was weakened.
 
 `npm run test:g58` passed its 5 files/15 tests and earlier guards, then stopped
 at the existing `scripts/g58-safe-lane-diagnosis-guard.mjs` W96 witness:

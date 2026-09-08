@@ -313,32 +313,39 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     // Start the diagnostic pre-read concurrently, but never await it on the
     // core admission path.  If it finishes after core admission, the receipt
     // marks the before-state unverified instead of claiming allocation closure.
+    const beforeReadStartedAt = Date.now();
     const beforePromise = this.eventArrivalOps(message.serviceId, message.eventId)
       .then((values) => values === undefined
         ? { kind: "absent" as const, observedAt: Date.now() }
         : { kind: "present" as const, values, observedAt: Date.now() })
       .catch((error) => ({ kind: "failed" as const, observedAt: Date.now(), error: errorText(error) }));
+    const coreStartedAt = Date.now();
+    const mutationAttemptId = `admission-${crypto.randomUUID()}`;
     let result: DeliveryOutcome | undefined;
     let failure: { readonly error: unknown } | undefined;
     try {
-      result = await this.recordDeliveryCore(message, arrivedAt, deliverySource);
+      result = await this.recordDeliveryCore(message, arrivedAt, deliverySource, mutationAttemptId);
     } catch (error) {
       failure = { error };
     }
-    const coreCompletedAt = Date.now();
     const status: G69AdmissionAttemptStatus = failure === undefined
       ? result!.outcome === "stored" ? (result!.duplicate === true ? "duplicate" : "stored") : result!.outcome
       : "failed";
     const retryReason = failure === undefined ? null : errorText(failure.error);
+    const mutationEvidence = failure === undefined
+      ? result !== undefined && "mutationEvidence" in result ? result.mutationEvidence ?? "unverified" : "unverified"
+      : "unverified";
     const diagnostic = this.bestEffortG69AdmissionAttempt(
       message,
       arrivedAt,
       deliverySource,
       attemptContext,
       beforePromise,
-      coreCompletedAt,
+      beforeReadStartedAt,
+      coreStartedAt,
       status,
       retryReason,
+      mutationEvidence,
     );
     if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);
     else void diagnostic;
@@ -346,7 +353,12 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     return result!;
   }
 
-  private async recordDeliveryCore(message: DownstreamOutboxMessage, arrivedAt: number, deliverySource: DeliverySource = "queue"): Promise<DeliveryOutcome> {
+  private async recordDeliveryCore(
+    message: DownstreamOutboxMessage,
+    arrivedAt: number,
+    deliverySource: DeliverySource = "queue",
+    mutationAttemptId = `admission-${crypto.randomUUID()}`,
+  ): Promise<DeliveryOutcome> {
     this.ready();
     // G44 source facts belong to a Tag outbox obligation.  The fenced G22
     // bootstrap import path has no Tag source partition to acknowledge, so it
@@ -595,8 +607,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       ),
       this.database.prepare(
         `INSERT INTO dcb_event_ops
-           ("ServiceId", "Id", "AttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs", "FirstArrivedSource", "LastArrivedSource")
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+           ("ServiceId", "Id", "AttemptId", "FirstAdmissionAttemptId", "LastAdmissionAttemptId", "AllocatorLineageId", "FirstArrivedAt", "LastArrivedAt", "MaxDeliveryLagMs", "FirstArrivedSource", "LastArrivedSource")
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (
             SELECT 1 FROM dcb_events
              WHERE "ServiceId" = ? AND "Id" = ?
@@ -607,6 +619,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
            SET "FirstArrivedAt" = MIN(dcb_event_ops."FirstArrivedAt", excluded."FirstArrivedAt"),
                "LastArrivedAt" = MAX(dcb_event_ops."LastArrivedAt", excluded."LastArrivedAt"),
                "MaxDeliveryLagMs" = MAX(dcb_event_ops."MaxDeliveryLagMs", excluded."MaxDeliveryLagMs"),
+               "FirstAdmissionAttemptId" = COALESCE(dcb_event_ops."FirstAdmissionAttemptId", excluded."FirstAdmissionAttemptId"),
+               "LastAdmissionAttemptId" = excluded."LastAdmissionAttemptId",
                "FirstArrivedSource" = dcb_event_ops."FirstArrivedSource",
                "LastArrivedSource" = CASE
                  WHEN excluded."LastArrivedAt" > dcb_event_ops."LastArrivedAt" THEN excluded."LastArrivedSource"
@@ -616,6 +630,8 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         message.serviceId,
         message.eventId,
         message.attemptId,
+        mutationAttemptId,
+        mutationAttemptId,
         message.allocatorLineageId,
         arrivedAt,
         arrivedAt,
@@ -750,7 +766,17 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         throw new Error(`D1 event ${message.eventId} has no readable global receipt/membership join`);
       }
     }
-    return { outcome: "stored", kind: "stored", event: stored, ...(storedBefore === undefined ? {} : { duplicate: true }) };
+    const mutationEvidence = await this.admissionMutationEvidence(message.serviceId, message.eventId, mutationAttemptId);
+    if (mutationEvidence === "first-admission") {
+      return { outcome: "stored", kind: "stored", event: stored, mutationEvidence: "first-admission" };
+    }
+    if (mutationEvidence === "duplicate-admission") {
+      return { outcome: "stored", kind: "stored", event: stored, duplicate: true, mutationEvidence: "duplicate-admission" };
+    }
+    // Rows written before the mutation-evidence migration cannot honestly be
+    // classified from a pre-read. Preserve the stored outcome without calling
+    // it a duplicate.
+    return { outcome: "stored", kind: "stored", event: stored, mutationEvidence: "unverified" };
   }
 
   async readGlobalReceiptJoin(message: DownstreamOutboxMessage): Promise<GlobalReceiptJoin | undefined> {
@@ -848,8 +874,12 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     this.ready();
     // Generation ownership is enforced at the MV/quarantine boundary; the
     // source evidence itself is generation-independent and must remain
-    // auditable across a generation transition.
-    void generation;
+    // auditable across a generation transition. A malformed generation is
+    // still an untrusted clock/context observation, never a reason to open a
+    // quarantine.
+    if (generation !== undefined && (!Number.isSafeInteger(generation) || generation < 0)) {
+      return { kind: "unknown", reason: "generation-invalid" };
+    }
     if (checkpointSuid.length === 0) return { kind: "miss" };
     if (!Number.isSafeInteger(checkpointUpdatedAt) || checkpointUpdatedAt < 0) {
       return { kind: "unknown", reason: "checkpoint-clock-invalid" };
@@ -870,25 +900,44 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
           ORDER BY e."SortableUniqueId" COLLATE BINARY ASC, e."Id" COLLATE BINARY ASC`,
       ).bind(serviceId, checkpointSuid).all<D1Row>();
       let replay: StoredEvent | undefined;
+      let unknownReason: string | undefined;
       for (const row of rows.results) {
-        const first = asNumber(row.first_arrived_at, "late_lower_suid.first_arrived_at");
-        const last = asNumber(row.last_arrived_at, "late_lower_suid.last_arrived_at");
-        const firstSource = asString(row.first_arrived_source, "late_lower_suid.first_arrived_source");
-        const lastSource = asString(row.last_arrived_source, "late_lower_suid.last_arrived_source");
-        if (first < 0 || last < first) return { kind: "unknown", reason: "arrival-clock-rollback" };
-        if (first > checkpointUpdatedAt) {
-          if (firstSource !== "queue" && firstSource !== "fast") {
-            return { kind: "unknown", reason: "arrival-provenance-untrusted" };
+        try {
+          const first = asNumber(row.first_arrived_at, "late_lower_suid.first_arrived_at");
+          const last = asNumber(row.last_arrived_at, "late_lower_suid.last_arrived_at");
+          const firstSource = asString(row.first_arrived_source, "late_lower_suid.first_arrived_source");
+          const lastSource = asString(row.last_arrived_source, "late_lower_suid.last_arrived_source");
+          if (first < 0 || last < first) {
+            // An uncertain row is an alarm-only observation. Continue scanning:
+            // a later, independently proven violation must not be hidden by it.
+            unknownReason ??= "arrival-clock-rollback";
+            continue;
           }
-          const event = await this.eventById(serviceId, asString(row.event_id, "late_lower_suid.event_id"));
-          return event === undefined
-            ? { kind: "unknown", reason: "late-event-row-disappeared" }
-            : { kind: "late-lower-suid", event };
-        }
-        if (last > checkpointUpdatedAt && (lastSource === "queue" || lastSource === "fast")) {
-          replay = await this.eventById(serviceId, asString(row.event_id, "late_lower_suid.event_id"));
+          const eventId = asString(row.event_id, "late_lower_suid.event_id");
+          if (first > checkpointUpdatedAt) {
+            if (firstSource !== "queue" && firstSource !== "fast") {
+              unknownReason ??= "arrival-provenance-untrusted";
+              continue;
+            }
+            const event = await this.eventById(serviceId, eventId);
+            if (event === undefined) {
+              unknownReason ??= "late-event-row-disappeared";
+              continue;
+            }
+            // A confirmed late-lower witness wins over any earlier unknown
+            // observation. It is the only result allowed to open quarantine.
+            return { kind: "late-lower-suid", event };
+          }
+          if (last > checkpointUpdatedAt && (lastSource === "queue" || lastSource === "fast")) {
+            const event = await this.eventById(serviceId, eventId);
+            if (event === undefined) unknownReason ??= "replay-event-row-disappeared";
+            else replay = event;
+          }
+        } catch (error) {
+          unknownReason ??= errorText(error);
         }
       }
+      if (unknownReason !== undefined) return { kind: "unknown", reason: unknownReason };
       return replay === undefined ? { kind: "miss" } : { kind: "replay", event: replay };
     } catch (error) {
       return { kind: "unknown", reason: errorText(error) };
@@ -1353,6 +1402,28 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
     };
   }
 
+  private async admissionMutationEvidence(
+    serviceId: string,
+    eventId: string,
+    mutationAttemptId: string,
+  ): Promise<"first-admission" | "duplicate-admission" | "unverified"> {
+    const row = await this.database.prepare(
+      `SELECT "FirstAdmissionAttemptId" AS first_admission_attempt_id,
+              "LastAdmissionAttemptId" AS last_admission_attempt_id
+         FROM dcb_event_ops
+        WHERE "ServiceId" = ? AND "Id" = ?`,
+    ).bind(serviceId, eventId).first<D1Row>();
+    const first = row?.first_admission_attempt_id === null || row?.first_admission_attempt_id === undefined
+      ? undefined
+      : asString(row.first_admission_attempt_id, "event_ops.first_admission_attempt_id");
+    const last = row?.last_admission_attempt_id === null || row?.last_admission_attempt_id === undefined
+      ? undefined
+      : asString(row.last_admission_attempt_id, "event_ops.last_admission_attempt_id");
+    if (first === mutationAttemptId) return "first-admission";
+    if (last === mutationAttemptId) return "duplicate-admission";
+    return "unverified";
+  }
+
   private async bestEffortG69AdmissionAttempt(
     message: DownstreamOutboxMessage,
     arrivedAt: number,
@@ -1364,27 +1435,68 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       readonly observedAt: number;
       readonly error?: string;
     } | undefined>,
-    coreCompletedAt: number,
+    beforeReadStartedAt: number,
+    coreStartedAt: number,
     status: G69AdmissionAttemptStatus,
     retryReason: string | null,
+    mutationEvidence: "first-admission" | "duplicate-admission" | "unverified",
   ): Promise<void> {
+    const appendFailedDiagnostic = async (reason: string): Promise<void> => {
+      try {
+        await appendG69AdmissionAttempt(this.database, {
+          serviceId: message.serviceId,
+          eventId: message.eventId,
+          suid: message.suid,
+          tag: message.tag,
+          deliverySource,
+          queueMessageId: attemptContext?.queueMessageId ?? null,
+          attemptId: message.attemptId,
+          allocatorLineageId: message.allocatorLineageId,
+          obligationSequence: message.completeness.obligationSequence,
+          enqueuedAt: message.enqueuedAt,
+          observedAt: Date.now(),
+          arrivedAt,
+          firstArrivedAtBefore: null,
+          lastArrivedAtBefore: null,
+          firstArrivedAtAfter: null,
+          lastArrivedAtAfter: null,
+          beforeObservedAt: null,
+          afterObservedAt: null,
+          observationConsistency: "unverified",
+          mutationEvidence: "unverified",
+          status: "failed",
+          retryReason: reason,
+        });
+      } catch {
+        // The diagnostic table remains best effort even when its own failure
+        // prevents a failed-observation row from being retained.
+      }
+    };
     try {
-      await this.options.beforeG69AdmissionAttempt?.();
+      try {
+        await this.options.beforeG69AdmissionAttempt?.();
+      } catch (error) {
+        await appendFailedDiagnostic(errorText(error));
+        return;
+      }
       const beforeObservation = await beforePromise;
-      const before = beforeObservation?.kind === "present" && beforeObservation.observedAt <= coreCompletedAt
+      const readStartedBeforeAdmission = beforeReadStartedAt <= coreStartedAt;
+      const before = beforeObservation?.kind === "present" && readStartedBeforeAdmission && beforeObservation.observedAt <= coreStartedAt
         ? beforeObservation.values
         : undefined;
       const observationConsistency: G69AdmissionAttemptReceipt["observationConsistency"] = beforeObservation === undefined
         ? "unverified"
         : beforeObservation.kind === "failed"
           ? "before-read-failed"
-          : beforeObservation.observedAt > coreCompletedAt
-            ? "before-read-after-core"
+            : !readStartedBeforeAdmission
+              ? "unverified"
+            : beforeObservation.observedAt > coreStartedAt
+              ? "after-admission"
             : beforeObservation.kind === "absent"
-              ? "before-core-absent"
+              ? "before-admission-absent"
               : before === undefined
                 ? "unverified"
-                : "before-core";
+                : "before-admission";
       const afterObservedAt = Date.now();
       let after: { readonly firstArrivedAt: number; readonly lastArrivedAt: number } | undefined;
       let afterReadFailed = false;
@@ -1416,6 +1528,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
         beforeObservedAt: beforeObservation?.observedAt ?? null,
         afterObservedAt,
         observationConsistency: finalObservationConsistency,
+        mutationEvidence,
         status,
         retryReason,
       });

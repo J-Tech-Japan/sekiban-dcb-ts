@@ -431,15 +431,15 @@ export async function handleSerializedQuery(
     return error(400, "validation_error", pagination.error);
   }
 
+  let d1MaterializedView: MaterializedViewQueryPort | undefined;
+  let d1SafeRead = false;
+  const viewId = definition.materializedViewId ?? definition.tagProjector;
   try {
     const backing = options.queryBacking ?? "memory";
-    const viewId = definition.materializedViewId ?? definition.tagProjector;
     let requestStoreValue: PipelineStore | undefined;
     let waitStore: QueryProjectionStore | undefined = options.store;
     let selection: QueryBackingSelection;
-    let d1MaterializedView: MaterializedViewQueryPort | undefined;
     let safeReadGeneration: number | undefined;
-    let d1SafeRead = false;
     if (backing === "d1-mv") {
       const materializedView = options.materializedViewQueryPort ??
         (env.D1_MV === undefined ? undefined : new D1MaterializedViewStore(env.D1_MV));
@@ -507,9 +507,29 @@ export async function handleSerializedQuery(
         waitResult = "visible";
       }
       if (waitResult === "unavailable") {
+        const waitQuarantine = d1SafeRead && d1MaterializedView !== undefined
+          ? await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId)
+          : undefined;
+        if (waitQuarantine !== undefined) {
+          return error(
+            503,
+            "projection_ordering_quarantined",
+            "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+          );
+        }
         return error(503, "projection_unavailable", "The mapped query projection is unavailable");
       }
       if (waitResult !== "visible") {
+        const timeoutQuarantine = d1SafeRead && d1MaterializedView !== undefined
+          ? await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId)
+          : undefined;
+        if (timeoutQuarantine !== undefined) {
+          return error(
+            503,
+            "projection_ordering_quarantined",
+            "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+          );
+        }
         return error(
           504,
           "timeout",
@@ -528,7 +548,11 @@ export async function handleSerializedQuery(
             "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
           );
         }
-        safeReadGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId) ?? safeReadGeneration;
+        const boundaryGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId);
+        if (boundaryGeneration !== undefined && safeReadGeneration !== undefined && boundaryGeneration !== safeReadGeneration) {
+          return error(503, "projection_unavailable", "The mapped query projection changed generation while the safe wait was running; retry the read");
+        }
+        safeReadGeneration = boundaryGeneration ?? safeReadGeneration;
       }
     }
     if (d1SafeRead && parsed.value.waitForSortableUniqueId === undefined && d1MaterializedView !== undefined) {
@@ -540,10 +564,14 @@ export async function handleSerializedQuery(
           "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
         );
       }
-      safeReadGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId) ?? safeReadGeneration;
+      const boundaryGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId);
+      if (boundaryGeneration !== undefined && safeReadGeneration !== undefined && boundaryGeneration !== safeReadGeneration) {
+        return error(503, "projection_unavailable", "The mapped query projection changed generation while the safe read was being prepared; retry the read");
+      }
+      safeReadGeneration = boundaryGeneration ?? safeReadGeneration;
     }
     const requestedPage = pagination.value;
-    if (requestedPage !== undefined && selection.backing === "d1-mv" && selection.store.readListPage !== undefined) {
+      if (requestedPage !== undefined && selection.backing === "d1-mv" && selection.store.readListPage !== undefined) {
       const page = await selection.store.readListPage(serviceId, viewId, {
         ...(safeReadGeneration === undefined ? {} : { generation: safeReadGeneration }),
         limit: requestedPage.pageSize,
@@ -551,6 +579,20 @@ export async function handleSerializedQuery(
         ...(requestedPage.newestFirst ? { descending: true } : {}),
         consistency: requestedPage.consistency,
       });
+      if (d1SafeRead && d1MaterializedView !== undefined) {
+        const pageQuarantine = await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId);
+        if (pageQuarantine !== undefined) {
+          return error(
+            503,
+            "projection_ordering_quarantined",
+            "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+          );
+        }
+        const pageGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId);
+        if (pageGeneration !== undefined && safeReadGeneration !== undefined && pageGeneration !== safeReadGeneration) {
+          return error(503, "projection_unavailable", "The mapped query projection changed generation while the safe page was being read; retry the read");
+        }
+      }
       const entries = page.rows.map((row) => ({
         eventId: isObject(row.value) && typeof row.value.eventId === "string" && row.value.eventId.length > 0 ? row.value.eventId : row.rowKey,
         suid: row.sourceSuid,
@@ -579,8 +621,22 @@ export async function handleSerializedQuery(
           limit: requestedPage.pageSize,
           offset: (requestedPage.currentPage - 1) * requestedPage.pageSize,
           ...(requestedPage.newestFirst ? { descending: true } : {}),
-        },
+      },
     );
+    if (d1SafeRead && d1MaterializedView !== undefined) {
+      const pageQuarantine = await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId);
+      if (pageQuarantine !== undefined) {
+        return error(
+          503,
+          "projection_ordering_quarantined",
+          "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+        );
+      }
+      const pageGeneration = await d1MaterializedView.readActiveGeneration?.(serviceId, viewId);
+      if (pageGeneration !== undefined && safeReadGeneration !== undefined && pageGeneration !== safeReadGeneration) {
+        return error(503, "projection_unavailable", "The mapped query projection changed generation while the safe page was being read; retry the read");
+      }
+    }
     if (requestedPage?.consistency === "unsafe") {
       options.afterUnsafeRead?.({
         serviceId,
@@ -591,6 +647,24 @@ export async function handleSerializedQuery(
     }
     return resultResponse(endpoint, page.entries, pagination.value, page.totalCount, page.serverPaged);
   } catch {
+    // A wait/read can race the detector or a generation transition. If the
+    // ordering quarantine is already durable, preserve its typed public
+    // contract instead of collapsing the race into generic unavailability.
+    if (d1SafeRead && d1MaterializedView !== undefined) {
+      try {
+        const caughtQuarantine = await d1MaterializedView.readOrderingQuarantine?.(serviceId, viewId);
+        if (caughtQuarantine !== undefined) {
+          return error(
+            503,
+            "projection_ordering_quarantined",
+            "The mapped query projection is quarantined for a source-ordering incident; rebuild and promote the affected generation",
+          );
+        }
+      } catch {
+        // Preserve the existing generic unavailable response if the
+        // quarantine probe itself is unavailable.
+      }
+    }
     return error(503, "projection_unavailable", "The mapped query projection is unavailable");
   }
 }

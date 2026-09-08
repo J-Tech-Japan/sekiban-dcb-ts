@@ -16,8 +16,11 @@ import migration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw"
 import migration0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0009 from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 import { defineRowMaterializer } from "@sekiban/dcb-core";
 import { D1MaterializedViewStore } from "../packages/dcb-runtime/src/d1-mv";
+import type { MaterializedViewQueryPort } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import { handleSerializedQuery } from "../packages/dcb-runtime/src/http/SerializedQueryWorker";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
 import { TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
@@ -90,6 +93,7 @@ describe("SDT-G55 D1 list read visibility", () => {
       migration0006,
       migration0007,
       migration0008,
+      migration0009,
     ].flatMap((migration) => migrationStatements(migration as string)));
   });
 
@@ -261,5 +265,53 @@ describe("SDT-G55 D1 list read visibility", () => {
       materializedViewQueryPort: mv,
     });
     expect(unsafe.status).toBe(200);
+  });
+
+  it("fails closed when the active generation changes between a safe page and its response boundary", async () => {
+    const serviceId = `g69-generation-page-${crypto.randomUUID()}`;
+    const safe = fixture("generation-page", "g69-generation-page-safe");
+    const mv = new D1MaterializedViewStore(database());
+    await mv.initialize();
+    await mv.createActive({ serviceId, viewId: VIEW_ID, definitionVersion: MATERIALIZER.version, updatedAt: 10 });
+    await mv.applyMutationsAndAdvanceCheckpoint({
+      serviceId,
+      viewId: VIEW_ID,
+      generation: 0,
+      expectedLastSuid: null,
+      lastSuid: safe.suid,
+      definitionVersion: MATERIALIZER.version,
+      updatedAt: 11,
+      mutations: {
+        rowUpserts: [{ rowKey: safe.reservationId, value: { eventId: safe.eventId, reservationId: safe.reservationId, status: "reserved" }, rowVersion: 1, sourceSuid: safe.suid }],
+        rowPatches: [],
+        rowDeletes: [],
+        indexEntries: [],
+        indexDeletes: [],
+      },
+    });
+    await mv.createCandidate({ serviceId, viewId: VIEW_ID, generation: 1, definitionVersion: MATERIALIZER.version, updatedAt: 12, lastSuid: safe.suid });
+    let promoted = false;
+    const port = new Proxy(mv, {
+      get(target, property, receiver) {
+        if (property === "readListPage") {
+          return async (...args: unknown[]) => {
+            const page = await target.readListPage(args[0] as string, args[1] as string, args[2] as never);
+            if (!promoted) {
+              promoted = true;
+              await target.promoteGeneration({ serviceId, viewId: VIEW_ID, candidateGeneration: 1, expectedActiveGeneration: 0, updatedAt: 13 });
+            }
+            return page;
+          };
+        }
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as unknown as MaterializedViewQueryPort;
+    const response = await handleSerializedQuery(queryRequest(serviceId, { PageNumber: 1, PageSize: 20 }), {}, {
+      queryBacking: "d1-mv",
+      materializedViewQueryPort: port,
+    });
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ code: "projection_unavailable" });
   });
 });

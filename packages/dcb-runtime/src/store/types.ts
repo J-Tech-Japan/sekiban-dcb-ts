@@ -83,7 +83,13 @@ export interface DeliveryIncident {
 }
 
 export type DeliveryOutcome =
-  | { outcome: "stored"; kind: "stored"; event: StoredEvent; duplicate?: boolean }
+  | {
+    outcome: "stored";
+    kind: "stored";
+    event: StoredEvent;
+    duplicate?: boolean;
+    mutationEvidence?: "first-admission" | "duplicate-admission" | "unverified";
+  }
   | { outcome: "suid-collision"; kind: "suid-collision"; incident: DeliveryIncident }
   | { outcome: "lineage-mismatch"; kind: "lineage-mismatch"; incident: DeliveryIncident };
 

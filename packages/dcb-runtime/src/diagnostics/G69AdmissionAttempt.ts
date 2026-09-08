@@ -33,18 +33,20 @@ export interface G69AdmissionAttemptReceipt {
   readonly lastArrivedAtBefore: number | null;
   readonly firstArrivedAtAfter: number | null;
   readonly lastArrivedAtAfter: number | null;
-  /** Timestamp of the diagnostic before-read, if it completed before core. */
+  /** Timestamp at which the diagnostic before-read completed, if observed. */
   readonly beforeObservedAt: number | null;
   /** Timestamp captured immediately before the diagnostic after-read. */
   readonly afterObservedAt: number | null;
-  /** Explicitly distinguishes a usable before-core observation from a late/missing read. */
+  /** Relates observations to the actual admission mutation, or stays unknown. */
   readonly observationConsistency:
-    | "before-core"
-    | "before-core-absent"
-    | "before-read-after-core"
+    | "before-admission"
+    | "before-admission-absent"
+    | "after-admission"
     | "before-read-failed"
     | "after-read-failed"
     | "unverified";
+  /** Mutation-owned classification; never inferred from the diagnostic read. */
+  readonly mutationEvidence: "first-admission" | "duplicate-admission" | "unverified";
   readonly status: G69AdmissionAttemptStatus;
   readonly retryReason: string | null;
 }
@@ -62,8 +64,8 @@ export async function appendG69AdmissionAttempt(
         first_arrived_at_before, last_arrived_at_before,
         first_arrived_at_after, last_arrived_at_after,
         before_observed_at, after_observed_at, observation_consistency,
-        receipt_status, retry_reason, clock_origin)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        mutation_evidence, receipt_status, retry_reason, clock_origin)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).bind(
     receipt.serviceId,
     receipt.eventId,
@@ -84,6 +86,7 @@ export async function appendG69AdmissionAttempt(
     receipt.beforeObservedAt,
     receipt.afterObservedAt,
     receipt.observationConsistency,
+    receipt.mutationEvidence,
     receipt.status,
     receipt.retryReason,
     "Date.now epoch ms",

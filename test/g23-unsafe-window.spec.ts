@@ -16,6 +16,8 @@ import migration0006 from "../migrations/mv/0006_g31_wait_target_poison.sql?raw"
 import migration0007 from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 // @ts-expect-error Vite raw migration imports.
 import migration0008 from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
+// @ts-expect-error Vite raw migration imports.
+import migration0009 from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 import fixture from "./fixtures/g23-csharp-fixture.generated.json";
 // @ts-expect-error Vite raw asset import preserves the committed C# generator bytes.
 import fixtureBytes from "./fixtures/g23-csharp-fixture.generated.json?raw";
@@ -114,6 +116,7 @@ describe("SDT-G23 unsafe-window MV core", () => {
     await database().batch(statements(migration0006 as string));
     await database().batch(statements(migration0007 as string));
     await database().batch(statements(migration0008 as string));
+    await database().batch(statements(migration0009 as string));
   });
 
   it("upgrades a G20 database with 0001 already applied by applying deployable 0002 only", async () => {

@@ -97,6 +97,9 @@ export class MaterializedViewCatchUpRuntime {
     hooks: MaterializedViewCatchUpHooks = {},
     options: MaterializedViewCatchUpOptions = {},
   ): Promise<MaterializedViewCatchUpResult & { readonly candidateGeneration: number; readonly rebuildId?: string }> {
+    const effectiveRebuildId = rebuildId ?? `g69-rebuild-${crypto.randomUUID()}`;
+    const sourceBefore = await this.source.readAllEvents(serviceId, "");
+    const sourceBeforeProof = await sourceHistoryProof(sourceBefore);
     const candidate = await this.materializedViews.beginRebuild({
       serviceId,
       viewId: materializer.id,
@@ -104,16 +107,28 @@ export class MaterializedViewCatchUpRuntime {
       updatedAt: nowMs,
     });
     const result = await this.followGeneration(serviceId, materializer, candidate.generation, nowMs, "apply", hooks, options);
-    if (result.stopReason === null && !result.indeterminate && result.appliedEvents > 0) {
+    const sourceAfter = await this.source.readAllEvents(serviceId, "");
+    const sourceAfterProof = await sourceHistoryProof(sourceAfter);
+    if (
+      result.stopReason === null &&
+      !result.indeterminate &&
+      result.advancedSourceEvents === sourceBefore.length &&
+      sourceBeforeProof.digest === sourceAfterProof.digest
+    ) {
       await this.materializedViews.markGenerationRebuilt({
         serviceId,
         viewId: materializer.id,
         generation: candidate.generation,
         verifiedAt: nowMs,
-        appliedEvents: result.appliedEvents,
+        rebuildId: effectiveRebuildId,
+        sourceEventCount: sourceBeforeProof.eventIds.length,
+        sourceEventIds: sourceBeforeProof.eventIds,
+        sourceSuids: sourceBeforeProof.suids,
+        sourceMaxSuid: sourceBeforeProof.maxSuid,
+        sourceHistoryDigest: sourceBeforeProof.digest,
       });
     }
-    return { ...result, candidateGeneration: candidate.generation, rebuildId };
+    return { ...result, candidateGeneration: candidate.generation, rebuildId: effectiveRebuildId };
   }
 
   async promote(
@@ -411,6 +426,24 @@ export class MaterializedViewCatchUpRuntime {
       previous = event.suid;
     }
   }
+}
+
+async function sourceHistoryProof(events: readonly StoredEvent[]): Promise<{
+  readonly eventIds: string[];
+  readonly suids: string[];
+  readonly maxSuid: string;
+  readonly digest: string;
+}> {
+  const eventIds = events.map((event) => event.eventId);
+  const suids = events.map((event) => event.suid);
+  const maxSuid = events.reduce(
+    (maximum, event) => maximum === "" || compareSuid(event.suid, maximum) > 0 ? event.suid : maximum,
+    "",
+  );
+  const canonical = events.map((event) => `${event.eventId}\u0000${event.suid}`).join("\n");
+  const digestBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  const digest = [...new Uint8Array(digestBytes)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  return { eventIds, suids, maxSuid, digest };
 }
 
 function compareSuid(left: string, right: string): number {

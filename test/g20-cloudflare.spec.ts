@@ -18,6 +18,8 @@ import g31WaitPoisonMigration from "../migrations/mv/0006_g31_wait_target_poison
 import orderingQuarantineMigration from "../migrations/mv/0007_g69_ordering_quarantine.sql?raw";
 // @ts-expect-error Vite raw migration import.
 import rebuildVerificationMigration from "../migrations/mv/0008_g69_rebuild_verification.sql?raw";
+// @ts-expect-error Vite raw migration import.
+import rebuildProofMigration from "../migrations/mv/0009_g69_rebuild_proof.sql?raw";
 import { D1EventStore } from "../packages/dcb-runtime/src/d1";
 import { createCloudflareOnlyRuntimeWorker } from "../packages/dcb-runtime/src/cloudflare";
 import { createD1StoreProvider } from "../packages/dcb-runtime/src/d1";
@@ -69,7 +71,7 @@ describe("SDT-G20 Cloudflare-only composition", () => {
   beforeAll(async () => {
     await database().batch(statements(g32Migration as string));
     await applyG44D1Migration(database());
-    await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string, unsafeFailureMvMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string, orderingQuarantineMigration as string, rebuildVerificationMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
+    await mvDatabase().batch(([mvMigration as string, unsafeMvMigration as string, hardeningMvMigration as string, unsafeFailureMvMigration as string, g31WaitReceiptMigration as string, g31WaitPoisonMigration as string, orderingQuarantineMigration as string, rebuildVerificationMigration as string, rebuildProofMigration as string].join("\n")).replace(/^\s*--.*$/gm, "").split(";").map((value) => value.trim())
       .filter(Boolean).map((value) => mvDatabase().prepare(value)));
   });
 
