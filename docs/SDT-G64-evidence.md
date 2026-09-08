@@ -216,6 +216,15 @@ No package was published by this run. The receipt is retained as the direct
 evidence that static `publishConfig.provenance` must be removed in the private
 isolated checkout; it is not a passing release proof.
 
+The first release attempt after adding that removal was run `34286915796`, job
+`102264516595`. Its pre-publish gates all passed, but the private metadata
+verification stopped before any `npm publish`: npm's workspace-shaped
+`npm pkg get publishConfig.provenance --json` result is
+`{"@sekiban/dcb-core":{}}` after deletion, not the literal `{}`. No registry
+request or package publication occurred in that run. The follow-up changes the
+check to parse each package's `package.json` and assert that the
+`publishConfig.provenance` key is absent, which is the actual invariant.
+
 The W176 G22 repair is explicitly a test-quality comparison normalization, not
 an unchanged-test claim: `test/g22-bootstrap-d1.spec.ts` excludes only
 driver-only timing metadata (`duration` and its sibling timing fields) from

@@ -69,7 +69,7 @@ to prevent npm's GitHub Actions auto-provenance behavior. Because the package
 manifests also carry a public-release `publishConfig.provenance` setting, the
 private branch removes that field from each package in the isolated checkout
 with `npm pkg delete publishConfig.provenance` and verifies it is absent before
-publishing. A command-shape guard proves both branches and rejects a private
+publishing by parsing that package's `package.json`. A command-shape guard proves both branches and rejects a private
 command mutated to include `--provenance`.
 
 The operator chooses exactly one activation branch: register npm trusted
