@@ -48,7 +48,7 @@ The G67 mutation receipt also recorded all seven existing G67 mutants red, inclu
 
 The first exact-head CI run for `9eb872144819e07ab639241716c98fa2c4464f1d` was `34212682714`; its G22 failure is the diagnosis above. The replacement run for repair head `46fdc0d` is required to reach terminal state after push. Its URL and job results will be appended without changing this source/evidence scope.
 
-The source repair head is `46fdc0df3b7f8c88b476a83b9125db8fe88906ea`. The first evidence-pinned head was `46e31bebc96663b37194c6ba24b93fc44b091149`; this final receipt is pushed at `3dba074b53ddd10fd39acba3517a5291b3c0aa0b`. Replacement CI run `34213213098` (on the preceding evidence head) is at:
+The source repair head is `46fdc0df3b7f8c88b476a83b9125db8fe88906ea`. The first evidence-pinned head was `46e31bebc96663b37194c6ba24b93fc44b091149`; the current branch contains only subsequent docs-only receipt pinning. Replacement CI run `34213213098` (on the preceding evidence head) is at:
 
 `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34213213098`
 
@@ -56,7 +56,7 @@ At the last terminal inspection, the run was still `in_progress` with no failed 
 
 This is a runner/environment exception, not a G22 failure: the predecessor run `34212682714` has the same three jobs still active while its completed G21–25/foundation lanes separately record the G22 failure. The replacement run has already passed the repaired G22 lane (`ci-g21-g25`), but because the three jobs have not reached terminal state this receipt does not claim exact-head CI green. No hosted job was canceled.
 
-The final docs-only receipt push queued exact-head CI run `34214711858` at `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34214711858`. It was `queued` when this artifact was finalized; its result is intentionally not represented as green or failed here.
+The preceding docs-only receipt push queued exact-head CI run `34214711858` at `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34214711858`. It was `queued` when that receipt was finalized; its result is intentionally not represented as green or failed here. The final docs-only follow-up is not a product change; any CI it triggers is likewise not claimed as green until terminal.
 
 ## Boundaries preserved
 
