@@ -9,7 +9,8 @@ driver metadata, while preserving the canonical-key zero-mutation snapshot.
 - Branch: `claude/sdt-g64-npm-matched-set-claim-recovery-w174`
 - Reviewed starting head: `54656da58494183ae9b799841dbcaa7c224766d1`
 - Source repair commit: `77918cfd8a168f2b41cf3cf58c4bcb844e5e19d6`
-- Final evidence head: recorded after the evidence-only commit below
+- Evidence artifact base commit: `a452e85e942fd1ba2839d41683a63e65fb1d8c4e`
+- Final pushed head: reported by the canonical handoff after this evidence pin
 - Hosted finding: [ci-local-e2e job 102174375025](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34255045275/job/102174375025)
 
 The hosted mismatch was a Miniflare D1 `.all()` envelope difference in
