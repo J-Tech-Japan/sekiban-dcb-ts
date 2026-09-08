@@ -82,6 +82,13 @@ repair. The hosted run that exposed this was `34253795826`, job
 `102154365473`, `ci-local-e2e`; its terminal replacement run is the exact-head
 CI check for the pushed repair.
 
+The next exact-head consumer fixture review found the analogous stale G13
+assumption that `@sekiban/dcb-core` must remain private. The matched release
+contract makes core and client publishable while runtime remains private.
+Commit `d5bbd5e` makes the fixture assert that exact split and leaves its
+entrypoint, deep-import, tree-shaking, sample-source, and explicit runtime
+subpath protections unchanged.
+
 No `npm publish`, tag push, credential creation, deployment, or runtime API
 operation was performed. The workflow's publish branches are operator-only;
 the unauthenticated branch is the credential-free `npm publish --dry-run
