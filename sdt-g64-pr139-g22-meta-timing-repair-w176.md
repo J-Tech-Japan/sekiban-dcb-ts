@@ -11,7 +11,7 @@ driver metadata, while preserving the canonical-key zero-mutation snapshot.
 - Source repair commit: `77918cfd8a168f2b41cf3cf58c4bcb844e5e19d6`
 - Evidence artifact base commit: `a452e85e942fd1ba2839d41683a63e65fb1d8c4e`
 - Final pushed head: reported by the canonical handoff after this evidence pin
-- Hosted finding: [ci-local-e2e job 102174375025](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34255045275/job/102174375025)
+- Hosted finding: [ci-g21-g25 job 102174375025](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34255045275/job/102174375025)
 
 The hosted mismatch was a Miniflare D1 `.all()` envelope difference in
 `meta.duration` (`expected 1`, `received 0`). It was not a durable receipt,
@@ -57,6 +57,10 @@ and `packages/` and all test assertions containing D1 result metadata,
 
 No other same-shape deep D1 result comparison or pinned driver duration,
 elapsed, or timestamp assertion was found.
+
+This was an authorized G22 test-quality comparison repair: it changed only
+the diagnostic snapshot comparator's treatment of driver-only timing metadata;
+it did not change runtime behavior or weaken any semantic assertion.
 
 ## Local verification
 

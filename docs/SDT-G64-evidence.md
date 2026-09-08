@@ -9,14 +9,14 @@ behavior. The matched release set is `@sekiban/dcb-core`,
 
 | Acceptance | Local proof in this checkpoint |
 | --- | --- |
-| AC1 package metadata and matched dependencies | `scripts/dcb-matched-set-pack-check.mjs` checks public metadata, exact versions, `@sekiban/dcb-client` runtime dependencies, exports, license and package allowlists. |
-| AC2 tarball contents | The pack guard runs `npm pack --dry-run --json` for all three packages and rejects source/config/map leakage. |
-| AC3 consumer compatibility | The consumer guard installs the three tarballs outside the workspace, compiles/runs a real `createSekibanExecutor` V1 command under Node16 and Bundler resolution, runs an esbuild bundle, and compares the raw UTF-8 V1 commit body bytes. |
-| AC4 negative boundaries | Red probes reject a stray package file, a private pre-change manifest, and `@sekiban/dcb-domain/dist/index.js` under Node16 and Bundler package exports. |
-| AC5 release workflow | `.github/workflows/release-dcb-matched-set.yml` verifies the tag, runs the domain suite and matched-set gates before any publish step, then runs `scripts/dcb-matched-set-publish-dry-run.mjs` in core → domain → client order for a credential-free provenance dry-run. |
-| AC6 dependency order | The workflow publishes core, domain, then client, with the release guard requiring `dcb-v0.1.0`. |
-| AC7 provenance activation | The workflow supports npm trusted publishing with `NPM_TRUSTED_PUBLISHING=true` and `id-token: write`, or the operator-supplied `NPM_TOKEN` fallback. |
-| AC8 operator handoff | Exact later tag and publish commands are recorded below; this checkpoint does not execute them. |
+| AC1 publishable manifests | `scripts/dcb-matched-set-pack-check.mjs` checks the public metadata, exports, license, README/allowlist, and publish shape for core, domain, and client. |
+| AC2 dependency correctness | The pack guard checks that client runtime dependencies are exactly `@sekiban/dcb-core` and `@sekiban/dcb-domain` at the matched version, and that no workspace/file/link specifier leaks into the release set. |
+| AC3 tarball guards | The pack guard runs `npm pack --dry-run --json` for all three packages, enforces the exact `dist/**`, README.md, LICENSE, and package.json allowlist and size bound, and detects stray-file mutations. |
+| AC4 clean-consumer proof | The consumer guard installs the three tarballs outside the workspace, compiles/runs a real `createSekibanExecutor` V1 command under Node16 and Bundler resolution, runs an esbuild bundle, compares raw UTF-8 V1 commit bytes, and rejects undeclared deep imports. |
+| AC5 release workflow | `.github/workflows/release-dcb-matched-set.yml` verifies the tag, runs the relevant domain/matched-set gates before any publish step, and runs the credential-free provenance dry-run in core → domain → client order. |
+| AC6 downstream-consumer documentation | `docs/release-process.md` and this evidence document explain the matched install/release procedure for the SekibanWasmRuntime consumer, including the exact package order and operator-only activation. |
+| AC7 scope boundary | The sample, runtime API, `@sekiban/dcb-runtime`, and existing guards remain untouched; no deployment, tag, credential, or real publish operation occurs in this PR. |
+| AC8 lifecycle | The dedicated branch, non-draft PR, worker lifecycle receipts, exact-head CI, and evidence document are recorded; no lifecycle gate is weakened or timeout-inflated. |
 
 ## Downstream consumer installation
 
@@ -65,6 +65,13 @@ esbuild consumers:
 
 The assertion compares UTF-8 bytes, not a decoded object: byte length `199`,
 SHA-256 `5c46a252c8d4136de1c0d842ba39732cbb58983957488053431639ebfa2c2695`.
+The consumer guard also runs a genuine negative mutation against the captured
+fake-fetch body: it inserts one whitespace byte before `eventCandidates`,
+proves `JSON.parse` still produces the same V1 object, and requires the raw
+byte assertion to reject the mutation with `V1 raw-byte mismatch`. The
+unmutated body then passes in each Node16, Bundler, and esbuild execution. This
+is the red/green raw-wire proof requested by the review; it does not change
+production transport serialization.
 The raw dry-run script records each command's stdout/stderr and status. The
 fresh receipt had status `0` for all three packages, in order:
 
@@ -118,6 +125,15 @@ No `npm publish`, tag push, credential creation, deployment, or runtime API
 operation was performed. The workflow's publish branches are operator-only;
 the unauthenticated branch is the credential-free `npm publish --dry-run
 --provenance --access public` proof.
+
+The W176 G22 repair is explicitly a test-quality comparison normalization, not
+an unchanged-test claim: `test/g22-bootstrap-d1.spec.ts` excludes only
+driver-only timing metadata (`duration` and its sibling timing fields) from
+the diagnostic `.all()` envelope comparison while retaining all semantic
+fields and the zero-mutation canonical-key guard. The hosted finding was in
+the `ci-g21-g25` lane, job `102174375025`, not `ci-local-e2e`; the failure was
+the Miniflare `meta.duration` mismatch (`1` versus `0`). The repository audit
+found no other same-shape semantic comparison requiring normalization.
 
 The red probes are expected to fail in the mutated pre-change fixture and are
 green only when the guard detects that failure. The clean receipts must show

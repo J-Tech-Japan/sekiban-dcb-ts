@@ -67,6 +67,12 @@ const expectedCommit = {
 };
 const expectedCommitBody = JSON.stringify(expectedCommit);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const rawV1Bytes = (body: string | undefined) => Array.from(new TextEncoder().encode(body));
+const assertRawV1Bytes = (actual: string | undefined, expected: string) => {
+  if (actual === undefined || JSON.stringify(rawV1Bytes(actual)) !== JSON.stringify(rawV1Bytes(expected))) {
+    throw new Error("V1 raw-byte mismatch");
+  }
+};
 const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   const rawBody = init?.body === undefined ? undefined : String(init.body);
@@ -84,11 +90,25 @@ equal(result.kind, "committed");
 const commit = requests.find((request) => request.url.endsWith("/commit"));
 assert(commit, "commit request was not observed");
 deepEqual(commit.body, expectedCommit);
-equal(commit.rawBody, expectedCommitBody);
-const actualBytes = Array.from(new TextEncoder().encode(commit.rawBody));
-const expectedBytes = Array.from(new TextEncoder().encode(expectedCommitBody));
-deepEqual(actualBytes, expectedBytes);
-console.log(JSON.stringify({ status: "PASS", rawV1Body: commit.rawBody, rawV1Bytes: actualBytes }));
+const capturedRawBody = commit.rawBody;
+assert(capturedRawBody !== undefined, "commit raw V1 body was not captured");
+equal(capturedRawBody, expectedCommitBody);
+assertRawV1Bytes(capturedRawBody, expectedCommitBody);
+const actualBytes = rawV1Bytes(capturedRawBody);
+const expectedBytes = rawV1Bytes(expectedCommitBody);
+const rawByteMutant = capturedRawBody.replace(',"eventCandidates"', ', "eventCandidates"');
+assert(rawByteMutant !== capturedRawBody, "raw-byte mutation did not change serialization");
+deepEqual(JSON.parse(rawByteMutant), commit.body);
+let rawByteMutationRejected = false;
+let rawByteMutationReason = "";
+try {
+  assertRawV1Bytes(rawByteMutant, expectedCommitBody);
+} catch (error) {
+  rawByteMutationRejected = true;
+  rawByteMutationReason = String(error instanceof Error ? error.message : error);
+}
+assert(rawByteMutationRejected, "raw-byte mutation escaped the byte-level guard");
+console.log(JSON.stringify({ status: "PASS", rawV1Body: commit.rawBody, rawV1Bytes: actualBytes, expectedRawV1Bytes: expectedBytes, rawByteMutationReceipt: { status: "RED_DETECTED", parsedJsonUnchanged: true, reason: rawByteMutationReason } }));
 `;
 
 const deepImports = [
