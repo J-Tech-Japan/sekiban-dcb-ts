@@ -216,15 +216,21 @@ export class MaterializedViewCatchUpRuntime {
         };
       }
       const sourceEvents = await this.source.readAllEvents(serviceId, instance.lastSuid);
+      await this.assertSourceBatchOrder(
+        serviceId,
+        materializer.id,
+        generation,
+        instance.lastSuid,
+        sourceEvents,
+      );
       let lateLowerQueryDurationMs = 0;
       if (options.runOrderingDetector === true) {
-        lateLowerQueryDurationMs = await this.assertStrictOrder(
+        lateLowerQueryDurationMs = await this.detectLateLowerSuid(
           serviceId,
           materializer.id,
           generation,
           instance.lastSuid,
           instance.updatedAt,
-          sourceEvents,
         );
       }
       let current = instance;
@@ -333,13 +339,12 @@ export class MaterializedViewCatchUpRuntime {
     throw new MaterializedViewStoreError("apply", "MV_CAS_MISMATCH", "Materialized-view catch-up did not converge after concurrent updates");
   }
 
-  private async assertStrictOrder(
+  private async detectLateLowerSuid(
     serviceId: string,
     viewId: string,
     generation: number,
     priorSuid: string,
     checkpointUpdatedAt: number,
-    events: readonly StoredEvent[],
   ): Promise<number> {
     let lateLowerQueryDurationMs = 0;
     if (priorSuid.length > 0) {
@@ -406,6 +411,16 @@ export class MaterializedViewCatchUpRuntime {
         );
       }
     }
+    return lateLowerQueryDurationMs;
+  }
+
+  private async assertSourceBatchOrder(
+    serviceId: string,
+    viewId: string,
+    generation: number,
+    priorSuid: string,
+    events: readonly StoredEvent[],
+  ): Promise<void> {
     let previous = priorSuid;
     for (const event of events) {
       if (compareSuid(previous, event.suid) >= 0) {
@@ -446,7 +461,6 @@ export class MaterializedViewCatchUpRuntime {
       }
       previous = event.suid;
     }
-    return lateLowerQueryDurationMs;
   }
 }
 

@@ -18,6 +18,13 @@ const catchUpFile = "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts";
 const receiptFile = "packages/dcb-runtime/src/diagnostics/G69AdmissionAttempt.ts";
 const configFile = "vitest.g69.config.ts";
 const reportFile = ".artifacts/sdt-g69-ordering-red-green.json";
+const batchOrderAnchor = `      await this.assertSourceBatchOrder(
+        serviceId,
+        materializer.id,
+        generation,
+        instance.lastSuid,
+        sourceEvents,
+      );`;
 
 const lagSqlAnchor = `            AND NOT EXISTS (
               SELECT 1 FROM dcb_events contradictory
@@ -57,6 +64,14 @@ const lagBindMutant = `        message.eventId,
     ];`;
 
 const mutations = [
+  {
+    name: "omit-unconditional-batch-order-guard",
+    file: catchUpFile,
+    testFile: "test/d1-mv.spec.ts",
+    testPattern: "records ORDER_VIOLATION",
+    replacements: [{ from: batchOrderAnchor, to: "      // mutant: omit unconditional source-batch order guard" }],
+    reason: "the pre-apply source-batch order guard must remain fail closed on every path",
+  },
   {
     name: "omit-late-lower-suid-detector",
     file: catchUpFile,
@@ -122,8 +137,8 @@ function vitestPath() {
   fail("vitest runner was not found in the worktree or parent checkout");
 }
 
-function runOracle(pattern) {
-  const args = [vitestPath(), "run", "--config", configFile, "--no-cache", "--pool=forks", "--maxWorkers=1", "--no-file-parallelism", "--disableConsoleIntercept", testFile, "--testNamePattern", pattern];
+function runOracle(pattern, selectedTestFile = testFile) {
+  const args = [vitestPath(), "run", "--config", configFile, "--no-cache", "--pool=forks", "--maxWorkers=1", "--no-file-parallelism", "--disableConsoleIntercept", selectedTestFile, "--testNamePattern", pattern];
   const result = spawnSync(process.execPath, args, {
     cwd: root,
     encoding: "utf8",
@@ -147,6 +162,7 @@ function selfTest() {
   if (!existsSync(resolve(root, configFile))) fail(`missing ${configFile}`);
   if (!read(testFile).includes("real allocation race")) fail("real allocation oracle is missing");
   if (!read(testFile).includes("append-only")) fail("append-only oracle is missing");
+  if (!read(catchUpFile).includes("assertSourceBatchOrder")) fail("unconditional source-batch order guard is missing");
   if (!read(catchUpFile).includes("findLateLowerSuid")) fail("strict-order detector call is missing");
   if (!read(storeFile).includes("findLateLowerSuid(")) fail("D1 strict-order detector is missing");
   if (!read(storeFile).includes("ON CONFLICT (service_id) DO UPDATE")) fail("lag-estimate upsert is missing");
@@ -169,7 +185,7 @@ function main() {
     let mutant;
     try {
       writeFileSync(path, applyMutation(original, mutation), "utf8");
-      mutant = runOracle(mutation.testPattern);
+      mutant = runOracle(mutation.testPattern, mutation.testFile ?? testFile);
     } finally {
       writeFileSync(path, original, "utf8");
     }

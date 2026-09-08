@@ -5,7 +5,17 @@ open and AC4/AC5 remain outstanding. This checkpoint does not implement the
 first-arrival fence, change SafeWindow, retries, drain behavior, deployment or
 production configuration, or perform a production cohort.
 
-## Consultation-003 disposition
+## W169 active scope
+
+The W169 landing is deliberately smaller than the earlier consultation-003
+proof work. It retains only the qualified structural AC1 witness, the bounded
+append-only admission-attempt receipt off the awaited delivery path, and the
+late-lower query as an explicit proof-only opt-in. The detector is disabled on
+every production safe-lane trigger, so it is not claimed to protect deployed
+safe reads. The receipt and proof-only detector have measurable cost; neither
+is described as free or as allocator closure. AC4/AC5 remain open.
+
+## Consultation-003 disposition (historical proof)
 
 The consultation-003 option chosen here is **validated generation-scoped
 fail-closed quarantine** for a proven strict-order incident. It is the smallest
@@ -34,9 +44,10 @@ dissent/history, not silently rewritten:
 > `SETTLED` result.
 
 The dissent remains correct about the fence decision: the first-arrival fence
-is not implemented. The added quarantine protects the already-proven safe
-reader when the detector observes the counterexample; it does not certify an
-allocator-to-source ordering premise.
+is not implemented. The local quarantine behavior is retained as an explicit
+proof/recovery result only; because the detector is disabled on production
+safe-lane triggers, this checkpoint makes no deployed safe-reader protection
+claim and does not certify an allocator-to-source ordering premise.
 
 ## AC1: structural allocator witness, not a production incident
 
@@ -55,7 +66,7 @@ is detected as `LATE_LOWER_SUID`. The detector writes a durable
 coordinator’s safe-lane alarm route returns 404 in this Miniflare setup; that is
 an environment-only alarm receipt, not a deployed scheduling result.
 
-## AC2: detector and quarantine semantics
+## AC2: detector and quarantine semantics (proof-only opt-in)
 
 `D1EventStore.findLateLowerSuidEvidence` now reports a structured
 `late-lower-suid`, `replay`, `miss`, or `unknown` result for a lower SUID whose
@@ -74,7 +85,8 @@ of letting the lower/replayed observation raise it. The restored higher-SUID
 exclusion mutant is red. This preserves the existing public high-lag
 fail-closed behavior; no lag estimate or SafeWindow contract was changed.
 
-On detection, the safe-lane catch-up path appends the existing delivery
+When the proof-only detector is explicitly enabled, the safe-lane catch-up path
+appends the existing delivery
 incident and persists `mv_ordering_quarantines` keyed by
 `service_id/view_id/generation`, with checkpoint SUID, late SUID, event ID,
 classification, and observed time. A structured
@@ -101,7 +113,8 @@ tests prove the typed 503/unsafe distinction, wait-boundary quarantine, and
 generation consistency; the ordering proof proves the durable
 incident/quarantine, complete source-history binding, valid empty output,
 stale-proof invalidation, and formerly skipped rows restoring safe reads. This
-is a validated local fail-closed path, not a deployed alert or recovery claim.
+is a validated local proof-only fail-closed path, not a deployed alert,
+safe-lane protection, or recovery claim.
 
 The detector has explicit false-positive coverage for:
 
@@ -287,9 +300,35 @@ after the option expansion; the non-detector branch now preserves that exact
 source shape. These are repaired compatibility findings, not softened
 assertions or gate changes.
 
+## W169 review repair
+
+W169 restores the pre-existing unconditional pre-apply source-batch SUID walk.
+Every default/runtime catch-up path now rejects an unordered batch, appends the
+existing `ORDER_VIOLATION` incident, and records the same fail-closed quarantine
+before applying any row. The existing G19 default-configuration regression
+remains unchanged; the new G69 guard mutant removes this unconditional call and
+the default test turns red. Only the new late-lower database query is gated by
+`runOrderingDetector`, and it remains off for Queue/delivery, fence-expiry,
+coverage-retry and cron production paths.
+
+The D1 lag-estimator SQL now matches the PR base semantics exactly, including
+`observed_at = excluded.observed_at`; the higher-SUID exclusion also matches
+base. `test/read.spec.ts` is unmodified and retains the public high-lag HTTP
+500 behavior. No SafeWindow, fence, retry, drain, G67 assertion or timeout
+changed.
+
+The additions retain measurable diagnostic/proof cost and make no safe-lane
+protection claim for the off-production detector. The qualified structural AC1
+witness and bounded off-awaited admission receipt remain the only active G69
+evidence surfaces. Historical regression receipts remain explicit: [G46 job
+101940978295](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978295)
+recorded the public fail-closed regression, and [G44 job
+101940978323](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978323)
+recorded the unchanged 5,000 ms G67 timeout. AC4/AC5 remain open.
+
 ## Verification
 
-Passing focused checks at the W168 source:
+Passing focused checks at the W169 source:
 
 - `npx vitest run test/g69-ordering.spec.ts --pool=forks --maxWorkers=1
   --no-file-parallelism --disableConsoleIntercept`: 1 file, 7 tests passed.
@@ -302,9 +341,13 @@ Passing focused checks at the W168 source:
 - `npx vitest run test/g31-waitfor.spec.ts test/g55-read-visibility.spec.ts
   --pool=forks --maxWorkers=1 --no-file-parallelism`: 2 files, 30 tests
   passed, including timeout-quarantine and generation-change boundary reads.
-- `npm run test:g69`: green; four accepted mutants are red: omitted
-  late-lower detector, restored higher-SUID lag exclusion, omitted append-only
-  receipt, and awaited diagnostic receipt on the core path.
+- `npx vitest run --config vitest.config.ts test/d1-mv.spec.ts`: 14/14
+  passed with the existing default configuration; no detector opt-in was added
+  to the regression.
+- `npm run test:g69`: green; five accepted mutants are red: omitted
+  unconditional batch-order guard, omitted late-lower detector, restored
+  higher-SUID lag exclusion, omitted append-only receipt, and awaited
+  diagnostic receipt on the core path.
 - `npm run test:g46`: green; 4 files/31 tests passed and all nine G46
   production mutation probes were red. `test/read.spec.ts` is unchanged and
   retains its expected public HTTP 500 high-lag assertion.

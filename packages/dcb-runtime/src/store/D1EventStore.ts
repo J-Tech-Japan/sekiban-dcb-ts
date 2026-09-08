@@ -698,7 +698,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
                   MAX(0, excluded.observed_at - serialized_dcb_lag_estimates.observed_at), 0),
               excluded.estimate_ms
             ),
-                observed_at = MAX(serialized_dcb_lag_estimates.observed_at, excluded.observed_at)`,
+                observed_at = excluded.observed_at`,
       ).bind(
         message.serviceId,
         lagMs,
