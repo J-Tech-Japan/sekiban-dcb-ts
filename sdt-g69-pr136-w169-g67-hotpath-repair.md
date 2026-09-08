@@ -48,6 +48,14 @@ The G67 mutation receipt also recorded all seven existing G67 mutants red, inclu
 
 The first exact-head CI run for `9eb872144819e07ab639241716c98fa2c4464f1d` was `34212682714`; its G22 failure is the diagnosis above. The replacement run for repair head `46fdc0d` is required to reach terminal state after push. Its URL and job results will be appended without changing this source/evidence scope.
 
+The pushed evidence head is `46e31bebc96663b37194c6ba24b93fc44b091149`; its source ancestor is the repair head `46fdc0df3b7f8c88b476a83b9125db8fe88906ea`. Replacement CI run `34213213098` is at:
+
+`https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34213213098`
+
+At the last terminal inspection, the run was still `in_progress` with no failed job. These jobs were terminal-success: `ci-foundation`, `ci-local-e2e`, `ci-coverage`, `ci-g21-g25`, `ci-g26-g27`, `ci-g28`, `ci-g29`, `ci-g31`, `ci-g38`, `ci-g41`, `ci-g42`, `ci-g43`, `ci-g44`, `ci-g45`, `ci-g46`, and `cosmos-emulator`. The remaining active jobs were `ci-g30-core`, `ci-g30-forced-red`, and `ci-g32-parity`; their active steps were respectively `Run SDT-G30 trace schema, B0 cohort, and manifest closure lane`, `Prove SDT-G30 forced-red CI reachability`, and `Run SDT-G32 C# parity, logical-record, tags, and cutover lane`.
+
+This is a runner/environment exception, not a G22 failure: the predecessor run `34212682714` has the same three jobs still active while its completed G21–25/foundation lanes separately record the G22 failure. The replacement run has already passed the repaired G22 lane (`ci-g21-g25`), but because the three jobs have not reached terminal state this receipt does not claim exact-head CI green. No hosted job was canceled.
+
 ## Boundaries preserved
 
 - No Wrangler, Cloudflare, deployment, resource, PR review, merge, or lifecycle mutation was performed.
