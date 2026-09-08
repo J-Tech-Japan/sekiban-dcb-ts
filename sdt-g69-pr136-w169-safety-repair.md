@@ -1,6 +1,8 @@
 # SDT-G69 PR136 W169 safety repair
 
-Status: local repair complete; exact-head CI is pending after the scoped push.
+Status: local repair complete; hosted exact-head CI is classified as blocked by
+known G43/G67 exceptions and still-running G30/G32 runner steps, not by the
+W169 source surface.
 
 - Repository: `J-Tech-Japan/sekiban-dcb-ts`
 - PR: #136; issue #133 remains open and referenced, not closed
@@ -56,6 +58,34 @@ or allocator closure. AC4/AC5 remain outstanding.
 - G44 unchanged G67 5,000 ms timeout:
   [job 101940978323](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978323).
 
-No deployment or production operation was performed. The exact-head hosted CI
-run and terminal C-14 classification will be appended after push without
-changing the scoped source repair.
+## Exact-head hosted CI classification
+
+- Run `34203242073` for source head
+  `1c974fee541932f00d2ceaf1cc7e870d8eb6edcb` was not terminal at this
+  checkpoint.
+- `ci-foundation` job `101986685395` failed at the known G43 AC6 obligation
+  selection assertion in `test/g43-tag-sql.spec.ts:443`: it expected event
+  `0ecb1824-ac84-78df-9698-d91b9abfdcfe` but observed the earlier pending
+  obligation `11cb1824-b19d-78df-96b1-de1b9abfdffe`. This is the documented
+  G43 scheduler/fixture exception and is outside W169.
+- `ci-g44` job `101986686018` failed the unchanged G67 AC3 test at
+  `test/g67-safe-lane.spec.ts:731` with `Error: Test timed out in 5000ms`
+  after 10 passed tests. The G67 assertion and timeout were not changed by
+  W169; this is the documented G44 exception.
+- `ci-g30-core` job `101986685756` remains in progress in
+  `Run SDT-G30 trace schema, B0 cohort, and manifest closure lane`, and
+  `ci-g30-forced-red` job `101986685780` remains in progress in
+  `Prove SDT-G30 forced-red CI reachability`. Both have no completed log blob
+  and match the known G30 hosted runner stall.
+- `ci-g32-parity` job `101986685494` remains in progress in
+  `Prove SDT-G32 forced-red CI reachability`; its preceding parity lane
+  completed successfully. No W169 file is in that lane's scope.
+- Green terminal lanes at inspection: G26/G27, G21-G25, G28, G29, G31, G38,
+  G41, G42, G43, G45, G46, local-e2e, coverage, and cosmos-emulator.
+
+The hosted failures and stalls are recorded as C-14 exceptions; no gate,
+assertion, timeout, or test was weakened. Exact-head rereview remains blocked
+until orchestration can classify or rerun those external exceptions.
+
+No deployment or production operation was performed. The source repair is
+ready for rereview once the external CI exceptions are resolved.
