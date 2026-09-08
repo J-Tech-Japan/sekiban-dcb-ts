@@ -16,6 +16,7 @@ const testFile = "test/g69-ordering.spec.ts";
 const storeFile = "packages/dcb-runtime/src/store/D1EventStore.ts";
 const catchUpFile = "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts";
 const receiptFile = "packages/dcb-runtime/src/diagnostics/G69AdmissionAttempt.ts";
+const g22File = "test/g22-bootstrap-d1.spec.ts";
 const configFile = "vitest.g69.config.ts";
 const reportFile = ".artifacts/sdt-g69-ordering-red-green.json";
 const batchOrderAnchor = `      await this.assertSourceBatchOrder(
@@ -118,6 +119,18 @@ const mutations = [
     }],
     reason: "a stalled diagnostic observation must not hold core admission or Queue disposition",
   },
+  {
+    name: "schedule-diagnostic-after-canonical-rejection",
+    file: storeFile,
+    testFile: g22File,
+    configFile: "vitest.config.ts",
+    testPattern: "attributes canonical-key divergence",
+    replacements: [{
+      from: "    if (!suppressDiagnostic) {",
+      to: "    if (true) {",
+    }],
+    reason: "canonical fail-before-batch rejection must schedule no diagnostic D1 mutation",
+  },
 ];
 
 function fail(message) {
@@ -146,8 +159,8 @@ function vitestPath() {
   fail("vitest runner was not found in the worktree or parent checkout");
 }
 
-function runOracle(pattern, selectedTestFile = testFile) {
-  const args = [vitestPath(), "run", "--config", configFile, "--no-cache", "--pool=forks", "--maxWorkers=1", "--no-file-parallelism", "--disableConsoleIntercept", selectedTestFile, "--testNamePattern", pattern];
+function runOracle(pattern, selectedTestFile = testFile, selectedConfigFile = configFile) {
+  const args = [vitestPath(), "run", "--config", selectedConfigFile, "--no-cache", "--pool=forks", "--maxWorkers=1", "--no-file-parallelism", "--disableConsoleIntercept", selectedTestFile, "--testNamePattern", pattern];
   const result = spawnSync(process.execPath, args, {
     cwd: root,
     encoding: "utf8",
@@ -171,6 +184,7 @@ function selfTest() {
   if (!existsSync(resolve(root, configFile))) fail(`missing ${configFile}`);
   if (!read(testFile).includes("real allocation race")) fail("real allocation oracle is missing");
   if (!read(testFile).includes("append-only")) fail("append-only oracle is missing");
+  if (!read(g22File).includes("deferredDiagnosticPromises")) fail("G22 diagnostic lifetime oracle is missing");
   if (!read(catchUpFile).includes("assertSourceBatchOrder")) fail("unconditional source-batch order guard is missing");
   if (!read(catchUpFile).includes("findLateLowerSuid")) fail("strict-order detector call is missing");
   if (!read(storeFile).includes("findLateLowerSuid(")) fail("D1 strict-order detector is missing");
@@ -194,7 +208,7 @@ function main() {
     let mutant;
     try {
       writeFileSync(path, applyMutation(original, mutation), "utf8");
-      mutant = runOracle(mutation.testPattern, mutation.testFile ?? testFile);
+      mutant = runOracle(mutation.testPattern, mutation.testFile ?? testFile, mutation.configFile ?? configFile);
     } finally {
       writeFileSync(path, original, "utf8");
     }

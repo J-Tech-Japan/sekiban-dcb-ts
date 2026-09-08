@@ -60,9 +60,12 @@ export interface D1StoreOptions {
 
 /** A contradictory EventId identity is a typed fail-closed outcome. */
 export class D1IdentityConflictError extends CanonicalEventIdentityConflictError {
-  constructor(message: string) {
+  readonly beforeMutation: boolean;
+
+  constructor(message: string, beforeMutation = false) {
     super("d1", "", message);
     this.name = "D1IdentityConflictError";
+    this.beforeMutation = beforeMutation;
   }
 }
 
@@ -319,22 +322,25 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       failure = { error };
     }
     const retryReason = failure === undefined ? null : errorText(failure.error);
-    // Keep diagnostic preparation outside the awaited delivery turn. The
-    // receipt is invocation-lifetime evidence; neither its pre-read nor its
-    // append may start while recordDelivery is still deciding Queue
-    // disposition or the public response.
-    const diagnostic = Promise.resolve().then(() => this.bestEffortG69AdmissionAttempt(
-      message,
-      arrivedAt,
-      deliverySource,
-      attemptContext,
-      mutationAttemptId,
-      result,
-      failure,
-      retryReason,
-    ));
-    if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);
-    else void diagnostic;
+    // A canonical identity rejection is a complete fail-before-batch
+    // boundary: not even diagnostic-table INSERT/trim work may be scheduled
+    // for this invocation. Other outcomes retain the diagnostic-only receipt,
+    // but it remains outside the awaited delivery turn and invocation-owned.
+    const suppressDiagnostic = failure?.error instanceof D1IdentityConflictError && failure.error.beforeMutation;
+    if (!suppressDiagnostic) {
+      const diagnostic = Promise.resolve().then(() => this.bestEffortG69AdmissionAttempt(
+        message,
+        arrivedAt,
+        deliverySource,
+        attemptContext,
+        mutationAttemptId,
+        result,
+        failure,
+        retryReason,
+      ));
+      if (attemptContext?.waitUntil !== undefined) attemptContext.waitUntil(diagnostic);
+      else void diagnostic;
+    }
     if (failure !== undefined) throw failure.error;
     return result!;
   }
@@ -387,7 +393,7 @@ export class D1EventStore implements EventStore, DetectorStore, ProjectionStore,
       storedBefore.correlationId !== metadata.correlationId ||
       storedBefore.executedUser !== metadata.executedUser
     )) {
-      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`);
+      throw new D1IdentityConflictError(`EventId ${message.eventId} conflicts with its canonical event identity`, true);
     }
     const lagMs = Math.max(0, arrivedAt - message.enqueuedAt);
     const statements: D1PreparedStatement[] = [

@@ -326,6 +326,33 @@ recorded the public fail-closed regression, and [G44 job
 101940978323](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34188299398/job/101940978323)
 recorded the unchanged 5,000 ms G67 timeout. AC4/AC5 remain open.
 
+## W169 G22 deferred-receipt repair
+
+The exact-head rereview finding was narrower than the original G22
+fail-before-batch assertion: a canonical event-identity conflict was correctly
+rejected before the core `recordDelivery` batch, but the old deferred
+diagnostic lifetime still scheduled the G69 admission-attempt `INSERT` and
+bounded-retention `DELETE`. That meant the core tables were unchanged while
+the diagnostic table could still mutate. The repair marks only the stored
+pre-admission canonical-identity check as `beforeMutation` and suppresses the
+diagnostic lifetime for that rejection. Post-batch identity conflicts and other
+diagnostic-eligible outcomes retain the bounded, best-effort receipt outside
+the awaited core path; no diagnostic pre-read was restored.
+
+The G22 regression now drains the initial diagnostic lifetime before taking its
+baseline, captures the guarded `waitUntil` promises for the rejected delivery,
+and snapshots `serialized_dcb_g69_admission_attempts` together with the
+canonical tables. It asserts the rejection schedules zero diagnostic promises,
+starts zero `recordDelivery` batches, and leaves every captured table unchanged.
+The `schedule-diagnostic-after-canonical-rejection` red mutant re-enables the
+deferred scheduling branch and fails this oracle. This proves zero D1 mutation
+for the entire rejected invocation, not only zero core batch mutation.
+
+This repair leaves the restored unconditional default `ORDER_VIOLATION`
+guard/incident, base D1 lag-estimator semantics and unchanged public high-lag
+HTTP 500 test intact. It changes no fence, SafeWindow, retry, drain, G67
+assertion/timeout, deployment, production or G32 behavior.
+
 ## Verification
 
 Passing focused checks at the W169 source:
@@ -344,10 +371,17 @@ Passing focused checks at the W169 source:
 - `npx vitest run --config vitest.config.ts test/d1-mv.spec.ts`: 14/14
   passed with the existing default configuration; no detector opt-in was added
   to the regression.
-- `npm run test:g69`: green; five accepted mutants are red: omitted
+- `npm run test:g69`: green; all seven accepted mutants are red: omitted
   unconditional batch-order guard, omitted late-lower detector, restored
-  higher-SUID lag exclusion, omitted append-only receipt, and awaited
-  diagnostic receipt on the core path.
+  higher-SUID lag exclusion, restored monotonic lag `observed_at`, omitted
+  append-only receipt, awaited diagnostic receipt on the core path, and the
+  G22 `schedule-diagnostic-after-canonical-rejection` mutant. The six
+  SDT-G60 mutants remain unchanged and green in their own required lane.
+- `npm exec vitest run --config vitest.config.ts
+  test/g22-bootstrap-d1.spec.ts --no-file-parallelism --maxWorkers=1`: 1 file,
+  2 tests passed. The canonical-key divergence test proves no deferred
+  diagnostic promise, no `recordDelivery` batch and no diagnostic-table
+  mutation.
 - `npm run test:g46`: green; 4 files/31 tests passed and all nine G46
   production mutation probes were red. `test/read.spec.ts` is unchanged and
   retains its expected public HTTP 500 high-lag assertion.
