@@ -99,3 +99,19 @@ status. Any deterministic G69/G58/foundation failure remains a repair blocker;
 only a matching documented baseline/environment result may be classified under
 C-14. This artifact does not claim the PR is review-ready or that F1–F7 have
 passed hosted CI.
+
+## Durable handoff checkpoint
+
+The scoped G58 guard compatibility repair is pushed at exact head
+`219cd4c840cf16edd221eada1f89949d87576cf4` on
+`claude/sdt-g70-allocator-closed-prefix-w176`. The new exact-head CI run is
+[34307935829](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34307935829)
+for that SHA. At handoff it is still non-terminal; its completed G46 lane
+has the measurement-only `test/g43-measurement.spec.ts` failure
+(`commit.rowsRead` all-points spread `24 > 2`,
+[job 102328418873](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34307935829/job/102328418873)).
+That is retained as an unresolved hosted lane exception, not called green.
+The G58 source-guard failure from the prior run is repaired locally and the
+focused diagnosis guard self-test passes. No further repair, deployment,
+review-state action, or cleanup was performed in this handoff. The unrelated
+generated artifacts listed above remain unstaged.
