@@ -158,12 +158,29 @@ describe("SDT-G58 W97 same-tick frontier repair", () => {
       appendDeliveryIncident: async () => undefined,
     };
     const runtime = new ProjectionRuntime(source, DEPLOYED_PROJECTOR_REGISTRY);
-    const blocked = await runtime.pollRegistered(serviceId, 100_000, stale);
+    const blockedCertificate = {
+      certificateVersion: 1 as const,
+      authority: "allocator-transaction" as const,
+      status: "ready" as const,
+      serviceId,
+      allocatorLineageId: "g58-diagnosis-lineage",
+      closedPrefixSuid: stale,
+      unresolvedCount: 0,
+      generatedAt: 100_000,
+      migrationProofId: null,
+    };
+    const blocked = await runtime.pollRegistered(serviceId, 100_000, stale, stale, blockedCertificate);
     expect(blocked).toHaveLength(1);
     expect(blocked[0]).toMatchObject({ advancedSourceEvents: 1, appliedEvents: 1 });
     expect(checkpoint?.lastSuid).toBe(stale);
 
-    const noFrontier = await runtime.pollRegistered(serviceId, 100_000, null);
+    const noFrontier = await runtime.pollRegistered(
+      serviceId,
+      100_000,
+      null,
+      null,
+      { ...blockedCertificate, closedPrefixSuid: null },
+    );
     expect(noFrontier).toHaveLength(1);
     expect(noFrontier[0]).toMatchObject({ advancedSourceEvents: 0, appliedEvents: 0 });
     expect(checkpoint?.lastSuid).toBe(stale);

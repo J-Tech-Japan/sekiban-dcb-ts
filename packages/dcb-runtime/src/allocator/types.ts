@@ -9,7 +9,7 @@ export interface AllocatedCandidate extends AllocationCandidate {
   suid: string;
 }
 
-export type IssuanceObligationDisposition = "installed" | "fenced";
+export type IssuanceObligationDisposition = "installed" | "fenced" | "revoked";
 
 /**
  * Durable issuance authority for one allocator candidate.  The obligation
@@ -25,6 +25,8 @@ export interface IssuanceObligation {
   targetTags: string[];
   installedTags: string[];
   fencedTags: string[];
+  /** Tags whose exact writer identity was durably revoked by the allocator. */
+  revokedTags?: string[];
   status: "unresolved" | "resolved";
   /** Monotonic allocator-local sequence; used for bounded prefix advancement. */
   sequence?: number;
@@ -57,6 +59,8 @@ export interface IssuanceRecoveryRecord {
   targetTags: string[];
   nextAttemptAt: number;
   attemptCount: number;
+  /** After this deadline an absent writer is resolved by durable revocation. */
+  revocationDueAt?: number;
 }
 
 export interface ClosedPrefixCertificate {
@@ -65,6 +69,8 @@ export interface ClosedPrefixCertificate {
   authority: "allocator-transaction";
   status: "ready" | "unreconciled";
   allocatorLineageId: string;
+  /** Service identity bound to the consumer that may use this certificate. */
+  serviceId?: string | null;
   closedPrefixSuid: string | null;
   unresolvedCount: number;
   generatedAt: number;
@@ -96,6 +102,8 @@ export interface AllocatorState {
   allocatorLineageId: string;
   allocatedWatermark: string | null;
   bootstrapSeed: { importId: string; leaseEpoch: number; highWatermark: string } | null;
+  /** The service namespace that owns this allocator, when supplied by G70. */
+  serviceId?: string | null;
   /** Durable rate-limit key for rollback warnings; it is not allocation authority. */
   lastRollbackWarningFingerprint?: string | null;
   /** Measured persistence window for the most recent allocation transaction. */

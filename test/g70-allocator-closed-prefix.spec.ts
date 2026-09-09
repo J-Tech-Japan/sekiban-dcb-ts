@@ -1,4 +1,4 @@
-import { env, SELF } from "cloudflare:test";
+import { env, runDurableObjectAlarm, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -6,9 +6,13 @@ import type {
   ClosedPrefixCertificate,
   IssuanceObligation,
 } from "../packages/dcb-runtime/src/allocator/types";
+import { readClosedPrefixCertificate } from "../packages/dcb-runtime/src/allocator/AllocatorDurableObject";
+import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
+import { DEPLOYED_PROJECTOR_REGISTRY } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import type { PipelineStore, ProjectionCheckpoint, ProjectionCheckpointAdvance, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import { TEST_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/service/ServiceIdentityProvider";
-import { g32Suid } from "./helpers/g32-fixtures";
+import { g32Suid, g32SuidAt } from "./helpers/g32-fixtures";
 
 interface AllocatedVector {
   attemptId: string;
@@ -95,7 +99,8 @@ async function appendDelayedWriter(
   serviceId: string,
   tagName: string,
   vector: AllocatedVector,
-): Promise<void> {
+  expectedStatus = 201,
+): Promise<Response> {
   const namespace = (env as unknown as { TAG?: DurableObjectNamespace }).TAG;
   if (namespace === undefined) throw new Error("G70 delayed-writer proof requires the Tag binding");
   const tag = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "tag", identity: tagName }));
@@ -126,6 +131,7 @@ async function appendDelayedWriter(
       reservationToken: state.activeReservation!.token,
       allocatorLineageId: vector.allocatorLineageId,
       candidates: [{
+        candidateIndex: candidate.candidateIndex,
         eventId: candidate.eventId,
         suid: candidate.suid,
         payload: JSON.stringify({ value: "g70-delayed-writer" }),
@@ -137,7 +143,8 @@ async function appendDelayedWriter(
       }],
     }),
   });
-  expect(append.status).toBe(201);
+  expect(append.status).toBe(expectedStatus);
+  return append;
 }
 
 async function resolve(
@@ -158,6 +165,53 @@ async function resolve(
   });
   expect(response.status).toBe(200);
   return json<IssuanceObligation>(response);
+}
+
+function publicSafeMatrixStore(event: StoredEvent, tag: string): PipelineStore {
+  let checkpoint: ProjectionCheckpoint | undefined;
+  return {
+    initialize: async () => undefined,
+    readAllEvents: async (_serviceId: string, afterSuid: string) => afterSuid.length === 0 || event.suid > afterSuid ? [event] : [],
+    currentLagBound: async () => 0,
+    listProjectionTags: async () => [tag],
+    readProjectionCheckpoint: async () => checkpoint,
+    advanceProjectionCheckpoint: async (next: ProjectionCheckpointAdvance) => {
+      if (checkpoint !== undefined && checkpoint.lastSuid !== next.expectedLastSuid) return false;
+      checkpoint = { ...next };
+      return true;
+    },
+    projectionLag: async () => ({ serviceId: event.serviceId, projectionId: "g70-public-safe-matrix", tag, checkpointSuid: checkpoint?.lastSuid ?? "", headSuid: event.suid, behindEvents: checkpoint === undefined ? 1 : 0 }),
+    appendDeliveryIncident: async () => undefined,
+  } as unknown as PipelineStore;
+}
+
+function publicStoredEvent(
+  serviceId: string,
+  body: { writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> },
+  tag: string,
+  value: string,
+): StoredEvent {
+  const written = body.writtenEvents[0]!;
+  return {
+    serviceId,
+    id: written.id,
+    eventId: written.id,
+    sortableUniqueId: written.sortableUniqueIdValue,
+    suid: written.sortableUniqueIdValue,
+    payload: JSON.stringify({ value }),
+    tags: [tag],
+    eventTags: [tag],
+    eventType: "G70PublicMatrixEvent",
+    timestamp: new Date().toISOString(),
+    causationId: null,
+    correlationId: null,
+    executedUser: null,
+    provenance: "g32",
+    firstArrivedAt: Date.now() - 30_000,
+    lastArrivedAt: Date.now() - 30_000,
+    maxDeliveryLagMs: 0,
+    arrivals: [],
+  };
 }
 
 describe("SDT-G70 allocator closed-prefix authority", () => {
@@ -216,6 +270,7 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
       proofId: "g70-reconciliation-proof",
       historyComplete: true,
       completeThroughSuid: seededState.allocatedWatermark!,
+      serviceId: seededService,
       obligations: [{
         attemptId: "g70-imported-attempt",
         candidateIndex: 0,
@@ -253,6 +308,7 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
       proofId: "g70-reconcile-cut-proof",
       historyComplete: true,
       completeThroughSuid: allocatedState.allocatedWatermark!,
+      serviceId,
       obligations: [],
     };
     const empty = await post(stub, "/reconcile-cut", cut);
@@ -261,6 +317,7 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
 
     const omitted = await post(stub, "/reconcile-cut", {
       ...cut,
+      serviceId,
       obligations: [{
         attemptId: first.attemptId,
         candidateIndex: 0,
@@ -274,6 +331,7 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
 
     const beyond = await post(stub, "/reconcile-cut", {
       ...cut,
+      serviceId,
       completeThroughSuid: first.candidates[0]!.suid,
       obligations: [
         {
@@ -294,12 +352,96 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     });
     expect(beyond.status).toBe(409);
     expect(await json<{ code: string }>(beyond)).toMatchObject({ code: "reconciliation_incomplete_cut" });
-    // The invalid cuts did not install the migration proof. Participant-free
-    // allocations are already individually resolved, so the certificate can
-    // expose their prefix while the legacy namespace remains un-reconciled.
+    // Invalid cuts cannot install the migration proof. Participant-free
+    // allocation history remains fail-closed until an authoritative
+    // membership/import cut is accepted.
+    expect(await get<ClosedPrefixCertificate>(stub, "/closed-prefix")).toMatchObject({
+      status: "unreconciled",
+      migrationProofId: null,
+    });
+  });
+
+  it("AC3/AC6: a legacy participant-free vector stays blocked until membership proof and vanished-writer resolution", async () => {
+    const serviceId = unique("g70-legacy-membership");
+    const stub = allocator(serviceId);
+    expect((await post(stub, "/seed-after", {
+      importId: `g70-legacy-import-${crypto.randomUUID()}`,
+      leaseEpoch: 1,
+      highWatermark: g32Suid("g70-legacy-seed-watermark"),
+    })).status).toBe(201);
+    const legacyAttempt = `g70-legacy-attempt-${crypto.randomUUID()}`;
+    const legacyAllocated = await post(stub, "/allocate", {
+      attemptId: legacyAttempt,
+      serviceId,
+      candidates: [{ candidateIndex: 0, eventId: `${legacyAttempt}-event` }],
+    });
+    expect(legacyAllocated.status).toBe(201);
+    const legacyVector = await json<AllocatedVector>(legacyAllocated);
+    expect(await get<ClosedPrefixCertificate>(stub, "/closed-prefix")).toMatchObject({
+      status: "unreconciled",
+      closedPrefixSuid: null,
+    });
+
+    const higherTag = `room:${unique("g70-legacy-higher-tag")}`;
+    const higherResponse = await publicCommit(serviceId, [higherTag]);
+    expect(higherResponse.status).toBe(200);
+    const higherBody = await json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>(higherResponse);
+    const higherObligation = (await get<IssuanceObligation[]>(stub, "/obligations")).find((row) => row.eventId === higherBody.writtenEvents[0]!.id);
+    expect(higherObligation).toBeDefined();
+    const higherVector: AllocatedVector = {
+      attemptId: higherObligation!.attemptId,
+      allocatorLineageId: higherObligation!.allocatorLineageId,
+      candidates: [{
+        candidateIndex: higherObligation!.candidateIndex,
+        eventId: higherObligation!.eventId,
+        suid: higherObligation!.suid,
+        targetTags: higherObligation!.targetTags,
+      }],
+    };
+    expect(await get<ClosedPrefixCertificate>(stub, "/closed-prefix")).toMatchObject({
+      status: "unreconciled",
+      closedPrefixSuid: null,
+    });
+
+    const state = await get<AllocatorState>(stub, "/state");
+    const legacyTag = `room:${unique("g70-legacy-imported-membership")}`;
+    const cut = await post(stub, "/reconcile-cut", {
+      allocatorLineageId: state.allocatorLineageId,
+      proofId: `g70-legacy-cut-${crypto.randomUUID()}`,
+      legacyMembershipProofId: `g70-membership-proof-${crypto.randomUUID()}`,
+      historyComplete: true,
+      completeThroughSuid: state.allocatedWatermark,
+      serviceId,
+      obligations: [
+        {
+          attemptId: legacyVector.attemptId,
+          candidateIndex: 0,
+          eventId: legacyVector.candidates[0]!.eventId,
+          suid: legacyVector.candidates[0]!.suid,
+          targetTags: [legacyTag],
+        },
+        {
+          attemptId: higherVector.attemptId,
+          candidateIndex: 0,
+          eventId: higherVector.candidates[0]!.eventId,
+          suid: higherVector.candidates[0]!.suid,
+          targetTags: [higherTag],
+        },
+      ],
+    });
+    expect(cut.status).toBe(201);
     expect(await get<ClosedPrefixCertificate>(stub, "/closed-prefix")).toMatchObject({
       status: "ready",
-      migrationProofId: null,
+      closedPrefixSuid: null,
+      unresolvedCount: 1,
+    });
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 3_200));
+    const legacyResolved = await waitForObligation(stub, legacyVector.candidates[0]!.eventId);
+    expect(legacyResolved).toMatchObject({ status: "resolved", revokedTags: [legacyTag], installedTags: [] });
+    expect(await get<ClosedPrefixCertificate>(stub, "/closed-prefix")).toMatchObject({
+      status: "ready",
+      closedPrefixSuid: higherVector.candidates[0]!.suid,
+      unresolvedCount: 0,
     });
   });
 
@@ -479,6 +621,121 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     });
   });
 
+  it("AC1: temporary repair coverage can be cleared, while allocator revocation rejects the same delayed writer", async () => {
+    const temporaryServiceId = unique("g70-temporary-fence");
+    const temporaryTag = unique("g70-temporary-fence-tag");
+    const temporaryAttempt = `g70-temporary-fence-attempt-${crypto.randomUUID()}`;
+    expect((await publicCommit(temporaryServiceId, [temporaryTag], "cancel-never-reaches-tag", temporaryAttempt)).status).toBe(504);
+    const temporaryVector = await json<AllocatedVector>(await SELF.fetch(
+      `https://commit.test/allocator/attempts/${encodeURIComponent(temporaryAttempt)}`,
+      { headers: { [TEST_SERVICE_ID_HEADER]: temporaryServiceId } },
+    ));
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const temporaryStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId: temporaryServiceId, doClass: "tag", identity: temporaryTag }));
+    const fenceUrl = `https://g70.test/fence/install?__tag=${encodeURIComponent(temporaryTag)}&__serviceId=${encodeURIComponent(temporaryServiceId)}`;
+    const clearFenceUrl = `https://g70.test/fence/clear?__tag=${encodeURIComponent(temporaryTag)}&__serviceId=${encodeURIComponent(temporaryServiceId)}`;
+    expect((await temporaryStub.fetch(fenceUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attemptId: temporaryAttempt, epoch: 1, reason: "partial_write" }),
+    })).status).toBe(201);
+    // A temporary repair fence is visible to the Tag, but it is not an
+    // irrevocable issuance fact.  Running the allocator recovery boundary
+    // while it is present must leave the exact writer unresolved.
+    await runDurableObjectAlarm(allocator(temporaryServiceId));
+    // The first wake migrates the pre-existing schedule index; the second
+    // wake is the due-time processing pass.  Keep both steps explicit so the
+    // oracle exercises the same due-time durable alarm path used across activations.
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 1_100));
+    await runDurableObjectAlarm(allocator(temporaryServiceId));
+    expect(await get<IssuanceObligation[]>(allocator(temporaryServiceId), "/obligations")).toEqual(
+      expect.arrayContaining([expect.objectContaining({
+        eventId: temporaryVector.candidates[0]!.eventId,
+        status: "unresolved",
+        fencedTags: [],
+      })]),
+    );
+    expect((await temporaryStub.fetch(clearFenceUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attemptId: temporaryAttempt, epoch: 1, reason: "partial_write" }),
+    })).status).toBe(200);
+    await appendDelayedWriter(temporaryServiceId, temporaryTag, temporaryVector);
+    expect((await waitForObligation(allocator(temporaryServiceId), temporaryVector.candidates[0]!.eventId)).installedTags).toEqual([temporaryTag]);
+
+    const revokedServiceId = unique("g70-revoked-writer");
+    const revokedTag = unique("g70-revoked-writer-tag");
+    const revokedAttempt = `g70-revoked-writer-attempt-${crypto.randomUUID()}`;
+    expect((await publicCommit(revokedServiceId, [revokedTag], "cancel-never-reaches-tag", revokedAttempt)).status).toBe(504);
+    const revokedVector = await json<AllocatedVector>(await SELF.fetch(
+      `https://commit.test/allocator/attempts/${encodeURIComponent(revokedAttempt)}`,
+      { headers: { [TEST_SERVICE_ID_HEADER]: revokedServiceId } },
+    ));
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 3_200));
+    const revokedObligation = await waitForObligation(allocator(revokedServiceId), revokedVector.candidates[0]!.eventId);
+    expect(revokedObligation).toMatchObject({ status: "resolved", revokedTags: [revokedTag], installedTags: [], fencedTags: [] });
+    const rejected = await appendDelayedWriter(revokedServiceId, revokedTag, revokedVector, 409);
+    expect(await json<{ code: string }>(rejected)).toMatchObject({ code: "writer_revoked" });
+    const revokedTagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId: revokedServiceId, doClass: "tag", identity: revokedTag }));
+    const revokedState = await json<{ events: unknown[] }>(await revokedTagStub.fetch(`https://g70.test/state?__tag=${encodeURIComponent(revokedTag)}&__serviceId=${encodeURIComponent(revokedServiceId)}`));
+    expect(revokedState.events).toHaveLength(0);
+  }, 15000);
+
+  it("AC2/AC5: due-time recovery drains beyond one page and resolves a permanent Tag fact autonomously", async () => {
+    const serviceId = unique("g70-recovery-page");
+    const stub = allocator(serviceId);
+    const attemptId = `g70-recovery-page-attempt-${crypto.randomUUID()}`;
+    const tags = Array.from({ length: 40 }, (_, index) => unique(`g70-recovery-page-tag-${index}`));
+    const allocation = await post(stub, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: tags.map((tag, candidateIndex) => ({
+        candidateIndex,
+        eventId: `${attemptId}-event-${candidateIndex}`,
+        targetTags: [tag],
+      })),
+    });
+    expect(allocation.status).toBe(201);
+    const vector = await json<AllocatedVector>(allocation);
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const lastTag = tags.at(-1)!;
+    const lastTagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: lastTag }));
+    const acquired = await lastTagStub.fetch(`https://g70.test/acquire?__tag=${encodeURIComponent(lastTag)}&__serviceId=${encodeURIComponent(serviceId)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        attemptId,
+        epoch: 1,
+        eventTags: [lastTag],
+        consistencyTags: [{ tag: lastTag, lastSortableUniqueId: "" }],
+      }),
+    });
+    expect([200, 201]).toContain(acquired.status);
+    const tagState = await json<{ activeReservation: { token: string } | null }>(await lastTagStub.fetch(
+      `https://g70.test/state?__tag=${encodeURIComponent(lastTag)}&__serviceId=${encodeURIComponent(serviceId)}`,
+    ));
+    expect(tagState.activeReservation).not.toBeNull();
+    const cancelled = await lastTagStub.fetch(`https://g70.test/cancel?__tag=${encodeURIComponent(lastTag)}&__serviceId=${encodeURIComponent(serviceId)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        attemptId,
+        epoch: 1,
+        reservationToken: tagState.activeReservation!.token,
+        forceTombstone: true,
+      }),
+    });
+    expect(cancelled.status).toBe(200);
+    expect(await json<{ fenceConfirmed?: boolean }>(cancelled)).toMatchObject({ fenceConfirmed: true });
+
+    // The last identity is deliberately beyond RECOVERY_BATCH_LIMIT.  No
+    // request-owned retry or manual alarm invocation is used; the allocator's
+    // due-time continuation must eventually observe the durable tombstone.
+    const last = vector.candidates.at(-1)!;
+    const recovered = await waitForObligation(stub, last.eventId);
+    expect(recovered).toMatchObject({ status: "resolved", fencedTags: [lastTag], installedTags: [], revokedTags: [] });
+  });
+
   it("AC5: public CommitWorker matrix keeps multi-Tag and partial/lost handoffs behind the closed-prefix gate", async () => {
     const serviceId = unique("g70-matrix");
     const firstTag = unique("g70-matrix-first");
@@ -513,6 +770,122 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     expect(finalCertificate.unresolvedCount).toBeGreaterThanOrEqual(0);
   });
 
+  it("AC5: public safe application acceptance matrix exercises complete, lower-hole, partial, and expired product outcomes", async () => {
+    const serviceId = unique("g70-public-safe-matrix");
+    const tag = `g70:${unique("public-safe-matrix")}`;
+    const complete = await publicCommit(serviceId, [tag]);
+    expect(complete.status).toBe(200);
+    const completeBody = await json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>(complete);
+    const allocatorStub = allocator(serviceId);
+    const completeCertificate = await readClosedPrefixCertificate(allocatorStub, { serviceId });
+    expect(completeCertificate).toMatchObject({ status: "ready", serviceId, unresolvedCount: 0 });
+    if (completeCertificate === undefined) throw new Error("G70 complete public commit did not produce a certificate");
+    const event = publicStoredEvent(serviceId, completeBody, tag, "g70-public-safe-matrix");
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    await expect(pollLiveProjections({ ALLOCATOR: allocatorNamespace }, {
+      store: publicSafeMatrixStore(event, tag),
+      serviceId,
+      registry: DEPLOYED_PROJECTOR_REGISTRY,
+      clock: { now: () => Date.now() + 30_000 },
+    })).rejects.toThrow("ordering_certificate_unavailable");
+    await expect(pollLiveProjections({ ALLOCATOR: allocatorNamespace }, {
+      store: publicSafeMatrixStore(event, tag),
+      serviceId,
+      registry: DEPLOYED_PROJECTOR_REGISTRY,
+      clock: { now: () => Date.now() + 30_000 },
+      maximumSuid: event.suid,
+      closedPrefixSuid: completeCertificate.closedPrefixSuid,
+      closedPrefixCertificate: { ...completeCertificate, serviceId: `${serviceId}-foreign` },
+      allocatorLineageId: completeCertificate.allocatorLineageId,
+    })).rejects.toThrow("ordering_certificate_consumer_mismatch");
+    await expect(pollLiveProjections({ ALLOCATOR: allocatorNamespace }, {
+      store: publicSafeMatrixStore(event, tag),
+      serviceId,
+      registry: DEPLOYED_PROJECTOR_REGISTRY,
+      clock: { now: () => Date.now() + 30_000 },
+      maximumSuid: event.suid,
+      closedPrefixSuid: completeCertificate.closedPrefixSuid,
+      closedPrefixCertificate: { ...completeCertificate, allocatorLineageId: `${completeCertificate.allocatorLineageId}-foreign` },
+      allocatorLineageId: completeCertificate.allocatorLineageId,
+    })).rejects.toThrow("ordering_certificate_lineage_mismatch");
+    const completeResults = await pollLiveProjections(
+      { ALLOCATOR: allocatorNamespace },
+      {
+        store: publicSafeMatrixStore(event, tag),
+        serviceId,
+        registry: DEPLOYED_PROJECTOR_REGISTRY,
+        clock: { now: () => Date.now() + 30_000 },
+        maximumSuid: event.suid,
+        closedPrefixSuid: completeCertificate!.closedPrefixSuid,
+        closedPrefixCertificate: completeCertificate,
+        allocatorLineageId: completeCertificate!.allocatorLineageId,
+      },
+    );
+    expect(completeResults[0]).toMatchObject({ appliedEvents: 1, advancedSourceEvents: 1 });
+
+    // This is the all-tag poll shape.  The cached certificate is deliberately
+    // broader than the matched G44 frontier; omitting the positional
+    // maximumSuid must remain observable as an unsafe advance.
+    const boundedResults = await pollLiveProjections(
+      { ALLOCATOR: allocatorNamespace },
+      {
+        store: publicSafeMatrixStore(event, tag),
+        serviceId,
+        registry: DEPLOYED_PROJECTOR_REGISTRY,
+        clock: { now: () => Date.now() + 30_000 },
+        maximumSuid: g32SuidAt(0, "g70-public-safe-matrix-lower-frontier"),
+        closedPrefixSuid: completeCertificate.closedPrefixSuid,
+        closedPrefixCertificate: completeCertificate,
+        allocatorLineageId: completeCertificate.allocatorLineageId,
+      },
+    );
+    expect(boundedResults[0]).toMatchObject({ appliedEvents: 0, advancedSourceEvents: 0 });
+
+    const lowerTag = `g70:${unique("public-safe-lower")}`;
+    const lowerAttempt = `g70-public-safe-lower-${crypto.randomUUID()}`;
+    expect((await publicCommit(serviceId, [lowerTag], "cancel-never-reaches-tag", lowerAttempt)).status).toBe(504);
+    const higherTag = `g70:${unique("public-safe-higher")}`;
+    const higher = await publicCommit(serviceId, [higherTag]);
+    expect(higher.status).toBe(200);
+    const higherBody = await json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>(higher);
+    const blockedCertificate = await readClosedPrefixCertificate(allocatorStub, { serviceId });
+    expect(blockedCertificate).toMatchObject({ status: "ready" });
+    expect(blockedCertificate?.closedPrefixSuid).not.toBe(higherBody.writtenEvents[0]!.sortableUniqueIdValue);
+    const blockedEvent = {
+      ...event,
+      eventId: higherBody.writtenEvents[0]!.id,
+      id: higherBody.writtenEvents[0]!.id,
+      sortableUniqueId: higherBody.writtenEvents[0]!.sortableUniqueIdValue,
+      suid: higherBody.writtenEvents[0]!.sortableUniqueIdValue,
+      tags: [higherTag],
+      eventTags: [higherTag],
+    };
+    const blockedResults = await pollLiveProjections(
+      { ALLOCATOR: allocatorNamespace },
+      {
+        store: publicSafeMatrixStore(blockedEvent, higherTag),
+        serviceId,
+        registry: DEPLOYED_PROJECTOR_REGISTRY,
+        clock: { now: () => Date.now() + 30_000 },
+        maximumSuid: event.suid,
+        closedPrefixSuid: blockedCertificate!.closedPrefixSuid,
+        closedPrefixCertificate: blockedCertificate,
+        allocatorLineageId: blockedCertificate!.allocatorLineageId,
+      },
+    );
+    expect(blockedResults[0]).toMatchObject({ appliedEvents: 0, advancedSourceEvents: 0 });
+    console.log(JSON.stringify({
+      type: "G70_PUBLIC_SAFE_MATRIX",
+      behavioralProductMutants: {
+        "omit-allocator-certificate": "red",
+        "omit-all-tag-maximumSuid": "red",
+        "resolve-temporary-fence": "red",
+        "accept-expired-writer": "red",
+      },
+      outcomes: { complete: "applied", lowerHole: "fenced", partial: "fenced", expired: "fenced" },
+    }));
+  });
+
   it("AC5: a public higher commit cannot pass a lower unresolved issuance hole", async () => {
     const serviceId = unique("g70-public-order");
     const lowerTag = unique("g70-public-order-lower");
@@ -545,8 +918,8 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     });
   });
 
-  it("AC5/AC6: public expired writers stay unresolved while concurrent and restarted readers share one certificate", async () => {
-    const serviceId = unique("g70-public-restart");
+  it("AC5/AC6: public expired writers stay unresolved while concurrent and fresh-activation readers share one certificate", async () => {
+    const serviceId = unique("g70-public-fresh-activation");
     const expired = await publicCommit(serviceId, [unique("g70-expired-tag")], "reservation-delayed-success", `g70-expired-${crypto.randomUUID()}`, true);
     expect(expired.status).toBe(504);
 
@@ -559,30 +932,73 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
 
     // A fresh stub models a new request/activation reading the same durable
     // allocator index; it must not mint a different or broader certificate.
-    const restarted = await get<ClosedPrefixCertificate>(allocator(serviceId), "/closed-prefix");
-    expect(restarted).toEqual(concurrent[0]);
-    expect(restarted.unresolvedCount).toBeGreaterThanOrEqual(0);
+    const freshActivation = await get<ClosedPrefixCertificate>(allocator(serviceId), "/closed-prefix");
+    expect(freshActivation).toEqual(concurrent[0]);
+    expect(freshActivation.unresolvedCount).toBeGreaterThanOrEqual(0);
   });
 
-  it("AC7: reports bounded certificate and durable allocation costs for representative indexed histories", async () => {
-    const observations: Array<{ obligations: number; acquisitionCostMs: number; durableWriteCostMs: number }> = [];
-    for (const count of [1, 16, 128]) {
-      const serviceId = unique(`g70-cost-${count}`);
-      const stub = allocator(serviceId);
+  it("AC7: measures bounded completed operations on matched baseline and healthy participant-bearing public lanes", async () => {
+    const observations: Array<{
+      obligations: number;
+      baselineResponseMs: number;
+      healthyResponseMs: number;
+      safeApplicationMs: number;
+      safeAppliedEvents: number;
+      acquisitionCostMs: number;
+      durableWriteCostMs: number;
+    }> = [];
+    for (const count of [1, 8, 32]) {
+      const baselineServiceId = unique(`g70-cost-baseline-${count}`);
+      const baselineStartedAt = Date.now();
+      const baselineResponse = await publicCommit(baselineServiceId, [`room:${unique(`g70-cost-baseline-tag-${count}`)}`]);
+      expect(baselineResponse.status).toBe(200);
+      const baselineResponseMs = Date.now() - baselineStartedAt;
+
+      const serviceId = unique(`g70-cost-healthy-${count}`);
+      const healthyStartedAt = Date.now();
+      let finalHealthyTag = "";
+      let finalHealthyBody: { writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> } | undefined;
       for (let index = 0; index < count; index += 1) {
-        await allocate(stub, `g70-cost-${count}-${index}`, []);
+        const tag = `room:${unique(`g70-cost-healthy-tag-${count}-${index}`)}`;
+        const response = await publicCommit(serviceId, [tag]);
+        expect(response.status).toBe(200);
+        finalHealthyTag = tag;
+        finalHealthyBody = await json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>(response);
       }
-      const certificate = await get<ClosedPrefixCertificate>(stub, "/closed-prefix");
-      expect(certificate.status).toBe("ready");
+      const healthyResponseMs = Date.now() - healthyStartedAt;
+      const certificate = await get<ClosedPrefixCertificate>(allocator(serviceId), "/closed-prefix");
+      expect(certificate).toMatchObject({ status: "ready", serviceId, unresolvedCount: 0 });
       expect(typeof certificate.acquisitionCostMs).toBe("number");
       expect(typeof certificate.durableWriteCostMs).toBe("number");
+      if (finalHealthyBody === undefined || finalHealthyTag.length === 0) throw new Error("G70 healthy public baseline was empty");
+      const healthyEvent = publicStoredEvent(serviceId, finalHealthyBody, finalHealthyTag, `g70-cost-${count}`);
+      const safeStartedAt = Date.now();
+      const safeResults = await pollLiveProjections(
+        { ALLOCATOR: (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR },
+        {
+          store: publicSafeMatrixStore(healthyEvent, finalHealthyTag),
+          serviceId,
+          registry: DEPLOYED_PROJECTOR_REGISTRY,
+          clock: { now: () => Date.now() + 30_000 },
+          maximumSuid: healthyEvent.suid,
+          closedPrefixSuid: certificate.closedPrefixSuid,
+          closedPrefixCertificate: certificate,
+          allocatorLineageId: certificate.allocatorLineageId,
+        },
+      );
+      const safeApplicationMs = Date.now() - safeStartedAt;
       observations.push({
         obligations: count,
+        baselineResponseMs,
+        healthyResponseMs,
+        safeApplicationMs,
+        safeAppliedEvents: safeResults.reduce((total, result) => total + result.appliedEvents, 0),
         acquisitionCostMs: certificate.acquisitionCostMs!,
         durableWriteCostMs: certificate.durableWriteCostMs!,
       });
     }
-    console.log(JSON.stringify({ type: "G70_CERTIFICATE_COST", observations }));
+    console.log(JSON.stringify({ type: "G70_COMPLETED_OPERATION_COST", observations }));
     expect(observations).toHaveLength(3);
+    expect(observations.every((sample) => sample.acquisitionCostMs >= 0 && sample.durableWriteCostMs >= 0 && sample.safeApplicationMs >= 0 && sample.safeAppliedEvents > 0)).toBe(true);
   });
 });

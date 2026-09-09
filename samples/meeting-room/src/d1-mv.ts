@@ -914,6 +914,9 @@ export async function catchUpMeetingRoomMaterializedViews(
     readonly runOrderingDetector?: boolean;
     readonly closedPrefixSuid?: string | null;
     readonly closedPrefixCertificate?: ClosedPrefixCertificate;
+    readonly requireClosedPrefixCertificate?: boolean;
+    readonly expectedServiceId?: string;
+    readonly expectedAllocatorLineageId?: string;
   } = {},
 ): Promise<readonly MeetingRoomSafeLaneCatchUpObservation[]> {
   const { runtime, views } = await openMaterializedViews(env);
@@ -940,6 +943,9 @@ export async function catchUpMeetingRoomMaterializedViews(
           maximumSuid: frontierSuid,
           closedPrefixSuid: options.closedPrefixSuid,
           closedPrefixCertificate: options.closedPrefixCertificate,
+          requireClosedPrefixCertificate: options.requireClosedPrefixCertificate,
+          expectedServiceId: options.expectedServiceId,
+          expectedAllocatorLineageId: options.expectedAllocatorLineageId,
           runOrderingDetector: true,
         });
       } else {
@@ -947,6 +953,9 @@ export async function catchUpMeetingRoomMaterializedViews(
           maximumSuid: frontierSuid,
           closedPrefixSuid: options.closedPrefixSuid,
           closedPrefixCertificate: options.closedPrefixCertificate,
+          requireClosedPrefixCertificate: options.requireClosedPrefixCertificate,
+          expectedServiceId: options.expectedServiceId,
+          expectedAllocatorLineageId: options.expectedAllocatorLineageId,
         });
       }
     } else {
@@ -955,6 +964,9 @@ export async function catchUpMeetingRoomMaterializedViews(
           maximumSuid: frontierSuid,
           closedPrefixSuid: options.closedPrefixSuid,
           closedPrefixCertificate: options.closedPrefixCertificate,
+          requireClosedPrefixCertificate: options.requireClosedPrefixCertificate,
+          expectedServiceId: options.expectedServiceId,
+          expectedAllocatorLineageId: options.expectedAllocatorLineageId,
           runOrderingDetector: true,
         });
       } else {
@@ -962,6 +974,9 @@ export async function catchUpMeetingRoomMaterializedViews(
           maximumSuid: frontierSuid,
           closedPrefixSuid: options.closedPrefixSuid,
           closedPrefixCertificate: options.closedPrefixCertificate,
+          requireClosedPrefixCertificate: options.requireClosedPrefixCertificate,
+          expectedServiceId: options.expectedServiceId,
+          expectedAllocatorLineageId: options.expectedAllocatorLineageId,
         });
       }
     }
@@ -1177,6 +1192,9 @@ export async function drainMeetingRoomUnsafeKicks(
       maximumSuid: frontierSuid,
       closedPrefixSuid: closedPrefixCertificate?.closedPrefixSuid ?? null,
       closedPrefixCertificate,
+      requireClosedPrefixCertificate: closedPrefixCertificate !== undefined,
+      expectedServiceId: closedPrefixCertificate === undefined ? undefined : serviceId,
+      expectedAllocatorLineageId: closedPrefixCertificate?.allocatorLineageId,
     });
     // `follow` may stop at the first recent event.  Pass the actual reached
     // checkpoint so finishKick re-arms the durable kick while its target is

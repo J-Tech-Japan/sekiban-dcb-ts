@@ -209,7 +209,7 @@ export async function runMeetingRoomSafeLanePass(
     }));
     const closedPrefixCertificate = allocator === undefined
       ? undefined
-      : await readClosedPrefixCertificate(allocator);
+      : await readClosedPrefixCertificate(allocator, { serviceId });
     // A deployed G70 pass is fail-closed when the allocator certificate is
     // unavailable or still on an unreconciled migration cut. Unit-only
     // callers without an allocator retain their existing explicit seam.
@@ -230,6 +230,9 @@ export async function runMeetingRoomSafeLanePass(
           runOrderingDetector: false,
           closedPrefixSuid,
           closedPrefixCertificate,
+          requireClosedPrefixCertificate: allocator !== undefined,
+          expectedServiceId: allocator === undefined ? undefined : serviceId,
+          expectedAllocatorLineageId: allocator === undefined ? undefined : closedPrefixCertificate?.allocatorLineageId,
         });
         catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44

@@ -74,6 +74,8 @@ export interface ProjectionPollOptions {
   closedPrefixSuid?: string | null;
   /** Full allocator certificate; callers supplying it must use its lineage-bound value. */
   closedPrefixCertificate?: ClosedPrefixCertificate;
+  /** Cached allocator lineage for this service/generation; no remote lookup is performed here. */
+  allocatorLineageId?: string;
   serviceIdentityProvider?: ServiceIdentityProvider;
   /** Observation-only lifecycle sink; it cannot alter projection decisions. */
   observer?: LiveProjectionPollObserver;
@@ -195,10 +197,13 @@ export async function pollLiveProjections(
   const serviceId = options.serviceId ?? requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
   const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
   const projectorIds = registry.registered().map((projector) => projector.id);
-  const closedPrefixSuid = validatedClosedPrefixSuid(options);
-  if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== "ready") {
-    throw new Error("ordering_certificate_unavailable");
-  }
+  const requireClosedPrefixCertificate = env.ALLOCATOR !== undefined;
+  const closedPrefixSuid = validatedClosedPrefixSuid({
+    ...options,
+    requireClosedPrefixCertificate,
+    expectedServiceId: requireClosedPrefixCertificate ? serviceId : undefined,
+    expectedAllocatorLineageId: requireClosedPrefixCertificate ? options.allocatorLineageId : undefined,
+  });
   const attemptedAt = (options.clock ?? systemPipelineClock).now();
   await notifyObserver(options.observer, "onAttempt", { env, serviceId, projectorIds, attemptedAt });
   try {
@@ -220,6 +225,9 @@ export async function pollLiveProjections(
               maximumSuid: options.maximumSuid,
               closedPrefixSuid,
               closedPrefixCertificate: options.closedPrefixCertificate,
+              requireClosedPrefixCertificate,
+              expectedServiceId: requireClosedPrefixCertificate ? serviceId : undefined,
+              expectedAllocatorLineageId: requireClosedPrefixCertificate ? options.allocatorLineageId : undefined,
             },
           ));
         }
@@ -233,6 +241,9 @@ export async function pollLiveProjections(
       options.maximumSuid,
       closedPrefixSuid,
       options.closedPrefixCertificate,
+      requireClosedPrefixCertificate,
+      requireClosedPrefixCertificate ? serviceId : undefined,
+      requireClosedPrefixCertificate ? options.allocatorLineageId : undefined,
     );
     await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
     return results;

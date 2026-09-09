@@ -48,20 +48,30 @@ export function checkG70Sources(sources = sourceMap()) {
   requireFile(files.allocator, [
     "await txn.put(attemptKey(input.attemptId), vector);",
     "await txn.put(identityKey, obligation);",
+    "await txn.put(writerAuthorityKey(obligation.eventId, obligation.allocatorLineageId)",
     "await txn.put(OBLIGATION_INDEX_KEY, obligationIndex!);",
-    "await this.ctx.storage.setAlarm(Date.now() + RECOVERY_RETRY_MS);",
+    "await scheduleEarlierAlarm(txn, Date.now() + RECOVERY_RETRY_MS);",
+    "RECOVERY_SCHEDULE_PREFIX",
+    "await txn.put(recoveryScheduleKey(recovery.nextAttemptAt, recovery.attemptId, recovery.candidateIndex), recoveryRecordKey);",
+    "recoveryScheduleKey(retry.nextAttemptAt",
     "private async readRecoveryDispositions(",
-    "while (nextIndex.closedSequence < nextIndex.nextSequence)",
-    "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));",
+    "while (nextIndex.closedSequence < nextIndex.nextSequence && advanced < CLOSED_PREFIX_ADVANCE_BATCH_LIMIT)",
+    "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag) || revokedTags.includes(tag));",
     "const closed = firstUnresolved < 0 ? ordered : ordered.slice(0, firstUnresolved);",
     "if (input.disposition === \"fenced\" && input.fenceConfirmed !== true)",
+    "if (input.disposition === \"revoked\" && input.revocationConfirmed !== true)",
+    "writer-authority",
+    "writer_revoked",
     "value.historyComplete !== true",
     "state.allocatedWatermark !== input.completeThroughSuid",
+    "legacyMembershipProofId",
+    "if (input.obligations.length > RECONCILIATION_BATCH_LIMIT)",
     "lastAllocationPersistenceMs",
+    "completedDurableWriteMs",
     "durableWriteCostMs: durableWriteCostMs ?? state.lastAllocationPersistenceMs",
     "reconciliation_empty_history",
     "reconciliation_omits_durable_history",
-    "const allocationSnapshot = await this.ctx.storage.list<AllocationVector>({ prefix: ATTEMPT_KEY_PREFIX });",
+    "const allocationSnapshot = await this.ctx.storage.list<AllocationVector>({ prefix: ATTEMPT_KEY_PREFIX, limit: RECONCILIATION_BATCH_LIMIT + 1 });",
   ], "allocator authority");
   requireFile(files.allocatorTypes, [
     "export interface ClosedPrefixIndex",
@@ -72,6 +82,7 @@ export function checkG70Sources(sources = sourceMap()) {
   ], "allocator durable index types");
   requireFile(files.commit, [
     "body?.fenceConfirmed === true",
+    "A partial-write fence is temporary coverage for repair",
     "new Set(cancellation.confirmedTags)",
     "scheduleIssuanceResolution(",
     "cancel-never-reaches-tag",
@@ -83,9 +94,9 @@ export function checkG70Sources(sources = sourceMap()) {
   ], "Tag durable fence confirmation");
   requireFile(files.live, [
     "closedPrefixCertificate?: ClosedPrefixCertificate;",
-    "if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== \"ready\")",
-    "throw new Error(\"ordering_certificate_unavailable\");",
-    "validatedClosedPrefixSuid(options)",
+    "const requireClosedPrefixCertificate = env.ALLOCATOR !== undefined;",
+    "validatedClosedPrefixSuid({",
+    "expectedAllocatorLineageId",
     "ordering_certificate_unavailable",
   ], "safe-poll certificate enforcement");
   requireFile(files.projection, [
@@ -114,7 +125,9 @@ export function checkG70Sources(sources = sourceMap()) {
     "AC2: an uncontacted cancellation cannot close issuance",
     "AC6: reconciliation refuses empty",
     "AC5: a public higher commit cannot pass",
-    "AC7: reports bounded certificate and durable allocation costs",
+    "AC7: measures bounded completed operations",
+    "AC1: temporary repair coverage can be cleared, while allocator revocation rejects the same delayed writer",
+    "public safe application acceptance matrix",
     "expect(response.status).toBe(504)",
     "fencedTags: [tag]",
     "expect(closedWhileRecoveryPending.closedPrefixSuid).not.toBe",
@@ -144,19 +157,19 @@ export function runSelfTest() {
     {
       id: "advance-prefix-past-unresolved",
       file: files.allocator,
-      from: "while (nextIndex.closedSequence < nextIndex.nextSequence)",
+      from: "while (nextIndex.closedSequence < nextIndex.nextSequence && advanced < CLOSED_PREFIX_ADVANCE_BATCH_LIMIT)",
       to: "while (false)",
     },
     {
       id: "resolve-without-every-participant",
       file: files.allocator,
-      from: "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));",
+      from: "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag) || revokedTags.includes(tag));",
       to: "const resolved = true;",
     },
     {
       id: "accept-expired-or-aborted-writer",
       file: files.allocator,
-      from: "if (input.disposition === \"fenced\" && input.fenceConfirmed !== true)",
+      from: "if (input.disposition === \"revoked\" && input.revocationConfirmed !== true)",
       to: "if (false)",
     },
     {
@@ -168,8 +181,8 @@ export function runSelfTest() {
     {
       id: "remove-durable-recovery-alarm",
       file: files.allocator,
-      from: "await this.ctx.storage.setAlarm(Date.now() + RECOVERY_RETRY_MS);",
-      to: "void RECOVERY_RETRY_MS;",
+      from: "await txn.put(recoveryScheduleKey(recovery.nextAttemptAt, recovery.attemptId, recovery.candidateIndex), recoveryRecordKey);",
+      to: "void recoveryRecordKey;",
     },
     {
       id: "trust-incomplete-reconcile-cut",
@@ -180,8 +193,8 @@ export function runSelfTest() {
     {
       id: "allow-unvalidated-safe-poll",
       file: files.live,
-      from: "if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== \"ready\")",
-      to: "if (false)",
+      from: "const requireClosedPrefixCertificate = env.ALLOCATOR !== undefined;",
+      to: "const requireClosedPrefixCertificate = false;",
     },
     {
       id: "certify-uncontacted-cancellation",
@@ -195,11 +208,23 @@ export function runSelfTest() {
       from: "input.createMissingTombstone === true",
       to: "input.createMissingTombstone === false",
     },
+    {
+      id: "treat-temporary-repair-fence-as-closed",
+      file: files.commit,
+      from: "A partial-write fence is temporary coverage for repair",
+      to: "A partial-write fence is permanent closure",
+    },
+    {
+      id: "remove-reconciliation-bound",
+      file: files.allocator,
+      from: "if (input.obligations.length > RECONCILIATION_BATCH_LIMIT)",
+      to: "if (false)",
+    },
   ];
   const results = mutations.map((mutation) => {
     const source = original.get(mutation.file);
     if (source === undefined || !source.includes(mutation.from)) fail(`${mutation.id} anchor missing`);
-    const mutated = mutation.id === "accept-expired-or-aborted-writer" || mutation.from === "reconciliation_omits_durable_history"
+    const mutated = mutation.id === "accept-expired-or-aborted-writer" || mutation.from === "reconciliation_omits_durable_history" || mutation.id === "remove-durable-recovery-alarm"
       ? source.replaceAll(mutation.from, mutation.to)
       : source.replace(mutation.from, mutation.to);
     const next = new Map(original);

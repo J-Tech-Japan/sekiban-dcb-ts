@@ -21,6 +21,13 @@
   "mutationEvidence": {
     "earlyReturnMutationRed": true,
     "fenceMutationRed": true,
+    "liveFrontierMutationRed": true,
+    "certificateMutationRed": true,
+    "allTagCertificateMutationRed": true,
+    "allTagMaximumMutationRed": true,
+    "selectionMutationRed": true,
+    "runtimeCertificateMutationRed": true,
+    "requiredCertificateMutationRed": true,
     "catchUpMutationRed": true,
     "block": {
       "order": [

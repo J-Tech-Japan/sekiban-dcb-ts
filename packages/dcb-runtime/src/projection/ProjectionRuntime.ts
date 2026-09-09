@@ -63,6 +63,12 @@ export interface ProjectionCatchUpOptions {
   readonly closedPrefixSuid?: string | null;
   /** The complete certificate that authorizes the supplied closedPrefixSuid. */
   readonly closedPrefixCertificate?: ClosedPrefixCertificate;
+  /** Safe callers must explicitly require the cached allocator certificate. */
+  readonly requireClosedPrefixCertificate?: boolean;
+  /** Cached consumer identity; it is never fetched from the allocator here. */
+  readonly expectedServiceId?: string;
+  /** Cached allocator generation/lineage expected by this consumer. */
+  readonly expectedAllocatorLineageId?: string;
 }
 
 /**
@@ -70,9 +76,12 @@ export interface ProjectionCatchUpOptions {
  * accepted as a certificate; callers must carry the allocator-issued,
  * lineage-scoped object to the read boundary. `null` remains fail-closed.
  */
-export function validatedClosedPrefixSuid(options: Pick<ProjectionCatchUpOptions, "closedPrefixSuid" | "closedPrefixCertificate">): string | null | undefined {
+export function validatedClosedPrefixSuid(options: Pick<ProjectionCatchUpOptions, "maximumSuid" | "closedPrefixSuid" | "closedPrefixCertificate" | "requireClosedPrefixCertificate" | "expectedServiceId" | "expectedAllocatorLineageId">): string | null | undefined {
   const certificate = options.closedPrefixCertificate;
   if (certificate === undefined) {
+    if (options.requireClosedPrefixCertificate === true || options.maximumSuid !== undefined) {
+      throw new Error("ordering_certificate_unavailable");
+    }
     if (options.closedPrefixSuid !== undefined && options.closedPrefixSuid !== null) {
       throw new Error("ordering_certificate_unavailable");
     }
@@ -81,11 +90,20 @@ export function validatedClosedPrefixSuid(options: Pick<ProjectionCatchUpOptions
   if (
     certificate.certificateVersion !== 1 ||
     certificate.authority !== "allocator-transaction" ||
-    (certificate.status === "unreconciled" && certificate.closedPrefixSuid !== null)
+    certificate.status !== "ready"
   ) {
     throw new Error("ordering_certificate_unavailable");
   }
-  const selected = certificate.status === "ready" ? certificate.closedPrefixSuid : null;
+  if (options.expectedServiceId !== undefined && certificate.serviceId !== options.expectedServiceId) {
+    throw new Error("ordering_certificate_consumer_mismatch");
+  }
+  if (options.expectedAllocatorLineageId !== undefined && certificate.allocatorLineageId !== options.expectedAllocatorLineageId) {
+    throw new Error("ordering_certificate_lineage_mismatch");
+  }
+  if (options.requireClosedPrefixCertificate === true && (options.expectedServiceId === undefined || options.expectedAllocatorLineageId === undefined)) {
+    throw new Error("ordering_certificate_consumer_unbound");
+  }
+  const selected = certificate.closedPrefixSuid;
   if (options.closedPrefixSuid !== undefined && options.closedPrefixSuid !== selected) {
     throw new Error("ordering_certificate_mismatch");
   }
@@ -320,6 +338,9 @@ export class ProjectionRuntime {
     maximumSuid?: string | null,
     closedPrefixSuid?: string | null,
     closedPrefixCertificate?: ClosedPrefixCertificate,
+    requireClosedPrefixCertificate?: boolean,
+    expectedServiceId?: string,
+    expectedAllocatorLineageId?: string,
   ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
     const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
@@ -337,7 +358,14 @@ export class ProjectionRuntime {
         const job = jobs[index];
         if (job === undefined) return;
         const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
-        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid, closedPrefixSuid, closedPrefixCertificate });
+        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, {
+          maximumSuid,
+          closedPrefixSuid,
+          closedPrefixCertificate,
+          requireClosedPrefixCertificate,
+          expectedServiceId,
+          expectedAllocatorLineageId,
+        });
       }
     };
     const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);

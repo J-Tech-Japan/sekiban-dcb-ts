@@ -129,12 +129,31 @@ describe("SDT-G58 safe-lane and live-projection reliability", () => {
     await views.initialize();
     const runtime = new MaterializedViewCatchUpRuntime(orderedSource([proven, unproven]), views);
 
-    await runtime.build(serviceId, materializer, 100_000, {}, { maximumSuid: proven.suid });
+    const provenCertificate = {
+      certificateVersion: 1 as const,
+      authority: "allocator-transaction" as const,
+      status: "ready" as const,
+      serviceId,
+      allocatorLineageId: "g58-safe-lane-lineage",
+      closedPrefixSuid: proven.suid,
+      unresolvedCount: 0,
+      generatedAt: 100_000,
+      migrationProofId: null,
+    };
+    await runtime.build(serviceId, materializer, 100_000, {}, {
+      maximumSuid: proven.suid,
+      closedPrefixSuid: proven.suid,
+      closedPrefixCertificate: provenCertificate,
+    });
     expect((await views.readActive(serviceId, VIEW_ID))?.lastSuid).toBe(proven.suid);
 
     // A never-settled BLOCK is even stricter: it can perform ordinary GC but
     // cannot advance the source checkpoint at all.
-    await runtime.follow(serviceId, materializer, 100_001, {}, { maximumSuid: null });
+    await runtime.follow(serviceId, materializer, 100_001, {}, {
+      maximumSuid: null,
+      closedPrefixSuid: null,
+      closedPrefixCertificate: { ...provenCertificate, closedPrefixSuid: null },
+    });
     expect((await views.readActive(serviceId, VIEW_ID))?.lastSuid).toBe(proven.suid);
 
     const calls: Array<readonly [string, string | null | undefined]> = [];

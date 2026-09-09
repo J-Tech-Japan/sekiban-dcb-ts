@@ -718,7 +718,10 @@ export class CommitWorker {
           attemptId,
           allocation.allocatorLineageId,
           writes.committedTags,
-          installedFenceTags,
+          // A partial-write fence is temporary coverage for repair. It is
+          // deliberately not an issuance disposition: clearing that fence
+          // must never reopen a writer that the allocator has already closed.
+          new Set(),
         );
       }
       if (installedFenceTags.size !== writes.pendingTags.length) {
@@ -1118,7 +1121,8 @@ export class CommitWorker {
             reservationToken: reservations.get(tag)?.reservationToken,
             candidates: candidates
               .filter((candidate) => candidate.tags.includes(tag))
-              .map(({ eventId, suid, payload, eventType, tags, timestamp }) => ({
+              .map(({ eventId, suid, payload, eventType, tags, timestamp, candidateIndex }) => ({
+                candidateIndex,
                 eventId,
                 suid,
                 payload,
@@ -1212,10 +1216,7 @@ export class CommitWorker {
         // explicitly proves its durable tombstone/fence. HTTP success or a
         // status-only body is not enough: a lost/partial response remains
         // unresolved and the allocator's durable recovery alarm retries it.
-        return response.status >= 200 && response.status < 300 && (
-          body?.fenceConfirmed === true ||
-          body?.idempotent === true
-        );
+        return response.status >= 200 && response.status < 300 && body?.fenceConfirmed === true;
       }),
     );
     const cancelled = traceScope === undefined
@@ -1272,14 +1273,9 @@ export class CommitWorker {
           reason: PARTIAL_WRITE_FENCE_REASON,
         }, stageScope?.fork());
         const body = await response.clone().json().catch(() => undefined) as JsonObject | undefined;
-        // The live Tag path returns durable=true.  Status-only fence fixtures
-        // remain accepted for the existing partial-write contract; they do
-        // not weaken the live response because that path is marker-bearing.
-        return response.status >= 200 && response.status < 300 && (
-          body?.durable === true ||
-          body?.status === "fence-installed" ||
-          body === undefined
-        );
+        // Only the explicit durable marker is a temporary-coverage fact.
+        // Status-only or unreadable bodies never enter allocator authority.
+        return response.status >= 200 && response.status < 300 && body?.durable === true;
       }),
     );
     // S20 remains the frozen G30 observation boundary, but now covers the

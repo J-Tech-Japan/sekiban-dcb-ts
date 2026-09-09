@@ -512,10 +512,11 @@ describe("SDT-G6 operator repair vertical slice", () => {
     const target = tag("head-ahead-direct");
     const attemptId = "head-ahead-direct-attempt";
     const repairItem = item(attemptId, target, "excluded-event", SUID, "payload");
-    expect((await tagPost(target, "/append", {
+    const headAheadSeed = await tagPost(target, "/append", {
       attemptId: "seed", epoch: 0,
       candidates: [{ eventId: "later", suid: HEAD_AHEAD_SUID, payload: "seed", eventTags: [target] }],
-    })).status).toBe(201);
+    });
+    expect(headAheadSeed.status).toBe(201);
     await installPartial(target, attemptId);
     const lease = await responseJson<{ epoch: number }>(await tagPost(target, "/repair/acquire", {
       owner: "owner", scope: [repairItem],
@@ -533,10 +534,11 @@ describe("SDT-G6 operator repair vertical slice", () => {
     const target = tag("unequal");
     const attemptId = "unequal-attempt";
     const repairItem = item(attemptId, target, "same-event", SUID, "expected-payload");
-    expect((await tagPost(target, "/append", {
+    const unequalSeed = await tagPost(target, "/append", {
       attemptId: "seed", epoch: 0,
       candidates: [{ ...repairItem, payload: "different-payload" }],
-    })).status).toBe(201);
+    });
+    expect(unequalSeed.status).toBe(201);
     await installPartial(target, attemptId);
     const lease = await responseJson<{ epoch: number }>(await tagPost(target, "/repair/acquire", { owner: "owner", scope: [repairItem] }));
     const applied = await tagPost(target, "/repair/apply", { owner: "owner", epoch: lease.epoch, item: repairItem });

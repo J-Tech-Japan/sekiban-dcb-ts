@@ -92,6 +92,17 @@ describe("SDT-G58 W111 scheduled live-poll lifecycle", () => {
       registry,
       clock: { now: () => 12_345 },
       maximumSuid: null,
+      closedPrefixCertificate: {
+        certificateVersion: 1,
+        authority: "allocator-transaction",
+        status: "ready",
+        serviceId: SERVICE_ID,
+        allocatorLineageId: "g58-live-poll-green-lineage",
+        closedPrefixSuid: null,
+        unresolvedCount: 0,
+        generatedAt: 12_345,
+        migrationProofId: null,
+      },
       observer: observer(outcomes),
     });
     expect(outcomes).toHaveLength(2);

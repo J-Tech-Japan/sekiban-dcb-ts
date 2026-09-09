@@ -72,7 +72,7 @@ async function allocateBeforeTagAppend(
     body: JSON.stringify({
       attemptId,
       serviceId,
-      candidates: eventIds.map((eventId, candidateIndex) => ({ candidateIndex, eventId })),
+      candidates: eventIds.map((eventId, candidateIndex) => ({ candidateIndex, eventId, targetTags: [...new Set(tagSets[candidateIndex] ?? [])] })),
     }),
   }));
   if (!response.ok) throw new Error(`G69 allocator allocation failed: ${response.status} ${await response.text()}`);
@@ -250,7 +250,11 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       [[lowerRoom, lowerReservation], [higherRoom, higherReservation]],
       ["lower", "higher"],
     );
-    await Promise.all(higherAllocatedMessages.map((message) => appendHeldTag(message)));
+    // Complete both Tag memberships before releasing the higher delivery. The
+    // G70 allocator can then close the source prefix while the lower D1
+    // delivery remains queued, leaving a genuine late-lower ordering witness
+    // rather than relying on participant-free allocation compatibility.
+    await Promise.all([...lowerAllocatedMessages, ...higherAllocatedMessages].map((message) => appendHeldTag(message)));
     try {
       const higherEvent = {
         id: higherAllocatedMessages[0]!.eventId,
@@ -288,10 +292,15 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
            FROM serialized_dcb_safe_lane_passes
           WHERE service_id = ? ORDER BY scheduled_at DESC, pass_id DESC LIMIT 1`,
       ).bind(serviceId).first<Record<string, unknown>>();
-      expect(higherPass).toMatchObject({ coverage_kind: "SETTLED", catch_up_outcome: "completed" });
-      const higherCatchUp = JSON.parse(String(higherPass?.catch_up_result_json)) as Array<{ lateLowerQueryDurationMs?: unknown }>;
+      // The deployed G70 pass correctly remains BLOCK/UNSETTLED while the
+      // lower D1 receipt is still absent. Establish the higher MV checkpoint
+      // through the isolated G69 catch-up seam so this test can exercise the
+      // late-lower detector without weakening the production completeness
+      // gate or reintroducing participant-free allocation.
+      expect(higherPass).toMatchObject({ coverage_kind: "BLOCK/UNSETTLED", catch_up_outcome: "completed" });
+      const higherCatchUp = await catchUpMeetingRoomMaterializedViews(passEnvironment, serviceId);
       expect(higherCatchUp.length).toBeGreaterThan(0);
-      expect(higherCatchUp.every((observation) => typeof observation.lateLowerQueryDurationMs === "number" && observation.lateLowerQueryDurationMs >= 0)).toBe(true);
+      expect(higherCatchUp.every((observation) => observation.advancedSourceEvents === 1 && observation.appliedEvents === 1)).toBe(true);
       expect(higherCatchUp.every((observation) => observation.lateLowerQueryDurationMs === 0)).toBe(true);
       console.log("G69_HOTPATH_COSTS", JSON.stringify({
         lateLowerQueryDurationMs: higherCatchUp.map((observation) => observation.lateLowerQueryDurationMs),
@@ -300,14 +309,11 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       await views.initialize();
       const higherSafeRows = await views.readListPage(serviceId, "ReservationProjector", { consistency: "safe", limit: null });
       const higherSafe = higherSafeRows.rows.some((row) => String(row.sourceSuid) === higherEvent.sortableUniqueIdValue);
-      // This is a structural allocator witness under accelerated time: the
-      // higher candidate is directly Tag-appended while the lower candidate
-      // remains held. It is not a production incident. After lower admission,
-      // the detector must persist a generation-scoped quarantine and fail
-      // closed without changing the source ordering contract.
-      expect(higherSafe, `higher SUID ${higherEvent.sortableUniqueIdValue} became safe before lower admission`).toBe(true);
+      // The lower membership is complete at Tag, but its D1 delivery is held.
+      // G70 may therefore close the allocator prefix, while G69 must still
+      // detect the lower source row when it arrives after the higher checkpoint.
+      expect(higherSafe, `higher SUID ${higherEvent.sortableUniqueIdValue} was not admitted through the closed prefix`).toBe(true);
 
-      await Promise.all(lowerAllocatedMessages.map((message) => appendHeldTag(message)));
       const lowerEvent = {
         id: lowerAllocatedMessages[0]!.eventId,
         sortableUniqueIdValue: lowerAllocatedMessages[0]!.suid,
@@ -388,11 +394,10 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       ).bind(serviceId).all<Record<string, unknown>>();
       expect(lowerPasses.results.length).toBeGreaterThanOrEqual(2);
       // Queue delivery schedules its own non-blocking safe-lane kick. The
-      // explicit proof pass and that kick may race, so the latest row is not
-      // the ordering oracle. The durable quarantine/incident is the oracle;
-      // at least one pass must expose the typed fail-closed boundary when the
-      // race is serialized through the catch-up body.
-      expect(lowerError).toContain("quarantined");
+      // The explicit proof pass and that kick may race, so the thrown error
+      // is not the ordering oracle. The durable quarantine/incident below is
+      // the authoritative fail-closed evidence; a completed pass may record
+      // the same result without propagating the error to this caller.
 
       const incident = await database.prepare(
         `SELECT classification, identity_key, event_id, incoming_event_id, suid

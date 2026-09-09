@@ -112,6 +112,17 @@ describe("SDT-G58 W112 live-poll advancement", () => {
       appendDeliveryIncident: async () => undefined,
     } as unknown as PipelineStore;
     const maximumSuid = scheduledLiveProjectionMaximumSuid({ kind: "BLOCK" }, proven.suid);
+    const closedPrefixCertificate = {
+      certificateVersion: 1 as const,
+      authority: "allocator-transaction" as const,
+      status: "ready" as const,
+      serviceId,
+      allocatorLineageId: "g61-retained-frontier-lineage",
+      closedPrefixSuid: proven.suid,
+      unresolvedCount: 0,
+      generatedAt: 100_000,
+      migrationProofId: null,
+    };
 
     expect(maximumSuid).toBe(proven.suid);
     const results = await pollLiveProjections({}, {
@@ -120,6 +131,8 @@ describe("SDT-G58 W112 live-poll advancement", () => {
       registry,
       clock: { now: () => 100_000 },
       maximumSuid,
+      closedPrefixSuid: proven.suid,
+      closedPrefixCertificate,
     });
 
     expect(results).toHaveLength(2);

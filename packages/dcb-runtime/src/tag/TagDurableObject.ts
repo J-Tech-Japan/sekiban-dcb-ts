@@ -56,6 +56,7 @@ import { G43SqlMeasurement, type G43SqlMeasurementSnapshot } from "./TagSqlMeasu
 import { recordDurableHop, type G60DurableHopObservation } from "../diagnostics/G60DurableHop";
 import { recordG65AdmissionAttempt, type G65AdmissionOutcome } from "../diagnostics/G65Admission";
 import { D1EventStore } from "../store/D1EventStore";
+import { scopeIdFor } from "../scope/ScopeName";
 
 const REPAIR_FACTS_KEY = "repair-facts";
 /**
@@ -107,6 +108,7 @@ interface ReservationInput extends EpochInput {
 }
 
 interface AppendCandidate {
+  candidateIndex?: number;
   eventId: string;
   suid: string;
   payload: string;
@@ -186,6 +188,8 @@ interface G44SourceScanInput {
 }
 
 interface TagDurableObjectEnv {
+  /** Allocator authority used to reject a delayed writer after irrevocable revocation. */
+  ALLOCATOR?: DurableObjectNamespace;
   /** Global D1 receipt authority used only to verify a source acknowledgement. */
   D1?: D1Database;
   DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>;
@@ -471,6 +475,9 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
     ) {
       return { error: "each candidate needs eventId, suid, and payload" };
     }
+    if (rawCandidate.candidateIndex !== undefined && !isNonNegativeInteger(rawCandidate.candidateIndex)) {
+      return { error: "candidateIndex must be a non-negative integer when present" };
+    }
     const eventTags = stringArrayFrom(rawCandidate.eventTags, "candidate eventTags");
     if (eventTags.value === undefined || !eventTags.value.includes(tag)) {
       return { error: eventTags.error ?? "each candidate must include this event tag" };
@@ -491,6 +498,7 @@ function appendFrom(value: unknown, tag: string): { value?: AppendInput; error?:
       return { error: "candidate timestamp must be canonical UTC" };
     }
     candidates.push({
+      candidateIndex: isNonNegativeInteger(rawCandidate.candidateIndex) ? rawCandidate.candidateIndex : undefined,
       eventId: rawCandidate.eventId,
       suid: rawCandidate.suid,
       payload: rawCandidate.payload,
@@ -3067,6 +3075,8 @@ export class TagDurableObject implements DurableObject {
     }
     const input = parsed.value;
     try {
+      const authority = await this.checkWriterAuthority(tag, serviceId, input);
+      if (authority !== undefined) return authority;
       const doorbellPreflight = this.directDoorbellPreflight(domainDeliveryClass);
       observation?.markFirstStorageRead();
       // A real SQLite-backed DO takes the indexed transaction below. The
@@ -3279,6 +3289,47 @@ export class TagDurableObject implements DurableObject {
       }
       return error(500, "tag_append_failure", "Tag append could not be persisted");
     }
+  }
+
+  /**
+   * A Tag may accept an unresolved writer, but it must reject an exact writer
+   * identity after the allocator has durably fenced or revoked that identity.
+   * This is a commit-path authority check only; safe projection reads never
+   * perform this remote call.
+   */
+  private async checkWriterAuthority(tag: string, serviceId: string | null, input: AppendInput): Promise<Response | undefined> {
+    if (this.env.ALLOCATOR === undefined || serviceId === null || serviceId.length === 0) return undefined;
+    const allocator = this.env.ALLOCATOR.get(scopeIdFor(this.env.ALLOCATOR, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    for (const candidate of input.candidates) {
+      let response: Response;
+      try {
+        response = await allocator.fetch(new Request("https://allocator.internal/writer-authority", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-sdt-g70-writer-authority": "1" },
+          body: JSON.stringify({
+            serviceId,
+            tag,
+            attemptId: input.attemptId,
+            ...(candidate.candidateIndex === undefined ? {} : { candidateIndex: candidate.candidateIndex }),
+            eventId: candidate.eventId,
+            suid: candidate.suid,
+            allocatorLineageId: candidate.allocatorLineageId,
+          }),
+        }));
+      } catch {
+        return error(503, "writer_authority_unavailable", "Allocator writer authority is unavailable", true);
+      }
+      let body: unknown;
+      try { body = await response.json<unknown>(); } catch { return error(503, "writer_authority_invalid", "Allocator writer authority returned an invalid response", true); }
+      if (!isObject(body)) return error(503, "writer_authority_invalid", "Allocator writer authority returned an invalid response", true);
+      if (body.status === "revoked") return error(409, "writer_revoked", "This exact writer identity was durably revoked");
+      if (!response.ok) return error(503, "writer_authority_unavailable", "Allocator writer authority rejected the authority check", true);
+    }
+    return undefined;
   }
 
   /**
@@ -3684,9 +3735,7 @@ export class TagDurableObject implements DurableObject {
       ).toArray()[0];
       if (event !== undefined) return json({ disposition: "installed", eventId: body.eventId, suid: body.suid });
       const fenced = sql.exec<SqlRow>(
-        `SELECT attempt_id FROM tag_tombstone WHERE attempt_id = ?
-         UNION ALL SELECT attempt_id FROM tag_fence WHERE attempt_id = ? LIMIT 1`,
-        body.attemptId,
+        `SELECT attempt_id FROM tag_tombstone WHERE attempt_id = ? LIMIT 1`,
         body.attemptId,
       ).toArray()[0];
       if (fenced !== undefined) return json({ disposition: "fenced", fenceConfirmed: true, eventId: body.eventId, suid: body.suid });
@@ -3697,7 +3746,7 @@ export class TagDurableObject implements DurableObject {
     if (record.events.some((event) => event.eventId === body.eventId && event.attemptId === body.attemptId && event.suid === body.suid && event.allocatorLineageId === body.allocatorLineageId)) {
       return json({ disposition: "installed", eventId: body.eventId, suid: body.suid });
     }
-    if (record.tombstones.some((entry) => entry.attemptId === body.attemptId) || record.fences.some((entry) => entry.attemptId === body.attemptId)) {
+    if (record.tombstones.some((entry) => entry.attemptId === body.attemptId)) {
       return json({ disposition: "fenced", fenceConfirmed: true, eventId: body.eventId, suid: body.suid });
     }
     return json({ disposition: "unknown", eventId: body.eventId, suid: body.suid });

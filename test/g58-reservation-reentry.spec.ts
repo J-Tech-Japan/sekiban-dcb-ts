@@ -154,6 +154,17 @@ describe("SDT-G58 ReservationProjector unsafe-kick re-entry", () => {
     const oldEvent = event(serviceId, "g58-reentry-old", oldSuid, nowMs - 30_000);
     const roomTarget = event(serviceId, "g58-reentry-room-target", targetSuid, nowMs - 30_000);
     const reservationTarget = event(serviceId, "g58-reentry-reservation-target", targetSuid, nowMs - 1_000);
+    const targetCertificate = {
+      certificateVersion: 1 as const,
+      authority: "allocator-transaction" as const,
+      status: "ready" as const,
+      serviceId,
+      allocatorLineageId: "g58-reentry-lineage",
+      closedPrefixSuid: targetSuid,
+      unresolvedCount: 0,
+      generatedAt: nowMs,
+      migrationProofId: null,
+    };
     const views = new D1MaterializedViewStore(database());
     await views.initialize();
     const roomRuntime = new MaterializedViewCatchUpRuntime(source([oldEvent, roomTarget]), views);
@@ -162,8 +173,16 @@ describe("SDT-G58 ReservationProjector unsafe-kick re-entry", () => {
     // Decision 1: Room independently reaches the retained frontier; the
     // Reservation view applies only the old event and stops at the first
     // recent event. The same maximumSuid is the proven scheduled frontier.
-    const roomInitial = await roomRuntime.build(serviceId, MATERIALIZERS.room, nowMs, {}, { maximumSuid: targetSuid });
-    const reservationInitial = await reservationRuntime.build(serviceId, MATERIALIZERS.reservation, nowMs, {}, { maximumSuid: targetSuid });
+    const roomInitial = await roomRuntime.build(serviceId, MATERIALIZERS.room, nowMs, {}, {
+      maximumSuid: targetSuid,
+      closedPrefixSuid: targetSuid,
+      closedPrefixCertificate: targetCertificate,
+    });
+    const reservationInitial = await reservationRuntime.build(serviceId, MATERIALIZERS.reservation, nowMs, {}, {
+      maximumSuid: targetSuid,
+      closedPrefixSuid: targetSuid,
+      closedPrefixCertificate: targetCertificate,
+    });
     expect(roomInitial.instance.lastSuid).toBe(targetSuid);
     expect(reservationInitial.instance.lastSuid).toBe(oldSuid);
     expect(reservationInitial.appliedEvents).toBe(1);
@@ -172,11 +191,19 @@ describe("SDT-G58 ReservationProjector unsafe-kick re-entry", () => {
     // Decision 2: the unsafe kick is acquired, but follow still stops at the
     // same first-unsafe event. A finish that ignores the reached checkpoint is
     // the W105 baseline defect: it would make this target permanently clean.
-    const firstFollow = await reservationRuntime.follow(serviceId, MATERIALIZERS.reservation, nowMs, {}, { maximumSuid: targetSuid });
+    const firstFollow = await reservationRuntime.follow(serviceId, MATERIALIZERS.reservation, nowMs, {}, {
+      maximumSuid: targetSuid,
+      closedPrefixSuid: targetSuid,
+      closedPrefixCertificate: targetCertificate,
+    });
     expect(firstFollow.instance.lastSuid).toBe(oldSuid);
     const lease = await views.unsafeWindow().acquireKick(serviceId, RESERVATION_VIEW, "w106-first", nowMs, 60_000);
     expect(lease?.targetSuid).toBe(targetSuid);
-    const blockedDrain = await reservationRuntime.follow(serviceId, MATERIALIZERS.reservation, nowMs, {}, { maximumSuid: targetSuid });
+    const blockedDrain = await reservationRuntime.follow(serviceId, MATERIALIZERS.reservation, nowMs, {}, {
+      maximumSuid: targetSuid,
+      closedPrefixSuid: targetSuid,
+      closedPrefixCertificate: targetCertificate,
+    });
     expect(blockedDrain.instance.lastSuid).toBe(oldSuid);
     await expect(views.unsafeWindow().finishKick(
       serviceId,
@@ -192,7 +219,11 @@ describe("SDT-G58 ReservationProjector unsafe-kick re-entry", () => {
     const eligibleAt = nowMs + 21_000;
     const reentryLease = await views.unsafeWindow().acquireKick(serviceId, RESERVATION_VIEW, "w106-second", eligibleAt, 60_000);
     expect(reentryLease?.targetSuid).toBe(targetSuid);
-    const reentered = await reservationRuntime.follow(serviceId, MATERIALIZERS.reservation, eligibleAt, {}, { maximumSuid: targetSuid });
+    const reentered = await reservationRuntime.follow(serviceId, MATERIALIZERS.reservation, eligibleAt, {}, {
+      maximumSuid: targetSuid,
+      closedPrefixSuid: targetSuid,
+      closedPrefixCertificate: targetCertificate,
+    });
     expect(reentered.instance.lastSuid).toBe(targetSuid);
     expect(reentered.appliedEvents).toBe(1);
     await expect(views.unsafeWindow().finishKick(

@@ -489,6 +489,7 @@ export function createCloudflareOnlyRuntimeWorker(
         maximumSuid: scheduledLiveProjectionMaximumSuid(scan, safeLane?.frontierSuid),
         closedPrefixSuid: closedPrefixCertificate?.status === "ready" ? closedPrefixCertificate.closedPrefixSuid : null,
         closedPrefixCertificate,
+        allocatorLineageId: closedPrefixCertificate?.allocatorLineageId,
         observer: options.liveProjectionPollObserver,
       });
     },

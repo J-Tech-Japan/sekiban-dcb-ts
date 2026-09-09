@@ -48,6 +48,11 @@ export interface MaterializedViewCatchUpOptions {
   readonly closedPrefixSuid?: string | null;
   /** The complete certificate that authorizes the supplied closedPrefixSuid. */
   readonly closedPrefixCertificate?: ClosedPrefixCertificate;
+  /** Safe callers must explicitly require the cached allocator certificate. */
+  readonly requireClosedPrefixCertificate?: boolean;
+  /** Cached consumer service and allocator generation binding. */
+  readonly expectedServiceId?: string;
+  readonly expectedAllocatorLineageId?: string;
   /** Run the bounded late-lower detector only from scheduled maintenance. */
   readonly runOrderingDetector?: boolean;
 }
