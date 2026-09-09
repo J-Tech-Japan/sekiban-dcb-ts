@@ -11,7 +11,8 @@ G64 operation, merge, or issue close was performed.
 - New main base: `82501b8c649b674a3c36db30122363fe2e9c1cca` (merged PR #147).
 - Source repair checkpoint: `207515c` (`fix(g70): rebase closed-prefix safety repair`).
 - W180 source/guard/docs repair: `9a463b35123e966394ec7d6a282343cd22d04cae`.
-- Final evidence commit: recorded after this artifact is committed and pushed.
+- Final evidence commit: `799c3a4065ce7bef8c66d69ace4676df692abba6` (this
+  artifact's current committed evidence head).
 - The prohibited `commit.test`/missing-service-header production special case
   is not present. The retained `commit.test` hostname checks are the existing
   fault-injection/attempt-id seam only; no G70 code uses them to bypass a
