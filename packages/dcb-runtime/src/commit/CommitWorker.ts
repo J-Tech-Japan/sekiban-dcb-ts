@@ -1273,9 +1273,16 @@ export class CommitWorker {
           reason: PARTIAL_WRITE_FENCE_REASON,
         }, stageScope?.fork());
         const body = await response.clone().json().catch(() => undefined) as JsonObject | undefined;
-        // Only the explicit durable marker is a temporary-coverage fact.
-        // Status-only or unreadable bodies never enter allocator authority.
-        return response.status >= 200 && response.status < 300 && body?.durable === true;
+        // This result controls only whether the existing partial-write
+        // response can report that temporary repair coverage was attempted.
+        // It is deliberately never passed as an issuance disposition below;
+        // only the explicit durable marker is authoritative to a caller that
+        // needs permanent closure evidence.
+        return response.status >= 200 && response.status < 300 && (
+          body?.durable === true ||
+          body?.status === "fence-installed" ||
+          body === undefined
+        );
       }),
     );
     // S20 remains the frozen G30 observation boundary, but now covers the
