@@ -69,7 +69,7 @@ export function checkG75Sources(sources = sourceMap()) {
     "validatedClosedPrefixSuid({",
     "closedPrefixCertificate: options.closedPrefixCertificate",
     "requireClosedPrefixCertificate: true",
-    "safeViewAdvance ? closedPrefixSuid : undefined",
+    "closedPrefixSuid,\n        options.closedPrefixCertificate,",
   ], "safe-view boundary");
   requireAbsent(files.materializedView, [
     "ClosedPrefixCertificate",
