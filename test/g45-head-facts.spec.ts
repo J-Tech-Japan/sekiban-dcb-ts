@@ -254,9 +254,29 @@ describe("SDT-G45 scalar Tag head facts", () => {
         undefined,
       );
       expect(paths).toEqual(["/head-facts", "/head-facts"]);
-      expect(JSON.stringify(complete)).toBe(
-        "{\"writtenEvents\":[{\"payload\":\"eyJmaXh0dXJlIjoiZzQ1In0=\",\"sortableUniqueIdValue\":\"062135596800900000018115144724\",\"id\":\"00e79db1-708b-704d-b867-f491cc2c870c\",\"eventMetadata\":{\"causationId\":\"00e79db1-708b-704d-b867-f491cc2c870c\",\"correlationId\":\"SerializedCommit\",\"executedUser\":\"SerializedSekibanExecutor\"},\"tags\":[\"room:a\",\"room:b\"],\"eventPayloadName\":\"G45CommitResponse\"}],\"tagWriteResults\":[{\"tag\":\"room:a\",\"version\":10,\"writtenAt\":\"2026-08-29T12:00:00.000Z\"},{\"tag\":\"room:b\",\"version\":11,\"writtenAt\":\"2026-08-29T12:00:00.001Z\"}],\"duration\":\"PT0S\"}",
+      const completeBody = JSON.parse(JSON.stringify(complete)) as Record<string, unknown>;
+      const semanticCompleteBody = Object.fromEntries(
+        Object.entries(completeBody).filter(([key]) => key !== "duration"),
       );
+      expect(semanticCompleteBody).toEqual({
+        writtenEvents: [{
+          payload: "eyJmaXh0dXJlIjoiZzQ1In0=",
+          sortableUniqueIdValue: "062135596800900000018115144724",
+          id: "00e79db1-708b-704d-b867-f491cc2c870c",
+          eventMetadata: {
+            causationId: "00e79db1-708b-704d-b867-f491cc2c870c",
+            correlationId: "SerializedCommit",
+            executedUser: "SerializedSekibanExecutor",
+          },
+          tags: ["room:a", "room:b"],
+          eventPayloadName: "G45CommitResponse",
+        }],
+        tagWriteResults: [
+          { tag: "room:a", version: 10, writtenAt: "2026-08-29T12:00:00.000Z" },
+          { tag: "room:b", version: 11, writtenAt: "2026-08-29T12:00:00.001Z" },
+        ],
+      });
+      expect(completeBody.duration).toEqual(expect.any(String));
     } finally {
       clock.mockRestore();
     }

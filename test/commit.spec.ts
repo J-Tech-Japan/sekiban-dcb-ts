@@ -618,7 +618,7 @@ describe("Serialized V1 commit worker", () => {
     expect((await SELF.fetch(
       `https://commit.test/tags/${encodeURIComponent(SERVICE_ID)}/${encodeURIComponent(allocationFailureTag)}/state`,
     )).status).toBe(404);
-  });
+  }, 3_000);
 
   it("returns Section 6 JSON when committed tag facts cannot prepare a response, without inventing a Journal terminal outcome", async () => {
     const attemptId = crypto.randomUUID();

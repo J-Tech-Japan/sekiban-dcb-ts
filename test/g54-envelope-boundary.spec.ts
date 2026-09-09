@@ -133,7 +133,11 @@ describe("SDT-G54 serialized V1 envelope boundary", () => {
     const response = await handleSerializedCommit(commitRequest({ version: 1, eventCandidates: [], consistencyTags: [] }), fixture.env);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ writtenEvents: [], tagWriteResults: [], duration: "PT0S" });
+    const responseBody = await response.json<{ writtenEvents: unknown[]; tagWriteResults: unknown[]; duration: string }>();
+    const { duration, ...semanticResponseBody } = responseBody;
+    expect(Object.keys(responseBody).sort()).toEqual(["duration", "tagWriteResults", "writtenEvents"]);
+    expect(semanticResponseBody).toEqual({ writtenEvents: [], tagWriteResults: [] });
+    expect(duration).toEqual(expect.any(String));
     expectNoDurableObjectCalls(fixture.calls);
     expect(validateCommitEnvelope({ version: 1, eventCandidates: [], consistencyTags: [] })).toHaveProperty("value");
   });

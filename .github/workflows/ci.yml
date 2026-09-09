@@ -55,6 +55,8 @@ jobs:
         run: npm run test:g52
       - run: npm run typecheck
       - run: npm test
+      - name: Run SDT-G73 driver-timing equality guard
+        run: npm run test:g73:guard
       - run: npm run test:g17
       - run: npm run test:g17:rollout-order
 
