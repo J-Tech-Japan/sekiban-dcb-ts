@@ -230,37 +230,50 @@ export async function pollLiveProjections(
       for (const projector of registry.registered()) {
         const identity = tagStateIdentityFrom(`${options.tag}:${projector.id}`, registry);
         if (identity.value !== undefined) {
-          results.push(await runtime.catchUp(
-            serviceId,
-            identity.value,
-            attemptedAt,
-            {},
-            safeViewAdvance
-              ? {
-                  maximumSuid: options.maximumSuid,
-                  closedPrefixSuid,
-                  closedPrefixCertificate: options.closedPrefixCertificate,
-                  requireClosedPrefixCertificate: true,
-                  expectedServiceId: serviceId,
-                  expectedAllocatorLineageId: options.allocatorLineageId,
-                }
-              : { maximumSuid: options.maximumSuid },
-          ));
+          if (safeViewAdvance) {
+            results.push(await runtime.catchUp(
+              serviceId,
+              identity.value,
+              attemptedAt,
+              {},
+              {
+                maximumSuid: options.maximumSuid,
+                closedPrefixSuid,
+                closedPrefixCertificate: options.closedPrefixCertificate,
+                requireClosedPrefixCertificate: true,
+                expectedServiceId: serviceId,
+                expectedAllocatorLineageId: options.allocatorLineageId,
+              },
+            ));
+          } else {
+            results.push(await runtime.catchUp(
+              serviceId,
+              identity.value,
+              attemptedAt,
+              {},
+              { maximumSuid: options.maximumSuid },
+            ));
+          }
         }
       }
       await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
       return results;
     }
-    const results = await runtime.pollRegistered(
-      serviceId,
-      attemptedAt,
-      options.maximumSuid,
-      safeViewAdvance ? closedPrefixSuid : undefined,
-      safeViewAdvance ? options.closedPrefixCertificate : undefined,
-      safeViewAdvance,
-      safeViewAdvance ? serviceId : undefined,
-      safeViewAdvance ? options.allocatorLineageId : undefined,
-    );
+    if (safeViewAdvance) {
+      const results = await runtime.pollRegistered(
+        serviceId,
+        attemptedAt,
+        options.maximumSuid,
+        closedPrefixSuid,
+        options.closedPrefixCertificate,
+        true,
+        serviceId,
+        options.allocatorLineageId,
+      );
+      await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
+      return results;
+    }
+    const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);
     await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
     return results;
   } catch (error) {
