@@ -491,6 +491,7 @@ export type {
   ProjectionPollOptions,
 } from "./projection/LiveProjectionWorker";
 export type { ClosedPrefixCertificate } from "./allocator/types";
+export type { SafeViewCoverageContext } from "./projection/ProjectionRuntime";
 export {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,

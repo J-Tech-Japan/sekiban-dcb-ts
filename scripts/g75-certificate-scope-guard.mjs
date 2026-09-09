@@ -55,21 +55,31 @@ export function checkG75Sources(sources = sourceMap()) {
   ], "certificate type");
   requireContains(files.projection, [
     "export function validatedClosedPrefixSuid",
+    "export type SafeViewCoverageContext",
+    "export function validatedSafeViewCoverageMaximumSuid",
     'throw new Error("ordering_certificate_unavailable")',
     "certificate.authority !== \"allocator-transaction\"",
-    "certificate.serviceId !== options.expectedServiceId",
+    "options.expectedServiceId !== consumerServiceId",
+    "certificate.serviceId !== consumerServiceId",
     "certificate.allocatorLineageId !== options.expectedAllocatorLineageId",
+    "context.authority !== \"g44-g62\"",
+    "context.startOfPass !== \"PROVEN\"",
+    "context.serviceId !== consumerServiceId",
+    "ordering_coverage_unavailable",
     "certifiedClosedPrefixSuid === null",
     "certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0",
     "options.maximumSuid === null",
     "compareSuid(event.suid, options.maximumSuid) > 0",
+    "safeViewAdvance && (coverageMaximumSuid === null",
   ], "projection gate");
   requireContains(files.live, [
     "const safeViewAdvance = options.safeViewAdvance === true || options.requireClosedPrefixCertificate === true;",
     "validatedClosedPrefixSuid({",
+    "validatedSafeViewCoverageMaximumSuid(options.safeViewCoverage, serviceId)",
     "closedPrefixCertificate: options.closedPrefixCertificate",
     "requireClosedPrefixCertificate: true",
     "closedPrefixSuid,\n        options.closedPrefixCertificate,",
+    "safeViewCoverage: options.safeViewCoverage",
   ], "safe-view boundary");
   requireAbsent(files.materializedView, [
     "ClosedPrefixCertificate",
@@ -90,9 +100,15 @@ export function checkG75Sources(sources = sourceMap()) {
     "omit-closed-prefix-certificate-gate",
   ], "evidence");
   requireContains(files.test, [
+    "unmarked direct catchUp and pollRegistered ignore absent, null, and malformed certificate fields",
     "ordinary scheduled and diagnostic-style polling does not validate a certificate",
     "the explicit safe-view decision is certificate-gated and consumer-bound",
+    "direct safe catchUp and pollRegistered bind certificate and context to actual serviceId",
+    "marked safe advancement requires a proven G44/G62 coverage context",
+    "a proven BLOCK/UNSETTLED null frontier remains non-advancing",
+    "explicit proven-FULL context permits the unbounded safe decision",
     "certificate alone cannot replace the existing G44 settled frontier",
+    "proven G44/G62 coverage frontier remains independent from the certificate closed prefix",
     "safe view cannot advance beyond the certificate closed prefix",
   ], "focused oracle");
   return failures;

@@ -84,6 +84,7 @@ export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome,
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
 export type { ClosedPrefixCertificate } from "./allocator/types";
+export type { SafeViewCoverageContext } from "./projection/ProjectionRuntime";
 export {
   CommitTrace,
   CommitTraceScope,

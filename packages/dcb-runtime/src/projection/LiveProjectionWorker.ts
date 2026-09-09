@@ -13,7 +13,9 @@ import {
   ProjectionRuntime,
   safeWindowMs,
   validatedClosedPrefixSuid,
+  validatedSafeViewCoverageMaximumSuid,
   type CatchUpResult,
+  type SafeViewCoverageContext,
 } from "./ProjectionRuntime";
 import { scopeIdFor } from "../scope/ScopeName";
 import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
@@ -88,6 +90,8 @@ export interface ProjectionPollOptions {
   closedPrefixCertificate?: ClosedPrefixCertificate;
   /** Cached allocator generation used to bind the certificate. */
   allocatorLineageId?: string;
+  /** Existing G44/G62 proven coverage and start-of-pass handoff. */
+  safeViewCoverage?: SafeViewCoverageContext;
   serviceIdentityProvider?: ServiceIdentityProvider;
   /** Observation-only lifecycle sink; it cannot alter projection decisions. */
   observer?: LiveProjectionPollObserver;
@@ -216,8 +220,11 @@ export async function pollLiveProjections(
         closedPrefixCertificate: options.closedPrefixCertificate,
         expectedServiceId: serviceId,
         expectedAllocatorLineageId: options.allocatorLineageId,
-      })
+      }, serviceId)
     : undefined;
+  if (safeViewAdvance) {
+    validatedSafeViewCoverageMaximumSuid(options.safeViewCoverage, serviceId);
+  }
   const attemptedAt = (options.clock ?? systemPipelineClock).now();
   await notifyObserver(options.observer, "onAttempt", { env, serviceId, projectorIds, attemptedAt });
   try {
@@ -243,6 +250,7 @@ export async function pollLiveProjections(
                 requireClosedPrefixCertificate: true,
                 expectedServiceId: serviceId,
                 expectedAllocatorLineageId: options.allocatorLineageId,
+                safeViewCoverage: options.safeViewCoverage,
               },
             ));
           } else {
@@ -269,6 +277,7 @@ export async function pollLiveProjections(
         true,
         serviceId,
         options.allocatorLineageId,
+        options.safeViewCoverage,
       );
       await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
       return results;
