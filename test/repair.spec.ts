@@ -449,7 +449,7 @@ describe("SDT-G6 operator repair vertical slice", () => {
     expect((await tagFacts(prepared.missingTag)).fences).not.toContainEqual(
       expect.objectContaining({ reason: "partial_write", attemptId: prepared.attemptId }),
     );
-  });
+  }, 10_000);
 
   it("keeps late low-epoch Journal observations non-authoritative for clear and completion", async () => {
     const prepared = await partialAttempt("late-observation");

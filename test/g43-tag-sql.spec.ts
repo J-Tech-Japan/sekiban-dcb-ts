@@ -93,18 +93,6 @@ async function configuredAlarm(value: Scope): Promise<number | null> {
   return runInDurableObject(tagStub(value), (_instance, state) => state.storage.getAlarm());
 }
 
-async function waitForConfiguredAlarm(value: Scope): Promise<number | null> {
-  // SQLite alarm writes become observable on the following event turn in the
-  // Miniflare harness. This only yields the test event loop; it never
-  // advances time or re-runs the scheduler under test.
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const alarm = await configuredAlarm(value);
-    if (alarm !== null) return alarm;
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
-  }
-  return null;
-}
-
 async function scanSource(value: Scope, nowMs: number): Promise<unknown> {
   return runInDurableObject(tagStub(value), (instance) =>
     (instance as unknown as SchedulerSeam).g43ScanSourceObligations(value.tag, nowMs));
@@ -424,10 +412,17 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
         const nestedAppend = await append(value, "insert-2");
         expect(nestedAppend.status).toBe(201);
         // The Worker response headers are observable before the response body
-        // has drained in the parallel foundation pool. Consume the body so the
-        // nested append's handler turn and durable SQL commit are complete
-        // before the outer alarm resumes its source scan.
+        // has drained in the parallel foundation pool. Consume the body, then
+        // use a same-DO storage read as the durable completion barrier before
+        // the outer alarm resumes its source scan.
         await nestedAppend.arrayBuffer();
+        await runInDurableObject(tagStub(value), (_instance, state) => {
+          const durable = state.storage.sql.exec<SqlCount>(
+            "SELECT COUNT(*) AS count FROM tag_event WHERE event_id = ?",
+            candidate(value, "insert-2").eventId,
+          ).one();
+          expect(durable.count).toBe(1);
+        });
         return;
       }
       throw new Error("fixture keeps newly inserted obligation pending");
@@ -437,13 +432,19 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
       // Call the real handler body through the DO seam. Miniflare's synthetic
       // alarm helper consumes an alarm when its handler returns, which would
       // hide the re-arm produced by this fixture's in-flight insert.
-      await expect(runInDurableObject(tagStub(value), (instance) =>
-        (instance as unknown as SchedulerSeam).runAlarm())).resolves.toBeDefined();
+      const alarmRun = await runInDurableObject(tagStub(value), async (instance, state) => ({
+        result: await (instance as unknown as SchedulerSeam).runAlarm(),
+        alarm: await state.storage.getAlarm(),
+      }));
+      expect(alarmRun.result).toBeDefined();
       expect(inserted).toBe(true);
       await expect(scanSource(value, Date.now())).resolves.toMatchObject({
         findings: expect.arrayContaining([expect.objectContaining({ eventId: candidate(value, "insert-2").eventId, status: "pending" })]),
       });
-      expect(await waitForConfiguredAlarm(value)).not.toBeNull();
+      // Read the re-arm in the same actor turn as the direct handler seam.
+      // A separate event-turn poll races the harness's synthetic alarm
+      // bookkeeping under the parallel foundation pool.
+      expect(alarmRun.alarm).not.toBeNull();
     } finally {
       await restoreQueue();
     }
