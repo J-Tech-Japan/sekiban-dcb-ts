@@ -1,5 +1,10 @@
 # SDT-G64 matched package-set evidence
 
+W180 status: post-release gate recovery is prepared as a separate reviewable
+package/workflow change. The W177 `0.1.0` publication is historical; the
+working matched set in this branch is `0.1.1`. No package was published by
+this repair.
+
 This document records the release-preparation proof for issue #120. The original
 W174/W176 source checkpoints did not publish packages, create credentials, or
 create a tag. W177 repairs the tag workflow so an operator can publish the
@@ -8,7 +13,7 @@ runtime API behavior. For a private repository, the workflow omits the explicit
 `--provenance` flag, sets `NPM_CONFIG_PROVENANCE=false`, and removes the
 manifest-level `publishConfig.provenance` field from the isolated checkout
 before authenticated publication. npm otherwise retains that static setting
-even when the command-line flag is omitted. The matched release set is
+even when the command-line flag is omitted. The historical W177 matched release set was
 `@sekiban/dcb-core`,
 `@sekiban/dcb-domain`, and `@sekiban/dcb-client`, all at `0.1.0`.
 
@@ -274,6 +279,28 @@ The red probes are expected to fail in the mutated pre-change fixture and are
 green only when the guard detects that failure. The clean receipts must show
 the corresponding green package/consumer proof; a red probe is not counted as
 a package-set failure.
+
+## W180 post-release dry-run gate recovery
+
+W177 caused the current dry-run collision: `0.1.0` is already published, so a
+subsequent credential-free `npm publish --dry-run` can fail with npm's
+`previously published versions` message. That is a named version-collision
+failure, not a passing packaging result and not a reason to suppress the gate.
+This branch moves the three workspace package manifests and exact client
+dependencies to the working `0.1.1` set; it does not publish or tag it.
+
+Both dry-run gates use the same classifier. An already-published signature is
+reported as `kind=version-collision` and the command exits non-zero. Malformed
+or unavailable `package.json` is reported as `kind=invalid-packaging`, even if
+a collision-like string is also present; other failures remain
+`kind=publish-or-environment-failure`. The classifier self-test includes the
+broken-manifest-as-version-collision red mutant, and both matched-set and
+dcb-domain command-shape self-tests run.
+
+The dcb-domain preflight/release workflow invokes the recorded classifier
+script instead of an unclassified inline npm command. Package/tag guards target
+`dcb-domain-v0.1.1` and `dcb-v0.1.1`; the W177 `0.1.0` registry receipts above
+remain historical evidence and are not rewritten.
 
 ## Operator-only activation
 
