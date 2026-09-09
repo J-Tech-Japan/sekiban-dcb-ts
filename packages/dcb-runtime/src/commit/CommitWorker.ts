@@ -674,7 +674,6 @@ export class CommitWorker {
         attemptId,
         fault,
         traceState?.scope,
-        input.consistencyTags.length === 0,
       );
       if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(cancellation.confirmedTags));
       return this.noApplicationOutcome(attemptId, true);

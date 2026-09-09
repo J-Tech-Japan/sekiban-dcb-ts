@@ -356,6 +356,13 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     const serviceId = unique("g70-public-fence");
     const tag = unique("g70-public-fence-tag");
     const attemptId = `g70-public-fence-attempt-${crypto.randomUUID()}`;
+    // A cancellation can confirm a durable fence only for a Tag that already
+    // exists.  A brand-new source partition remains unresolved when the
+    // append boundary is lost; that is the fail-closed path covered by the
+    // legacy AC7 regression.  Seed this source so this test proves the
+    // confirmed-fence branch without manufacturing Tag state.
+    const seed = await publicCommit(serviceId, [tag]);
+    expect(seed.status).toBe(200);
     const response = await SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
       method: "POST",
       headers: {
@@ -405,6 +412,8 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     const serviceId = unique("g70-recovery");
     const tag = unique("g70-recovery-tag");
     const attemptId = `g70-recovery-attempt-${crypto.randomUUID()}`;
+    const seed = await publicCommit(serviceId, [tag]);
+    expect(seed.status).toBe(200);
     const response = await SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
       method: "POST",
       headers: {

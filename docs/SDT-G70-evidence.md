@@ -1,6 +1,7 @@
 # SDT-G70 evidence
 
-Status: rebased local F1–F7 repair checkpoint; not review-ready until exact-head CI is terminal. The repair is source/test/docs only; no
+Status: rebased local F1–F7 repair checkpoint with the W180 CI repairs; not
+review-ready until exact-head CI is terminal. The repair is source/test/docs only; no
 Wrangler, Cloudflare deployment, resource mutation, npm publish, tag,
 credential, production, G32, or #133 operation was performed.
 
@@ -45,7 +46,8 @@ a SETTLED result or shorten a fence.
 | --- | --- |
 | ordinary public single-Tag commit | V1 response body remains unchanged; response event ID/SUID matches the obligation; Tag installation resolves it and the certificate closes at that SUID |
 | disjoint/multi-Tag commit | both source memberships are required before the obligation resolves; the public matrix also covers the final-participant/partial-append path |
-| allocation-to-append crash | public 504 is retained; every source Tag is durably fenced before resolution; no authoritative event is fabricated |
+| allocation-to-append crash on an existing source Tag | public 504 is retained; the existing source Tag is durably fenced before resolution; no authoritative event is fabricated |
+| allocation-to-append crash on a brand-new source partition | public 504 is retained; missing Tag state is not manufactured, the obligation remains unresolved, and the closed prefix stays fail-closed |
 | lost cancellation / delayed writer | public 504 leaves the obligation unresolved; a later real Tag append is discovered by the allocator-owned alarm and resolves the exact identity |
 | lost fence acknowledgement | the durable Tag tombstone is found after the request returns; replayed resolution is idempotent |
 | higher-before-lower | a higher public commit may return, but its certificate stays behind the unresolved lower allocation; only lower installation/fencing closes the prefix |
@@ -54,15 +56,18 @@ a SETTLED result or shorten a fence.
 | migration/bootstrap | empty, omitted, out-of-cut, duplicate, mismatched, or lineage-replaced reconciliation history is refused; a complete cut still leaves imported obligations unresolved until real closure |
 | certificate/safe path | missing/unreconciled/mismatched certificate cannot authorize the MV/projection safe path; unsafe behavior is unchanged |
 
-The existing CommitWorker crash matrix remains in `test/commit.spec.ts`; the
-G70 public tests cover the G70 handoff shapes and recovery boundary. The
+The existing CommitWorker crash matrix remains in `test/commit.spec.ts`; its
+legacy AC7 zero-write/404 assertion remains unchanged. The G70 public tests
+cover the G70 handoff shapes and recovery boundary, seeding an existing Tag
+only for confirmed-fence cases and retaining a separate brand-new-partition
+unresolved case. The
 useful `scripts/g70-allocator-closed-prefix-guard.mjs` is supplementary: it
 checks source seams and runs ten red mutations. The four AC5 mutants are
 registration removed, one-Tag premature resolution, expired/aborted writer
 accepted, and allocated-watermark substitution for the closed prefix; the
 remaining mutations cover durable recovery, reconciliation authority, safe
-dual-gate enforcement, uncontacted cancellation, and first-write fence
-creation. It does not replace the public behavioral proof.
+dual-gate enforcement, uncontacted cancellation, and the Tag fence source
+seam. It does not replace the public behavioral proof.
 
 ## Migration cut and trust boundary
 
@@ -98,7 +103,8 @@ results for this repair are recorded in the sender artifact and commit receipt;
 the important results are:
 
 - `test/commit.spec.ts` G4 allocation/cancellation compatibility selection:
-  pass after the G70 first-write fence compatibility seam was rebuilt.
+  focused AC7 pass after removing synthetic missing-Tag tombstone creation;
+  the pre-existing 404/no-authoritative-write assertion remains unchanged.
 - `test/g70-allocator-closed-prefix.spec.ts`: 11/11 pass; the paired
   `test/allocator.spec.ts` lane also passed 5/5.
 - `test/g69-ordering.spec.ts`: 8/8 pass in the focused serial invocation; the
@@ -125,6 +131,12 @@ the important results are:
   includes the expected Vitest negative assertions; those are guard proof,
   not production failures.
 
+- `npm test`: the repository-wide parallel runner is not a green claim in this
+  environment. It reproduced the existing G43 AC6 teardown/runner race, G43
+  measurement spread, and several unrelated 5-second repair/tag test
+  timeouts while the focused serial lanes above passed; no test assertion,
+  timeout, retry wrapper, or fixture was changed to mask that behavior.
+
 Local Miniflare continues to print the existing non-empty Hyperdrive binding
 warning and occasional overdue SQLite alarm diagnostics. The child worktree
 also needs its ignored workspace package links to point at its own package
@@ -139,19 +151,40 @@ The unrelated G65/G67 artifacts and fixture dirt remain unstaged.
 The old PR-head W178 failures are deterministic and are not C-14 duration
 flakes:
 
-- `ci-foundation` fails the G69 ordering assertion because a higher SUID became
-  safe before the expected lower admission; the repaired local G69 proof is
-  now green and the strict ordering behavior was not weakened.
-- `ci-g44` fails the in-scope G58 source guard literal because the G70 safe
-  path now propagates both `maximumSuid` and the closed-prefix certificate.
-  `scripts/g58-block-live-green-guard.mjs` now checks both values with
-  omission mutations red; no G58 test/assertion was removed.
+- `ci-foundation` at
+  `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34304940836/job/102319563994`
+  failed the branch-caused legacy AC7 check (`expected 404`, received `200`)
+  because the prior G70 path manufactured a missing-Tag tombstone. The repair
+  removes that create-on-cancel call; the new Tag remains unresolved and
+  fail-closed, while an existing Tag can still provide explicit fence proof.
+  The exact base run at
+  `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34302437259/job/102312021120`
+  passed foundation, and the focused base AC7 selection also passed.
+- `ci-g44` at
+  `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34304940836/job/102319564176`
+  failed the in-scope G58 source guard literal because the G70 safe path now
+  propagates both `maximumSuid` and the closed-prefix certificate.
+  `scripts/g58-reservation-safe-starvation-guard.mjs` now checks the expanded
+  call shape and has a certificate-omission mutation red; no G58
+  test/assertion was removed. The focused G44 and G58 source checks pass, with
+  only the pre-existing W97 runner exception recorded above.
+- `ci-g21-g25` at
+  `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34304940836/job/102319563958`
+  failed the existing G54 empty-envelope timing equality (`PT0S` versus
+  `PT0.001S`). The same timing-only failure is present on the exact base run at
+  `https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34302437259/job/102312021101`;
+  local G54 passes. This is retained as a C-14 environment/timing exception,
+  not used to waive the branch-caused foundation or G58 failures.
 - `ci-g64` and `dcb-domain-release-preflight` reject the dry-run attempt to
   publish already-published `0.1.0` after W177. This is a separate package
   release-state collision, not a G70 runtime exception and not waived as a
   timeout. The separate W179 package-gate PR handles it; no package change is
   folded into this G70 branch.
 - `verify` is aggregate/downstream and is not an independent G70 failure.
+
+The pushed source/evidence follow-up after these local repairs must receive a
+new exact-head run; this document does not call the current hosted run green
+or the PR review-ready.
 
 The supplementary G70 guard remains present and staged; it was not deleted or
 used as a replacement for the behavioral tests. No G64, G32, npm release,

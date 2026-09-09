@@ -183,9 +183,15 @@ function sourceContracts(sources) {
   const catchSource = mv.slice(catchStart, drainStart);
   const drainSource = mv.slice(drainStart);
   requireContains(catchSource, "for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {", "serial safe MV catch-up");
-  requireContains(catchSource, "await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid });", "safe MV retained-frontier follow");
+  requireContains(catchSource, "await runtime.follow(serviceId, materializer, Date.now(), hooks, {", "safe MV retained-frontier follow");
+  requireContains(catchSource, "maximumSuid: frontierSuid,", "safe MV retained-frontier argument");
+  requireContains(catchSource, "closedPrefixSuid: options.closedPrefixSuid,", "safe MV closed-prefix certificate SUID");
+  requireContains(catchSource, "closedPrefixCertificate: options.closedPrefixCertificate,", "safe MV closed-prefix certificate authority");
   requireContains(drainSource, "for (const materializer of fanoutMaterializers(configuredViewCount(env.G26_VIEW_COUNT))) {", "serial unsafe-kick drain");
-  requireContains(drainSource, "await runtime.follow(serviceId, materializer, nowMs, {}, { maximumSuid: frontierSuid });", "unsafe drain retained-frontier follow");
+  requireContains(drainSource, "await runtime.follow(serviceId, materializer, nowMs, {}, {", "unsafe drain retained-frontier follow");
+  requireContains(drainSource, "maximumSuid: frontierSuid,", "unsafe drain retained-frontier argument");
+  requireContains(drainSource, "closedPrefixSuid: closedPrefixCertificate?.closedPrefixSuid ?? null,", "unsafe drain closed-prefix certificate SUID");
+  requireContains(drainSource, "closedPrefixCertificate,", "unsafe drain closed-prefix certificate authority");
   requireContains(catchUp, "if (event.lastArrivedAt > nowMs - windowMs)", "first-unsafe SafeWindow barrier");
   requireContains(catchUp, "return {\n            instance: current,", "first-unsafe bounded return");
   requireContains(catchUp, "const MAX_CAS_RETRIES = 8;", "bounded CAS retry policy");
@@ -307,6 +313,13 @@ function mutationSelfTest(sources) {
   try { sourceContracts({ ...sources, worker: fenceMutant }); } catch { fenceRed = true; }
   if (!fenceRed) fail("removing the retained-frontier argument did not turn the source guard red");
 
+  let certificateRed = false;
+  const certificateMutant = sources.mv
+    .replace("closedPrefixCertificate: options.closedPrefixCertificate,", "")
+    .replace("      closedPrefixCertificate,\n", "");
+  try { sourceContracts({ ...sources, mv: certificateMutant }); } catch { certificateRed = true; }
+  if (!certificateRed) fail("removing the validated closed-prefix certificate did not turn the source guard red");
+
   let earlyReturnRed = false;
   const earlyReturnMutant = sources.runtime.replace(
     "const safeLane = await options.beforeLiveProjectionPoll?.({ env, serviceId, scan, ctx });",
@@ -320,6 +333,7 @@ function mutationSelfTest(sources) {
     serialMaterializerMutationRed: serialRed,
     catchUpDrainOrderMutationRed: orderRed,
     retainedFrontierMutationRed: fenceRed,
+    closedPrefixCertificateMutationRed: certificateRed,
     w103EarlyReturnMutationRed: earlyReturnRed,
   };
 }
@@ -337,7 +351,7 @@ function selfTest() {
   assertReceiptFacts(receipt, groups);
   sourceContracts(sources);
   const mutations = mutationSelfTest(sources);
-  process.stdout.write(`${JSON.stringify({ selfTest: "g58-w105-reservation-safe-starvation", scheduledCoverageTicks: groups.length, httpHealthSamples: receipt.healthSnapshots.length, mutations: { firstUnsafeBarrierMutationRed: mutations.firstUnsafeBarrierMutationRed, serialMaterializerMutationRed: mutations.serialMaterializerMutationRed, catchUpDrainOrderMutationRed: mutations.catchUpDrainOrderMutationRed, retainedFrontierMutationRed: mutations.retainedFrontierMutationRed, w103EarlyReturnMutationRed: mutations.w103EarlyReturnMutationRed } })}\n`);
+  process.stdout.write(`${JSON.stringify({ selfTest: "g58-w105-reservation-safe-starvation", scheduledCoverageTicks: groups.length, httpHealthSamples: receipt.healthSnapshots.length, mutations: { firstUnsafeBarrierMutationRed: mutations.firstUnsafeBarrierMutationRed, serialMaterializerMutationRed: mutations.serialMaterializerMutationRed, catchUpDrainOrderMutationRed: mutations.catchUpDrainOrderMutationRed, retainedFrontierMutationRed: mutations.retainedFrontierMutationRed, closedPrefixCertificateMutationRed: mutations.closedPrefixCertificateMutationRed, w103EarlyReturnMutationRed: mutations.w103EarlyReturnMutationRed } })}\n`);
 }
 
 function main() {
