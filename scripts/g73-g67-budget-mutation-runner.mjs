@@ -23,9 +23,9 @@ const testName = "AC3: ten paced commits converge through kicks with cron disabl
 const mutationAnchor = "        await Promise.all(waiters);\n\n        const publicResponse = await publicFetch";
 const budgetMs = 10_000;
 const calibrationRounds = 32;
-const g69OperationsPerRound = 16;
+const g69OperationsPerRound = 2;
 const safetyFactor = 1.5;
-const maxRepresentativeRounds = 512;
+const maxRepresentativeRounds = 4096;
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 
 function g69AddedWorkBlock(rounds) {
@@ -35,7 +35,7 @@ function g69AddedWorkBlock(rounds) {
       // Keeping the calibrated block to one real commit prevents the nominal
       // 32-round observation from multiplying across all ten paced commits.
       // Each round is a bounded batch of complete real deliveries so its
-      // measured cost remains observable on fast local D1 bindings.
+      // measured cost remains observable without exhausting hosted Workerd.
       if (index === 1) {
         const g73G69ExtraRounds = ${rounds};
         const g73G69OperationsPerRound = ${g69OperationsPerRound};
@@ -153,7 +153,7 @@ function selfTest() {
     throw new Error("G67 self-test does not bound calibration work to one real paced commit");
   }
   if (!mutated.includes("const extraMessage = g32Message({") || !mutated.includes("g32SuidAt(deliveredAt") ||
-      !mutated.includes("const g73G69OperationsPerRound = 16")) {
+      !mutated.includes("const g73G69OperationsPerRound = 2")) {
     throw new Error("G67 self-test does not create unique valid real-path calibration envelopes");
   }
   if (mutated.includes("setTimeout(resolve, 9500)") || mutated.includes("process.hrtime.bigint")) {

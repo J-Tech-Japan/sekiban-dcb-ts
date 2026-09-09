@@ -62,7 +62,7 @@ fact mutants remain red as well.
 
 | Case | Before | Measurement | Change and reason |
 | --- | --- | --- | --- |
-| `test/g67-safe-lane.spec.ts` AC3 | inherited 5,000 ms; red at 5,000 ms in run 34328164091 | supported Vitest JSON test-body clock in W201: healthy 1,643 ms; 32 nominal rounds, each a bounded batch of 16 complete real G69 admission-diagnostic deliveries, 4,550 ms; 90.84 ms measured added work per nominal round; calibrated 138-round representative red at 10,649 ms with `Test timed out in 10000ms` | explicit 10,000 ms. The selected test-body margin is 8,357 ms. The representative repeats the actual `D1EventStore.recordDelivery` G69 admission-diagnostic path, with rounds selected from the measured calibration and a 1.5 safety factor; no timer or synthetic delay is used. Process startup/teardown is reported separately and is not subtracted from the body margin. The G67 functional assertions and existing mutants remain unchanged. |
+| `test/g67-safe-lane.spec.ts` AC3 | inherited 5,000 ms; red at 5,000 ms in run 34328164091 | supported Vitest JSON test-body clock in W201: healthy 2,093 ms; 32 nominal rounds, each a bounded batch of 2 complete real G69 admission-diagnostic deliveries, 3,070 ms; 30.53 ms measured added work per nominal round; calibrated 876-round representative red at 10,006 ms with `Test timed out in 10000ms` | explicit 10,000 ms. The selected test-body margin is 7,907 ms. The representative repeats the actual `D1EventStore.recordDelivery` G69 admission-diagnostic path, with rounds selected from the measured calibration and a 1.5 safety factor; no timer or synthetic delay is used. Process startup/teardown is reported separately and is not subtracted from the body margin. The G67 functional assertions and existing mutants remain unchanged. |
 | `test/commit.spec.ts` AC7 | inherited 5,000 ms | hosted green 864 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms to remain tight while covering the loaded local observation just over 2 seconds. |
 | `test/tag.spec.ts` exact-key G5 | inherited 5,000 ms | hosted green 928 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms. |
 | `test/tag.spec.ts` concurrent G5 | inherited 5,000 ms | included in the hosted tag file total of 2,663 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms. |
@@ -296,6 +296,16 @@ calibration again exited without a Vitest summary. The hosted failure was
 still bounded to the test-only calibration workload; no product/G69 error was
 reported.
 
+The second W201 repair push at [CI run
+34407113853](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407113853),
+`ci-foundation` [job
+102652631022](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407113853/job/102652631022),
+head `b5a81d724de6ba3a24e0af208a4b0d8769148f46`, confirmed that the fresh
+round identities removed the first attempt's per-service trim bottleneck but
+that 512 admissions still exceeded the hosted calibration envelope. It failed
+at the same runner calibration assertion, with no Vitest summary and no
+product/G69 error.
+
 The cause was the W198 mutation anchor. It inserted a nominal 32-round block
 at a point inside each of AC3's ten paced commits. Each round replayed the two
 queued messages, so the advertised 32-round calibration could perform up to
@@ -311,12 +321,12 @@ The W201 runner now asserts a unique mutation anchor immediately after the
 base `await Promise.all(waiters)` and before the public safe read. It scopes
 the calibration block to `index === 1`, so the nominal 32-round observation
 runs exactly once rather than once per paced commit. Each nominal round uses
-16 unique, valid G32 envelopes on a fresh calibration service/tag. Every
+2 unique, valid G32 envelopes on a fresh calibration service/tag. Every
 envelope is admitted through the real `D1EventStore.recordDelivery` Queue path,
 and its `waitUntil` G69 diagnostic promise is awaited before the next complete
 operation. Fresh round identities bound the per-service G69 diagnostic trim
 while retaining the same complete real path. Thus the calibration measures 32
-rounds / 512 complete real admission-diagnostic operations without duplicate
+rounds / 64 complete real admission-diagnostic operations without duplicate
 replay or synthetic delay.
 The representative uses the same bounded batch and selects its round count
 from the supported Vitest JSON test-body duration. No process clock, timer,
@@ -328,7 +338,7 @@ Focused local proof at this repair state:
 node --check scripts/g73-g67-budget-mutation-runner.mjs       passed
 node scripts/g73-g67-budget-mutation-runner.mjs --self-test   passed
 {"budgetMs":10000,"calibrationRounds":32,"g69OperationsPerRound":16,"safetyFactor":1.5,"selfTest":"vitest-body-clock-and-g69-path-valid"}
-{"budgetMs":10000,"healthyBodyMs":1643,"healthyMarginMs":8357,"calibrationRounds":32,"g69OperationsPerRound":16,"calibrationBodyMs":4550,"measuredAddedWorkPerRoundMs":90.84,"representativeRounds":138,"regressionBodyMs":10649,"regressionOverBudgetMs":649,"timeoutMessage":"Test timed out in 10000ms","processOverheadMs":{"healthy":4949,"calibration":4942,"regression":4258},"attempts":[{"rounds":138,"processStatus":1,"bodyStatus":"failed","bodyDurationMs":10649,"processElapsedMs":14907}],"result":"healthy-green-g69-path-timeout-red"}
+{"budgetMs":10000,"healthyBodyMs":2093,"healthyMarginMs":7907,"calibrationRounds":32,"g69OperationsPerRound":2,"calibrationBodyMs":3070,"measuredAddedWorkPerRoundMs":30.53,"representativeRounds":876,"regressionBodyMs":10006,"regressionOverBudgetMs":6,"timeoutMessage":"Test timed out in 10000ms","processOverheadMs":{"healthy":6407,"calibration":5720,"regression":4760},"attempts":[{"rounds":389,"processStatus":0,"bodyStatus":"passed","bodyDurationMs":5372,"processElapsedMs":10284},{"rounds":584,"processStatus":0,"bodyStatus":"passed","bodyDurationMs":6381,"processElapsedMs":10533},{"rounds":876,"processStatus":1,"bodyStatus":"failed","bodyDurationMs":10006,"processElapsedMs":14766}],"result":"healthy-green-g69-path-timeout-red"}
 ```
 
 The final exact-head hosted CI receipt and terminal job identity will be
