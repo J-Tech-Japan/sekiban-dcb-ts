@@ -36,14 +36,15 @@ not a local wall-clock estimate.
 
 ### G43 AC6: coordination, not retiming
 
-The failure was a test-fixture interleaving: response headers/body completion
-for the nested append did not prove that the nested `tag_event` row was visible
-before the outer alarm resumed its source scan. This is not a production
-ordering defect. The fixture now disables the unrelated automatic drain,
-consumes the nested response body, and performs a same-Durable-Object SQL read
-that asserts the nested event row is durable before the outer scan continues.
-The finding assertion remains an `arrayContaining` assertion over the inserted
-event; no sleep, retry, or weaker expectation was added.
+The failure was a test-fixture interleaving: a nested `SELF.fetch` append could
+start an independent response-after automatic drain, so the newly inserted
+obligation could be acknowledged before the outer alarm resumed its source
+scan. This is not a production ordering defect. The fixture now invokes the
+exact private append-handler seam inside the same Tag actor with automatic
+drain scoped off for that nested operation, then performs a same-Durable-
+Object SQL read that asserts the nested event row is durable before the outer
+scan continues. No production source changed, and no sleep, retry, or weaker
+expectation was added.
 
 The new temporary production mutant changes the source scanner from
 `status <> 'acknowledged'` to `status = 'acknowledged'`. Its focused AC6 oracle
