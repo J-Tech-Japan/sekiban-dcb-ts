@@ -115,3 +115,9 @@ The G58 source-guard failure from the prior run is repaired locally and the
 focused diagnosis guard self-test passes. No further repair, deployment,
 review-state action, or cleanup was performed in this handoff. The unrelated
 generated artifacts listed above remain unstaged.
+
+The final pushed handoff head is `18045370ac66660021a9c6cb1ab2f789d0fe6f8f`.
+This last commit is documentation-only and pins the handoff state; the
+source/guard repair itself is the immediately preceding `219cd4c` commit.
+The documentation push starts a fresh exact-head CI run, which is
+intentionally not awaited in this pause checkpoint.
