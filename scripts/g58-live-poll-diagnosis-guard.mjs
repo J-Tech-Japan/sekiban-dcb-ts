@@ -144,7 +144,11 @@ function sourceContracts(sources) {
   requireContains(live, "async function admitBootstrapRoute", "bootstrap admission stage");
   requireContains(live, "await admitBootstrapRoute(env, serviceId);", "bootstrap admission invocation");
   requireContains(live, "await store.initialize();", "projection store initialization stage");
-  requireContains(live, "const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);", "registered projector polling stage");
+  // G70 now passes the validated closed-prefix authority alongside the
+  // existing high-water fence. Keep this as a structural registration-stage
+  // guard without pinning the call to the pre-certificate one-line shape.
+  requireContains(live, "const results = await runtime.pollRegistered(", "registered projector polling stage");
+  requireContains(live, "closedPrefixCertificate", "allocator certificate passed to registered projector polling");
   requireContains(projection, "const tags = await this.store.listProjectionTags(serviceId);", "tag discovery stage");
   requireContains(projection, "for (const tag of tags)", "all-tag poll loop");
   requireContains(projection, "for (const projector of this.registry.registered())", "both projector loop");
