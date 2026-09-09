@@ -94,6 +94,7 @@
     "test:g64": "npm run test:g64:build && npm run test:g64:pack && npm run test:g64:consumer && node scripts/dcb-matched-set-release-check.mjs dcb-v0.1.1 && npm run test:g64:publish-shape && npm run test:g64:publish-dry-run",
     "test:g64:forced-red": "npm run test:g64 && node -e \"if (process.env.SDT_G64_FORCE_FAILURE === '1') throw new Error('SDT-G64 forced-red CI wiring proof')\"",
     "test:g72:trusted-publishing": "node scripts/g72-trusted-publishing-guard.mjs && node scripts/g72-trusted-publishing-mutation-runner.mjs --self-test && node scripts/g72-trusted-publishing-mutation-runner.mjs",
+    "test:g75:certificate-scope": "npm run build --workspace @sekiban/dcb-runtime && vitest run --config vitest.config.ts test/g75-certificate-scope.spec.ts && node scripts/g75-certificate-scope-guard.mjs --self-test && node scripts/g75-certificate-scope-guard.mjs && node scripts/g75-certificate-scope-mutation-runner.mjs --self-test && node scripts/g75-certificate-scope-mutation-runner.mjs",
     "test:g29:mapping": "npm run build:packages && vitest run --config vitest.config.ts test/g29-mapping.spec.ts && npm run test:g29:mapping:runner",
     "test:g29:mapping:runner": "node scripts/g29-mapping-contract.mjs",
     "test:g29:mapping:forced-red": "npm run test:g29:mapping && node -e \"if (process.env.SDT_G29_MAPPING_FORCE_FAILURE === '1') throw new Error('SDT-G29 mapping forced-red CI wiring proof')\"",

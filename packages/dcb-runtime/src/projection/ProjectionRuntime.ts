@@ -1,4 +1,5 @@
 import type { TagEvent } from "../tag/types";
+import type { ClosedPrefixCertificate } from "../allocator/types";
 import type { DeliveryIncident, ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
@@ -17,7 +18,7 @@ import {
   isSortableUniqueIdSafeAt,
   safeWindowMs,
 } from "../safeWindow";
-import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
+import { assertSortableUniqueId, isSortableUniqueId } from "../allocator/SortableUniqueId";
 
 /** Published V1 read-side SafeWindow. It never authorizes a commit. */
 export {
@@ -58,6 +59,135 @@ export interface CatchUpHooks {
  */
 export interface ProjectionCatchUpOptions {
   readonly maximumSuid?: string | null;
+  /** A prefix already validated by the safe-view decision boundary. */
+  readonly closedPrefixSuid?: string | null;
+  /** Cached allocator authority, validated only for an explicitly safe pass. */
+  readonly closedPrefixCertificate?: ClosedPrefixCertificate;
+  /** Marks this invocation as the certificate-gated safe-view decision. */
+  readonly requireClosedPrefixCertificate?: boolean;
+  /** Consumer identity used to bind the cached certificate. */
+  readonly expectedServiceId?: string;
+  /** Allocator generation expected by the consumer. */
+  readonly expectedAllocatorLineageId?: string;
+  /** Existing G44/G62 proof context for this safe-view pass. */
+  readonly safeViewCoverage?: SafeViewCoverageContext;
+}
+
+/**
+ * Handoff from the existing G44/G62 coverage path to the one safe-view
+ * decision.  `startOfPass: "PROVEN"` makes the proof domain explicit; FULL is
+ * the only context that may leave the existing maximumSuid bound unbounded.
+ * This runtime validates the handoff and does not mint scanner authority.
+ */
+export type SafeViewCoverageContext =
+  | Readonly<{
+    readonly authority: "g44-g62";
+    readonly serviceId: string;
+    readonly startOfPass: "PROVEN";
+    readonly kind: "FULL";
+    readonly frontierSuid: null;
+  }>
+  | Readonly<{
+    readonly authority: "g44-g62";
+    readonly serviceId: string;
+    readonly startOfPass: "PROVEN";
+    readonly kind: "SETTLED" | "BLOCK/UNSETTLED";
+    readonly frontierSuid: string | null;
+  }>;
+
+export type ClosedPrefixCertificateValidationOptions = Pick<
+  ProjectionCatchUpOptions,
+  | "closedPrefixSuid"
+  | "closedPrefixCertificate"
+  | "expectedServiceId"
+  | "expectedAllocatorLineageId"
+>;
+
+/**
+ * Validate the allocator fact at the one boundary that decides whether a
+ * safe view may advance.  Callers that only inspect, rebuild, or perform an
+ * ordinary SafeWindow catch-up must not call this function.
+ */
+export function validatedClosedPrefixSuid(
+  options: ClosedPrefixCertificateValidationOptions,
+  consumerServiceId: string,
+): string | null {
+  const certificate = options.closedPrefixCertificate;
+  if (
+    typeof consumerServiceId !== "string" ||
+    consumerServiceId.length === 0 ||
+    typeof certificate !== "object" ||
+    certificate === null ||
+    Array.isArray(certificate)
+  ) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  if (
+    certificate.certificateVersion !== 1 ||
+    certificate.authority !== "allocator-transaction" ||
+    certificate.status !== "ready" ||
+    typeof certificate.serviceId !== "string" ||
+    certificate.serviceId.length === 0 ||
+    typeof certificate.allocatorLineageId !== "string" ||
+    certificate.allocatorLineageId.length === 0 ||
+    !Number.isSafeInteger(certificate.unresolvedCount) ||
+    certificate.unresolvedCount < 0 ||
+    (certificate.closedPrefixSuid !== null && !isSortableUniqueId(certificate.closedPrefixSuid))
+  ) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  if (options.expectedServiceId === undefined || options.expectedAllocatorLineageId === undefined) {
+    throw new Error("ordering_certificate_consumer_unbound");
+  }
+  if (options.expectedServiceId !== consumerServiceId || certificate.serviceId !== consumerServiceId) {
+    throw new Error("ordering_certificate_consumer_mismatch");
+  }
+  if (certificate.allocatorLineageId !== options.expectedAllocatorLineageId) {
+    throw new Error("ordering_certificate_lineage_mismatch");
+  }
+  if (
+    options.closedPrefixSuid !== undefined &&
+    options.closedPrefixSuid !== certificate.closedPrefixSuid
+  ) {
+    throw new Error("ordering_certificate_mismatch");
+  }
+  return certificate.closedPrefixSuid;
+}
+
+/**
+ * Validate the existing completeness handoff independently of the allocator
+ * certificate.  The returned bound is deliberately separate from
+ * `maximumSuid`, whose G44 stop condition remains an independent gate.
+ */
+export function validatedSafeViewCoverageMaximumSuid(
+  context: SafeViewCoverageContext | undefined,
+  consumerServiceId: string,
+): string | null | undefined {
+  if (
+    typeof consumerServiceId !== "string" ||
+    consumerServiceId.length === 0 ||
+    typeof context !== "object" ||
+    context === null ||
+    Array.isArray(context)
+  ) {
+    throw new Error("ordering_coverage_unavailable");
+  }
+  if (
+    context.authority !== "g44-g62" ||
+    context.startOfPass !== "PROVEN" ||
+    context.serviceId !== consumerServiceId ||
+    typeof context.serviceId !== "string" ||
+    context.serviceId.length === 0 ||
+    !["FULL", "SETTLED", "BLOCK/UNSETTLED"].includes(context.kind) ||
+    (context.frontierSuid !== null && !isSortableUniqueId(context.frontierSuid))
+  ) {
+    throw new Error("ordering_coverage_unavailable");
+  }
+  if (context.kind === "FULL") {
+    if (context.frontierSuid !== null) throw new Error("ordering_coverage_unavailable");
+    return undefined;
+  }
+  return context.frontierSuid;
 }
 
 export interface CatchUpResult {
@@ -182,6 +312,13 @@ export class ProjectionRuntime {
     if (projector === undefined) {
       throw new Error(`Projector ${identity.tagProjector} is not registered`);
     }
+    const safeViewAdvance = options.requireClosedPrefixCertificate === true;
+    const certifiedClosedPrefixSuid = safeViewAdvance
+      ? validatedClosedPrefixSuid(options, serviceId)
+      : undefined;
+    const coverageMaximumSuid = safeViewAdvance
+      ? validatedSafeViewCoverageMaximumSuid(options.safeViewCoverage, serviceId)
+      : undefined;
     const dynamicLagBoundMs = await this.store.currentLagBound(serviceId, nowMs);
     const windowMs = safeWindowMs(dynamicLagBoundMs);
     if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
@@ -213,6 +350,11 @@ export class ProjectionRuntime {
           await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
         }
+        if (certifiedClosedPrefixSuid === null || (
+          certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0
+        )) {
+          break;
+        }
         // A G44 BLOCK/UNSETTLED tick may still poll live projections, but it
         // must remain fenced by the last settled source frontier. `null`
         // deliberately permits no source advancement; it is not an empty
@@ -220,6 +362,11 @@ export class ProjectionRuntime {
         if (options.maximumSuid === null || (
           options.maximumSuid !== undefined && compareSuid(event.suid, options.maximumSuid) > 0
         )) {
+          break;
+        }
+        if (safeViewAdvance && (coverageMaximumSuid === null || (
+          coverageMaximumSuid !== undefined && compareSuid(event.suid, coverageMaximumSuid) > 0
+        ))) {
           break;
         }
         // Stop at the first unsafe source event. Because the source is SUID
@@ -280,7 +427,23 @@ export class ProjectionRuntime {
     serviceId: string,
     nowMs: number,
     maximumSuid?: string | null,
+    closedPrefixSuid?: string | null,
+    closedPrefixCertificate?: ClosedPrefixCertificate,
+    requireClosedPrefixCertificate = false,
+    expectedServiceId?: string,
+    expectedAllocatorLineageId?: string,
+    safeViewCoverage?: SafeViewCoverageContext,
   ): Promise<CatchUpResult[]> {
+    const safeViewAdvance = requireClosedPrefixCertificate === true;
+    if (safeViewAdvance) {
+      validatedClosedPrefixSuid({
+        closedPrefixSuid,
+        closedPrefixCertificate,
+        expectedServiceId,
+        expectedAllocatorLineageId,
+      }, serviceId);
+      validatedSafeViewCoverageMaximumSuid(safeViewCoverage, serviceId);
+    }
     const tags = await this.store.listProjectionTags(serviceId);
     const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
     for (const tag of tags) {
@@ -297,7 +460,20 @@ export class ProjectionRuntime {
         const job = jobs[index];
         if (job === undefined) return;
         const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
-        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid });
+        if (identity !== undefined) {
+          const options = safeViewAdvance
+            ? {
+              maximumSuid,
+              closedPrefixSuid,
+              closedPrefixCertificate,
+              requireClosedPrefixCertificate: true,
+              expectedServiceId,
+              expectedAllocatorLineageId,
+              safeViewCoverage,
+            }
+            : { maximumSuid };
+          results[index] = await this.catchUp(serviceId, identity, nowMs, {}, options);
+        }
       }
     };
     const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);
