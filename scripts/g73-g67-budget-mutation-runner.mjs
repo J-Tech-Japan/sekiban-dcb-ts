@@ -1,76 +1,135 @@
 #!/usr/bin/env node
 /**
- * G73 AC3 budget proof. The healthy G67 AC3 test is measured, then a
- * test-only added-work representative for the regression class that made the
- * original five-second budget unsafe is inserted. The selected ten-second
- * bound must keep the healthy run green and the representative red.
+ * G73 AC3 budget proof.
+ *
+ * Vitest's JSON reporter supplies the selected test body's duration. The
+ * healthy and regression observations therefore use the same clock interval;
+ * process startup/teardown is retained only as separately reported overhead.
+ * The temporary regression mutant repeats the real G69 admission-diagnostic
+ * path, calibrated from a measured round, rather than inserting a timer or a
+ * synthetic delay. The selected ten-second test-body budget must stay green
+ * for the healthy path and fail specifically with Vitest's timeout for the
+ * measured G69-added-work representative.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const testFile = "test/g67-safe-lane.spec.ts";
 const testName = "AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals";
-const mutationAnchor = "  it(\"AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals\", async () => {";
+const mutationAnchor = "        clock.mockReturnValue(safeAt);";
 const budgetMs = 10_000;
-const representativeAddedWorkMs = 9_500;
-const delayLine = "    await new Promise<void>((resolve) => setTimeout(resolve, " + representativeAddedWorkMs + "));";
+const calibrationRounds = 32;
+const safetyFactor = 1.5;
+const maxRepresentativeRounds = 512;
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 
+function g69AddedWorkBlock(rounds) {
+  return `        // Temporary W198 mutant: repeat the actual G69 admission-diagnostic
+      // path using real D1EventStore deliveries. No timer or synthetic delay is
+      // part of the regression representative.
+      const g73G69ExtraRounds = ${rounds};
+      {
+        const extraStore = new D1EventStore(database);
+        await extraStore.initialize();
+        for (let g73Round = 0; g73Round < g73G69ExtraRounds; g73Round += 1) {
+          const extraWaiters: Promise<void>[] = [];
+          await Promise.all(queued.map((messageValue) => extraStore.recordDelivery(messageValue, deliveredAt, "queue", {
+            waitUntil: (promise: Promise<void>) => { extraWaiters.push(promise); },
+          })));
+          await Promise.all(extraWaiters);
+        }
+      }
+`;
+}
+
+function mutate(source, rounds) {
+  const occurrences = source.split(mutationAnchor).length - 1;
+  if (occurrences !== 1) {
+    throw new Error(`G67 AC3 G69-work mutation anchor expected once, found ${occurrences}`);
+  }
+  return source.replace(mutationAnchor, g69AddedWorkBlock(rounds) + mutationAnchor);
+}
+
+function targetResult(report) {
+  const results = report.testResults?.flatMap((file) => file.assertionResults ?? []) ?? [];
+  const target = results.find((result) => result.fullName?.endsWith(testName));
+  if (target === undefined) {
+    throw new Error(`G67 AC3 result was not present in Vitest JSON report: ${JSON.stringify(report)}`);
+  }
+  if (typeof target.duration !== "number") {
+    throw new Error(`G67 AC3 result had no test-body duration: ${JSON.stringify(target)}`);
+  }
+  return target;
+}
+
 function runOracle(label) {
-  const startedAt = process.hrtime.bigint();
+  const reportDirectory = mkdtempSync(resolve(tmpdir(), "sdt-g73-g67-"));
+  const reportPath = resolve(reportDirectory, "vitest.json");
+  const startedAt = performance.now();
   const result = spawnSync(process.execPath, [
-    vitest,
-    "run",
-    "--config", "vitest.config.ts",
-    "--no-cache",
-    "--maxWorkers=1",
-    testFile,
-    "--testNamePattern", testName,
+    vitest, "run", "--config", "vitest.config.ts", "--no-cache",
+    "--maxWorkers=1", testFile, "--testNamePattern", testName,
+    "--reporter=json", "--reporter=verbose", "--outputFile", reportPath,
   ], {
     cwd: root,
     encoding: "utf8",
     env: { ...process.env, CI: "1" },
   });
-  const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
-  return {
-    label,
-    status: result.status ?? 1,
-    elapsedMs: Math.round(elapsedMs),
-    output: (result.stdout ?? "") + (result.stderr ?? ""),
-  };
-}
-
-function mutate(original) {
-  const occurrences = original.split(mutationAnchor).length - 1;
-  if (occurrences !== 1) {
-    throw new Error("G67 AC3 timing mutation anchor expected once in " + testFile + ", found " + occurrences);
+  const processElapsedMs = Math.round(performance.now() - startedAt);
+  try {
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    const test = targetResult(report);
+    return {
+      label,
+      processStatus: result.status ?? 1,
+      processElapsedMs,
+      bodyStatus: test.status,
+      bodyDurationMs: test.duration,
+      failureMessages: test.failureMessages ?? [],
+      output: (result.stdout ?? "") + (result.stderr ?? ""),
+    };
+  } finally {
+    rmSync(reportDirectory, { recursive: true, force: true });
   }
-  return original.replace(mutationAnchor, mutationAnchor + "\n" + delayLine);
 }
 
 function requireHealthy(result) {
-  if (result.status === 0) return;
-  throw new Error(result.label + " unexpectedly failed:\n" + result.output);
+  if (result.processStatus === 0 && result.bodyStatus === "passed") return;
+  throw new Error(`${result.label} unexpectedly failed:\n${result.output}`);
 }
 
-function requireRegressionRed(result) {
-  if (result.status !== 0) return;
-  throw new Error("G67 AC3 added-work representative stayed green under the ten-second bound after " + result.elapsedMs + " ms:\n" + result.output);
+function requireTimeoutRegression(result) {
+  const timeoutMessage = /(?:Test )?timed out in\s+10(?:,|_)?000ms/i;
+  const outputHasTimeout = timeoutMessage.test(result.output);
+  if (result.processStatus !== 0 && result.bodyStatus === "failed" &&
+      result.bodyDurationMs >= budgetMs && outputHasTimeout) return;
+  throw new Error(`G67 AC3 G69-added-work representative did not hit the intended test-body timeout:\n${JSON.stringify({
+    processStatus: result.processStatus,
+    bodyStatus: result.bodyStatus,
+    bodyDurationMs: result.bodyDurationMs,
+    failureMessages: result.failureMessages,
+    output: result.output,
+  })}`);
 }
 
 function selfTest() {
   const source = readFileSync(resolve(root, testFile), "utf8");
-  mutate(source);
-  if (representativeAddedWorkMs >= budgetMs) {
-    throw new Error("G67 representative delay must remain below the selected test budget");
+  const mutated = mutate(source, calibrationRounds);
+  if (!mutated.includes('extraStore.recordDelivery(messageValue, deliveredAt, "queue"')) {
+    throw new Error("G67 self-test does not exercise the real D1EventStore G69 path");
+  }
+  if (mutated.includes("setTimeout(resolve, 9500)") || mutated.includes("process.hrtime.bigint")) {
+    throw new Error("G67 self-test retained an unsupported timer or process-clock proof");
   }
   process.stdout.write(JSON.stringify({
     budgetMs,
-    representativeAddedWorkMs,
-    selfTest: "anchor-and-budget-valid",
+    calibrationRounds,
+    safetyFactor,
+    selfTest: "vitest-body-clock-and-g69-path-valid",
   }) + "\n");
 }
 
@@ -81,17 +140,62 @@ function main() {
   try {
     const healthy = runOracle("G67 AC3 healthy");
     requireHealthy(healthy);
-    writeFileSync(sourcePath, mutate(original), "utf8");
-    const regression = runOracle("G67 AC3 added-work representative");
-    requireRegressionRed(regression);
-    const healthyMarginMs = budgetMs - healthy.elapsedMs;
+    if (healthy.bodyDurationMs >= budgetMs) {
+      throw new Error(`G67 AC3 healthy body already consumes the ${budgetMs}ms budget: ${healthy.bodyDurationMs}ms`);
+    }
+
+    writeFileSync(sourcePath, mutate(original, calibrationRounds), "utf8");
+    const calibration = runOracle(`G67 AC3 ${calibrationRounds}-round G69 calibration`);
+    requireHealthy(calibration);
+    const measuredAddedWorkPerRoundMs = Math.max(
+      1,
+      (calibration.bodyDurationMs - healthy.bodyDurationMs) / calibrationRounds,
+    );
+    const healthyMarginMs = budgetMs - healthy.bodyDurationMs;
+    let representativeRounds = Math.max(
+      calibrationRounds + 1,
+      Math.ceil((healthyMarginMs / measuredAddedWorkPerRoundMs) * safetyFactor),
+    );
+    if (representativeRounds > maxRepresentativeRounds) {
+      throw new Error(`G67 representative exceeds bounded calibration range: ${representativeRounds} rounds`);
+    }
+
+    const attempts = [];
+    let regression;
+    while (representativeRounds <= maxRepresentativeRounds) {
+      writeFileSync(sourcePath, mutate(original, representativeRounds), "utf8");
+      regression = runOracle(`G67 AC3 ${representativeRounds}-round G69 representative`);
+      attempts.push({
+        rounds: representativeRounds,
+        processStatus: regression.processStatus,
+        bodyStatus: regression.bodyStatus,
+        bodyDurationMs: regression.bodyDurationMs,
+        processElapsedMs: regression.processElapsedMs,
+      });
+      if (regression.processStatus !== 0 && regression.bodyStatus === "failed") break;
+      representativeRounds = Math.ceil(representativeRounds * safetyFactor);
+    }
+    if (regression === undefined) throw new Error("G67 representative did not run");
+    requireTimeoutRegression(regression);
     process.stdout.write(JSON.stringify({
       budgetMs,
-      healthyElapsedMs: healthy.elapsedMs,
+      testName,
+      healthyBodyMs: healthy.bodyDurationMs,
       healthyMarginMs,
-      representativeAddedWorkMs,
-      regressionElapsedMs: regression.elapsedMs,
-      result: "healthy-green-regression-red",
+      calibrationRounds,
+      calibrationBodyMs: calibration.bodyDurationMs,
+      measuredAddedWorkPerRoundMs: Number(measuredAddedWorkPerRoundMs.toFixed(2)),
+      representativeRounds,
+      regressionBodyMs: regression.bodyDurationMs,
+      regressionOverBudgetMs: regression.bodyDurationMs - budgetMs,
+      timeoutMessage: "Test timed out in 10000ms",
+      processOverheadMs: {
+        healthy: healthy.processElapsedMs - healthy.bodyDurationMs,
+        calibration: calibration.processElapsedMs - calibration.bodyDurationMs,
+        regression: regression.processElapsedMs - regression.bodyDurationMs,
+      },
+      attempts,
+      result: "healthy-green-g69-path-timeout-red",
     }) + "\n");
   } finally {
     writeFileSync(sourcePath, original, "utf8");

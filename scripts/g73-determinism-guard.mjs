@@ -14,6 +14,8 @@ const root = process.cwd();
 const testRoot = resolve(root, "test");
 const assertionMethods = ["toEqual", "toStrictEqual", "toBe"];
 const g22SnapshotFile = "test/g22-bootstrap-d1.spec.ts";
+const g22NormalizedExpression = "diagnosticAttempts: semanticD1Result(await database().prepare(";
+const g22RawExpression = "diagnosticAttempts: (await database().prepare(";
 const driverFields = [
   "duration",
   "timings",
@@ -105,7 +107,10 @@ function rawG22SnapshotViolation(source, file) {
   // G22's snapshot is the explicit normalization boundary for raw D1
   // metadata. A direct driver result in diagnosticAttempts must stay inside
   // semanticD1Result before the whole snapshot is compared.
-  const rawDriverResult = /diagnosticAttempts\s*:\s*(?!semanticD1Result\s*\()([\s\S]*?)\.(?:all|first|raw)\s*(?:<[^>]*>)?\s*\(/.exec(snapshot[1]);
+  // TypeScript's nested generic close is `>>()` for the actual G22
+  // `.all<Record<string, unknown>>()` call.  Match the typed call itself;
+  // checking only a plain `.all()` shape lets the real raw-driver mutant pass.
+  const rawDriverResult = /diagnosticAttempts\s*:\s*(?!\s*semanticD1Result\s*\()([\s\S]*?)\.(?:all|first|raw)\s*(?:<[^>]*>+)?\s*\(/.exec(snapshot[1]);
   if (rawDriverResult === null) return [];
   const bodyStart = source.indexOf(snapshot[1], snapshot.index);
   return [{
@@ -115,6 +120,14 @@ function rawG22SnapshotViolation(source, file) {
     field: "raw-d1-result",
     kind: "raw-d1-snapshot-without-semantic-normalization",
   }];
+}
+
+function mutateG22RawSnapshot(source) {
+  const occurrences = source.split(g22NormalizedExpression).length - 1;
+  if (occurrences !== 1) {
+    throw new Error(`G22 normalization anchor expected once, found ${occurrences}`);
+  }
+  return source.replace(g22NormalizedExpression, g22RawExpression);
 }
 
 function scanSource(source, file) {
@@ -180,18 +193,19 @@ function selfTest() {
   if (publicShape.violations.length !== 0) {
     throw new Error("G73 guard self-test incorrectly rejected a public wire-shape key assertion");
   }
-  const rawG22 = [
-    "const snapshot = async () => ({",
-    "  diagnosticAttempts: (await database().prepare(\"SELECT duration FROM attempts\").all()),",
-    "});",
-    "const before = await snapshot();",
-    "expect(await snapshot()).toEqual(before);",
-  ].join("\n");
-  const rawG22Result = scanSource(rawG22, g22SnapshotFile);
-  if (!rawG22Result.violations.some(({ kind }) => kind === "raw-d1-snapshot-without-semantic-normalization")) {
-    throw new Error("G73 guard self-test failed to reject the raw G22 snapshot regression");
+  const actualG22 = readFileSync(resolve(root, g22SnapshotFile), "utf8");
+  if (!actualG22.includes(".all<Record<string, unknown>>()")) {
+    throw new Error("G22 self-test no longer exercises the typed raw D1 result shape");
   }
-  process.stdout.write(`${JSON.stringify({ guard: "driver-timing-equality", selfTest: "passed" })}\n`);
+  const normalizedG22Result = scanSource(actualG22, g22SnapshotFile);
+  if (normalizedG22Result.violations.length !== 0) {
+    throw new Error(`G73 guard self-test rejected the normalized G22 source: ${JSON.stringify(normalizedG22Result.violations)}`);
+  }
+  const rawG22Result = scanSource(mutateG22RawSnapshot(actualG22), g22SnapshotFile);
+  if (!rawG22Result.violations.some(({ kind }) => kind === "raw-d1-snapshot-without-semantic-normalization")) {
+    throw new Error("G73 guard self-test failed to reject the typed raw G22 snapshot regression");
+  }
+  process.stdout.write(`${JSON.stringify({ guard: "driver-timing-equality", selfTest: "passed", rawG22Mutation: "red" })}\n`);
 }
 
 function main() {

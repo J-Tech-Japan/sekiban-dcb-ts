@@ -22,6 +22,12 @@ changed.
 | [34328164091](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34328164091) | `3769ccd1c0c853f52c88e684734f3a920fdf0686` | `ci-foundation` failed `test/g67-safe-lane.spec.ts` AC3 at the inherited 5,000 ms timeout and `test/g69-ordering.spec.ts` held-tag append returned 503 `partition_registration_unavailable`; 794 passed, 2 failed, 1 skipped. |
 | [34302437259](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34302437259) | `82501b8c649b674a3c36db30122363fe2e9c1cca` | `ci-g21-g25` failed the G54 empty-V1-array comparison: expected `duration: PT0S`, received `duration: PT0.001S`. |
 | [34287701420](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287701420) | `4e5da819260027b3c4c96eb75b31cf939c0b5131` | `ci-foundation` repeated the G54 timing comparison failure; `ci-g64` independently failed its pre-existing dry-run publish gate because `@sekiban/dcb-core@0.1.0` was already published. Neither release gate nor credentials was changed. |
+| [34287217805](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805) | `7353b987e94a999d60ec6b41b1df2387efb11ac5` | Newly catalogued `ci-g45` failed (job [102265463495](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805/job/102265463495)); the retained GitHub job/check evidence has no downloadable log or assertion detail, so no precise signature is invented. |
+
+These are the four completed main runs used by the issue's AC5 denominator:
+`4/4` failed. The `ci-g45` record is distinct from the already-repaired
+published-version collision in `ci-g64` above; the latter is retained only as
+the known release-gate signature from run `34287701420`.
 
 The hosted green comparison used for calibration was
 [34348593490](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34348593490)
@@ -55,7 +61,7 @@ fact mutants remain red as well.
 
 | Case | Before | Measurement | Change and reason |
 | --- | --- | --- | --- |
-| `test/g67-safe-lane.spec.ts` AC3 | inherited 5,000 ms; red at 5,000 ms in run 34328164091 | hosted green full-suite test body 3,907 ms; latest wired local healthy run 4,666 ms; 9,500 ms added-work representative red at 13,610 ms | explicit 10,000 ms. The hosted margin is 6,093 ms and the local margin is 5,334 ms. The 9,500 ms delay is a test-only representative of the identified added-work regression class, not product code; it stays below the bound but makes the test exceed it, so the bound remains healthy-green/regression-red. The G67 functional assertions and existing mutants remain unchanged. |
+| `test/g67-safe-lane.spec.ts` AC3 | inherited 5,000 ms; red at 5,000 ms in run 34328164091 | supported Vitest JSON test-body clock: healthy 1,347 ms; 32-round real G69 admission-diagnostic calibration 3,265 ms; 59.94 ms measured added work per round; calibrated 217-round representative red at 10,355 ms with `Test timed out in 10000ms` | explicit 10,000 ms. The selected test-body margin is 8,653 ms. The representative repeats the actual `D1EventStore.recordDelivery` G69 admission-diagnostic path, with rounds selected from the measured calibration and a 1.5 safety factor; no timer or synthetic delay is used. Process startup/teardown is reported separately and is not subtracted from the body margin. The G67 functional assertions and existing mutants remain unchanged. |
 | `test/commit.spec.ts` AC7 | inherited 5,000 ms | hosted green 864 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms to remain tight while covering the loaded local observation just over 2 seconds. |
 | `test/tag.spec.ts` exact-key G5 | inherited 5,000 ms | hosted green 928 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms. |
 | `test/tag.spec.ts` concurrent G5 | inherited 5,000 ms | included in the hosted tag file total of 2,663 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms. |
@@ -155,23 +161,26 @@ This repair keeps the G69 boundary above unchanged and does not alter product
 behavior. It adds only test/guard evidence for the three review findings.
 
 - F1: the timing guard now rejects literal and shorthand driver-field
-  equality, and has a targeted normalization-boundary check for the original
-  raw G22 snapshot shape (`diagnosticAttempts` must pass through
-  `semanticD1Result`). The guard self-test includes the raw snapshot mutant;
-  the live scan reports 101 files, 2,055 equality assertions, one G22
+  equality, and has a targeted normalization-boundary check against the actual
+  typed G22 source (`diagnosticAttempts` must pass through
+  `semanticD1Result`). The guard self-test mutates that source from
+  `.all<Record<string, unknown>>()` to the raw driver result and goes red; the
+  live scan reports 101 files, 2,055 equality assertions, one G22
   normalization check, and zero violations.
 - F2: the live G54 empty response now requires the exact top-level keys
   `duration`, `tagWriteResults`, and `writtenEvents`, with exact semantic
   values after removing only the variable duration. The focused shape proof
   reports `extra-response-field: red` and `duration-variation: green`.
 - F3: the selected 10,000 ms G67 AC3 bound is tied to hosted job
-  `102473543093` (3,907 ms healthy, 6,093 ms margin). The wired local proof
-  measured 4,666 ms healthy (5,334 ms margin); its faithful 9,500 ms
-  test-only added-work representative measured 13,610 ms and was red. This
-  records both healthy and regression measurements and preserves the bound's
-  separating margin. The repair checkpoint is separately recorded as 10/10;
-  the existing six-boundary case remains 15,000 ms and is not conflated with
-  that checkpoint.
+  `102473543093` (3,907 ms healthy, 6,093 ms margin) and a supported same-clock
+  local body proof. The local healthy body was 1,347 ms (8,653 ms margin); a
+  32-round repeat of the real G69 admission-diagnostic path was 3,265 ms, or
+  59.94 ms of measured added work per round; the 1.5-factor representative was
+  217 rounds and red at 10,355 ms with the exact Vitest timeout. This records
+  the healthy margin and a regression-detection margin without process-clock
+  subtraction or unsupported delay. The repair checkpoint is separately
+  recorded as 10/10; the existing six-boundary case remains 15,000 ms and is
+  not conflated with that checkpoint.
 
 The repair is pushed to PR #156 at the exact head reported in the companion
 W195 artifact.
