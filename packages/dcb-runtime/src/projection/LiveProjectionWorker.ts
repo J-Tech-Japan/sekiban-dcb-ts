@@ -2,12 +2,19 @@ import type { PipelineClock } from "../downstream/types";
 import { systemPipelineClock } from "../downstream/types";
 import type { StoreProvider } from "../store/provider";
 import type { PipelineStore } from "../store/types";
+import type { ClosedPrefixCertificate } from "../allocator/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
   tagStateIdentityFrom,
   type ProjectorRegistry,
 } from "./ProjectorRegistry";
-import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
+import {
+  projectionIdFor,
+  ProjectionRuntime,
+  safeWindowMs,
+  validatedClosedPrefixSuid,
+  type CatchUpResult,
+} from "./ProjectionRuntime";
 import { scopeIdFor } from "../scope/ScopeName";
 import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
 
@@ -67,6 +74,20 @@ export interface ProjectionPollOptions {
    * `undefined` retains the unbounded FULL/on-demand behavior.
    */
   maximumSuid?: string | null;
+  /**
+   * Explicitly selects the safe-view advance decision. Only this boundary
+   * validates the cached closed-prefix certificate; ordinary callers leave it
+   * false and retain their existing projection behavior.
+   */
+  safeViewAdvance?: boolean;
+  /** Internal spelling retained for callers that already model the gate. */
+  requireClosedPrefixCertificate?: boolean;
+  /** Optional certificate prefix supplied alongside the cached certificate. */
+  closedPrefixSuid?: string | null;
+  /** Consumer-bound allocator certificate for a safe-view decision. */
+  closedPrefixCertificate?: ClosedPrefixCertificate;
+  /** Cached allocator generation used to bind the certificate. */
+  allocatorLineageId?: string;
   serviceIdentityProvider?: ServiceIdentityProvider;
   /** Observation-only lifecycle sink; it cannot alter projection decisions. */
   observer?: LiveProjectionPollObserver;
@@ -188,6 +209,15 @@ export async function pollLiveProjections(
   const serviceId = options.serviceId ?? requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
   const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
   const projectorIds = registry.registered().map((projector) => projector.id);
+  const safeViewAdvance = options.safeViewAdvance === true || options.requireClosedPrefixCertificate === true;
+  const closedPrefixSuid = safeViewAdvance
+    ? validatedClosedPrefixSuid({
+        closedPrefixSuid: options.closedPrefixSuid,
+        closedPrefixCertificate: options.closedPrefixCertificate,
+        expectedServiceId: serviceId,
+        expectedAllocatorLineageId: options.allocatorLineageId,
+      })
+    : undefined;
   const attemptedAt = (options.clock ?? systemPipelineClock).now();
   await notifyObserver(options.observer, "onAttempt", { env, serviceId, projectorIds, attemptedAt });
   try {
@@ -205,14 +235,32 @@ export async function pollLiveProjections(
             identity.value,
             attemptedAt,
             {},
-            { maximumSuid: options.maximumSuid },
+            safeViewAdvance
+              ? {
+                  maximumSuid: options.maximumSuid,
+                  closedPrefixSuid,
+                  closedPrefixCertificate: options.closedPrefixCertificate,
+                  requireClosedPrefixCertificate: true,
+                  expectedServiceId: serviceId,
+                  expectedAllocatorLineageId: options.allocatorLineageId,
+                }
+              : { maximumSuid: options.maximumSuid },
           ));
         }
       }
       await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
       return results;
     }
-    const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid);
+    const results = await runtime.pollRegistered(
+      serviceId,
+      attemptedAt,
+      options.maximumSuid,
+      safeViewAdvance ? closedPrefixSuid : undefined,
+      safeViewAdvance ? options.closedPrefixCertificate : undefined,
+      safeViewAdvance,
+      safeViewAdvance ? serviceId : undefined,
+      safeViewAdvance ? options.allocatorLineageId : undefined,
+    );
     await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
     return results;
   } catch (error) {

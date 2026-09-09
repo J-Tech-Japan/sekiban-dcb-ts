@@ -8,6 +8,26 @@ export interface AllocatedCandidate extends AllocationCandidate {
 }
 
 /**
+ * Allocator-issued authority for a closed SUID prefix.
+ *
+ * The issuance and reconciliation protocol that produces this value belongs
+ * to the allocator closure slice.  Projection consumers treat the value as a
+ * cached, consumer-bound fact; they never manufacture one from a high-water
+ * mark or fetch one as part of an ordinary read.
+ */
+export interface ClosedPrefixCertificate {
+  readonly certificateVersion: 1;
+  readonly authority: "allocator-transaction";
+  readonly status: "ready" | "unreconciled";
+  readonly allocatorLineageId: string;
+  readonly serviceId: string;
+  readonly closedPrefixSuid: string | null;
+  readonly unresolvedCount: number;
+  readonly generatedAt: number;
+  readonly migrationProofId: string | null;
+}
+
+/**
  * The durable, attempt-keyed allocation result. Candidates are always ordered
  * by candidateIndex, rather than by the order in which a caller sent them.
  */

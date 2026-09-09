@@ -83,6 +83,7 @@ export { UnsafeWindowMaterializedViewError, UnsafeWindowMaterializedViewStore } 
 export type { UnsafeComposedPage, UnsafeGcInput, UnsafeKickLease, UnsafeOutcome, UnsafeReadMeta, UnsafeWindowApplyInput, UnsafeWindowApplyResult, UnsafeWindowErrorCode, UnsafeWindowMaterializedViewStoreOptions } from "./mv/UnsafeWindowMaterializedView";
 
 export { AllocatorDurableObject, BootstrapCoordinatorDurableObject, JournalDurableObject, TagDurableObject, TagStateDurableObject };
+export type { ClosedPrefixCertificate } from "./allocator/types";
 export {
   CommitTrace,
   CommitTraceScope,

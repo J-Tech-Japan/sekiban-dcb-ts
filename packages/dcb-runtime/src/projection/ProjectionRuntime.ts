@@ -1,4 +1,5 @@
 import type { TagEvent } from "../tag/types";
+import type { ClosedPrefixCertificate } from "../allocator/types";
 import type { DeliveryIncident, ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
@@ -58,6 +59,65 @@ export interface CatchUpHooks {
  */
 export interface ProjectionCatchUpOptions {
   readonly maximumSuid?: string | null;
+  /** A prefix already validated by the safe-view decision boundary. */
+  readonly closedPrefixSuid?: string | null;
+  /** Cached allocator authority, validated only for an explicitly safe pass. */
+  readonly closedPrefixCertificate?: ClosedPrefixCertificate;
+  /** Marks this invocation as the certificate-gated safe-view decision. */
+  readonly requireClosedPrefixCertificate?: boolean;
+  /** Consumer identity used to bind the cached certificate. */
+  readonly expectedServiceId?: string;
+  /** Allocator generation expected by the consumer. */
+  readonly expectedAllocatorLineageId?: string;
+}
+
+export type ClosedPrefixCertificateValidationOptions = Pick<
+  ProjectionCatchUpOptions,
+  | "closedPrefixSuid"
+  | "closedPrefixCertificate"
+  | "expectedServiceId"
+  | "expectedAllocatorLineageId"
+>;
+
+/**
+ * Validate the allocator fact at the one boundary that decides whether a
+ * safe view may advance.  Callers that only inspect, rebuild, or perform an
+ * ordinary SafeWindow catch-up must not call this function.
+ */
+export function validatedClosedPrefixSuid(
+  options: ClosedPrefixCertificateValidationOptions,
+): string | null {
+  const certificate = options.closedPrefixCertificate;
+  if (certificate === undefined) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  if (
+    certificate.certificateVersion !== 1 ||
+    certificate.authority !== "allocator-transaction" ||
+    certificate.status !== "ready" ||
+    certificate.serviceId.length === 0 ||
+    certificate.allocatorLineageId.length === 0 ||
+    !Number.isSafeInteger(certificate.unresolvedCount) ||
+    certificate.unresolvedCount < 0
+  ) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  if (options.expectedServiceId === undefined || options.expectedAllocatorLineageId === undefined) {
+    throw new Error("ordering_certificate_consumer_unbound");
+  }
+  if (certificate.serviceId !== options.expectedServiceId) {
+    throw new Error("ordering_certificate_consumer_mismatch");
+  }
+  if (certificate.allocatorLineageId !== options.expectedAllocatorLineageId) {
+    throw new Error("ordering_certificate_lineage_mismatch");
+  }
+  if (
+    options.closedPrefixSuid !== undefined &&
+    options.closedPrefixSuid !== certificate.closedPrefixSuid
+  ) {
+    throw new Error("ordering_certificate_mismatch");
+  }
+  return certificate.closedPrefixSuid;
 }
 
 export interface CatchUpResult {
@@ -182,6 +242,12 @@ export class ProjectionRuntime {
     if (projector === undefined) {
       throw new Error(`Projector ${identity.tagProjector} is not registered`);
     }
+    if (options.requireClosedPrefixCertificate !== true && options.closedPrefixSuid !== undefined) {
+      throw new Error("ordering_certificate_unavailable");
+    }
+    const certifiedClosedPrefixSuid = options.requireClosedPrefixCertificate === true
+      ? validatedClosedPrefixSuid(options)
+      : undefined;
     const dynamicLagBoundMs = await this.store.currentLagBound(serviceId, nowMs);
     const windowMs = safeWindowMs(dynamicLagBoundMs);
     if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
@@ -212,6 +278,11 @@ export class ProjectionRuntime {
         if (previousSuid !== undefined && compareSuid(previousSuid, event.suid) >= 0) {
           await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
+        }
+        if (certifiedClosedPrefixSuid === null || (
+          certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0
+        )) {
+          break;
         }
         // A G44 BLOCK/UNSETTLED tick may still poll live projections, but it
         // must remain fenced by the last settled source frontier. `null`
@@ -280,6 +351,11 @@ export class ProjectionRuntime {
     serviceId: string,
     nowMs: number,
     maximumSuid?: string | null,
+    closedPrefixSuid?: string | null,
+    closedPrefixCertificate?: ClosedPrefixCertificate,
+    requireClosedPrefixCertificate = false,
+    expectedServiceId?: string,
+    expectedAllocatorLineageId?: string,
   ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
     const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
@@ -297,7 +373,14 @@ export class ProjectionRuntime {
         const job = jobs[index];
         if (job === undefined) return;
         const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
-        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid });
+        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, {
+          maximumSuid,
+          closedPrefixSuid,
+          closedPrefixCertificate,
+          requireClosedPrefixCertificate,
+          expectedServiceId,
+          expectedAllocatorLineageId,
+        });
       }
     };
     const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);

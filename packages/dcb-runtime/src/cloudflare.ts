@@ -490,6 +490,7 @@ export type {
   LiveProjectionPollOutcome,
   ProjectionPollOptions,
 } from "./projection/LiveProjectionWorker";
+export type { ClosedPrefixCertificate } from "./allocator/types";
 export {
   downstreamEnvelopeBytes,
   classifyDirectDoorbellFailure,

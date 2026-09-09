@@ -761,6 +761,8 @@ jobs:
         if: steps.node-modules.outputs.cache-hit != 'true'
       - name: Run SDT-G44 global receipt and source reconciliation lane
         run: npm run test:g44
+      - name: Run SDT-G75 certificate-scope lane
+        run: npm run test:g75:certificate-scope
       - name: Prove SDT-G44 forced-red CI reachability
         run: |
           if SDT_G44_FORCE_FAILURE=1 npm run test:g44:forced-red; then
