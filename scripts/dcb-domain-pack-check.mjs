@@ -26,7 +26,7 @@ if (unexpectedEntries.length > 0) {
   throw new Error(`SDT-G59 pack guard: unexpected package entries: ${unexpectedEntries.join(", ")}`);
 }
 if (packageJson.private !== false) throw new Error("SDT-G59 pack guard: package must be public");
-if (packageJson.version !== "0.1.0") throw new Error(`SDT-G59 pack guard: expected version 0.1.0, got ${packageJson.version}`);
+if (packageJson.version !== "0.1.1") throw new Error(`SDT-G59 pack guard: expected version 0.1.1, got ${packageJson.version}`);
 if (packageJson.license !== "Elastic-2.0") throw new Error("SDT-G59 pack guard: license must be Elastic-2.0");
 if (JSON.stringify(packageJson.files) !== JSON.stringify(["dist", "README.md", "LICENSE"])) {
   throw new Error(`SDT-G59 pack guard: files allowlist is ${JSON.stringify(packageJson.files)}`);

@@ -24,8 +24,8 @@ credential:
 The operator verifies the dry-run PR and then runs:
 
 ```sh
-git tag dcb-domain-v0.1.0
-git push origin dcb-domain-v0.1.0
+git tag dcb-domain-v0.1.1
+git push origin dcb-domain-v0.1.1
 ```
 
 The tag workflow checks that the tag matches `packages/dcb-domain/package.json`,
@@ -43,22 +43,22 @@ first runs the credential-free release-path proof
 head, run id and command in the workflow log. It then runs the same dry-run
 fallback, prints a clear operator notice, and exits successfully without
 publishing. The
-`@sekiban/dcb-domain 0.1.0` changelog entry is included in the GitHub release
+`@sekiban/dcb-domain 0.1.1` working changelog entry is included in the GitHub release
 notes, while the package tarball remains limited to `dist/**`, `README.md`,
 `LICENSE`, and `package.json`. The preflight guard documents a 1,000,000-byte
 unpacked-size ceiling for the current neutral bundle (the observed 0.1.0
 dry-run is recorded in the SDT-G59 evidence).
 
 After a real publish, the operator verifies the package page on
-npmjs.com, the `0.1.0` version, public access, and the provenance badge before
+npmjs.com, the `0.1.1` version, public access, and the provenance badge before
 announcing the release.
 
 ## Matched core/domain/client release
 
-Issue #120 releases the matched `0.1.0` set in dependency order:
+Issue #120's post-W177 gate recovery uses the working matched `0.1.1` set in dependency order:
 `@sekiban/dcb-core`, `@sekiban/dcb-domain`, then `@sekiban/dcb-client`.
 The tag-triggered workflow is `.github/workflows/release-dcb-matched-set.yml`
-and the exact tag is `dcb-v0.1.0`. It runs `npm run test:g28` and the complete
+and the exact tag is `dcb-v0.1.1`. It runs `npm run test:g28` and the complete
 matched-set build, tarball and consumer proof before any publish step. It then
 reads the repository's live `.private` value through the GitHub API. For a
 public repository the credential-free proof is one `npm publish --dry-run
@@ -78,8 +78,8 @@ publishing for the workflow filename `release-dcb-matched-set.yml` and set
 secret. The later operator commands are:
 
 ```sh
-git tag dcb-v0.1.0
-git push origin dcb-v0.1.0
+git tag dcb-v0.1.1
+git push origin dcb-v0.1.1
 # public repository:
 (cd packages/dcb-core && npm publish --provenance --access public)
 (cd packages/dcb-domain && npm publish --provenance --access public)

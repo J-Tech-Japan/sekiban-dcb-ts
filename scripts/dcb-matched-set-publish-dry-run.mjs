@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classifyPublishFailure } from "./npm-publish-dry-run-classifier.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packages = [
@@ -118,6 +119,7 @@ for (const [name, relativeDirectory] of packages) {
   const env = { ...process.env };
   Object.assign(env, publishEnvironment({ privateRepository }));
   if (env.NPM_CONFIG_CACHE !== undefined) env.npm_config_cache = env.NPM_CONFIG_CACHE;
+  const manifest = JSON.parse(readFileSync(resolve(root, relativeDirectory, "package.json"), "utf8"));
   const result = spawnSync(
     "npm",
     publishArgs,
@@ -134,7 +136,8 @@ for (const [name, relativeDirectory] of packages) {
   };
   receipts.push(receipt);
   if (result.status !== 0) {
-    console.error(JSON.stringify({ status: "FAIL", receipt }, null, 2));
+    const failure = classifyPublishFailure(result, { packageName: name, version: manifest.version });
+    console.error(JSON.stringify({ status: "FAIL", failure, receipt }, null, 2));
     process.exit(result.status ?? 1);
   }
 }
