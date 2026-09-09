@@ -415,7 +415,7 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     const restoreQueue = await replaceQueue(value, async (row) => {
       if (row.eventId === candidate(value, "insert-1").eventId && !inserted) {
         inserted = true;
-        // This fixture isolates the alarm's in-flight source selection. The
+        // This fixture isolates the alarm's in-flight source selection. It
         // invokes the exact append handler seam inside the same Tag actor with
         // auto-drain scoped off. A second SELF.fetch would independently
         // schedule response-after delivery and could acknowledge insert-2
