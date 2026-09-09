@@ -39,10 +39,14 @@ characterized and left unchanged as a separate G69 finding.
 
 The default-parallel local `npm test` was also run and recorded honestly as
 red under host saturation; it was not used to weaken a guard or to claim a
-green result. Terminal hosted CI is required for the final status below.
+green result. Terminal hosted CI is recorded in the final status below.
 
 ## PR and hosted CI
 
-PR: pending creation from this exact branch.
-Head: pending push.
-Hosted checks: pending terminal result.
+PR: [#156](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/156), open,
+non-draft, against `main`, with `Closes #149`.
+Head: `dc2d1c08d977183b54e3be353387f10132f3176b`.
+Hosted checks: [CI run 34359651286](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34359651286)
+completed successfully; all 21 jobs, including the terminal `verify` job,
+passed. The [domain release preflight run 34359651297](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34359651297)
+also passed.

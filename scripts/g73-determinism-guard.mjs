@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 const root = process.cwd();
 const testRoot = resolve(root, "test");
 const assertionMethods = ["toEqual", "toStrictEqual", "toBe"];
+const g22SnapshotFile = "test/g22-bootstrap-d1.spec.ts";
 const driverFields = [
   "duration",
   "timings",
@@ -90,9 +91,30 @@ function driverFieldInEquality(argument) {
   for (const field of driverFields) {
     const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const property = new RegExp(`(?:["']?${escapedField}["']?\\s*:)`);
-    if (property.test(argument) || property.test(normalized)) return field;
+    const shorthand = new RegExp("(?:[,{]\\s*)" + escapedField + "\\s*(?=[,}])");
+    if (property.test(argument) || property.test(normalized) || shorthand.test(argument) || shorthand.test(normalized)) return field;
   }
   return undefined;
+}
+
+function rawG22SnapshotViolation(source, file) {
+  if (file !== g22SnapshotFile) return [];
+  if (!/expect\(\s*await\s+snapshot\(\)\s*\)\s*\.\s*(?:toEqual|toStrictEqual)\s*\(\s*before\s*\)/.test(source)) return [];
+  const snapshot = /const snapshot = async \(\) => \(\{([\s\S]*?)\n\s*\}\);/.exec(source);
+  if (snapshot === null) return [];
+  // G22's snapshot is the explicit normalization boundary for raw D1
+  // metadata. A direct driver result in diagnosticAttempts must stay inside
+  // semanticD1Result before the whole snapshot is compared.
+  const rawDriverResult = /diagnosticAttempts\s*:\s*(?!semanticD1Result\s*\()([\s\S]*?)\.(?:all|first|raw)\s*(?:<[^>]*>)?\s*\(/.exec(snapshot[1]);
+  if (rawDriverResult === null) return [];
+  const bodyStart = source.indexOf(snapshot[1], snapshot.index);
+  return [{
+    file,
+    line: source.slice(0, bodyStart + rawDriverResult.index).split("\n").length,
+    method: "snapshot-normalization-boundary",
+    field: "raw-d1-result",
+    kind: "raw-d1-snapshot-without-semantic-normalization",
+  }];
 }
 
 function scanSource(source, file) {
@@ -113,27 +135,42 @@ function scanSource(source, file) {
       field,
     });
   }
-  return { assertionsScanned, violations };
+  const snapshotViolations = rawG22SnapshotViolation(source, file);
+  return {
+    assertionsScanned,
+    violations: [...violations, ...snapshotViolations],
+    normalizationChecks: file === g22SnapshotFile ? 1 : 0,
+  };
 }
 
 function assertNoDriverTimingEquality(files) {
   const violations = [];
   let assertionsScanned = 0;
+  let normalizationChecks = 0;
   for (const file of files) {
     const result = scanSource(readFileSync(file, "utf8"), relative(root, file));
     assertionsScanned += result.assertionsScanned;
+    normalizationChecks += result.normalizationChecks;
     violations.push(...result.violations);
   }
   if (violations.length > 0) {
     throw new Error(`Driver-timing equality assertion(s) found:\n${JSON.stringify(violations, null, 2)}`);
   }
-  return { assertionsScanned, violations };
+  return { assertionsScanned, normalizationChecks, violations };
 }
 
 function selfTest() {
   const red = scanSource('expect(value).toEqual({ duration: "PT0S" });', "synthetic.ts");
   if (red.violations.length !== 1 || red.violations[0].field !== "duration") {
     throw new Error("G73 guard self-test failed to reject a duration deep-equality assertion");
+  }
+  const shorthandRed = scanSource("expect(value).toEqual({ duration });", "synthetic-shorthand.ts");
+  if (shorthandRed.violations.length !== 1 || shorthandRed.violations[0].field !== "duration") {
+    throw new Error("G73 guard self-test failed to reject a shorthand duration equality assertion");
+  }
+  const indirectShorthandRed = scanSource("expect(JSON.stringify(value)).toBe(JSON.stringify({ duration }));", "synthetic-indirect-shorthand.ts");
+  if (indirectShorthandRed.violations.length !== 1 || indirectShorthandRed.violations[0].field !== "duration") {
+    throw new Error("G73 guard self-test failed to reject an indirect shorthand duration equality assertion");
   }
   const escapedRed = scanSource('expect(JSON.stringify(value)).toBe("{\\"duration\\":\\"PT0S\\"}");', "synthetic-json.ts");
   if (escapedRed.violations.length !== 1 || escapedRed.violations[0].field !== "duration") {
@@ -142,6 +179,17 @@ function selfTest() {
   const publicShape = scanSource('expect(keys).toEqual(["duration", "writtenEvents"]);', "synthetic-shape.ts");
   if (publicShape.violations.length !== 0) {
     throw new Error("G73 guard self-test incorrectly rejected a public wire-shape key assertion");
+  }
+  const rawG22 = [
+    "const snapshot = async () => ({",
+    "  diagnosticAttempts: (await database().prepare(\"SELECT duration FROM attempts\").all()),",
+    "});",
+    "const before = await snapshot();",
+    "expect(await snapshot()).toEqual(before);",
+  ].join("\n");
+  const rawG22Result = scanSource(rawG22, g22SnapshotFile);
+  if (!rawG22Result.violations.some(({ kind }) => kind === "raw-d1-snapshot-without-semantic-normalization")) {
+    throw new Error("G73 guard self-test failed to reject the raw G22 snapshot regression");
   }
   process.stdout.write(`${JSON.stringify({ guard: "driver-timing-equality", selfTest: "passed" })}\n`);
 }
@@ -154,6 +202,7 @@ function main() {
     guard: "driver-timing-equality",
     filesScanned: files.length,
     assertionsScanned: result.assertionsScanned,
+    normalizationChecks: result.normalizationChecks,
     knownFields: driverFields,
     violations: result.violations,
   })}\n`);
