@@ -118,6 +118,16 @@ this worktree because that guard resolves a Vitest file at
 `build:packages` prelude on existing dcb-client/sample export drift. Neither
 condition changed source behavior, and no bypass or test relaxation was added.
 
+## Hosted terminal record
+
+The repair was pushed to PR #155 at exact head
+`3d4d2669186baada80f4af032ce658a18dcb6c1`, following starting head
+`985d10e0c4f8d4606f4eb4a979a16c00d3c378c2`. Hosted CI run
+`34344552925` completed successfully with all 21 jobs passing, including both
+G30 lanes and the G75 lane in G44. Release preflight run `34344552824` also
+completed successfully at the same head. No publish, tag, deployment, or
+credential operation was performed.
+
 ## Scope and evidence boundary
 
 This repair is limited to the F1/F2/F3 findings on PR #155: direct ordinary

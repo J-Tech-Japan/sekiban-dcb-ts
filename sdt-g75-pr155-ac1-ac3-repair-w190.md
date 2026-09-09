@@ -81,9 +81,15 @@ test relaxation, timeout change, or unrelated repair was made.
 
 ## Hosted verification
 
-The repair is being pushed to the existing non-draft PR #155 branch from the
-required exact starting head. Terminal exact-head hosted CI will be recorded
-here after the pushed repair head is observed; no publish, tag, deployment, or
+The repair was pushed to the existing non-draft PR #155 branch from the
+required exact starting head. Hosted CI run
+[`34344552925`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34344552925)
+completed successfully at exact head
+`3d4d2669186baada80f4af032ce658a18dcb6c1`; all 21 jobs passed, including
+`ci-g30-core`, `ci-g30-forced-red`, and the G75 lane in `ci-g44`. The separate
+release preflight run
+[`34344552824`](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34344552824)
+also completed successfully at the same head. No publish, tag, deployment, or
 credential operation is part of this task.
 
 ## Scope
