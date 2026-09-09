@@ -3689,7 +3689,7 @@ export class TagDurableObject implements DurableObject {
         body.attemptId,
         body.attemptId,
       ).toArray()[0];
-      if (fenced !== undefined) return json({ disposition: "fenced", eventId: body.eventId, suid: body.suid });
+      if (fenced !== undefined) return json({ disposition: "fenced", fenceConfirmed: true, eventId: body.eventId, suid: body.suid });
       return json({ disposition: "unknown", eventId: body.eventId, suid: body.suid });
     }
     const record = this.readStoredRecord(tag);
@@ -3698,7 +3698,7 @@ export class TagDurableObject implements DurableObject {
       return json({ disposition: "installed", eventId: body.eventId, suid: body.suid });
     }
     if (record.tombstones.some((entry) => entry.attemptId === body.attemptId) || record.fences.some((entry) => entry.attemptId === body.attemptId)) {
-      return json({ disposition: "fenced", eventId: body.eventId, suid: body.suid });
+      return json({ disposition: "fenced", fenceConfirmed: true, eventId: body.eventId, suid: body.suid });
     }
     return json({ disposition: "unknown", eventId: body.eventId, suid: body.suid });
   }

@@ -565,11 +565,6 @@ export class CommitWorker {
     }
 
     const fault = faultFromRequest(request);
-    // The pre-G70 commit fixture reaches this handler without the explicit
-    // Miniflare service-identity override. Keep that legacy fixture's
-    // no-preappend-state assertion isolated to the synthetic .test host;
-    // deployed requests and the G70 public acceptance path use the normal
-    // first-write fence behavior.
     const attemptId = fault === undefined
       ? crypto.randomUUID()
       : testAttemptIdFromRequest(request) ?? crypto.randomUUID();
@@ -1063,6 +1058,7 @@ export class CommitWorker {
           allocatorLineageId,
           tag,
           disposition,
+          ...(disposition === "fenced" ? { fenceConfirmed: true as const } : {}),
         };
         return [this.resolveIssuanceParticipant(allocator, body)];
       });
@@ -1080,6 +1076,7 @@ export class CommitWorker {
       readonly allocatorLineageId: string;
       readonly tag: string;
       readonly disposition: "installed" | "fenced";
+      readonly fenceConfirmed?: true;
     },
   ): Promise<void> {
     for (let attempt = 0; attempt < MAX_ISSUANCE_RESOLUTION_ATTEMPTS; attempt += 1) {
@@ -1212,17 +1209,13 @@ export class CommitWorker {
           createMissingTombstone,
         }, stageScope?.fork(), stageScope === undefined ? undefined : "S19", { memberIndex, attemptId });
         const body = await response.clone().json().catch(() => undefined) as JsonObject | undefined;
-        // Current Tag implementations identify a durable fence explicitly.
-        // Keep the historical status-only fixture contract for the retired
-        // Journal-era test doubles; a real current Tag response is still
-        // required to carry either the durable marker or its idempotent
-        // cancellation fact.
+        // A cancellation response is closure evidence only when the Tag
+        // explicitly proves its durable tombstone/fence. HTTP success or a
+        // status-only body is not enough: a lost/partial response remains
+        // unresolved and the allocator's durable recovery alarm retries it.
         return response.status >= 200 && response.status < 300 && (
           body?.fenceConfirmed === true ||
-          body?.idempotent === true ||
-          body?.status === "cancelled" ||
-          body?.cancelled === true ||
-          body === undefined
+          body?.idempotent === true
         );
       }),
     );

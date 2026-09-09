@@ -49,9 +49,10 @@ function sourceContracts(sources) {
   requireContains(runtime, "closedPrefixCertificate,", "full closed-prefix certificate propagation");
   requireContains(runtime, "export function scheduledLiveProjectionMaximumSuid(", "FULL/BLOCK fence mapper");
   requireContains(live, "maximumSuid?: string | null;", "live-poll maximum frontier option");
+  requireContains(live, "maximumSuid: options.maximumSuid,", "live-poll frontier propagation");
   requireContains(live, "closedPrefixCertificate?: ClosedPrefixCertificate;", "full closed-prefix certificate option");
   requireContains(live, "if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== \"ready\")", "allocator-bound polls require a validated certificate");
-  requireContains(live, "const closedPrefixSuid = options.closedPrefixCertificate === undefined", "validated certificate selection");
+  requireContains(live, "const closedPrefixSuid = validatedClosedPrefixSuid(options);", "validated certificate selection");
   requireContains(live, "closedPrefixSuid,\n              closedPrefixCertificate: options.closedPrefixCertificate,", "single-tag frontier and closed-prefix certificate propagation");
   requireContains(live, "options.closedPrefixCertificate,\n    );", "all-tag frontier and closed-prefix certificate propagation");
   requireContains(live, "ordering_certificate_unavailable", "on-demand safe advancement fails closed without certificate");
@@ -100,12 +101,20 @@ function mutationSelfTest(sources) {
   try { sourceContracts({ ...sources, runtime: fenceMutation }); } catch { fenceRed = true; }
   if (!fenceRed) fail("removing the scheduler's retained-frontier fence did not turn the guard red");
 
+  const liveFrontierMutation = sources.live.replace(
+    "maximumSuid: options.maximumSuid,",
+    "maximumSuid: undefined,",
+  );
+  let liveFrontierRed = false;
+  try { sourceContracts({ ...sources, live: liveFrontierMutation }); } catch { liveFrontierRed = true; }
+  if (!liveFrontierRed) fail("removing the live-poll frontier propagation did not turn the guard red");
+
   const certificateMutation = sources.live.replace(
     "closedPrefixCertificate: options.closedPrefixCertificate,",
     "// closed prefix certificate omitted",
   );
   const selectionMutation = sources.live.replace(
-    "const closedPrefixSuid = options.closedPrefixCertificate === undefined",
+    "const closedPrefixSuid = validatedClosedPrefixSuid(options);",
     "const closedPrefixSuid = undefined;\n  // mutated",
   );
   let certificateRed = false;
@@ -155,7 +164,7 @@ function mutationSelfTest(sources) {
   let requiredCertificateRed = false;
   try { sourceContracts({ ...sources, live: requiredCertificateMutation }); } catch { requiredCertificateRed = true; }
   if (!requiredCertificateRed) fail("removing allocator-bound certificate enforcement did not turn the guard red");
-  return { earlyReturnMutationRed: earlyRed, fenceMutationRed: fenceRed, certificateMutationRed: certificateRed, allTagCertificateMutationRed: allTagCertificateRed, selectionMutationRed: selectionRed, runtimeCertificateMutationRed: runtimeCertificateRed, requiredCertificateMutationRed: requiredCertificateRed, catchUpMutationRed: catchUpRed, block, unsettled, full };
+  return { earlyReturnMutationRed: earlyRed, fenceMutationRed: fenceRed, liveFrontierMutationRed: liveFrontierRed, certificateMutationRed: certificateRed, allTagCertificateMutationRed: allTagCertificateRed, selectionMutationRed: selectionRed, runtimeCertificateMutationRed: runtimeCertificateRed, requiredCertificateMutationRed: requiredCertificateRed, catchUpMutationRed: catchUpRed, block, unsettled, full };
 }
 
 function selfTest() {

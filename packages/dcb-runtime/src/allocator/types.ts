@@ -61,6 +61,8 @@ export interface IssuanceRecoveryRecord {
 
 export interface ClosedPrefixCertificate {
   certificateVersion: 1;
+  /** The certificate is issued from the durable allocator index, never a caller-supplied SUID. */
+  authority: "allocator-transaction";
   status: "ready" | "unreconciled";
   allocatorLineageId: string;
   closedPrefixSuid: string | null;

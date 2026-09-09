@@ -1,6 +1,6 @@
 # SDT-G70 evidence
 
-Status: local F1–F7 repair checkpoint; not review-ready. The repair is source/test/docs only; no
+Status: rebased local F1–F7 repair checkpoint; not review-ready until exact-head CI is terminal. The repair is source/test/docs only; no
 Wrangler, Cloudflare deployment, resource mutation, npm publish, tag,
 credential, production, G32, or #133 operation was performed.
 
@@ -21,7 +21,8 @@ If the invocation dies, the allocator alarm reads the authoritative Tag fact
 and retries the same resolution. An unknown cancellation remains unresolved;
 it is never reported as a fence.
 
-The closed-prefix certificate is lineage-bound and advances only through the
+The closed-prefix certificate is lineage-bound, explicitly marked
+`authority: "allocator-transaction"`, and advances only through the
 ordered prefix whose obligations are resolved. Safe advancement requires this
 validated certificate and the existing G44/G62 settled coverage/frontier
 fences. Missing, unreconciled, stale, mismatched, or beyond-prefix authority
@@ -48,17 +49,20 @@ a SETTLED result or shorten a fence.
 | lost cancellation / delayed writer | public 504 leaves the obligation unresolved; a later real Tag append is discovered by the allocator-owned alarm and resolves the exact identity |
 | lost fence acknowledgement | the durable Tag tombstone is found after the request returns; replayed resolution is idempotent |
 | higher-before-lower | a higher public commit may return, but its certificate stays behind the unresolved lower allocation; only lower installation/fencing closes the prefix |
+| expired/aborted writer | public reservation expiry/abort is not closure evidence; only a confirmed durable Tag fence or later identity-matched append can resolve the obligation |
+| concurrent scanner/restart | concurrent certificate reads and a fresh allocator stub observe the same durable indexed certificate; no request-local cache can widen the prefix |
 | migration/bootstrap | empty, omitted, out-of-cut, duplicate, mismatched, or lineage-replaced reconciliation history is refused; a complete cut still leaves imported obligations unresolved until real closure |
 | certificate/safe path | missing/unreconciled/mismatched certificate cannot authorize the MV/projection safe path; unsafe behavior is unchanged |
 
 The existing CommitWorker crash matrix remains in `test/commit.spec.ts`; the
 G70 public tests cover the G70 handoff shapes and recovery boundary. The
 useful `scripts/g70-allocator-closed-prefix-guard.mjs` is supplementary: it
-checks source seams and runs eight red mutations, including atomic obligation
-registration, first-write fence creation, participant completeness, durable
-recovery, reconciliation authority, safe dual-gate enforcement, and
-uncontacted-cancellation closure. It does not replace the public behavioral
-proof.
+checks source seams and runs ten red mutations. The four AC5 mutants are
+registration removed, one-Tag premature resolution, expired/aborted writer
+accepted, and allocated-watermark substitution for the closed prefix; the
+remaining mutations cover durable recovery, reconciliation authority, safe
+dual-gate enforcement, uncontacted cancellation, and first-write fence
+creation. It does not replace the public behavioral proof.
 
 ## Migration cut and trust boundary
 
@@ -66,8 +70,9 @@ Existing/seeded allocator namespaces are `unreconciled`; elapsed time and a
 non-empty operator list never certify them. `POST /reconcile-cut` requires the
 current lineage, `historyComplete=true`, a valid complete-through SUID, a
 non-empty proof ID and exhaustive durable vector identity coverage. It rejects
-empty history, omitted vectors, extra history, duplicate identity/SUID,
-out-of-cut SUIDs, identity conflicts, and a non-current lineage. The cut is an
+empty history, omitted vectors, extra history, duplicate identity/event/SUID,
+out-of-cut SUIDs, non-monotonic imported SUID order, identity conflicts, and a
+non-current lineage. The cut is an
 exceptional bounded reconciliation scan; ordinary allocation, resolution and
 certificate acquisition use the moving index rather than scanning all
 allocations. The stated trust assumption is that the operator/reconciler's
@@ -79,7 +84,7 @@ runtime verifies that enumeration against the namespace before promotion.
 The allocation transaction records its measured durable persistence window in
 `lastAllocationPersistenceMs` and the certificate records
 `durableWriteCostMs`. Certificate acquisition records `acquisitionCostMs`.
-Representative local indexed histories of 1 and 16 participant-free
+Representative local indexed histories of 1, 16, and 128 participant-free
 allocations produced numeric cost fields in the focused AC7 test. These are
 observations, not acceptance thresholds and not permission to widen a safe
 frontier. The certificate's normal path reads the moving index and does not
@@ -94,22 +99,31 @@ the important results are:
 
 - `test/commit.spec.ts` G4 allocation/cancellation compatibility selection:
   pass after the G70 first-write fence compatibility seam was rebuilt.
-- `test/g70-allocator-closed-prefix.spec.ts`: 10/10 pass.
+- `test/g70-allocator-closed-prefix.spec.ts`: 11/11 pass; the paired
+  `test/allocator.spec.ts` lane also passed 5/5.
 - `test/g69-ordering.spec.ts`: 8/8 pass in the focused serial invocation; the
   G69 allocator-to-Tag ordering proof itself remains green.
-- `npm run test:g69`: not green as an aggregate: its baseline oracle runner
-  terminated with exit 143 before producing a result. The focused 8/8 result
-  and the seven self-test mutations are retained, but this runner exception is
-  not claimed as a passed aggregate lane.
+- `npm run test:g69`: exit 0; the focused ordering proof passed and all seven
+  self-test mutations were red. Two mutation subprocesses terminated with
+  exit 143 under the existing bounded mutation-runner behavior; the parent
+  guard classified those mutations as red. This is recorded as runner
+  behavior, not as a weakened assertion or a skipped mutation.
 - `node scripts/g70-allocator-closed-prefix-guard.mjs --self-test` and the
-  unmutated guard: pass; all eight G70 mutations are red, including the
-  retained first-write fence mutation.
+  unmutated guard: pass; all ten G70 mutations are red, including the four
+  AC5 behavioral safety contracts and the retained first-write fence mutation.
 - `npm run test:g58` focused Vitest and source guards: the G58 tests and most
   guards pass; the legacy W97 runner ends with a documented `spawnSync` result
   of `status=null`, `signal=null`, and empty output. This is an environment/
   runner exception, not a green claim and not a changed G58 assertion.
 - `npm run test:g67`: pass in its focused serial lane (11/11); no G67 budget,
   timeout, fixture, or SafeWindow change.
+- `npm run test:g46`: pass; 4 files/31 tests passed and all nine tag-state
+  mutation rows were red. The existing Miniflare identity diagnostic was
+  emitted but did not fail the lane.
+- `npm run test:g62`: exit 0; the G62 AC1/AC3 guard completed with its green
+  receipt and all three self-test mutations were red. Its mutation output
+  includes the expected Vitest negative assertions; those are guard proof,
+  not production failures.
 
 Local Miniflare continues to print the existing non-empty Hyperdrive binding
 warning and occasional overdue SQLite alarm diagnostics. The child worktree

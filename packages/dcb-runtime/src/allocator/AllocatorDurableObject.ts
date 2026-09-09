@@ -69,6 +69,8 @@ interface ResolveObligationInput {
   readonly allocatorLineageId: string;
   readonly tag: string;
   readonly disposition: IssuanceObligationDisposition;
+  /** Required when a Tag reports a durable force-tombstone fence. */
+  readonly fenceConfirmed?: true;
 }
 
 interface ReconcileCutInput {
@@ -234,6 +236,9 @@ function parseResolution(value: unknown): { value?: ResolveObligationInput; erro
     return { error: "attemptId, candidateIndex, eventId, suid, allocatorLineageId, tag, and disposition are required" };
   }
   try { assertSortableUniqueId(value.suid); } catch { return { error: "suid must be a valid allocator SUID" }; }
+  if (value.disposition === "fenced" && value.fenceConfirmed !== true) {
+    return { error: "a fenced resolution requires an explicit durable fence confirmation" };
+  }
   return { value: {
     attemptId: value.attemptId,
     candidateIndex: value.candidateIndex,
@@ -242,6 +247,7 @@ function parseResolution(value: unknown): { value?: ResolveObligationInput; erro
     allocatorLineageId: value.allocatorLineageId,
     tag: value.tag,
     disposition: value.disposition,
+    ...(value.disposition === "fenced" ? { fenceConfirmed: true } : {}),
   } };
 }
 
@@ -284,6 +290,7 @@ function closedPrefixCertificate(
   if (meta === undefined || meta.allocatorLineageId !== state.allocatorLineageId) {
     return {
       certificateVersion: 1,
+      authority: "allocator-transaction",
       status: "unreconciled",
       allocatorLineageId: state.allocatorLineageId,
       closedPrefixSuid: null,
@@ -295,6 +302,7 @@ function closedPrefixCertificate(
   if (index !== undefined && index.allocatorLineageId === state.allocatorLineageId) {
     return {
       certificateVersion: 1,
+      authority: "allocator-transaction",
       status: "ready",
       allocatorLineageId: state.allocatorLineageId,
       closedPrefixSuid: index.closedPrefixSuid,
@@ -314,6 +322,7 @@ function closedPrefixCertificate(
   const closed = firstUnresolved < 0 ? ordered : ordered.slice(0, firstUnresolved);
   return {
     certificateVersion: 1,
+    authority: "allocator-transaction",
     status: "ready",
     allocatorLineageId: state.allocatorLineageId,
     closedPrefixSuid: closed.length === 0 ? null : closed[closed.length - 1]!.suid,
@@ -453,6 +462,7 @@ export class AllocatorDurableObject implements DurableObject {
             allocatorLineageId: record.allocatorLineageId,
             tag: disposition.tag,
             disposition: disposition.disposition,
+            fenceConfirmed: disposition.fenceConfirmed,
           });
           changed ||= response.changed === true;
           if (response.status !== 200) break;
@@ -492,9 +502,9 @@ export class AllocatorDurableObject implements DurableObject {
 
   private async readRecoveryDispositions(
     record: IssuanceRecoveryRecord,
-  ): Promise<Array<{ readonly tag: string; readonly disposition: IssuanceObligationDisposition }>> {
+  ): Promise<Array<{ readonly tag: string; readonly disposition: IssuanceObligationDisposition; readonly fenceConfirmed?: true }>> {
     if (this.env?.TAG === undefined) return [];
-    const dispositions: Array<{ readonly tag: string; readonly disposition: IssuanceObligationDisposition }> = [];
+    const dispositions: Array<{ readonly tag: string; readonly disposition: IssuanceObligationDisposition; readonly fenceConfirmed?: true }> = [];
     await Promise.all(record.targetTags.map(async (tag) => {
       try {
         const stub = this.env!.TAG!.get(scopeIdFor(this.env!.TAG!, {
@@ -516,9 +526,13 @@ export class AllocatorDurableObject implements DurableObject {
           },
         ));
         if (!response.ok) return;
-        const body = await response.json<{ disposition?: IssuanceObligationDisposition }>();
-        if (body.disposition === "installed" || body.disposition === "fenced") {
-          dispositions.push({ tag, disposition: body.disposition });
+        const body = await response.json<{ disposition?: IssuanceObligationDisposition; fenceConfirmed?: true }>();
+        if (body.disposition === "installed" || (body.disposition === "fenced" && body.fenceConfirmed === true)) {
+          dispositions.push({
+            tag,
+            disposition: body.disposition,
+            ...(body.disposition === "fenced" ? { fenceConfirmed: true } : {}),
+          });
         }
       } catch {
         // Recovery remains unresolved; the next durable alarm retries the
@@ -545,6 +559,9 @@ export class AllocatorDurableObject implements DurableObject {
       }
       if (!obligation.targetTags.includes(input.tag)) {
         return { status: 409, body: { code: "issuance_tag_mismatch", error: "Tag is not a required issuance participant" } };
+      }
+      if (input.disposition === "fenced" && input.fenceConfirmed !== true) {
+        return { status: 409, body: { code: "issuance_fence_unconfirmed", error: "A Tag fence must be durably confirmed before it can close issuance" } };
       }
       const installedTags = input.disposition === "installed" && !obligation.installedTags.includes(input.tag)
         ? [...obligation.installedTags, input.tag]
@@ -658,7 +675,14 @@ export class AllocatorDurableObject implements DurableObject {
         // therefore cannot establish a G70 certificate. Keep their vector
         // compatibility, but leave the namespace unreconciled for the safe
         // lane instead of minting a fiat certificate.
-        const closedPrefixMeta = persistedMeta ?? (hasG70TargetMembership ? currentClosedPrefixMeta(lineage) : undefined);
+        const closedPrefixMeta = persistedMeta ?? (hasG70TargetMembership
+          ? {
+            version: 1 as const,
+            allocatorLineageId: lineage,
+            migrationStatus: "reconciled" as const,
+            migrationProofId: `allocation:${lineage}`,
+          }
+          : undefined);
         let obligationIndex = await txn.get<ClosedPrefixIndex>(OBLIGATION_INDEX_KEY);
         if (obligationIndex === undefined) {
           const previousObligations = await txn.get<IssuanceObligation[]>(ISSUANCE_OBLIGATIONS_KEY) ?? [];
@@ -778,6 +802,12 @@ export class AllocatorDurableObject implements DurableObject {
         await txn.put(STATE_KEY, { ...updatedState, lastAllocationPersistenceMs });
         await txn.put(LAST_ALLOCATION_COST_KEY, lastAllocationPersistenceMs);
         await txn.put(OBLIGATION_INDEX_KEY, obligationIndex!);
+        if (input.candidates.some((candidate) => (candidate.targetTags?.length ?? 0) > 0)) {
+          // The recovery obligation and its first alarm share the allocation
+          // transaction. A crash after commit and before the request-owned
+          // waitUntil callback can therefore never strand resolution work.
+          await txn.setAlarm(Date.now() + RECOVERY_RETRY_MS);
+        }
         if (closedPrefixMeta !== undefined) await txn.put(CLOSED_PREFIX_META_KEY, closedPrefixMeta);
         return {
           vector,
@@ -872,6 +902,7 @@ export class AllocatorDurableObject implements DurableObject {
         }
         return {
           certificateVersion: 1,
+          authority: "allocator-transaction",
           status: "unreconciled",
           allocatorLineageId: state.allocatorLineageId,
           closedPrefixSuid: null,
@@ -948,15 +979,22 @@ export class AllocatorDurableObject implements DurableObject {
       if (!legacyCutRequired) return { status: 409, body: { code: "reconciliation_not_required", error: "Current allocator has no legacy cut" } };
       const completeThrough = decodeSuid(input.completeThroughSuid);
       const importedIdentities = new Set<string>();
+      const importedEventIds = new Set<string>();
       const importedSuids = new Set<string>();
       const imported: IssuanceObligation[] = [];
+      let previousImportedSuid: bigint | undefined;
       for (const obligation of input.obligations) {
         const identity = obligationIdentity(obligation.attemptId, obligation.candidateIndex);
         if (importedIdentities.has(identity)) return { status: 409, body: { code: "reconciliation_invalid_history", error: "reconciliation identity repeated" } };
         importedIdentities.add(identity);
+        if (importedEventIds.has(obligation.eventId)) return { status: 409, body: { code: "reconciliation_invalid_history", error: "reconciliation event identity repeated" } };
+        importedEventIds.add(obligation.eventId);
         if (importedSuids.has(obligation.suid)) return { status: 409, body: { code: "reconciliation_invalid_history", error: "reconciliation SUID repeated" } };
         importedSuids.add(obligation.suid);
-        if (decodeSuid(obligation.suid) > completeThrough) return { status: 409, body: { code: "reconciliation_incomplete_cut", error: "reconciliation obligation exceeds the completeness cut" } };
+        const importedSuid = decodeSuid(obligation.suid);
+        if (importedSuid > completeThrough) return { status: 409, body: { code: "reconciliation_incomplete_cut", error: "reconciliation obligation exceeds the completeness cut" } };
+        if (previousImportedSuid !== undefined && importedSuid <= previousImportedSuid) return { status: 409, body: { code: "reconciliation_invalid_history", error: "reconciliation obligations must be strictly SUID ordered" } };
+        previousImportedSuid = importedSuid;
         imported.push({
           ...obligation,
           targetTags: [...new Set(obligation.targetTags)],
@@ -1047,6 +1085,11 @@ export class AllocatorDurableObject implements DurableObject {
       await txn.delete(ISSUANCE_OBLIGATIONS_KEY);
       const meta: ClosedPrefixMeta = { version: 1, allocatorLineageId: input.allocatorLineageId, migrationStatus: "reconciled", migrationProofId: input.proofId };
       await txn.put(CLOSED_PREFIX_META_KEY, meta);
+      if (merged.some((obligation) => obligation.targetTags.length > 0 && obligation.status !== "resolved")) {
+        // Reconciliation is also a durable recovery boundary. Do not make the
+        // caller responsible for keeping a finite request alive after the cut.
+        await txn.setAlarm(Date.now() + RECOVERY_RETRY_MS);
+      }
       return { status: 201, body: { ...meta, historyComplete: input.historyComplete, completeThroughSuid: input.completeThroughSuid, importedObligationCount: merged.length } };
     });
     if (result.status === 201) this.closedPrefixCache = undefined;
@@ -1086,7 +1129,7 @@ export async function readClosedPrefixCertificate(
     const response = await allocator.fetch(new Request("https://allocator.internal/closed-prefix"));
     if (!response.ok) return undefined;
     const value = await response.json<unknown>();
-    if (!isObject(value) || value.certificateVersion !== 1 ||
+    if (!isObject(value) || value.certificateVersion !== 1 || value.authority !== "allocator-transaction" ||
         (value.status !== "ready" && value.status !== "unreconciled") ||
         !isNonEmptyString(value.allocatorLineageId) ||
         !(value.closedPrefixSuid === null || isNonEmptyString(value.closedPrefixSuid)) ||

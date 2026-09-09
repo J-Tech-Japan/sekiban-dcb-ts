@@ -1,6 +1,6 @@
 import type { MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
 import type { ClosedPrefixCertificate } from "../allocator/types";
-import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
+import { safeWindowCeilingExceeded, safeWindowMs, validatedClosedPrefixSuid } from "../projection/ProjectionRuntime";
 import type { ProjectionStore, StoredEvent } from "../store/types";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
 import {
@@ -175,17 +175,15 @@ export class MaterializedViewCatchUpRuntime {
     options: MaterializedViewCatchUpOptions,
   ): Promise<MaterializedViewCatchUpResult> {
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt += 1) {
-      const certifiedClosedPrefixSuid = options.closedPrefixCertificate === undefined
-        ? options.closedPrefixSuid
-        : options.closedPrefixCertificate.status === "ready"
-          ? options.closedPrefixCertificate.closedPrefixSuid
-          : null;
-      if (
-        options.closedPrefixCertificate !== undefined &&
-        options.closedPrefixSuid !== undefined &&
-        options.closedPrefixSuid !== certifiedClosedPrefixSuid
-      ) {
-        throw new MaterializedViewStoreError("apply", "MV_STORE_OPERATION_FAILED", "ordering_certificate_mismatch");
+      let certifiedClosedPrefixSuid: string | null | undefined;
+      try {
+        certifiedClosedPrefixSuid = validatedClosedPrefixSuid(options);
+      } catch (error) {
+        throw new MaterializedViewStoreError(
+          "apply",
+          "MV_STORE_OPERATION_FAILED",
+          error instanceof Error ? error.message : "ordering_certificate_unavailable",
+        );
       }
       const instance = await this.materializedViews.readInstance(serviceId, materializer.id, generation);
       if (instance === undefined) {

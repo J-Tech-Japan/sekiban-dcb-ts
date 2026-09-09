@@ -53,6 +53,8 @@ export function checkG70Sources(sources = sourceMap()) {
     "private async readRecoveryDispositions(",
     "while (nextIndex.closedSequence < nextIndex.nextSequence)",
     "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));",
+    "const closed = firstUnresolved < 0 ? ordered : ordered.slice(0, firstUnresolved);",
+    "if (input.disposition === \"fenced\" && input.fenceConfirmed !== true)",
     "value.historyComplete !== true",
     "state.allocatedWatermark !== input.completeThroughSuid",
     "lastAllocationPersistenceMs",
@@ -64,6 +66,7 @@ export function checkG70Sources(sources = sourceMap()) {
   requireFile(files.allocatorTypes, [
     "export interface ClosedPrefixIndex",
     "export interface IssuanceRecoveryRecord",
+    'authority: "allocator-transaction";',
     "acquisitionCostMs?: number;",
     "durableWriteCostMs?: number;",
   ], "allocator durable index types");
@@ -82,13 +85,15 @@ export function checkG70Sources(sources = sourceMap()) {
     "closedPrefixCertificate?: ClosedPrefixCertificate;",
     "if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== \"ready\")",
     "throw new Error(\"ordering_certificate_unavailable\");",
-    "const closedPrefixSuid = options.closedPrefixCertificate === undefined",
+    "validatedClosedPrefixSuid(options)",
     "ordering_certificate_unavailable",
   ], "safe-poll certificate enforcement");
   requireFile(files.projection, [
+    'certificate.authority !== "allocator-transaction"',
+    "validatedClosedPrefixSuid(options)",
     "certifiedClosedPrefixSuid === null",
     "certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0",
-  ], "ProjectionRuntime dual gate");
+  ], "ProjectionRuntime certificate authority");
   requireFile(files.mv, [
     "certifiedClosedPrefixSuid === null",
     "certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0",
@@ -149,6 +154,18 @@ export function runSelfTest() {
       to: "const resolved = true;",
     },
     {
+      id: "accept-expired-or-aborted-writer",
+      file: files.allocator,
+      from: "if (input.disposition === \"fenced\" && input.fenceConfirmed !== true)",
+      to: "if (false)",
+    },
+    {
+      id: "substitute-allocated-watermark-for-closed-prefix",
+      file: files.allocator,
+      from: "const closed = firstUnresolved < 0 ? ordered : ordered.slice(0, firstUnresolved);",
+      to: "const closed = ordered;",
+    },
+    {
       id: "remove-durable-recovery-alarm",
       file: files.allocator,
       from: "await this.ctx.storage.setAlarm(Date.now() + RECOVERY_RETRY_MS);",
@@ -182,7 +199,7 @@ export function runSelfTest() {
   const results = mutations.map((mutation) => {
     const source = original.get(mutation.file);
     if (source === undefined || !source.includes(mutation.from)) fail(`${mutation.id} anchor missing`);
-    const mutated = mutation.from === "reconciliation_omits_durable_history"
+    const mutated = mutation.id === "accept-expired-or-aborted-writer" || mutation.from === "reconciliation_omits_durable_history"
       ? source.replaceAll(mutation.from, mutation.to)
       : source.replace(mutation.from, mutation.to);
     const next = new Map(original);

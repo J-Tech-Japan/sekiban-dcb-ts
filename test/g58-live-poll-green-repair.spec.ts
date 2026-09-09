@@ -141,6 +141,7 @@ describe("SDT-G58 W111 scheduled live-poll lifecycle", () => {
       registry,
       closedPrefixCertificate: {
         certificateVersion: 1,
+        authority: "allocator-transaction",
         status: "unreconciled",
         allocatorLineageId: "stale-lineage",
         closedPrefixSuid: null,

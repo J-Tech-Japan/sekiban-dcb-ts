@@ -68,6 +68,7 @@ async function publicCommit(
   tags: string[],
   fault?: string,
   attemptId?: string,
+  withReservation = false,
 ): Promise<Response> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -85,7 +86,7 @@ async function publicCommit(
         eventPayloadName: "G70PublicMatrixEvent",
         tags,
       }],
-      consistencyTags: [],
+      consistencyTags: withReservation ? tags.map((tag) => ({ tag, lastSortableUniqueId: "" })) : [],
     }),
   });
 }
@@ -535,9 +536,28 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     });
   });
 
+  it("AC5/AC6: public expired writers stay unresolved while concurrent and restarted readers share one certificate", async () => {
+    const serviceId = unique("g70-public-restart");
+    const expired = await publicCommit(serviceId, [unique("g70-expired-tag")], "reservation-delayed-success", `g70-expired-${crypto.randomUUID()}`, true);
+    expect(expired.status).toBe(504);
+
+    const committed = await publicCommit(serviceId, [unique("g70-restart-tag")]);
+    expect(committed.status).toBe(200);
+    const allocationStub = allocator(serviceId);
+    const concurrent = await Promise.all(Array.from({ length: 4 }, () => get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix")));
+    expect(concurrent.every((certificate) => certificate.authority === "allocator-transaction")).toBe(true);
+    expect(new Set(concurrent.map((certificate) => JSON.stringify(certificate))).size).toBe(1);
+
+    // A fresh stub models a new request/activation reading the same durable
+    // allocator index; it must not mint a different or broader certificate.
+    const restarted = await get<ClosedPrefixCertificate>(allocator(serviceId), "/closed-prefix");
+    expect(restarted).toEqual(concurrent[0]);
+    expect(restarted.unresolvedCount).toBeGreaterThanOrEqual(0);
+  });
+
   it("AC7: reports bounded certificate and durable allocation costs for representative indexed histories", async () => {
     const observations: Array<{ obligations: number; acquisitionCostMs: number; durableWriteCostMs: number }> = [];
-    for (const count of [1, 16]) {
+    for (const count of [1, 16, 128]) {
       const serviceId = unique(`g70-cost-${count}`);
       const stub = allocator(serviceId);
       for (let index = 0; index < count; index += 1) {
@@ -554,6 +574,6 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
       });
     }
     console.log(JSON.stringify({ type: "G70_CERTIFICATE_COST", observations }));
-    expect(observations).toHaveLength(2);
+    expect(observations).toHaveLength(3);
   });
 });

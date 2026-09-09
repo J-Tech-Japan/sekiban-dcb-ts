@@ -7,7 +7,7 @@ import {
   tagStateIdentityFrom,
   type ProjectorRegistry,
 } from "./ProjectorRegistry";
-import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
+import { projectionIdFor, ProjectionRuntime, safeWindowMs, validatedClosedPrefixSuid, type CatchUpResult } from "./ProjectionRuntime";
 import { scopeIdFor } from "../scope/ScopeName";
 import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
 import type { ClosedPrefixCertificate } from "../allocator/types";
@@ -195,14 +195,10 @@ export async function pollLiveProjections(
   const serviceId = options.serviceId ?? requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
   const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
   const projectorIds = registry.registered().map((projector) => projector.id);
+  const closedPrefixSuid = validatedClosedPrefixSuid(options);
   if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== "ready") {
     throw new Error("ordering_certificate_unavailable");
   }
-  const closedPrefixSuid = options.closedPrefixCertificate === undefined
-    ? options.closedPrefixSuid
-    : options.closedPrefixCertificate.status === "ready"
-      ? options.closedPrefixCertificate.closedPrefixSuid
-      : null;
   const attemptedAt = (options.clock ?? systemPipelineClock).now();
   await notifyObserver(options.observer, "onAttempt", { env, serviceId, projectorIds, attemptedAt });
   try {

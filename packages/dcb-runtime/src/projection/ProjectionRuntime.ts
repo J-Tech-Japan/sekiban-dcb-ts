@@ -65,6 +65,33 @@ export interface ProjectionCatchUpOptions {
   readonly closedPrefixCertificate?: ClosedPrefixCertificate;
 }
 
+/**
+ * Select allocator authority for a safe pass. A raw closed-prefix SUID is not
+ * accepted as a certificate; callers must carry the allocator-issued,
+ * lineage-scoped object to the read boundary. `null` remains fail-closed.
+ */
+export function validatedClosedPrefixSuid(options: Pick<ProjectionCatchUpOptions, "closedPrefixSuid" | "closedPrefixCertificate">): string | null | undefined {
+  const certificate = options.closedPrefixCertificate;
+  if (certificate === undefined) {
+    if (options.closedPrefixSuid !== undefined && options.closedPrefixSuid !== null) {
+      throw new Error("ordering_certificate_unavailable");
+    }
+    return options.closedPrefixSuid;
+  }
+  if (
+    certificate.certificateVersion !== 1 ||
+    certificate.authority !== "allocator-transaction" ||
+    (certificate.status === "unreconciled" && certificate.closedPrefixSuid !== null)
+  ) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  const selected = certificate.status === "ready" ? certificate.closedPrefixSuid : null;
+  if (options.closedPrefixSuid !== undefined && options.closedPrefixSuid !== selected) {
+    throw new Error("ordering_certificate_mismatch");
+  }
+  return selected;
+}
+
 export interface CatchUpResult {
   /** Registered projector and tag identity for scheduled-poll diagnostics. */
   readonly projectorId: string;
@@ -187,6 +214,7 @@ export class ProjectionRuntime {
     if (projector === undefined) {
       throw new Error(`Projector ${identity.tagProjector} is not registered`);
     }
+    const certifiedClosedPrefixSuid = validatedClosedPrefixSuid(options);
     const dynamicLagBoundMs = await this.store.currentLagBound(serviceId, nowMs);
     const windowMs = safeWindowMs(dynamicLagBoundMs);
     if (safeWindowCeilingExceeded(dynamicLagBoundMs)) {
@@ -201,18 +229,6 @@ export class ProjectionRuntime {
         advancedSourceEvents: 0,
         appliedEvents: 0,
       };
-    }
-    const certifiedClosedPrefixSuid = options.closedPrefixCertificate === undefined
-      ? options.closedPrefixSuid
-      : options.closedPrefixCertificate.status === "ready"
-        ? options.closedPrefixCertificate.closedPrefixSuid
-        : null;
-    if (
-      options.closedPrefixCertificate !== undefined &&
-      options.closedPrefixSuid !== undefined &&
-      options.closedPrefixSuid !== certifiedClosedPrefixSuid
-    ) {
-      throw new Error("ordering_certificate_mismatch");
     }
     const projectionId = projectionIdFor(identity);
 
