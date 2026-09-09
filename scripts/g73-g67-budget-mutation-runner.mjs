@@ -43,9 +43,11 @@ function g69AddedWorkBlock(rounds) {
         await extraStore.initialize();
         const extraTemplate = queued[0];
         if (extraTemplate === undefined) throw new Error("G67 calibration requires a real queued template");
-        const extraServiceId = \`\${serviceId}-g73-g69-calibration\`;
-        const extraTag = \`room:g73-g69-calibration-\${index}\`;
         for (let g73Round = 0; g73Round < g73G69ExtraRounds; g73Round += 1) {
+          // A fresh round identity keeps the diagnostic trim bounded per
+          // calibration service while retaining complete real admissions.
+          const extraServiceId = \`\${serviceId}-g73-g69-calibration-\${g73Round}\`;
+          const extraTag = \`room:g73-g69-calibration-\${g73Round}\`;
           for (let g73Operation = 0; g73Operation < g73G69OperationsPerRound; g73Operation += 1) {
             const extraWaiters: Promise<void>[] = [];
             const extraMessage = g32Message({
