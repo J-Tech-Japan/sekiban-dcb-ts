@@ -337,10 +337,23 @@ Focused local proof at this repair state:
 ```text
 node --check scripts/g73-g67-budget-mutation-runner.mjs       passed
 node scripts/g73-g67-budget-mutation-runner.mjs --self-test   passed
-{"budgetMs":10000,"calibrationRounds":32,"g69OperationsPerRound":16,"safetyFactor":1.5,"selfTest":"vitest-body-clock-and-g69-path-valid"}
+{"budgetMs":10000,"calibrationRounds":32,"g69OperationsPerRound":2,"safetyFactor":1.5,"selfTest":"vitest-body-clock-and-g69-path-valid"}
 {"budgetMs":10000,"healthyBodyMs":2093,"healthyMarginMs":7907,"calibrationRounds":32,"g69OperationsPerRound":2,"calibrationBodyMs":3070,"measuredAddedWorkPerRoundMs":30.53,"representativeRounds":876,"regressionBodyMs":10006,"regressionOverBudgetMs":6,"timeoutMessage":"Test timed out in 10000ms","processOverheadMs":{"healthy":6407,"calibration":5720,"regression":4760},"attempts":[{"rounds":389,"processStatus":0,"bodyStatus":"passed","bodyDurationMs":5372,"processElapsedMs":10284},{"rounds":584,"processStatus":0,"bodyStatus":"passed","bodyDurationMs":6381,"processElapsedMs":10533},{"rounds":876,"processStatus":1,"bodyStatus":"failed","bodyDurationMs":10006,"processElapsedMs":14766}],"result":"healthy-green-g69-path-timeout-red"}
 ```
 
-The final exact-head hosted CI receipt and terminal job identity will be
-appended with the W201 report after the repair push; the historical G69
-ordering-timeout and 503 boundary above remains unchanged.
+The final exact-head hosted receipt is [CI run
+34407860139](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407860139),
+completed successfully at head
+`ffc197c01ef513f578a5b91929e0171d520cdd03`, with 21/21 jobs successful. The
+acceptance-critical `ci-foundation` [job
+102655048106](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407860139/job/102655048106)
+completed `npm test`, typecheck, and the G73 driver-timing guard successfully;
+its G73 step completed before the downstream G17 checks. The long-running
+`ci-g30-core` [job
+102655048602](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407860139/job/102655048602)
+and aggregate `verify` [job
+102667110894](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407860139/job/102667110894)
+also completed successfully. The separate release preflight [run
+34407860159](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34407860159)
+completed successfully at the same head. The historical G69 ordering-timeout
+and 503 boundary above remains unchanged.
