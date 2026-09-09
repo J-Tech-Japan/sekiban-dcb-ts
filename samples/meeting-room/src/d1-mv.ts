@@ -12,6 +12,7 @@ import type {
   LiveProjectionPollObservation,
   LiveProjectionPollOutcome,
 } from "@sekiban/dcb-runtime/cloudflare";
+import type { ClosedPrefixCertificate } from "@sekiban/dcb-runtime/cloudflare";
 import {
   D1EventStore,
   createD1StoreProvider,
@@ -909,7 +910,11 @@ export async function catchUpMeetingRoomMaterializedViews(
   env: MeetingRoomD1Env,
   serviceId = requiredServiceId(env),
   frontierSuid: string | null | undefined = undefined,
-  options: { readonly runOrderingDetector?: boolean; readonly closedPrefixSuid?: string | null } = {},
+  options: {
+    readonly runOrderingDetector?: boolean;
+    readonly closedPrefixSuid?: string | null;
+    readonly closedPrefixCertificate?: ClosedPrefixCertificate;
+  } = {},
 ): Promise<readonly MeetingRoomSafeLaneCatchUpObservation[]> {
   const { runtime, views } = await openMaterializedViews(env);
   const observations: MeetingRoomSafeLaneCatchUpObservation[] = [];
@@ -934,20 +939,30 @@ export async function catchUpMeetingRoomMaterializedViews(
         result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
           maximumSuid: frontierSuid,
           closedPrefixSuid: options.closedPrefixSuid,
+          closedPrefixCertificate: options.closedPrefixCertificate,
           runOrderingDetector: true,
         });
       } else {
-        result = await runtime.build(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid, closedPrefixSuid: options.closedPrefixSuid });
+        result = await runtime.build(serviceId, materializer, Date.now(), hooks, {
+          maximumSuid: frontierSuid,
+          closedPrefixSuid: options.closedPrefixSuid,
+          closedPrefixCertificate: options.closedPrefixCertificate,
+        });
       }
     } else {
       if (options.runOrderingDetector === true) {
         result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
           maximumSuid: frontierSuid,
           closedPrefixSuid: options.closedPrefixSuid,
+          closedPrefixCertificate: options.closedPrefixCertificate,
           runOrderingDetector: true,
         });
       } else {
-        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, { maximumSuid: frontierSuid, closedPrefixSuid: options.closedPrefixSuid });
+        result = await runtime.follow(serviceId, materializer, Date.now(), hooks, {
+          maximumSuid: frontierSuid,
+          closedPrefixSuid: options.closedPrefixSuid,
+          closedPrefixCertificate: options.closedPrefixCertificate,
+        });
       }
     }
     observations.push({
@@ -1142,6 +1157,7 @@ export async function drainMeetingRoomUnsafeKicks(
   env: MeetingRoomD1Env,
   nowMs = Date.now(),
   frontierSuid: string | null | undefined = undefined,
+  closedPrefixCertificate?: ClosedPrefixCertificate,
 ): Promise<void> {
   const serviceId = requiredServiceId(env);
   const { runtime, views } = await openMaterializedViews(env);
@@ -1157,7 +1173,11 @@ export async function drainMeetingRoomUnsafeKicks(
     if (lease === undefined) continue;
     // If this fails, retain the lease until expiry rather than marking work
     // clean. Cron still runs the normal safe catch-up as the recovery net.
-    const result = await runtime.follow(serviceId, materializer, nowMs, {}, { maximumSuid: frontierSuid });
+    const result = await runtime.follow(serviceId, materializer, nowMs, {}, {
+      maximumSuid: frontierSuid,
+      closedPrefixSuid: closedPrefixCertificate?.closedPrefixSuid ?? null,
+      closedPrefixCertificate,
+    });
     // `follow` may stop at the first recent event.  Pass the actual reached
     // checkpoint so finishKick re-arms the durable kick while its target is
     // still ahead, allowing a later scheduled tick to retry without a request

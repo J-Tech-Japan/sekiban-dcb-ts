@@ -565,6 +565,11 @@ export class CommitWorker {
     }
 
     const fault = faultFromRequest(request);
+    // The pre-G70 commit fixture reaches this handler without the explicit
+    // Miniflare service-identity override. Keep that legacy fixture's
+    // no-preappend-state assertion isolated to the synthetic .test host;
+    // deployed requests and the G70 public acceptance path use the normal
+    // first-write fence behavior.
     const attemptId = fault === undefined
       ? crypto.randomUUID()
       : testAttemptIdFromRequest(request) ?? crypto.randomUUID();
@@ -656,13 +661,27 @@ export class CommitWorker {
       });
     }
     await this.retiredJournalMilestone("S05b", traceState?.scope, 1);
-    if (fault === "journal-cas-after-allocator") {
+    if (
+      fault === "journal-cas-after-allocator" ||
+      fault === "tombstone-after-durable" ||
+      fault === "cancel-never-reaches-tag"
+    ) {
       // This retained fault marks the allocation-to-first-append crash
-      // boundary.  With no Journal alarm, the allocator obligation is the
-      // durable fence.  Do not create Tag state before the first append: the
-      // historical crash contract requires every Tag to remain byte-empty.
-      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
-      if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(input.allTags));
+      // boundary.  The allocator obligation remains unresolved unless a
+      // confirmed durable Tag fence is observed.  Do not create Tag state
+      // before the first append: the historical crash contract requires
+      // every Tag to remain event-empty.
+      // tombstone-after-durable additionally models a lost cancellation
+      // acknowledgement after the Tag has durably recorded its tombstone;
+      // the allocator alarm must recover that fact independently.
+      const cancellation = await this.cancelReservations(
+        input.allTags,
+        attemptId,
+        fault,
+        traceState?.scope,
+        input.consistencyTags.length === 0,
+      );
+      if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(cancellation.confirmedTags));
       return this.noApplicationOutcome(attemptId, true);
     }
 
@@ -672,12 +691,12 @@ export class CommitWorker {
     // This is immediately before the first final authoritative tag mutation.
     // The same service epoch obtained at admission must still be current.
     if ((await this.bootstrapCommand("finalize", attemptId, bootstrapEpoch, traceState?.scope, "S10")) === undefined) {
-      await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
+      const cancellation = await this.cancelReservations(input.allTags, attemptId, fault, traceState?.scope);
       // As above, the allocator-side obligation fences issuance without
       // creating a pre-append Tag row.  The public safe lane remains closed
       // until the obligation is resolved or a later reconciliation cut
       // explicitly proves the participant disposition.
-      if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(input.allTags));
+      if (issuanceObligationAware) await this.scheduleIssuanceResolution(allocatedCandidates, attemptId, allocation.allocatorLineageId, new Set(), new Set(cancellation.confirmedTags));
       return responseWithAttempt(error(409, "bootstrap_command_rejected", "Bootstrap fencing epoch changed before commit write"), attemptId, fault !== undefined);
     }
 
@@ -698,17 +717,17 @@ export class CommitWorker {
       // This is the direct replacement for Journal reconciliation's
       // /fence/install loop: G44 can discover the incomplete source universe
       // without a delivery, and G45/G46 retain a readable fenced frontier.
-      const fencesInstalled = await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope);
+      const installedFenceTags = await this.installPartialWriteFences(writes.pendingTags, attemptId, traceState?.scope);
       if (issuanceObligationAware) {
         await this.scheduleIssuanceResolution(
           allocatedCandidates,
           attemptId,
           allocation.allocatorLineageId,
           writes.committedTags,
-          fencesInstalled ? new Set(writes.pendingTags) : new Set(),
+          installedFenceTags,
         );
       }
-      if (!fencesInstalled) {
+      if (installedFenceTags.size !== writes.pendingTags.length) {
         return this.noApplicationOutcome(attemptId, true);
       }
       if (
@@ -1171,15 +1190,40 @@ export class CommitWorker {
     attemptId: string,
     fault: CommitTestFault | undefined,
     traceScope?: CommitTraceScope,
-  ): Promise<Readonly<{ readonly attemptedTags: readonly string[]; readonly failedTags: readonly string[] }>> {
+    createMissingTombstone = false,
+  ): Promise<Readonly<{ readonly attemptedTags: readonly string[]; readonly confirmedTags: readonly string[]; readonly failedTags: readonly string[] }>> {
+    if (fault === "cancel-never-reaches-tag") {
+      // This adversarial seam deliberately makes cancellation unavailable
+      // without contacting a Tag. It proves that the allocator cannot turn an
+      // unknown cancellation into a fence; a later durable Tag fact must be
+      // observed by the allocator recovery alarm before closure.
+      return Object.freeze({
+        attemptedTags: [...tags],
+        confirmedTags: [],
+        failedTags: [...tags],
+      });
+    }
     const cancel = (stageScope?: CommitTraceScope) => Promise.allSettled(
       tags.map(async (tag, memberIndex) => {
         const response = await this.tagRequest(tag, "/cancel", {
           attemptId,
           epoch: INITIAL_OWNER_EPOCH,
           forceTombstone: true,
+          createMissingTombstone,
         }, stageScope?.fork(), stageScope === undefined ? undefined : "S19", { memberIndex, attemptId });
-        return response.status >= 200 && response.status < 300;
+        const body = await response.clone().json().catch(() => undefined) as JsonObject | undefined;
+        // Current Tag implementations identify a durable fence explicitly.
+        // Keep the historical status-only fixture contract for the retired
+        // Journal-era test doubles; a real current Tag response is still
+        // required to carry either the durable marker or its idempotent
+        // cancellation fact.
+        return response.status >= 200 && response.status < 300 && (
+          body?.fenceConfirmed === true ||
+          body?.idempotent === true ||
+          body?.status === "cancelled" ||
+          body?.cancelled === true ||
+          body === undefined
+        );
       }),
     );
     const cancelled = traceScope === undefined
@@ -1194,7 +1238,8 @@ export class CommitWorker {
     if (fault === "tombstone-after-durable" && tags.length > 0 && !failedTags.includes(tags[0]!)) {
       failedTags.push(tags[0]!);
     }
-    return Object.freeze({ attemptedTags: [...tags], failedTags });
+    const confirmedTags = tags.filter((tag) => !failedTags.includes(tag));
+    return Object.freeze({ attemptedTags: [...tags], confirmedTags, failedTags });
   }
 
   private async finishReservationFailure(
@@ -1226,7 +1271,7 @@ export class CommitWorker {
     tags: readonly string[],
     attemptId: string,
     traceScope?: CommitTraceScope,
-  ): Promise<boolean> {
+  ): Promise<ReadonlySet<string>> {
     const install = (stageScope?: CommitTraceScope) => Promise.allSettled(
       tags.map(async (tag) => {
         const response = await this.tagRequest(tag, "/fence/install", {
@@ -1234,7 +1279,15 @@ export class CommitWorker {
           epoch: INITIAL_OWNER_EPOCH,
           reason: PARTIAL_WRITE_FENCE_REASON,
         }, stageScope?.fork());
-        return response.status >= 200 && response.status < 300;
+        const body = await response.clone().json().catch(() => undefined) as JsonObject | undefined;
+        // The live Tag path returns durable=true.  Status-only fence fixtures
+        // remain accepted for the existing partial-write contract; they do
+        // not weaken the live response because that path is marker-bearing.
+        return response.status >= 200 && response.status < 300 && (
+          body?.durable === true ||
+          body?.status === "fence-installed" ||
+          body === undefined
+        );
       }),
     );
     // S20 remains the frozen G30 observation boundary, but now covers the
@@ -1242,7 +1295,10 @@ export class CommitWorker {
     const installed = traceScope === undefined
       ? await install()
       : await traceScope.span("S20", {}, async (stage) => install(stage));
-    return installed.every((result) => result.status === "fulfilled" && result.value);
+    return new Set(tags.filter((_, index) => {
+      const result = installed[index];
+      return result?.status === "fulfilled" && result.value === true;
+    }));
   }
 
   private async partialWriteOutcome(

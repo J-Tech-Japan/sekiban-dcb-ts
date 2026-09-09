@@ -26,6 +26,37 @@ export interface IssuanceObligation {
   installedTags: string[];
   fencedTags: string[];
   status: "unresolved" | "resolved";
+  /** Monotonic allocator-local sequence; used for bounded prefix advancement. */
+  sequence?: number;
+}
+
+/**
+ * Incremental certificate index.  It contains only the moving prefix and
+ * unresolved count; individual obligations live under separate durable keys.
+ * The allocator never rewrites the complete issuance history on the hot path.
+ */
+export interface ClosedPrefixIndex {
+  version: 1;
+  allocatorLineageId: string;
+  nextSequence: number;
+  closedSequence: number;
+  closedPrefixSuid: string | null;
+  unresolvedCount: number;
+  /** Compatibility marker for the pre-G70 participant-free structural seam. */
+  hasParticipantMembership?: boolean;
+}
+
+/** Durable recovery work owned by the allocator, not a request waitUntil. */
+export interface IssuanceRecoveryRecord {
+  serviceId: string;
+  attemptId: string;
+  candidateIndex: number;
+  eventId: string;
+  suid: string;
+  allocatorLineageId: string;
+  targetTags: string[];
+  nextAttemptAt: number;
+  attemptCount: number;
 }
 
 export interface ClosedPrefixCertificate {
@@ -37,6 +68,10 @@ export interface ClosedPrefixCertificate {
   generatedAt: number;
   /** Explicitly records why a legacy namespace is not yet safe. */
   migrationProofId: string | null;
+  /** Diagnostic bounded-cost measurement for certificate acquisition. */
+  acquisitionCostMs?: number;
+  /** Durable allocation transaction persistence window, measured locally. */
+  durableWriteCostMs?: number;
 }
 
 /**
@@ -61,4 +96,6 @@ export interface AllocatorState {
   bootstrapSeed: { importId: string; leaseEpoch: number; highWatermark: string } | null;
   /** Durable rate-limit key for rollback warnings; it is not allocation authority. */
   lastRollbackWarningFingerprint?: string | null;
+  /** Measured persistence window for the most recent allocation transaction. */
+  lastAllocationPersistenceMs?: number;
 }

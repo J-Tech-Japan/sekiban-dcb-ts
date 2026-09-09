@@ -490,6 +490,7 @@ export function createRuntimeWorker(options: RuntimeWorkerOptions = {}): Exporte
         storeProvider,
         serviceIdentityProvider: serviceIdentity,
         closedPrefixSuid: closedPrefixCertificate?.status === "ready" ? closedPrefixCertificate.closedPrefixSuid : null,
+        closedPrefixCertificate,
       });
     },
   };

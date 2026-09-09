@@ -1,4 +1,5 @@
 import type { TagEvent } from "../tag/types";
+import type { ClosedPrefixCertificate } from "../allocator/types";
 import type { DeliveryIncident, ProjectionCheckpoint, ProjectionStore, StoredEvent } from "../store/types";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
@@ -60,6 +61,8 @@ export interface ProjectionCatchUpOptions {
   readonly maximumSuid?: string | null;
   /** Allocator-issued closed-prefix certificate; null is fail-closed. */
   readonly closedPrefixSuid?: string | null;
+  /** The complete certificate that authorizes the supplied closedPrefixSuid. */
+  readonly closedPrefixCertificate?: ClosedPrefixCertificate;
 }
 
 export interface CatchUpResult {
@@ -199,6 +202,18 @@ export class ProjectionRuntime {
         appliedEvents: 0,
       };
     }
+    const certifiedClosedPrefixSuid = options.closedPrefixCertificate === undefined
+      ? options.closedPrefixSuid
+      : options.closedPrefixCertificate.status === "ready"
+        ? options.closedPrefixCertificate.closedPrefixSuid
+        : null;
+    if (
+      options.closedPrefixCertificate !== undefined &&
+      options.closedPrefixSuid !== undefined &&
+      options.closedPrefixSuid !== certifiedClosedPrefixSuid
+    ) {
+      throw new Error("ordering_certificate_mismatch");
+    }
     const projectionId = projectionIdFor(identity);
 
     for (let retry = 0; retry < MAX_CHECKPOINT_CAS_RETRIES; retry += 1) {
@@ -215,8 +230,8 @@ export class ProjectionRuntime {
           await this.store.appendDeliveryIncident(orderViolationIncident(serviceId, event, previousSuid));
           throw new Error("Projection source was not strictly SUID ordered");
         }
-        if (options.closedPrefixSuid === null || (
-          options.closedPrefixSuid !== undefined && compareSuid(event.suid, options.closedPrefixSuid) > 0
+        if (certifiedClosedPrefixSuid === null || (
+          certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0
         )) {
           break;
         }
@@ -288,6 +303,7 @@ export class ProjectionRuntime {
     nowMs: number,
     maximumSuid?: string | null,
     closedPrefixSuid?: string | null,
+    closedPrefixCertificate?: ClosedPrefixCertificate,
   ): Promise<CatchUpResult[]> {
     const tags = await this.store.listProjectionTags(serviceId);
     const jobs: Array<{ readonly tag: string; readonly projector: string }> = [];
@@ -305,7 +321,7 @@ export class ProjectionRuntime {
         const job = jobs[index];
         if (job === undefined) return;
         const identity = tagStateIdentityForPolledTag(job.tag, job.projector, this.registry);
-        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid, closedPrefixSuid });
+        if (identity !== undefined) results[index] = await this.catchUp(serviceId, identity, nowMs, {}, { maximumSuid, closedPrefixSuid, closedPrefixCertificate });
       }
     };
     const workerCount = Math.min(MAX_LIVE_PROJECTION_CONCURRENCY, jobs.length);

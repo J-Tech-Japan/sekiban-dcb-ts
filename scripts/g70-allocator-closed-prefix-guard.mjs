@@ -1,74 +1,119 @@
 #!/usr/bin/env node
 /**
- * SDT-G70 source guard.  The runtime tests exercise the durable allocator and
- * public CommitWorker; this companion guard makes the four acceptance escapes
- * red without changing a production test fixture to make it pass.
+ * SDT-G70 source and acceptance guard.
+ *
+ * The Vitest suite is the public CommitWorker oracle. This companion guard
+ * checks that the production seams used by that oracle remain present and
+ * that removing any safety obligation makes the guard red. It is deliberately
+ * supplementary: it does not replace the public-path tests.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const root = process.cwd();
 
-export const G70_GUARDS = Object.freeze([
-  {
-    id: "obligation-atomic-registration",
-    files: ["packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"],
-    required: [
-      "await txn.put(attemptKey(input.attemptId), vector);",
-      "await txn.put(ISSUANCE_OBLIGATIONS_KEY, obligations);",
-      "if (closedPrefixMeta !== undefined) await txn.put(CLOSED_PREFIX_META_KEY, closedPrefixMeta);",
-    ],
-  },
-  {
-    id: "closed-prefix-stops-at-first-unresolved",
-    files: ["packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"],
-    required: [
-      "const firstUnresolved = ordered.findIndex((obligation) => obligation.status !== \"resolved\");",
-      "closedPrefixSuid: closed.length === 0 ? null : closed[closed.length - 1]!.suid,",
-    ],
-  },
-  {
-    id: "resolution-requires-every-participant",
-    files: ["packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"],
-    required: [
-      "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));",
-    ],
-  },
-  {
-    id: "safe-view-dual-gate",
-    files: [
-      "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts",
-      "packages/dcb-runtime/src/projection/ProjectionRuntime.ts",
-      "samples/meeting-room/src/worker.cloudflare-only.ts",
-    ],
-    requiredByFile: [
-      { file: "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts", required: ["options.closedPrefixSuid === null"] },
-      { file: "packages/dcb-runtime/src/projection/ProjectionRuntime.ts", required: ["options.closedPrefixSuid === null"] },
-      { file: "samples/meeting-room/src/worker.cloudflare-only.ts", required: ["closedPrefixSuid,"] },
-    ],
-  },
-]);
+const files = Object.freeze({
+  allocator: "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts",
+  allocatorTypes: "packages/dcb-runtime/src/allocator/types.ts",
+  commit: "packages/dcb-runtime/src/commit/CommitWorker.ts",
+  tag: "packages/dcb-runtime/src/tag/TagDurableObject.ts",
+  live: "packages/dcb-runtime/src/projection/LiveProjectionWorker.ts",
+  projection: "packages/dcb-runtime/src/projection/ProjectionRuntime.ts",
+  mv: "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts",
+  sample: "samples/meeting-room/src/worker.cloudflare-only.ts",
+  sampleMv: "samples/meeting-room/src/d1-mv.ts",
+  test: "test/g70-allocator-closed-prefix.spec.ts",
+});
 
 function sourceMap(overrides = new Map()) {
-  return new Map(G70_GUARDS.flatMap((guard) => guard.files).map((file) => [
+  return new Map(Object.values(files).map((file) => [
     file,
     overrides.has(file) ? overrides.get(file) : readFileSync(resolve(root, file), "utf8"),
   ]));
 }
 
+function fail(message) {
+  throw new Error(`SDT-G70 closed-prefix guard failed: ${message}`);
+}
+
 export function checkG70Sources(sources = sourceMap()) {
   const failures = [];
-  for (const guard of G70_GUARDS) {
-    for (const required of guard.required ?? []) {
-      const present = guard.files.some((file) => sources.get(file)?.includes(required));
-      if (!present) failures.push(`${guard.id}: missing ${required}`);
+  const requireFile = (file, expected, label) => {
+    const source = sources.get(file) ?? "";
+    for (const value of expected) {
+      if (!source.includes(value)) failures.push(`${label}: missing ${file}: ${value}`);
     }
-    for (const entry of guard.requiredByFile ?? []) {
-      for (const required of entry.required) {
-        if (!sources.get(entry.file)?.includes(required)) failures.push(`${guard.id}: missing ${entry.file}: ${required}`);
-      }
-    }
-  }
+  };
+
+  requireFile(files.allocator, [
+    "await txn.put(attemptKey(input.attemptId), vector);",
+    "await txn.put(identityKey, obligation);",
+    "await txn.put(OBLIGATION_INDEX_KEY, obligationIndex!);",
+    "await this.ctx.storage.setAlarm(Date.now() + RECOVERY_RETRY_MS);",
+    "private async readRecoveryDispositions(",
+    "while (nextIndex.closedSequence < nextIndex.nextSequence)",
+    "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));",
+    "value.historyComplete !== true",
+    "state.allocatedWatermark !== input.completeThroughSuid",
+    "lastAllocationPersistenceMs",
+    "durableWriteCostMs: durableWriteCostMs ?? state.lastAllocationPersistenceMs",
+    "reconciliation_empty_history",
+    "reconciliation_omits_durable_history",
+    "const allocationSnapshot = await this.ctx.storage.list<AllocationVector>({ prefix: ATTEMPT_KEY_PREFIX });",
+  ], "allocator authority");
+  requireFile(files.allocatorTypes, [
+    "export interface ClosedPrefixIndex",
+    "export interface IssuanceRecoveryRecord",
+    "acquisitionCostMs?: number;",
+    "durableWriteCostMs?: number;",
+  ], "allocator durable index types");
+  requireFile(files.commit, [
+    "body?.fenceConfirmed === true",
+    "new Set(cancellation.confirmedTags)",
+    "scheduleIssuanceResolution(",
+    "cancel-never-reaches-tag",
+    "confirmedTags: [],",
+  ], "CommitWorker fence/recovery handoff");
+  requireFile(files.tag, [
+    "if (identity === undefined && input.forceTombstone === true && input.createMissingTombstone === true)",
+    "fenceConfirmed: true",
+  ], "Tag durable fence confirmation");
+  requireFile(files.live, [
+    "closedPrefixCertificate?: ClosedPrefixCertificate;",
+    "if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== \"ready\")",
+    "throw new Error(\"ordering_certificate_unavailable\");",
+    "const closedPrefixSuid = options.closedPrefixCertificate === undefined",
+    "ordering_certificate_unavailable",
+  ], "safe-poll certificate enforcement");
+  requireFile(files.projection, [
+    "certifiedClosedPrefixSuid === null",
+    "certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0",
+  ], "ProjectionRuntime dual gate");
+  requireFile(files.mv, [
+    "certifiedClosedPrefixSuid === null",
+    "certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0",
+  ], "materialized-view dual gate");
+  requireFile(files.sample, [
+    "closedPrefixCertificate?.status === \"ready\"",
+    "closedPrefixSuid,",
+  ], "meeting-room safe-lane certificate propagation");
+  requireFile(files.sampleMv, [
+    "closedPrefixCertificate?: ClosedPrefixCertificate;",
+    "closedPrefixCertificate: options.closedPrefixCertificate,",
+  ], "meeting-room catch-up certificate propagation");
+  requireFile(files.test, [
+    "public serialized CommitWorker creates and resolves",
+    "public allocation crash resolves only after every source Tag is durably fenced",
+    "recovers a lost fence acknowledgement from durable Tag state after the request returns",
+    "public CommitWorker matrix keeps multi-Tag and partial/lost handoffs behind the closed-prefix gate",
+    "AC2: an uncontacted cancellation cannot close issuance",
+    "AC6: reconciliation refuses empty",
+    "AC5: a public higher commit cannot pass",
+    "AC7: reports bounded certificate and durable allocation costs",
+    "expect(response.status).toBe(504)",
+    "fencedTags: [tag]",
+    "expect(closedWhileRecoveryPending.closedPrefixSuid).not.toBe",
+  ], "public acceptance matrix");
   return failures;
 }
 
@@ -82,40 +127,68 @@ function assertRed(sources, label) {
 }
 
 export function runSelfTest() {
-  assertGreen(sourceMap(), "G70 guard baseline");
-  const mutants = [
+  const original = sourceMap();
+  assertGreen(original, "G70 guard baseline");
+  const mutations = [
     {
-      id: "remove-obligation-write",
-      file: "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts",
-      from: "await txn.put(ISSUANCE_OBLIGATIONS_KEY, obligations);",
-      to: "void obligations;",
+      id: "omit-atomic-obligation-write",
+      file: files.allocator,
+      from: "await txn.put(identityKey, obligation);",
+      to: "void obligation;",
     },
     {
-      id: "skip-unresolved-prefix",
-      file: "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts",
-      from: "const firstUnresolved = ordered.findIndex((obligation) => obligation.status !== \"resolved\");",
-      to: "const firstUnresolved = -1;",
+      id: "advance-prefix-past-unresolved",
+      file: files.allocator,
+      from: "while (nextIndex.closedSequence < nextIndex.nextSequence)",
+      to: "while (false)",
     },
     {
-      id: "resolve-without-all-participants",
-      file: "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts",
+      id: "resolve-without-every-participant",
+      file: files.allocator,
       from: "const resolved = obligation.targetTags.every((tag) => installedTags.includes(tag) || fencedTags.includes(tag));",
       to: "const resolved = true;",
     },
     {
-      id: "remove-safe-dual-gate",
-      file: "packages/dcb-runtime/src/mv/MaterializedViewCatchUp.ts",
-      from: "options.closedPrefixSuid === null",
-      to: "false",
+      id: "remove-durable-recovery-alarm",
+      file: files.allocator,
+      from: "await this.ctx.storage.setAlarm(Date.now() + RECOVERY_RETRY_MS);",
+      to: "void RECOVERY_RETRY_MS;",
+    },
+    {
+      id: "trust-incomplete-reconcile-cut",
+      file: files.allocator,
+      from: "reconciliation_omits_durable_history",
+      to: "reconciliation_history_not_checked",
+    },
+    {
+      id: "allow-unvalidated-safe-poll",
+      file: files.live,
+      from: "if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== \"ready\")",
+      to: "if (false)",
+    },
+    {
+      id: "certify-uncontacted-cancellation",
+      file: files.commit,
+      from: "confirmedTags: [],",
+      to: "confirmedTags: [...tags],",
+    },
+    {
+      id: "omit-first-write-fence-creation",
+      file: files.tag,
+      from: "input.createMissingTombstone === true",
+      to: "input.createMissingTombstone === false",
     },
   ];
-  const results = mutants.map((mutant) => {
-    const original = sourceMap().get(mutant.file);
-    if (original === undefined || !original.includes(mutant.from)) throw new Error(`${mutant.id} anchor missing`);
-    const mutated = original.replace(mutant.from, mutant.to);
-    const sources = sourceMap(new Map([[mutant.file, mutated]]));
-    assertRed(sources, mutant.id);
-    return { id: mutant.id, result: "red" };
+  const results = mutations.map((mutation) => {
+    const source = original.get(mutation.file);
+    if (source === undefined || !source.includes(mutation.from)) fail(`${mutation.id} anchor missing`);
+    const mutated = mutation.from === "reconciliation_omits_durable_history"
+      ? source.replaceAll(mutation.from, mutation.to)
+      : source.replace(mutation.from, mutation.to);
+    const next = new Map(original);
+    next.set(mutation.file, mutated);
+    assertRed(next, mutation.id);
+    return { id: mutation.id, result: "red" };
   });
   process.stdout.write(`${JSON.stringify({ guard: "g70-allocator-closed-prefix", mutants: results, result: "all-g70-mutants-red" })}\n`);
 }

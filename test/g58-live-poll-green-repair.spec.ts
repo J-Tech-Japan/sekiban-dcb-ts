@@ -127,4 +127,27 @@ describe("SDT-G58 W111 scheduled live-poll lifecycle", () => {
     expect(outcomes).toHaveLength(2);
     expect(outcomes.every(({ outcome, reason }) => outcome === "invoked-and-threw" && reason === "store_initialize_failed")).toBe(true);
   });
+
+  it("fails closed for an allocator-bound safe poll without a ready certificate", async () => {
+    await expect(pollLiveProjections({ ALLOCATOR: {} as never }, {
+      store: store(),
+      serviceId: SERVICE_ID,
+      registry,
+      clock: { now: () => 12_345 },
+    })).rejects.toThrow("ordering_certificate_unavailable");
+    await expect(pollLiveProjections({ ALLOCATOR: {} as never }, {
+      store: store(),
+      serviceId: SERVICE_ID,
+      registry,
+      closedPrefixCertificate: {
+        certificateVersion: 1,
+        status: "unreconciled",
+        allocatorLineageId: "stale-lineage",
+        closedPrefixSuid: null,
+        unresolvedCount: 1,
+        generatedAt: 12_345,
+        migrationProofId: null,
+      },
+    })).rejects.toThrow("ordering_certificate_unavailable");
+  });
 });

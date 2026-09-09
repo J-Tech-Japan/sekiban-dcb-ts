@@ -1,82 +1,145 @@
 # SDT-G70 evidence
 
-Status: local implementation checkpoint, pushed at `d39e641` (full SHA recorded in the sender artifact). No Wrangler, Cloudflare deployment, resource mutation, tag, npm publish, credential operation, or production cohort was performed.
+Status: local F1–F7 repair checkpoint; not review-ready. The repair is source/test/docs only; no
+Wrangler, Cloudflare deployment, resource mutation, npm publish, tag,
+credential, production, G32, or #133 operation was performed.
 
-## Guarantee and boundary
+## Contract and guarantee
 
-SDT-G70 changes the safe-lane authority from a time/order inference to a durable issuance fact. The allocator writes the allocation vector, allocated watermark, and one issuance obligation per candidate in one Durable Object transaction. Each obligation contains the attempt identity, candidate index, event identity, allocated SUID, allocator lineage, and the source Tags that must either install the event or receive an irrevocable fence. A response, elapsed time, reservation expiry, or one source Tag cannot resolve the obligation.
+Every allocator vector and its target-Tag membership obligations are written in
+one Durable Object transaction. The obligation identity is the allocator
+lineage, attempt, candidate index, event ID, SUID, and complete target-Tag set.
+It is unresolved until every target is durably installed or irrevocably fenced;
+elapsed time, reservation expiry, one participant, a lost response, or a
+waitUntil completion cannot close it.
 
-After the Tag append/fence facts are durable, `CommitWorker` sends idempotent resolution facts. The Cloudflare-only production composition registers that work with `ExecutionContext.waitUntil`, so the commit response does not await the derived certificate. A unit composition without `waitUntil` awaits the same operation deliberately so the public acceptance test can inspect the durable result. A lost or failed resolution leaves the obligation unresolved and therefore fail-closed; a later identical resolution is identity-checked and idempotent.
+The allocator owns a durable per-obligation index and recovery records. After a
+Tag append/fence fact is durable, the CommitWorker submits an identity-checked,
+idempotent resolution; the Cloudflare composition registers that work with
+`ExecutionContext.waitUntil` and does not make it part of the commit response.
+If the invocation dies, the allocator alarm reads the authoritative Tag fact
+and retries the same resolution. An unknown cancellation remains unresolved;
+it is never reported as a fence.
 
-The closed-prefix certificate is bound to the allocator lineage. It sorts obligations by allocator SUID and ends immediately before the least unresolved obligation. It is monotonic because obligations only move from unresolved to resolved and new allocations append above the existing watermark. The certificate is cached inside the allocator activation and invalidated by allocation, resolution, seed, and reconciliation writes. A legacy/seeded namespace without an explicit reconciliation cut returns `unreconciled`, never a fiat prefix.
+The closed-prefix certificate is lineage-bound and advances only through the
+ordered prefix whose obligations are resolved. Safe advancement requires this
+validated certificate and the existing G44/G62 settled coverage/frontier
+fences. Missing, unreconciled, stale, mismatched, or beyond-prefix authority
+stops safe advancement while unsafe reads and Queue/drain behavior remain
+unchanged. SafeWindow, fence clocks, retries, drains, G44 and G62 semantics
+were not widened or replaced.
 
-The safe view has a dual gate: the existing G44/G62 coverage/frontier fence remains required, and the G70 certificate must be ready. The runtime passes only the certified SUID to materialized-view catch-up and projection polling. Missing, unreconciled, or beyond-prefix events stop safe advancement; unsafe reads and the existing Queue/drain behavior are unchanged. SafeWindow, fence clocks, retry policy, drain behavior, and G44/G62 frontier semantics were not widened or replaced.
+The public projection-lag diagnostic does not fetch the allocator. A requested
+on-demand safe poll returns typed `ordering_certificate_unavailable`; only the
+background pass supplies the already scoped, validated certificate. This keeps
+the public read path free of a new remote allocator dependency.
 
-## Acceptance proof
+## Public CommitWorker acceptance proof
 
-The focused public test uses the serialized CommitWorker endpoint, not `/tags/append`:
+`test/g70-allocator-closed-prefix.spec.ts` drives the serialized public
+CommitWorker endpoint. It does not append directly to a Tag and does not inject
+a SETTLED result or shorten a fence.
 
-- A successful V1 commit returned the pre-existing JSON body shape and created an obligation whose event ID/SUID matched the response, whose Tag was `installed`, and whose certificate closed at that SUID.
-- A public `journal-cas-after-allocator` crash returned the existing 504 timeout outcome, left no authoritative Tag event, and resolved the durable obligation only after the Tag was fenced. The certificate then closed at the allocated SUID.
-- Two allocator candidates demonstrated an unresolved lower hole: resolving the first advanced the certificate only to the first SUID, replaying that resolution did not change it, and resolving the second closed the pair. A pending obligation remained unresolved after elapsed time.
-- A seeded namespace returned `unreconciled` until `POST /reconcile-cut` supplied the current lineage, proof ID, and imported obligation. The imported obligation still had to be installed before the prefix advanced. This is a migration cut, not an assertion that old allocations were complete.
-
-Focused command and result:
-
-```text
-npm run test:g70
-9 tests passed in the G70/allocator Vitest selection; workspace builds passed; all four G70 guard mutants were red and the unmutated guard passed.
-```
-
-## Required local lane evidence
-
-The G70 change was exercised in the existing required `ci-g26-g27` lane shape; no
-existing lane or gate was removed. Fresh local results from the preserved child
-worktree are:
-
-| Command | Result |
+| Shape | Proof and outcome |
 | --- | --- |
-| `npm run test:g26` | pass: 4 files, 32 tests |
-| `npm run test:g27` | pass: 1 file, 6 tests |
-| `npm run test:g60:required` | pass: direct, queue-latency, durable-hop, unsafe-writer, post-admission tests/guards; six G60 mutant proofs remain green/red as expected |
-| `npm run test:g65:required` | pass: 2 files, 17 tests; admission and RING/APPLY guards green; idempotence-removal red-before-green proof green |
-| `npm run test:g70` | pass: 2 files, 9 tests; all four G70 mutants red and the unmutated guard pass |
-| `SDT_G70_FORCE_FAILURE=1 npm run test:g70:forced-red` | expected non-zero inner result (`exit 1` from the intentional forced-red probe); wrapper asserted the non-zero result and passed |
-| `npm run typecheck` | pass |
-| `npm run lint` | pass |
-| `git diff --check` | pass |
+| ordinary public single-Tag commit | V1 response body remains unchanged; response event ID/SUID matches the obligation; Tag installation resolves it and the certificate closes at that SUID |
+| disjoint/multi-Tag commit | both source memberships are required before the obligation resolves; the public matrix also covers the final-participant/partial-append path |
+| allocation-to-append crash | public 504 is retained; every source Tag is durably fenced before resolution; no authoritative event is fabricated |
+| lost cancellation / delayed writer | public 504 leaves the obligation unresolved; a later real Tag append is discovered by the allocator-owned alarm and resolves the exact identity |
+| lost fence acknowledgement | the durable Tag tombstone is found after the request returns; replayed resolution is idempotent |
+| higher-before-lower | a higher public commit may return, but its certificate stays behind the unresolved lower allocation; only lower installation/fencing closes the prefix |
+| migration/bootstrap | empty, omitted, out-of-cut, duplicate, mismatched, or lineage-replaced reconciliation history is refused; a complete cut still leaves imported obligations unresolved until real closure |
+| certificate/safe path | missing/unreconciled/mismatched certificate cannot authorize the MV/projection safe path; unsafe behavior is unchanged |
 
-The local runs emitted only environment diagnostics: Miniflare reported the
-pre-existing non-empty Hyperdrive local-binding warning and an overdue SQLite
-alarm notice, and the child worktree required the ignored workspace package
-links (`node_modules/@sekiban/{dcb-core,dcb-domain,dcb-runtime,dcb-client}`) to
-resolve to this worktree's `packages/*` outputs instead of stale parent output.
-Those are environment/setup receipts, not green substitutes for a gate. No
-test, timeout, retry, or environment policy was changed to obtain the results.
+The existing CommitWorker crash matrix remains in `test/commit.spec.ts`; the
+G70 public tests cover the G70 handoff shapes and recovery boundary. The
+useful `scripts/g70-allocator-closed-prefix-guard.mjs` is supplementary: it
+checks source seams and runs eight red mutations, including atomic obligation
+registration, first-write fence creation, participant completeness, durable
+recovery, reconciliation authority, safe dual-gate enforcement, and
+uncontacted-cancellation closure. It does not replace the public behavioral
+proof.
 
-The worktree also retains unrelated historical G65/G67 evidence dirt, including
-`.artifacts/sdt-g65-*` and `test/fixtures/g67-*`; those files were deliberately
-not staged for this G70 checkpoint.
+## Migration cut and trust boundary
 
-The guard names and red proof are:
+Existing/seeded allocator namespaces are `unreconciled`; elapsed time and a
+non-empty operator list never certify them. `POST /reconcile-cut` requires the
+current lineage, `historyComplete=true`, a valid complete-through SUID, a
+non-empty proof ID and exhaustive durable vector identity coverage. It rejects
+empty history, omitted vectors, extra history, duplicate identity/SUID,
+out-of-cut SUIDs, identity conflicts, and a non-current lineage. The cut is an
+exceptional bounded reconciliation scan; ordinary allocation, resolution and
+certificate acquisition use the moving index rather than scanning all
+allocations. The stated trust assumption is that the operator/reconciler's
+enumeration is a complete read of the durable allocator vector namespace; the
+runtime verifies that enumeration against the namespace before promotion.
 
-1. `remove-obligation-write` — removing the atomic obligation write is rejected.
-2. `skip-unresolved-prefix` — allowing the prefix past the first unresolved SUID is rejected.
-3. `resolve-without-all-participants` — resolving without every installed/fenced participant is rejected.
-4. `remove-safe-dual-gate` — removing the closed-prefix safe-view fence is rejected.
+## Cost evidence
 
-The guard is `scripts/g70-allocator-closed-prefix-guard.mjs`; the runtime/public proof is `test/g70-allocator-closed-prefix.spec.ts`.
+The allocation transaction records its measured durable persistence window in
+`lastAllocationPersistenceMs` and the certificate records
+`durableWriteCostMs`. Certificate acquisition records `acquisitionCostMs`.
+Representative local indexed histories of 1 and 16 participant-free
+allocations produced numeric cost fields in the focused AC7 test. These are
+observations, not acceptance thresholds and not permission to widen a safe
+frontier. The certificate's normal path reads the moving index and does not
+rewrite or sort the full allocation history; the one-time reconciliation cut
+is explicitly outside the hot path.
 
-## Migration and cost evidence
+## Local gates
 
-G70 uses the allocator Durable Object's versioned `closed-prefix-meta` and `issuance-obligations` keys rather than changing the existing D1 event schema. Existing namespaces are never silently upgraded: seeded or legacy allocated state is `unreconciled` and requires a lineage-bound `reconcile-cut` proof before safe advancement. The cut is atomic with the imported obligation index and retains unresolved holes.
+Focused and affected gates run in the preserved child worktree. The exact
+results for this repair are recorded in the sender artifact and commit receipt;
+the important results are:
 
-The public acceptance test records an observation-only `G70_COST` row containing the end-to-end local response duration, obligation count, resolution disposition, and certificate status. This is a measurement, not a latency acceptance threshold; the derived resolution is outside the production response dependency. The safe pass obtains the certificate from the allocator in background maintenance, and public reads do not call the allocator.
+- `test/commit.spec.ts` G4 allocation/cancellation compatibility selection:
+  pass after the G70 first-write fence compatibility seam was rebuilt.
+- `test/g70-allocator-closed-prefix.spec.ts`: 10/10 pass.
+- `test/g69-ordering.spec.ts`: 8/8 pass in the focused serial invocation; the
+  G69 allocator-to-Tag ordering proof itself remains green.
+- `npm run test:g69`: not green as an aggregate: its baseline oracle runner
+  terminated with exit 143 before producing a result. The focused 8/8 result
+  and the seven self-test mutations are retained, but this runner exception is
+  not claimed as a passed aggregate lane.
+- `node scripts/g70-allocator-closed-prefix-guard.mjs --self-test` and the
+  unmutated guard: pass; all eight G70 mutations are red, including the
+  retained first-write fence mutation.
+- `npm run test:g58` focused Vitest and source guards: the G58 tests and most
+  guards pass; the legacy W97 runner ends with a documented `spawnSync` result
+  of `status=null`, `signal=null`, and empty output. This is an environment/
+  runner exception, not a green claim and not a changed G58 assertion.
+- `npm run test:g67`: pass in its focused serial lane (11/11); no G67 budget,
+  timeout, fixture, or SafeWindow change.
 
-Observed local row (Node/Vitest Miniflare run, not a deployed measurement): `responseDurationMs=33`, `obligationCount=1`, `resolution=installed`, `certificateStatus=ready`.
+Local Miniflare continues to print the existing non-empty Hyperdrive binding
+warning and occasional overdue SQLite alarm diagnostics. The child worktree
+also needs its ignored workspace package links to point at its own package
+outputs; no gate, test, timeout, retry, or environment policy was weakened.
+The prohibited `commit.test`/missing-service-header runtime special case was
+removed before checkpointing; the focused historical CommitWorker and G70
+tests pass under the general fence semantics.
+The unrelated G65/G67 artifacts and fixture dirt remain unstaged.
 
-## Preserved gates and local boundary
+## Hosted diagnosis and boundaries
 
-The CI workflow adds `npm run test:g70` and its forced-red reachability probe to the existing `ci-g26-g27` job without removing or replacing any existing command. Existing G21–G69 guards, G44/G62 safe/frontier checks, and package/type/lint lanes remain in the workflow. No deployment evidence is claimed in this local checkpoint.
+The old PR-head W178 failures are deterministic and are not C-14 duration
+flakes:
 
-The child worktree initially required ignored local workspace links for the four workspace packages because the parent checkout's node-module links resolved to stale parent package output. The child sample build succeeded after those links were corrected. Any remaining parent-worktree dirt is unrelated and was not staged.
+- `ci-foundation` fails the G69 ordering assertion because a higher SUID became
+  safe before the expected lower admission; the repaired local G69 proof is
+  now green and the strict ordering behavior was not weakened.
+- `ci-g44` fails the in-scope G58 source guard literal because the G70 safe
+  path now propagates both `maximumSuid` and the closed-prefix certificate.
+  `scripts/g58-block-live-green-guard.mjs` now checks both values with
+  omission mutations red; no G58 test/assertion was removed.
+- `ci-g64` and `dcb-domain-release-preflight` reject the dry-run attempt to
+  publish already-published `0.1.0` after W177. This is a separate package
+  release-state collision, not a G70 runtime exception and not waived as a
+  timeout. The separate W179 package-gate PR handles it; no package change is
+  folded into this G70 branch.
+- `verify` is aggregate/downstream and is not an independent G70 failure.
+
+The supplementary G70 guard remains present and staged; it was not deleted or
+used as a replacement for the behavioral tests. No G64, G32, npm release,
+deployment, production, merge, review-state, or issue-close operation belongs
+to this repair.

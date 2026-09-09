@@ -38,7 +38,9 @@ export type CommitTestFault =
   | "fence-not-durable"
   | "tag-state-unavailable"
   | "sealing-after-cas"
-  | "tombstone-after-durable";
+  | "tombstone-after-durable"
+  /** Test-only cancellation path: no Tag request is made, so no fence exists. */
+  | "cancel-never-reaches-tag";
 
 export const COMMIT_TEST_FAULTS: readonly CommitTestFault[] = [
   "reservation-delayed-success",
@@ -52,4 +54,5 @@ export const COMMIT_TEST_FAULTS: readonly CommitTestFault[] = [
   "tag-state-unavailable",
   "sealing-after-cas",
   "tombstone-after-durable",
+  "cancel-never-reaches-tag",
 ];

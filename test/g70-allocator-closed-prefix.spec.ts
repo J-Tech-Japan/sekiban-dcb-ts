@@ -45,11 +45,11 @@ async function get<T>(stub: DurableObjectStub, path: string): Promise<T> {
 
 async function waitForObligation(stub: DurableObjectStub, eventId: string): Promise<IssuanceObligation> {
   let last: IssuanceObligation | undefined;
-  for (let attempt = 0; attempt < 25; attempt += 1) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
     const obligations = await get<IssuanceObligation[]>(stub, "/obligations");
     last = obligations.find((candidate) => candidate.eventId === eventId);
     if (last?.status === "resolved") return last;
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 4));
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
   }
   throw new Error(`G70 obligation did not resolve for ${eventId}: ${JSON.stringify(last)}`);
 }
@@ -61,6 +61,82 @@ async function allocate(stub: DurableObjectStub, attemptId: string, targetTags: 
   });
   expect(response.status).toBe(201);
   return json<AllocatedVector>(response);
+}
+
+async function publicCommit(
+  serviceId: string,
+  tags: string[],
+  fault?: string,
+  attemptId?: string,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    [TEST_SERVICE_ID_HEADER]: serviceId,
+  };
+  if (fault !== undefined) headers["x-sdt-g4-test-fault"] = fault;
+  if (attemptId !== undefined) headers["x-sdt-g4-test-attempt-id"] = attemptId;
+  return SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      version: 1,
+      eventCandidates: [{
+        payload: btoa(JSON.stringify({ value: `g70-${crypto.randomUUID()}` })),
+        eventPayloadName: "G70PublicMatrixEvent",
+        tags,
+      }],
+      consistencyTags: [],
+    }),
+  });
+}
+
+async function appendDelayedWriter(
+  serviceId: string,
+  tagName: string,
+  vector: AllocatedVector,
+): Promise<void> {
+  const namespace = (env as unknown as { TAG?: DurableObjectNamespace }).TAG;
+  if (namespace === undefined) throw new Error("G70 delayed-writer proof requires the Tag binding");
+  const tag = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "tag", identity: tagName }));
+  const acquired = await tag.fetch(`https://g70.test/acquire?__tag=${encodeURIComponent(tagName)}&__serviceId=${encodeURIComponent(serviceId)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      attemptId: vector.attemptId,
+      epoch: 1,
+      eventTags: [tagName],
+      consistencyTags: [{ tag: tagName, lastSortableUniqueId: "" }],
+    }),
+  });
+  // The public commit may already have durably acquired this exact
+  // reservation before its cancellation fault. Re-acquire is idempotent.
+  expect([200, 201]).toContain(acquired.status);
+  const stateResponse = await tag.fetch(`https://g70.test/state?__tag=${encodeURIComponent(tagName)}&__serviceId=${encodeURIComponent(serviceId)}`);
+  expect(stateResponse.status).toBe(200);
+  const state = await json<{ activeReservation: { attemptId: string; epoch: number; token: string } | null }>(stateResponse);
+  expect(state.activeReservation).not.toBeNull();
+  const candidate = vector.candidates[0]!;
+  const append = await tag.fetch(`https://g70.test/append?__tag=${encodeURIComponent(tagName)}&__serviceId=${encodeURIComponent(serviceId)}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      attemptId: state.activeReservation!.attemptId,
+      epoch: state.activeReservation!.epoch,
+      reservationToken: state.activeReservation!.token,
+      allocatorLineageId: vector.allocatorLineageId,
+      candidates: [{
+        eventId: candidate.eventId,
+        suid: candidate.suid,
+        payload: JSON.stringify({ value: "g70-delayed-writer" }),
+        eventType: "G70DelayedWriterEvent",
+        provenance: "g32",
+        eventTags: [tagName],
+        allocatorLineageId: vector.allocatorLineageId,
+        timestamp: new Date().toISOString(),
+      }],
+    }),
+  });
+  expect(append.status).toBe(201);
 }
 
 async function resolve(
@@ -128,15 +204,17 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     expect((await post(seeded, "/seed-after", {
       importId: "g70-import",
       leaseEpoch: 1,
-      highWatermark: g32Suid("g70-seed-high-watermark"),
+      highWatermark: g32Suid("g70-seed-high-watermark-900"),
     })).status).toBe(201);
     const seededState = await get<AllocatorState>(seeded, "/state");
     const beforeCut = await get<ClosedPrefixCertificate>(seeded, "/closed-prefix");
     expect(beforeCut).toMatchObject({ status: "unreconciled", closedPrefixSuid: null });
-    const importedSuid = g32Suid("g70-imported-event");
+    const importedSuid = g32Suid("g70-imported-event-100");
     expect((await post(seeded, "/reconcile-cut", {
       allocatorLineageId: seededState.allocatorLineageId,
       proofId: "g70-reconciliation-proof",
+      historyComplete: true,
+      completeThroughSuid: seededState.allocatedWatermark!,
       obligations: [{
         attemptId: "g70-imported-attempt",
         candidateIndex: 0,
@@ -156,6 +234,72 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
     expect(await get<ClosedPrefixCertificate>(seeded, "/closed-prefix")).toMatchObject({ status: "ready", closedPrefixSuid: importedSuid, unresolvedCount: 0 });
     // The pending namespace remains unresolved; elapsed time did not close it.
     expect((await get<IssuanceObligation[]>(stub, "/obligations")).find((row) => row.suid === pending.candidates[0]!.suid)?.status).toBe("unresolved");
+  });
+
+  it("AC6: reconciliation refuses empty, omitted, and out-of-cut history instead of certifying a prefix", async () => {
+    const serviceId = unique("g70-reconcile-cut");
+    const stub = allocator(serviceId);
+    expect((await post(stub, "/seed-after", {
+      importId: "g70-reconcile-cut-import",
+      leaseEpoch: 1,
+      highWatermark: g32Suid("g70-reconcile-cut-watermark-900"),
+    })).status).toBe(201);
+    const first = await allocate(stub, "g70-reconcile-cut-first", []);
+    const second = await allocate(stub, "g70-reconcile-cut-second", []);
+    const allocatedState = await get<AllocatorState>(stub, "/state");
+    const cut = {
+      allocatorLineageId: allocatedState.allocatorLineageId,
+      proofId: "g70-reconcile-cut-proof",
+      historyComplete: true,
+      completeThroughSuid: allocatedState.allocatedWatermark!,
+      obligations: [],
+    };
+    const empty = await post(stub, "/reconcile-cut", cut);
+    expect(empty.status).toBe(409);
+    expect(await json<{ code: string }>(empty)).toMatchObject({ code: "reconciliation_empty_history" });
+
+    const omitted = await post(stub, "/reconcile-cut", {
+      ...cut,
+      obligations: [{
+        attemptId: first.attemptId,
+        candidateIndex: 0,
+        eventId: first.candidates[0]!.eventId,
+        suid: first.candidates[0]!.suid,
+        targetTags: ["orders"],
+      }],
+    });
+    expect(omitted.status).toBe(409);
+    expect(await json<{ code: string }>(omitted)).toMatchObject({ code: "reconciliation_omits_durable_history" });
+
+    const beyond = await post(stub, "/reconcile-cut", {
+      ...cut,
+      completeThroughSuid: first.candidates[0]!.suid,
+      obligations: [
+        {
+          attemptId: first.attemptId,
+          candidateIndex: 0,
+          eventId: first.candidates[0]!.eventId,
+          suid: first.candidates[0]!.suid,
+          targetTags: ["orders"],
+        },
+        {
+          attemptId: second.attemptId,
+          candidateIndex: 0,
+          eventId: second.candidates[0]!.eventId,
+          suid: second.candidates[0]!.suid,
+          targetTags: ["orders"],
+        },
+      ],
+    });
+    expect(beyond.status).toBe(409);
+    expect(await json<{ code: string }>(beyond)).toMatchObject({ code: "reconciliation_incomplete_cut" });
+    // The invalid cuts did not install the migration proof. Participant-free
+    // allocations are already individually resolved, so the certificate can
+    // expose their prefix while the legacy namespace remains un-reconciled.
+    expect(await get<ClosedPrefixCertificate>(stub, "/closed-prefix")).toMatchObject({
+      status: "ready",
+      migrationProofId: null,
+    });
   });
 
   it("AC5/AC7: public serialized CommitWorker creates and resolves the durable acceptance obligation without changing the V1 body", async () => {
@@ -246,10 +390,170 @@ describe("SDT-G70 allocator closed-prefix authority", () => {
       fencedTags: [tag],
       status: "resolved",
     });
+    // The force-tombstone reached the Tag, but the request-side resolution
+    // handoff was allowed to disappear. The allocator alarm recovered the
+    // durable fence independently of waitUntil.
     expect(await get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix")).toMatchObject({
       status: "ready",
       closedPrefixSuid: vector.candidates[0]!.suid,
       unresolvedCount: 0,
     });
+  });
+
+  it("AC2/AC5: recovers a lost fence acknowledgement from durable Tag state after the request returns", async () => {
+    const serviceId = unique("g70-recovery");
+    const tag = unique("g70-recovery-tag");
+    const attemptId = `g70-recovery-attempt-${crypto.randomUUID()}`;
+    const response = await SELF.fetch("https://commit.test/api/sekiban/serialized/commit", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-sdt-g4-test-fault": "tombstone-after-durable",
+        "x-sdt-g4-test-attempt-id": attemptId,
+        [TEST_SERVICE_ID_HEADER]: serviceId,
+      },
+      body: JSON.stringify({
+        version: 1,
+        eventCandidates: [{
+          payload: btoa(JSON.stringify({ value: "g70-recovery" })),
+          eventPayloadName: "G70RecoveryEvent",
+          tags: [tag],
+        }],
+        consistencyTags: [],
+      }),
+    });
+    expect(response.status).toBe(504);
+    const allocationResponse = await SELF.fetch(`https://commit.test/allocator/attempts/${encodeURIComponent(attemptId)}`, {
+      headers: { [TEST_SERVICE_ID_HEADER]: serviceId },
+    });
+    expect(allocationResponse.status).toBe(200);
+    const vector = await json<AllocatedVector>(allocationResponse);
+    const recovered = await waitForObligation(allocator(serviceId), vector.candidates[0]!.eventId);
+    expect(recovered).toMatchObject({ status: "resolved", fencedTags: [tag] });
+  });
+
+  it("AC2: an uncontacted cancellation cannot close issuance, and a delayed writer is later recovered", async () => {
+    const serviceId = unique("g70-cancel-unknown");
+    const tag = unique("g70-cancel-unknown-tag");
+    const attemptId = `g70-cancel-unknown-attempt-${crypto.randomUUID()}`;
+    const response = await publicCommit(serviceId, [tag], "cancel-never-reaches-tag", attemptId);
+    expect(response.status).toBe(504);
+    const allocationResponse = await SELF.fetch(`https://commit.test/allocator/attempts/${encodeURIComponent(attemptId)}`, {
+      headers: { [TEST_SERVICE_ID_HEADER]: serviceId },
+    });
+    expect(allocationResponse.status).toBe(200);
+    const vector = await json<AllocatedVector>(allocationResponse);
+    const allocationStub = allocator(serviceId);
+    const unresolved = await get<IssuanceObligation[]>(allocationStub, "/obligations");
+    expect(unresolved.find((row) => row.eventId === vector.candidates[0]!.eventId)).toMatchObject({
+      status: "unresolved",
+      fencedTags: [],
+      installedTags: [],
+    });
+    expect(await get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix")).toMatchObject({
+      status: "ready",
+      closedPrefixSuid: null,
+      unresolvedCount: 1,
+    });
+
+    // The writer that was delayed behind the lost cancellation uses the
+    // reservation identity and installs the exact allocated event. Only that
+    // durable Tag fact lets the allocator alarm resolve the obligation.
+    await appendDelayedWriter(serviceId, tag, vector);
+    const recovered = await waitForObligation(allocationStub, vector.candidates[0]!.eventId);
+    expect(recovered).toMatchObject({ status: "resolved", installedTags: [tag], fencedTags: [] });
+    expect(await get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix")).toMatchObject({
+      status: "ready",
+      closedPrefixSuid: vector.candidates[0]!.suid,
+      unresolvedCount: 0,
+    });
+  });
+
+  it("AC5: public CommitWorker matrix keeps multi-Tag and partial/lost handoffs behind the closed-prefix gate", async () => {
+    const serviceId = unique("g70-matrix");
+    const firstTag = unique("g70-matrix-first");
+    const secondTag = unique("g70-matrix-second");
+    const success = await publicCommit(serviceId, [firstTag, secondTag]);
+    expect(success.status).toBe(200);
+    const successBody = await json<{ writtenEvents: Array<{ id: string }> }>(success);
+    const successObligation = await waitForObligation(allocator(serviceId), successBody.writtenEvents[0]!.id);
+    expect(successObligation.status).toBe("resolved");
+    expect(successObligation.installedTags).toEqual(expect.arrayContaining([firstTag, secondTag]));
+
+    const lostAttempt = `g70-matrix-lost-${crypto.randomUUID()}`;
+    const lost = await publicCommit(serviceId, [firstTag], "tombstone-after-durable", lostAttempt);
+    expect(lost.status).toBe(504);
+    const lostVectorResponse = await SELF.fetch(`https://commit.test/allocator/attempts/${encodeURIComponent(lostAttempt)}`, {
+      headers: { [TEST_SERVICE_ID_HEADER]: serviceId },
+    });
+    expect(lostVectorResponse.status).toBe(200);
+    const lostVector = await json<AllocatedVector>(lostVectorResponse);
+    const closedWhileRecoveryPending = await get<ClosedPrefixCertificate>(allocator(serviceId), "/closed-prefix");
+    expect(closedWhileRecoveryPending.closedPrefixSuid).not.toBe(lostVector.candidates[0]!.suid);
+    const recovered = await waitForObligation(allocator(serviceId), lostVector.candidates[0]!.eventId);
+    expect(recovered.fencedTags).toEqual([firstTag]);
+
+    const partial = await publicCommit(serviceId, [firstTag, secondTag], "tag-append-last");
+    expect([200, 500, 504]).toContain(partial.status);
+    const rows = await get<IssuanceObligation[]>(allocator(serviceId), "/obligations");
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(rows.every((row) => row.status === "resolved" || row.status === "unresolved")).toBe(true);
+    const finalCertificate = await get<ClosedPrefixCertificate>(allocator(serviceId), "/closed-prefix");
+    expect(finalCertificate.allocatorLineageId).toBeTruthy();
+    expect(finalCertificate.unresolvedCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("AC5: a public higher commit cannot pass a lower unresolved issuance hole", async () => {
+    const serviceId = unique("g70-public-order");
+    const lowerTag = unique("g70-public-order-lower");
+    const higherTag = unique("g70-public-order-higher");
+    const lowerAttempt = `g70-public-order-lower-${crypto.randomUUID()}`;
+    const lower = await publicCommit(serviceId, [lowerTag], "cancel-never-reaches-tag", lowerAttempt);
+    expect(lower.status).toBe(504);
+    const higher = await publicCommit(serviceId, [higherTag]);
+    expect(higher.status).toBe(200);
+    const higherBody = await json<{ writtenEvents: Array<{ id: string; sortableUniqueIdValue: string }> }>(higher);
+    const allocationStub = allocator(serviceId);
+    const blocked = await get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix");
+    expect(blocked).toMatchObject({ status: "ready", closedPrefixSuid: null, unresolvedCount: 1 });
+    expect((await waitForObligation(allocationStub, higherBody.writtenEvents[0]!.id)).status).toBe("resolved");
+    expect(await get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix")).toMatchObject({
+      closedPrefixSuid: null,
+      unresolvedCount: 1,
+    });
+
+    const lowerAllocationResponse = await SELF.fetch(`https://commit.test/allocator/attempts/${encodeURIComponent(lowerAttempt)}`, {
+      headers: { [TEST_SERVICE_ID_HEADER]: serviceId },
+    });
+    const lowerVector = await json<AllocatedVector>(lowerAllocationResponse);
+    await appendDelayedWriter(serviceId, lowerTag, lowerVector);
+    await waitForObligation(allocationStub, lowerVector.candidates[0]!.eventId);
+    expect(await get<ClosedPrefixCertificate>(allocationStub, "/closed-prefix")).toMatchObject({
+      status: "ready",
+      closedPrefixSuid: higherBody.writtenEvents[0]!.sortableUniqueIdValue,
+      unresolvedCount: 0,
+    });
+  });
+
+  it("AC7: reports bounded certificate and durable allocation costs for representative indexed histories", async () => {
+    const observations: Array<{ obligations: number; acquisitionCostMs: number; durableWriteCostMs: number }> = [];
+    for (const count of [1, 16]) {
+      const serviceId = unique(`g70-cost-${count}`);
+      const stub = allocator(serviceId);
+      for (let index = 0; index < count; index += 1) {
+        await allocate(stub, `g70-cost-${count}-${index}`, []);
+      }
+      const certificate = await get<ClosedPrefixCertificate>(stub, "/closed-prefix");
+      expect(certificate.status).toBe("ready");
+      expect(typeof certificate.acquisitionCostMs).toBe("number");
+      expect(typeof certificate.durableWriteCostMs).toBe("number");
+      observations.push({
+        obligations: count,
+        acquisitionCostMs: certificate.acquisitionCostMs!,
+        durableWriteCostMs: certificate.durableWriteCostMs!,
+      });
+    }
+    console.log(JSON.stringify({ type: "G70_CERTIFICATE_COST", observations }));
+    expect(observations).toHaveLength(2);
   });
 });

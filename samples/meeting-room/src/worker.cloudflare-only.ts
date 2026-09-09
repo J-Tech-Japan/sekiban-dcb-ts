@@ -229,6 +229,7 @@ export async function runMeetingRoomSafeLanePass(
           // the in-batch fail-closed order check remain unchanged.
           runOrderingDetector: false,
           closedPrefixSuid,
+          closedPrefixCertificate,
         });
         catchUpObservations = observations;
         // Persist the actual SafeWindow/MV result separately from the G44
@@ -248,7 +249,12 @@ export async function runMeetingRoomSafeLanePass(
     await runMeetingRoomScheduledMaintenance({
       freshCoverage: async () => computedCoverage,
       catchUp: effectiveCatchUp,
-      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(env, Date.now(), frontierSuid),
+      drainUnsafeKicks: (frontierSuid) => drainMeetingRoomUnsafeKicks(
+        env,
+        Date.now(),
+        frontierSuid,
+        closedPrefixCertificate,
+      ),
       runGenericScheduledWork: async () => {},
       ...(effectiveTrigger === "cron"
         ? { recordCoverage: (safeLaneCoverage: MeetingRoomSafeLaneCoverage) => recordMeetingRoomSafeLaneCoverage(env, serviceId, safeLaneCoverage) }

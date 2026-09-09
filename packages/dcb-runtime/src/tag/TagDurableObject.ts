@@ -102,6 +102,8 @@ interface ReservationInput extends EpochInput {
   reservationToken?: string;
   /** Internal recovery-only cancel barrier. Never part of the V1 wire. */
   forceTombstone?: boolean;
+  /** G70-only allocator recovery may establish a fence before first append. */
+  createMissingTombstone?: boolean;
 }
 
 interface AppendCandidate {
@@ -437,11 +439,15 @@ function reservationFrom(value: unknown): { value?: ReservationInput; error?: st
   if (value.forceTombstone !== undefined && typeof value.forceTombstone !== "boolean") {
     return { error: "forceTombstone must be a boolean when present" };
   }
+  if (value.createMissingTombstone !== undefined && typeof value.createMissingTombstone !== "boolean") {
+    return { error: "createMissingTombstone must be a boolean when present" };
+  }
   return {
     value: {
       ...epoch.value,
       reservationToken: value.reservationToken,
       forceTombstone: value.forceTombstone,
+      createMissingTombstone: value.createMissingTombstone,
     },
   };
 }
@@ -1198,6 +1204,12 @@ export class TagDurableObject implements DurableObject {
     const body = await this.jsonBody(request);
     if (body === undefined) {
       return error(400, "malformed_tag_request", "Request body must be JSON");
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g70/issuance-status") {
+      if (request.headers.get("x-sdt-g70-recovery") !== "1") {
+        return error(403, "g70_recovery_forbidden", "G70 recovery requires the allocator seam");
+      }
+      return this.issuanceStatus(tag, serviceId, body);
     }
     // The portable runtime cannot rely on the Cloudflare native-RPC class
     // brand, so TagStateDO reaches this *direct DO* adapter by stub.fetch.
@@ -2457,7 +2469,11 @@ export class TagDurableObject implements DurableObject {
     return this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const sql = this.sqlStorage();
       if (sql === undefined) throw new Error("Tag SQL storage is unavailable");
-      const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      let identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      if (identity === undefined && input.forceTombstone === true && input.createMissingTombstone === true) {
+        this.ensureSqlTag(tag);
+        identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+      }
       if (identity === undefined) {
         return { ...rejected("reservation_token_required"), body: { ...rejected("reservation_token_required").body as JsonObject, version: 0 } };
       }
@@ -2497,7 +2513,7 @@ export class TagDurableObject implements DurableObject {
         version += 1;
         sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
         await this.rearmScheduler(txn);
-        return { status: 200, body: { status: "cancelled", idempotent: false, version } };
+        return { status: 200, body: { status: "cancelled", idempotent: false, fenceConfirmed: true, version } };
       }
 
       if (!holdsReservation && tombstoneEpoch === input.epoch) {
@@ -2545,7 +2561,7 @@ export class TagDurableObject implements DurableObject {
       version += 1;
       sql.exec("UPDATE tag_control SET version = ?, updated_at = ? WHERE singleton = 1", version, nowIso());
       await this.rearmScheduler(txn);
-      return { status: 200, body: { status: "cancelled", idempotent: false, version } };
+      return { status: 200, body: { status: "cancelled", idempotent: false, fenceConfirmed: true, version } };
     });
   }
 
@@ -2864,6 +2880,9 @@ export class TagDurableObject implements DurableObject {
     }
     const result = await this.ctx.storage.transaction(async (txn): Promise<OperationResult> => {
       const loaded = await this.recordFor(txn, tag);
+      if (!loaded.exists && input.forceTombstone === true && input.createMissingTombstone !== true) {
+        return { ...rejected("reservation_token_required"), body: { ...rejected("reservation_token_required").body as JsonObject, version: 0 } };
+      }
       const expiry = expireReservation(loaded.record);
       let record = expiry.record;
       const tombstone = epochFor(record.tombstones, input.attemptId);
@@ -2884,7 +2903,7 @@ export class TagDurableObject implements DurableObject {
           alarmDueAt: holdsReservation ? null : record.alarmDueAt,
           tombstones: withMaxEpoch(record.tombstones, input.attemptId, input.epoch),
         });
-        return { status: 200, body: { status: "cancelled", idempotent: false, version: updated.version } };
+        return { status: 200, body: { status: "cancelled", idempotent: false, fenceConfirmed: true, version: updated.version } };
       }
       if (!holdsReservation && tombstone === input.epoch) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
@@ -3611,7 +3630,7 @@ export class TagDurableObject implements DurableObject {
       const existing = fenceFor(record.fences, input.reason, input.attemptId);
       if (existing?.epoch === input.epoch) {
         record = await this.commitExpiryIfNeeded(txn, expiry);
-        return { status: 200, body: { status: "fence-installed", idempotent: true, version: record.version } };
+        return { status: 200, body: { status: "fence-installed", idempotent: true, durable: true, version: record.version } };
       }
       const epochError = fenceEpochRejection(record, input.reason, input.attemptId, input.epoch);
       if (epochError !== undefined) {
@@ -3636,9 +3655,52 @@ export class TagDurableObject implements DurableObject {
         fences: withFence(record.fences, fence),
         clearedFences: withoutFence(record.clearedFences, input.reason, input.attemptId),
       });
-      return { status: 201, body: { status: "fence-installed", idempotent: false, version: updated.version } };
+      return { status: 201, body: { status: "fence-installed", idempotent: false, durable: true, version: updated.version } };
     });
     return json(result.body, result.status);
+  }
+
+  /**
+   * Allocator-owned recovery reads only durable Tag facts. It is an internal
+   * DO-to-DO route: no public caller can turn it into a write or safe-read
+   * bypass. Absence remains unknown and is retried by the allocator alarm.
+   */
+  private async issuanceStatus(tag: string, serviceId: string | null, body: unknown): Promise<Response> {
+    if (!isObject(body) || !isNonEmptyString(serviceId) || !isNonEmptyString(body.attemptId) ||
+        !isNonEmptyString(body.eventId) || !isNonEmptyString(body.suid) || !isNonEmptyString(body.allocatorLineageId)) {
+      return error(400, "g70_recovery_invalid", "G70 recovery identity is incomplete");
+    }
+    const sql = this.sqlStorage();
+    if (sql !== undefined) {
+      const event = sql.exec<SqlRow>(
+        `SELECT event_id FROM tag_outbox_obligation
+          WHERE service_id = ? AND event_id = ? AND attempt_id = ? AND suid = ? AND allocator_lineage_id = ?
+          LIMIT 1`,
+        serviceId,
+        body.eventId,
+        body.attemptId,
+        body.suid,
+        body.allocatorLineageId,
+      ).toArray()[0];
+      if (event !== undefined) return json({ disposition: "installed", eventId: body.eventId, suid: body.suid });
+      const fenced = sql.exec<SqlRow>(
+        `SELECT attempt_id FROM tag_tombstone WHERE attempt_id = ?
+         UNION ALL SELECT attempt_id FROM tag_fence WHERE attempt_id = ? LIMIT 1`,
+        body.attemptId,
+        body.attemptId,
+      ).toArray()[0];
+      if (fenced !== undefined) return json({ disposition: "fenced", eventId: body.eventId, suid: body.suid });
+      return json({ disposition: "unknown", eventId: body.eventId, suid: body.suid });
+    }
+    const record = this.readStoredRecord(tag);
+    if (record === undefined) return json({ disposition: "unknown", eventId: body.eventId, suid: body.suid });
+    if (record.events.some((event) => event.eventId === body.eventId && event.attemptId === body.attemptId && event.suid === body.suid && event.allocatorLineageId === body.allocatorLineageId)) {
+      return json({ disposition: "installed", eventId: body.eventId, suid: body.suid });
+    }
+    if (record.tombstones.some((entry) => entry.attemptId === body.attemptId) || record.fences.some((entry) => entry.attemptId === body.attemptId)) {
+      return json({ disposition: "fenced", eventId: body.eventId, suid: body.suid });
+    }
+    return json({ disposition: "unknown", eventId: body.eventId, suid: body.suid });
   }
 
   private async clearFence(tag: string, body: unknown): Promise<Response> {

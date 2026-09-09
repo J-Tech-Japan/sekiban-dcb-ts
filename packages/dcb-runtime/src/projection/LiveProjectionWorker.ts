@@ -10,6 +10,7 @@ import {
 import { projectionIdFor, ProjectionRuntime, safeWindowMs, type CatchUpResult } from "./ProjectionRuntime";
 import { scopeIdFor } from "../scope/ScopeName";
 import { envServiceIdentity, requireServiceIdentity, type ServiceIdentityProvider } from "../service/ServiceIdentityProvider";
+import type { ClosedPrefixCertificate } from "../allocator/types";
 
 export interface LiveProjectionEnv {
   POSTGRES_URL?: string;
@@ -19,6 +20,8 @@ export interface LiveProjectionEnv {
   /** Non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
   BOOTSTRAP?: DurableObjectNamespace;
+  /** Allocator authority used by every safe advancement request. */
+  ALLOCATOR?: DurableObjectNamespace;
 }
 
 export const LIVE_PROJECTION_POLL_OUTCOMES = [
@@ -69,6 +72,8 @@ export interface ProjectionPollOptions {
   maximumSuid?: string | null;
   /** Allocator-issued closed-prefix certificate; null is fail-closed. */
   closedPrefixSuid?: string | null;
+  /** Full allocator certificate; callers supplying it must use its lineage-bound value. */
+  closedPrefixCertificate?: ClosedPrefixCertificate;
   serviceIdentityProvider?: ServiceIdentityProvider;
   /** Observation-only lifecycle sink; it cannot alter projection decisions. */
   observer?: LiveProjectionPollObserver;
@@ -190,6 +195,14 @@ export async function pollLiveProjections(
   const serviceId = options.serviceId ?? requireServiceIdentity(options.serviceIdentityProvider ?? envServiceIdentity(env));
   const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
   const projectorIds = registry.registered().map((projector) => projector.id);
+  if (env.ALLOCATOR !== undefined && options.closedPrefixCertificate?.status !== "ready") {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  const closedPrefixSuid = options.closedPrefixCertificate === undefined
+    ? options.closedPrefixSuid
+    : options.closedPrefixCertificate.status === "ready"
+      ? options.closedPrefixCertificate.closedPrefixSuid
+      : null;
   const attemptedAt = (options.clock ?? systemPipelineClock).now();
   await notifyObserver(options.observer, "onAttempt", { env, serviceId, projectorIds, attemptedAt });
   try {
@@ -207,14 +220,24 @@ export async function pollLiveProjections(
             identity.value,
             attemptedAt,
             {},
-            { maximumSuid: options.maximumSuid, closedPrefixSuid: options.closedPrefixSuid },
+            {
+              maximumSuid: options.maximumSuid,
+              closedPrefixSuid,
+              closedPrefixCertificate: options.closedPrefixCertificate,
+            },
           ));
         }
       }
       await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
       return results;
     }
-    const results = await runtime.pollRegistered(serviceId, attemptedAt, options.maximumSuid, options.closedPrefixSuid);
+    const results = await runtime.pollRegistered(
+      serviceId,
+      attemptedAt,
+      options.maximumSuid,
+      closedPrefixSuid,
+      options.closedPrefixCertificate,
+    );
     await notifyOutcomes(options.observer, serviceId, projectorIds, attemptedAt, results, options.maximumSuid, env);
     return results;
   } catch (error) {
@@ -252,15 +275,15 @@ export async function handleProjectionLag(
     if (storeProvider === undefined) {
       return error(503, "projection_unavailable", "A projection store provider is not configured");
     }
+    if (pollRequested) {
+      // This public diagnostic endpoint may report lag, but it must not make
+      // a remote allocator read part of a public safe-read request. Only the
+      // background safe pass receives the cached, validated certificate; an
+      // on-demand poll without that authority is explicitly fail-closed.
+      return error(503, "ordering_certificate_unavailable", "Safe advancement is available only from a validated background certificate pass");
+    }
     const store = sharedStore(env, storeProvider);
     await store.initialize();
-    if (pollRequested) {
-      // The operator probe names one tag-state. Catch up only that identity;
-      // polling every registered tag here can exceed an HTTP request lifetime
-      // on a large service-scoped conformance run.
-      const runtime = new ProjectionRuntime(store, registry);
-      await runtime.catchUp(serviceId, parsed.value, Date.now());
-    }
     const projectionId = projectionIdFor(parsed.value);
     const [lag, dynamicLagBoundMs] = await Promise.all([
       store.projectionLag(serviceId, projectionId, parsed.value.tag),

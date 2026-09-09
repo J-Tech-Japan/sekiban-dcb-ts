@@ -1,4 +1,5 @@
 import type { MaterializedViewRowMaterializer } from "@sekiban/dcb-core";
+import type { ClosedPrefixCertificate } from "../allocator/types";
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import type { ProjectionStore, StoredEvent } from "../store/types";
 import { assertSortableUniqueId } from "../allocator/SortableUniqueId";
@@ -45,6 +46,8 @@ export interface MaterializedViewCatchUpOptions {
   readonly maximumSuid?: string | null;
   /** Allocator-issued closed-prefix certificate; null is fail-closed. */
   readonly closedPrefixSuid?: string | null;
+  /** The complete certificate that authorizes the supplied closedPrefixSuid. */
+  readonly closedPrefixCertificate?: ClosedPrefixCertificate;
   /** Run the bounded late-lower detector only from scheduled maintenance. */
   readonly runOrderingDetector?: boolean;
 }
@@ -172,6 +175,18 @@ export class MaterializedViewCatchUpRuntime {
     options: MaterializedViewCatchUpOptions,
   ): Promise<MaterializedViewCatchUpResult> {
     for (let attempt = 0; attempt < MAX_CAS_RETRIES; attempt += 1) {
+      const certifiedClosedPrefixSuid = options.closedPrefixCertificate === undefined
+        ? options.closedPrefixSuid
+        : options.closedPrefixCertificate.status === "ready"
+          ? options.closedPrefixCertificate.closedPrefixSuid
+          : null;
+      if (
+        options.closedPrefixCertificate !== undefined &&
+        options.closedPrefixSuid !== undefined &&
+        options.closedPrefixSuid !== certifiedClosedPrefixSuid
+      ) {
+        throw new MaterializedViewStoreError("apply", "MV_STORE_OPERATION_FAILED", "ordering_certificate_mismatch");
+      }
       const instance = await this.materializedViews.readInstance(serviceId, materializer.id, generation);
       if (instance === undefined) {
         throw new MaterializedViewStoreError("apply", "MV_INSTANCE_MISSING", "Materialized-view generation is missing");
@@ -240,8 +255,8 @@ export class MaterializedViewCatchUpRuntime {
       let appliedEvents = 0;
       let conflicted = false;
       for (const event of sourceEvents) {
-        if (options.closedPrefixSuid === null || (
-          options.closedPrefixSuid !== undefined && compareSuid(event.suid, options.closedPrefixSuid) > 0
+        if (certifiedClosedPrefixSuid === null || (
+          certifiedClosedPrefixSuid !== undefined && compareSuid(event.suid, certifiedClosedPrefixSuid) > 0
         )) {
           return {
             instance: current,
