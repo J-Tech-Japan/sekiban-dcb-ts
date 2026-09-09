@@ -62,7 +62,7 @@ fact mutants remain red as well.
 
 | Case | Before | Measurement | Change and reason |
 | --- | --- | --- | --- |
-| `test/g67-safe-lane.spec.ts` AC3 | inherited 5,000 ms; red at 5,000 ms in run 34328164091 | supported Vitest JSON test-body clock: healthy 1,347 ms; 32-round real G69 admission-diagnostic calibration 3,265 ms; 59.94 ms measured added work per round; calibrated 217-round representative red at 10,355 ms with `Test timed out in 10000ms` | explicit 10,000 ms. The selected test-body margin is 8,653 ms. The representative repeats the actual `D1EventStore.recordDelivery` G69 admission-diagnostic path, with rounds selected from the measured calibration and a 1.5 safety factor; no timer or synthetic delay is used. Process startup/teardown is reported separately and is not subtracted from the body margin. The G67 functional assertions and existing mutants remain unchanged. |
+| `test/g67-safe-lane.spec.ts` AC3 | inherited 5,000 ms; red at 5,000 ms in run 34328164091 | supported Vitest JSON test-body clock in W201: healthy 1,103 ms; 32 nominal rounds, each a bounded batch of 16 complete real G69 admission-diagnostic deliveries, 3,314 ms; 69.09 ms measured added work per nominal round; calibrated 194-round representative red at 14,809 ms with `Test timed out in 10000ms` | explicit 10,000 ms. The selected test-body margin is 8,897 ms. The representative repeats the actual `D1EventStore.recordDelivery` G69 admission-diagnostic path, with rounds selected from the measured calibration and a 1.5 safety factor; no timer or synthetic delay is used. Process startup/teardown is reported separately and is not subtracted from the body margin. The G67 functional assertions and existing mutants remain unchanged. |
 | `test/commit.spec.ts` AC7 | inherited 5,000 ms | hosted green 864 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms to remain tight while covering the loaded local observation just over 2 seconds. |
 | `test/tag.spec.ts` exact-key G5 | inherited 5,000 ms | hosted green 928 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms. |
 | `test/tag.spec.ts` concurrent G5 | inherited 5,000 ms | included in the hosted tag file total of 2,663 ms; 10 repeats passed at the tighter 2,000 ms probe | explicit 3,000 ms. |
@@ -198,14 +198,17 @@ behavior. It adds only test/guard evidence for the three review findings.
   reports `extra-response-field: red` and `duration-variation: green`.
 - F3: the selected 10,000 ms G67 AC3 bound is tied to hosted job
   `102473543093` (3,907 ms healthy, 6,093 ms margin) and a supported same-clock
-  local body proof. The local healthy body was 1,347 ms (8,653 ms margin); a
-  32-round repeat of the real G69 admission-diagnostic path was 3,265 ms, or
-  59.94 ms of measured added work per round; the 1.5-factor representative was
-  217 rounds and red at 10,355 ms with the exact Vitest timeout. This records
-  the healthy margin and a regression-detection margin without process-clock
-  subtraction or unsupported delay. The repair checkpoint is separately
-  recorded as 10/10; the existing six-boundary case remains 15,000 ms and is
-  not conflated with that checkpoint.
+  local body proof. W201 remeasured the repaired runner at 1,103 ms healthy
+  (8,897 ms margin), then 3,314 ms for exactly 32 nominal rounds, each a
+  bounded batch of 16 complete real G69 admission-diagnostic deliveries. The
+  measured added work is 69.09 ms per nominal round; the 1.5-factor
+  representative was 194 nominal rounds and red at 14,809 ms with the exact
+  Vitest timeout. This current receipt supersedes the earlier W195/W198 local
+  round-count receipt, whose mutation shape was the source of the W201 hosted
+  coordination failure. The proof records healthy margin and a
+  regression-detection margin without process-clock subtraction or unsupported
+  delay. The repair checkpoint is separately recorded as 10/10; the existing
+  six-boundary case remains 15,000 ms and is not conflated with that checkpoint.
 
 The repair is pushed to PR #156 at the exact head reported in the companion
 W195 artifact.
@@ -251,3 +254,70 @@ at this head also completed successfully (job
 
 The PR remains at the exact W200 docs-repair head after the bounded commit and
 push reported with this artifact.
+
+## W201 G67 calibration coordination repair
+
+W201 repairs the exact hosted failure at PR #156 head
+`b6496291056c02344afaab46c65b04f06448a7e2`. The change is limited to the
+test-only G73 mutation runner and this evidence document. It does not change
+`test/g67-safe-lane.spec.ts`, production code, the 10,000 ms AC3 budget, G69
+behavior, retries, or CI configuration.
+
+### First-error provenance and characterization
+
+The first error is preserved in hosted [CI run
+34400106755](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34400106755),
+`ci-foundation` [job
+102629592598](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34400106755/job/102629592598),
+attempt 1, at the exact W200 head above. The job's ordinary `npm test` step
+completed first with 95 files passed and 1 skipped, 806 tests passed and 1
+skipped. The G73 timing scanner then reported zero violations and its G22
+raw-snapshot mutant self-test was red. The next command was
+`npm run test:g73:guard`; its first failure was:
+
+```text
+Error: G67 AC3 32-round G69 calibration unexpectedly failed:
+```
+
+The child Vitest output ended in real G67 DO/D1 telemetry without a Vitest
+test summary, and the runner exited 1 while requiring the calibration oracle
+to be healthy. This is a runner-coordination failure, not a recoverable G69
+`partition_registration_unavailable` receipt and not a production assertion
+failure.
+
+The cause was the W198 mutation anchor. It inserted a nominal 32-round block
+at a point inside each of AC3's ten paced commits. Each round replayed the two
+queued messages, so the advertised 32-round calibration could perform up to
+`32 × 10 × 2 = 640` real `recordDelivery` calls, plus the base G67 work, while
+waiting on each asynchronous G69 diagnostic. Hosted execution did not finish
+that multiplied child run under the existing coordination, producing the
+misleading `calibration unexpectedly failed` result despite the ordinary suite
+being green.
+
+### Bounded runner repair
+
+The W201 runner now asserts a unique mutation anchor immediately after the
+base `await Promise.all(waiters)` and before the public safe read. It scopes
+the calibration block to `index === 1`, so the nominal 32-round observation
+runs exactly once rather than once per paced commit. Each nominal round uses
+16 unique, valid G32 envelopes on an isolated calibration service/tag. Every
+envelope is admitted through the real `D1EventStore.recordDelivery` Queue path,
+and its `waitUntil` G69 diagnostic promise is awaited before the next complete
+operation. Thus the calibration measures 32 rounds / 512 complete real
+admission-diagnostic operations without duplicate replay or synthetic delay.
+The representative uses the same bounded batch and selects its round count
+from the supported Vitest JSON test-body duration. No process clock, timer,
+unsupported delay, timeout widening, or production behavior is involved.
+
+Focused local proof at this repair state:
+
+```text
+node --check scripts/g73-g67-budget-mutation-runner.mjs       passed
+node scripts/g73-g67-budget-mutation-runner.mjs --self-test   passed
+{"budgetMs":10000,"calibrationRounds":32,"g69OperationsPerRound":16,"safetyFactor":1.5,"selfTest":"vitest-body-clock-and-g69-path-valid"}
+{"budgetMs":10000,"healthyBodyMs":1103,"healthyMarginMs":8897,"calibrationRounds":32,"g69OperationsPerRound":16,"calibrationBodyMs":3314,"measuredAddedWorkPerRoundMs":69.09,"representativeRounds":194,"regressionBodyMs":14809,"regressionOverBudgetMs":4809,"timeoutMessage":"Test timed out in 10000ms","processOverheadMs":{"healthy":3730,"calibration":3474,"regression":3760},"attempts":[{"rounds":194,"processStatus":1,"bodyStatus":"failed","bodyDurationMs":14809,"processElapsedMs":18569}],"result":"healthy-green-g69-path-timeout-red"}
+```
+
+The final exact-head hosted CI receipt and terminal job identity will be
+appended with the W201 report after the repair push; the historical G69
+ordering-timeout and 503 boundary above remains unchanged.

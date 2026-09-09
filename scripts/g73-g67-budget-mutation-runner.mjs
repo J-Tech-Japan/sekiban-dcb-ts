@@ -20,27 +20,52 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const testFile = "test/g67-safe-lane.spec.ts";
 const testName = "AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals";
-const mutationAnchor = "        clock.mockReturnValue(safeAt);";
+const mutationAnchor = "        await Promise.all(waiters);\n\n        const publicResponse = await publicFetch";
 const budgetMs = 10_000;
 const calibrationRounds = 32;
+const g69OperationsPerRound = 16;
 const safetyFactor = 1.5;
 const maxRepresentativeRounds = 512;
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 
 function g69AddedWorkBlock(rounds) {
-  return `        // Temporary W198 mutant: repeat the actual G69 admission-diagnostic
-      // path using real D1EventStore deliveries. No timer or synthetic delay is
-      // part of the regression representative.
-      const g73G69ExtraRounds = ${rounds};
-      {
+  return `        // Temporary W201 mutant: repeat the actual G69 admission-diagnostic
+      // path once for the first real commit using unique, valid D1 envelopes.
+      // No timer or synthetic delay is part of the regression representative.
+      // Keeping the calibrated block to one real commit prevents the nominal
+      // 32-round observation from multiplying across all ten paced commits.
+      // Each round is a bounded batch of complete real deliveries so its
+      // measured cost remains observable on fast local D1 bindings.
+      if (index === 1) {
+        const g73G69ExtraRounds = ${rounds};
+        const g73G69OperationsPerRound = ${g69OperationsPerRound};
         const extraStore = new D1EventStore(database);
         await extraStore.initialize();
+        const extraTemplate = queued[0];
+        if (extraTemplate === undefined) throw new Error("G67 calibration requires a real queued template");
+        const extraServiceId = \`\${serviceId}-g73-g69-calibration\`;
+        const extraTag = \`room:g73-g69-calibration-\${index}\`;
         for (let g73Round = 0; g73Round < g73G69ExtraRounds; g73Round += 1) {
-          const extraWaiters: Promise<void>[] = [];
-          await Promise.all(queued.map((messageValue) => extraStore.recordDelivery(messageValue, deliveredAt, "queue", {
-            waitUntil: (promise: Promise<void>) => { extraWaiters.push(promise); },
-          })));
-          await Promise.all(extraWaiters);
+          for (let g73Operation = 0; g73Operation < g73G69OperationsPerRound; g73Operation += 1) {
+            const extraWaiters: Promise<void>[] = [];
+            const extraMessage = g32Message({
+              serviceId: extraServiceId,
+              allocatorLineageId: extraTemplate.allocatorLineageId,
+              tag: extraTag,
+              attemptId: \`g73-calibration-attempt-\${index}-\${g73Round}-\${g73Operation}\`,
+              eventId: \`g73-calibration-event-\${index}-\${g73Round}-\${g73Operation}\`,
+              suid: g32SuidAt(deliveredAt, (g73Round * g73G69OperationsPerRound) + g73Operation + 1),
+              payload: extraTemplate.payload,
+              eventTags: [extraTag],
+              eventType: extraTemplate.eventType,
+              enqueuedAt: deliveredAt - 100,
+              obligationSequence: (g73Round * g73G69OperationsPerRound) + g73Operation + 1,
+            });
+            await extraStore.recordDelivery(extraMessage, deliveredAt, "queue", {
+              waitUntil: (promise: Promise<void>) => { extraWaiters.push(promise); },
+            });
+            await Promise.all(extraWaiters);
+          }
         }
       }
 `;
@@ -119,8 +144,15 @@ function requireTimeoutRegression(result) {
 function selfTest() {
   const source = readFileSync(resolve(root, testFile), "utf8");
   const mutated = mutate(source, calibrationRounds);
-  if (!mutated.includes('extraStore.recordDelivery(messageValue, deliveredAt, "queue"')) {
+  if (!mutated.includes('extraStore.recordDelivery(extraMessage, deliveredAt, "queue"')) {
     throw new Error("G67 self-test does not exercise the real D1EventStore G69 path");
+  }
+  if (!mutated.includes("if (index === 1)")) {
+    throw new Error("G67 self-test does not bound calibration work to one real paced commit");
+  }
+  if (!mutated.includes("const extraMessage = g32Message({") || !mutated.includes("g32SuidAt(deliveredAt") ||
+      !mutated.includes("const g73G69OperationsPerRound = 16")) {
+    throw new Error("G67 self-test does not create unique valid real-path calibration envelopes");
   }
   if (mutated.includes("setTimeout(resolve, 9500)") || mutated.includes("process.hrtime.bigint")) {
     throw new Error("G67 self-test retained an unsupported timer or process-clock proof");
@@ -128,6 +160,7 @@ function selfTest() {
   process.stdout.write(JSON.stringify({
     budgetMs,
     calibrationRounds,
+    g69OperationsPerRound,
     safetyFactor,
     selfTest: "vitest-body-clock-and-g69-path-valid",
   }) + "\n");
