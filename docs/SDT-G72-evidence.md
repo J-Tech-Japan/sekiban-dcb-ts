@@ -103,7 +103,7 @@ publish was executed.
 The workflow still obtains the policy input from the live repository response:
 
 ~~~sh
-repository_private="$(gh api "repos/GITHUB_REPOSITORY" --jq '.private')"
+repository_private="$(gh api "repos/${GITHUB_REPOSITORY}" --jq '.private')"
 ~~~
 
 The product matrix observed:
