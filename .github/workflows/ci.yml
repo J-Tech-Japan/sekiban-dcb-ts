@@ -161,6 +161,8 @@ jobs:
         if: steps.node-modules.outputs.cache-hit != 'true'
       - name: Run SDT-G64 matched-set build, tarball and consumer gates
         run: npm run test:g64
+      - name: Run SDT-G72 trusted-publishing selection and provenance guards
+        run: npm run test:g72:trusted-publishing
       - name: Prove SDT-G64 forced-red CI reachability
         run: |
           if SDT_G64_FORCE_FAILURE=1 npm run test:g64:forced-red; then

@@ -49,14 +49,24 @@ jobs:
         run: npm run test:g64:publish-shape
       - name: Credential-free dry-run of every publish path
         run: npm run test:g64:publish-dry-run
-      - name: Publish the matched set with provenance or retain verified dry-run fallback
+      - name: Resolve trusted publishing, token, or credential-free fallback
+        id: publish-selection
+        run: node scripts/g72-trusted-publishing-selection.mjs --github-output "${GITHUB_OUTPUT}"
+      - name: Run trusted publishing selection and provenance guards
+        run: npm run test:g72:trusted-publishing
+      - name: Publish the matched set with the selected authentication path
+        env:
+          AUTH_MODE: ${{ steps.publish-selection.outputs.auth_mode }}
+          PRIVATE_REPOSITORY: ${{ steps.publish-selection.outputs.private_repository }}
+          PROVENANCE_ENABLED: ${{ steps.publish-selection.outputs.provenance_enabled }}
+          UNSET_NODE_AUTH_TOKEN: ${{ steps.publish-selection.outputs.unset_node_auth_token }}
         run: |
           set -euo pipefail
           publish_args=(--access public)
           publish_env=()
-          if [[ "${REPO_IS_PRIVATE}" == "false" ]]; then
+          if [[ "${PROVENANCE_ENABLED}" == "true" ]]; then
             publish_args+=(--provenance)
-          else
+          elif [[ "${PRIVATE_REPOSITORY}" == "true" ]]; then
             # npm may auto-enable provenance in GitHub Actions even when the
             # flag is omitted. The package manifests also carry the public
             # release policy, so remove that publish-only provenance field
@@ -73,13 +83,38 @@ jobs:
               )
             done
           fi
-          if [[ "${NPM_TRUSTED_PUBLISHING}" == "true" || -n "${NODE_AUTH_TOKEN}" ]]; then
-            for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
-              echo "publish: ${package}"
-              echo "command: npm publish ${publish_args[*]}"
-              (cd "${package}" && env "${publish_env[@]}" npm publish "${publish_args[@]}")
-            done
-          else
-            echo "NPM_TRUSTED_PUBLISHING is not true and NPM_TOKEN is not configured; no package was published."
-            echo "The credential-free dry-run above is the verified fallback."
-          fi
+          case "${AUTH_MODE}" in
+            trusted-publishing)
+              if [[ "${UNSET_NODE_AUTH_TOKEN}" != "true" ]]; then
+                echo "trusted publishing selection did not request token removal" >&2
+                exit 1
+              fi
+              echo "authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)"
+              for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
+                echo "publish: ${package}"
+                echo "command: npm publish ${publish_args[*]}"
+                (cd "${package}" && env -u NODE_AUTH_TOKEN "${publish_env[@]}" npm publish "${publish_args[@]}")
+              done
+              ;;
+            token)
+              if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+                echo "token authentication was selected without an NPM_TOKEN" >&2
+                exit 1
+              fi
+              echo "authentication branch: token (NPM_TOKEN)"
+              for package in packages/dcb-core packages/dcb-domain packages/dcb-client; do
+                echo "publish: ${package}"
+                echo "command: npm publish ${publish_args[*]}"
+                (cd "${package}" && env "${publish_env[@]}" npm publish "${publish_args[@]}")
+              done
+              ;;
+            credential-free-dry-run)
+              echo "authentication branch: credential-free-dry-run"
+              echo "NPM_TRUSTED_PUBLISHING is not true and NPM_TOKEN is not configured; no package was published."
+              echo "The credential-free dry-run above is the verified fallback."
+              ;;
+            *)
+              echo "unknown publish authentication mode: ${AUTH_MODE}" >&2
+              exit 1
+              ;;
+          esac
