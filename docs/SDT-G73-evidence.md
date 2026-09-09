@@ -22,12 +22,13 @@ changed.
 | [34328164091](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34328164091) | `3769ccd1c0c853f52c88e684734f3a920fdf0686` | `ci-foundation` failed `test/g67-safe-lane.spec.ts` AC3 at the inherited 5,000 ms timeout and `test/g69-ordering.spec.ts` held-tag append returned 503 `partition_registration_unavailable`; 794 passed, 2 failed, 1 skipped. |
 | [34302437259](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34302437259) | `82501b8c649b674a3c36db30122363fe2e9c1cca` | `ci-g21-g25` failed the G54 empty-V1-array comparison: expected `duration: PT0S`, received `duration: PT0.001S`. |
 | [34287701420](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287701420) | `4e5da819260027b3c4c96eb75b31cf939c0b5131` | `ci-foundation` repeated the G54 timing comparison failure; `ci-g64` independently failed its pre-existing dry-run publish gate because `@sekiban/dcb-core@0.1.0` was already published. Neither release gate nor credentials was changed. |
-| [34287217805](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805) | `7353b987e94a999d60ec6b41b1df2387efb11ac5` | Newly catalogued `ci-g45` failed (job [102265463495](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805/job/102265463495)); the retained GitHub job/check evidence has no downloadable log or assertion detail, so no precise signature is invented. |
+| [34287217805](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805) | `7353b987e94a999d60ec6b41b1df2387efb11ac5` | Newly catalogued `ci-g45` failed (job [102265463495](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805/job/102265463495)); its retained [check annotation](https://github.com/J-Tech-Japan/sekiban-dcb-ts/runs/102265463495) classifies the failure as the hosted runner losing communication with GitHub/server. It is not a G45 assertion failure, and the annotation does not establish CPU, memory, networking, or another specific cause. |
 
 These are the four completed main runs used by the issue's AC5 denominator:
 `4/4` failed. The `ci-g45` record is distinct from the already-repaired
 published-version collision in `ci-g64` above; the latter is retained only as
-the known release-gate signature from run `34287701420`.
+the historical release-gate signature from run `34287701420` and is excluded
+from G73 failure attribution and the after-rate.
 
 The hosted green comparison used for calibration was
 [34348593490](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34348593490)
@@ -124,6 +125,30 @@ isolated `test/g69-ordering.spec.ts` run passed 8/8 locally and emitted the
 expected `G69_ORDERING_PROOF`; the discrepancy is reported for the G69 owner.
 No G69 test, product path, retry, or timeout was changed in this PR.
 
+### Separate G69 ordering-timeout receipt
+
+The G69 timeout receipt requested for separate design disposition is not
+recoverable from the retained evidence. The available main annotation for run
+`34328164091`, `ci-foundation` job
+[102390192006](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34328164091/job/102390192006),
+identifies the G67 timeout at `test/g67-safe-lane.spec.ts:731`, while its
+separate G69 annotation identifies the 503 at
+`test/g69-ordering.spec.ts:134` / test line 253. No retained annotation,
+downloadable job log, or local W193/W198 artifact supplies a G69
+`Test timed out ...` receipt, so there is no G69 timeout run/job/attempt
+identity or exact timeout signature to assert here.
+
+The evidence is therefore deliberately split:
+
+| Path | Recoverable identity/signature | Disposition |
+| --- | --- | --- |
+| G67 safe-lane timeout | Run `34328164091`, `ci-foundation` job `102390192006`, `test/g67-safe-lane.spec.ts:731`, `Test timed out in 5000ms` | G67 inherited-budget evidence; not a G69 timeout. |
+| G69 held-tag ordering refusal | Run `34328164091`, `ci-foundation` job `102390192006`, `test/g69-ordering.spec.ts:134` / line 253, 503 `partition_registration_unavailable` | Possible/real G69 product defect; unchanged and not calibrated away. |
+| G69 ordering timeout | No recoverable receipt, identity, or exact signature in the retained records | Uncharacterized possible G69 defect pending receipt recovery; design disposition must not infer it from G67. |
+
+This absence is an evidence-availability result, not a claim that the G69
+timeout did or did not occur. No rerun was performed for W200.
+
 ## Repeat-run measurement
 
 The affected probes were run ten times each, with no Vitest retry option:
@@ -184,3 +209,45 @@ behavior. It adds only test/guard evidence for the three review findings.
 
 The repair is pushed to PR #156 at the exact head reported in the companion
 W195 artifact.
+
+## W200 evidence-publication repair
+
+This W200 update publishes the already-verified W198 receipts in the durable PR
+evidence. It changes documentation only; it does not rerun the suite or alter
+tests, timing budgets, CI configuration, production behavior, or G69.
+
+### Exact-head full-workflow after-rate
+
+The comparable hosted workflow is GitHub Actions `CI`, event `pull_request`,
+run `34381584698`, at exact head
+`665f4f338c21b5c9e214b0b2a1747c7aff3c4a94`. Each attempt completed the full
+20-lane matrix and aggregate `verify` job (21 jobs total), with distinct
+attempt/job identities:
+
+| Attempt | Workflow attempt | Head | Foundation job | Verify job | Terminal result |
+| ---: | --- | --- | ---: | ---: | --- |
+| 1 | [attempt 1](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/attempts/1) | `665f4f338c21b5c9e214b0b2a1747c7aff3c4a94` | [102567491149](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102567491149) | [102582312727](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102582312727) | `completed / success` |
+| 2 | [attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/attempts/2) | `665f4f338c21b5c9e214b0b2a1747c7aff3c4a94` | [102582590488](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102582590488) | [102597325670](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102597325670) | `completed / success` |
+| 3 | [attempt 3](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/attempts/3) | `665f4f338c21b5c9e214b0b2a1747c7aff3c4a94` | [102597550776](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102597550776) | [102611723729](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102611723729) | `completed / success` |
+| 4 | [attempt 4](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/attempts/4) | `665f4f338c21b5c9e214b0b2a1747c7aff3c4a94` | [102612101762](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102612101762) | [102625936350](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584698/job/102625936350) | `completed / success` |
+
+The repaired-head after-rate is **0 failed / 4 completed** (`0%` failed,
+`100%` terminal-success), compared with the four completed main baseline
+runs above at **4 failed / 4 completed** (`100%` failed). No after-run had a
+remaining failure signature. These are four attempts of one immutable head,
+not four independent commits; the sample is reported as observed evidence and
+does not claim that every future flake is impossible.
+
+The separate [release preflight run
+34381584694](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584694)
+at this head also completed successfully (job
+[102567489838](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34381584694/job/102567489838)); it is not part of the G73 AC5 numerator or denominator.
+
+### Characterization corrections
+
+- **`ci-g45`** — Run [34287217805](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805), job [102265463495](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287217805/job/102265463495), has a retained [check annotation](https://github.com/J-Tech-Japan/sekiban-dcb-ts/runs/102265463495) saying that the hosted runner lost communication with GitHub/server. This is explicitly **not** a G45 assertion failure. The annotation is insufficient to identify CPU, memory, network, or any other particular underlying cause, so none is claimed.
+- **`ci-g64`** — Run [34287701420](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34287701420) retains the already-repaired historical publish collision: `@sekiban/dcb-core@0.1.0` was already published during the dry-run gate. It is baseline history only, excluded from G73 attribution and the after-rate.
+- **G69 ordering timeout versus G67 timeout** — The separate G69 timeout receipt remains unavailable in the retained records: no run/job/attempt identity, downloadable annotation/log, or exact `Test timed out ...` signature is available for a G69 timeout. The recoverable G69 record is the distinct run `34328164091` / `ci-foundation` job `102390192006` 503 `partition_registration_unavailable` at `test/g69-ordering.spec.ts:134` / line 253. The recoverable five-second timeout in that job is G67 at `test/g67-safe-lane.spec.ts:731`, not G69. The G69 timeout is therefore an uncharacterized possible real defect pending receipt recovery; it is not inferred from G67 and was not rerun or changed here.
+
+The PR remains at the exact W200 docs-repair head after the bounded commit and
+push reported with this artifact.
