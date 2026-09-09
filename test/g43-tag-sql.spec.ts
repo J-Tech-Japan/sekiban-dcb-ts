@@ -19,10 +19,6 @@ interface SchedulerSeam {
   g43ScanSourceObligations(tag: string, nowMs: number): Promise<unknown>;
 }
 
-interface QueueReplacementControl {
-  disableAutoDrain(): void;
-}
-
 type SqlCount = Record<string, SqlStorageValue> & { readonly count: number };
 
 function scope(): Scope {
@@ -63,6 +59,28 @@ async function append(value: Scope, suffix: string, eventTags = [value.tag]): Pr
     attemptId: `g43-attempt-${suffix}`,
     epoch: 0,
     candidates: [candidate(value, suffix, eventTags)],
+  });
+}
+
+async function appendWithinTagActor(value: Scope, suffix: string): Promise<number> {
+  const body = {
+    attemptId: `g43-attempt-${suffix}`,
+    epoch: 0,
+    candidates: [candidate(value, suffix)],
+  };
+  return runInDurableObject(tagStub(value), async (instance) => {
+    const runtime = instance as unknown as {
+      env: { AUTO_DRAIN_OUTBOX?: string };
+      append(tag: string, body: unknown, serviceId: string | null): Promise<Response>;
+    };
+    const originalAutoDrain = runtime.env.AUTO_DRAIN_OUTBOX;
+    runtime.env.AUTO_DRAIN_OUTBOX = "false";
+    try {
+      const response = await runtime.append(value.tag, body, value.serviceId);
+      return response.status;
+    } finally {
+      runtime.env.AUTO_DRAIN_OUTBOX = originalAutoDrain;
+    }
   });
 }
 
@@ -111,17 +129,11 @@ async function acquireReservation(value: Scope, suffix: string, expectedHead: st
 
 async function replaceQueue(
   value: Scope,
-  send: (row: DownstreamOutboxMessage, control: QueueReplacementControl) => Promise<void>,
+  send: (row: DownstreamOutboxMessage) => Promise<void>,
 ): Promise<() => Promise<void>> {
   let originalQueue: Queue<DownstreamOutboxMessage> | undefined;
   let originalAutoDrain: string | undefined;
   let runtime: { env: { DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>; AUTO_DRAIN_OUTBOX?: string } } | undefined;
-  const control: QueueReplacementControl = {
-    disableAutoDrain(): void {
-      if (runtime === undefined) throw new Error("G43 test queue runtime is unavailable");
-      runtime.env.AUTO_DRAIN_OUTBOX = "false";
-    },
-  };
   await runInDurableObject(tagStub(value), (instance) => {
     runtime = instance as unknown as {
       env: { DOWNSTREAM_QUEUE?: Queue<DownstreamOutboxMessage>; AUTO_DRAIN_OUTBOX?: string };
@@ -129,7 +141,7 @@ async function replaceQueue(
     originalQueue = runtime.env.DOWNSTREAM_QUEUE;
     originalAutoDrain = runtime.env.AUTO_DRAIN_OUTBOX;
     runtime.env.DOWNSTREAM_QUEUE = {
-      send: (row: DownstreamOutboxMessage) => send(row, control),
+      send: (row: DownstreamOutboxMessage) => send(row),
     } as unknown as Queue<DownstreamOutboxMessage>;
     runtime.env.AUTO_DRAIN_OUTBOX = "true";
   });
@@ -400,22 +412,18 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     const value = scope();
     expect((await append(value, "insert-1")).status).toBe(201);
     let inserted = false;
-    const restoreQueue = await replaceQueue(value, async (row, control) => {
+    const restoreQueue = await replaceQueue(value, async (row) => {
       if (row.eventId === candidate(value, "insert-1").eventId && !inserted) {
         inserted = true;
         // This fixture isolates the alarm's in-flight source selection. The
-        // nested append itself normally schedules a response-after drain;
-        // letting that independent drain race this alarm would test timing,
-        // rather than whether the newly inserted source row is retained and
-        // re-armed for the next alarm.
-        control.disableAutoDrain();
-        const nestedAppend = await append(value, "insert-2");
-        expect(nestedAppend.status).toBe(201);
-        // The Worker response headers are observable before the response body
-        // has drained in the parallel foundation pool. Consume the body, then
-        // use a same-DO storage read as the durable completion barrier before
-        // the outer alarm resumes its source scan.
-        await nestedAppend.arrayBuffer();
+        // invokes the exact append handler seam inside the same Tag actor with
+        // auto-drain scoped off. A second SELF.fetch would independently
+        // schedule response-after delivery and could acknowledge insert-2
+        // before the outer alarm scans its source rows.
+        expect(await appendWithinTagActor(value, "insert-2")).toBe(201);
+        // The handler seam returns after the append transaction commits; use a
+        // same-DO storage read as the explicit durable completion barrier
+        // before the outer alarm resumes its source scan.
         await runInDurableObject(tagStub(value), (_instance, state) => {
           const durable = state.storage.sql.exec<SqlCount>(
             "SELECT COUNT(*) AS count FROM tag_event WHERE event_id = ?",
