@@ -3,13 +3,61 @@
 Task: SDT-G80-IMPLEMENTATION-W217.
 
 Implementation PR: https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/163
-Implementation head: ce5926fb157971dcfc278a9016c2b646827c6a05
+Repair source head: 4cefc3f54294de6be5867ac5925d0f1f8287fe3b
 
 This change is limited to the G73 G67 budget mutation runner and its proof
 evidence. It does not change the G67 AC3 test body or budget, production code,
 the G73 driver-timing guard, G71, G74, G77, G78, or any CI lane. The existing
 G73 guard remains the first command in test:g73:guard; no timeout, skip, retry,
 or flaky annotation was added.
+
+## W226 ANSI-marker repair and hosted receipt
+
+W226 resumed the existing PR after the canonical `intent-pr-request-update`
+lifecycle was restored. The PR was claimed with the GitHub-only worker
+protocol, and the repair was made on the existing branch from the reviewed
+head `4a225ef157226af279c8e8d702ef72bd7a026e51` (main base
+`193cfa44563d08ffadef146c4eca769098044be1`). The source repair commit is
+`4cefc3f54294de6be5867ac5925d0f1f8287fe3b`.
+
+The failed source receipt is workflow
+[34486440265](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34486440265),
+head `4a225ef157226af279c8e8d702ef72bd7a026e51`, ci-foundation job
+[102901815567](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34486440265/job/102901815567).
+Its diagnosed failure was that the complete
+`G80_G73_DIRECT_TIMING` line began with the SGR prefix
+`ESC[22mESC[39m`; the old raw `startsWith(marker + " ")` check therefore
+classified the valid receipt as `HEALTHY_OR_ORACLE_FAILURE`. The retrievable
+job log ends after the runner self-test and does not retain the final error
+line; that missing log detail is not reconstructed here.
+
+The repair strips SGR `ESC[...m` sequences before line matching and requires
+exactly one normalized marker. Missing, truncated, malformed, and duplicate
+markers fail closed. The executable self-test covers the actual colour prefix
+`ESC[22mESC[39m`, a truncated marker, a missing marker, a truncated JSON
+payload, and duplicate markers. No estimator, clock, product code, G67
+fixture, budget, G73 guard, workflow, or unrelated lane changed.
+
+The first exact-head repair workflow was
+[34509483454](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34509483454),
+head `4cefc3f54294de6be5867ac5925d0f1f8287fe3b`. It reached terminal
+`failure` with these relevant receipts:
+
+| job | terminal result | evidence |
+| --- | --- | --- |
+| [ci-foundation](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34509483454/job/102979771152) | failure | `npm test` passed: 95 files, 806 tests, 1 skipped; G73 equality self-test passed; the ANSI parser self-test passed; the subsequent unchanged G67/G73 runner step failed before a durable G80 result or marker was emitted |
+| [ci-g46](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34509483454/job/102979771313) | failure | unrelated existing `test/read.spec.ts:338` assertion expected HTTP 500 but observed 200; no G46/G80 file was changed |
+| [verify](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34509483454/job/102994280734) | failure | aggregate required-check failure from the two failed jobs above |
+
+The exact-head hosted log contains neither `G80_AC1_OBSERVATION_INPUT` nor
+`G80_AC1_OBSERVATION_SUMMARY`, and no `G80_G73_DIRECT_TIMING` marker. The
+workflow invokes the normal `test:g73:guard` command, not
+`--observation-only --pairs=5`; consequently zero of the five predeclared
+AC1 observation pairs ran as fresh hosted observations. The hosted run is a
+terminal repair receipt, not evidence of a green calibration or timeout
+proof. The existing local pair remains censored by the unchanged
+`invalid_sortable_unique_id` fixture failure and is not promoted to hosted
+evidence.
 
 ## Baseline and observation capture
 
@@ -144,8 +192,10 @@ pending findings, and final null alarm remain outside the mutation.
 | npx eslint scripts/g73-g67-budget-mutation-runner.mjs | passed |
 | npm run test:g73:guard | blocked locally before injected work by the unchanged G67 fixture/runtime error at test/g67-safe-lane.spec.ts:782; exact error and retained observation receipts are recorded above |
 | npm run build:packages | baseline repository failure outside G80: dcb-client SnapshotReader.head type errors and existing meeting-room/runtime package surface mismatches; no source change was made to address them |
+| hosted workflow 34509483454 at 4cefc3f | terminal failure; ci-foundation passed the 807-test npm phase and both guard self-tests, then failed in the unchanged G67/G73 runner step; ci-g46 independently retained its existing read-contract assertion failure; no hosted AC1 observation pair ran |
 
-No product behavior was changed, and no hosted green result is claimed from
-the blocked local run. Hosted CI must provide the five-pair observation
-receipts and the final healthy/calibration/timeout terminal proof before the
-G80 evidence can be considered complete.
+No product behavior was changed, and no hosted green result or hosted AC1
+pair is claimed. The five-pair observation receipts and final
+healthy/calibration/timeout terminal proof remain missing after this bounded
+parser repair; the exact missing hosted result is reported for follow-up
+disposition rather than inferred from the self-test.
