@@ -1,16 +1,18 @@
 # SDT-G79 hosted budget evidence
 
 Task: `SDT-G79-HOSTED-BUDGET-CALIBRATION-W204`, with the W207 review repair
-recorded below.
+and W209 measurement-coverage repair recorded below.
 
 This document records the measurement and proof for the G43 hosted test lane,
-the W207 all-lane invocation inventory, and the receipt provenance correction.
+the W207 all-lane invocation inventory, and the W209 all-lane per-test
+measurement coverage and G46 receipt correction.
 It does not change product behavior or the G43 proof boundary. The held PR
 #158 and `test/g43-tag-sql.spec.ts` on that PR were not modified or rerun for
 this unit.
 
-W207 review repair scope is limited to measurement inventory, structured
-mutation-result validation, receipt provenance, and this evidence. The G43
+W207/W209 review repair scope is limited to measurement inventory, supported
+per-test timing receipts, structured mutation-result validation, receipt
+provenance, and this evidence. The G43
 33-obligation body, SQL `LIMIT 32`, re-arm assertion, and all G43 coordination
 and production sources are unchanged.
 
@@ -19,10 +21,12 @@ and production sources are unchanged.
 The branch was based on `origin/main` at
 `809d535ee93e2318b46234db47ffb2d94b1949a1`. Before the G79 source change, the
 available main receipts showed the G43 lane's file and suite cost below. The
-existing hosted reporter did not emit assertion-level durations, so those
-receipts cannot honestly be used as per-test measurements; the G79 lane now
-emits the supported Vitest JSON assertion durations for every one of its 20
-tests.
+existing W207 hosted reporter did not emit assertion-level durations for
+the other CI lanes, so those receipts cannot honestly be used as per-test
+measurements. W209 adds a supported Vitest reporter at the shared invocation
+boundary and wires it through the default and alternate Vitest configs; the
+hosted plan below measures every Vitest invocation, not just G43. Non-Vitest
+proof commands remain inventory rows but have no invented test-body duration.
 
 | main workflow | `ci-g43` job | G43 file | G43 suite | workflow wall-clock | result |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -55,11 +59,12 @@ inferred from local timing.
 | G43 structural measurement | 60,000 ms, explicitly retained in `test/g43-measurement.spec.ts` | Five history sizes × three repetitions exercise real Tag-DO SQL transitions and the range-plan proof. The margin is the hosted `60,000 - observed` value; the test's decision remains structural row/byte/index evidence, not elapsed time. |
 | Other 18 assertions in the G43 lane | 5,000 ms, Vitest inherited default | No budget is changed. Each assertion is emitted by the hosted timing report; every measured near-budget result would be named there, while comfortable results remain on the inherited default. A green anecdote is not used as the basis for the selected 10,000 ms budget. |
 
-The G43 reporter is complete for its three-file invocation, not for every
-workflow lane. W207 adds `scripts/g79-ci-inventory.mjs`, which inventories
-every test/proof command declared in the existing hosted workflow and attaches
-an explicit measurement status. This prevents an unmeasured lane from being
-silently called comfortable.
+The W209 reporter is complete for each Vitest invocation that loads one of the
+instrumented configs. `scripts/g79-ci-inventory.mjs` inventories every
+test/proof command declared in the existing hosted workflow, resolves nested
+`npm run` scripts, and labels each row either
+`per-test-reporter-required` or `proof-only-no-test-cases`. This prevents an
+unmeasured lane from being silently called comfortable.
 
 ## AC1 per-test hosted receipts and provenance
 
@@ -195,15 +200,14 @@ not being conflated with invocation numbers.
 | `ci-g43` | [102734555400](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555400) | 2 | complete | G79 JSON reporter covers all 20 assertions; G43 AC6 10,000 ms and measurement 60,000 ms are source-located |
 | `ci-g44` | [102734555199](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555199) | 11 | partial: named G67 receipt only | G67 AC3 10,000 ms is source-located; G44/G58/G62/G61 rows lack universal per-test receipts |
 | `ci-g45` | [102734555351](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555351) | 2 | missing | G45 normal/forced-red invocations are inventoried; no per-test duration receipt |
-| `ci-g46` | [102734555212](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555212) | 4 | partial: file/suite receipt only | retained G43 measurement 60,000 ms is source-located; this receipt exposes file/suite time, not all assertion durations |
+| `ci-g46` | [102734555212](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555212) | 4 | partial named assertion receipts | the named G43 measurement assertion is available; neighboring G46 assertions were not universally reported by the W207 command |
 | `ci-g41` | [102734555288](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555288) | 2 | missing | G41 normal/forced-red invocations are inventoried; no per-test duration receipt |
 | `ci-local-e2e` | [102734555345](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555345) | 8 | missing | store/D1/MV/consumer/build/E2E invocations are inventoried; no per-test hosted duration receipt |
 | `cosmos-emulator` | [102734555357](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555357) | 17 | missing | Cosmos/G20/G22/G26–G32 candidate invocations are inventoried; no per-test hosted duration receipt |
 | `ci-coverage` | [102734555391](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555391) | 3 | missing | G40 coverage/negative/needs checks are inventoried; no per-test duration receipt |
 | `verify` | [102742377068](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102742377068) | 1 | aggregate only | required aggregate status, not a test-body budget |
 
-The review-context's historical `10,553 ms` statement for the G46 receipt is
-not used as a per-test measurement: the accessible [102734555212 log](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555212) records `test/g43-measurement.spec.ts (2 tests)` at `7,752 ms` as a file/suite receipt. No assertion-level G46 timing is available, so its margin remains unknown rather than being inferred from either number.
+The accessible [102734555212 log](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555212) records the named assertion `consumes the packet-owned measurement spec with real Tag DO SQL transitions and a closed range-plan predicate` at `10,553 ms` and `7,742 ms` in its two observed executions. The neighboring `10,568 ms` and `7,752 ms` values are the two file totals, not assertion durations. These named rows are partial G46 per-test evidence; they do not establish universal JSON coverage for the W207 command, and no margin is inferred for the remaining G46 tests.
 
 The same 21-job/126-invocation inventory was emitted again by the W207 repair
 head in [34442088611](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088611), with `commitSha=b1602ecec1be702fe789cdd9443b608954b730e0`, `workflowCheckoutSha=24380261a59ea828d92c355c59f62c52f0b8472f`, and `workflowAttempt=1`. Its summary again classified only `ci-g43` as complete per-test JSON, `ci-foundation`/`ci-g44`/`ci-g46` as partial, and the remaining lanes as missing. The older job links above remain the reviewed-head inventory receipts; they are not relabelled as W207 attempts.
@@ -213,6 +217,66 @@ that `if ... forced-red` is a second workflow attempt. It is a second
 invocation row within the same job. The hosted receipt columns above are
 available in the same workflow run; the new W207 command emits the exact
 `commitSha`, workflow attempt, and invocation fields in the repair receipt.
+
+## W209 F1/F3 — complete invocation coverage and corrected G46 attribution
+
+W209 changes only the measurement boundary and evidence. The shared CI
+environment enables `SDT_G79_HOSTED_MEASURE=1`; the default, G20 alternate,
+and G24 host-node Vitest configs load `scripts/g79-vitest-hosted-reporter.mjs`.
+The reporter uses supported Vitest `TestCase` diagnostics and emits one JSON
+receipt per collected test, including `file`, source line, full name, state,
+duration, timeout, budget source/origin, work basis, and classification. A
+test with no completed case receipt is emitted as `censored`; a failed case
+keeps its failed duration and failure is not relabelled comfortable. The
+reporter does not alter timeout values, scheduling, retries, skips, fixtures,
+or product behavior.
+
+The predeclared hosted measurement plan is:
+
+1. Run the exact pushed head once through the full existing CI workflow and
+   collect every `SDT-G79_HOSTED_TEST_TIMING` and run-summary line from all
+   21 jobs. Reconcile the rows against the static 126-command inventory.
+2. After the first workflow reaches terminal state, repeat the same workflow
+   at the same source head as a deliberate second measurement attempt. This
+   is a declared repeated measurement, not a blind rerun for a green result.
+3. Aggregate by exact `(workflow run, attempt, job, invocation, file, line,
+   test name)` identity. Classify each observed row as `over-budget` when
+   duration exceeds its governing budget, `near-budget` at 50% or more,
+   `comfortable` below 50%, and `censored` when no supported duration exists.
+   Report every observed near/over row and every distinct comfortable row with
+   work basis, budget origin, observed range, remaining margin, and
+   disposition. Failed and censored rows remain in the denominator.
+
+The current source inventory is 21 CI jobs and 126 command rows: 71 rows
+expand to Vitest invocations covered by the reporter and 55 are proof-only
+commands (guards, mutation oracles, builds, packaging, or aggregate checks).
+The pre-W209 W208 run [34445256199](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34445256199)
+is retained as a historical failed/censored observation even though it
+predates the reporter: `ci-foundation` job `102768554508` timed out at five
+unchanged tests — `commit.spec.ts:384` 5,127/5,000 ms inherited,
+`commit.spec.ts:556` 3,264/3,000 ms explicit,
+`g67-safe-lane.spec.ts:731` 10,008/10,000 ms explicit,
+`repair.spec.ts:481` 5,173/5,000 ms inherited, and
+`tag.spec.ts:401` 3,024/3,000 ms explicit. The aggregate verify job
+`102778936302` failed solely because foundation failed. Those rows are not
+silently called comfortable and are not treated as proof of a G79 product
+defect without the repeated instrumented observations.
+
+The budget-origin and one-line work bases for these five rows are fixed before
+the plan runs:
+
+| source row | actual governing budget | basis and W208 observation | W209 disposition rule |
+| --- | --- | --- | --- |
+| `test/commit.spec.ts:384` portable commit suite | 5,000 ms, Vitest inherited default | six portable commit-only admission/conflict/retry/null/concurrent-SUID paths; 5,127 ms censored by timeout | retain unless repeated completed receipts show genuinely expensive work; otherwise route the timeout as a design question |
+| `test/commit.spec.ts:556` AC7 allocator/cancellation | 3,000 ms, written per-test at the closing call | allocator reservation, cancellation/tombstone, and durable fact checks; 3,264 ms | only a measured, repeated expensive-work basis permits a scoped budget change |
+| `test/g67-safe-lane.spec.ts:731` AC3 | 10,000 ms, written per-test at the closing call | ten paced real D1/DO commits, queue kicks, and safe-reader convergence; 10,008 ms | retain G67 semantics and raise only if repeated supported receipts show real work rather than setup/defect |
+| `test/repair.spec.ts:481` Branch B | 5,000 ms, Vitest inherited default | partial-write Branch B and provider-internal exclusion binding; 5,173 ms | a setup/runner failure is censored and routed; only genuine repeated body cost can justify an explicit scoped budget |
+| `test/tag.spec.ts:401` G5 exact-key race | 3,000 ms, written per-test at the closing call | fence install/clear/append race while preserving unrelated fences; 3,024 ms | no global timeout change; retain or make a local evidence-backed decision only |
+
+The W209 hosted receipts and final aggregate classification are appended below
+with their exact workflow/job/invocation identities after the two planned
+attempts. No budget is changed merely because one historical run was green or
+because a file total was mistaken for an assertion duration.
 
 ### Per-test budget catalog: measured, comfortable, near, and missing
 

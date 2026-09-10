@@ -2,11 +2,10 @@
 /**
  * Emit the hosted test/proof invocations declared by the repository CI lanes.
  *
- * This is an inventory of the workflow surface, not a claim that every lane
- * exposes assertion-level timing. Each row therefore carries an explicit
- * measurement status and budget-evidence location. G79's per-test reporter
- * supplies complete rows only for the G43 invocation; other lanes remain
- * honestly marked as partial or missing rather than inferred from file time.
+ * This is an inventory of the workflow surface. Every Vitest invocation is
+ * wired to the same hosted reporter, including commands reached through an
+ * npm script and the alternate Vitest configs. Non-Vitest proof commands are
+ * retained as proof-only rows instead of being misreported as test timing.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -14,6 +13,7 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const workflowPath = resolve(root, ".github/workflows/ci.yml");
+const packageJsonPath = resolve(root, "package.json");
 const historicalSourceHead = "21427a58534efe8af4b3553322268f84fd6cbbd6";
 const reviewedHead = "cd15a2729ea2aa062515012ad1938266856ede2b";
 
@@ -51,39 +51,43 @@ function sourceReceiptClass(sha) {
   return "current-source-head";
 }
 
-function laneMeasurement(job) {
-  if (job === "ci-g43") {
-    return {
-      status: "complete-per-test-json",
-      budgetLocation: "test/g43-tag-sql.spec.ts (AC6 10,000 ms); test/g43-measurement.spec.ts (60,000 ms retained)",
-      basis: "SDT-G79_HOSTED_TEST_TIMING rows emit each assertion duration, budget, source, margin, and classification",
-    };
+function packageScripts() {
+  try {
+    return JSON.parse(readFileSync(packageJsonPath, "utf8")).scripts ?? {};
+  } catch {
+    return {};
   }
-  if (job === "ci-foundation") {
-    return {
-      status: "partial-named-receipts",
-      budgetLocation: "test/g67-safe-lane.spec.ts AC3 10,000 ms; other Vitest tests inherit vitest.config.ts default",
-      basis: "hosted logs expose the named G67 AC3 duration; no universal assertion-level timing receipt is emitted by this lane",
-    };
+}
+
+function expandsToVitest(command, scripts, seen = new Set()) {
+  if (/\bvitest(?:\s+run)?\b/.test(command)) return true;
+  const references = [...command.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:_-]+)/g)].map((match) => match[1]);
+  for (const reference of references) {
+    if (seen.has(reference) || scripts[reference] === undefined) continue;
+    const next = new Set(seen);
+    next.add(reference);
+    if (expandsToVitest(scripts[reference], scripts, next)) return true;
   }
-  if (job === "ci-g44") {
-    return {
-      status: "partial-named-receipts",
-      budgetLocation: "test/g67-safe-lane.spec.ts AC3 10,000 ms; remaining G44-family tests use their source/default budgets",
-      basis: "hosted logs expose the named G67 AC3 duration; other lane invocations have no G79 assertion-level receipt",
-    };
+  if (/\bnpm\s+test\b/.test(command) && scripts.test !== undefined && !seen.has("test")) {
+    return expandsToVitest(scripts.test, scripts, new Set([...seen, "test"]));
   }
-  if (job === "ci-g46") {
+  return false;
+}
+
+function laneMeasurement(command, scripts) {
+  if (expandsToVitest(command, scripts)) {
     return {
-      status: "partial-suite-and-g43-receipt",
-      budgetLocation: "test/g43-measurement.spec.ts retained 60,000 ms; remaining G46 tests use source/default budgets",
-      basis: "hosted logs expose suite and G43 measurement receipts, not a complete per-test inventory for the lane",
+      status: "per-test-reporter-required",
+      budgetLocation: "test source declaration, CLI --testTimeout when present, or Vitest inherited default; emitted by g79-vitest-hosted-reporter.mjs",
+      basis: "supported Vitest TestCase diagnostics emit each observed duration, budget origin, margin classification, and censored state",
+      receipt: "SDT-G79_HOSTED_TEST_TIMING",
     };
   }
   return {
-    status: "missing-per-test-receipt",
-    budgetLocation: "not measured by SDT-G79; source-local budget or Vitest inherited default must be checked separately",
-    basis: "workflow invocation is inventoried, but no supported per-test hosted timing receipt is available in this lane",
+    status: "proof-only-no-test-cases",
+    budgetLocation: "not applicable: this invocation runs a guard, mutation oracle, build, packaging, or other non-Vitest proof",
+    basis: "retain the command in the lane inventory without inventing a per-test timing receipt",
+    receipt: "command exit status and guard-specific receipt",
   };
 }
 
@@ -135,10 +139,10 @@ function parseJobs(workflow) {
 
 function inventory() {
   const jobs = parseJobs(readFileSync(workflowPath, "utf8"));
+  const scripts = packageScripts();
   const workflowCheckoutSha = checkedOutCommitSha();
   const sha = sourceHeadSha(workflowCheckoutSha);
   const rows = jobs.flatMap((job) => {
-    const measurement = laneMeasurement(job.name);
     return job.commands.map((command, index) => ({
       workflowRunId: process.env.GITHUB_RUN_ID ?? null,
       workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
@@ -149,7 +153,7 @@ function inventory() {
       hostedJob: job.name,
       invocation: index + 1,
       command,
-      ...measurement,
+      ...laneMeasurement(command, scripts),
     }));
   });
   return {
@@ -179,13 +183,16 @@ function selfTest() {
   if (!result.invocations.some((row) => row.hostedJob === "ci-foundation" && row.command.includes("npm test"))) {
     throw new Error("SDT-G79 CI inventory did not find the foundation npm test invocation");
   }
-  if (!result.invocations.some((row) => row.status === "missing-per-test-receipt")) {
-    throw new Error("SDT-G79 CI inventory unexpectedly has complete timing for every lane");
+  if (result.invocations.some((row) => row.status === "missing-per-test-receipt" || row.status === "partial-named-receipts")) {
+    throw new Error("SDT-G79 CI inventory retained a stale partial/missing timing classification");
+  }
+  if (!result.invocations.some((row) => row.status === "per-test-reporter-required" && row.hostedJob === "ci-foundation")) {
+    throw new Error("SDT-G79 CI inventory did not classify the foundation Vitest invocation for hosted measurement");
   }
   console.log(JSON.stringify({
     jobs: result.jobs.length,
     invocations: result.invocations.length,
-    selfTest: "required-lanes-and-explicit-missing-measurements-present",
+    selfTest: "required-lanes-and-reporter-or-proof-classification-present",
   }));
 }
 
@@ -205,9 +212,8 @@ function main() {
     workflow: process.env.GITHUB_WORKFLOW ?? "CI",
     jobs: result.jobs.length,
     invocations: result.invocations.length,
-    completePerTestJobs: result.jobs.filter((job) => laneMeasurement(job).status === "complete-per-test-json"),
-    partialMeasurementJobs: result.jobs.filter((job) => laneMeasurement(job).status.startsWith("partial-")),
-    missingMeasurementJobs: result.jobs.filter((job) => laneMeasurement(job).status === "missing-per-test-receipt"),
+    perTestReporterInvocations: result.invocations.filter((row) => row.status === "per-test-reporter-required").length,
+    proofOnlyInvocations: result.invocations.filter((row) => row.status === "proof-only-no-test-cases").length,
   })}`);
 }
 

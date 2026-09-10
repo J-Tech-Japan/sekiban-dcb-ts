@@ -18,6 +18,10 @@ export default defineConfig({
     // g15-deploy.sh is a host-shell entrypoint and is exercised by the
     // dedicated Node-configured G24 lane, never inside Miniflare.
     exclude: ["**/node_modules/**", "**/.git/**", "test/g24-deploy-preflight.spec.mjs", "test/g26-topology.spec.mjs"],
+    includeTaskLocation: process.env.SDT_G79_HOSTED_MEASURE === "1" ? true : undefined,
+    reporters: process.env.SDT_G79_HOSTED_MEASURE === "1"
+      ? ["default", "./scripts/g79-vitest-hosted-reporter.mjs"]
+      : undefined,
   },
   plugins: [
     cloudflareTest({
