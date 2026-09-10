@@ -12,8 +12,18 @@ const OUTCOME_UNDETERMINED_ERROR =
 type AppendMode = "committed" | "rollback" | "registration-unavailable" | "post-commit-reply-loss";
 type FenceMode = "fresh-201" | "idempotent-200" | "rejected" | "reply-lost-after-persisted";
 
-interface DurableEventFact {
+interface CandidateIdentity {
   readonly eventId: string;
+  readonly suid: string;
+  readonly payload: string;
+  readonly eventType: string;
+  readonly provenance: "g32";
+  readonly eventTags: readonly string[];
+  readonly allocatorLineageId: string;
+  readonly timestamp: string;
+}
+
+interface DurableEventFact extends CandidateIdentity {
   readonly attemptId: string;
 }
 
@@ -28,6 +38,28 @@ interface ParticipantFacts {
   readonly fences: DurableFenceFact[];
 }
 
+interface ResponseFact {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+interface AppendRequestFact {
+  readonly tag: string;
+  readonly attemptId: string;
+  readonly epoch: number;
+  readonly allocatorLineageId: string;
+  readonly reservationToken?: string;
+  readonly faultInjection?: string;
+  readonly candidates: readonly CandidateIdentity[];
+  readonly response: ResponseFact;
+}
+
+interface FenceRequestFact {
+  readonly tag: string;
+  readonly request: DurableFenceFact;
+  readonly response: ResponseFact;
+}
+
 interface MatrixPlan {
   readonly append: Readonly<Record<string, AppendMode>>;
   readonly fence?: Readonly<Record<string, FenceMode>>;
@@ -36,8 +68,10 @@ interface MatrixPlan {
 
 interface FakeRun {
   readonly worker: CommitWorker;
+  readonly plan: MatrixPlan;
   readonly participants: Map<string, ParticipantFacts>;
-  readonly fenceReplies: Array<{ readonly tag: string; readonly status: number; readonly body: unknown }>;
+  readonly appendRequests: AppendRequestFact[];
+  readonly fenceRequests: FenceRequestFact[];
 }
 
 interface NamespaceCalls {
@@ -49,6 +83,13 @@ function json(value: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json; charset=utf-8" },
   });
+}
+
+async function responseFact(response: Response): Promise<ResponseFact> {
+  return {
+    status: response.status,
+    body: await response.clone().json().catch(() => undefined),
+  };
 }
 
 function namespace(
@@ -108,7 +149,8 @@ function request(
 
 function fakeRun(plan: MatrixPlan): FakeRun {
   const participants = new Map<string, ParticipantFacts>();
-  const fenceReplies: Array<{ readonly tag: string; readonly status: number; readonly body: unknown }> = [];
+  const appendRequests: AppendRequestFact[] = [];
+  const fenceRequests: FenceRequestFact[] = [];
   const tagCalls = { fetch: 0 };
   const allocatorCalls = { fetch: 0 };
   const bootstrapCalls = { fetch: 0 };
@@ -143,22 +185,41 @@ function fakeRun(plan: MatrixPlan): FakeRun {
       return json({ code: "cancel_ack_lost" }, 503);
     }
     if (path === "/append") {
-      const body = await incoming.json<{ candidates?: Array<{ eventId: string }> }>();
-      const eventIds = (body.candidates ?? []).map((candidate) => candidate.eventId);
+      const body = await incoming.json<{
+        attemptId: string;
+        epoch: number;
+        allocatorLineageId: string;
+        reservationToken?: string;
+        faultInjection?: string;
+        candidates: CandidateIdentity[];
+      }>();
+      const candidates = body.candidates ?? [];
       const mode = plan.append[tagName] ?? "committed";
       if (mode === "committed" || mode === "post-commit-reply-loss") {
-        for (const eventId of eventIds) {
-          if (!facts.events.some((event) => event.eventId === eventId)) {
-            facts.events.push({ eventId, attemptId: "g76-fake-attempt" });
+        for (const candidate of candidates) {
+          if (!facts.events.some((event) => event.eventId === candidate.eventId && event.attemptId === body.attemptId)) {
+            facts.events.push({ ...candidate, attemptId: body.attemptId });
           }
         }
       }
-      if (mode === "committed") return json({ appended: true }, 201);
-      if (mode === "post-commit-reply-loss") return json({ code: "append_ack_lost" }, 503);
-      if (mode === "registration-unavailable") {
-        return json({ code: "partition_registration_unavailable", retryable: true }, 503);
-      }
-      return json({ code: "tag_append_failure" }, 500);
+      const response = mode === "committed"
+        ? json({ appended: true }, 201)
+        : mode === "post-commit-reply-loss"
+          ? json({ code: "append_ack_lost" }, 503)
+          : mode === "registration-unavailable"
+            ? json({ code: "partition_registration_unavailable", retryable: true }, 503)
+            : json({ code: "tag_append_failure" }, 500);
+      appendRequests.push({
+        tag: tagName,
+        attemptId: body.attemptId,
+        epoch: body.epoch,
+        allocatorLineageId: body.allocatorLineageId,
+        ...(body.reservationToken === undefined ? {} : { reservationToken: body.reservationToken }),
+        ...(body.faultInjection === undefined ? {} : { faultInjection: body.faultInjection }),
+        candidates: candidates.map((candidate) => ({ ...candidate, eventTags: [...candidate.eventTags] })),
+        response: await responseFact(response),
+      });
+      return response;
     }
     if (path === "/fence/install") {
       const body = await incoming.json<DurableFenceFact>();
@@ -178,7 +239,7 @@ function fakeRun(plan: MatrixPlan): FakeRun {
         : mode === "reply-lost-after-persisted"
           ? json({ code: "fence_ack_lost" }, 503)
           : json(bodyValue, status);
-      fenceReplies.push({ tag: tagName, status: response.status, body: bodyValue });
+      fenceRequests.push({ tag: tagName, request: body, response: await responseFact(response) });
       return response;
     }
     if (path === "/head-facts") {
@@ -189,8 +250,10 @@ function fakeRun(plan: MatrixPlan): FakeRun {
 
   const run: FakeRun = {
     worker: new CommitWorker({ ALLOCATOR: allocator, JOURNAL: journal, TAG: tag, BOOTSTRAP: bootstrap }, "g76-regression-matrix"),
+    plan,
     participants,
-    fenceReplies,
+    appendRequests,
+    fenceRequests,
   };
   return run;
 }
@@ -205,11 +268,155 @@ async function partialResponse(
   attemptId: string,
 ): Promise<Record<string, unknown>> {
   const response = await run.worker.handle(request(tags, { fault: "tag-append-last", attemptId }));
-  expect(response.status).toBe(500);
+  expect(response.status, "G76 public assertion: partial-write status must remain 500").toBe(500);
+  expect(response.headers.get("x-sdt-g4-attempt-id")).toBe(attemptId);
   const body = await responseBody(response);
   expect(body.code).toBe("partial_write");
-  expect(body.partial).toMatchObject({ retryable: false });
+  expect(body.partial, "G76 public assertion: partial retryable must remain false").toMatchObject({ retryable: false });
   return body;
+}
+
+const FIXTURE_PAYLOAD = JSON.stringify({ fixture: "g76-regression-matrix" });
+const FIXTURE_EVENT_PAYLOAD_NAME = "G76RegressionMatrixEvent";
+const FIXTURE_SUID = "000000000000000000000000000001";
+const FIXTURE_ALLOCATOR_LINEAGE = "g76-fake-lineage";
+
+function expectedAppendResponse(mode: AppendMode): ResponseFact {
+  switch (mode) {
+    case "committed":
+      return { status: 201, body: { appended: true } };
+    case "post-commit-reply-loss":
+      return { status: 503, body: { code: "append_ack_lost" } };
+    case "registration-unavailable":
+      return { status: 503, body: { code: "partition_registration_unavailable", retryable: true } };
+    case "rollback":
+      return { status: 500, body: { code: "tag_append_failure" } };
+  }
+}
+
+function expectedFenceResponse(mode: FenceMode): ResponseFact {
+  switch (mode) {
+    case "fresh-201":
+      return { status: 201, body: { status: "fence-installed" } };
+    case "idempotent-200":
+      return { status: 200, body: { status: "fence-installed" } };
+    case "rejected":
+      return { status: 503, body: { code: "fence_rejected" } };
+    case "reply-lost-after-persisted":
+      return { status: 503, body: { code: "fence_ack_lost" } };
+  }
+}
+
+function uniqueAppendCandidates(run: FakeRun): CandidateIdentity[] {
+  const byEventId = new Map<string, CandidateIdentity>();
+  for (const entry of run.appendRequests) {
+    for (const candidate of entry.candidates) {
+      const previous = byEventId.get(candidate.eventId);
+      if (previous !== undefined) {
+        expect(candidate).toEqual(previous);
+      } else {
+        byEventId.set(candidate.eventId, candidate);
+      }
+    }
+  }
+  const candidates = [...byEventId.values()];
+  expect(candidates).toHaveLength(1);
+  return candidates;
+}
+
+function assertAppendRequestFacts(
+  run: FakeRun,
+  tags: readonly string[],
+  attemptId: string,
+  expectedAppendFault: string | null = "after-append-before-confirm",
+): CandidateIdentity[] {
+  expect(run.appendRequests.length).toBeGreaterThan(0);
+  expect(new Set(run.appendRequests.map((entry) => entry.tag))).toEqual(new Set(tags));
+  const candidates = uniqueAppendCandidates(run);
+  const firstCandidate = candidates[0]!;
+  expect(firstCandidate).toMatchObject({
+    eventId: expect.any(String),
+    suid: FIXTURE_SUID,
+    payload: FIXTURE_PAYLOAD,
+    eventType: FIXTURE_EVENT_PAYLOAD_NAME,
+    provenance: "g32",
+    eventTags: [...tags],
+    allocatorLineageId: FIXTURE_ALLOCATOR_LINEAGE,
+    timestamp: expect.any(String),
+  });
+  for (const entry of run.appendRequests) {
+    expect(entry.attemptId).toBe(attemptId);
+    expect(entry.epoch).toBe(0);
+    expect(entry.allocatorLineageId).toBe(FIXTURE_ALLOCATOR_LINEAGE);
+    expect(entry.reservationToken).toBeUndefined();
+    expect(entry.candidates).toEqual([firstCandidate]);
+    const expected = expectedAppendResponse(run.plan.append[entry.tag] ?? "committed");
+    expect(entry.response).toEqual(expected);
+    if (expectedAppendFault !== null && entry.tag === tags.at(-1)) {
+      expect(entry.faultInjection).toBe(expectedAppendFault);
+    } else {
+      expect(entry.faultInjection).toBeUndefined();
+    }
+  }
+  return candidates;
+}
+
+function assertParticipantFacts(
+  run: FakeRun,
+  tags: readonly string[],
+  attemptId: string,
+  candidates: readonly CandidateIdentity[],
+  expectedFenceModes: Readonly<Record<string, FenceMode | undefined>> = {},
+): void {
+  for (const tag of tags) {
+    const facts = run.participants.get(tag);
+    expect(facts).toBeDefined();
+    const mode = run.plan.append[tag] ?? "committed";
+    const expectedEvents = mode === "committed" || mode === "post-commit-reply-loss"
+      ? candidates.map((candidate) => ({ ...candidate, attemptId }))
+      : [];
+    expect(facts?.events).toEqual(expectedEvents);
+
+    const fenceCalls = run.fenceRequests.filter((entry) => entry.tag === tag);
+    const fenceMode = expectedFenceModes[tag];
+    if (fenceMode === undefined) {
+      expect(fenceCalls).toEqual([]);
+      expect(facts?.fences).toEqual([]);
+      continue;
+    }
+    expect(fenceCalls).toHaveLength(1);
+    expect(fenceCalls[0]?.request).toEqual({ reason: "partial_write", attemptId, epoch: 0 });
+    expect(fenceCalls[0]?.response).toEqual(expectedFenceResponse(fenceMode));
+    expect(facts?.fences).toEqual(fenceMode === "rejected" ? [] : [{ reason: "partial_write", attemptId, epoch: 0 }]);
+  }
+}
+
+function assertPartialEventLists(
+  body: Record<string, unknown>,
+  candidates: readonly CandidateIdentity[],
+  writtenTags: readonly string[],
+): void {
+  const partial = body.partial as { writtenEventIds?: unknown; failedEventIds?: unknown };
+  const writtenEventIds = candidates
+    .filter((candidate) => candidate.eventTags.some((tag) => writtenTags.includes(tag)))
+    .map((candidate) => candidate.eventId);
+  const failedEventIds = candidates
+    .filter((candidate) => !candidate.eventTags.some((tag) => writtenTags.includes(tag)))
+    .map((candidate) => candidate.eventId);
+  expect(partial.writtenEventIds).toEqual(writtenEventIds);
+  expect(partial.failedEventIds).toEqual(failedEventIds);
+}
+
+function assertMatrixRow(
+  run: FakeRun,
+  tags: readonly string[],
+  attemptId: string,
+  expectedFenceModes: Readonly<Record<string, FenceMode | undefined>> = {},
+  expectedAppendFault: string | null = "after-append-before-confirm",
+): CandidateIdentity[] {
+  const candidates = assertAppendRequestFacts(run, tags, attemptId, expectedAppendFault);
+  assertParticipantFacts(run, tags, attemptId, candidates, expectedFenceModes);
+  return candidates;
 }
 
 describe("SDT-G76 definite partial-write regression matrix", () => {
@@ -222,9 +429,13 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
     const rollbackRun = fakeRun({ append: { [written]: "committed", [rollback]: "rollback" } });
     const rollbackBody = await partialResponse(rollbackRun, [written, rollback], "g76-rollback");
     expect(rollbackBody.partial).toMatchObject({ writtenTags: [written], missingTags: [rollback], eventsDeleted: false });
-    expect(rollbackRun.participants.get(written)?.events).toHaveLength(1);
-    expect(rollbackRun.participants.get(rollback)?.events).toEqual([]);
-    expect(rollbackRun.participants.get(rollback)?.fences).toHaveLength(1);
+    const rollbackCandidates = assertMatrixRow(
+      rollbackRun,
+      [written, rollback],
+      "g76-rollback",
+      { [rollback]: "fresh-201" },
+    );
+    assertPartialEventLists(rollbackBody, rollbackCandidates, [written]);
 
     const statusOnlyRun = fakeRun({
       append: { [written]: "committed", [fresh]: "rollback", [idempotent]: "rollback" },
@@ -236,21 +447,21 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
       missingTags: [fresh, idempotent],
       eventsDeleted: false,
     });
-    expect(statusOnlyRun.fenceReplies.map((reply) => [reply.tag, reply.status, reply.body])).toEqual([
-      [fresh, 201, { status: "fence-installed" }],
-      [idempotent, 200, { status: "fence-installed" }],
-    ]);
-    expect(statusOnlyRun.participants.get(fresh)?.fences).toHaveLength(1);
-    expect(statusOnlyRun.participants.get(idempotent)?.fences).toHaveLength(1);
+    const statusOnlyCandidates = assertMatrixRow(
+      statusOnlyRun,
+      [written, fresh, idempotent],
+      "g76-status-only",
+      { [fresh]: "fresh-201", [idempotent]: "idempotent-200" },
+    );
+    assertPartialEventLists(statusOnlyBody, statusOnlyCandidates, [written]);
 
     const rejectedTag = "g76-matrix-fence-rejected";
     const rejectedRun = fakeRun({ append: { [written]: "committed", [rejectedTag]: "rollback" }, fence: { [rejectedTag]: "rejected" } });
     const rejectedResponse = await rejectedRun.worker.handle(request([written, rejectedTag], { fault: "tag-append-last", attemptId: "g76-rejected" }));
-    expect(rejectedResponse.status).toBe(504);
+    expect(rejectedResponse.status, "G76 public assertion: genuine fence rejection must remain 504").toBe(504);
+    expect(rejectedResponse.headers.get("x-sdt-g4-attempt-id")).toBe("g76-rejected");
     expect(await responseBody(rejectedResponse)).toMatchObject({ code: "timeout", error: OUTCOME_UNDETERMINED_ERROR });
-    expect(rejectedRun.participants.get(written)?.events).toHaveLength(1);
-    expect(rejectedRun.participants.get(rejectedTag)?.events).toEqual([]);
-    expect(rejectedRun.participants.get(rejectedTag)?.fences).toEqual([]);
+    assertMatrixRow(rejectedRun, [written, rejectedTag], "g76-rejected", { [rejectedTag]: "rejected" });
 
     const lostTag = "g76-matrix-post-commit-reply-loss";
     const lostRun = fakeRun({
@@ -258,10 +469,10 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
       fence: { [lostTag]: "reply-lost-after-persisted" },
     });
     const lostResponse = await lostRun.worker.handle(request([written, lostTag], { fault: "tag-append-last", attemptId: "g76-post-commit-reply-loss" }));
-    expect(lostResponse.status).toBe(504);
+    expect(lostResponse.status, "G76 public assertion: post-commit reply loss must remain 504").toBe(504);
+    expect(lostResponse.headers.get("x-sdt-g4-attempt-id")).toBe("g76-post-commit-reply-loss");
     expect(await responseBody(lostResponse)).toMatchObject({ code: "timeout", error: OUTCOME_UNDETERMINED_ERROR });
-    expect(lostRun.participants.get(lostTag)?.events).toHaveLength(1);
-    expect(lostRun.participants.get(lostTag)?.fences).toHaveLength(1);
+    assertMatrixRow(lostRun, [written, lostTag], "g76-post-commit-reply-loss", { [lostTag]: "reply-lost-after-persisted" });
 
     const registrationA = "g76-matrix-registration-a";
     const registrationB = "g76-matrix-registration-b";
@@ -269,15 +480,18 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
       append: { [registrationA]: "registration-unavailable", [registrationB]: "registration-unavailable" },
     });
     const registrationResponse = await registrationRun.worker.handle(request([registrationA, registrationB], { fault: "tag-append-last", attemptId: "g76-registration-only" }));
-    expect(registrationResponse.status).toBe(503);
+    expect(registrationResponse.status, "G76 public assertion: registration-only refusal must remain retryable 503").toBe(503);
+    expect(registrationResponse.headers.get("x-sdt-g4-attempt-id")).toBe("g76-registration-only");
     expect(await responseBody(registrationResponse)).toMatchObject({
       code: "partition_registration_unavailable",
       retryable: true,
     });
-    expect(registrationRun.participants.get(registrationA)?.events).toEqual([]);
-    expect(registrationRun.participants.get(registrationB)?.events).toEqual([]);
-    expect(registrationRun.participants.get(registrationA)?.fences).toHaveLength(1);
-    expect(registrationRun.participants.get(registrationB)?.fences).toHaveLength(1);
+    assertMatrixRow(
+      registrationRun,
+      [registrationA, registrationB],
+      "g76-registration-only",
+      { [registrationA]: "fresh-201", [registrationB]: "fresh-201" },
+    );
 
     const mixedTag = "g76-matrix-registration-mixed";
     const mixedRun = fakeRun({
@@ -285,8 +499,13 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
     });
     const mixedBody = await partialResponse(mixedRun, [written, mixedTag], "g76-registration-mixed");
     expect(mixedBody.partial).toMatchObject({ writtenTags: [written], missingTags: [mixedTag], retryable: false });
-    expect(mixedRun.participants.get(written)?.events).toHaveLength(1);
-    expect(mixedRun.participants.get(mixedTag)?.events).toEqual([]);
+    const mixedCandidates = assertMatrixRow(
+      mixedRun,
+      [written, mixedTag],
+      "g76-registration-mixed",
+      { [mixedTag]: "fresh-201" },
+    );
+    assertPartialEventLists(mixedBody, mixedCandidates, [written]);
 
     const allWrittenA = "g76-matrix-all-written-a";
     const allWrittenB = "g76-matrix-all-written-b";
@@ -295,10 +514,38 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
       [allWrittenA, allWrittenB],
       { fault: "sealing-after-cas", attemptId: "g76-all-written-response-loss" },
     ));
-    expect(allWrittenResponse.status).toBe(504);
+    expect(allWrittenResponse.status, "G76 public assertion: all-written response loss must remain 504").toBe(504);
+    expect(allWrittenResponse.headers.get("x-sdt-g4-attempt-id")).toBe("g76-all-written-response-loss");
     expect(await responseBody(allWrittenResponse)).toMatchObject({ code: "timeout", error: OUTCOME_UNDETERMINED_ERROR });
-    expect(allWrittenRun.participants.get(allWrittenA)?.events).toHaveLength(1);
-    expect(allWrittenRun.participants.get(allWrittenB)?.events).toHaveLength(1);
+    assertMatrixRow(allWrittenRun, [allWrittenA, allWrittenB], "g76-all-written-response-loss", {}, null);
+  });
+
+  it("AC3 identity oracle rejects a corrupted event identity or public event list", async () => {
+    const written = "g76-identity-written";
+    const missing = "g76-identity-missing";
+    const attemptId = "g76-identity-corruption";
+    const run = fakeRun({ append: { [written]: "committed", [missing]: "rollback" } });
+    const body = await partialResponse(run, [written, missing], attemptId);
+    const candidates = assertMatrixRow(run, [written, missing], attemptId, { [missing]: "fresh-201" });
+    assertPartialEventLists(body, candidates, [written]);
+
+    const corruptedBody = {
+      ...body,
+      partial: {
+        ...(body.partial as Record<string, unknown>),
+        writtenEventIds: ["g76-corrupted-event-id"],
+      },
+    };
+    expect(() => assertPartialEventLists(corruptedBody, candidates, [written])).toThrow();
+
+    const writtenFacts = run.participants.get(written)!;
+    const originalEvents = writtenFacts.events.slice();
+    writtenFacts.events.splice(0, writtenFacts.events.length, {
+      ...originalEvents[0]!,
+      eventId: "g76-corrupted-event-id",
+    });
+    expect(() => assertParticipantFacts(run, [written, missing], attemptId, candidates, { [missing]: "fresh-201" })).toThrow();
+    writtenFacts.events.splice(0, writtenFacts.events.length, ...originalEvents);
   });
 
   it("AC3 mutant target: a recognized partial write remains definite and non-retryable", async () => {
@@ -314,10 +561,10 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
     const missing = "g76-mutant-incomplete-missing";
     const run = fakeRun({ append: { [written]: "committed", [missing]: "rollback" }, fence: { [missing]: "rejected" } });
     const response = await run.worker.handle(request([written, missing], { fault: "tag-append-last", attemptId: "g76-mutant-incomplete" }));
-    expect(response.status).toBe(504);
+    expect(response.status, "G76 public assertion: incomplete fence acknowledgement must remain 504").toBe(504);
     expect(await responseBody(response)).toMatchObject({ code: "timeout", error: OUTCOME_UNDETERMINED_ERROR });
-    expect(run.participants.get(written)?.events).toHaveLength(1);
-    expect(run.participants.get(missing)?.fences).toEqual([]);
+    expect(response.headers.get("x-sdt-g4-attempt-id")).toBe("g76-mutant-incomplete");
+    assertMatrixRow(run, [written, missing], "g76-mutant-incomplete", { [missing]: "rejected" });
   });
 
   it("AC3 mutant target: partial.retryable remains false", async () => {
@@ -337,23 +584,30 @@ describe("SDT-G76 definite partial-write regression matrix", () => {
       fence: { [pendingA]: "fresh-201", [pendingB]: "rejected" },
     });
     const response = await run.worker.handle(request([written, pendingA, pendingB], { fault: "tag-append-last", attemptId: "g76-mutant-all-pending" }));
-    expect(response.status).toBe(504);
+    expect(response.status, "G76 public assertion: every pending participant fence is required").toBe(504);
     expect(await responseBody(response)).toMatchObject({ code: "timeout", error: OUTCOME_UNDETERMINED_ERROR });
-    expect(run.participants.get(written)?.events).toHaveLength(1);
-    expect(run.participants.get(pendingA)?.fences).toHaveLength(1);
-    expect(run.participants.get(pendingB)?.fences).toEqual([]);
+    expect(response.headers.get("x-sdt-g4-attempt-id")).toBe("g76-mutant-all-pending");
+    assertMatrixRow(
+      run,
+      [written, pendingA, pendingB],
+      "g76-mutant-all-pending",
+      { [pendingA]: "fresh-201", [pendingB]: "rejected" },
+    );
   });
 
   it("AC3 keeps reservation timeout 504 distinct from the undetermined outcome", async () => {
     const tag = "g76-reservation-timeout";
     const run = fakeRun({ append: { [tag]: "committed" }, acquireFailure: true });
     const response = await run.worker.handle(request([tag], { fault: "reservation-delayed-success", reserve: true, attemptId: "g76-reservation-timeout" }));
-    expect(response.status).toBe(504);
+    expect(response.status, "G76 public assertion: reservation timeout must remain 504").toBe(504);
+    expect(response.headers.get("x-sdt-g4-attempt-id")).toBe("g76-reservation-timeout");
     const body = await responseBody(response);
     expect(body).toMatchObject({ code: "timeout", error: "serialized commit timed out" });
     expect(body.error).not.toBe(OUTCOME_UNDETERMINED_ERROR);
     expect(run.participants.get(tag)?.events ?? []).toEqual([]);
     expect(run.participants.get(tag)?.fences ?? []).toEqual([]);
+    expect(run.appendRequests).toEqual([]);
+    expect(run.fenceRequests).toEqual([]);
   });
 
   it("AC3 real Tag owner persists fresh/idempotent fences and rejects stale or overlapping authority", async () => {

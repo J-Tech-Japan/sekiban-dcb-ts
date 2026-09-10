@@ -149,3 +149,63 @@ checks in the run, including `ci-g21-g25`, `ci-g30-core`, `ci-g30-forced-red`,
 push, if used to carry this receipt on the PR head, does not change the
 implementation or its no-product-change verdict; the exact final PR head and
 its terminal check receipt are recorded in the companion W203 report.
+
+## W228 F1–F3 repair evidence
+
+This bounded repair starts from the exact W221-reviewed source head
+`62c0586a61d8bad4250d3bdcb79e6159dfef290a` on
+`claude/sdt-g76-regression-matrix-w203`, with target base
+`193cfa44563d08ffadef146c4eca769098044be1`. The source checkout was verified
+against that head before editing. The final repair head, its source and
+checkout identities, the terminal hosted receipt, and the lifecycle receipts
+are published in the PR summary and the W228 handoff artifact; historical
+receipts above remain attributed to their original objects.
+
+### F1 — structured semantic mutation receipts
+
+`g76-regression-matrix-mutation-runner.mjs` now keeps the child-process exit
+status, terminating signal, spawn error and JSON Vitest report instead of
+turning every nonzero result into a red mutant. Each mutation's clean control
+must have one passing test with the exact named oracle. A mutated run is
+accepted only when it has status `1`, no signal or spawn error, a parseable
+failed JSON report, exactly one failed assertion, and that assertion is the
+named public-response oracle with its labelled expected boundary assertion.
+Missing reports, setup/import failures, timeouts, signal termination,
+unrelated failures, multiple failures and green escapes are rejected. The
+runner self-test exercises each of those rejection classes. The four existing
+CommitWorker source anchors, green control, temporary mutation and
+`finally` restoration are retained; no production source is committed.
+
+### F2 — request, candidate, fence and public identity linkage
+
+The matrix adapter records every actual `/append` request, including its
+attempt, epoch, allocator lineage, optional reservation/fault fields, complete
+candidate identity (`eventId`, SUID, payload, event type, `g32` provenance,
+event tags, lineage and timestamp), and returned status/body. It records each
+actual `/fence/install` request and the response body that was really returned;
+rejected and lost acknowledgements are no longer represented by a fabricated
+success body. For every matrix row, assertions link the request candidate to
+the durable event facts, the request attempt to event and fence facts, the tag
+to its exact append/fence response, and the public outcome to the exact
+`partial.writtenEventIds` and `partial.failedEventIds` lists. The negative
+identity test corrupts both a public event list and a durable event identity
+and proves the oracle rejects each corruption. The row distinctions remain:
+transaction rollback has no event, post-commit reply loss retains event and
+fence facts, status-only fresh 201/idempotent 200 fences remain accepted, and
+the registration-only, mixed-registration, all-written response-loss and
+reservation-timeout boundaries stay separate.
+
+### F3 — durable attribution and unchanged-scope audit
+
+The W228 PR summary and handoff identify, separately, the W221 review head,
+the W228 source commit, the final checkout SHA, target base and hosted
+workflow/job SHAs. They link the exact terminal run rather than relabelling
+the historical 34423535120 receipt. The claim and PR-created/repair lifecycle
+receipts are linked by task identity and nonce. The final diff audit must show
+no `packages/dcb-runtime/src/**` or migration change, no CommitWorker change
+in the committed tree, no SDT-G75/G77/G80/G81 work, and no SafeWindow, retry,
+drain, budget, timeout, deployment or unrelated-lane change. The G79 audit is
+explicit: `scripts/g79-*`, its test/config/reporter wiring and the existing
+G43 fixture remain unchanged; this repair only strengthens the G76 test,
+mutation validator and evidence surfaces. Any hosted failure outside those
+surfaces is retained as a receipt and not calibrated or repaired here.
