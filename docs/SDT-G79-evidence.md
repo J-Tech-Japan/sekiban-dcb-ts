@@ -278,13 +278,145 @@ with their exact workflow/job/invocation identities after the two planned
 attempts. No budget is changed merely because one historical run was green or
 because a file total was mistaken for an assertion duration.
 
-### Per-test budget catalog: measured, comfortable, near, and missing
+## W209 terminal all-lane receipts
+
+The predeclared repeated hosted plan completed against the W209 source head
+`bffb8f29031d4f44c1162c4b80d07840592a7550` (`bffb8f2`). The workflow checkout
+identity emitted by Actions was
+`c388105e27d565e4cb14572f4d231dce89bb385d` (`workflowCheckoutSha`); it is kept
+separate from the PR source SHA. The two attempts were:
+
+| attempt | workflow receipt | representative jobs | terminal result / wall clock |
+| --- | --- | --- | --- |
+| 1 | [34451288471](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288471/attempts/1), source `bffb8f2`, [ci-foundation 102787392474](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288471/job/102787392474), [ci-g43 102787392565](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288471/job/102787392565) | full 21-job workflow plus aggregate verify `102800168810` | success; `07:42:16Z` to `08:28:08Z` (45m52s) |
+| 2 | [34451288471 attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288471/attempts/2), same source and checkout SHA, [ci-foundation 102800629912](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288471/job/102800629912), [ci-g43 102800630013](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288471/job/102800630013) | the same 21-job workflow plus aggregate verify `102813047343` | success; `08:29:33Z` to `09:12:06Z` (42m33s) |
+
+The inventory is 21 jobs and 126 unique command rows per workflow attempt:
+71 rows expand to a supported Vitest per-test reporter invocation and 55 are
+proof-only commands. The G43 job prints the static inventory during both its
+normal and forced-red invocations, so each log contains 252 raw inventory
+lines and two summary lines; those duplicate prints are reconciled to the 126
+unique rows rather than counted as extra workflow attempts. The two attempts
+produced 4,350 test receipts (2,175 each), 810 distinct
+`file:source-location:full-name:budget` identities, and 4,290 completed
+duration observations.
+
+The complete 810-row aggregate catalog is committed at
+[`docs/SDT-G79-hosted-measurements.jsonl`](SDT-G79-hosted-measurements.jsonl).
+Every row records the source/checkout identities, exact file and source
+location, full test name, actual budget origin, one-line work basis, all
+completed durations from the repeated plan, states, remaining margin, and the
+classification/disposition. The raw per-observation receipts remain
+searchable in the linked hosted job logs as `SDT-G79_HOSTED_TEST_TIMING` lines.
+
+| aggregate classification | distinct test identities | observations / disposition |
+| --- | ---: | --- |
+| comfortable | 809 | 4,287 passed and 3 expected forced-red failures; retain each governing budget and no evidence-backed budget change |
+| near-budget (`>=50%`) | 0 | no observed row reaches the declared threshold |
+| over-budget | 0 | no completed observation exceeds its governing budget |
+| censored-only | 1 | `test/g32-csharp-runtime.spec.ts:196:3`, skipped in both attempts; retain as an explicit missing duration, not comfortable |
+
+The three failed observations are expected proof receipts inside successful
+mutation/probe invocations, not production failures: the G26 topology
+forced-red assertion at `test/g26-topology.spec.mjs:98:3` was `5.235688999999979`
+ms in attempt 1 (`ci-g26-g27:3544`) and `4.652501999999998` ms in attempt 2
+(`ci-g26-g27:3348`), and the G46 forced-red lag assertion at
+`test/read.spec.ts:338:3` was `1,202` ms in attempt 1 (`ci-g46:6088`). The
+workflow's mutation oracles consumed those nonzero results and every hosted
+job remained green. They are retained as `failed`, not relabelled as
+comfortable.
+
+The 60 censored observations are also explicit: 58 G30 trace cases were
+skipped by the existing G51 prerequisite in the two attempts, and the pinned
+C# runtime test above was skipped once per attempt. No skip, retry, flaky
+annotation, or lane was added by G79.
+
+The highest observed utilization among completed aggregate identities was
+still comfortable: `test/tag.spec.ts:401:3` reached 1,193/3,000 ms (1,807 ms
+margin), G67 AC3 at `test/g67-safe-lane.spec.ts:731:3` reached 3,818/10,000 ms
+(6,182 ms margin), the explicit AC7 allocator test at
+`test/commit.spec.ts:556:3` reached 1,084/3,000 ms (1,916 ms margin), and the
+retained G43 structural measurement at `test/g43-measurement.spec.ts:276:3`
+reached 16,926/60,000 ms (43,074 ms margin). The catalog gives the same
+work/cost/margin/disposition fields for every other comfortable identity; no
+margin is inferred from a file total.
+
+The five unchanged W208 `ci-foundation` timeouts from workflow
+[34445256199](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34445256199),
+job `102768554508`, remain historical pre-instrumentation observations:
+
+| source row | W208 receipt | W209 repeated disposition |
+| --- | ---: | --- |
+| `test/commit.spec.ts:384` | 5,127/5,000 ms, inherited | completed at 748/792 ms; retain 5,000 ms |
+| `test/commit.spec.ts:556` | 3,264/3,000 ms, written | completed at 1,041/1,084 ms; retain 3,000 ms |
+| `test/g67-safe-lane.spec.ts:731` | 10,008/10,000 ms, written | completed at 3,166–3,818 ms; retain 10,000 ms and G67 semantics |
+| `test/repair.spec.ts:481` | 5,173/5,000 ms, inherited | completed at 834/856 ms; retain 5,000 ms |
+| `test/tag.spec.ts:401` | 3,024/3,000 ms, written | completed at 1,168/1,193 ms; retain 3,000 ms |
+
+The W208 `verify` failure was solely downstream of foundation. None of those
+five timeouts recurred as an over-budget or near-budget completed body under
+the repeated W209 reporter, so no additional budget was raised and no defect
+was calibrated away. The already-scoped G43 AC6 10,000 ms budget remains based
+on its genuine 33-obligation/SQL-`LIMIT 32`/alarm/re-arm work and the original
+5,121 ms hosted timeout receipt; it is not a global or inherited timeout.
+
+The catalog also resolves the actual budget source for every measured row:
+46 rows use written per-test options and 4,304 rows use the inherited Vitest
+5,000 ms default. No CLI `--testTimeout` or config-level `testTimeout` was
+present in these invocations. The source-located explicit budgets are G43 AC6
+at `test/g43-tag-sql.spec.ts:494:3` (10,000 ms), G43 structural measurement
+at `test/g43-measurement.spec.ts:276:3` (60,000 ms), G67 AC3 at
+`test/g67-safe-lane.spec.ts:731:3` (10,000 ms), plus the existing written
+options recorded in the JSONL catalog. Every retained/default budget has the
+same checkable test-work basis emitted in `budgetBasis`.
+
+## W210 release-preflight config repair
+
+The W209 source head exposed a separate release-only configuration defect. The
+old [34451288458](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288458)
+run at `bffb8f29031d4f44c1162c4b80d07840592a7550` failed before tests in
+`dcb-domain-release-preflight` job
+[102787391246](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34451288458/job/102787391246)
+at the step `Run
+@sekiban/dcb-domain test suite before publish` (`npm run test:g28`). The first
+Vitest error was `TypeError: Cannot read properties of undefined (reading
+'length')` at `node_modules/vitest/dist/chunks/coverage.DM_a_rWm.js:454`.
+
+Commit `c9566a3c7a8e784b6923f5fda0267442045ebff4`
+(`fix(g79): preserve Vitest defaults when measurement is off`) fixes only
+`vitest.config.ts`, `vitest.g20.config.ts`, and
+`vitest.g24-deploy.config.ts`. When `SDT_G79_HOSTED_MEASURE=1`, the configs
+still spread `includeTaskLocation: true` and the hosted reporter list. When
+the variable is unset, the conditional spread contributes no keys, leaving
+Vitest's defaults absent rather than explicitly overwriting them with
+`undefined`. The release-preflight workflow was not changed and no measuring
+environment variable was added to it.
+
+The local env-unset smoke command
+`env -u SDT_G79_HOSTED_MEASURE npx vitest run test/g38-tombstone.spec.ts
+--config vitest.config.ts --reporter=dot` passed 1 file / 5 tests without a
+startup error. The repaired [34456219877](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34456219877)
+run at `c9566a3` and job
+[102803113394](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34456219877/job/102803113394)
+completed `success` (`08:38:04Z`–`08:39:11Z`); the test-before-publish,
+release package/consumer, pack, and credential-free dry-run steps all passed.
+The repaired-head full workflow
+[34456219844](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34456219844)
+also completed `success` at `c9566a3`: 20 lane jobs plus aggregate `verify`
+were green, including foundation job
+[102803113963](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34456219844/job/102803113963)
+and G43 job
+[102803114055](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34456219844/job/102803114055),
+from `08:38:04Z` to `09:21:43Z` (43m39s). This config repair changes no
+production behavior, G43 coordination, timeout, retry, skip, or flaky policy.
+
+### W207 historical per-test budget catalog
 
 The checkable near-budget threshold is observed duration at least 50% of the
-budget. The complete supported per-test receipts available to W207 show no
-near-budget test. The following rows name every explicit non-default budget
-candidate found in the test tree and do not turn a missing measurement into a
-comfortable classification.
+budget. The following table is retained as the W207 snapshot, before the
+all-lane reporter was added. Its `missing` labels are historical claims about
+that snapshot, not the current W209 result. The complete current catalog is
+the 810-row JSONL file and the terminal logs in the W209 section above.
 
 | test / invocation | budget location | repeated hosted observation | margin / disposition |
 | --- | --- | --- | --- |
@@ -299,12 +431,12 @@ comfortable classification.
 | Tag G5 exact-key tests | `test/tag.spec.ts:519,553`, 3,000 ms each | no named per-test receipt | missing; near/comfortable unknown |
 | commit allocator/cancellation test | `test/commit.spec.ts:621`, 3,000 ms | no named per-test receipt | missing; near/comfortable unknown |
 
-Comfortable measured tests are all 20 G43 assertions in the repeated tables,
-G67 AC3, and the six-boundary repair test. No measured row reaches 50%, so the
-near-budget set is empty **within the supported receipts**. The missing rows
-and the 20 non-G43 workflow entries (19 missing/partial timing entries plus
-the aggregate) are named explicitly; W207 makes no
-unsupported claim about their margins and raises no additional timeout.
+This W207 table is not used for the final W209 completeness verdict. W209
+reconciles all 71 per-test-reporter invocations across the existing lanes,
+names every distinct comfortable identity in the committed JSONL catalog,
+retains the one censored-only identity, and reports the three expected
+forced-red failures separately. The old `missing` labels are therefore
+superseded, not silently reclassified from file totals.
 
 ## AC3 unchanged proof and red mutants
 
@@ -395,15 +527,16 @@ not asserted to be independently verified GitHub events in this document.
 The W207 repair report supplies the exact post-update completion output and
 the final PR head.
 
-## Scope and missing evidence
+## Scope and evidence boundary
 
-Only the G43 test budget, G43-lane timing/inventory reporters, G79 mutation
-runner, and this evidence are in scope. There is no product-code change, no
-G43 repair, no assertion removal, no skip/flaky annotation, no CI timeout
-inflation, and no change to PR #158. G43 has complete repeated per-test
-receipts; G67 and the six-boundary repair have named comfortable receipts.
-The all-lane inventory explicitly records the other lanes' missing per-test
-measurements; their margins are not inferred. Historical main receipts did
-not expose assertion-level durations, so the before comparison is honestly
-limited to their file/suite and workflow clocks; no per-test main value is
-inferred.
+Only the G43 test budget, the all-lane timing/inventory reporters, the G79
+mutation runner, the conditional Vitest config repair, and this evidence are
+in scope. There is no product-code change, no G43 repair, no assertion
+removal, no skip/flaky annotation, no CI timeout inflation, and no change to
+PR #158. W209 has complete repeated per-test receipts for every supported
+Vitest invocation in the existing workflow; its proof-only commands are
+explicitly inventory-only and do not receive invented body durations. The
+single censored-only test and the three expected failed mutation/probe rows
+are named above. Historical main and W208 receipts remain historical and are
+not used as current per-test values; no duration is inferred from a file
+total.
