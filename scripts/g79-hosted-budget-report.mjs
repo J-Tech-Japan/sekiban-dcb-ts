@@ -8,12 +8,15 @@
  * inherited-versus-written source explicit in the hosted log.
  */
 import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { relative, resolve } from "node:path";
 
 const root = process.cwd();
 const reportPath = resolve(root, process.argv[2] ?? ".artifacts/sdt-g79-vitest.json");
 const inheritedBudgetMs = 5_000;
 const nearBudgetFraction = 0.5;
+const historicalSourceHead = "21427a58534efe8af4b3553322268f84fd6cbbd6";
+const reviewedHead = "cd15a2729ea2aa062515012ad1938266856ede2b";
 const backlogTitle = "AC6: a backlog larger than one alarm budget progresses and re-arms instead of starving its tail";
 const measurementTitle = "consumes the packet-owned measurement spec with real Tag DO SQL transitions and a closed range-plan predicate";
 
@@ -33,6 +36,21 @@ function budgetFor(fileName, title) {
   return { budgetMs: inheritedBudgetMs, source: "Vitest inherited default (no local budget)" };
 }
 
+function currentCommitSha() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function sourceReceiptClass(commitSha) {
+  if (commitSha === historicalSourceHead) return "historical-source-head-21427a5";
+  if (commitSha === reviewedHead) return "reviewed-head-cd15a27-docs-only-equivalent";
+  return "current-source-head";
+}
+
 function main() {
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
   const files = report.testResults ?? [];
@@ -40,6 +58,16 @@ function main() {
     throw new Error(`SDT-G79 timing report has no test files: ${reportPath}`);
   }
 
+  const commitSha = currentCommitSha();
+  const receipt = {
+    commitSha,
+    sourceReceiptClass: sourceReceiptClass(commitSha),
+    workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+    workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    workflow: process.env.GITHUB_WORKFLOW ?? null,
+    job: process.env.GITHUB_JOB ?? null,
+    invocation: process.env.SDT_G79_INVOCATION ?? "normal",
+  };
   const rows = [];
   for (const file of files) {
     for (const assertion of file.assertionResults ?? []) {
@@ -51,8 +79,8 @@ function main() {
       const marginMs = budget.budgetMs - assertion.duration;
       const utilization = assertion.duration / budget.budgetMs;
       const row = {
+        ...receipt,
         runId: process.env.GITHUB_RUN_ID ?? null,
-        job: process.env.GITHUB_JOB ?? null,
         file: normalizedFileName(file.name),
         title,
         observedDurationMs: assertion.duration,
@@ -72,8 +100,8 @@ function main() {
   }
   if (rows.length === 0) throw new Error("SDT-G79 timing report contains no assertions");
   console.log(`SDT-G79_HOSTED_TEST_TIMING_SUMMARY ${JSON.stringify({
+    ...receipt,
     runId: process.env.GITHUB_RUN_ID ?? null,
-    job: process.env.GITHUB_JOB ?? null,
     reportPath,
     inheritedBudgetMs,
     nearBudgetFraction,
