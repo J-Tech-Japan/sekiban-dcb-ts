@@ -52,13 +52,48 @@ inferred from local timing.
 
 The G79 timing reporter is wired into `npm run test:g43` and prints one
 `SDT-G79_HOSTED_TEST_TIMING` JSON line for each of the 20 assertions. Direct
-per-test hosted receipts and repeated-run values will be appended here after
-the dedicated PR's terminal CI runs. Until those runs exist, this section does
-not claim that local durations are hosted evidence.
+per-test hosted receipts were collected on two terminal attempts at the same
+exact head. Each `ci-g43` job runs the normal lane and the forced-red lane, so
+the four values below are `attempt 1 normal / forced-red` and
+`attempt 2 normal / forced-red`, in milliseconds. The minimum margin is the
+smallest margin across those four hosted observations.
 
-| exact-head hosted run | `ci-g43` job | 20 assertion timing rows | terminal result |
-| --- | --- | --- | --- |
-| pending at initial implementation handoff | pending | pending | not yet collected |
+| exact-head hosted run | `ci-g43` job | terminal result |
+| --- | --- | --- |
+| [34427912295 attempt 1](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295) | [102716974790](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295/job/102716974790) | green |
+| [34427912295 attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295/attempts/2) | [102725811608](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295/job/102725811608) | green |
+
+All 20 assertions were comfortable (`nearBudget: []`) in both attempts. The
+complete rows are:
+
+| assertion | attempt 1 ms | attempt 2 ms | budget / source | minimum margin | classification |
+| --- | ---: | ---: | --- | ---: | --- |
+| golden digest | 6 / 7 | 5 / 7 | 5,000 / inherited | 4,993 ms | comfortable |
+| duplicate/reordered tags | 2 / 1 | 2 / 2 | 5,000 / inherited | 4,998 ms | comfortable |
+| non-projected field fails closed | 0 / 1 | 1 / 1 | 5,000 / inherited | 4,999 ms | comfortable |
+| distinct event identities | 1 / 1 | 1 / 1 | 5,000 / inherited | 4,999 ms | comfortable |
+| real Tag-DO SQL measurement | 6,619 / 7,458 | 7,102 / 7,703 | 60,000 / retained explicit | 52,297 ms | comfortable |
+| invalid measurement shapes | 8 / 12 | 7 / 12 | 5,000 / inherited | 4,988 ms | comfortable |
+| commit five normalized facts | 63 / 57 | 75 / 61 | 5,000 / inherited | 4,925 ms | comfortable |
+| rollback five facts | 27 / 27 | 40 / 29 | 5,000 / inherited | 4,960 ms | comfortable |
+| first-write identity/rejected reserve | 51 / 45 | 53 / 49 | 5,000 / inherited | 4,947 ms | comfortable |
+| cancellation preserves source facts | 79 / 69 | 86 / 77 | 5,000 / inherited | 4,914 ms | comfortable |
+| scan unacknowledged obligations | 24 / 23 | 34 / 25 | 5,000 / inherited | 4,966 ms | comfortable |
+| due alarm leaves source enumerable | 58 / 62 | 69 / 61 | 5,000 / inherited | 4,931 ms | comfortable |
+| poison retry does not starve sibling | 139 / 121 | 162 / 130 | 5,000 / inherited | 4,838 ms | comfortable |
+| minimum due-time scheduler | 94 / 81 | 98 / 87 | 5,000 / inherited | 4,902 ms | comfortable |
+| inserted obligation re-arms | 38 / 33 | 45 / 39 | 5,000 / inherited | 4,955 ms | comfortable |
+| crash before/after re-arm | 142 / 134 | 150 / 141 | 5,000 / inherited | 4,850 ms | comfortable |
+| 33-obligation backlog / 32-row limit | 418 / 414 | 475 / 432 | 10,000 / written G79 | 9,525 ms | comfortable |
+| same identity changed digest | 32 / 28 | 41 / 44 | 5,000 / inherited | 4,956 ms | comfortable |
+| distinct persisted source rows | 24 / 24 | 24 / 24 | 5,000 / inherited | 4,976 ms | comfortable |
+| every append cursor consumed | 22 / 23 | 25 / 28 | 5,000 / inherited | 4,972 ms | comfortable |
+
+The abbreviated assertion labels above map one-to-one, in source order, to
+the 20 titles printed by the linked job logs. The threshold is still
+`duration >= 50%` of budget; no hosted row reaches it. The target backlog is
+only 4.75% of its 10,000 ms budget at its slowest observation, while the
+retained measurement is at most 12.84% of 60,000 ms.
 
 ## AC3 unchanged proof and red mutants
 
@@ -78,22 +113,43 @@ and proves both required red mutations:
    temporary test copy and runs the AC6 proof-shape contract; the contract
    fails because the proof boundary was weakened.
 
-The hosted terminal receipts for the two red results will be appended with the
-exact run/job identity. Local execution already returned `both-red`; it is not
-substituted for the required hosted evidence.
+The hosted terminal receipts for the two red results are recorded with the
+exact run/job identity. Both exact-head hosted attempts returned the required
+`both-red` result in both the normal and forced-red invocations:
+
+| attempt | hosted log timestamps | result |
+| --- | --- | --- |
+| 1 | 02:07:28Z and 02:11:21Z | `shrink-backlog-below-alarm-budget: red`; `remove-rearm-assertion: red` |
+| 2 | 02:52:05Z and 02:56:04Z | `shrink-backlog-below-alarm-budget: red`; `remove-rearm-assertion: red` |
+
+The receipts are in the linked `ci-g43` job logs above. Local execution also
+returned `both-red`, but it is not substituted for the hosted evidence.
 
 ## Before/after wall-clock cost
 
 The baseline workflow and `ci-g43` durations above are the before receipts.
-After-calibration workflow and `ci-g43` durations, plus the repeated exact-head
-G43 observations, will be recorded from the dedicated PR's terminal hosted
-runs. No claim about an after cost is made before those receipts are available.
+The two after receipts are terminal green runs at the same exact head:
+
+| receipt | workflow wall-clock | `ci-g43` wall-clock | result |
+| --- | ---: | ---: | --- |
+| main [34418417311](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34418417311) | 35 m 44 s | 8 m 04 s | green |
+| G79 [34427912295 attempt 1](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295) | 41 m 50 s | 8 m 09 s | green |
+| G79 [34427912295 attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295/attempts/2) | 43 m 21 s | 8 m 17 s | green |
+
+The whole-workflow increase is in the existing long G30/G32/forced-red lanes;
+the G43 lane itself increased by only 5–13 seconds while adding assertion
+receipts and the two red-mutant proofs. The selected 10,000 ms budget is
+therefore based on the measured 5,121 ms PR #158 failure and the genuine 33
+obligation/SQL/alarm work, not on a CI anecdote or on changing a production
+guard.
 
 ## Scope and missing evidence
 
 Only the G43 test budget, G43-lane timing reporter, G79 mutation runner, and
 this evidence are in scope. There is no product-code change, no G43 repair,
 no assertion removal, no skip/flaky annotation, no CI timeout inflation, and
-no change to PR #158. The explicit missing items above are the hosted
-assertion-level and after-calibration receipts; they must be filled from
-openable exact-head CI logs rather than inferred from local runs.
+no change to PR #158. All required G79 hosted assertion-level, repeated-run,
+mutation, and after-calibration receipts are present in the linked exact-head
+logs. Historical main receipts did not expose assertion-level durations, so
+the before comparison is honestly limited to their file/suite and workflow
+clocks; no per-test main value is inferred.
