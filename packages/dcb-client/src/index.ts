@@ -76,6 +76,8 @@ export interface ListQueryResponse {
   readonly totalPages: number;
   readonly currentPage: number;
   readonly pageSize: number;
+  /** The durable read-side head that actually backs this page, when supplied. */
+  readonly readHead?: string;
 }
 
 export interface SerializedDcbTransport {
@@ -132,7 +134,12 @@ const snapshotStateId = (response: ReadonlyTagStateResponse): string => {
 function normalizeSnapshot(value: unknown, requestedTagStateId?: string): TagStateSnapshot {
   const body = unwrapHttpBody(value);
   if (!isRecord(body)) throw new ClientError("invalid_read_snapshot", "Tag-state response was not an object");
-  const payload = assertJsonValue(body.payload, "value");
+  let payload: JsonValue;
+  try {
+    payload = assertJsonValue(body.payload, "value");
+  } catch (error) {
+    throw new ClientError("invalid_read_snapshot", "Tag-state response had an invalid payload", { cause: error });
+  }
   if (typeof body.version !== "number" || !Number.isSafeInteger(body.version) || body.version < 0) {
     throw new ClientError("invalid_read_snapshot", "Tag-state response had an invalid version");
   }

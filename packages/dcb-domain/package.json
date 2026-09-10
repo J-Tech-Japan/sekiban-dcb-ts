@@ -1,6 +1,6 @@
 {
   "name": "@sekiban/dcb-domain",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "description": "Runtime-free schema-first DCB domain authoring surface.",
   "license": "Elastic-2.0",

@@ -215,6 +215,27 @@ export async function readProjectedEntries(
 }
 
 /**
+ * Return the greatest durable checkpoint that backs a projection definition.
+ * This is the safe head for the memory query lane, including an empty page;
+ * it is never inferred from the number of rows returned.
+ */
+export async function readProjectionHead(
+  store: QueryProjectionStore,
+  serviceId: string,
+  definition: QueryDefinition,
+): Promise<string> {
+  let head = "";
+  const tags = await store.listProjectionTags(serviceId);
+  for (const tag of tags) {
+    const identity = tagIdentity(tag, definition);
+    if (identity === undefined) continue;
+    const checkpoint = await store.readProjectionCheckpoint(serviceId, projectionIdFor(identity));
+    if (checkpoint !== undefined && compareSuid(checkpoint.lastSuid, head) > 0) head = checkpoint.lastSuid;
+  }
+  return head;
+}
+
+/**
  * A requested SUID is observed only after a relevant durable source event and
  * its mapped tag projector checkpoint both prove that observation. A mere
  * source-row arrival is not enough to fabricate a query result.

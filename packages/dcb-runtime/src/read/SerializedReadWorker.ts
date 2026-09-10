@@ -134,7 +134,10 @@ export class SerializedReadWorker {
     await this.ensureWindowDeterminate();
     const record = await this.readTag(parsed.value);
     return json({
-      exists: record !== undefined && record.head.length > 0,
+      // Tag existence is the durable Tag record's fact, not a proxy for the
+      // record having emitted an event.  A created/identified tag can have an
+      // empty head and must still be observable as existing.
+      exists: record !== undefined,
       lastSortableUniqueId: record?.head ?? "",
     });
   }

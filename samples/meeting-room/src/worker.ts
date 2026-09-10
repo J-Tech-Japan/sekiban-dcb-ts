@@ -7,7 +7,13 @@ import {
   TagStateDurableObject,
   type Env as RuntimeEnv,
 } from "@sekiban/dcb-runtime";
-import { executeMeetingRoomCommand, globalAdmissionStatusFromResult, parseMeetingRoomCommandRequest } from "./transport";
+import {
+  createV1Transport,
+  executeMeetingRoomCommand,
+  globalAdmissionStatusFromResult,
+  parseMeetingRoomCommandRequest,
+} from "./transport";
+import { createSekibanExecutor, ClientError } from "@sekiban/dcb-client";
 import {
   meetingRoomDomain,
   meetingRoomRuntimeConfig,
@@ -169,16 +175,6 @@ function positiveInteger(value: string | null, name: string, fallback: number): 
   return parsed;
 }
 
-async function relayRuntimeJson(response: Response): Promise<Response> {
-  let body: unknown;
-  try {
-    body = await response.json();
-  } catch {
-    return json({ error: `Query read returned HTTP ${response.status}`, code: "transport" }, 502);
-  }
-  return json(body, response.status);
-}
-
 async function readApplicationQuery(
   request: Request,
   env: MeetingRoomEnv,
@@ -207,27 +203,40 @@ async function readApplicationQuery(
       return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
     }
     waitForSortableUniqueId = requestedWait ?? undefined;
-    // Match the deployed app route: list reads opt in to the immediate lane,
-    // while raw runtime callers continue to default to safe-only results.
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize, consistency: "unsafe", ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
   } else {
     const roomId = url.searchParams.get("roomId");
     queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
   }
 
   const queryType = isReservations ? "GetReservationListQuery" : "GetRoomStateQuery";
-  // Construct a fresh internal request. In particular, never copy incoming
-  // headers: namespace selectors and conformance credentials are client input.
-  const response = await runtimeFetcher(env, ctx, runtimeHandler).fetch("https://runtime.internal/api/sekiban/serialized/" + (isReservations ? "list-query" : "query"), {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
+  // Keep the public sample route GET-shaped, but make the read itself use the
+  // published client executor.  In particular, the immediate lane is an
+  // executor listQuery option rather than an untyped serialized field.
+  const runtimeTransport = createV1Transport(
+    runtimeFetcher(env, ctx, runtimeHandler),
+    env.SDT_SERVICE_ID,
+  );
+  const executor = createSekibanExecutor(runtimeTransport, { serviceId: env.SDT_SERVICE_ID });
+  try {
+    if (isReservations) {
+      const result = await executor.listQuery({
+        queryType,
+        queryParamsJson: JSON.stringify(queryParams),
+        ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
+      }, { consistency: "unsafe" });
+      return json(result);
+    }
+    const result = await executor.query({
       queryType,
       queryParamsJson: JSON.stringify(queryParams),
       ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-    }),
-  });
-  return relayRuntimeJson(response);
+    });
+    return json(result);
+  } catch (error) {
+    if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
+    return json({ error: "Query read failed", code: "transport" }, 502);
+  }
 }
 
 async function commandRequest(request: Request, env: MeetingRoomEnv, ctx: ExecutionContext, runtimeHandler: MeetingRoomRuntimeHandler): Promise<Response> {

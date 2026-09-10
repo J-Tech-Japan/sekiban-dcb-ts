@@ -5,6 +5,7 @@ import {
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import {
   projectionHasObserved,
+  readProjectionHead,
   readRowsPageFromBacking,
   selectQueryBacking,
   compareSuid,
@@ -391,6 +392,18 @@ function resultResponse(
   });
 }
 
+function pageReadHead(
+  entries: readonly ProjectedQueryEntry[],
+  page: Pagination,
+  serverPaged: boolean,
+  safeHead?: string,
+): string | undefined {
+  if (page.consistency === "safe") return safeHead;
+  const offset = (page.currentPage - 1) * page.pageSize;
+  const visible = serverPaged ? entries : entries.slice(offset, offset + page.pageSize);
+  return visible.reduce((head, entry) => compareSuid(entry.suid, head) > 0 ? entry.suid : head, "");
+}
+
 /**
  * V1 §5.4/§5.5 HTTP surface. It never starts a projection catch-up or writes
  * a source/checkpoint row: the query sees only the durable read-side snapshot.
@@ -645,7 +658,17 @@ export async function handleSerializedQuery(
         observedAt: Date.now(),
       });
     }
-    return resultResponse(endpoint, page.entries, pagination.value, page.totalCount, page.serverPaged);
+    const memorySafeHead = requestedPage?.consistency === "safe" && selection.backing === "memory"
+      ? await readProjectionHead(selection.store, serviceId, definition)
+      : undefined;
+    return resultResponse(
+      endpoint,
+      page.entries,
+      pagination.value,
+      page.totalCount,
+      page.serverPaged,
+      requestedPage === undefined ? undefined : pageReadHead(page.entries, requestedPage, page.serverPaged, memorySafeHead),
+    );
   } catch {
     // A wait/read can race the detector or a generation transition. If the
     // ordering quarantine is already durable, preserve its typed public

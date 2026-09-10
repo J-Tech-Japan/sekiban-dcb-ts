@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const version = "0.1.1";
+const version = "0.2.0";
 const packageNames = ["dcb-core", "dcb-domain", "dcb-client"];
 const packageRoots = Object.fromEntries(packageNames.map((name) => [name, resolve(root, "packages", name)]));
 const allowedEntries = {

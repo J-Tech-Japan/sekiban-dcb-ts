@@ -41,8 +41,8 @@ jobs:
         run: npm run test:g59
       - run: node scripts/dcb-domain-pack-check.mjs
       - run: node scripts/dcb-domain-consumer-check.mjs
-      - run: node scripts/dcb-domain-release-check.mjs dcb-domain-v0.1.1
-      - run: node scripts/dcb-domain-release-notes.mjs dcb-domain-v0.1.1 "$RUNNER_TEMP/dcb-domain-release-notes.md"
+      - run: node scripts/dcb-domain-release-check.mjs dcb-domain-v0.2.0
+      - run: node scripts/dcb-domain-release-notes.mjs dcb-domain-v0.2.0 "$RUNNER_TEMP/dcb-domain-release-notes.md"
       - name: Credential-free release-path dry-run proof
         run: |
           set -euo pipefail

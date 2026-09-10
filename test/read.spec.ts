@@ -289,7 +289,10 @@ describe("Serialized V1 reads", () => {
     expect(latest.status).toBe(200);
     expect(latest.headers.get("content-type")).toBe("application/json; charset=utf-8");
     expect(await responseJson<Record<string, unknown>>(latest)).toEqual({
-      exists: false,
+      // A durable partial-write Tag record exists even before it has an event
+      // head. G71 intentionally separates that authority fact from head
+      // emptiness.
+      exists: true,
       lastSortableUniqueId: "",
     });
 

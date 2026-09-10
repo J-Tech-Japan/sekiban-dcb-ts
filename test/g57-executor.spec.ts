@@ -64,7 +64,10 @@ function fixtureTransport(overrides: Partial<SerializedDcbTransport> = {}): Seri
       const tag = group === "reservation" ? reservationTag(content ?? "reservation") : roomTag(content ?? "room");
       return emptyState(projector, tag as ReturnType<typeof roomTag>);
     },
-    readTagLatestSortable: async () => ({ exists: false, lastSortableUniqueId: "" }),
+    // The authority is a durable Tag-record fact. This fixture models a
+    // pre-existing tag so read-through tests still exercise tag-state; cases
+    // that need absence override the authority explicitly below.
+    readTagLatestSortable: async () => ({ exists: true, lastSortableUniqueId: "" }),
     commit: async () => ({ status: 200, body: { writtenEvents: [], tagWriteResults: [] } }),
     query: async () => ({ status: 200, body: { resultJson: "{}" } }),
     listQuery: async () => ({ status: 200, body: { itemsJson: "[]", totalCount: 0, totalPages: 0, currentPage: 1, pageSize: 20 } }),
@@ -105,7 +108,11 @@ function runtimeFixture(captures: Array<{ readonly path: string; readonly body: 
         projectorVersion: String(projector.version),
       });
     }
-    if (path.endsWith("/tag-latest-sortable")) return response(200, { exists: false, lastSortableUniqueId: "" });
+    if (path.endsWith("/tag-latest-sortable")) {
+      const tag = String((body as { readonly tag?: string } | undefined)?.tag ?? "");
+      const roomExists = committed && tag === "room:room-1";
+      return response(200, { exists: roomExists, lastSortableUniqueId: roomExists ? "suid-room-1" : "" });
+    }
     if (path.endsWith("/commit")) {
       committed = true;
       return response(200, {
