@@ -49,6 +49,19 @@ G71 read contract can therefore migrate the generic HTTP/in-process executor
 surface independently, while the cloud import remains on its existing export
 until G78 publishes its matching package contract.
 
+The matched-set version is intentionally a 0.x compatibility boundary:
+`^0.2.0` permits `0.2.x` but not `0.3.0`, while `0.1.x` is not a compatible
+substitute for any member of this read-contract set. Pin all three packages to
+the same exact version when reproducibility matters, or use the same
+`^0.2.0` range for all three; do not mix a caret-updated client with an older
+core/domain pair. The portable migration path is to obtain a `readState`
+snapshot once, pass it as the command's snapshot input with
+`readMode: "snapshot-only"`, and treat any read method invoked by that path as
+a defect. The W223 packed consumer proves this with a throwing/counting
+transport and also compiles safe/unsafe consistency only on `listQuery`; it
+does not claim a new cloud implementation. G78 owns that staged factory move
+and its cloud error contract.
+
 The release workflow remains credential-free unless the operator explicitly
 selects a publish path. This change does not publish packages, create tags,
 or handle credentials.

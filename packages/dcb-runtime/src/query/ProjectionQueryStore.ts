@@ -178,17 +178,24 @@ function sameEntry(left: ProjectedQueryEntry, right: ProjectedQueryEntry): boole
   return left.suid === right.suid && left.payload === right.payload;
 }
 
+export interface ProjectedQuerySnapshot {
+  readonly entries: readonly ProjectedQueryEntry[];
+  /** Greatest checkpoint observed while constructing these exact entries. */
+  readonly readHead: string;
+}
+
 /**
  * Builds a query snapshot exclusively from durable read-side checkpoints.
  * A recently appended tag with no safe checkpoint is deliberately absent,
  * which keeps an already-open page window stable while SafeWindow holds it.
  */
-export async function readProjectedEntries(
+export async function readProjectedSnapshot(
   store: QueryProjectionStore,
   serviceId: string,
   definition: QueryDefinition,
-): Promise<ProjectedQueryEntry[]> {
+): Promise<ProjectedQuerySnapshot> {
   const entriesByEventId = new Map<string, ProjectedQueryEntry>();
+  let readHead = "";
   const tags = await store.listProjectionTags(serviceId);
   for (const tag of tags) {
     const identity = tagIdentity(tag, definition);
@@ -199,6 +206,11 @@ export async function readProjectedEntries(
     if (checkpoint === undefined) {
       continue;
     }
+    // The checkpoint is the authority for both the page rows and its safe
+    // head. In particular, an empty state still contributes its lastSuid.
+    if (compareSuid(checkpoint.lastSuid, readHead) > 0) {
+      readHead = checkpoint.lastSuid;
+    }
     for (const serialized of stateEntries(checkpoint)) {
       const entry: ProjectedQueryEntry = serialized;
       const existing = entriesByEventId.get(entry.eventId);
@@ -208,35 +220,24 @@ export async function readProjectedEntries(
       entriesByEventId.set(entry.eventId, entry);
     }
   }
-  return [...entriesByEventId.values()].sort((left, right) => {
-    const bySuid = compareSuid(left.suid, right.suid);
-    return bySuid === 0 ? compareSuid(left.eventId, right.eventId) : bySuid;
-  });
+  return {
+    entries: [...entriesByEventId.values()].sort((left, right) => {
+      const bySuid = compareSuid(left.suid, right.suid);
+      return bySuid === 0 ? compareSuid(left.eventId, right.eventId) : bySuid;
+    }),
+    readHead,
+  };
 }
 
-/**
- * Return the greatest durable checkpoint that backs a projection definition.
- * This is the safe head for the memory query lane, including an empty page;
- * it is never inferred from the number of rows returned.
- */
-export async function readProjectionHead(
+export async function readProjectedEntries(
   store: QueryProjectionStore,
   serviceId: string,
   definition: QueryDefinition,
-): Promise<string> {
-  let head = "";
-  const tags = await store.listProjectionTags(serviceId);
-  for (const tag of tags) {
-    const identity = tagIdentity(tag, definition);
-    if (identity === undefined) continue;
-    const checkpoint = await store.readProjectionCheckpoint(serviceId, projectionIdFor(identity));
-    if (checkpoint !== undefined && compareSuid(checkpoint.lastSuid, head) > 0) head = checkpoint.lastSuid;
-  }
-  return head;
+): Promise<ProjectedQueryEntry[]> {
+  return [...(await readProjectedSnapshot(store, serviceId, definition)).entries];
 }
 
-/**
- * A requested SUID is observed only after a relevant durable source event and
+/** A requested SUID is observed only after a relevant durable source event and
  * its mapped tag projector checkpoint both prove that observation. A mere
  * source-row arrival is not enough to fabricate a query result.
  */
@@ -296,7 +297,13 @@ export async function readRowsPageFromBacking(
   viewId: string,
   definition: QueryDefinition,
   options: MaterializedViewQueryOptions,
-): Promise<{ readonly entries: ProjectedQueryEntry[]; readonly totalCount: number; readonly serverPaged: boolean }> {
+): Promise<{
+  readonly entries: ProjectedQueryEntry[];
+  readonly totalCount: number;
+  readonly serverPaged: boolean;
+  /** Present for memory pages and observed from the same checkpoints as entries. */
+  readonly readHead?: string;
+}> {
   if (selection.backing === "d1-mv" && selection.store.queryRowsWithTotal !== undefined) {
     const page = await selection.store.queryRowsWithTotal(serviceId, viewId, options);
     return {
@@ -308,6 +315,11 @@ export async function readRowsPageFromBacking(
       totalCount: page.totalCount,
       serverPaged: true,
     };
+  }
+  if (selection.backing === "memory") {
+    const snapshot = await readProjectedSnapshot(selection.store, serviceId, definition);
+    const entries = options.descending === true ? [...snapshot.entries].reverse() : [...snapshot.entries];
+    return { entries, totalCount: entries.length, serverPaged: false, readHead: snapshot.readHead };
   }
   const entries = await readRowsFromBacking(selection, serviceId, viewId, definition, options);
   return { entries, totalCount: entries.length, serverPaged: false };

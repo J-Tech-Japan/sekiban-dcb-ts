@@ -5,9 +5,10 @@
  * under test, the named semantic oracle must turn red, and the original bytes
  * are restored before the next mutation.
  */
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
 const root = process.cwd();
@@ -64,20 +65,116 @@ const mutations = Object.freeze([
 ]);
 
 function run(args, label) {
-  const result = spawnSync(process.execPath, [vitest, ...args], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, CI: "1" },
-  });
-  return { label, status: result.status ?? 1, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+  const reportDirectory = mkdtempSync(resolve(tmpdir(), "sdt-g71-vitest-"));
+  const reportPath = resolve(reportDirectory, "vitest.json");
+  try {
+    const result = spawnSync(process.execPath, [vitest, ...args, "--reporter=json", "--outputFile", reportPath], {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024,
+      env: { ...process.env, CI: "1" },
+    });
+    let structured;
+    let reportError;
+    if (existsSync(reportPath)) {
+      try {
+        structured = JSON.parse(readFileSync(reportPath, "utf8"));
+      } catch (error) {
+        reportError = `Vitest JSON report could not be parsed: ${String(error)}`;
+      }
+    } else {
+      reportError = "Vitest did not produce a structured JSON report";
+    }
+    return {
+      label,
+      status: result.status,
+      signal: result.signal,
+      error: result.error === undefined ? undefined : String(result.error),
+      output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+      structured,
+      reportError,
+    };
+  } finally {
+    rmSync(reportDirectory, { recursive: true, force: true });
+  }
 }
 
 function requirePass(result) {
-  if (result.status !== 0) throw new Error(`${result.label} unexpectedly failed:\n${result.output}`);
+  if (result.status !== 0 || result.signal !== null || result.error !== undefined || result.reportError !== undefined) {
+    throw new Error(`${result.label} unexpectedly failed:\n${JSON.stringify(result, null, 2)}`);
+  }
+  const assertions = assertionResults(result.structured);
+  const matches = assertions.filter((assertion) => isNamedOracle(assertion, currentOracle));
+  if (matches.length !== 1 || matches[0].status !== "passed") {
+    throw new Error(`${result.label} did not produce one passing named oracle:\n${JSON.stringify(result, null, 2)}`);
+  }
 }
 
-function requireRed(result, mutation) {
-  if (result.status === 0) throw new Error(`${mutation.id} remained green under its semantic oracle`);
+let currentOracle;
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function assertionResults(value) {
+  if (!isRecord(value) || !Array.isArray(value.testResults)) return [];
+  return value.testResults.flatMap((file) => isRecord(file) && Array.isArray(file.assertionResults) ? file.assertionResults : []);
+}
+
+function isNamedOracle(assertion, oracleName) {
+  return isRecord(assertion) && assertion.title === oracleName &&
+    typeof assertion.fullName === "string" && assertion.fullName.endsWith(` ${oracleName}`);
+}
+
+function semanticFailureEvidence(result, mutation) {
+  const reject = (reason) => {
+    throw new Error(`${mutation.id} did not produce a semantic red oracle (${reason}):\n${JSON.stringify({
+      status: result.status,
+      signal: result.signal,
+      error: result.error,
+      reportError: result.reportError,
+      output: result.output,
+      structured: result.structured,
+    }, null, 2)}`);
+  };
+  if (result.status === 0) reject("green escape");
+  if (result.status === null) reject("process did not return a status");
+  if (result.signal !== null) reject(`process signal ${result.signal}`);
+  if (result.error !== undefined) reject(`process error ${result.error}`);
+  if (result.reportError !== undefined) reject(result.reportError);
+  if (!isRecord(result.structured) || result.structured.success !== false) reject("structured report was not a failed run");
+  const assertions = assertionResults(result.structured);
+  const matches = assertions.filter((assertion) => isNamedOracle(assertion, mutation.oracle));
+  if (matches.length !== 1) reject("named oracle was missing or ambiguous");
+  const oracle = matches[0];
+  if (!isRecord(oracle) || oracle.status !== "failed") reject("named oracle was skipped or did not fail");
+  const failedOther = assertions.some((assertion) => isRecord(assertion) && assertion.status === "failed" && !isNamedOracle(assertion, mutation.oracle));
+  if (failedOther) reject("an unrelated assertion also failed");
+  const failureMessages = Array.isArray(oracle.failureMessages)
+    ? oracle.failureMessages.filter((message) => typeof message === "string")
+    : [];
+  if (failureMessages.length === 0) reject("named oracle had no failed-assertion evidence");
+  const failureText = failureMessages.join("\n");
+  if (/(timed out|timeout|cannot find module|failed to load|setup|syntaxerror|referenceerror|typeerror|sigterm|sigkill|killed|unhandled)/i.test(failureText)) {
+    reject("failure evidence was infrastructure/setup/timeout/process failure");
+  }
+  if (!/(assertionerror|expected|received|assert|to (?:be|equal|have|contain|match))/i.test(failureText)) {
+    reject("failure evidence was not an assertion failure");
+  }
+  const summary = {
+    processStatus: result.status,
+    signal: result.signal,
+    processError: result.error ?? null,
+    reportError: result.reportError ?? null,
+    report: {
+      success: result.structured.success,
+      numFailedTests: result.structured.numFailedTests,
+      numTotalTests: result.structured.numTotalTests,
+    },
+    namedOracle: oracle.fullName,
+    failedAssertionMessages: failureMessages,
+  };
+  return summary;
 }
 
 function mutate(original, mutation) {
@@ -87,6 +184,7 @@ function mutate(original, mutation) {
 }
 
 function oracle(mutation) {
+  currentOracle = mutation.oracle;
   return run([
     "run",
     "--config",
@@ -105,17 +203,59 @@ function runMutation(mutation) {
     requirePass(oracle(mutation));
     writeFileSync(path, mutate(original, mutation), "utf8");
     const red = oracle(mutation);
-    requireRed(red, mutation);
+    const redEvidence = semanticFailureEvidence(red, mutation);
+    return { id: mutation.id, reason: mutation.reason, result: "behavioral-product-mutant-red", redEvidence };
   } finally {
     writeFileSync(path, original, "utf8");
   }
-  return { id: mutation.id, reason: mutation.reason, result: "behavioral-product-mutant-red" };
+}
+
+function assertRejects(label, action) {
+  try {
+    action();
+  } catch {
+    return;
+  }
+  throw new Error(`semantic red validator accepted ${label}`);
+}
+
+function syntheticResult({ status = 1, signal = null, error, structured }) {
+  return { label: "self-test", status, signal, error, reportError: undefined, output: "", structured };
+}
+
+function semanticReport(oracle, status = "failed", failureMessages = ["AssertionError: expected 1 to be 2"]) {
+  return {
+    success: status === "failed" ? false : true,
+    numFailedTests: status === "failed" ? 1 : 0,
+    numTotalTests: 1,
+    testResults: [{ assertionResults: [{ fullName: `SDT-G71 ${oracle}`, title: oracle, status, failureMessages }] }],
+  };
 }
 
 function selfTest() {
   const original = readFileSync(resolve(root, sourceFile), "utf8");
   for (const mutation of mutations) mutate(original, mutation);
-  process.stdout.write(`${JSON.stringify({ mutations: mutations.map(({ id }) => id), selfTest: "anchors-unique" })}\n`);
+  const mutation = mutations[0];
+  const semantic = semanticFailureEvidence(syntheticResult({ structured: semanticReport(mutation.oracle) }), mutation);
+  assertRejects("setup/import failure", () => semanticFailureEvidence(syntheticResult({ structured: semanticReport(mutation.oracle, "failed", ["Failed to load setup file"]) }), mutation));
+  assertRejects("timeout", () => semanticFailureEvidence(syntheticResult({ structured: semanticReport(mutation.oracle, "failed", ["Test timed out in 5000ms"]) }), mutation));
+  assertRejects("process kill", () => semanticFailureEvidence(syntheticResult({ status: null, signal: "SIGKILL", structured: semanticReport(mutation.oracle) }), mutation));
+  assertRejects("missing oracle", () => semanticFailureEvidence(syntheticResult({ structured: semanticReport("different oracle") }), mutation));
+  assertRejects("skipped oracle", () => semanticFailureEvidence(syntheticResult({ structured: semanticReport(mutation.oracle, "skipped", []) }), mutation));
+  assertRejects("unrelated assertion", () => semanticFailureEvidence(syntheticResult({ structured: {
+    ...semanticReport(mutation.oracle),
+    testResults: [{ assertionResults: [
+      { fullName: `SDT-G71 ${mutation.oracle}`, title: mutation.oracle, status: "failed", failureMessages: ["AssertionError: expected 1 to be 2"] },
+      { fullName: "SDT-G71 unrelated", title: "unrelated", status: "failed", failureMessages: ["AssertionError: expected 1 to be 2"] },
+    ] }],
+  } }), mutation));
+  assertRejects("green escape", () => semanticFailureEvidence(syntheticResult({ status: 0, structured: semanticReport(mutation.oracle, "passed", []) }), mutation));
+  process.stdout.write(`${JSON.stringify({
+    mutations: mutations.map(({ id }) => id),
+    selfTest: "anchors-and-semantic-validator",
+    acceptedSemanticEvidence: semantic,
+    rejectedCases: ["setup/import failure", "timeout", "process kill", "missing oracle", "skipped oracle", "unrelated assertion", "green escape"],
+  })}\n`);
 }
 
 function main() {

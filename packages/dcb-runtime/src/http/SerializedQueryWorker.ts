@@ -5,7 +5,6 @@ import {
 import { safeWindowCeilingExceeded, safeWindowMs } from "../projection/ProjectionRuntime";
 import {
   projectionHasObserved,
-  readProjectionHead,
   readRowsPageFromBacking,
   selectQueryBacking,
   compareSuid,
@@ -658,16 +657,13 @@ export async function handleSerializedQuery(
         observedAt: Date.now(),
       });
     }
-    const memorySafeHead = requestedPage?.consistency === "safe" && selection.backing === "memory"
-      ? await readProjectionHead(selection.store, serviceId, definition)
-      : undefined;
     return resultResponse(
       endpoint,
       page.entries,
       pagination.value,
       page.totalCount,
       page.serverPaged,
-      requestedPage === undefined ? undefined : pageReadHead(page.entries, requestedPage, page.serverPaged, memorySafeHead),
+      requestedPage === undefined ? undefined : pageReadHead(page.entries, requestedPage, page.serverPaged, page.readHead),
     );
   } catch {
     // A wait/read can race the detector or a generation transition. If the
