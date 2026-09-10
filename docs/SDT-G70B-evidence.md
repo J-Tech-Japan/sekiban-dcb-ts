@@ -131,5 +131,21 @@ candidate's issuance-resolution machinery was not copied. The only product
 source file touched by the mutant runner is restored after each temporary
 mutation; the final diff contains no `packages/dcb-runtime/src/**` change.
 
-Hosted exact-head CI result is appended to this document after the final push;
-if a receipt is unavailable it is reported as unavailable rather than inferred.
+## Hosted C-14 receipt and scope disposition
+
+The implementation head
+`210cbef041846a3bcca2126b8048cc466aa43bef` was run by the hosted C-14 suite:
+
+| Receipt | Terminal result | Relevant evidence |
+| --- | --- | --- |
+| [workflow run 34423535120](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34423535120) | failure | The exact-head `ci-foundation` job [102703848258](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34423535120/job/102703848258) passed, including the G76 matrix and four red mutants. |
+| [ci-g43 job 102703848479](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34423535120/job/102703848479) | failure | The unchanged G43 AC6 test timed out at 5,000 ms in `test/g43-tag-sql.spec.ts:494`; the job log identifies no G76 assertion failure. |
+
+The G43 failure is an outside-scope hosted blocker, not evidence to alter G76,
+G43, or any timing budget here. It is preserved as a separate terminal result;
+no G43 source, test, timeout, or CI configuration was changed. Other completed
+checks in the run, including `ci-g21-g25`, `ci-g30-core`, `ci-g30-forced-red`,
+`ci-g32-parity`, `ci-g44`, and `ci-g46`, were successful. A later docs-only
+push, if used to carry this receipt on the PR head, does not change the
+implementation or its no-product-change verdict; the exact final PR head and
+its terminal check receipt are recorded in the companion W203 report.
