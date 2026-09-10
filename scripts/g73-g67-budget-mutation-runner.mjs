@@ -11,7 +11,13 @@
  * for the healthy path and fail specifically with Vitest's timeout for the
  * measured G69-added-work representative.
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -26,9 +32,82 @@ const calibrationRounds = 32;
 const g69OperationsPerRound = 2;
 const safetyFactor = 1.5;
 const maxRepresentativeRounds = 4096;
+const originalRunnerSha256 =
+  "74e024444725c5aa01f01b8e1346b5329099e9c60135babd66186a11e1c3d7ee";
+const directTimingMarker = "G80_G73_DIRECT_TIMING";
+const observationRoot = resolve(root, ".artifacts", "sdt-g80-observation");
+const timerResolutionFloorMs = 1;
+const allowanceMadFactor = 3;
+const directTimingPlan = Object.freeze({
+  chunks: [4, 8, 12, 4, 4],
+  maxElapsedMs: 5_000,
+  operationsPerRound: g69OperationsPerRound,
+});
+let reportCounter = 0;
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
 
-function g69AddedWorkBlock(rounds) {
+function safeLabel(label) {
+  return String(label).replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function gitIdentity() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return result.status === 0 ? result.stdout.trim() : "unknown";
+}
+
+function receiptMetadata() {
+  return {
+    sourceSha: process.env.GITHUB_SHA ?? gitIdentity(),
+    checkout: root,
+    workflow: process.env.GITHUB_WORKFLOW ?? "local",
+    job: process.env.GITHUB_JOB ?? "local",
+    runId: process.env.GITHUB_RUN_ID ?? "local",
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? "local",
+    runnerOs: process.env.RUNNER_OS ?? process.platform,
+    node: process.version,
+  };
+}
+
+function median(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error("median requires at least one value");
+  }
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function medianAbsoluteDeviation(values) {
+  const center = median(values);
+  return median(values.map((value) => Math.abs(value - center)));
+}
+
+function assertionResults(report) {
+  if (!report || !Array.isArray(report.testResults)) return [];
+  return report.testResults.flatMap((file) =>
+    Array.isArray(file.assertionResults) ? file.assertionResults : [],
+  );
+}
+
+function matchingTargetResults(report) {
+  return assertionResults(report).filter(
+    (result) =>
+      typeof result?.fullName === "string" &&
+      result.fullName.endsWith(testName),
+  );
+}
+
+function ensureObservationRoot() {
+  mkdirSync(observationRoot, { recursive: true });
+  return observationRoot;
+}
+
+function legacyG69AddedWorkBlock(rounds) {
   return `        // Temporary W201 mutant: repeat the actual G69 admission-diagnostic
       // path once for the first real commit using unique, valid D1 envelopes.
       // No timer or synthetic delay is part of the regression representative.
@@ -73,27 +152,164 @@ function g69AddedWorkBlock(rounds) {
 `;
 }
 
-function mutate(source, rounds) {
+function chunkPlanFor(rounds) {
+  const plan = [];
+  let remaining = rounds;
+  for (const candidate of directTimingPlan.chunks) {
+    if (remaining === 0) break;
+    const chunk = Math.min(candidate, remaining);
+    plan.push(chunk);
+    remaining -= chunk;
+  }
+  if (remaining > 0) plan.push(remaining);
+  return plan;
+}
+
+function g69AddedWorkBlock(rounds, { directTiming = false } = {}) {
+  const chunkPlan = directTiming ? chunkPlanFor(rounds) : [rounds];
+  const clockStart = directTiming ? "performance.now()" : "0";
+  const clockDuration = directTiming
+    ? "performance.now() - g73ChunkStartedAt"
+    : "0";
+  const initializationStart = directTiming ? "performance.now()" : "0";
+  const directValidation = directTiming
+    ? [
+        "            if (!Number.isFinite(g73ChunkDurationMs) || g73ChunkDurationMs <= 0) {",
+        '              throw new Error("G80 direct timing requires a finite positive clock advance");',
+        "            }",
+        "            if (performance.now() - g73MeasurementStartedAt > " +
+          directTimingPlan.maxElapsedMs +
+          ") {",
+        '              throw new Error("G80 direct timing ceiling exceeded");',
+        "            }",
+      ]
+    : [];
+  const directTail = directTiming
+    ? [
+        "          if (g73RoundOffset !== g73G69ExtraRounds) {",
+        '            throw new Error("G80 direct timing did not account for every calibration round");',
+        "          }",
+        "          const g73PositiveIntervals = g73TimingChunks.map((chunk) => chunk.durationMs);",
+        "          const g73MinObservedAdvanceMs = Math.min(...g73PositiveIntervals);",
+        "          console.log(" +
+          JSON.stringify(directTimingMarker) +
+          ' + " " + JSON.stringify({',
+        '            clock: "performance.now",',
+        "            initializationMs: g73InitializationDurationMs,",
+        "            initializationSeparated: true,",
+        "            chunks: g73TimingChunks,",
+        "            totalRounds: g73RoundOffset,",
+        "            operationsPerRound: g73G69OperationsPerRound,",
+        "            deliveryCount: g73RoundOffset * g73G69OperationsPerRound,",
+        "            waitersDrained: true,",
+        "            skippedDeliveries: 0,",
+        "            omittedWaiterDrain: false,",
+        "            wrongCount: false,",
+        "            timerOnly: false,",
+        "            clockAdvancesDuringRealWork: true,",
+        "            minObservedAdvanceMs: g73MinObservedAdvanceMs,",
+        "          }));",
+      ]
+    : [];
+  return [
+    "        // G80 direct-timing mutant: measure complete real G69 deliveries with",
+    "        // performance.now inside the temporary mutation. No timer or synthetic",
+    "        // delay is part of the representative.",
+    "        if (index === 1) {",
+    "          const g73G69ExtraRounds = " + rounds + ";",
+    "          const g73G69OperationsPerRound = " + g69OperationsPerRound + ";",
+    "          const g73MeasurementStartedAt = " + initializationStart + ";",
+    "          const g73TimingChunks = [];",
+    "          const extraStore = new D1EventStore(database);",
+    "          const g73InitializationStartedAt = " + initializationStart + ";",
+    "          await extraStore.initialize();",
+    "          const g73InitializationDurationMs = " +
+      (directTiming
+        ? "performance.now() - g73InitializationStartedAt"
+        : "0") +
+      ";",
+    "          const extraTemplate = queued[0];",
+    '          if (extraTemplate === undefined) throw new Error("G67 calibration requires a real queued template");',
+    "          let g73RoundOffset = 0;",
+    "          const g73ChunkPlan = " + JSON.stringify(chunkPlan) + ";",
+    "          for (const g73ChunkRounds of g73ChunkPlan) {",
+    "            const g73ChunkStartedAt = " + clockStart + ";",
+    "            for (let g73Round = 0; g73Round < g73ChunkRounds; g73Round += 1) {",
+    "              const extraServiceId = String(serviceId) + \"-g73-g69-calibration-\" + String(g73RoundOffset + g73Round);",
+    "              const extraTag = \"room:g73-g69-calibration-\" + String(g73RoundOffset + g73Round);",
+    "              for (let g73Operation = 0; g73Operation < g73G69OperationsPerRound; g73Operation += 1) {",
+    "                const extraWaiters: Promise<void>[] = [];",
+    "                const extraMessage = g32Message({",
+    "                  serviceId: extraServiceId,",
+    "                  allocatorLineageId: extraTemplate.allocatorLineageId,",
+    "                  tag: extraTag,",
+    "                  attemptId: \"g73-calibration-attempt-\" + String(index) + \"-\" + String(g73RoundOffset + g73Round) + \"-\" + String(g73Operation),",
+    "                  eventId: \"g73-calibration-event-\" + String(index) + \"-\" + String(g73RoundOffset + g73Round) + \"-\" + String(g73Operation),",
+    "                  suid: g32SuidAt(deliveredAt, (g73RoundOffset + g73Round) * g73G69OperationsPerRound + g73Operation + 1),",
+    "                  payload: extraTemplate.payload,",
+    "                  eventTags: [extraTag],",
+    "                  eventType: extraTemplate.eventType,",
+    "                  enqueuedAt: deliveredAt - 100,",
+    "                  obligationSequence: (g73RoundOffset + g73Round) * g73G69OperationsPerRound + g73Operation + 1,",
+    "                });",
+    '                await extraStore.recordDelivery(extraMessage, deliveredAt, "queue", {',
+    "                  waitUntil: (promise: Promise<void>) => { extraWaiters.push(promise); },",
+    "                });",
+    "                await Promise.all(extraWaiters);",
+    "              }",
+    "            }",
+    "            const g73ChunkDurationMs = " + clockDuration + ";",
+    "            g73TimingChunks.push({",
+    "              rounds: g73ChunkRounds,",
+    "              operations: g73ChunkRounds * g73G69OperationsPerRound,",
+    "              deliveryCount: g73ChunkRounds * g73G69OperationsPerRound,",
+    "              durationMs: g73ChunkDurationMs,",
+    "              waitersDrained: true,",
+    "            });",
+    "            g73RoundOffset += g73ChunkRounds;",
+    ...directValidation,
+    "          }",
+    ...directTail,
+    "        }",
+  ].join("\n") + "\n";
+}
+
+function mutate(source, rounds, { directTiming = true } = {}) {
   const occurrences = source.split(mutationAnchor).length - 1;
   if (occurrences !== 1) {
     throw new Error(`G67 AC3 G69-work mutation anchor expected once, found ${occurrences}`);
   }
-  return source.replace(mutationAnchor, g69AddedWorkBlock(rounds) + mutationAnchor);
+  return source.replace(
+    mutationAnchor,
+    g69AddedWorkBlock(rounds, { directTiming }) + mutationAnchor,
+  );
 }
 
-function targetResult(report) {
-  const results = report.testResults?.flatMap((file) => file.assertionResults ?? []) ?? [];
-  const target = results.find((result) => result.fullName?.endsWith(testName));
-  if (target === undefined) {
-    throw new Error(`G67 AC3 result was not present in Vitest JSON report: ${JSON.stringify(report)}`);
+function legacyMutate(source, rounds) {
+  const occurrences = source.split(mutationAnchor).length - 1;
+  if (occurrences !== 1) {
+    throw new Error("G67 AC3 legacy G69-work mutation anchor expected once, found " + occurrences);
   }
-  if (typeof target.duration !== "number") {
-    throw new Error(`G67 AC3 result had no test-body duration: ${JSON.stringify(target)}`);
-  }
-  return target;
+  return source.replace(
+    mutationAnchor,
+    legacyG69AddedWorkBlock(rounds) + mutationAnchor,
+  );
 }
 
-function runOracle(label) {
+function parseDirectTiming(output) {
+  const lines = String(output ?? "")
+    .split("\n")
+    .filter((line) => line.startsWith(directTimingMarker + " "));
+  if (lines.length === 0) return { value: null, error: null };
+  const payload = lines.at(-1).slice(directTimingMarker.length + 1);
+  try {
+    return { value: JSON.parse(payload), error: null };
+  } catch (error) {
+    return { value: null, error: String(error) };
+  }
+}
+
+function runOracle(label, { retainReport = false } = {}) {
   const reportDirectory = mkdtempSync(resolve(tmpdir(), "sdt-g73-g67-"));
   const reportPath = resolve(reportDirectory, "vitest.json");
   const startedAt = performance.now();
@@ -107,40 +323,357 @@ function runOracle(label) {
     env: { ...process.env, CI: "1" },
   });
   const processElapsedMs = Math.round(performance.now() - startedAt);
+  const output = (result.stdout ?? "") + (result.stderr ?? "");
+  let report = null;
+  let reportError = null;
   try {
-    const report = JSON.parse(readFileSync(reportPath, "utf8"));
-    const test = targetResult(report);
+    report = JSON.parse(readFileSync(reportPath, "utf8"));
+  } catch (error) {
+    reportError = String(error);
+  }
+  const targets = matchingTargetResults(report);
+  const test = targets.length === 1 ? targets[0] : undefined;
+  let reportRetentionPath = null;
+  if (retainReport && report !== null) {
+    ensureObservationRoot();
+    reportRetentionPath = resolve(
+      observationRoot,
+      safeLabel(label) + "-" + process.pid + "-" + (reportCounter += 1) + ".json",
+    );
+    writeFileSync(reportRetentionPath, JSON.stringify({
+      metadata: receiptMetadata(),
+      label,
+      report,
+    }, null, 2), "utf8");
+  }
+  const directTiming = parseDirectTiming(output);
+  try {
     return {
       label,
-      processStatus: result.status ?? 1,
+      processStatus: result.status,
+      signal: result.signal ?? null,
       processElapsedMs,
-      bodyStatus: test.status,
-      bodyDurationMs: test.duration,
-      failureMessages: test.failureMessages ?? [],
-      output: (result.stdout ?? "") + (result.stderr ?? ""),
+      bodyStatus: test?.status,
+      bodyDurationMs: test?.duration,
+      failureMessages: test?.failureMessages ?? [],
+      targetCount: targets.length,
+      reportError,
+      reportRetentionPath,
+      directTiming: directTiming.value,
+      directTimingError: directTiming.error,
+      output,
     };
   } finally {
     rmSync(reportDirectory, { recursive: true, force: true });
   }
 }
 
+function outcomeError(outcome, details) {
+  const error = new Error(outcome + ": " + JSON.stringify(details));
+  error.outcome = outcome;
+  error.details = details;
+  return error;
+}
+
 function requireHealthy(result) {
   if (result.processStatus === 0 && result.bodyStatus === "passed") return;
-  throw new Error(`${result.label} unexpectedly failed:\n${result.output}`);
+  throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+    label: result.label,
+    processStatus: result.processStatus,
+    signal: result.signal,
+    bodyStatus: result.bodyStatus,
+    targetCount: result.targetCount,
+    reportError: result.reportError,
+    directTimingError: result.directTimingError,
+    output: result.output,
+  });
 }
 
 function requireTimeoutRegression(result) {
   const timeoutMessage = /(?:Test )?timed out in\s+10(?:,|_)?000ms/i;
-  const outputHasTimeout = timeoutMessage.test(result.output);
-  if (result.processStatus !== 0 && result.bodyStatus === "failed" &&
-      result.bodyDurationMs >= budgetMs && outputHasTimeout) return;
-  throw new Error(`G67 AC3 G69-added-work representative did not hit the intended test-body timeout:\n${JSON.stringify({
+  const failureMessages = Array.isArray(result.failureMessages)
+    ? result.failureMessages.filter((message) => typeof message === "string")
+    : [];
+  const isExactTargetTimeout =
+    result.reportError === null &&
+    result.targetCount === 1 &&
+    typeof result.processStatus === "number" &&
+    result.processStatus !== 0 &&
+    result.signal === null &&
+    result.bodyStatus === "failed" &&
+    Number.isFinite(result.bodyDurationMs) &&
+    result.bodyDurationMs >= budgetMs &&
+    failureMessages.length === 1 &&
+    timeoutMessage.test(failureMessages[0]);
+  if (isExactTargetTimeout) return;
+  throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+    label: result.label,
+    reason: "representative did not produce exactly one named target timeout",
     processStatus: result.processStatus,
+    signal: result.signal,
     bodyStatus: result.bodyStatus,
     bodyDurationMs: result.bodyDurationMs,
+    targetCount: result.targetCount,
+    reportError: result.reportError,
     failureMessages: result.failureMessages,
     output: result.output,
-  })}`);
+  });
+}
+
+function validateDirectTiming(timing) {
+  const fail = (reason) => {
+    throw new Error("G80 direct timing invalid: " + reason);
+  };
+  if (!timing || timing.clock !== "performance.now") {
+    fail("the measured clock is not performance.now");
+  }
+  if (timing.timerOnly === true) fail("timer-only work was accepted");
+  if (timing.skippedDeliveries !== 0) fail("deliveries were skipped");
+  if (timing.omittedWaiterDrain === true) fail("waiters were not drained");
+  if (timing.wrongCount === true) fail("delivery count was not exact");
+  if (timing.waitersDrained !== true || timing.clockAdvancesDuringRealWork !== true) {
+    fail("real delivery completion or clock advancement was not proven");
+  }
+  if (
+    timing.initializationSeparated !== true ||
+    !Number.isFinite(timing.initializationMs) ||
+    timing.initializationMs < 0
+  ) {
+    fail("one-time store initialization was not measured separately");
+  }
+  if (timing.operationsPerRound !== g69OperationsPerRound) {
+    fail("the operation cardinality changed");
+  }
+  if (!Array.isArray(timing.chunks) || timing.chunks.length < 2) {
+    fail("at least two direct timing batches are required");
+  }
+  const validChunks = timing.chunks.every((chunk) =>
+    Number.isInteger(chunk.rounds) &&
+    chunk.rounds > 0 &&
+    chunk.operations === chunk.rounds * g69OperationsPerRound &&
+    chunk.deliveryCount === chunk.rounds * g69OperationsPerRound &&
+    chunk.waitersDrained === true &&
+    Number.isFinite(chunk.durationMs) &&
+    chunk.durationMs > 0
+  );
+  if (!validChunks) fail("a batch lacks complete positive-cost delivery evidence");
+  const totalRounds = timing.chunks.reduce((sum, chunk) => sum + chunk.rounds, 0);
+  if (totalRounds !== timing.totalRounds) {
+    fail("the batch rounds do not cover the declared total");
+  }
+  if (!Number.isFinite(timing.minObservedAdvanceMs) || timing.minObservedAdvanceMs <= 0) {
+    fail("the hosted clock did not show a positive finite interval");
+  }
+  if (new Set(timing.chunks.map((chunk) => chunk.rounds)).size < 2) {
+    fail("the direct timing batches do not test scaling");
+  }
+  return timing;
+}
+
+function deriveAllowance(timing) {
+  const costs = timing.chunks.map((chunk) => chunk.durationMs / chunk.rounds);
+  const pairedResiduals = [];
+  for (let index = 0; index < timing.chunks.length; index += 1) {
+    for (let next = index + 1; next < timing.chunks.length; next += 1) {
+      if (timing.chunks[index].rounds === timing.chunks[next].rounds) {
+        pairedResiduals.push(Math.abs(costs[index] - costs[next]));
+      }
+    }
+  }
+  if (pairedResiduals.length === 0) {
+    throw outcomeError("CALIBRATION_INCONCLUSIVE", {
+      reason: "no matched repeated batch exists for a residual allowance",
+    });
+  }
+  const residualRangeMs = {
+    min: Math.min(...pairedResiduals),
+    max: Math.max(...pairedResiduals),
+  };
+  const madMs = medianAbsoluteDeviation(pairedResiduals);
+  const allowanceMs = Math.max(
+    timerResolutionFloorMs,
+    median(pairedResiduals) + allowanceMadFactor * madMs,
+  );
+  return {
+    costsPerRoundMs: costs,
+    pairedResidualsMs: pairedResiduals,
+    residualRangeMs,
+    madMs,
+    timerResolutionFloorMs,
+    allowanceMadFactor,
+    allowanceMs,
+  };
+}
+
+function decideCalibration(healthy, calibration) {
+  if (
+    calibration.reportError !== null ||
+    calibration.targetCount !== 1 ||
+    calibration.directTimingError !== null ||
+    calibration.directTiming === null
+  ) {
+    throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+      label: calibration.label,
+      reason: "calibration report or direct timing marker was missing/malformed",
+      processStatus: calibration.processStatus,
+      signal: calibration.signal,
+      bodyStatus: calibration.bodyStatus,
+      targetCount: calibration.targetCount,
+      reportError: calibration.reportError,
+      directTimingError: calibration.directTimingError,
+      output: calibration.output,
+    });
+  }
+  const timing = validateDirectTiming(calibration.directTiming);
+  const allowance = deriveAllowance(timing);
+  const signedDifferenceMs = calibration.bodyDurationMs - healthy.bodyDurationMs;
+  const directPerRoundMs = median(allowance.costsPerRoundMs);
+  const predictedAddedWorkMs = directPerRoundMs * calibrationRounds;
+  const predictionRatio = signedDifferenceMs / predictedAddedWorkMs;
+  const sortedCosts = [...allowance.costsPerRoundMs].sort((left, right) => left - right);
+  const scalingRatio = sortedCosts.at(-1) / sortedCosts[0];
+  const scalingDemonstrated = Number.isFinite(scalingRatio) && scalingRatio >= 0.5;
+  const predictionConsistent =
+    Number.isFinite(predictionRatio) &&
+    predictionRatio > 0 &&
+    predictionRatio >= 0.25 &&
+    predictionRatio <= 4;
+  if (
+    !Number.isFinite(signedDifferenceMs) ||
+    signedDifferenceMs <= allowance.allowanceMs ||
+    !scalingDemonstrated ||
+    !predictionConsistent
+  ) {
+    throw outcomeError("CALIBRATION_INCONCLUSIVE", {
+      reason: "the paired direct signal did not dominate the predeclared allowance",
+      signedDifferenceMs,
+      allowance,
+      predictedAddedWorkMs,
+      predictionRatio,
+      scalingRatio,
+      timing,
+    });
+  }
+  return {
+    timing,
+    allowance,
+    signedDifferenceMs,
+    directPerRoundMs,
+    predictedAddedWorkMs,
+    predictionRatio,
+    scalingRatio,
+  };
+}
+
+function legacyObservationRecord(pairIndex, healthy, calibration) {
+  const healthyBodyMs = healthy.bodyDurationMs;
+  const calibrationBodyMs = calibration.bodyDurationMs;
+  const rawAddedWorkPerRoundMs =
+    Number.isFinite(healthyBodyMs) && Number.isFinite(calibrationBodyMs)
+      ? (calibrationBodyMs - healthyBodyMs) / calibrationRounds
+      : null;
+  const legacyClampedCostMs =
+    rawAddedWorkPerRoundMs === null
+      ? null
+      : rawAddedWorkPerRoundMs < 1
+        ? 1
+        : rawAddedWorkPerRoundMs;
+  return {
+    pairIndex,
+    healthy,
+    calibration,
+    signedDifferenceMs:
+      Number.isFinite(healthyBodyMs) && Number.isFinite(calibrationBodyMs)
+        ? calibrationBodyMs - healthyBodyMs
+        : null,
+    rawAddedWorkPerRoundMs,
+    legacyClampedCostMs,
+    sourceRunnerSha256: originalRunnerSha256,
+    estimator: "pre-G80 clamped raw-difference/32 behavior, observation-only",
+  };
+}
+
+function emitObservation(record) {
+  process.stdout.write(JSON.stringify({
+    phase: "G80_AC1_OBSERVATION_INPUT",
+    metadata: receiptMetadata(),
+    record,
+  }) + "\n");
+}
+
+function observationOnly(sourcePath, original) {
+  const requestedPairsArg = process.argv.find((argument) => argument.startsWith("--pairs="));
+  const requestedPairs = requestedPairsArg === undefined
+    ? 5
+    : Number(requestedPairsArg.slice("--pairs=".length));
+  if (!Number.isInteger(requestedPairs) || requestedPairs < 1) {
+    throw new Error("G80 observation pairs must be a positive integer");
+  }
+  const records = [];
+  ensureObservationRoot();
+  for (let pairIndex = 1; pairIndex <= requestedPairs; pairIndex += 1) {
+    const healthy = runOracle(
+      "g80-observation-pair-" + pairIndex + "-healthy",
+      { retainReport: true },
+    );
+    writeFileSync(sourcePath, legacyMutate(original, calibrationRounds), "utf8");
+    const calibration = runOracle(
+      "g80-observation-pair-" + pairIndex + "-calibration",
+      { retainReport: true },
+    );
+    writeFileSync(sourcePath, original, "utf8");
+    const record = legacyObservationRecord(pairIndex, healthy, calibration);
+    records.push(record);
+    emitObservation(record);
+  }
+  const summary = {
+    phase: "G80_AC1_OBSERVATION_SUMMARY",
+    metadata: receiptMetadata(),
+    predeclaredPairs: requestedPairs,
+    requiredFreshHostedJobInstances: true,
+    originalRunnerSha256,
+    records,
+    missingOrFailedPairs: records.filter((record) =>
+      record.healthy.processStatus !== 0 ||
+      record.healthy.bodyStatus !== "passed" ||
+      record.calibration.processStatus !== 0 ||
+      record.calibration.bodyStatus !== "passed"
+    ).map((record) => record.pairIndex),
+    note: "A local invocation cannot claim fresh hosted job separation; hosted receipts remain required evidence.",
+  };
+  writeFileSync(
+    resolve(observationRoot, "summary-" + process.pid + ".json"),
+    JSON.stringify(summary, null, 2),
+    "utf8",
+  );
+  process.stdout.write(JSON.stringify(summary) + "\n");
+}
+
+function representativeRoundsFor(healthyBodyMs, calibrationDecision) {
+  const healthyMarginMs = budgetMs - healthyBodyMs;
+  if (!Number.isFinite(healthyMarginMs) || healthyMarginMs <= 0) {
+    throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+      reason: "healthy G67 body did not leave a positive budget margin",
+      healthyBodyMs,
+      budgetMs,
+    });
+  }
+  const estimatedRounds = Math.ceil(
+    (healthyMarginMs / calibrationDecision.directPerRoundMs) * safetyFactor,
+  );
+  const representativeRounds = Math.max(
+    calibrationRounds + 1,
+    estimatedRounds,
+  );
+  if (representativeRounds > maxRepresentativeRounds) {
+    throw outcomeError("REPRESENTATIVE_RANGE_EXCEEDED", {
+      representativeRounds,
+      maxRepresentativeRounds,
+      safetyFactor,
+      directPerRoundMs: calibrationDecision.directPerRoundMs,
+    });
+  }
+  return { healthyMarginMs, representativeRounds };
 }
 
 function selfTest() {
@@ -159,6 +692,110 @@ function selfTest() {
   if (mutated.includes("setTimeout(resolve, 9500)") || mutated.includes("process.hrtime.bigint")) {
     throw new Error("G67 self-test retained an unsupported timer or process-clock proof");
   }
+  const directSection = mutated.slice(
+    mutated.indexOf("// G80 direct-timing mutant"),
+    mutated.indexOf(mutationAnchor),
+  );
+  if (!directSection.includes("performance.now()") ||
+      directSection.includes("Date.now()") ||
+      directSection.includes("process.hrtime")) {
+    throw new Error("G80 direct timing did not use only the intended Vitest-body clock seam");
+  }
+  const validTiming = {
+    clock: "performance.now",
+    initializationMs: 0,
+    initializationSeparated: true,
+    chunks: [
+      { rounds: 8, operations: 16, deliveryCount: 16, durationMs: 80, waitersDrained: true },
+      { rounds: 16, operations: 32, deliveryCount: 32, durationMs: 160, waitersDrained: true },
+      { rounds: 8, operations: 16, deliveryCount: 16, durationMs: 88, waitersDrained: true },
+    ],
+    totalRounds: 32,
+    operationsPerRound: 2,
+    waitersDrained: true,
+    skippedDeliveries: 0,
+    omittedWaiterDrain: false,
+    wrongCount: false,
+    timerOnly: false,
+    clockAdvancesDuringRealWork: true,
+    minObservedAdvanceMs: 80,
+  };
+  validateDirectTiming(validTiming);
+  deriveAllowance(validTiming);
+  const invalidTimingCases = [
+    ["mocked/frozen clock", { clock: "Date.now" }],
+    ["zero duration", { chunks: validTiming.chunks.map((chunk, index) => index === 0 ? { ...chunk, durationMs: 0 } : chunk) }],
+    ["nonfinite duration", { chunks: validTiming.chunks.map((chunk, index) => index === 0 ? { ...chunk, durationMs: Number.NaN } : chunk) }],
+    ["skipped deliveries", { skippedDeliveries: 1 }],
+    ["omitted waiter drain", { omittedWaiterDrain: true }],
+    ["wrong count", { wrongCount: true }],
+    ["timer-only workload", { timerOnly: true }],
+  ];
+  for (const [name, changes] of invalidTimingCases) {
+    let rejected = false;
+    try {
+      validateDirectTiming({ ...validTiming, ...changes });
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error("G80 self-test accepted invalid timing case: " + name);
+  }
+  const validTimeoutReceipt = {
+    label: "self-test representative",
+    reportError: null,
+    targetCount: 1,
+    processStatus: 1,
+    signal: null,
+    bodyStatus: "failed",
+    bodyDurationMs: 10_001,
+    failureMessages: ["Test timed out in 10000ms"],
+    output: "",
+  };
+  requireTimeoutRegression(validTimeoutReceipt);
+  for (const rejectedReceipt of [
+    { ...validTimeoutReceipt, signal: "SIGTERM" },
+    { ...validTimeoutReceipt, targetCount: 0 },
+    { ...validTimeoutReceipt, failureMessages: ["Cannot find module vitest"] },
+  ]) {
+    let rejected = false;
+    try {
+      requireTimeoutRegression(rejectedReceipt);
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error("G80 self-test accepted an invalid timeout receipt");
+  }
+  let inconclusive = false;
+  try {
+    decideCalibration(
+      { bodyDurationMs: 100, label: "healthy" },
+      {
+        label: "calibration",
+        reportError: null,
+        targetCount: 1,
+        directTimingError: null,
+        directTiming: validTiming,
+        bodyDurationMs: 100,
+      },
+    );
+  } catch (error) {
+    inconclusive = error?.outcome === "CALIBRATION_INCONCLUSIVE";
+  }
+  if (!inconclusive) throw new Error("G80 self-test did not exercise CALIBRATION_INCONCLUSIVE");
+  let rangeExceeded = false;
+  try {
+    representativeRoundsFor(9_999, { directPerRoundMs: 0.0001 });
+  } catch (error) {
+    rangeExceeded = error?.outcome === "REPRESENTATIVE_RANGE_EXCEEDED";
+  }
+  if (!rangeExceeded) throw new Error("G80 self-test did not exercise REPRESENTATIVE_RANGE_EXCEEDED");
+  let oracleFailure = false;
+  try {
+    requireHealthy({ processStatus: 1, bodyStatus: "failed", label: "self-test", output: "" });
+  } catch (error) {
+    oracleFailure = error?.outcome === "HEALTHY_OR_ORACLE_FAILURE";
+  }
+  if (!oracleFailure) throw new Error("G80 self-test did not exercise HEALTHY_OR_ORACLE_FAILURE");
   process.stdout.write(JSON.stringify({
     budgetMs,
     calibrationRounds,
@@ -173,53 +810,86 @@ function main() {
   const original = readFileSync(sourcePath, "utf8");
   if (process.argv.includes("--self-test")) return selfTest();
   try {
-    const healthy = runOracle("G67 AC3 healthy");
+    if (process.argv.includes("--observation-only")) {
+      return observationOnly(sourcePath, original);
+    }
+    const healthy = runOracle("G67 AC3 healthy", { retainReport: true });
     requireHealthy(healthy);
     if (healthy.bodyDurationMs >= budgetMs) {
-      throw new Error(`G67 AC3 healthy body already consumes the ${budgetMs}ms budget: ${healthy.bodyDurationMs}ms`);
+      throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+        reason: "healthy G67 body already consumes its budget",
+        healthyBodyMs: healthy.bodyDurationMs,
+        budgetMs,
+      });
     }
 
-    writeFileSync(sourcePath, mutate(original, calibrationRounds), "utf8");
-    const calibration = runOracle(`G67 AC3 ${calibrationRounds}-round G69 calibration`);
+    writeFileSync(
+      sourcePath,
+      mutate(original, calibrationRounds, { directTiming: true }),
+      "utf8",
+    );
+    const calibration = runOracle(
+      "G67 AC3 " + calibrationRounds + "-round G69 direct calibration",
+      { retainReport: true },
+    );
     requireHealthy(calibration);
-    const measuredAddedWorkPerRoundMs = Math.max(
-      1,
-      (calibration.bodyDurationMs - healthy.bodyDurationMs) / calibrationRounds,
+    const calibrationDecision = decideCalibration(healthy, calibration);
+    const estimate = representativeRoundsFor(
+      healthy.bodyDurationMs,
+      calibrationDecision,
     );
-    const healthyMarginMs = budgetMs - healthy.bodyDurationMs;
-    let representativeRounds = Math.max(
-      calibrationRounds + 1,
-      Math.ceil((healthyMarginMs / measuredAddedWorkPerRoundMs) * safetyFactor),
-    );
-    if (representativeRounds > maxRepresentativeRounds) {
-      throw new Error(`G67 representative exceeds bounded calibration range: ${representativeRounds} rounds`);
-    }
 
     const attempts = [];
+    let representativeRounds = estimate.representativeRounds;
     let regression;
     while (representativeRounds <= maxRepresentativeRounds) {
-      writeFileSync(sourcePath, mutate(original, representativeRounds), "utf8");
-      regression = runOracle(`G67 AC3 ${representativeRounds}-round G69 representative`);
+      writeFileSync(
+        sourcePath,
+        mutate(original, representativeRounds, { directTiming: false }),
+        "utf8",
+      );
+      regression = runOracle(
+        "G67 AC3 " + representativeRounds + "-round G69 representative",
+        { retainReport: true },
+      );
       attempts.push({
         rounds: representativeRounds,
         processStatus: regression.processStatus,
+        signal: regression.signal,
         bodyStatus: regression.bodyStatus,
         bodyDurationMs: regression.bodyDurationMs,
         processElapsedMs: regression.processElapsedMs,
+        targetCount: regression.targetCount,
+        failureMessages: regression.failureMessages,
       });
-      if (regression.processStatus !== 0 && regression.bodyStatus === "failed") break;
-      representativeRounds = Math.ceil(representativeRounds * safetyFactor);
+      if (regression.processStatus !== 0 && regression.bodyStatus === "failed") {
+        break;
+      }
+      const nextRounds = Math.ceil(representativeRounds * safetyFactor);
+      if (nextRounds <= representativeRounds) break;
+      representativeRounds = nextRounds;
     }
-    if (regression === undefined) throw new Error("G67 representative did not run");
+    if (regression === undefined) {
+      throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+        reason: "G67 representative did not run",
+      });
+    }
     requireTimeoutRegression(regression);
     process.stdout.write(JSON.stringify({
       budgetMs,
       testName,
+      originalRunnerSha256,
       healthyBodyMs: healthy.bodyDurationMs,
-      healthyMarginMs,
+      healthyMarginMs: estimate.healthyMarginMs,
       calibrationRounds,
       calibrationBodyMs: calibration.bodyDurationMs,
-      measuredAddedWorkPerRoundMs: Number(measuredAddedWorkPerRoundMs.toFixed(2)),
+      signedDifferenceMs: calibrationDecision.signedDifferenceMs,
+      directPerRoundMs: Number(calibrationDecision.directPerRoundMs.toFixed(4)),
+      predictedAddedWorkMs: Number(calibrationDecision.predictedAddedWorkMs.toFixed(2)),
+      predictionRatio: Number(calibrationDecision.predictionRatio.toFixed(4)),
+      scalingRatio: Number(calibrationDecision.scalingRatio.toFixed(4)),
+      allowance: calibrationDecision.allowance,
+      directTiming: calibrationDecision.timing,
       representativeRounds,
       regressionBodyMs: regression.bodyDurationMs,
       regressionOverBudgetMs: regression.bodyDurationMs - budgetMs,
@@ -232,6 +902,15 @@ function main() {
       attempts,
       result: "healthy-green-g69-path-timeout-red",
     }) + "\n");
+  } catch (error) {
+    const outcome = error?.outcome ?? "HEALTHY_OR_ORACLE_FAILURE";
+    process.stderr.write(JSON.stringify({
+      result: "failed",
+      outcome,
+      details: error?.details ?? null,
+      message: String(error?.message ?? error),
+    }) + "\n");
+    process.exitCode = 1;
   } finally {
     writeFileSync(sourcePath, original, "utf8");
   }
