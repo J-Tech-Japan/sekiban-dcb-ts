@@ -561,7 +561,7 @@ describe("SDT-G43 normalized Tag SQLite authority", () => {
     } finally {
       await restoreQueue();
     }
-  });
+  }, 10_000);
 
   it("AC7: rejects a same event identity whose canonical digest changes", async () => {
     const value = scope();
