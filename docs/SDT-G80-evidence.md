@@ -2,6 +2,9 @@
 
 Task: SDT-G80-IMPLEMENTATION-W217.
 
+Implementation PR: https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/163
+Implementation head: ce5926fb157971dcfc278a9016c2b646827c6a05
+
 This change is limited to the G73 G67 budget mutation runner and its proof
 evidence. It does not change the G67 AC3 test body or budget, production code,
 the G73 driver-timing guard, G71, G74, G77, G78, or any CI lane. The existing
