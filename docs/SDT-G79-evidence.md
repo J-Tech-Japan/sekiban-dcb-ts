@@ -150,6 +150,24 @@ the 20 titles printed by the linked job logs. The threshold is still
 only 4.75% of its 10,000 ms budget at its slowest observation, while the
 retained measurement is at most 12.84% of 60,000 ms.
 
+### W207 repair-head hosted receipt
+
+The W207 repair-head workflow is [34442088611](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088611), attempt 1. Its `ci-g43` receipt is [job 102759071652](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088611/job/102759071652). The reporter and inventory emit both identities: `commitSha=b1602ecec1be702fe789cdd9443b608954b730e0` is the actual PR source head, and `workflowCheckoutSha=24380261a59ea828d92c355c59f62c52f0b8472f` is the synthetic pull-request merge checkout tested by Actions. This is an explicit source-head/checkout distinction, not a renamed receipt.
+
+| invocation inside `ci-g43` | hosted timing receipt | test count / near-budget set | selected budgeted rows |
+| --- | --- | --- | --- |
+| `normal` | `commitSha=b1602ec…`, `workflowRunId=34442088611`, `workflowAttempt=1`, `job=ci-g43` | 20; `nearBudget=[]` | G43 AC6 `453 ms`, margin `9,547 ms`; structural measurement `6,609 ms`, margin `53,391 ms` |
+| `forced-red` | same source/run/job identity, invocation `forced-red` | 20; `nearBudget=[]` | G43 AC6 `409 ms`, margin `9,591 ms`; structural measurement `6,928 ms`, margin `53,072 ms` |
+
+Both repair-head G43 invocations passed, and the same job emitted the required
+`all-five-production-mutants-red` receipt plus the G79 `both-red` receipt. The
+normal and forced-red mutation runs each recorded the named AC6 assertion
+failing at the SQL `LIMIT 32` boundary (`expected 32`, `observed 31`) for the
+shrink mutant, while the re-arm mutation remained the labelled source-shape
+oracle. The release preflight [34442088607](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088607) for this source head is green. The full repair-head workflow [34442088611](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088611) reached terminal `success`; all 21 jobs, including aggregate `verify` job `102768258394`, passed. The workflow ran from `05:41:33Z` to `06:26:03Z` (44m30s).
+
+The earlier source-repair workflow [34440729757](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34440729757) at `63869ea` reached terminal `failure` only in the unrelated `ci-g44` lane: its first concrete error was G62 AC1 at `test/g62-global-completeness.spec.ts:251`, receiving `UNKNOWN` instead of `FULL`, followed by G62 AC2/AC3 and G67 AC1/AC4 green-oracle failures. G79 foundation/G43 receipts were green. This first-error provenance is retained as out-of-scope evidence; the corrected-SHA run above passed the same G44 lane without any G79 change to G62/G67 behavior.
+
 ## W207 F1 — all hosted CI-lane invocations and measurement coverage
 
 The existing CI workflow has 21 jobs including the aggregate `verify` job.
@@ -183,6 +201,12 @@ not being conflated with invocation numbers.
 | `cosmos-emulator` | [102734555357](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555357) | 17 | missing | Cosmos/G20/G22/G26–G32 candidate invocations are inventoried; no per-test hosted duration receipt |
 | `ci-coverage` | [102734555391](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555391) | 3 | missing | G40 coverage/negative/needs checks are inventoried; no per-test duration receipt |
 | `verify` | [102742377068](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102742377068) | 1 | aggregate only | required aggregate status, not a test-body budget |
+
+The review-context's historical `10,553 ms` statement for the G46 receipt is
+not used as a per-test measurement: the accessible [102734555212 log](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34433781998/job/102734555212) records `test/g43-measurement.spec.ts (2 tests)` at `7,752 ms` as a file/suite receipt. No assertion-level G46 timing is available, so its margin remains unknown rather than being inferred from either number.
+
+The same 21-job/126-invocation inventory was emitted again by the W207 repair
+head in [34442088611](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088611), with `commitSha=b1602ecec1be702fe789cdd9443b608954b730e0`, `workflowCheckoutSha=24380261a59ea828d92c355c59f62c52f0b8472f`, and `workflowAttempt=1`. Its summary again classified only `ci-g43` as complete per-test JSON, `ci-foundation`/`ci-g44`/`ci-g46` as partial, and the remaining lanes as missing. The older job links above remain the reviewed-head inventory receipts; they are not relabelled as W207 attempts.
 
 The inventory command names each exact command, so the table is not a claim
 that `if ... forced-red` is a second workflow attempt. It is a second
@@ -272,6 +296,7 @@ later `cd15a27` docs-only head or as the W207 repair head:
 | main [34418417311](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34418417311) | 35 m 44 s | 8 m 04 s | green |
 | G79 [34427912295 attempt 1](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295) | 41 m 50 s | 8 m 09 s | green |
 | G79 [34427912295 attempt 2](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34427912295/attempts/2) | 43 m 21 s | 8 m 17 s | green |
+| W207 repair head [34442088611](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34442088611), `b1602ec` | 44 m 30 s | 7 m 49 s | terminal green; 21 jobs plus aggregate verify |
 
 The whole-workflow increase is in the existing long G30/G32/forced-red lanes;
 the G43 lane itself increased by only 5–13 seconds while adding assertion
@@ -282,8 +307,9 @@ guard.
 
 ## W207 F3 — receipt provenance and process receipts
 
-Every new W207 timing/inventory row carries the actual checkout SHA, workflow
-run ID, workflow attempt, hosted job, and invocation. The historical rows are
+Every new W207 timing/inventory row carries the actual PR source SHA, the
+separate workflow checkout SHA, workflow run ID, workflow attempt, hosted job,
+and invocation. The historical rows are
 not renamed: both attempts of run `34427912295` are explicitly
 `21427a58534efe8af4b3553322268f84fd6cbbd6`, while run `34433781998` is
 explicitly `cd15a2729ea2aa062515012ad1938266856ede2b` and is docs-only
@@ -298,7 +324,7 @@ on parent-host state:
 | W204 claim | local artifact `sdt-g79-hosted-budget-calibration-w204.md` and its recorded `intent-cli worker claim --kind issue --number 159 --repo J-Tech-Japan/sekiban-dcb-ts --github-only --write --format json` result | issue #159 was claimed before implementation |
 | W204 completion | the same local artifact's recorded `intent-cli worker complete --kind issue --number 159 --repo J-Tech-Japan/sekiban-dcb-ts --outcome pr-created --pr 160 --write --format json` result | PR #160 was created before the prior completion |
 | W207 review readiness | local child packet plus `intent-cli guide review --pr 160 --repo J-Tech-Japan/sekiban-dcb-ts --domain sekiban-dcb-ts --format json` | `ready:true`, `gaps:[]`, all five packet files present |
-| W207 repair completion | the canonical worker-complete receipt will be attached after the PR update, never before it | process ordering is explicit; no premature completion is claimed |
+| W207 repair completion | `intent-cli worker complete --kind issue --number 159 --repo J-Tech-Japan/sekiban-dcb-ts --domain sekiban-dcb-ts --outcome pr-created --pr 160 --github-only --write --format json` returned `proceed:true`, `applied:true`, `prTargetApplied:true`; summary: issue-side completion was already recorded and PR review-publication metadata was ensured | executed after the PR body update; child-cwd warning explicitly says queue-state linked-PR sync was skipped, consistent with the no-parent-host-state boundary |
 
 The W204 process receipts are referenced as local implementation artifacts,
 not asserted to be independently verified GitHub events in this document.
