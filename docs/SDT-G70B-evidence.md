@@ -155,11 +155,46 @@ its terminal check receipt are recorded in the companion W203 report.
 This bounded repair starts from the exact W221-reviewed source head
 `62c0586a61d8bad4250d3bdcb79e6159dfef290a` on
 `claude/sdt-g76-regression-matrix-w203`, with target base
-`193cfa44563d08ffadef146c4eca769098044be1`. The source checkout was verified
-against that head before editing. The final repair head, its source and
-checkout identities, the terminal hosted receipt, and the lifecycle receipts
-are published in the PR summary and the W228 handoff artifact; historical
-receipts above remain attributed to their original objects.
+`193cfa44563d08ffadef146c4eca769098044be1`. The repair source/test commit is
+`eebe3c1b3dd551028a2d96d60fc5190bfde403c0`; local ancestry verification
+returned exit 0 for base `193cfa44563d08ffadef146c4eca769098044be1` as an
+ancestor. Hosted pull-request jobs checked out merge ref
+`2b6f4b85795daeebe201c8c955c41354c7c20ecc`, whose checkout log states
+`Merge eebe3c1b3dd551028a2d96d60fc5190bfde403c0 into 193cfa44563d08ffadef146c4eca769098044be1`.
+The evidence-publication commit that follows this source/test commit is
+docs-only; its exact final PR head and lifecycle receipts are recorded in the
+W228 handoff artifact and PR summary. Historical receipts above remain
+attributed to their original objects.
+
+### Exact hosted receipts for the repair source commit
+
+The exact source commit `eebe3c1b3dd551028a2d96d60fc5190bfde403c0` completed
+the hosted C-14 CI workflow [34523567624](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624)
+successfully at the synthetic checkout above. Its terminal job receipts were
+all successful: [ci-g32-parity 103026861629](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861629),
+[ci-foundation 103026861776](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861776),
+[ci-g38 103026861808](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861808),
+[ci-g43 103026861809](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861809),
+[ci-g29 103026861838](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861838),
+[ci-g21-g25 103026861856](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861856),
+[ci-g42 103026861876](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861876),
+[ci-g26-g27 103026861885](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861885),
+[ci-g31 103026861889](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861889),
+[ci-g44 103026861896](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861896),
+[ci-g45 103026861898](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861898),
+[ci-g64 103026861920](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861920),
+[ci-g30-forced-red 103026861921](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861921),
+[cosmos-emulator 103026861931](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861931),
+[ci-g46 103026861932](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861932),
+[ci-local-e2e 103026861943](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861943),
+[ci-g28 103026861951](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026861951),
+[ci-coverage 103026862015](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026862015),
+[ci-g30-core 103026862022](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026862022),
+[ci-g41 103026862093](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103026862093),
+and [verify 103041657286](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567624/job/103041657286).
+The matching [release-preflight run 34523567862](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567862)
+and [dcb-domain-release-preflight job 103026860811](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34523567862/job/103026860811)
+also completed successfully at the same checkout identity.
 
 ### F1 — structured semantic mutation receipts
 
