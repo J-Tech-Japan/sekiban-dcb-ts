@@ -5,9 +5,11 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
-    includeTaskLocation: process.env.SDT_G79_HOSTED_MEASURE === "1" ? true : undefined,
-    reporters: process.env.SDT_G79_HOSTED_MEASURE === "1"
-      ? ["default", "./scripts/g79-vitest-hosted-reporter.mjs"]
-      : undefined,
+    ...(process.env.SDT_G79_HOSTED_MEASURE === "1"
+      ? {
+          includeTaskLocation: true,
+          reporters: ["default", "./scripts/g79-vitest-hosted-reporter.mjs"],
+        }
+      : {}),
   },
 });
