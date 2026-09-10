@@ -182,7 +182,7 @@ describe("SDT-G71 published read contract", () => {
   it("retains an existing empty object, ignored-event state, and sentinel state as existing", async () => {
     const cases: readonly [string, unknown, string, unknown][] = [
       ["empty object", base64Json({}), "", {}],
-      ["projector ignores event", base64Json({ status: "empty" }), "suid-event", projector.initialState],
+      ["projector ignores event", base64Json({ status: "empty" }), "g71-event", projector.initialState],
       ["sentinel with empty head", base64Json({ status: "empty" }), "", projector.initialState],
     ];
     for (const [name, payload, head, expectedState] of cases) {
@@ -213,17 +213,17 @@ describe("SDT-G71 published read contract", () => {
   });
 
   it("bounds authority/frontier reconciliation instead of combining mismatched observations", async () => {
-    const authorities = ["suid-2", "suid-2"];
-    const states = ["suid-1", "suid-2"];
+    const authorities = ["g71-head-2", "g71-head-2"];
+    const states = ["g71-head-1", "g71-head-2"];
     const recovering = createSekibanExecutor(transportWith(
-      async () => ({ exists: true, lastSortableUniqueId: authorities.shift() ?? "suid-2" }),
-      async () => stateResponse(matrixTag, base64Json({ version: 2 }), states.shift() ?? "suid-2"),
+      async () => ({ exists: true, lastSortableUniqueId: authorities.shift() ?? "g71-head-2" }),
+      async () => stateResponse(matrixTag, base64Json({ version: 2 }), states.shift() ?? "g71-head-2"),
     ));
-    await expect(recovering.readState(projector, matrixTag)).resolves.toMatchObject({ exists: true, head: "suid-2" });
+    await expect(recovering.readState(projector, matrixTag)).resolves.toMatchObject({ exists: true, head: "g71-head-2" });
 
     const stale = createSekibanExecutor(transportWith(
-      async () => ({ exists: true, lastSortableUniqueId: "suid-2" }),
-      async () => stateResponse(matrixTag, base64Json({ version: 1 }), "suid-1"),
+      async () => ({ exists: true, lastSortableUniqueId: "g71-head-2" }),
+      async () => stateResponse(matrixTag, base64Json({ version: 1 }), "g71-head-1"),
     ));
     await expect(stale.readState(projector, matrixTag)).rejects.toMatchObject({ code: "read_unavailable", status: 503 });
   });
@@ -285,10 +285,10 @@ describe("SDT-G71 published read contract", () => {
     const checkpoint: ProjectionCheckpoint = {
       serviceId: "g71-head-service",
       projectionId: projectionIdFor(projectionIdentity),
-      lastSuid: "suid-2",
+      lastSuid: "g71-head-2",
       stateJson: JSON.stringify([
-        { eventId: "event-1", suid: "suid-1", payload: JSON.stringify({ value: 1 }) },
-        { eventId: "event-2", suid: "suid-2", payload: JSON.stringify({ value: 2 }) },
+        { eventId: "event-1", suid: "g71-head-1", payload: JSON.stringify({ value: 1 }) },
+        { eventId: "event-2", suid: "g71-head-2", payload: JSON.stringify({ value: 2 }) },
       ]),
       version: 2,
       updatedAt: 1,
@@ -309,8 +309,8 @@ describe("SDT-G71 published read contract", () => {
     });
     const safe = await handleSerializedQuery(request("safe"), {}, { store });
     const unsafe = await handleSerializedQuery(request("unsafe"), {}, { store });
-    expect(await safe.json()).toMatchObject({ readHead: "suid-2", totalCount: 2, totalPages: 2 });
-    expect(await unsafe.json()).toMatchObject({ readHead: "suid-1", totalCount: 2, totalPages: 2 });
+    expect(await safe.json()).toMatchObject({ readHead: "g71-head-2", totalCount: 2, totalPages: 2 });
+    expect(await unsafe.json()).toMatchObject({ readHead: "g71-head-1", totalCount: 2, totalPages: 2 });
   });
 
   it("keeps generic query headless while preserving list and tag-state heads", async () => {
