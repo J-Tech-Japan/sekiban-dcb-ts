@@ -97,6 +97,53 @@ and exported-client list-query paths all observe the empty held page first,
 the one-row checkpoint page next, and the same old row plus the checkpoint head
 after the second source append. Both safe and unsafe requests are covered.
 
+## W227 Cloudflare-only composition proof (review W224 F2)
+
+The controlled checkpoint fixture above is the adapter-substitution proof. It
+does not claim that the sample Worker, Queue consumer, Tag Durable Objects, or
+SafeWindow were composed. W227 adds that separate composition proof in
+`test/g71-composition.spec.ts`; the existing `test/g67-safe-lane.spec.ts` was
+not edited because SDT-G80 requires its G67 AC3 body to remain byte-identical.
+
+The proof uses one service and two real `SELF.fetch` serialized commits. Each
+commit returns and records its event id and durable SUID. The corresponding two
+Tag outbox deliveries are read from the real Tag Durable Objects and passed to
+the sample's exported `worker.queue(batch, env, ctx)`, so the sample's
+`deliveryViews` unsafe writer and its `afterStoredQueueDelivery` safe-lane kick
+run. The first Queue call can report the expected G44 retry-to-DLQ disposition
+until the first full coverage pass exists; the test still requires both
+messages to be processed and then uses the same production safe-lane scheduler
+with mocked `Date.now` for the logical-clock release. No wall-clock sleep or
+timeout was added.
+
+The held two-commit receipt from the focused W227 run was:
+
+| observation | result |
+| --- | --- |
+| commit A | event `0000001e-8480-7c67-9f85-193220b91b79`, SUID `062135598800000000001341847942` |
+| commit B command head | event `00000020-5940-7e8a-a3f5-44682b7ae298`, SUID `062135598920000000000896572346` |
+| safe page 1 while B is held | A only, `readHead = 062135598800000000001341847942` |
+| safe page 2 while B is held | empty, `readHead = 062135598800000000001341847942` |
+| sample unsafe page 1 while B is held | A and B, `readHead = 062135598920000000000896572346` |
+| sample unsafe page 2 while B is held | empty, `readHead = ""` (not SUID A) |
+| safe page after logical-clock release | A and B, `readHead = 062135598920000000000896572346` |
+
+Thus the non-empty old checkpoint is observed on both safe page 1 and the
+empty safe page 2, while the unsafe empty page reports only what that page
+reflected. After the release kick, the safe page converges to B and equals the
+unsafe page. This is a real divergence proof, not a one-commit fresh-service
+case where both heads could be empty.
+
+The local composition references remain distinct from this deployed-shaped
+proof: `test/g16-query.spec.ts` verifies that the meeting-room reservations and
+room-query mapping sends `consistency: "unsafe"` to the internal runtime
+list-query, while `test/g31-sample.spec.ts` verifies the sample's `waitFor`
+forwarding. W227's sample route is the former path under real Queue/MV state;
+the executor safe pages use the runtime list-query directly. The evidence is
+therefore split between adapter substitutions (the W223 matrix and controlled
+checkpoint) and composition coverage (the W227 real commit/Tag/Queue/MV/
+SafeWindow scenario), rather than treating either as the other.
+
 ## Head and consistency meanings
 
 | operation | head meaning | proof |
@@ -137,9 +184,9 @@ change while making the generic published contract checkable.
 ## Product mutants (all required mutants red)
 
 `node scripts/g71-read-contract-mutation-runner.mjs` applies each source
-mutation to `packages/dcb-client/src/executor.ts`, runs the named public
-semantic oracle, and restores the original bytes. The runner first verifies
-all anchors are unique and requires a passing healthy control. Results:
+mutation to its declared source file, runs the named public semantic oracle,
+and restores the original bytes. The runner first verifies all anchors are
+unique and requires a passing healthy control. Results:
 
 | mutant | intended finding | result |
 | --- | --- | --- |
@@ -149,6 +196,8 @@ all anchors are unique and requires a passing healthy control. Results:
 | `mismatched-observation-heads` | stale tag-state must not be combined with a newer authority head | behavioral product mutant red |
 | `list-consistency-dropped` | the public list lane must reach every serialized adapter | behavioral product mutant red |
 | `abort-collapsed-to-transport` | an aborted read must remain distinct from transport failure | behavioral product mutant red |
+| `composition-unsafe-option-dropped` | the sample held unsafe page must include B | behavioral product mutant red |
+| `composition-safe-head-from-wrong-observation` | the held safe page and empty page must retain A's checkpoint | behavioral product mutant red |
 
 The lane-forwarding oracle is also asserted for every adapter: dropping the
 public list consistency before transport makes that focused test fail. No
@@ -161,9 +210,10 @@ failed assertion for that oracle, rejects missing/skipped or unrelated
 assertions, and preserves process status, signal/error, report error, and the
 failed-assertion messages. Setup/import failures, timeout text, process kills,
 and green escapes are rejected rather than counted as semantic red. The
-runner's self-test covers all of those rejection cases; its actual six-mutant
-run produced status 1 with the named assertion failure for every mutant and
-restored the source bytes after each mutation.
+runner's self-test covers all of those rejection cases; its actual eight-mutant
+run produced status 1 with the named assertion failure for every mutant,
+including the two W227 composition mutants, and restored the source bytes after
+each mutation.
 
 ## 0.2.0 migration and release proof
 
@@ -208,8 +258,9 @@ isolated child worktree (with the default root-owned npm cache bypassed using
   matched release check: passed.
 - `npm run lint` and `npm run typecheck`: passed on the final local head.
 
-The historical receipts above describe the original W212 PR head. W223's
-current focused receipts are:
+The historical receipts above describe the original W212 PR head. The W223
+review-repair head (before W227's composition additions) had these focused
+receipts:
 
 - `npm run test:g71`: build passed, 15 tests passed, the validator self-test
   passed, and all six behavioral product mutants were red with structured
@@ -222,6 +273,20 @@ current focused receipts are:
 - The affected read/query/sample suite passed 45/45 tests. Its existing
   `test/read.spec.ts` identity-conflict fixture emitted a teardown warning
   after the passing result; that out-of-scope test was unchanged.
+
+W227's added composition proof was then run in the same isolated worktree:
+
+- `npm run test:g71`: build passed, both G71 files passed (16/16 tests), the
+  structured-validator self-test passed, and all eight behavioral product
+  mutants were red. The two new composition mutants each produced status 1,
+  exactly one failed named composition oracle, and an assertion mismatch;
+  timeout, setup/import, signal/process, missing-oracle, skipped-oracle,
+  unrelated-assertion, and green-escape cases remain rejected by the
+  validator self-test.
+- `npm run lint`, `npm run typecheck`, and `git diff --check`: passed.
+
+The W227 local receipts above were collected before the repair commit; hosted
+CI is reported separately against the pushed exact W227 head.
 
 No unchanged full suite was rerun merely for luck.
 

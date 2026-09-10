@@ -62,6 +62,24 @@ const mutations = Object.freeze([
     oracle: "keeps refusal, abort, and transport failures distinguishable at the read boundary",
     reason: "an aborted read must not be collapsed into an ordinary transport failure",
   },
+  {
+    id: "composition-unsafe-option-dropped",
+    sourceFile: "samples/meeting-room/src/worker.cloudflare-only.ts",
+    testFile: "test/g71-composition.spec.ts",
+    from: "      }, { consistency: \"unsafe\" });\n      return json(result);",
+    to: "      });\n      return json(result);",
+    oracle: "G71 composition: safe and unsafe pages diverge while SafeWindow holds",
+    reason: "the sample's held unsafe page must include the queued event rather than silently taking the safe lane",
+  },
+  {
+    id: "composition-safe-head-from-wrong-observation",
+    sourceFile: "packages/dcb-runtime/src/mv/MaterializedViewStore.ts",
+    testFile: "test/g71-composition.spec.ts",
+    from: "      readHead: options.consistency === \"unsafe\" ? maxReflectedSuid(rows) : selectedInstance.lastSuid,",
+    to: "      readHead: options.consistency === \"unsafe\" ? maxReflectedSuid(rows) : \"\",",
+    oracle: "G71 composition: safe and unsafe pages diverge while SafeWindow holds",
+    reason: "safe pages, including an empty second page, must report the checkpoint used for their rows",
+  },
 ]);
 
 function run(args, label) {
@@ -185,19 +203,20 @@ function mutate(original, mutation) {
 
 function oracle(mutation) {
   currentOracle = mutation.oracle;
+  const testFile = mutation.testFile ?? "test/g71-read-contract.spec.ts";
   return run([
     "run",
     "--config",
     "vitest.config.ts",
     "--no-cache",
-    "test/g71-read-contract.spec.ts",
+    testFile,
     "--testNamePattern",
     mutation.oracle,
   ], `G71 semantic oracle (${mutation.id})`);
 }
 
 function runMutation(mutation) {
-  const path = resolve(root, sourceFile);
+  const path = resolve(root, mutation.sourceFile ?? sourceFile);
   const original = readFileSync(path, "utf8");
   try {
     requirePass(oracle(mutation));
@@ -233,8 +252,10 @@ function semanticReport(oracle, status = "failed", failureMessages = ["Assertion
 }
 
 function selfTest() {
-  const original = readFileSync(resolve(root, sourceFile), "utf8");
-  for (const mutation of mutations) mutate(original, mutation);
+  for (const mutation of mutations) {
+    const original = readFileSync(resolve(root, mutation.sourceFile ?? sourceFile), "utf8");
+    mutate(original, mutation);
+  }
   const mutation = mutations[0];
   const semantic = semanticFailureEvidence(syntheticResult({ structured: semanticReport(mutation.oracle) }), mutation);
   assertRejects("setup/import failure", () => semanticFailureEvidence(syntheticResult({ structured: semanticReport(mutation.oracle, "failed", ["Failed to load setup file"]) }), mutation));
