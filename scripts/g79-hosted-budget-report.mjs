@@ -36,13 +36,32 @@ function budgetFor(fileName, title) {
   return { budgetMs: inheritedBudgetMs, source: "Vitest inherited default (no local budget)" };
 }
 
-function currentCommitSha() {
+function checkedOutCommitSha() {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
   try {
     return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   } catch {
     return null;
   }
+}
+
+function sourceHeadSha(checkoutSha) {
+  if (!checkoutSha) return null;
+  try {
+    const parents = execFileSync("git", ["rev-list", "--parents", "-n", "1", checkoutSha], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim().split(/\s+/);
+    // pull_request workflows check out a synthetic merge commit.  The second
+    // parent is the actual PR head whose source the receipt measures.
+    if (parents.length >= 3 && (process.env.GITHUB_EVENT_NAME === "pull_request" || process.env.GITHUB_HEAD_REF)) {
+      return parents[2];
+    }
+  } catch {
+    // Keep the checked-out SHA when the hosted checkout does not expose its
+    // parent graph (for example, a shallow non-PR invocation).
+  }
+  return checkoutSha;
 }
 
 function sourceReceiptClass(commitSha) {
@@ -58,9 +77,11 @@ function main() {
     throw new Error(`SDT-G79 timing report has no test files: ${reportPath}`);
   }
 
-  const commitSha = currentCommitSha();
+  const checkoutSha = checkedOutCommitSha();
+  const commitSha = sourceHeadSha(checkoutSha);
   const receipt = {
     commitSha,
+    workflowCheckoutSha: checkoutSha,
     sourceReceiptClass: sourceReceiptClass(commitSha),
     workflowRunId: process.env.GITHUB_RUN_ID ?? null,
     workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,

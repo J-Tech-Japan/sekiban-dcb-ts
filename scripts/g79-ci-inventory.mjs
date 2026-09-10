@@ -17,13 +17,32 @@ const workflowPath = resolve(root, ".github/workflows/ci.yml");
 const historicalSourceHead = "21427a58534efe8af4b3553322268f84fd6cbbd6";
 const reviewedHead = "cd15a2729ea2aa062515012ad1938266856ede2b";
 
-function commitSha() {
+function checkedOutCommitSha() {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
   try {
     return execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
   } catch {
     return null;
   }
+}
+
+function sourceHeadSha(checkoutSha) {
+  if (!checkoutSha) return null;
+  try {
+    const parents = execFileSync("git", ["rev-list", "--parents", "-n", "1", checkoutSha], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim().split(/\s+/);
+    // pull_request workflows check out a synthetic merge commit.  Keep both
+    // identities: commitSha is the PR source head, while workflowCheckoutSha
+    // records the actual merge commit tested by Actions.
+    if (parents.length >= 3 && (process.env.GITHUB_EVENT_NAME === "pull_request" || process.env.GITHUB_HEAD_REF)) {
+      return parents[2];
+    }
+  } catch {
+    // A shallow non-PR checkout may not expose a parent graph.
+  }
+  return checkoutSha;
 }
 
 function sourceReceiptClass(sha) {
@@ -116,13 +135,15 @@ function parseJobs(workflow) {
 
 function inventory() {
   const jobs = parseJobs(readFileSync(workflowPath, "utf8"));
-  const sha = commitSha();
+  const workflowCheckoutSha = checkedOutCommitSha();
+  const sha = sourceHeadSha(workflowCheckoutSha);
   const rows = jobs.flatMap((job) => {
     const measurement = laneMeasurement(job.name);
     return job.commands.map((command, index) => ({
       workflowRunId: process.env.GITHUB_RUN_ID ?? null,
       workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
       commitSha: sha,
+      workflowCheckoutSha,
       sourceReceiptClass: sourceReceiptClass(sha),
       workflow: process.env.GITHUB_WORKFLOW ?? "CI",
       hostedJob: job.name,
@@ -131,7 +152,13 @@ function inventory() {
       ...measurement,
     }));
   });
-  return { workflowPath, commitSha: sha, jobs: jobs.map((job) => job.name), invocations: rows };
+  return {
+    workflowPath,
+    commitSha: sha,
+    workflowCheckoutSha,
+    jobs: jobs.map((job) => job.name),
+    invocations: rows,
+  };
 }
 
 function selfTest() {
@@ -171,6 +198,7 @@ function main() {
   console.log(`SDT-G79_HOSTED_CI_INVOCATION_SUMMARY ${JSON.stringify({
     workflowPath,
     commitSha: result.commitSha,
+    workflowCheckoutSha: result.workflowCheckoutSha,
     sourceReceiptClass: sourceReceiptClass(result.commitSha),
     workflowRunId: process.env.GITHUB_RUN_ID ?? null,
     workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
