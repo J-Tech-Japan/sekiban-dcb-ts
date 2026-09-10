@@ -35,6 +35,10 @@ const maxRepresentativeRounds = 4096;
 const originalRunnerSha256 =
   "74e024444725c5aa01f01b8e1346b5329099e9c60135babd66186a11e1c3d7ee";
 const directTimingMarker = "G80_G73_DIRECT_TIMING";
+const sgrSequencePattern = new RegExp(
+  `${String.fromCharCode(27)}\\[[0-9;]*m`,
+  "g",
+);
 const observationRoot = resolve(root, ".artifacts", "sdt-g80-observation");
 const timerResolutionFloorMs = 1;
 const allowanceMadFactor = 3;
@@ -296,12 +300,24 @@ function legacyMutate(source, rounds) {
   );
 }
 
+function stripSgrSequences(value) {
+  return String(value).replace(sgrSequencePattern, "");
+}
+
 function parseDirectTiming(output) {
   const lines = String(output ?? "")
     .split("\n")
+    .map(stripSgrSequences)
     .filter((line) => line.startsWith(directTimingMarker + " "));
-  if (lines.length === 0) return { value: null, error: null };
-  const payload = lines.at(-1).slice(directTimingMarker.length + 1);
+  if (lines.length !== 1) {
+    return {
+      value: null,
+      error: lines.length === 0
+        ? "direct timing marker missing"
+        : `direct timing marker must occur exactly once; found ${lines.length}`,
+    };
+  }
+  const payload = lines[0].slice(directTimingMarker.length + 1);
   try {
     return { value: JSON.parse(payload), error: null };
   } catch (error) {
@@ -720,6 +736,40 @@ function selfTest() {
     clockAdvancesDuringRealWork: true,
     minObservedAdvanceMs: 80,
   };
+  const colourPrefixedTiming = parseDirectTiming(
+    "\u001b[22m\u001b[39m" + directTimingMarker + " " + JSON.stringify(validTiming),
+  );
+  if (
+    colourPrefixedTiming.error !== null ||
+    JSON.stringify(colourPrefixedTiming.value) !== JSON.stringify(validTiming)
+  ) {
+    throw new Error("G80 self-test did not strip SGR before matching the direct timing marker");
+  }
+  const truncatedMarker = parseDirectTiming(
+    directTimingMarker.slice(0, -1) + " " + JSON.stringify(validTiming),
+  );
+  if (truncatedMarker.value !== null || truncatedMarker.error === null) {
+    throw new Error("G80 self-test accepted a truncated direct timing marker");
+  }
+  const truncatedPayload = parseDirectTiming(
+    directTimingMarker + ' {"clock":"performance.now"',
+  );
+  if (truncatedPayload.value !== null || truncatedPayload.error === null) {
+    throw new Error("G80 self-test accepted a truncated direct timing payload");
+  }
+  const missingMarker = parseDirectTiming("Vitest output without the direct timing receipt");
+  if (missingMarker.value !== null || missingMarker.error === null) {
+    throw new Error("G80 self-test accepted output with a missing direct timing marker");
+  }
+  const duplicateMarker = parseDirectTiming(
+    [
+      directTimingMarker + " " + JSON.stringify(validTiming),
+      directTimingMarker + " " + JSON.stringify(validTiming),
+    ].join("\n"),
+  );
+  if (duplicateMarker.value !== null || duplicateMarker.error === null) {
+    throw new Error("G80 self-test accepted more than one direct timing marker");
+  }
   validateDirectTiming(validTiming);
   deriveAllowance(validTiming);
   const invalidTimingCases = [
