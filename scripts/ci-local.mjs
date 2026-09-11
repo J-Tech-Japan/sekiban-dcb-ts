@@ -203,7 +203,7 @@ function workspacePackagePaths(executionRoot) {
 }
 
 function assertWorkspaceDependenciesInsideWorktree(executionRoot) {
-  const worktree = resolve(executionRoot);
+  const worktree = realpathSync(executionRoot);
   const checks = [];
   for (const packagePath of workspacePackagePaths(executionRoot)) {
     let packageDocument;
