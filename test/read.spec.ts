@@ -1,5 +1,5 @@
 import { env, SELF } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { G11_SERVICE_ID_HEADER } from "../packages/dcb-runtime/src/http/testServiceId";
@@ -15,6 +15,17 @@ interface PartialWriteResponse {
   code: string;
   partial: { missingTags: string[]; writtenTags: string[] };
 }
+
+interface PersistedLagEstimate {
+  estimateMs: number;
+  observedAt: number;
+}
+
+interface QueryablePostgresStore {
+  query(statement: string, parameters?: Array<string | number | null>): Promise<Array<Record<string, unknown>>>;
+}
+
+const G81_PINNED_CLOCK = 1_800_000_000_000;
 
 async function responseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
@@ -127,6 +138,59 @@ async function expectInternalError(response: Response): Promise<void> {
   expect(await responseJson<{ error: string; code: string }>(response)).toMatchObject({
     code: "internal_error",
   });
+}
+
+async function readPersistedLag(store: PostgresEventStore, serviceId: string): Promise<PersistedLagEstimate> {
+  // This is a test-only read-back of the durable evidence required by AC1;
+  // production keeps the query port private and unchanged.
+  const rows = await (store as unknown as QueryablePostgresStore).query(
+    `SELECT estimate_ms, observed_at
+       FROM serialized_dcb_lag_estimates
+      WHERE service_id = $1`,
+    [serviceId],
+  );
+  const row = rows[0];
+  if (row === undefined) throw new Error(`missing persisted lag row for ${serviceId}`);
+  return { estimateMs: Number(row.estimate_ms), observedAt: Number(row.observed_at) };
+}
+
+async function seedSafeWindowLag(
+  store: PostgresEventStore,
+  serviceId: string,
+  tag: string,
+  observedAt: number,
+  lagMs: number,
+): Promise<void> {
+  await store.recordDelivery(g32Message({
+    serviceId,
+    allocatorLineageId: "g81-read-lineage",
+    tag,
+    attemptId: `g81-attempt-${crypto.randomUUID()}`,
+    eventId: `g81-event-${crypto.randomUUID()}`,
+    suid: `g81-suid-${lagMs}-${crypto.randomUUID()}`,
+    payload: "{}",
+    eventTags: [tag],
+    eventType: "G81SafeWindowEvent",
+    enqueuedAt: observedAt - lagMs,
+  }), observedAt);
+}
+
+async function readLatestWithBounds(serviceId: string, tag: string): Promise<{
+  response: Response;
+  beforeRead: number;
+  afterRead: number;
+}> {
+  const beforeRead = Date.now();
+  const response = await SELF.fetch("https://read.test/api/sekiban/serialized/tag-latest-sortable", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      [G11_SERVICE_ID_HEADER]: serviceId,
+    },
+    body: JSON.stringify({ tag }),
+  });
+  const afterRead = Date.now();
+  return { response, beforeRead, afterRead };
 }
 
 describe("Serialized V1 reads", () => {
@@ -338,39 +402,120 @@ describe("Serialized V1 reads", () => {
     });
   });
 
-  it("fails closed with Section 6 JSON when a current lag estimate exceeds 120 seconds", async () => {
-    const serviceId = `g11-ceiling-${crypto.randomUUID().replaceAll("-", "")}`;
+  it("[G81] AC1 captures the lag estimate and read-time bounds for the SafeWindow ceiling", async () => {
+    const serviceId = `g81-ac1-ceiling-${crypto.randomUUID().replaceAll("-", "")}`;
     const tag = tagFor("ceiling");
-    const now = Date.now();
     const url = (env as unknown as WorkerEnv).POSTGRES_URL;
     if (url === undefined) {
       throw new Error("POSTGRES_URL binding is required for the SafeWindow ceiling oracle");
     }
     const store = new PostgresEventStore(url);
-    await store.initialize();
-    await store.recordDelivery(g32Message({
-      serviceId,
-      allocatorLineageId: "test-read-lineage",
-      tag,
-      attemptId: crypto.randomUUID(),
-      eventId: crypto.randomUUID(),
-      suid: "read-ceiling",
-      payload: "{}",
-      eventTags: [tag],
-      eventType: "ReadCeilingEvent",
-      enqueuedAt: now - 121_000,
-    }), now);
-    expect(await store.currentLagBound(serviceId, now)).toBeGreaterThan(120_000);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(G81_PINNED_CLOCK);
+    try {
+      await store.initialize();
+      await seedSafeWindowLag(store, serviceId, tag, G81_PINNED_CLOCK, 121_000);
+      const persistedLag = await readPersistedLag(store, serviceId);
+      expect(persistedLag).toEqual({ estimateMs: 121_000, observedAt: G81_PINNED_CLOCK });
+      expect(await store.currentLagBound(serviceId, G81_PINNED_CLOCK)).toBe(121_000);
 
-    const response = await SELF.fetch("https://read.test/api/sekiban/serialized/tag-latest-sortable", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        [G11_SERVICE_ID_HEADER]: serviceId,
-      },
-      body: JSON.stringify({ tag }),
-    });
-    await expectInternalError(response);
+      const { response, beforeRead, afterRead } = await readLatestWithBounds(serviceId, tag);
+      const capture = {
+        seedTime: G81_PINNED_CLOCK,
+        persistedLag,
+        beforeRead,
+        afterRead,
+        lagAtBeforeRead: await store.currentLagBound(serviceId, beforeRead),
+        lagAtAfterRead: await store.currentLagBound(serviceId, afterRead),
+        responseStatus: response.status,
+      };
+      expect(response.status, `G81 AC1 capture ${JSON.stringify(capture)}`).toBe(500);
+      await expectInternalError(response);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("[G81] AC2 proves the public reader evaluates the SafeWindow ceiling at the pinned clock", async () => {
+    const serviceId = `g81-ac2-clock-${crypto.randomUUID().replaceAll("-", "")}`;
+    const tag = tagFor("clock-propagation");
+    const url = (env as unknown as WorkerEnv).POSTGRES_URL;
+    if (url === undefined) {
+      throw new Error("POSTGRES_URL binding is required for the SafeWindow clock propagation oracle");
+    }
+    const store = new PostgresEventStore(url);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(G81_PINNED_CLOCK);
+    try {
+      await store.initialize();
+      await seedSafeWindowLag(store, serviceId, tag, G81_PINNED_CLOCK, 121_000);
+
+      const atPinnedClock = await readLatestWithBounds(serviceId, tag);
+      expect(atPinnedClock.response.status, "G81 AC2 pinned reader did not fail closed").toBe(500);
+      await expectInternalError(atPinnedClock.response);
+
+      clock.mockReturnValue(G81_PINNED_CLOCK + 2_000);
+      const afterTwoSeconds = await readLatestWithBounds(serviceId, tag);
+      expect(afterTwoSeconds.response.status, "G81 AC2 public reader did not observe the moved pinned clock").toBe(200);
+      expect(await responseJson<{ exists: boolean; lastSortableUniqueId: string }>(afterTwoSeconds.response)).toEqual({
+        exists: false,
+        lastSortableUniqueId: "",
+      });
+
+      expect(atPinnedClock.beforeRead).toBe(G81_PINNED_CLOCK);
+      expect(atPinnedClock.afterRead).toBe(G81_PINNED_CLOCK);
+      expect(afterTwoSeconds.beforeRead).toBe(G81_PINNED_CLOCK + 2_000);
+      expect(afterTwoSeconds.afterRead).toBe(G81_PINNED_CLOCK + 2_000);
+      expect(await store.currentLagBound(serviceId, G81_PINNED_CLOCK)).toBe(121_000);
+      expect(await store.currentLagBound(serviceId, G81_PINNED_CLOCK + 2_000)).toBe(119_000);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader", async () => {
+    const url = (env as unknown as WorkerEnv).POSTGRES_URL;
+    if (url === undefined) {
+      throw new Error("POSTGRES_URL binding is required for the SafeWindow boundary oracle");
+    }
+    const clock = vi.spyOn(Date, "now").mockReturnValue(G81_PINNED_CLOCK);
+    try {
+      for (const boundary of [
+        { lagMs: 120_000, expectedStatus: 200 },
+        { lagMs: 120_001, expectedStatus: 500 },
+      ]) {
+        const serviceId = `g81-boundary-${boundary.lagMs}-${crypto.randomUUID().replaceAll("-", "")}`;
+        const tag = tagFor(`boundary-${boundary.lagMs}`);
+        const store = new PostgresEventStore(url);
+        await store.initialize();
+        await seedSafeWindowLag(store, serviceId, tag, G81_PINNED_CLOCK, boundary.lagMs);
+        const persistedLag = await readPersistedLag(store, serviceId);
+        const { response, beforeRead, afterRead } = await readLatestWithBounds(serviceId, tag);
+        const capture = {
+          lagMs: boundary.lagMs,
+          seedTime: G81_PINNED_CLOCK,
+          persistedLag,
+          beforeRead,
+          afterRead,
+          responseStatus: response.status,
+        };
+        expect(persistedLag, `G81 AC3 durable lag capture ${JSON.stringify(capture)}`).toEqual({
+          estimateMs: boundary.lagMs,
+          observedAt: G81_PINNED_CLOCK,
+        });
+        expect(beforeRead).toBe(G81_PINNED_CLOCK);
+        expect(afterRead).toBe(G81_PINNED_CLOCK);
+        expect(response.status, `G81 AC3 boundary capture ${JSON.stringify(capture)}`).toBe(boundary.expectedStatus);
+        if (boundary.expectedStatus === 200) {
+          expect(await responseJson<{ exists: boolean; lastSortableUniqueId: string }>(response)).toEqual({
+            exists: false,
+            lastSortableUniqueId: "",
+          });
+        } else {
+          await expectInternalError(response);
+        }
+      }
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("keeps valid empty reads determinate and rejects malformed fixture requests without query semantics", async () => {
