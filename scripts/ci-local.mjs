@@ -386,6 +386,76 @@ function docker(args, label, allowFailure = false) {
   return result;
 }
 
+function dockerJson(args, label) {
+  const result = docker(args, label);
+  try {
+    return JSON.parse(String(result.stdout ?? ""));
+  } catch (error) {
+    fail(`${label} returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function inspectContainerProvenance(container, service, configuredImage) {
+  const inspectedContainers = dockerJson(["inspect", container], `${service} container inspect`);
+  if (!Array.isArray(inspectedContainers) || inspectedContainers.length !== 1) {
+    fail(`${service} container inspect must return exactly one container`);
+  }
+  const inspectedContainer = inspectedContainers[0];
+  const actualConfiguredImage = inspectedContainer?.Config?.Image;
+  if (actualConfiguredImage !== configuredImage) {
+    fail(`${service} configured image mismatch: expected ${configuredImage}, observed ${String(actualConfiguredImage)}`);
+  }
+  const resolvedImageId = inspectedContainer?.Image;
+  if (typeof resolvedImageId !== "string" || !/^sha256:[0-9a-f]{64}$/.test(resolvedImageId)) {
+    fail(`${service} container inspect did not return an immutable image ID`);
+  }
+  const inspectedImages = dockerJson(["image", "inspect", resolvedImageId], `${service} image inspect`);
+  if (!Array.isArray(inspectedImages) || inspectedImages.length !== 1) {
+    fail(`${service} image inspect must return exactly one image`);
+  }
+  const repoDigests = Array.isArray(inspectedImages[0]?.RepoDigests)
+    ? inspectedImages[0].RepoDigests.filter((digest) => typeof digest === "string" && digest.length > 0)
+    : [];
+  return {
+    service,
+    container,
+    configuredImage: actualConfiguredImage,
+    resolvedImageId,
+    repoDigests,
+  };
+}
+
+function validateContainerProvenance(containerImages, startedServices) {
+  if (!Array.isArray(containerImages)) fail("container image provenance must be an array");
+  if (!Array.isArray(startedServices)) fail("started services must be an array");
+  const expectedServices = [...new Set(startedServices)];
+  if (containerImages.length !== expectedServices.length) {
+    fail(`container image provenance count ${containerImages.length} does not match started services ${expectedServices.length}`);
+  }
+  const seenServices = new Set();
+  for (const service of expectedServices) {
+    const provenance = containerImages.find((entry) => entry?.service === service);
+    if (provenance === undefined || provenance === null || typeof provenance !== "object" || Array.isArray(provenance)) {
+      fail(`${service} receipt must contain structured immutable container provenance`);
+    }
+    if (seenServices.has(provenance.service)) fail(`duplicate container provenance for ${service}`);
+    seenServices.add(provenance.service);
+    if (typeof provenance.container !== "string" || provenance.container.length === 0) {
+      fail(`${service} receipt provenance must name the exact container`);
+    }
+    if (typeof provenance.configuredImage !== "string" || provenance.configuredImage.length === 0) {
+      fail(`${service} receipt provenance must retain the configured manifest image`);
+    }
+    if (typeof provenance.resolvedImageId !== "string" || !/^sha256:[0-9a-f]{64}$/.test(provenance.resolvedImageId)) {
+      fail(`${service} receipt provenance must retain an immutable resolved image ID`);
+    }
+    if (!Array.isArray(provenance.repoDigests) || provenance.repoDigests.some((digest) => typeof digest !== "string" || digest.length === 0)) {
+      fail(`${service} receipt provenance must retain repo digests as strings`);
+    }
+  }
+  if (seenServices.size !== containerImages.length) fail("receipt contains provenance for an unstarted service");
+}
+
 function mappedPort(container, containerPort) {
   const result = docker(["port", container, `${containerPort}/tcp`], `docker port ${container}`);
   const line = String(result.stdout ?? "").trim().split("\n")[0] ?? "";
@@ -415,50 +485,60 @@ function waitForCosmos(url) {
 function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.env) {
   const services = new Set(lane.services);
   const cleanup = [];
+  const containerProvenance = [];
   const env = { ...initialEnv };
-  if (services.has("postgres")) {
-    const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-postgres`;
-    docker(["run", "--detach", "--rm", "--name", container, "--env", "POSTGRES_DB=serialized_dcb", "--env", "POSTGRES_PASSWORD=postgres", "--env", "POSTGRES_USER=postgres", "--publish", "127.0.0.1::5432", "postgres:16-alpine"], "postgres container");
-    cleanup.push(() => docker(["rm", "--force", container], "postgres cleanup", true));
-    waitForPostgres(container);
-    const postgresPort = mappedPort(container, 5432);
-    env.POSTGRES_URL = `postgresql://postgres:postgres@127.0.0.1:${postgresPort}/serialized_dcb`;
-    const isolatedDatabase = `sdt_g16_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
-    let createDatabase;
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-      createDatabase = docker(["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `CREATE DATABASE "${isolatedDatabase}"`], "G16 isolated database", true);
-      if (createDatabase.status === 0 || String(createDatabase.stderr ?? "").includes("already exists")) break;
-      spawnSync("sleep", ["1"], { stdio: "ignore" });
+  try {
+    if (services.has("postgres")) {
+      const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-postgres`;
+      const configuredImage = "postgres:16-alpine";
+      docker(["run", "--detach", "--rm", "--name", container, "--env", "POSTGRES_DB=serialized_dcb", "--env", "POSTGRES_PASSWORD=postgres", "--env", "POSTGRES_USER=postgres", "--publish", "127.0.0.1::5432", configuredImage], "postgres container");
+      cleanup.push(() => docker(["rm", "--force", container], "postgres cleanup", true));
+      containerProvenance.push(inspectContainerProvenance(container, "postgres", configuredImage));
+      waitForPostgres(container);
+      const postgresPort = mappedPort(container, 5432);
+      env.POSTGRES_URL = `postgresql://postgres:postgres@127.0.0.1:${postgresPort}/serialized_dcb`;
+      const isolatedDatabase = `sdt_g16_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
+      let createDatabase;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        createDatabase = docker(["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `CREATE DATABASE "${isolatedDatabase}"`], "G16 isolated database", true);
+        if (createDatabase.status === 0 || String(createDatabase.stderr ?? "").includes("already exists")) break;
+        spawnSync("sleep", ["1"], { stdio: "ignore" });
+      }
+      if (createDatabase?.status !== 0 && !String(createDatabase.stderr ?? "").includes("already exists")) {
+        fail(`could not create the isolated G16 database: ${String(createDatabase?.stderr ?? "").trim() || "unknown docker/psql error"}`);
+      }
+      env.G16_POSTGRES_URL = `postgresql://postgres:postgres@127.0.0.1:${postgresPort}/${isolatedDatabase}`;
     }
-    if (createDatabase?.status !== 0 && !String(createDatabase.stderr ?? "").includes("already exists")) {
-      fail(`could not create the isolated G16 database: ${String(createDatabase?.stderr ?? "").trim() || "unknown docker/psql error"}`);
+    if (services.has("cosmos")) {
+      mkdirSync(receiptRoot, { recursive: true });
+      const keyFile = resolve(receiptRoot, `${lane.name}.cosmos.key`);
+      const key = spawnSync("openssl", ["rand", "-base64", "64"], { encoding: "utf8" });
+      if (key.status !== 0) fail("openssl could not create the Cosmos credential");
+      writeFileSync(keyFile, String(key.stdout).replace(/\n/g, ""), { mode: 0o600 });
+      chmodSync(keyFile, 0o600);
+      const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-cosmos`;
+      const configuredImage = manifest.services.cosmos.image;
+      docker(["run", "--detach", "--rm", "--name", container, "--publish", "127.0.0.1::8080", "--publish", "127.0.0.1::8081", "--publish", "127.0.0.1::1234", "--volume", `${keyFile}:/cosmos.key:ro`, configuredImage, "--key-file", "/cosmos.key"], "Cosmos container");
+      cleanup.push(() => docker(["rm", "--force", container], "Cosmos cleanup", true));
+      containerProvenance.push(inspectContainerProvenance(container, "cosmos", configuredImage));
+      const port8080 = mappedPort(container, 8080);
+      const port8081 = mappedPort(container, 8081);
+      waitForCosmos(`http://127.0.0.1:${port8080}/ready`);
+      env.COSMOS_ENDPOINT = `http://127.0.0.1:${port8081}/`;
+      env.COSMOS_DATABASE = `sdt_g12_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
+      env.COSMOS_KEY_FILE = keyFile;
     }
-    env.G16_POSTGRES_URL = `postgresql://postgres:postgres@127.0.0.1:${postgresPort}/${isolatedDatabase}`;
+  } catch (error) {
+    for (const cleanupAction of cleanup.reverse()) cleanupAction();
+    throw error;
   }
-  if (services.has("cosmos")) {
-    mkdirSync(receiptRoot, { recursive: true });
-    const keyFile = resolve(receiptRoot, `${lane.name}.cosmos.key`);
-    const key = spawnSync("openssl", ["rand", "-base64", "64"], { encoding: "utf8" });
-    if (key.status !== 0) fail("openssl could not create the Cosmos credential");
-    writeFileSync(keyFile, String(key.stdout).replace(/\n/g, ""), { mode: 0o600 });
-    chmodSync(keyFile, 0o600);
-    const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-cosmos`;
-    const image = manifest.services.cosmos.image;
-    docker(["run", "--detach", "--rm", "--name", container, "--publish", "127.0.0.1::8080", "--publish", "127.0.0.1::8081", "--publish", "127.0.0.1::1234", "--volume", `${keyFile}:/cosmos.key:ro`, image, "--key-file", "/cosmos.key"], "Cosmos container");
-    cleanup.push(() => docker(["rm", "--force", container], "Cosmos cleanup", true));
-    const port8080 = mappedPort(container, 8080);
-    const port8081 = mappedPort(container, 8081);
-    waitForCosmos(`http://127.0.0.1:${port8080}/ready`);
-    env.COSMOS_ENDPOINT = `http://127.0.0.1:${port8081}/`;
-    env.COSMOS_DATABASE = `sdt_g12_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
-    env.COSMOS_KEY_FILE = keyFile;
-  }
-  return { env, cleanup, services: [...services] };
+  return { env, cleanup, services: [...services], containerProvenance };
 }
 
-function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed, execution, bootstrap) {
+function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed, execution, bootstrap, startedServices, containerProvenance) {
   mkdirSync(root, { recursive: true });
   const nugetIsolation = bootstrap.nugetIsolation ?? null;
+  validateContainerProvenance(containerProvenance, startedServices);
   const receipt = {
     schema: "sdt-ci-local-receipt/v1",
     lane: lane.name,
@@ -466,6 +546,7 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     commitSha: sha,
     commands,
     services: lane.services,
+    startedServices,
     exitStatus: status,
     durationMs: Math.max(0, Date.now() - startedAt),
     forcedRed: forcedRedPassed,
@@ -485,7 +566,7 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     },
     node: process.version,
     npm: String(spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "").trim(),
-    containerImages: lane.services,
+    containerImages: containerProvenance,
     recordedAt: new Date().toISOString(),
   };
   const path = resolve(root, `${lane.name}.json`);
@@ -493,7 +574,7 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
   return { path, receipt };
 }
 
-function executeLane(lane, baseEnv, receiptRoot, sha, execution, bootstrap, cwd) {
+function executeLane(lane, baseEnv, receiptRoot, sha, execution, bootstrap, cwd, startedServices, containerProvenance) {
   const startedAt = Date.now();
   const commandReceipts = [];
   let status = 0;
@@ -519,7 +600,7 @@ function executeLane(lane, baseEnv, receiptRoot, sha, execution, bootstrap, cwd)
       break;
     }
   }
-  const { path, receipt } = writeReceipt(receiptRoot, lane, sha, commandReceipts, status, startedAt, forcedRedPassed, execution, bootstrap);
+  const { path, receipt } = writeReceipt(receiptRoot, lane, sha, commandReceipts, status, startedAt, forcedRedPassed, execution, bootstrap, startedServices, containerProvenance);
   return { path, receipt };
 }
 
@@ -538,12 +619,12 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
     status: "skipped",
     reason: options.ci ? "hosted-checkout-installs-dependencies-before-runner" : "--skip-bootstrap",
   };
-  let serviceState = { env: { ...process.env }, cleanup: [], services: [] };
+  let serviceState = { env: { ...process.env }, cleanup: [], services: [], containerProvenance: [] };
   try {
     if (detached) bootstrap = prepareDetachedDependencies(executionRoot, options, manifest, lane);
     if (detached) serviceState = startServices(manifest, lane, sha, receiptRoot, executionEnv);
     const laneEnv = { ...serviceState.env, ...(bootstrap.nugetIsolation?.paths ?? {}), ...(lane.env ?? {}) };
-    return executeLane(lane, laneEnv, receiptRoot, sha, execution, bootstrap, executionRoot);
+    return executeLane(lane, laneEnv, receiptRoot, sha, execution, bootstrap, executionRoot, serviceState.services, serviceState.containerProvenance);
   } finally {
     for (const cleanup of serviceState.cleanup.reverse()) cleanup();
     removeNugetIsolation(bootstrap.nugetIsolation);
@@ -566,6 +647,7 @@ function main() {
     const selfTestWorktree = createDetachedWorktree(sha, "self-test");
     let worktreeProof;
     let nugetProof;
+    let containerProof;
     try {
       const detachedSha = currentSha(selfTestWorktree);
       const clean = gitOutput(["status", "--porcelain"], selfTestWorktree) === "";
@@ -581,11 +663,31 @@ function main() {
       if (!nugetProof.insideWorktree || nugetProof.checks.length !== NUGET_ENV_NAMES.length || !nugetProof.checks.every((check) => check.insideWorktree && check.insideIsolation)) {
         fail("NuGet isolation self-test failed");
       }
+      const healthyContainerProvenance = [{
+        service: "postgres",
+        container: "self-test-postgres",
+        configuredImage: "postgres:16-alpine",
+        resolvedImageId: `sha256:${"a".repeat(64)}`,
+        repoDigests: [`postgres@sha256:${"b".repeat(64)}`],
+      }];
+      validateContainerProvenance(healthyContainerProvenance, ["postgres"]);
+      let aliasMutationError = null;
+      try {
+        validateContainerProvenance(["postgres"], ["postgres"]);
+      } catch (error) {
+        aliasMutationError = error instanceof Error ? error.message : String(error);
+      }
+      if (aliasMutationError === null) fail("container alias-only mutation unexpectedly passed");
+      containerProof = {
+        healthy: "green",
+        aliasOnlyMutation: "red",
+        error: aliasMutationError,
+      };
     } finally {
       removeNugetIsolation(nugetProof);
       removeDetachedWorktree(selfTestWorktree, "self-test");
     }
-    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true } }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true }, containerProof }, null, 2)}\n`);
     return;
   }
   const lanes = selectLanes(manifest, options);
