@@ -4,8 +4,8 @@ Typed Serialized DCB V1 client and claim-ledger executor.
 
 `createSekibanExecutor` and the transport helpers provide the portable client
 surface for executing a V1 command without importing the Cloudflare runtime.
-The package depends on the matched `@sekiban/dcb-core` and
-`@sekiban/dcb-domain` `0.1.0` release set.
+The `0.2.0` package depends on the matched `@sekiban/dcb-core` and
+`@sekiban/dcb-domain` `0.2.0` release set.
 
 It is not the earlier, unrelated `@sekiban/core` package line.
 

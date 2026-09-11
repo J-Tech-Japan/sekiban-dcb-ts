@@ -114,6 +114,12 @@ describe("SDT-G14 meeting-room consumer", () => {
       fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const request = input instanceof Request ? input : new Request(input, init);
         calls.push(request);
+        if (new URL(request.url).pathname.endsWith("/tag-latest-sortable")) {
+          return new Response(JSON.stringify({ exists: false, lastSortableUniqueId: "" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
         if (new URL(request.url).pathname.endsWith("/tag-state")) {
           return new Response(JSON.stringify({
             payload: { status: "empty" },
@@ -154,6 +160,12 @@ describe("SDT-G14 meeting-room consumer", () => {
     const runtimeFetcher = {
       fetch: async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const request = input instanceof Request ? input : new Request(input, init);
+        if (new URL(request.url).pathname.endsWith("/tag-latest-sortable")) {
+          return new Response(JSON.stringify({ exists: true, lastSortableUniqueId: "suid-1" }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
         if (new URL(request.url).pathname.endsWith("/tag-state")) {
           return new Response(JSON.stringify({
             payload,

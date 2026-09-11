@@ -265,7 +265,20 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
 
     expect(memoryResponse.status).toBe(200);
     expect(mvResponse.status).toBe(200);
-    expect(await mvResponse.json()).toEqual(await memoryResponse.json());
+    const memoryListBody = await memoryResponse.json<Record<string, unknown>>();
+    const mvListBody = await mvResponse.json<Record<string, unknown>>();
+    // This fixture intentionally exercises the legacy queryRows-only D1 port,
+    // which has no active-checkpoint head API. The production readListPage
+    // port supplies the safe head; the fallback must preserve the shared V1
+    // rows/count shape without fabricating one.
+    expect(mvListBody).toMatchObject({
+      itemsJson: memoryListBody.itemsJson,
+      totalCount: memoryListBody.totalCount,
+      totalPages: memoryListBody.totalPages,
+      currentPage: memoryListBody.currentPage,
+      pageSize: memoryListBody.pageSize,
+    });
+    expect(mvListBody).not.toHaveProperty("readHead");
     const scalarBody = { queryType: "GetTestCountQuery", queryParamsJson: "{}" };
     const memoryScalar = await handleSerializedQuery(new Request("https://query.test/api/sekiban/serialized/query", {
       method: "POST",
@@ -312,6 +325,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       totalPages: 0,
       currentPage: 1,
       pageSize: 20,
+      readHead: "",
     });
 
     const disabledRegistry = new QueryRegistry([{
@@ -516,7 +530,7 @@ describe("SDT-G9 serialized V1 query and list-query", () => {
       currentPage: number;
       pageSize: number;
     }>();
-    expect(Object.keys(listBody).sort()).toEqual(["currentPage", "itemsJson", "pageSize", "totalCount", "totalPages"]);
+    expect(Object.keys(listBody).sort()).toEqual(["currentPage", "itemsJson", "pageSize", "readHead", "totalCount", "totalPages"]);
     expect(JSON.parse(listBody.itemsJson)).toContainEqual(expect.objectContaining({ forecastId }));
     expect(listBody).toMatchObject({ currentPage: 1, pageSize: 20 });
 

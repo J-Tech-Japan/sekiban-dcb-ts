@@ -36,6 +36,7 @@ function tsconfig(module, moduleResolution, outDir) {
 
 const consumer = `
 import { createHttpTransport, createSekibanExecutor } from "@sekiban/dcb-client";
+import type { ListQueryOptions, ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
 import { command, done, domain, event, projector, read, readExists, readSet, tagFamily, toRuntimeDomain } from "@sekiban/dcb-domain";
 import { z } from "zod";
 
@@ -108,7 +109,47 @@ try {
   rawByteMutationReason = String(error instanceof Error ? error.message : error);
 }
 assert(rawByteMutationRejected, "raw-byte mutation escaped the byte-level guard");
-console.log(JSON.stringify({ status: "PASS", rawV1Body: commit.rawBody, rawV1Bytes: actualBytes, expectedRawV1Bytes: expectedBytes, rawByteMutationReceipt: { status: "RED_DETECTED", parsedJsonUnchanged: true, reason: rawByteMutationReason } }));
+
+// Portable migration workflow: read once, then carry the returned snapshot into
+// a command whose transport cannot perform another read. The commit endpoint is
+// still exercised; only read methods are guarded to prove snapshot-only means
+// zero read calls rather than merely a skipped assertion.
+const portable = await executor.readState(roomProjector, rooms.of("room-1"));
+const snapshotOnlyReads = { count: 0 };
+const snapshotOnlyTransport = {
+  ...executor.transport,
+  readTagState: async () => { snapshotOnlyReads.count += 1; throw new Error("snapshot-only readTagState must not be called"); },
+  readTagLatestSortable: async () => { snapshotOnlyReads.count += 1; throw new Error("snapshot-only readTagLatestSortable must not be called"); },
+};
+const snapshotOnlyExecutor = createSekibanExecutor(snapshotOnlyTransport);
+const snapshotOnlyResult = await snapshotOnlyExecutor.execute(open, { roomId: "room-1" }, {
+  snapshots: [portable],
+  readMode: "snapshot-only",
+});
+equal(snapshotOnlyResult.kind, "committed");
+equal(snapshotOnlyReads.count, 0);
+
+// The public consistency lane is list-only. These two calls are type-positive
+// examples; the function is intentionally not invoked by the runtime receipt.
+const listRequest: ListQueryRequest = { queryType: "RoomList", queryParamsJson: "{}" };
+const listOnlyTypePositive = (value: SekibanExecutor, request: ListQueryRequest): void => {
+  const safe: ListQueryOptions = { consistency: "safe" };
+  const unsafe: ListQueryOptions = { consistency: "unsafe" };
+  void value.listQuery(request, safe);
+  void value.listQuery(request, unsafe);
+};
+void listRequest;
+void listOnlyTypePositive;
+
+console.log(JSON.stringify({
+  status: "PASS",
+  rawV1Body: commit.rawBody,
+  rawV1Bytes: actualBytes,
+  expectedRawV1Bytes: expectedBytes,
+  rawByteMutationReceipt: { status: "RED_DETECTED", parsedJsonUnchanged: true, reason: rawByteMutationReason },
+  portableSnapshotOnlyReceipt: { status: "PASS", snapshotExists: portable.exists, snapshotHead: portable.head, commitKind: snapshotOnlyResult.kind, readCalls: snapshotOnlyReads.count },
+  listConsistencyTypePositive: ["safe", "unsafe"],
+}));
 `;
 
 const deepImports = [
@@ -117,6 +158,7 @@ const deepImports = [
   ["dcb-client", `import { createSekibanExecutor } from "@sekiban/dcb-client/dist/index.js"; console.log(createSekibanExecutor);`],
 ];
 const redReceipts = [];
+const compileNegativeReceipts = [];
 const packageManifestPath = join(root, "packages", "dcb-core", "package.json");
 const originalManifest = await readFile(packageManifestPath, "utf8");
 for (const packageName of ["dcb-core", "dcb-client"]) {
@@ -147,6 +189,36 @@ try {
   await writeFile(join(temp, "tsconfig.node16.json"), tsconfig("Node16", "Node16", "dist-node16"));
   await writeFile(join(temp, "tsconfig.bundler.json"), tsconfig("ESNext", "Bundler", "dist-bundler"));
   await writeFile(join(temp, "src", "main.ts"), consumer);
+  await writeFile(join(temp, "src", "unsupported-modes.ts"), `
+import type { ListQueryOptions, ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
+import type { ProjectorLike, Tag } from "@sekiban/dcb-domain";
+declare const executor: SekibanExecutor;
+declare const projector: ProjectorLike;
+declare const tag: Tag;
+declare const request: ListQueryRequest;
+const safe: ListQueryOptions = { consistency: "safe" };
+const unsafe: ListQueryOptions = { consistency: "unsafe" };
+void executor.listQuery(request, safe);
+void executor.listQuery(request, unsafe);
+// @ts-expect-error consistency is listQuery-only
+void executor.readState(projector, tag, { consistency: "safe" });
+// @ts-expect-error consistency is listQuery-only
+void executor.exists(tag, { consistency: "unsafe" });
+// @ts-expect-error consistency is listQuery-only
+void executor.query(request, { consistency: "safe" });
+`);
+  await mkdir(join(temp, "compile-negative"), { recursive: true });
+  await writeFile(join(temp, "compile-negative", "unsupported-modes-raw.ts"), `
+import type { ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
+import type { ProjectorLike, Tag } from "@sekiban/dcb-domain";
+declare const executor: SekibanExecutor;
+declare const projector: ProjectorLike;
+declare const tag: Tag;
+declare const request: ListQueryRequest;
+void executor.readState(projector, tag, { consistency: "safe" });
+void executor.exists(tag, { consistency: "unsafe" });
+void executor.query(request, { consistency: "safe" });
+`);
   for (const [packageName, source] of deepImports) await writeFile(join(temp, `deep-import-${packageName}.ts`), source);
 
   const tarballs = [];
@@ -159,6 +231,12 @@ try {
   const tsc = join(temp, "node_modules", ".bin", "tsc");
   await run(tsc, ["-p", "tsconfig.node16.json"], temp);
   await run(tsc, ["-p", "tsconfig.bundler.json"], temp);
+  for (const resolution of [["Node16", "Node16", "Node16"], ["Bundler", "ESNext", "Bundler"]]) {
+    const [label, module, moduleResolution] = resolution;
+    await run(tsc, ["--noEmit", "--target", "ES2022", "--module", module, "--moduleResolution", moduleResolution, "--strict", "--skipLibCheck", "src/unsupported-modes.ts"], temp);
+    const rawNegative = await run(tsc, ["--noEmit", "--target", "ES2022", "--module", module, "--moduleResolution", moduleResolution, "--strict", "--skipLibCheck", "compile-negative/unsupported-modes-raw.ts"], temp, { expectFailure: true });
+    compileNegativeReceipts.push({ label: `unsupported-consistency-${label}`, status: rawNegative.status, expected: "tag-state/exists/query consistency options rejected", typePositive: ["listQuery safe", "listQuery unsafe"] });
+  }
   const node16 = await run("node", ["dist-node16/main.js"], temp);
   const bundler = await run("node", ["dist-bundler/main.js"], temp);
   const esbuild = join(root, "node_modules", ".bin", "esbuild");
@@ -177,9 +255,10 @@ try {
   }
   console.log(JSON.stringify({
     status: "PASS",
-    greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime"],
+    greenReceipts: ["Node16 consumer compile/runtime", "Bundler consumer compile/runtime", "esbuild consumer bundle/runtime", "portable readState-to-snapshot-only workflow"],
     rawV1Receipts: [node16.stdout.trim(), bundler.stdout.trim(), bundled.stdout.trim()],
     redReceipts,
+    compileNegativeReceipts,
   }, null, 2));
 } finally {
   if (process.env.SDT_G64_KEEP_TEMP === "1") console.error(`kept consumer temp directory: ${temp}`);

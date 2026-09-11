@@ -23,7 +23,13 @@ import {
   type GlobalCompletenessCoverage,
 } from "@sekiban/dcb-runtime/cloudflare";
 import { D1EventStore, D1MaterializedViewStore } from "@sekiban/dcb-runtime/d1";
-import { executeMeetingRoomCommand, globalAdmissionStatusFromResult, parseMeetingRoomCommandRequest } from "./transport";
+import {
+  createV1Transport,
+  executeMeetingRoomCommand,
+  globalAdmissionStatusFromResult,
+  parseMeetingRoomCommandRequest,
+} from "./transport";
+import { ClientError, createSekibanExecutor } from "@sekiban/dcb-client";
 import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import {
   catchUpMeetingRoomMaterializedViews,
@@ -831,25 +837,35 @@ async function readQuery(request: Request, env: MeetingRoomCloudflareEnv, ctx: E
     const requestedWait = url.searchParams.get("waitForSortableUniqueId");
     if (requestedWait !== null && requestedWait.length === 0) return json({ error: "waitForSortableUniqueId must be non-empty", code: "validation_error" }, 400);
     waitForSortableUniqueId = requestedWait ?? undefined;
-    // The app list explicitly opts into the immediate read lane. Raw V1 list
-    // callers remain safe by default and cannot inherit this route policy.
-    queryParams = { PageNumber: pageNumber, PageSize: pageSize, consistency: "unsafe", ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
+    queryParams = { PageNumber: pageNumber, PageSize: pageSize, ...(newestFirst === "true" ? { NewestFirst: true } : {}) };
   } else {
     const roomId = url.searchParams.get("roomId");
     queryParams = roomId === null || roomId.length === 0 ? {} : { roomId };
   }
-  const response = await runtimeFetch(new Request(`https://runtime.internal/api/sekiban/serialized/${isReservations ? "list-query" : "query"}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
-      queryType: isReservations ? "GetReservationListQuery" : "GetRoomStateQuery",
+  const queryType = isReservations ? "GetReservationListQuery" : "GetRoomStateQuery";
+  const runtimeTransport = createV1Transport({
+    fetch: (input, init) => runtimeFetch(new Request(input, init), env, ctx),
+  }, serviceIdentity(env));
+  const executor = createSekibanExecutor(runtimeTransport, { serviceId: serviceIdentity(env) });
+  try {
+    if (isReservations) {
+      const result = await executor.listQuery({
+        queryType,
+        queryParamsJson: JSON.stringify(queryParams),
+        ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
+      }, { consistency: "unsafe" });
+      return json(result);
+    }
+    const result = await executor.query({
+      queryType,
       queryParamsJson: JSON.stringify(queryParams),
       ...(waitForSortableUniqueId === undefined ? {} : { waitForSortableUniqueId }),
-    }),
-  }), env, ctx);
-  let body: unknown;
-  try { body = await response.json(); } catch { return json({ error: `Query read returned HTTP ${response.status}`, code: "transport" }, 502); }
-  return json(body, response.status);
+    });
+    return json(result);
+  } catch (error) {
+    if (error instanceof ClientError) return json({ error: error.message, code: error.code }, error.status ?? 502);
+    return json({ error: "Query read failed", code: "transport" }, 502);
+  }
 }
 
 async function command(request: Request, env: MeetingRoomCloudflareEnv, ctx: ExecutionContext): Promise<Response> {

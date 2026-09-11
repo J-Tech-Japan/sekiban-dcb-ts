@@ -42,8 +42,16 @@ export interface ExecuteCommandOptions {
   readonly totalBudgetMs?: number;
 }
 
+/** Options shared by tag-state, authority, and generic-query reads. */
 export interface ReadOptions {
-  readonly consistency?: "safe" | "unsafe";
+  readonly signal?: AbortSignal;
+}
+
+export type ReadConsistency = "safe" | "unsafe";
+
+/** The consistency lane is deliberately available only on listQuery. */
+export interface ListQueryOptions {
+  readonly consistency?: ReadConsistency;
   readonly signal?: AbortSignal;
 }
 
@@ -84,7 +92,7 @@ export interface SekibanExecutor {
   readState<P extends ProjectorLike>(projector: P, tag: Tag, options?: ReadOptions): Promise<PortableSnapshot>;
   exists(tag: Tag, options?: ReadOptions): Promise<PortableSnapshot<undefined>>;
   query(request: QueryRequest, options?: ReadOptions): Promise<QueryResponse>;
-  listQuery(request: ListQueryRequest, options?: ReadOptions): Promise<ListQueryResponse>;
+  listQuery(request: ListQueryRequest, options?: ListQueryOptions): Promise<ListQueryResponse>;
   readonly transport: SerializedDcbTransport;
 }
 
@@ -120,7 +128,14 @@ function decodeJson(value: unknown): unknown {
     const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
-    return value;
+    // Fixtures and older adapters may expose the JSON text directly instead
+    // of the runtime's base64 JSON representation.  Decode that representation
+    // too; existence is still decided exclusively by the authority response.
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
   }
 }
 
@@ -144,6 +159,130 @@ function successfulBody<T>(value: T | CommitHttpResult): T {
     return value.body as T;
   }
   return value;
+}
+
+function isAbortError(error: unknown): boolean {
+  return isRecord(error) && error.name === "AbortError";
+}
+
+async function readCall<T>(operation: () => Promise<T | CommitHttpResult>, label: string): Promise<T> {
+  try {
+    return successfulBody(await operation());
+  } catch (error) {
+    if (error instanceof ClientError) throw error;
+    if (isAbortError(error)) throw new ClientError("aborted", `${label} read was aborted`, { cause: error });
+    throw new ClientError("transport", `${label} read failed`, { cause: error });
+  }
+}
+
+function compareSortableUniqueId(left: string, right: string): number {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  const sharedLength = Math.min(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    const difference = leftBytes[index]! - rightBytes[index]!;
+    if (difference !== 0) return difference;
+  }
+  return leftBytes.length - rightBytes.length;
+}
+
+function rejectUnsupportedConsistency(options: unknown): void {
+  if (isRecord(options) && options.consistency !== undefined) {
+    throw new ClientError(
+      "unsupported_consistency_mode",
+      "Consistency is supported only for listQuery reads",
+      { status: 400 },
+    );
+  }
+}
+
+function normalizeAuthority(value: unknown): TagLatestSortableResponse {
+  if (!isRecord(value) || typeof value.exists !== "boolean" || typeof value.lastSortableUniqueId !== "string") {
+    throw new ClientError("invalid_read_snapshot", "Latest-sortable authority response was invalid");
+  }
+  if (!value.exists && value.lastSortableUniqueId.length > 0) {
+    throw new ClientError("incoherent_read_snapshot", "Latest-sortable authority returned a head for an absent tag", { status: 500 });
+  }
+  return value as unknown as TagLatestSortableResponse;
+}
+
+async function readAuthority(
+  transport: SerializedDcbTransport,
+  tag: string,
+  signal: AbortSignal | undefined,
+): Promise<TagLatestSortableResponse> {
+  if (transport.readTagLatestSortable === undefined) {
+    throw new ClientError(
+      "unsupported_capability",
+      "Transport does not implement the tag-latest-sortable authority read",
+      { status: 501 },
+    );
+  }
+  const value = await readCall(
+    () => transport.readTagLatestSortable!({ tag }, signal),
+    "Tag-latest-sortable authority",
+  );
+  return normalizeAuthority(value);
+}
+
+function normalizedQueryResponse(value: unknown): QueryResponse {
+  if (!isRecord(value) || typeof value.resultJson !== "string") {
+    throw new ClientError("invalid_query_response", "Query response was invalid");
+  }
+  return value as unknown as QueryResponse;
+}
+
+function normalizedListQueryResponse(value: unknown): ListQueryResponse {
+  if (!isRecord(value) || typeof value.itemsJson !== "string" ||
+      typeof value.totalCount !== "number" || typeof value.totalPages !== "number" ||
+      typeof value.currentPage !== "number" || typeof value.pageSize !== "number" ||
+      (value.readHead !== undefined && typeof value.readHead !== "string")) {
+    throw new ClientError("invalid_query_response", "List-query response was invalid");
+  }
+  return value as unknown as ListQueryResponse;
+}
+
+function requestWithListConsistency(request: ListQueryRequest, options: ListQueryOptions): ListQueryRequest {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(request.queryParamsJson);
+  } catch (error) {
+    throw new ClientError("invalid_query_request", "listQuery queryParamsJson must contain a JSON document", { cause: error });
+  }
+  if (!isRecord(parsed)) {
+    throw new ClientError("invalid_query_request", "listQuery queryParamsJson must contain an object");
+  }
+  const embedded = parsed.consistency;
+  if (embedded !== undefined && embedded !== "safe" && embedded !== "unsafe") {
+    throw new ClientError("invalid_consistency", "listQuery consistency must be safe or unsafe", { status: 400 });
+  }
+  if (options.consistency !== undefined && embedded !== undefined && options.consistency !== embedded) {
+    throw new ClientError("consistency_conflict", "Public listQuery consistency conflicts with embedded consistency", { status: 400 });
+  }
+  if (options.consistency === undefined || embedded !== undefined) return request;
+  // Preserve the established paging-field order for serialized callers while
+  // making the executor-owned lane explicit.  JSON member order is not part of
+  // the semantic contract, but retaining it keeps the V1 wire transcript
+  // stable for existing adapters and fixtures.
+  const withConsistency: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    withConsistency[key] = value;
+    if (key === "PageSize") withConsistency.consistency = options.consistency;
+  }
+  if (withConsistency.consistency === undefined) withConsistency.consistency = options.consistency;
+  return { ...request, queryParamsJson: JSON.stringify(withConsistency) };
+}
+
+function rejectQueryEmbeddedConsistency(request: QueryRequest): void {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(request.queryParamsJson);
+  } catch {
+    return;
+  }
+  if (isRecord(parsed) && parsed.consistency !== undefined) {
+    throw new ClientError("unsupported_consistency_mode", "Consistency is supported only for listQuery reads", { status: 400 });
+  }
 }
 
 async function responseResult(response: Response): Promise<CommitHttpResult> {
@@ -228,6 +367,7 @@ export function createHttpTransport(options: {
   readonly baseUrl: string;
   readonly headers?: Record<string, string>;
   readonly fetch?: typeof fetch;
+  readonly serviceId?: string;
 }): SerializedDcbTransport {
   return makeHttpTransport(options);
 }
@@ -496,32 +636,54 @@ export function createSekibanExecutor(
   };
 
   const readState = async <P extends ProjectorLike>(projector: P, tag: Tag, readOptions: ReadOptions = {}): Promise<PortableSnapshot> => {
+    rejectUnsupportedConsistency(readOptions);
     const tagValue = normalizeTag(tag);
     const stateId = `${tagValue.id}:${projector.id}`;
-    const raw = await transport.readTagState({ tagStateId: stateId }, readOptions.signal);
-    const response = normalizedResponse(raw, stateId);
-    const decoded = decodeJson(response.payload);
-    const empty = isRecord(decoded) && decoded.status === "empty";
-    const state = empty
-      ? (typeof projector.initialState === "function" ? projector.initialState() : projector.initialState)
-      : decoded;
-    return Object.freeze({
-      projectorId: projector.id,
-      tag: tagValue,
-      head: response.lastSortedUniqueId.length === 0 ? null : response.lastSortedUniqueId,
-      state,
-      exists: !empty,
-    });
+    const emptyState = () => typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
+    // A bounded two-observation read closes the authority/tag-state race.  A
+    // stale projector response is never relabelled as an absent tag or an
+    // apparently coherent snapshot.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const authority = await readAuthority(transport, tagValue.id, readOptions.signal);
+      if (!authority.exists) {
+        return Object.freeze({
+          projectorId: projector.id,
+          tag: tagValue,
+          head: null,
+          state: emptyState(),
+          exists: false,
+        });
+      }
+      const raw = await readCall(
+        () => transport.readTagState({ tagStateId: stateId }, readOptions.signal),
+        "Tag-state",
+      );
+      const response = normalizedResponse(raw, stateId);
+      if (compareSortableUniqueId(response.lastSortedUniqueId, authority.lastSortableUniqueId) < 0) {
+        if (attempt === 0) continue;
+        throw new ClientError(
+          "read_unavailable",
+          "Tag-state did not reach the captured latest-sortable authority head",
+          { status: 503 },
+        );
+      }
+      const decoded = decodeJson(response.payload);
+      const empty = isRecord(decoded) && decoded.status === "empty";
+      return Object.freeze({
+        projectorId: projector.id,
+        tag: tagValue,
+        head: response.lastSortedUniqueId.length === 0 ? null : response.lastSortedUniqueId,
+        state: empty ? emptyState() : decoded,
+        exists: true,
+      });
+    }
+    throw new ClientError("read_unavailable", "Tag-state read could not reach a coherent authority observation", { status: 503 });
   };
 
   const exists = async (tag: Tag, readOptions: ReadOptions = {}): Promise<PortableSnapshot<undefined>> => {
-    if (transport.readTagLatestSortable === undefined) throw new ClientError("transport", "Transport does not implement exists reads");
+    rejectUnsupportedConsistency(readOptions);
     const tagValue = normalizeTag(tag);
-    const raw = await transport.readTagLatestSortable({ tag: tagValue.id }, readOptions.signal);
-    const value = successfulBody<TagLatestSortableResponse>(raw);
-    if (typeof value.lastSortableUniqueId !== "string" || typeof value.exists !== "boolean") {
-      throw new ClientError("invalid_read_snapshot", "Latest-sortable response was invalid");
-    }
+    const value = await readAuthority(transport, tagValue.id, readOptions.signal);
     return Object.freeze({
       projectorId: "exists",
       tag: tagValue,
@@ -531,10 +693,18 @@ export function createSekibanExecutor(
     });
   };
 
-  const query = async (request: QueryRequest, readOptions: ReadOptions = {}): Promise<QueryResponse> =>
-    successfulBody(await transport.query(request, readOptions.signal));
-  const listQuery = async (request: ListQueryRequest, readOptions: ReadOptions = {}): Promise<ListQueryResponse> =>
-    successfulBody(await transport.listQuery(request, readOptions.signal));
+  const query = async (request: QueryRequest, readOptions: ReadOptions = {}): Promise<QueryResponse> => {
+    rejectUnsupportedConsistency(readOptions);
+    rejectQueryEmbeddedConsistency(request);
+    return normalizedQueryResponse(await readCall(() => transport.query(request, readOptions.signal), "Query"));
+  };
+  const listQuery = async (request: ListQueryRequest, readOptions: ListQueryOptions = {}): Promise<ListQueryResponse> => {
+    const withConsistency = requestWithListConsistency(request, readOptions);
+    return normalizedListQueryResponse(await readCall(
+      () => transport.listQuery(withConsistency, readOptions.signal),
+      "List-query",
+    ));
+  };
 
   const execute = async <C extends CommandDefinition>(command: C, input: CommandInput<C>, executeOptions: ExecuteCommandOptions = {}): Promise<ExecuteCommandResult> => {
     if (scopeMismatch) return { kind: "invalid", attempts: 0, code: "scope.mismatch", error: "Executor service scope does not match its transport" };

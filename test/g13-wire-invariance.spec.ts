@@ -35,7 +35,7 @@ const PRE_SPLIT_GOLDEN = {
       failure: { status: 400, contentType: "application/json; charset=utf-8", keys: ["code", "error"] },
     },
     listQuery: {
-      success: { status: 200, contentType: "application/json; charset=utf-8", keys: ["currentPage", "itemsJson", "pageSize", "totalCount", "totalPages"] },
+      success: { status: 200, contentType: "application/json; charset=utf-8", keys: ["currentPage", "itemsJson", "pageSize", "readHead", "totalCount", "totalPages"] },
       failure: { status: 400, contentType: "application/json; charset=utf-8", keys: ["code", "error"] },
     },
   },

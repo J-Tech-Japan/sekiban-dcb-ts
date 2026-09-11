@@ -85,7 +85,7 @@ export function createV1Transport(fetcher: InternalRuntimeFetcher, serviceId?: s
   const call = async (path: string, body: unknown, signal?: AbortSignal): Promise<CommitHttpResult> => {
     const response = await fetcher.fetch(`https://runtime.internal${path}`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...serviceHeaders(serviceId) },
+      headers: { "content-type": "application/json", accept: "application/json", ...serviceHeaders(serviceId) },
       body: JSON.stringify(body),
       signal,
     });

@@ -28,7 +28,7 @@ successful release.
 
 The packages must already exist on the npm registry before npm will allow a
 trusted publisher to be registered. All three matched packages already exist
-there at `0.1.0` (the matched release prepared by this repository is `0.1.1`).
+there at `0.1.0` (the matched release prepared by this repository is `0.2.0`).
 Register the publisher separately on each package's npm access page:
 
 - [`@sekiban/dcb-core` access settings](https://www.npmjs.com/package/@sekiban/dcb-core/access)
@@ -89,8 +89,8 @@ After registration and the variable change, the operator may perform the
 normal tag-triggered release using the existing matched-set tag procedure:
 
 ```sh
-git tag dcb-v0.1.1
-git push origin dcb-v0.1.1
+git tag dcb-v0.2.0
+git push origin dcb-v0.2.0
 ```
 
 Before treating that run as trusted publishing, verify all of the following in
