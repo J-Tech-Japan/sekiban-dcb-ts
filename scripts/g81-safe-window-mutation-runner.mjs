@@ -249,10 +249,22 @@ function stripSgr(value) {
   return value.replace(SGR_SEQUENCE, "");
 }
 
-function hasStatusDiffLine(lines, prefix, status) {
-  const expected = prefix + " " + String(status);
-  const labeled = prefix + " " + (prefix === "-" ? "Expected: " : "Received: ") + String(status);
-  return lines.some((line) => line.trim() === expected || line.trim() === labeled);
+function parseStatusPair(failureText) {
+  const pairs = [];
+  const inline = /\bexpected\s+(-?\d+)\s+to be\s+(-?\d+)\b/gi;
+  for (const match of failureText.matchAll(inline)) {
+    pairs.push({ receivedStatus: Number(match[1]), expectedStatus: Number(match[2]), format: "vitest-inline" });
+  }
+  const lines = failureText.split(/\r?\n/).map((line) => stripSgr(line).trim());
+  const expectedLines = lines.filter((line) => /^-\s+(?:Expected:\s+)?(-?\d+)$/.test(line));
+  const receivedLines = lines.filter((line) => /^\+\s+(?:Received:\s+)?(-?\d+)$/.test(line));
+  if (expectedLines.length === 1 && receivedLines.length === 1) {
+    const expected = /^-\s+(?:Expected:\s+)?(-?\d+)$/.exec(expectedLines[0]);
+    const received = /^\+\s+(?:Received:\s+)?(-?\d+)$/.exec(receivedLines[0]);
+    pairs.push({ receivedStatus: Number(received[1]), expectedStatus: Number(expected[1]), format: "vitest-diff" });
+  }
+  if (pairs.length !== 1) return undefined;
+  return pairs[0];
 }
 
 function parseCapture(failureText) {
@@ -312,12 +324,11 @@ function semanticFailureEvidence(result, mutation, sourceHead) {
     reject("failure evidence was setup/import/database/timeout/process failure");
   }
 
-  const lines = failureText.split(/\r?\n/).map((line) => stripSgr(line).trim());
-  if (!hasStatusDiffLine(lines, "-", mutation.expectedStatus)) {
-    reject("expected status " + mutation.expectedStatus + " was not present in the named assertion diff");
-  }
-  if (!hasStatusDiffLine(lines, "+", mutation.receivedStatus)) {
-    reject("received status " + mutation.receivedStatus + " was not present in the named assertion diff");
+  const statusPair = parseStatusPair(failureText);
+  if (!isRecord(statusPair) ||
+      statusPair.expectedStatus !== mutation.expectedStatus ||
+      statusPair.receivedStatus !== mutation.receivedStatus) {
+    reject("named assertion did not contain the mutation-specific expected/received status pair");
   }
 
   const capture = parseCapture(failureText);
@@ -350,6 +361,7 @@ function semanticFailureEvidence(result, mutation, sourceHead) {
       title: oracle.title,
       fullName: oracle.fullName,
       failureMessages,
+      statusPair,
       capture,
     },
   };
@@ -381,13 +393,13 @@ function sourceHead() {
   return head;
 }
 
-function oracleFailureMessage(mutation, capture = {}) {
+function oracleFailureMessage(mutation, capture = {}, expectedStatus = mutation.expectedStatus, receivedStatus = mutation.receivedStatus) {
   return "AssertionError: " + G81_PUBLIC_STATUS_ASSERTION + " " + JSON.stringify({
     lagMs: mutation.boundaryLagMs,
     persistedLag: { estimateMs: mutation.boundaryLagMs, observedAt: 1800000000000 },
-    responseStatus: mutation.receivedStatus,
+    responseStatus: receivedStatus,
     ...capture,
-  }) + "\n- " + mutation.expectedStatus + "\n+ " + mutation.receivedStatus;
+  }) + ": expected " + receivedStatus + " to be " + expectedStatus;
 }
 
 function syntheticReport(mutation, status, failureMessages = [], extraAssertions = []) {
@@ -498,9 +510,7 @@ function selfTest() {
       report: syntheticReport(mutation, "failed", [oracleFailureMessage(mutation, { lagMs: mutation.boundaryLagMs + 1 })]),
     }), mutation, selfTestHead));
     assertRejects("wrong expected/received pair", () => semanticFailureEvidence(syntheticResult({
-      report: syntheticReport(mutation, "failed", [oracleFailureMessage(mutation, {
-        responseStatus: mutation.expectedStatus,
-      })]),
+      report: syntheticReport(mutation, "failed", [oracleFailureMessage(mutation, {}, mutation.receivedStatus, mutation.expectedStatus)]),
     }), mutation, selfTestHead));
   }
   process.stdout.write(JSON.stringify({
