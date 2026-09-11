@@ -23,7 +23,7 @@ const G81_TEST_FILE = "test/read.spec.ts";
 const G81_ORACLE_NAME = "[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader";
 const G81_ORACLE_PATTERN = "\\[G81\\] AC3 proves exact 120000 and 120001 ms boundaries through the public reader";
 const G81_PUBLIC_STATUS_ASSERTION = "G81 AC3 boundary capture";
-const SGR_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
+const SGR_SEQUENCE = new RegExp(String.fromCharCode(27) + "\\[[0-?]*[ -/]*[@-~]", "g");
 
 export const G81_MUTATIONS = Object.freeze([
   {
