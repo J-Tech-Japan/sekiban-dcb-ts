@@ -189,7 +189,7 @@
       "affectedPaths": ["test/g43-*.ts", "scripts/g43-*.mjs", "scripts/g73-g43-*.mjs", "scripts/g79-*.mjs"],
       "commands": [
         {"id": "g43", "command": "npm run test:g43"},
-        {"id": "g43-red", "command": "npm run test:g43:forced-red", "env": {"SDT_G79_INVOCATION": "forced-red"}, "expect": "red"}
+        {"id": "g43-red", "command": "npm run test:g43:forced-red", "env": {"SDT_G79_INVOCATION": "forced-red", "SDT_G43_FORCE_FAILURE": "1"}, "expect": "red"}
       ]
     },
     {
