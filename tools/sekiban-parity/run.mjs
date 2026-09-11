@@ -68,7 +68,11 @@ function buildCsharpRunner(source) {
     // G84's local parity lane must not delegate output writes to a shared
     // compiler node.  The lane records the environment settings; this
     // property is the corresponding MSBuild switch for UseSharedCompilation.
-    ...(process.env.UseSharedCompilation === "false" ? ["-p:UseSharedCompilation=false"] : []),
+    // Restore is serialized as well because the pinned project graph references
+    // the same source model through more than one project edge.
+    ...(process.env.UseSharedCompilation === "false"
+      ? ["-p:UseSharedCompilation=false", "-p:RestoreDisableParallel=true"]
+      : []),
   ]);
 }
 
