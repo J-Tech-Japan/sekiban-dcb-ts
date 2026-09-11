@@ -34,7 +34,26 @@ the repair source includes `node --check`, the guard self-test and normal
 scan, and `npm run test:g40:tiers`; all passed. This source repair is the
 justified second PR push/run required by AC2; no blind rerun was made.
 
-## W243 current implementation checkpoint (2026-09-11)
+The repair push produced source head
+`1d40779aa6dd447c1bfe33ef96fd5da522968d54`. Its exact-head hosted receipts
+are:
+
+* CI run [34597077543](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34597077543)
+  reached terminal `success` at that head. `ci-foundation` job
+  `103255219348`, `ci-pr-cheap` job `103255219587`, and `verify` job
+  `103259270543` all passed. This is the second AC2 hosted attempt, not a
+  relabelled first attempt.
+* Release preflight run
+  [34597077499](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34597077499)
+  reached terminal `success` at the same head in
+  `dcb-domain-release-preflight` job `103255218706`. This was the automatic
+  pull-request preflight, not a workflow-dispatch run.
+
+No hosted workflow was rerun after these terminal results, and no release
+preflight workflow dispatch was started. The first post-merge full workflow
+dispatch remains `pending` and `not collected`.
+
+## W243 pre-PR implementation checkpoint (historical, 2026-09-11)
 
 This is the W243 continuation of the W242 checkout. The current source
 validation commit is `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` on
@@ -124,7 +143,7 @@ started before merge. The first post-merge full workflow-dispatch run is
 Status: blocked at the local implementation checkpoint. This document records the
 bounded evidence collected locally; it does not claim a hosted PR result.
 
-## Head, base, and scope
+## W242 historical head, base, and scope
 
 The implementation branch is `claude/sdt-g84-implementation-w242`. Its source
 validation head is `08328f176b5b7f023d1d46569a97e670e8ea9049`, based on current
