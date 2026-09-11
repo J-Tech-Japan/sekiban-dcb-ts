@@ -1,7 +1,7 @@
 {
   "schema": "sdt-g40-ci-step-inventory-allowlist/v1",
   "baselineRef": "origin/main",
-  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used.",
+  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin.",
   "missingHistoricalWorkflow": {
     "count": 86,
     "entrySetSha256": "5075be9c3c2ce3a650056f6108361a0bfa0dde2a5851fe936c98c305539ded76",
@@ -10,7 +10,7 @@
   },
   "addedManifestCommands": {
     "count": 132,
-    "entrySetSha256": "49b1f7a9870bfbf03f984e653149cc8723a2d335810d3fa0b6f97036cfd1b5a7",
+    "entrySetSha256": "3e079d01e6e8eecb6c22eed9312466fc4949a76774d80d96a47d87f8299e5642",
     "idSetSha256": "0b53bad5b5b4d1e360ae6527ed5ea8fd175726b9e1dfec4ba3d0d043fe36250b",
     "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
   },

@@ -14,9 +14,11 @@ The restored `docs/evidence/SDT-G40-ci-step-inventory-baseline.json` is
 byte-for-byte equal to `origin/main` (SHA-256
 `48aa022c2be3412ecf5481863ea365a056d54c303ee06886636db6d9202a3598`). The
 manifest retains exactly one `cosmos-retained-history` occurrence of pinned
-SHA `38219c8a6526a0209295e9f06450cce9e2217005`; the G40 coverage checker now
-enforces that value and the third G40 mutant changes one character and is
-rejected. The new
+W244's `38219c8a6526a0209295e9f06450cce9e2217005` pin was the transcription
+defect that caused its Cosmos fetch failure. W245 restores the exact
+baseline-derived pin `38219c8a6526a0209295e9f06450cce9e2217004`; the G40
+coverage checker derives it from the baseline leaf text, and the third G40
+mutant changes one character from that derived value and is rejected. The new
 `docs/evidence/SDT-G40-ci-step-inventory-allowlist.json` records the reviewed
 G84 workflow-to-manifest transition with exact normalized command-text and
 entry-identity digests: 86 historical workflow leaves, 132 manifest commands,
@@ -27,15 +29,22 @@ or a command-count-only bypass.
 `ci:local` now creates and removes a fresh detached-HEAD worktree for each
 selected local lane, sets `INIT_CWD` to that worktree, and records the checkout
 SHA, detached execution mode, bootstrap/dependency result and cleanup in the
-lane receipt. On this macOS host the first bootstrap attempt was stopped by
-the pre-existing root-owned npm cache (`EPERM`, before any lane command); the
-repair records the explicit reuse of the already-installed driver dependency
-tree through a worktree-local symlink, while retaining `npm ci` as the
-fallback when no dependency tree exists. Hosted `--ci` mode remains on its
-existing checkout. The G32 and G53 guards remain present and now require
+lane receipt. On this macOS host the W244 bootstrap attempt was stopped by the
+pre-existing root-owned npm cache (`EPERM`, before any lane command), and its
+historical final run used a worktree-local symlink to the driver dependency
+tree. That fallback is why W244's G32/G43/G46 mutation receipts were vacuous.
+W245 removes the fallback: every detached lane runs `npm ci` with a fresh
+isolated `npm_config_cache`, then records realpath checks proving every
+workspace package resolves inside that worktree. Hosted `--ci` mode remains on
+its existing checkout. The G32 and G53 guards remain present and now require
 their manifest-owned lane/forced-red entries rather than accepting stale
 workflow wiring. No test body, product source, G43 coordination, global
-timeout, retry, skip or forced-red proof was changed.
+timeout, retry, skip or unrelated mutation proof was changed.
+
+The W245 code/evidence repair keeps SHA and URL corrections out of the
+allowlist. The baseline command itself is the authority for the retained
+history pin; the allowlist only records the reviewed workflow-to-manifest
+command inventory transition.
 
 ## W243 hosted attempt and bounded guard repair (2026-09-11)
 

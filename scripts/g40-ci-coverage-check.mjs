@@ -16,7 +16,6 @@ const DEFAULT_WORKFLOW = ".github/workflows/ci.yml";
 const DEFAULT_PACKAGE = "package.json";
 const DEFAULT_MANIFEST = "ci/lanes.json";
 const DEFAULT_ALLOWLIST = "docs/evidence/SDT-G40-ci-step-inventory-allowlist.json";
-const REQUIRED_COSMOS_HISTORY_SHA = "38219c8a6526a0209295e9f06450cce9e2217005";
 
 function fail(message) {
   throw new Error(`g40-ci-coverage-check:${message}`);
@@ -99,6 +98,40 @@ function inventoryEntries(document, label) {
   return entries;
 }
 
+function normalizeCommand(command) {
+  return command.trim().split(/\s+/).join(" ");
+}
+
+function deriveCosmosHistoryFromBaseline(baseline) {
+  if (baseline === null || typeof baseline !== "object" || !Array.isArray(baseline.leafCommands)) {
+    fail("baseline must contain a leafCommands array");
+  }
+  const candidates = baseline.leafCommands.filter((entry) =>
+    entry !== null && typeof entry === "object" &&
+    entry.type === "workflow-run" &&
+    typeof entry.command === "string" &&
+    Array.isArray(entry.sources) &&
+    entry.sources.some((source) => source?.job === "cosmos-emulator") &&
+    normalizeCommand(entry.command).startsWith("git fetch --no-tags origin ")
+  );
+  if (candidates.length !== 1) fail(`baseline must identify exactly one Cosmos retained-history fetch, found ${candidates.length}`);
+  const normalizedCommand = normalizeCommand(candidates[0].command);
+  const shas = normalizedCommand.match(/\b[0-9a-f]{40}\b/g) ?? [];
+  if (shas.length < 3) fail("baseline Cosmos retained-history fetch must contain at least three object IDs");
+  return {
+    normalizedCommand,
+    pinnedSha: shas[2],
+  };
+}
+
+function assertCosmosHistoryMatchesBaseline(manifestCommand, baselineHistory) {
+  const normalizedCommand = normalizeCommand(manifestCommand);
+  if (normalizedCommand !== baselineHistory.normalizedCommand) {
+    fail("cosmos-retained-history command must exactly match the historical baseline leaf text");
+  }
+  return baselineHistory.pinnedSha;
+}
+
 function canonicalEntry(entry) {
   return JSON.stringify({
     id: entry.id,
@@ -129,12 +162,15 @@ function digestIds(entries) {
 
 function loadAllowlist(path) {
   let allowlist;
+  let allowlistText;
   try {
-    allowlist = JSON.parse(readFileSync(path, "utf8"));
+    allowlistText = readFileSync(path, "utf8");
+    allowlist = JSON.parse(allowlistText);
   } catch (error) {
     fail(`cannot read allowlist ${path}: ${error instanceof Error ? error.message : String(error)}`);
   }
   object(allowlist, "allowlist");
+  if (/\b[0-9a-f]{40}\b|https?:\/\//i.test(allowlistText)) fail("allowlist cannot authorize SHA or URL rewrites");
   if (allowlist.schema !== "sdt-g40-ci-step-inventory-allowlist/v1") fail("allowlist has an unexpected schema");
   if (allowlist.baselineRef !== "origin/main") fail("allowlist must be reviewed against origin/main");
   if (typeof allowlist.reviewedRule !== "string" || allowlist.reviewedRule.length === 0) fail("allowlist.reviewedRule is required");
@@ -183,7 +219,7 @@ function assertAllowlistedExactRewrite(allowlist, missing, additions) {
   };
 }
 
-function loadManifest(path) {
+function loadManifest(path, baselineHistory) {
   let manifest;
   try {
     manifest = JSON.parse(readFileSync(path, "utf8"));
@@ -224,9 +260,8 @@ function loadManifest(path) {
   const cosmosLane = manifest.lanes.find((lane) => lane.name === "cosmos");
   const retainedHistory = cosmosLane?.commands?.find((command) => command.id === "cosmos-retained-history");
   if (retainedHistory === undefined || typeof retainedHistory.command !== "string") fail("cosmos-retained-history command is missing");
-  const pinnedOccurrences = retainedHistory.command.split(REQUIRED_COSMOS_HISTORY_SHA).length - 1;
-  if (pinnedOccurrences !== 1) fail(`cosmos-retained-history must contain exactly one pinned SHA ${REQUIRED_COSMOS_HISTORY_SHA}`);
-  return { manifest, commandTiers };
+  const pinnedCosmosHistorySha = assertCosmosHistoryMatchesBaseline(retainedHistory.command, baselineHistory);
+  return { manifest, commandTiers, pinnedCosmosHistorySha };
 }
 
 function assertManifestScripts(manifest, packageDocument) {
@@ -258,10 +293,12 @@ function assertWorkflowUsesManifest(workflow, manifest) {
 }
 
 function runSelfTest(options) {
-  const { manifest } = loadManifest(options.manifest);
+  const baseline = JSON.parse(readFileSync(options.baseline, "utf8"));
+  const baselineHistory = deriveCosmosHistoryFromBaseline(baseline);
+  const { manifest, pinnedCosmosHistorySha } = loadManifest(options.manifest, baselineHistory);
   const allowlist = loadAllowlist(options.allowlist);
   if (!manifest.lanes.some((lane) => lane.tier === "pr") || !manifest.lanes.some((lane) => lane.tier === "local")) fail("self-test requires PR and local lanes");
-  process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-coverage-self-test/v1", lanes: manifest.lanes.length, allowlist: allowlist.schema, verified: ["one-tier-per-command", "runnable-local-lane", "full-includes-pr-and-local", "pinned-cosmos-history"] }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-coverage-self-test/v1", lanes: manifest.lanes.length, allowlist: allowlist.schema, pinnedCosmosHistorySha, verified: ["one-tier-per-command", "runnable-local-lane", "full-includes-pr-and-local", "baseline-derived-cosmos-history"] }, null, 2)}\n`);
 }
 
 function main() {
@@ -274,8 +311,9 @@ function main() {
   const packageText = readFileSync(options.packagePath, "utf8");
   const packageDocument = JSON.parse(packageText);
   const baseline = JSON.parse(readFileSync(options.baseline, "utf8"));
+  const baselineHistory = deriveCosmosHistoryFromBaseline(baseline);
   const allowlist = loadAllowlist(options.allowlist);
-  const { manifest, commandTiers } = loadManifest(options.manifest);
+  const { manifest, commandTiers, pinnedCosmosHistorySha } = loadManifest(options.manifest, baselineHistory);
   assertManifestScripts(manifest, packageDocument);
   const current = generateInventory({
     workflowText: workflow,
@@ -299,7 +337,7 @@ function main() {
     missing,
     additions,
     allowlist: allowlistResult,
-    pinnedCosmosHistorySha: REQUIRED_COSMOS_HISTORY_SHA,
+    pinnedCosmosHistorySha,
     prJobs: expectedJobs,
     workflowJobs: [...jobs.keys()],
   };

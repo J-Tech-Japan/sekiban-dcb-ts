@@ -9,7 +9,7 @@
  * the local and hosted command lists from drifting apart.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -170,27 +170,93 @@ function removeDetachedWorktree(path, laneName) {
   }
 }
 
+function workspacePackagePaths(executionRoot) {
+  let rootPackage;
+  try {
+    rootPackage = JSON.parse(readFileSync(resolve(executionRoot, "package.json"), "utf8"));
+  } catch (error) {
+    fail(`could not read detached package.json: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const workspaces = Array.isArray(rootPackage.workspaces)
+    ? rootPackage.workspaces
+    : rootPackage.workspaces?.packages;
+  if (!Array.isArray(workspaces) || workspaces.length === 0) fail("detached package.json has no workspaces");
+  const paths = [];
+  for (const pattern of workspaces) {
+    if (typeof pattern !== "string" || pattern.length === 0) fail("workspace patterns must be non-empty strings");
+    if (pattern.endsWith("/*")) {
+      const parent = resolve(executionRoot, pattern.slice(0, -2));
+      let entries;
+      try {
+        entries = readdirSync(parent, { withFileTypes: true });
+      } catch (error) {
+        fail(`could not read workspace directory ${parent}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      for (const entry of entries) {
+        if (entry.isDirectory()) paths.push(join(parent, entry.name));
+      }
+    } else {
+      paths.push(resolve(executionRoot, pattern));
+    }
+  }
+  return [...new Set(paths)];
+}
+
+function assertWorkspaceDependenciesInsideWorktree(executionRoot) {
+  const worktree = resolve(executionRoot);
+  const checks = [];
+  for (const packagePath of workspacePackagePaths(executionRoot)) {
+    let packageDocument;
+    try {
+      packageDocument = JSON.parse(readFileSync(resolve(packagePath, "package.json"), "utf8"));
+    } catch (error) {
+      fail(`could not read workspace package ${packagePath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (typeof packageDocument.name !== "string" || packageDocument.name.length === 0) fail(`workspace ${packagePath} has no package name`);
+    const nodeModulesPath = resolve(worktree, "node_modules", ...packageDocument.name.split("/"));
+    if (!existsSync(nodeModulesPath)) fail(`npm ci did not link workspace package ${packageDocument.name}`);
+    let actualPath;
+    try {
+      actualPath = realpathSync(nodeModulesPath);
+    } catch (error) {
+      fail(`could not resolve workspace package ${packageDocument.name}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const insideWorktree = actualPath === worktree || actualPath.startsWith(`${worktree}${process.platform === "win32" ? "\\" : "/"}`);
+    if (!insideWorktree) fail(`workspace package ${packageDocument.name} resolves outside detached worktree: ${actualPath}`);
+    checks.push({
+      name: packageDocument.name,
+      packagePath,
+      nodeModulesPath,
+      realpath: actualPath,
+      insideWorktree,
+    });
+  }
+  if (checks.length === 0) fail("detached package.json has no workspace packages to verify");
+  return checks;
+}
+
 function prepareDetachedDependencies(executionRoot, options, manifest) {
   const target = resolve(executionRoot, "node_modules");
-  if (existsSync(target)) {
-    return { commands: [], status: "skipped", reason: "worktree-already-has-dependencies" };
+  if (existsSync(target)) fail("fresh detached worktree unexpectedly contains node_modules");
+  if (options.skipBootstrap) fail("--skip-bootstrap is not permitted for a fresh detached worktree");
+  const cachePath = mkdtempSync(join(tmpdir(), "sdt-g84-npm-cache-"));
+  try {
+    const bootstrapEnv = { ...process.env, INIT_CWD: executionRoot, npm_config_cache: cachePath };
+    const result = run(manifest.bootstrapCommands.join("\n"), bootstrapEnv, "bootstrap", executionRoot);
+    if (result.status !== 0) fail(`bootstrap failed with status ${result.status}`);
+    const nodeModulesRealpaths = assertWorkspaceDependenciesInsideWorktree(executionRoot);
+    return {
+      commands: manifest.bootstrapCommands,
+      status: result.status,
+      signal: result.signal,
+      reason: "fresh-npm-ci-isolated-cache",
+      npmConfigCache: cachePath,
+      cacheRemoved: true,
+      nodeModulesRealpaths,
+    };
+  } finally {
+    rmSync(cachePath, { recursive: true, force: true });
   }
-  const shared = resolve(ROOT, "node_modules");
-  if (existsSync(shared)) {
-    // Dependencies are not source state. Reusing the already-installed tree
-    // avoids an npm-cache mutation for every lane while each command still
-    // runs from its own detached checkout. The receipt records this choice so
-    // it cannot be mistaken for an independent npm ci installation.
-    symlinkSync(shared, target, "dir");
-    return { commands: [], status: "linked", reason: "reused-driver-node_modules-in-detached-worktree" };
-  }
-  if (options.skipBootstrap) {
-    fail("--skip-bootstrap requires node_modules in the fresh detached worktree or driver checkout");
-  }
-  const result = run(manifest.bootstrapCommands.join("\n"), { ...process.env, INIT_CWD: executionRoot }, "bootstrap", executionRoot);
-  const bootstrap = { commands: manifest.bootstrapCommands, status: result.status, signal: result.signal, reason: "runner-bootstrap" };
-  if (result.status !== 0) fail(`bootstrap failed with status ${result.status}`);
-  return bootstrap;
 }
 
 function currentSha(cwd = ROOT) {
