@@ -2,7 +2,7 @@
 
 ## Scope and provenance
 
-This document records the SDT-G81 test-only repair for issue [#164](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/164). The dedicated branch is `claude/sdt-g81-safe-window-w230`, based on `origin/main` at `193cfa44563d08ffadef146c4eca769098044be1`. The intended change set is limited to `test/read.spec.ts`, this evidence document, and the G81-only semantic mutation runner `scripts/g81-safe-window-mutation-runner.mjs`.
+This document records the SDT-G81 test-only repair for issue [#164](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/164). The dedicated branch is `claude/sdt-g81-safe-window-w230`; W236 rebased it onto `origin/main` at `5bc9d2226bded255875f04c5f6b6bd032463033d`. The intended change set is limited to `test/read.spec.ts`, this evidence document, and the G81-only semantic mutation runner `scripts/g81-safe-window-mutation-runner.mjs`. The earlier `193cfa44563d08ffadef146c4eca769098044be1` base and W230 head are retained below as historical provenance, not as the current base.
 
 The prior red receipt is [workflow 34509483454](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34509483454), [ci-g46 job 102979771313](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34509483454/job/102979771313), on PR #163 source `4cefc3f5`. Its failure was `test/read.spec.ts:338`, `expected 500, received 200`, after a 1,316 ms test run. This is retained as the historical trigger, not as evidence for this branch's final result.
 
@@ -16,9 +16,9 @@ Before the repair, a temporary test-only diagnostic around the unmodified test s
 {"g81Ac1Diagnostic":true,"seedTime":1789077864744,"persistedLag":{"estimateMs":121000,"observedAt":1789077864744},"beforeRead":1789077864840,"afterRead":1789077864869,"lagAtBeforeRead":120904,"lagAtAfterRead":120875,"responseStatus":500}
 ```
 
-The diagnostic deliberately failed after printing the capture and was fully reverted; it is not a product or committed-test change. It shows the local public path correctly returned 500 while the read-time lag remained above the 120,000 ms ceiling. The hosted 200 in the historical receipt is consequently classified as the timing race, not as evidence of a product defect. If the repaired test ever observes a lag above the ceiling with a 200 response, its assertion message includes the persisted row and read-time bounds and the result must be treated as a product-defect stop condition.
+The diagnostic deliberately failed after printing the capture and was fully reverted; it is not a product or committed-test change. It is a local mechanism demonstration: under that temporary pinned setup the public path returned 500 while the read-time lag remained above the 120,000 ms ceiling. It does not prove the historical hosted failure's exact clock values; those values were not captured by the historical receipt. The historical hosted 200 remains the trigger classified as a timing race, not a product-defect finding, but this local diagnostic is not retroactive hosted evidence. If the repaired test ever observes a lag above the ceiling with a 200 response, its assertion message includes the persisted row and read-time bounds and the result must be treated as a product-defect stop condition.
 
-The committed AC1 test pins one epoch clock (`G81_PINNED_CLOCK = 1_800_000_000_000`) before both the real `recordDelivery` seed and the public `SELF.fetch`. It reads back the persisted estimate and records `beforeRead`, `afterRead`, both derived lag bounds, and the response status in the assertion message.
+The committed AC1 test pins one epoch clock (`G81_PINNED_CLOCK = 1_800_000_000_000`) before both the real `recordDelivery` seed and the public `SELF.fetch`. It reads back the persisted estimate and records `beforeRead`, `afterRead`, both derived lag bounds, and the response status in the assertion message. This is mechanism/contract evidence for the repaired test path, not a claim that it captured the historical hosted clock values.
 
 ## AC2 — the public reader observes the pinned clock
 
@@ -44,28 +44,31 @@ For both rows the test asserts the durable `estimate_ms`/`observed_at` values an
 
 ## AC4 — semantic mutation proof
 
-`scripts/g81-safe-window-mutation-runner.mjs` has exactly two source-shape targets and invokes Vitest with only `test/read.spec.ts` plus the exact AC3 name pattern:
+`scripts/g81-safe-window-mutation-runner.mjs` has exactly two source-shape targets and invokes Vitest with only `test/read.spec.ts` plus the exact name pattern for **one selected AC3 test**:
 
 1. Remove the `safeWindowCeilingExceeded` branch in `SerializedReadWorker.ts`; expected 500 becomes 200.
 2. Change the strict `>` predicate in `safeWindow.ts` to `>=`; expected 200 becomes 500 at the equality boundary.
 
-The runner retains the process status, signal, spawn error, and output. It requires a normal status-1 Vitest assertion failure containing the exact named oracle and the expected/received pair; timeout, setup/import, signal, missing-oracle, and unrelated failures are rejected. Each mutation has a healthy control, rebuilds the runtime bundle after mutation, restores the source in `finally`, and rebuilds again. The self-test validates both unique anchors and the G81-only oracle.
+The runner consumes the structured Vitest JSON report rather than classifying combined output. It requires a normal status-1/no-signal process, exactly one reported `test/read.spec.ts` file, exactly one executed assertion, the exact named AC3 oracle, and its public HTTP-status assertion marker (`G81 AC3 boundary capture`). It then parses the mutation-specific expected/received status pair and the JSON boundary capture: the omission mutation must show `120001` ms with expected 500 and received 200; the `>=` mutation must show `120000` ms with expected 200 and received 500. Other failed tests, setup/import/database failures, timeout, signal, missing or skipped target, unrelated assertion/output, malformed capture, wrong boundary, or wrong pair are rejected. Each mutation has a healthy control, rebuilds the runtime bundle after mutation, restores the source in `finally`, and rebuilds again. The self-test validates both unique anchors, the one-test G81-only oracle, semantic records, and all of those failure-class controls.
 
 Recorded local results:
 
 ```json
-{"mutations":[{"id":"remove-ceiling-check","sourceFile":"packages/dcb-runtime/src/read/SerializedReadWorker.ts"},{"id":"ceiling-greater-or-equal","sourceFile":"packages/dcb-runtime/src/safeWindow.ts"}],"oracle":"[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader","testFile":"test/read.spec.ts","selfTest":"anchors-and-g81-only-oracle"}
+{"mutations":[{"id":"remove-ceiling-check","boundaryLagMs":120001,"expectedStatus":500,"receivedStatus":200},{"id":"ceiling-greater-or-equal","boundaryLagMs":120000,"expectedStatus":200,"receivedStatus":500}],"oracle":"[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader","publicAssertion":"G81 AC3 boundary capture","testFile":"test/read.spec.ts","selfTest":"anchors-g81-only-oracle-structured-red-and-failure-class-controls","rejectedCases":["green target","missing report","signal termination","setup/import failure","database failure","timeout","missing oracle","skipped target","unrelated assertion","unrelated output","wrong boundary","wrong expected/received pair"]}
 ```
 
+Fresh structured red records from source head `fcdb316111e850eaeff48a3fc2a1d8e20ea80bb7` follow. The source head is the code head on which both temporary mutations were executed; the later evidence-only commit does not alter the runner or test source.
+
 ```json
-{"result":"all-g81-safe-window-mutants-red","oracle":"[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader","rows":[{"id":"remove-ceiling-check","status":1,"signal":null,"result":"semantic-mutant-red"},{"id":"ceiling-greater-or-equal","status":1,"signal":null,"result":"semantic-mutant-red"}]}
+{"id":"remove-ceiling-check","sourceFile":"packages/dcb-runtime/src/read/SerializedReadWorker.ts","result":"semantic-mutant-red","sourceHead":"fcdb316111e850eaeff48a3fc2a1d8e20ea80bb7","selectedTest":"[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader","publicAssertion":"G81 AC3 boundary capture","boundaryLagMs":120001,"expectedStatus":500,"receivedStatus":200,"process":{"status":1,"signal":null,"error":null},"structuredReport":{"success":false,"failedTests":1,"totalTests":9},"failedAssertion":{"statusPair":{"receivedStatus":200,"expectedStatus":500,"format":"vitest-inline"},"capture":{"lagMs":120001,"responseStatus":200,"persistedLag":{"estimateMs":120001,"observedAt":1800000000000}},"failureExcerpt":"AssertionError: G81 AC3 boundary capture {\"lagMs\":120001,\"seedTime\":1800000000000,\"persistedLag\":{\"estimateMs\":120001,\"observedAt\":1800000000000},\"beforeRead\":1800000000000,\"afterRead\":1800000000000,\"responseStatus\":200}: expected 200 to be 500 // Object.is equality"}}
+{"id":"ceiling-greater-or-equal","sourceFile":"packages/dcb-runtime/src/safeWindow.ts","result":"semantic-mutant-red","sourceHead":"fcdb316111e850eaeff48a3fc2a1d8e20ea80bb7","selectedTest":"[G81] AC3 proves exact 120000 and 120001 ms boundaries through the public reader","publicAssertion":"G81 AC3 boundary capture","boundaryLagMs":120000,"expectedStatus":200,"receivedStatus":500,"process":{"status":1,"signal":null,"error":null},"structuredReport":{"success":false,"failedTests":1,"totalTests":9},"failedAssertion":{"statusPair":{"receivedStatus":500,"expectedStatus":200,"format":"vitest-inline"},"capture":{"lagMs":120000,"responseStatus":500,"persistedLag":{"estimateMs":120000,"observedAt":1800000000000}},"failureExcerpt":"AssertionError: G81 AC3 boundary capture {\"lagMs\":120000,\"seedTime\":1800000000000,\"persistedLag\":{\"estimateMs\":120000,\"observedAt\":1800000000000},\"beforeRead\":1800000000000,\"afterRead\":1800000000000,\"responseStatus\":500}: expected 500 to be 200 // Object.is equality"}}
 ```
 
 The product source was restored after the proof; `git diff --name-only -- packages/dcb-runtime/src` is empty.
 
 ### Delay demonstration
 
-The required non-committed diagnostic inserted a real `setTimeout(1_600)` between seeding and the public read. It produced:
+The required non-committed diagnostic inserted a real `setTimeout(1_600)` between seeding and the public read. This is another local mechanism demonstration, not proof of the historical hosted values. It produced:
 
 ```json
 {"delayMs":1600,"repaired":{"seedTime":1800000000000,"status":500,"beforeRead":1800000000000,"afterRead":1800000000000},"unmodified":{"seedTime":1789078725382,"status":200,"beforeRead":1789078727034,"afterRead":1789078727061}}
@@ -92,11 +95,12 @@ git diff --check
 exit 0
 ```
 
-`npm run typecheck` rebuilt all packages successfully. No runtime source, package metadata, workflow, global timeout, retry, skip, or unrelated test lane was changed. The existing `npm test`/ci-g46 read suite remains the caller; the new mutation runner filters exclusively to the three G81 tests by exact name pattern.
+`npm run typecheck` rebuilt all packages successfully. No runtime source, package metadata, workflow, global timeout, retry, skip, or unrelated test lane was changed. The existing `npm test`/ci-g46 read suite remains the caller; the focused local verification selects all three G81 tests, while the mutation runner intentionally selects only the one AC3 test by exact name pattern.
 
-## Hosted receipts
+## Historical W230 hosted receipts
 
-The first exact-head hosted workflow completed successfully:
+The following receipts belong to the earlier W230 implementation and are
+retained as historical evidence, not as W238 execution:
 
 - [workflow 34537083905](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34537083905), `headSha=f4f519c7b7245ae83f3878bece119fbdd8ee4423`, status `completed`, conclusion `success`.
 - The 21 terminal jobs were all successful, including [ci-foundation job 103071105862](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34537083905/job/103071105862), [ci-g43 job 103071106033](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34537083905/job/103071106033), [ci-g46 job 103071106251](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34537083905/job/103071106251), and [verify job 103081721745](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34537083905/job/103081721745).
@@ -111,8 +115,27 @@ The hosted logs explicitly prove the G81 observations ran at the exact workflow 
 
 Thus AC1's public observations (the three named G81 tests) actually ran on hosted infrastructure in both the foundation `npm test` invocation and the G46 read suite. The run's workflow-level `headSha` is the source identity used here. The G79 timing reporter also emits the PR workflow's `GITHUB_SHA` field (`b156a40b23610776673ffe99178a3430fa0e41d8`) in its timing records; that auxiliary merge/ref identity is not substituted for the exact branch `headSha` above.
 
-The historical red workflow above remains linked separately from this successful exact-head receipt.
+The historical red workflow above remains linked separately from the successful
+W230 receipt.
+
+## Historical W236 rebase receipts
+
+W236 rebased the branch onto main `5bc9d2226bded255875f04c5f6b6bd032463033d`
+without a conflict and pushed exact source head
+`803595cdfb2b0986c876e55873caddc19a457949`. Its [CI workflow
+34555853353](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34555853353)
+and [release preflight
+34556132337](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34556132337)
+both completed successfully at that head. W236's hosted G81 AC1/AC2/AC3
+observations were 258/275/366 ms in `ci-foundation`'s broad `npm test`; its
+mutation proof was local. The complete W236 handoff is retained at
+`sdt-g81-pr165-rebase-ci-w236.md`. These receipts remain historical after the
+W238 validator repair.
 
 ## Lifecycle
 
-The issue claim was applied before implementation with the GitHub-only worker protocol for issue #164. The ready-for-review PR is [#165](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/165), created from the dedicated branch against `main`; its body says `Closes #164`. The canonical `worker complete --outcome pr-created` receipt was emitted immediately after PR creation, before hosted CI polling, with `proceed=true`, `applied=true`, `pr_number=165`, and no errors. The terminal workflow/job receipts above are for exact source head `f4f519c7b7245ae83f3878bece119fbdd8ee4423`; this evidence-only documentation update is the only pending push after that receipt.
+The W230 issue claim and immediate PR-created completion remain historical. For
+W238, the PR was claimed through the canonical GitHub-only PR repair flow before
+editing, and completion will be recorded as `repair-pushed` after the bounded
+validator/evidence push. Fresh W238 PR/CI/preflight identities and the final
+head are recorded below once terminal.
