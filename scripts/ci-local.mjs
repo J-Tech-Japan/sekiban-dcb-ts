@@ -15,6 +15,12 @@ import { tmpdir } from "node:os";
 
 const ROOT = process.cwd();
 const DEFAULT_MANIFEST = "ci/lanes.json";
+const NUGET_ENV_NAMES = [
+  "NUGET_HTTP_CACHE_PATH",
+  "NUGET_PACKAGES",
+  "NUGET_PLUGINS_CACHE_PATH",
+  "NUGET_SCRATCH",
+];
 
 function fail(message) {
   throw new Error(`ci-local:${message}`);
@@ -170,6 +176,54 @@ function removeDetachedWorktree(path, laneName) {
   }
 }
 
+function isInsidePath(parent, candidate) {
+  return candidate === parent || candidate.startsWith(`${parent}${process.platform === "win32" ? "\\" : "/"}`);
+}
+
+function createNugetIsolation(executionRoot) {
+  const worktree = realpathSync(executionRoot);
+  const parent = resolve(worktree, ".artifacts", "ci-local");
+  mkdirSync(parent, { recursive: true });
+  let root = null;
+  try {
+    root = mkdtempSync(join(parent, "nuget-"));
+    const paths = Object.fromEntries(NUGET_ENV_NAMES.map((name) => [
+      name,
+      mkdtempSync(join(root, `${name.toLowerCase().replaceAll("_", "-")}-`)),
+    ]));
+    const checks = NUGET_ENV_NAMES.map((name) => {
+      const configuredPath = paths[name];
+      const actualPath = realpathSync(configuredPath);
+      const insideWorktree = isInsidePath(worktree, actualPath);
+      const insideIsolation = isInsidePath(realpathSync(root), actualPath);
+      return {
+        name,
+        configuredPath,
+        realpath: actualPath,
+        insideWorktree,
+        insideIsolation,
+      };
+    });
+    const escaped = checks.filter((check) => !check.insideWorktree || !check.insideIsolation);
+    if (escaped.length > 0) {
+      fail(`NuGet path escapes detached worktree: ${escaped.map((check) => `${check.name}=${check.realpath}`).join(", ")}`);
+    }
+    return {
+      root: realpathSync(root),
+      paths,
+      checks,
+      insideWorktree: true,
+    };
+  } catch (error) {
+    if (root !== null) rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function removeNugetIsolation(nugetIsolation) {
+  if (nugetIsolation?.root !== undefined) rmSync(nugetIsolation.root, { recursive: true, force: true });
+}
+
 function workspacePackagePaths(executionRoot) {
   let rootPackage;
   try {
@@ -235,13 +289,20 @@ function assertWorkspaceDependenciesInsideWorktree(executionRoot) {
   return checks;
 }
 
-function prepareDetachedDependencies(executionRoot, options, manifest) {
+function prepareDetachedDependencies(executionRoot, options, manifest, lane) {
   const target = resolve(executionRoot, "node_modules");
   if (existsSync(target)) fail("fresh detached worktree unexpectedly contains node_modules");
   if (options.skipBootstrap) fail("--skip-bootstrap is not permitted for a fresh detached worktree");
   const cachePath = mkdtempSync(join(tmpdir(), "sdt-g84-npm-cache-"));
+  let nugetIsolation = null;
   try {
-    const bootstrapEnv = { ...process.env, INIT_CWD: executionRoot, npm_config_cache: cachePath };
+    nugetIsolation = lane.name === "g32-parity" ? createNugetIsolation(executionRoot) : null;
+    const bootstrapEnv = {
+      ...process.env,
+      INIT_CWD: executionRoot,
+      npm_config_cache: cachePath,
+      ...(nugetIsolation?.paths ?? {}),
+    };
     const result = run(manifest.bootstrapCommands.join("\n"), bootstrapEnv, "bootstrap", executionRoot);
     if (result.status !== 0) fail(`bootstrap failed with status ${result.status}`);
     const nodeModulesRealpaths = assertWorkspaceDependenciesInsideWorktree(executionRoot);
@@ -253,7 +314,11 @@ function prepareDetachedDependencies(executionRoot, options, manifest) {
       npmConfigCache: cachePath,
       cacheRemoved: true,
       nodeModulesRealpaths,
+      nugetIsolation,
     };
+  } catch (error) {
+    removeNugetIsolation(nugetIsolation);
+    throw error;
   } finally {
     rmSync(cachePath, { recursive: true, force: true });
   }
@@ -393,6 +458,7 @@ function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.en
 
 function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed, execution, bootstrap) {
   mkdirSync(root, { recursive: true });
+  const nugetIsolation = bootstrap.nugetIsolation ?? null;
   const receipt = {
     schema: "sdt-ci-local-receipt/v1",
     lane: lane.name,
@@ -405,7 +471,13 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     forcedRed: forcedRedPassed,
     execution,
     bootstrap,
-    environment: lane.env ?? {},
+    nugetIsolation: nugetIsolation === null ? null : {
+      root: nugetIsolation.root,
+      paths: nugetIsolation.paths,
+      checks: nugetIsolation.checks,
+      insideWorktree: nugetIsolation.insideWorktree,
+    },
+    environment: { ...(lane.env ?? {}), ...(nugetIsolation?.paths ?? {}) },
     buildSettings: {
       UseSharedCompilation: lane.env?.UseSharedCompilation ?? null,
       MSBUILDDISABLENODEREUSE: lane.env?.MSBUILDDISABLENODEREUSE ?? null,
@@ -468,12 +540,13 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
   };
   let serviceState = { env: { ...process.env }, cleanup: [], services: [] };
   try {
-    if (detached) bootstrap = prepareDetachedDependencies(executionRoot, options, manifest);
+    if (detached) bootstrap = prepareDetachedDependencies(executionRoot, options, manifest, lane);
     if (detached) serviceState = startServices(manifest, lane, sha, receiptRoot, executionEnv);
-    const laneEnv = { ...serviceState.env, ...(lane.env ?? {}) };
+    const laneEnv = { ...serviceState.env, ...(bootstrap.nugetIsolation?.paths ?? {}), ...(lane.env ?? {}) };
     return executeLane(lane, laneEnv, receiptRoot, sha, execution, bootstrap, executionRoot);
   } finally {
     for (const cleanup of serviceState.cleanup.reverse()) cleanup();
+    removeNugetIsolation(bootstrap.nugetIsolation);
     if (detached) removeDetachedWorktree(executionRoot, lane.name);
   }
 }
@@ -492,6 +565,7 @@ function main() {
     const sha = currentSha();
     const selfTestWorktree = createDetachedWorktree(sha, "self-test");
     let worktreeProof;
+    let nugetProof;
     try {
       const detachedSha = currentSha(selfTestWorktree);
       const clean = gitOutput(["status", "--porcelain"], selfTestWorktree) === "";
@@ -503,10 +577,15 @@ function main() {
         dependenciesAreNotImplicitlyCopied: !existsSync(resolve(selfTestWorktree, "node_modules")),
       };
       if (detachedSha !== sha || !clean) fail("detached worktree self-test failed");
+      nugetProof = createNugetIsolation(selfTestWorktree);
+      if (!nugetProof.insideWorktree || nugetProof.checks.length !== NUGET_ENV_NAMES.length || !nugetProof.checks.every((check) => check.insideWorktree && check.insideIsolation)) {
+        fail("NuGet isolation self-test failed");
+      }
     } finally {
+      removeNugetIsolation(nugetProof);
       removeDetachedWorktree(selfTestWorktree, "self-test");
     }
-    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true } }, null, 2)}\n`);
     return;
   }
   const lanes = selectLanes(manifest, options);
