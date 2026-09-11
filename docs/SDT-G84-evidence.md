@@ -1,5 +1,39 @@
 # SDT-G84 evidence
 
+## W243 hosted attempt and bounded guard repair (2026-09-11)
+
+PR #169 was created from the dedicated branch against `main` at
+`247d6d90902cf90cead08835d358e8d0197a297a`. Its first pull-request workflow
+attempt was the requested AC2 measurement at source head
+`38bee00cc1bae3cc3bf9721c544d5a1f45882f50`:
+
+* CI run [34595766957](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34595766957)
+  reached terminal `failure`. `ci-foundation` job `103251031697` was green.
+  `ci-pr-cheap` job `103251031529` failed in `Execute manifest PR cheap tier
+  and G40 guards`; `verify` job `103254465478` then failed only because the
+  PR tier was not green.
+* The first actionable error in the cheap-tier receipt was
+  `Error: g40-ignored-paths-check:scan failed for
+  docs/SDT-G84-evidence.md: spawnSync rg ENOENT`. The new G84 ignored-path
+  guard used an optional `rg` executable that is not present on this hosted
+  runner. This is a guard portability failure, not a product or test failure;
+  no G43/G79 assertion was changed or reclassified.
+* Release preflight
+  [34595766967](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34595766967)
+  was an automatic pull-request run, not a workflow dispatch, and reached
+  terminal `success` at the same exact head. Job `103251031426`
+  (`dcb-domain-release-preflight`) completed all release/package checks.
+
+The bounded repair replaces the optional `rg` subprocess in
+`scripts/g40-ignored-paths-check.mjs` with the checked-out Git index's
+fixed-string `git grep`, retaining the exact-path scan, broad-glob rejection,
+tracked-file matching, and self-exclusion of the guard itself. It does not
+change the workflow, manifest paths, G53/G32 guards, product behavior, tests,
+timeouts, retries, skips, or forced-red proofs. Local focused validation at
+the repair source includes `node --check`, the guard self-test and normal
+scan, and `npm run test:g40:tiers`; all passed. This source repair is the
+justified second PR push/run required by AC2; no blind rerun was made.
+
 ## W243 current implementation checkpoint (2026-09-11)
 
 This is the W243 continuation of the W242 checkout. The current source

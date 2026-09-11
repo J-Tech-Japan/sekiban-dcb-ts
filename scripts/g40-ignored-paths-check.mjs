@@ -37,6 +37,29 @@ function trackedFiles() {
   }
 }
 
+function trackedReferences(file) {
+  try {
+    return execFileSync(
+      "git",
+      [
+        "grep",
+        "-n",
+        "--fixed-strings",
+        "--",
+        file,
+        "test",
+        "scripts",
+        "packages",
+        ":(exclude)scripts/g40-ignored-paths-check.mjs",
+      ],
+      { encoding: "utf8" },
+    );
+  } catch (error) {
+    if (error.status === 1) return "";
+    fail(`scan failed for ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 function assertSafePatterns(patterns) {
   if (!Array.isArray(patterns) || patterns.length === 0) fail("pathsIgnore must contain at least one path");
   const files = trackedFiles();
@@ -47,13 +70,7 @@ function assertSafePatterns(patterns) {
     const matches = files.filter((file) => globToRegex(pattern).test(file));
     if (matches.length === 0 && !pattern.includes("*")) matches.push(pattern);
     for (const file of matches) {
-      let output = "";
-      try {
-        output = execFileSync("rg", ["-n", "--fixed-strings", "--glob", "!scripts/g40-ignored-paths-check.mjs", file, "test", "scripts", "packages"], { encoding: "utf8" });
-      } catch (error) {
-        if (error.status === 1) output = "";
-        else fail(`scan failed for ${file}: ${error instanceof Error ? error.message : String(error)}`);
-      }
+      const output = trackedReferences(file);
       if (output.trim().length > 0) reads.push({ file, references: output.trim().split("\n") });
     }
   }
