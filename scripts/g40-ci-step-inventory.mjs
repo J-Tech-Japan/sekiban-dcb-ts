@@ -258,6 +258,21 @@ export function generateInventory({ workflowText, packageText, workspacePackageT
           tier: lane.tier,
           ...(command.env === undefined ? {} : { env: command.env }),
         });
+
+        // A manifest command is an invocation surface, just like a workflow
+        // `run:` block.  Keep the recursively expanded package/workspace
+        // leaves in the inventory as well.  This lets the coverage gate
+        // compare exact command text for commands that moved from workflow
+        // steps into the manifest instead of treating the move as a silent
+        // deletion of the underlying test.
+        for (const invocation of invokedNpmScripts(command.command)) {
+          if (invocation.workspace) {
+            addEntry(entries, "npm-workspace-invocation", invocation.invocation, { npmScript: invocation.name });
+            expandWorkspaceScript(invocation.name, workspaceScripts, entries);
+            continue;
+          }
+          expandNpmScript(invocation.name, scripts, workspaceScripts, entries);
+        }
       }
     }
   }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Prove both G84 tier mutations are rejected by the tiered G40 checker. */
+/** Prove G84's tier and pinned-history mutations are rejected by the G40 checker. */
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 const root = process.cwd();
 const checker = resolve(root, "scripts/g40-ci-coverage-check.mjs");
 const manifestPath = resolve(root, "ci/lanes.json");
+const REQUIRED_COSMOS_HISTORY_SHA = "38219c8a6526a0209295e9f06450cce9e2217005";
 
 function fail(message) {
   throw new Error(`g40-ci-mutation-proof:${message}`);
@@ -31,7 +32,7 @@ function runMutation(label, mutate) {
 
 function main() {
   if (process.argv.includes("--self-test")) {
-    process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-mutation-self-test/v1", validators: ["dropped-tier-lane", "local-lane-without-command"] }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-mutation-self-test/v1", validators: ["dropped-tier-lane", "local-lane-without-command", "pinned-cosmos-history-sha"] }, null, 2)}\n`);
     return;
   }
   const droppedLane = runMutation("dropped-tier-lane", (manifest) => {
@@ -42,7 +43,13 @@ function main() {
     if (lane === undefined) fail("fixture has no local lane");
     lane.commands = [];
   });
-  process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-mutation-proof/v2", mutations: [droppedLane, unrunnableLocal] }, null, 2)}\n`);
+  const pinnedHistory = runMutation("pinned-cosmos-history-sha", (manifest) => {
+    const lane = manifest.lanes.find((entry) => entry.name === "cosmos");
+    const command = lane?.commands?.find((entry) => entry.id === "cosmos-retained-history");
+    if (command === undefined) fail("fixture has no cosmos retained-history command");
+    command.command = command.command.replace(REQUIRED_COSMOS_HISTORY_SHA, `0${REQUIRED_COSMOS_HISTORY_SHA.slice(1)}`);
+  });
+  process.stdout.write(`${JSON.stringify({ schema: "sdt-g40-ci-mutation-proof/v3", mutations: [droppedLane, unrunnableLocal, pinnedHistory] }, null, 2)}\n`);
 }
 
 try {

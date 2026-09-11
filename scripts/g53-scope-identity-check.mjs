@@ -110,11 +110,10 @@ export function assertG53ScopeIdentityContract(value) {
   requireContains(value.downstreamMutation, "outbox-drain-retired-service-pipe-tag-name", "downstream old-name mutation");
   requireContains(value.downstreamMutation, "G53 scoped Queue-to-D1 oracle", "downstream mutation oracle");
   requireContains(value.packageJson, '"test:g53"', "G53 package lane");
-  const legacyWorkflowWiring = value.ci.includes("Run SDT-G53 scoped Durable Object identity lane") && value.ci.includes("SDT_G53_FORCE_FAILURE");
   const manifestLane = manifestCommand(value.laneManifest, "g21-g25", "g53");
   const manifestForcedRed = manifestCommand(value.laneManifest, "g21-g25", "g53-red");
   const manifestWiring = manifestLane?.command === "npm run test:g53" && manifestForcedRed?.command === "npm run test:g53:forced-red" && manifestForcedRed?.env?.SDT_G53_FORCE_FAILURE === "1" && manifestForcedRed?.expect === "red";
-  if (!legacyWorkflowWiring && !manifestWiring) fail("G53 lane and forced-red proof are absent from both the legacy workflow and the manifest");
+  if (!manifestWiring) fail("G53 lane and forced-red proof are absent from the authoritative lane manifest");
 }
 
 function expectRed(value, mutate, label) {

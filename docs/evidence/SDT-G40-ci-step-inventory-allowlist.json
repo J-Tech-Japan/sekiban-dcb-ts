@@ -1,0 +1,29 @@
+{
+  "schema": "sdt-g40-ci-step-inventory-allowlist/v1",
+  "baselineRef": "origin/main",
+  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used.",
+  "missingHistoricalWorkflow": {
+    "count": 86,
+    "entrySetSha256": "5075be9c3c2ce3a650056f6108361a0bfa0dde2a5851fe936c98c305539ded76",
+    "idSetSha256": "58fbea53a025c8c38460ffbe1b29126db4b180927a3f769ab90c405280fa55a4",
+    "reason": "The pre-G84 workflow-run command leaves were intentionally replaced by the lane manifest; their exact baseline command text remains hashed and reported by the checker."
+  },
+  "addedManifestCommands": {
+    "count": 132,
+    "entrySetSha256": "49b1f7a9870bfbf03f984e653149cc8723a2d335810d3fa0b6f97036cfd1b5a7",
+    "idSetSha256": "0b53bad5b5b4d1e360ae6527ed5ea8fd175726b9e1dfec4ba3d0d043fe36250b",
+    "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
+  },
+  "addedManifestClosure": {
+    "count": 55,
+    "entrySetSha256": "21a9232d902621ce20986968613497a6008361002ca338feecee805511874a10",
+    "idSetSha256": "0985fa549cf90df6c9bc02132199ea6f598c149abfb688a84ef328ed624d4616",
+    "reason": "These npm/workspace leaves are the exact recursive package-script closure of the reviewed manifest commands, not an untracked command source."
+  },
+  "addedWorkflowSteps": {
+    "count": 3,
+    "entrySetSha256": "9964012955f50948e96c1b29c22ee57c93bee638ef93ee239b7795fc521a7b3d",
+    "idSetSha256": "5b95f0bb22e6b0723899e2dfde1937ec0c561516341df09edb28fa9f437e879e",
+    "reason": "These are the three retained PR workflow dispatch steps; their exact command text remains independently allowlisted."
+  }
+}

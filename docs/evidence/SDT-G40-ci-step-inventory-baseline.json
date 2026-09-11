@@ -4,1231 +4,1018 @@
   "source": {
     "workflow": ".github/workflows/ci.yml",
     "packageJson": "package.json",
-    "ref": "working-tree"
+    "ref": "origin/main"
   },
-  "runStepCount": 5,
-  "leafCommandCount": 136,
+  "runStepCount": 89,
+  "leafCommandCount": 174,
   "leafCommands": [
     {
-      "id": "manifest-command:004f52afb6b4d60686717f42675cdb3c671a040e4a74aa1bd731904bd8d53582",
-      "type": "manifest-command",
-      "command": "npm run test:g54:forced-red",
-      "commandId": "g54-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G54_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:057f94e1b606e8ad455f844be0758880bd05ff71315d0bd7adbaf525a28f62b3",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g26-delivery.spec.ts test/g26-doorbell.spec.ts test/g26-fanout.spec.ts test/g26-integration.spec.ts",
+      "npmScript": "test:g26"
     },
     {
-      "id": "manifest-command:02d3ddc49dc8a860c92159657bf98fcbd66339b25d423087865297fa629f96b0",
-      "type": "manifest-command",
-      "command": "npm run test:g23:forced-red",
-      "commandId": "g23-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G23_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:0616fa4a5603e61865738b1e3e516f7287028605562fdc21320d08c334662cef",
+      "type": "npm-script",
+      "command": "npm run test:g22 && node -e \"if (process.env.SDT_G22_FORCE_FAILURE === '1') throw new Error('SDT-G22 forced-red CI wiring proof')\"",
+      "npmScript": "test:g22:forced-red"
     },
     {
-      "id": "manifest-command:035e6d7ef275a96d1d55c98943ce4b4b2c72d666ce0fda7c5e8a23ec63633d6f",
-      "type": "manifest-command",
-      "command": "npm run test:g43",
-      "commandId": "g43",
-      "lane": "g43",
-      "tier": "local"
+      "id": "npm-script:072b026ecd020096064c0ec350515dcc6e61f452adebba391e9fd968be7787bf",
+      "type": "npm-script",
+      "command": "npm run test:g28 && node -e \"if (process.env.SDT_G28_FORCE_FAILURE === '1') throw new Error('SDT-G28 forced-red CI wiring proof')\"",
+      "npmScript": "test:g28:forced-red"
     },
     {
-      "id": "manifest-command:053e8ac7ee666d98b0f7f57897e6ed47199ff9880bf6f5eaf837f1d9fbaee7ec",
-      "type": "manifest-command",
-      "command": "npm run test:g28:forced-red",
-      "commandId": "g28-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G28_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:0a0e9b14b4c2c7bd5a91c2988e48f9931d049b3b1fe408e132d187c2305cd752",
+      "type": "npm-script",
+      "command": "npm run test:g29:delivery && node -e \"if (process.env.SDT_G29_DELIVERY_FORCE_FAILURE === '1') throw new Error('SDT-G29 delivery forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:delivery:forced-red"
     },
     {
-      "id": "manifest-command:0606c301d4c7b8a1baaed5ee611cdfb2222fa2a17bd8261a8d261836506e29a0",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundary:package",
-      "commandId": "g28-boundary-package",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:0bd82f1ff431b64cd46483616f46190182da500490082c1fc0790d8b2961a595",
+      "type": "npm-script",
+      "command": "node scripts/dcb-domain-boundary-check.mjs",
+      "npmScript": "test:g28:boundaries"
     },
     {
-      "id": "manifest-command:08cc80cf8ab93aed46030c5c955dbed3f5eae4f9a4b2aededb1952b165d3a8f9",
-      "type": "manifest-command",
-      "command": "npm run test:d1",
-      "commandId": "d1",
-      "lane": "local-e2e",
-      "tier": "local"
+      "id": "npm-script:0cc4a078f028b256c4b94e2a0e0f85cc1347b24ad653a8f96338bb35ba622512",
+      "type": "npm-script",
+      "command": "npm run build --workspaces --if-present",
+      "npmScript": "build:packages"
     },
     {
-      "id": "manifest-command:0a6c7fda7b92f9aad732334404b077f96a050edfd2a17872ab2c98dac5c4f5c4",
-      "type": "manifest-command",
-      "command": "npm run test:g29:witness",
-      "commandId": "g29-witness",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:1823da2a1c34504c07a0b64df071e52472489e29e60d12fd2602bc33ccc9e21b",
+      "type": "npm-script",
+      "command": "node scripts/g20-candidate-check.mjs",
+      "npmScript": "test:g20:candidate"
     },
     {
-      "id": "manifest-command:1194b440f754fd5dcfc041502a9ebf47e05756b6d606c251a7593f067f7acbb8",
-      "type": "manifest-command",
-      "command": "npm run test:g20:candidate",
-      "commandId": "g28-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G28_CANDIDATE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:1c1381ed3fcb8d582bf8aeca80b7520c4b1fe9999ab586963fa5ffdcb67510fd",
+      "type": "npm-script",
+      "command": "node scripts/g29-authoring-doc-check.mjs",
+      "npmScript": "test:g29:authoring-doc"
     },
     {
-      "id": "manifest-command:12e77893d165f69eabada46fb9c6535d1f808755c5f1b00812145bc11d056932",
-      "type": "manifest-command",
-      "command": "npm run test:g32:candidate:forced-red",
-      "commandId": "g32-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G32_CANDIDATE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:1f13e2476a9cdbcdd96003c6da49c3aad748da8f6e061726325474d13cbf2174",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/dcb-domain.spec.ts",
+      "npmScript": "test:g28"
     },
     {
-      "id": "manifest-command:1402da93d5c6d64763ba92d09a0d5dc5ace10a40b9fa2223172c3d564ef033e0",
-      "type": "manifest-command",
-      "command": "npm run build",
-      "commandId": "build",
-      "lane": "local-e2e",
-      "tier": "local"
+      "id": "npm-script:1fba2b747f42913f2c0911c284afd37d2f120eab8e82c8d13328133d4a4b1d66",
+      "type": "npm-script",
+      "command": "node scripts/g29-candidate-check.mjs --self-test && node scripts/g29-candidate-check.mjs",
+      "npmScript": "test:g29:candidate"
     },
     {
-      "id": "manifest-command:19d2be6bbdf1ee77eb4dc76e208afc17b34f5e7063619f2188fb28fec44ec9a9",
-      "type": "manifest-command",
-      "command": "npm run test:boundaries",
-      "commandId": "boundaries",
-      "lane": "local-e2e",
-      "tier": "local"
+      "id": "npm-script:201a7aef2e0ea934e333391ff5ba73d7ddcc520b9830a5f3cdd52ec98ff1b7fa",
+      "type": "npm-script",
+      "command": "npm run test:g29:authoring-doc && node -e \"if (process.env.SDT_G29_AUTHORING_DOC_FORCE_FAILURE === '1') throw new Error('SDT-G29 authoring doc forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:authoring-doc:forced-red"
     },
     {
-      "id": "manifest-command:1c22459a1f1123c5f89975bd0d774fd6dd82810c3524ef9523a9f285f299e42e",
-      "type": "manifest-command",
-      "command": "npm run test:g30:candidate",
-      "commandId": "g30-candidate",
-      "lane": "g30",
-      "tier": "local"
+      "id": "npm-script:23a2765a3121c7bf16249a87d3ab647eef817569c8c5daebb337bdd42584f397",
+      "type": "npm-script",
+      "command": "node scripts/g20-cloudflare-gate.mjs",
+      "npmScript": "test:g20:gate"
     },
     {
-      "id": "manifest-command:1c2a9a0982b5ce2d46e51950248d6441f720adfc7ec8e2bb45768e01c22dc6dc",
-      "type": "manifest-command",
-      "command": "npm run test:g71",
-      "commandId": "foundation-g71",
-      "lane": "foundation",
-      "tier": "pr"
+      "id": "npm-script:26dcb8080bafb25c2310de60ac193f63824264ef1157bdff9b16f087429b11e8",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g32-parity.spec.ts test/g32-ddl.spec.ts test/g32-tags.spec.ts test/g32-suid-coverage.spec.ts test/g32-suid-rows.spec.ts test/g32-payload-admission.spec.ts test/g32-cutover.spec.ts test/g32-legacy-ingress-audit.spec.ts test/g32-forward-redeploy.spec.ts test/g32-parity-runner.spec.ts && node scripts/g32-suid-coverage.mjs && node scripts/g32-suid-mutation-runner.mjs && node scripts/g32-payload-admission-mutation-runner.mjs && node scripts/g32-tags-mutation-runner.mjs && node scripts/g32-forward-recorder-mutation-runner.mjs && node scripts/g32-ddl-introspection.mjs && npm run test:store-contract && node scripts/g32-bridge-check.mjs && node scripts/g32-cutover-check.mjs && node scripts/g22-bootstrap-cosmos-contract.mjs --self-test && node scripts/g32-legacy-ingress-audit.mjs --self-test && node scripts/deploy/g32-queue-topology.mjs --self-test && node tools/sekiban-parity/run.mjs",
+      "npmScript": "test:g32"
     },
     {
-      "id": "manifest-command:1c4ac8650d4265ea4e8a7f09a5c86de8de07dec60657338ea0688c17475de0e3",
-      "type": "manifest-command",
-      "command": "npm run test:g29:candidate:forced-red",
-      "commandId": "g29-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G29_CANDIDATE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:2a52ff28c07a73fecf08e553cc9817cbb086ffc96aac576e9e6a85de35c31995",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/d1-pipeline.spec.ts",
+      "npmScript": "test:d1"
     },
     {
-      "id": "manifest-command:1d61a9a79972aa47adaf5d9349016a4fbf8018259e0009939c28b63a6b01503d",
-      "type": "manifest-command",
-      "command": "npm run test:g49",
-      "commandId": "g49",
-      "lane": "g46",
-      "tier": "local"
+      "id": "npm-script:2d8d78afe69385892b9243c2934a46ef8ad8c44d8ee52cd778490b1c00432d68",
+      "type": "npm-script",
+      "command": "bash scripts/deploy/g15-local-e2e.sh",
+      "npmScript": "e2e:g15:local"
     },
     {
-      "id": "manifest-command:1f0be70f59e80a1ef6ea2bdbb60dd08d3c91b35b1d47e699e1f762a1c5af5b47",
-      "type": "manifest-command",
-      "command": "npm run test:g29:witness:forced-red",
-      "commandId": "g29-witness-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_WITNESS_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:307a2d34fd2eea233f7ad1f4d0c027b7d56e56571b85b0a20e6aab69caf564e2",
+      "type": "npm-script",
+      "command": "npm run test:g29:compatibility && node -e \"if (process.env.SDT_G29_COMPATIBILITY_FORCE_FAILURE === '1') throw new Error('SDT-G29 compatibility forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:compatibility:forced-red"
     },
     {
-      "id": "manifest-command:1f3ebfc916a8b3d436363fa837342aa92c06213ec1ecaaf8cbdb76e98b637076",
-      "type": "manifest-command",
-      "command": "npm run test:mv",
-      "commandId": "mv",
-      "lane": "local-e2e",
-      "tier": "local"
+      "id": "npm-script:31569ed4466225c250ce0ed528fd069fbe73da85419a7a08c5e234c8d2965bda",
+      "type": "npm-script",
+      "command": "npm run build:packages && node scripts/store-contract.mjs",
+      "npmScript": "test:store-contract"
     },
     {
-      "id": "manifest-command:24196f922de215f02323959c4a4703a4b2304e12467cc3fa61a6b7a913575267",
-      "type": "manifest-command",
-      "command": "npm test",
-      "commandId": "foundation-test",
-      "lane": "foundation",
-      "tier": "pr"
+      "id": "npm-script:3c1cd2e059884555fa0175ab4bd08c9201f27e00dc5c54668b04e703a4b92193",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts",
+      "npmScript": "test"
     },
     {
-      "id": "manifest-command:25905ba27ffa2a0b45370fa10bc8f698458df5e65460cac088968b1175a739da",
-      "type": "manifest-command",
-      "command": "npm run test:g26",
-      "commandId": "g26",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:3d19d10cc849e796c2a2f99d84d4b0dc9990f5470cc177a06257aa4d4d830ff9",
+      "type": "npm-script",
+      "command": "node scripts/g38-packet-contract-check.mjs --self-test && node scripts/g38-packet-contract-check.mjs",
+      "npmScript": "test:g38:packet"
     },
     {
-      "id": "manifest-command:287940d3f70558176ef7be0ccf38b27a717dc1967db5c1d3660cb251c31f4705",
-      "type": "manifest-command",
-      "command": "npm run test:g22",
-      "commandId": "g22",
-      "lane": "g21-g25",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:2ae4996ddc56b5d4311bc7aa7b7212b65ea420e34146f19a66f00fc1771caafb",
-      "type": "manifest-command",
-      "command": "npm run test:g65:required",
-      "commandId": "g65",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:2f97ee669360b1898e72dea8c0995523e8a3c80feefabd622073b02175b8af1e",
-      "type": "manifest-command",
-      "command": "npm run test:g31:forced-red",
-      "commandId": "g31-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G31_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:3001bdcac17dd981dcddb609b89cdefba0b52af636ea180df81d34c44c3fa3bb",
-      "type": "manifest-command",
-      "command": "npm run test:g30:forced-red",
-      "commandId": "g30-forced-red",
-      "lane": "g30",
-      "tier": "local",
-      "env": {
-        "SDT_G30_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:32e3586a6df04c217b79c179a41edaa6a2aaef8f5a5c7f680788cd1c603069cd",
-      "type": "manifest-command",
-      "command": "npm run test:cosmos-wiring",
-      "commandId": "cosmos-wiring",
-      "lane": "cosmos",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:33016327aaf76e4b61ff892efda249fcc25c8a062f947a542567dd4b23319aea",
-      "type": "manifest-command",
-      "command": "npm run test:g26:topology",
-      "commandId": "g26-topology",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:33160837a73e21d282f48810f0e3ed678736efac964707e2a146002d8b82f8f8",
-      "type": "manifest-command",
-      "command": "npm run test:g21",
-      "commandId": "g21",
-      "lane": "g21-g25",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:344420645a8cc874a32e683cd3d9664b8e88635976c916c92154a8f11ea8fa45",
-      "type": "manifest-command",
-      "command": "npm run test:g61:forced-red",
-      "commandId": "g61-red",
-      "lane": "g44",
-      "tier": "local",
-      "env": {
-        "SDT_G61_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:3baddf98a577710174c071c0a380d8fe7cce3c9dbf40264b9d5de126f7e8fcfb",
-      "type": "manifest-command",
-      "command": "npm run test:g20:gate",
-      "commandId": "g20-gate",
-      "lane": "cosmos",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:3c591e9e4650af1d0da80b430beb787afdda3cb2c031c378f999b7ef0910c8ee",
-      "type": "manifest-command",
-      "command": "npm run test:g25",
-      "commandId": "g25",
-      "lane": "g21-g25",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:4031fc7cd5b6fd72b1a36f66808b75e176ecfc317fb9a7c3eb25ed5678e53d05",
-      "type": "manifest-command",
-      "command": "npm run test:g62",
-      "commandId": "g62",
-      "lane": "g44",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:41b4ab46f0a79f3b9f28ae278e44317b4449fe28e39d75754f6b1716c97fc323",
-      "type": "manifest-command",
-      "command": "npm run test:g29:candidate",
-      "commandId": "g29-candidate",
-      "lane": "cosmos",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:4336de9f7b5ff51b658c2949388f174700fb7cc72da8025a3df85de97aba60e9",
-      "type": "manifest-command",
-      "command": "npm run test:g22:forced-red",
-      "commandId": "g22-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G22_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:435fc5f2cf5b28ffefd7cff5b365fe5826ba7577b97737902f20f2c15d9fc0c0",
-      "type": "manifest-command",
-      "command": "npm run lint",
-      "commandId": "foundation-lint",
-      "lane": "foundation",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:445e463dc29cd7df3d219e131dc50b7e3d2d08388db49435c6646ff2933c6ec8",
-      "type": "manifest-command",
-      "command": "npm run test:g61",
-      "commandId": "g61",
-      "lane": "g44",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:44f61f52cf4082a422bdbb611757072af9af9eb78f42a1d343fad3019cccae6d",
-      "type": "manifest-command",
-      "command": "npm run test:g26:forced-red",
-      "commandId": "g26-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G26_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:46ddfc38c259adf21876af0cd28439e791dcd1cd24a0c56e44c1ebabedb25da3",
-      "type": "manifest-command",
-      "command": "npm run test:consumer",
-      "commandId": "consumer",
-      "lane": "local-e2e",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:48c071504cbc30925bed6c398417730e5b6ebc7c746ca7528a11d4ac8d9e260d",
-      "type": "manifest-command",
-      "command": "npm run typecheck",
-      "commandId": "foundation-typecheck",
-      "lane": "foundation",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:48cabef72994c53ba3e9d789e91a87f9244c5f0e4873906504223162425b961c",
-      "type": "manifest-command",
-      "command": "npm run test:g29:authoring-doc",
-      "commandId": "g29-authoring-doc",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:48df7efe0013cc935ab2edf07ba64d9407f8603141285348e7d917c8b719a858",
-      "type": "manifest-command",
-      "command": "npm run test:g28:compile-fail",
-      "commandId": "g28-compile-fail",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:49f8fc0d88a21bf9e2ccd053c700c2ef177f5a8fdd17821eb6e51d69cefe6bcc",
-      "type": "manifest-command",
-      "command": "npm run test:g29:diagnostics\nnpm run test:g29:compatibility",
-      "commandId": "g29-diagnostics",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:4a8358c6cbe24a43091a4e431e63819b14428655bb4852387d51de2a8d2aedac",
-      "type": "manifest-command",
-      "command": "npm run test:g37:evidence",
-      "commandId": "foundation-g37-evidence",
-      "lane": "foundation",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:4b75222cd6a41795299b29cee81de708662532591f3de1be85f80cb44bf897c3",
-      "type": "manifest-command",
-      "command": "npm run test:g49:forced-red",
-      "commandId": "g49-red",
-      "lane": "g46",
-      "tier": "local",
-      "env": {
-        "SDT_G49_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:4bf8c35f32b3ad4413d880edfb25ed8911ee7321997db7ac84eea4bcf1e2ea11",
-      "type": "manifest-command",
-      "command": "npm run test:g67:forced-red",
-      "commandId": "g67-red",
-      "lane": "g44",
-      "tier": "local",
-      "env": {
-        "SDT_G67_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:4f4f33e0c98c3d9d75335b855f3afc7d4249b7a13afe1e75e7d80f74a63c3c8a",
-      "type": "manifest-command",
-      "command": "npm run test:g32:forced-red",
-      "commandId": "g32-red",
-      "lane": "g32-parity",
-      "tier": "local",
-      "env": {
-        "SDT_G32_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:5262839e8122fe52637098e64c5638a60d24f6fb1f71ed88024fe723e9171ead",
-      "type": "manifest-command",
-      "command": "npm run test:g58:forced-red",
-      "commandId": "g58-red",
-      "lane": "g44",
-      "tier": "local",
-      "env": {
-        "SDT_G58_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:529c699c1e99e8a4f0485e6a61e2f7f69fdbbaf19c1d0fe94bdbe48999fe0173",
-      "type": "manifest-command",
-      "command": "npm run test:g26:topology",
-      "commandId": "g26-topology-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G26_TOPOLOGY_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:58a0e4ff6aa76159ce2fa075dce485a4d275ed96d4b947332aba75e10434df6f",
-      "type": "manifest-command",
-      "command": "npm run test:g17",
-      "commandId": "foundation-g17",
-      "lane": "foundation",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:59aa2166b5c80c9fb11e14681e6c16408043311fc748df76db69d0e73de77d21",
-      "type": "manifest-command",
-      "command": "npm run test:g42",
-      "commandId": "g42",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:5c4227b8780a6ef79b748396a45d043c76f66922f42ed482561373de6cd0dbaf",
-      "type": "manifest-command",
-      "command": "npm run test:g58",
-      "commandId": "g58",
-      "lane": "g44",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:5e123d011bf21ba898fbd14f869eb4499021153911f0a3212f658c9c79a1d4dd",
-      "type": "manifest-command",
-      "command": "npm run test:g29:compatibility:forced-red",
-      "commandId": "g29-compatibility-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_COMPATIBILITY_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:5f0d6314928ca47017b1dd3de5ff6b4dec231f02c76120b3b5aa02c99295835c",
-      "type": "manifest-command",
-      "command": "npm run test:g29:mapping",
-      "commandId": "g29-mapping",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:5f9571135ce85ca0030882a4964de9f99fae2504d012fdcc494ec01df52974ef",
-      "type": "manifest-command",
-      "command": "npm run test:g41",
-      "commandId": "g41",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:604a75ffcb469aaa051b74e8aa9dbb18e097d90cf7533ea6015cb73125793172",
-      "type": "manifest-command",
-      "command": "npm run test:g28",
-      "commandId": "g28",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:6160a2e284b4653431ccefd49dea0ef6ce083198bbddfe1f9d1952e9efb2a907",
-      "type": "manifest-command",
-      "command": "npm run test:g64:forced-red",
-      "commandId": "g64-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G64_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:650ea0b8611589b3171d76195c11c5956238d8aa7c41edef48b7cbbfd8c3b467",
-      "type": "manifest-command",
-      "command": "npm run test:g23",
-      "commandId": "g23",
-      "lane": "g21-g25",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:6542c290f4eb5c195020e4ce4458dd30d8c569a48e615d02b0f94c4681d47285",
-      "type": "manifest-command",
-      "command": "POSTGRES_URL=\"$G16_POSTGRES_URL\" npm run test:g16",
-      "commandId": "g16-test",
-      "lane": "local-e2e",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:65ab449489a8c01e73475ab851daf7aa86da19cab5f2b326da796a7b62e74e53",
-      "type": "manifest-command",
-      "command": "npm run e2e:g15:local",
-      "commandId": "g15-e2e",
-      "lane": "local-e2e",
-      "tier": "local",
-      "env": {
-        "G15_LOCAL_PORT": "8787",
-        "G15_LOCAL_SERVICE_ID": "ci-g15-local",
-        "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g15-wrangler-state"
-      }
-    },
-    {
-      "id": "manifest-command:6691ad941aa6b8381ccbf645850bb63f7c74a4a9dac7a52400ae992d79a6784e",
-      "type": "manifest-command",
-      "command": "npm run test:g41:forced-red",
-      "commandId": "g41-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G41_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:6cc35c18f5cbb6573c842c5ef0bdd06461915e7d6cf3af812798440fa527ac99",
-      "type": "manifest-command",
-      "command": "npm run test:g21:forced-red",
-      "commandId": "g21-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G21_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:6da02be2b97759818e73835051d4df8f6561071fac1b2169c3baa0da7119f8c4",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundaries",
-      "commandId": "g28-boundaries",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:707695f4de2e41c4f62e24749a9178ec396772091dde8c5313307ae01d2cce0a",
-      "type": "manifest-command",
-      "command": "npm run test:g60:required",
-      "commandId": "g60",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:70ac77d5f0f81b4041d18f113913d9e15a7dc1c7a3cb0c3f615534cea33dc1dd",
-      "type": "manifest-command",
-      "command": "node scripts/g40-ignored-paths-check.mjs",
-      "commandId": "g40-ignored-paths",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:76f01ad2804da1320007df3c68e015925edd550b8eb80b4ac5af4d551e90ad16",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundaries",
-      "commandId": "g28-boundaries-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G28_BOUNDARY_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:7849994e074c5ca7a16351f72d76af8e5fc328ba94fbcf36ed16d0b27b8694d7",
-      "type": "manifest-command",
-      "command": "node scripts/g40-ci-coverage-check.mjs",
-      "commandId": "g40-coverage",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:7946d703f9a920d1845e4b003e83dd78e899c10906b745310bcef8ec01f95fb2",
-      "type": "manifest-command",
-      "command": "npm run test:g28:compile-fail:forced-red",
-      "commandId": "g28-compile-fail-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G28_COMPILE_FAIL_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:7a4276b6a3816cec50bfc87e82f777c90921fba64141121da713ba75cf468871",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundary:source",
-      "commandId": "g28-boundary-source",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:7a64d032cf15bc3a93c6eff2dfac5f15f1384a6025ecbdb3cbc58454dd6f4ef5",
-      "type": "manifest-command",
-      "command": "npm run test:g30:candidate:forced-red",
-      "commandId": "g30-candidate-red",
-      "lane": "g30",
-      "tier": "local",
-      "env": {
-        "SDT_G30_CANDIDATE_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:7dee0defb73be983ce2bb0dbbfb10b877bdc72b5d217adb905e930b2cc38c20a",
-      "type": "manifest-command",
-      "command": "npm run test:g45",
-      "commandId": "g45",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:825d316e153932e00b588184ddd1c35e34d150d6897654ad0277e6ef516ded77",
-      "type": "manifest-command",
-      "command": "npm run test:g24",
-      "commandId": "g24",
-      "lane": "g21-g25",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:840c0124692ac783aeb556c9719935ed8c1b8808b9c83216a4cccc053fe0c8c2",
-      "type": "manifest-command",
-      "command": "npm run test:g46:forced-red",
-      "commandId": "g46-red",
-      "lane": "g46",
-      "tier": "local",
-      "env": {
-        "SDT_G46_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:86a3469aa90f62e8aa558d9bc7832a8edcdaf12289f7532aad6a7e703cc3c833",
-      "type": "manifest-command",
-      "command": "npm run test:store-contract",
-      "commandId": "store-contract",
-      "lane": "local-e2e",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:8aca0ac23772e82c73fa5415719e85e269dcaedc84eefd71a76030b17531437a",
-      "type": "manifest-command",
-      "command": "npm run test:g31",
-      "commandId": "g31",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:8e3a4e2b9bf0dd01e69ec533b83648b5f169ec76015937ce45c4616ae4f90fb5",
-      "type": "manifest-command",
-      "command": "npm run test:g32",
-      "commandId": "g32",
-      "lane": "g32-parity",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:8ee97b35d9382dd81f30b2fdeceafdcbae81990358fe426d8fe1e13763eef2aa",
-      "type": "manifest-command",
-      "command": "npm run test:g30",
-      "commandId": "g30",
-      "lane": "g30",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:916d34a870ae9b41126762093327621e1d27012e8f2d6f91ef73d77c3205a4e5",
-      "type": "manifest-command",
-      "command": "npm run test:g29:delivery:forced-red",
-      "commandId": "g29-delivery-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_DELIVERY_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:9542ac42bca25abde961194ba70d15d9ade8925c20fb5fe7e2b26d3e8890382e",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundary:negative",
-      "commandId": "g28-boundary-negative",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:959327af0db73de2fd33ccc4bcf992787a2c1c6b28985e550464713e620c794a",
-      "type": "manifest-command",
-      "command": "npm run test:g51",
-      "commandId": "g51",
-      "lane": "g30",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:97910e97a6c9ff7e494f60d41878f5e1e105605e94112699ad466b0e31d4972a",
-      "type": "manifest-command",
-      "command": "npm run test:g45:forced-red",
-      "commandId": "g45-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G45_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:981fb699d0ab3eb999137d74289e354ae9392bb489de780db2b2cff8b730e9f7",
-      "type": "manifest-command",
-      "command": "npm run test:g29:sample:forced-red",
-      "commandId": "g29-sample-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_SAMPLE_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:990e1ad92a14c98120094c7a7b3a71be10a66befac25804aa9eaeda6a4c615f1",
-      "type": "manifest-command",
-      "command": "npm run test:g53:forced-red",
-      "commandId": "g53-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G53_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:99b3b7eea80b80c192ed03a1f6889a5a82671323ea5654f8e2f237125afa1e02",
-      "type": "manifest-command",
-      "command": "npm run test:g29:delivery",
-      "commandId": "g29-delivery",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:9ae43347c9c8b730f7de34f68212963124e9b898c9681e7f16fdffc5eb1a9f1b",
-      "type": "manifest-command",
-      "command": "npm run test:g20:candidate",
-      "commandId": "g22-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G22_CANDIDATE_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:9ce4e8c9cc89a8141bf7c6212d7188cfe946a5a89aee9a0ecc0c532f59af025d",
-      "type": "manifest-command",
-      "command": "npm run test:g22:cosmos",
-      "commandId": "g22-cosmos",
-      "lane": "cosmos",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:a16b520c956babbccb6a58892510e83593ec035d6b6a0ffd281b1867c6e7f3c8",
-      "type": "manifest-command",
-      "command": "npm run test:g32:candidate",
-      "commandId": "g32-candidate",
-      "lane": "cosmos",
-      "tier": "local"
-    },
-    {
-      "id": "manifest-command:a205821f309978dd2971f9427ad67fac59883c5d55c271bf457dd15c203b2b5e",
-      "type": "manifest-command",
-      "command": "npm run test:g17:rollout-order",
-      "commandId": "foundation-g17-rollout",
-      "lane": "foundation",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:a2ee0891bc65e19ff56d4f30e68e0bcecceb07e5cf67b6774cb01fc609a3c0e0",
-      "type": "manifest-command",
-      "command": "npm run test:g27:forced-red",
-      "commandId": "g27-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G27_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:a3c7ca538beea94b8a8ea04ff3aaa2ee7b125abeb014c735a47a4a80af098e5a",
-      "type": "manifest-command",
-      "command": "npm run test:g29:authoring-doc:forced-red",
-      "commandId": "g29-authoring-doc-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_AUTHORING_DOC_FORCE_FAILURE": "1"
-      }
-    },
-    {
-      "id": "manifest-command:af0c1a63b5468450e95cd3699a077ab4d71725dc43564daea29194cdd092a8f9",
-      "type": "manifest-command",
-      "command": "npm run test:g72:trusted-publishing",
-      "commandId": "g72",
-      "lane": "cheap",
-      "tier": "pr"
-    },
-    {
-      "id": "manifest-command:b00707db6f5c72f4b12428b729474d5ec0095435a582966dfe1d36ff48d05775",
-      "type": "manifest-command",
+      "id": "npm-script:3d4f3cc1c7f10babec985ddaba6fc9be237066d3c990f6345979037650566981",
+      "type": "npm-script",
       "command": "npm run test:g31:candidate",
-      "commandId": "g31-candidate",
-      "lane": "cosmos",
-      "tier": "local"
+      "npmScript": "test:g31:candidate:forced-red"
     },
     {
-      "id": "manifest-command:b0158ab6dd321266a32e61a63088a911895196419cc25ec22971e2e12f4e1280",
-      "type": "manifest-command",
-      "command": "npm run test:g64",
-      "commandId": "g64",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:3e925f23dc649b5046e6816dc885b83fef2e02c3541fbf2579a349c3722dc119",
+      "type": "npm-script",
+      "command": "npm run build:packages && wrangler deploy --dry-run",
+      "npmScript": "build"
     },
     {
-      "id": "manifest-command:b088c9d99f3eae9bd730a1025035649e99757f6a33c1d4ccf736a6dc32d312ec",
-      "type": "manifest-command",
-      "command": "npm run test:g42:forced-red",
-      "commandId": "g42-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G42_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:3f07a7da66bf565a01a76f6f731d3bfcc683886bbc7ddd44ea6137abd2a74642",
+      "type": "npm-script",
+      "command": "npm run build:packages && node scripts/g22-bootstrap-cosmos-contract.mjs --require-real-cosmos",
+      "npmScript": "test:g22:cosmos"
     },
     {
-      "id": "manifest-command:b0fe7f71d028fc009852ed77171ec3fc1ad0b64ec2f4d71318ce1d175dbf102f",
-      "type": "manifest-command",
-      "command": "npm run test:g31:candidate:forced-red",
-      "commandId": "g31-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G31_CANDIDATE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:461325825f1a2cbd440cc0cf1481a86ee75bcb9fde17ddfc012ded5f10267397",
+      "type": "npm-script",
+      "command": "npm run test:g24 && node -e \"if (process.env.SDT_G24_FORCE_FAILURE === '1') throw new Error('SDT-G24 forced-red CI wiring proof')\"",
+      "npmScript": "test:g24:forced-red"
     },
     {
-      "id": "manifest-command:b17d50b5e5667413e3dadddafdb8ee8aeac5e5463c618fd96245a8a2ce877b95",
-      "type": "manifest-command",
-      "command": "npm run test:g29:diagnostics:forced-red",
-      "commandId": "g29-diagnostics-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_DIAGNOSTICS_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:49948b2319b49b6950ca524e3ea25be3b3f05977025480dc9559b4648e5333db",
+      "type": "npm-script",
+      "command": "npm run test:g26 && node -e \"if (process.env.SDT_G26_FORCE_FAILURE === '1') throw new Error('SDT-G26 forced-red CI wiring proof')\"",
+      "npmScript": "test:g26:forced-red"
     },
     {
-      "id": "manifest-command:b292df394326206d0f95157e10d54c96cd1a660e2468076c7e68987c97275e41",
-      "type": "manifest-command",
-      "command": "npm run test:g67",
-      "commandId": "g67",
-      "lane": "g44",
-      "tier": "local"
+      "id": "npm-script:4a6bdb9684146dc4bd8acc79cc7a122a210f8d71c62368fbf83311277fefa072",
+      "type": "npm-script",
+      "command": "node scripts/g38-receiver-surface-check.mjs --self-test && node scripts/g38-receiver-surface-check.mjs",
+      "npmScript": "test:g38:receiver-surface"
     },
     {
-      "id": "manifest-command:baa132a87f330450c7027352453e3f30678b090b02c7ed3e77f5d0d087782259",
-      "type": "manifest-command",
-      "command": "npm run test:g38:prep:forced-red",
-      "commandId": "g38-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G38_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:4f7e83512d16e65030a290d4be84f87ff2160ce41071e7be4dcea2c48d0c4f83",
+      "type": "npm-script",
+      "command": "npm run test:g21 && node -e \"if (process.env.SDT_G21_FORCE_FAILURE === '1') throw new Error('SDT-G21 forced-red CI wiring proof')\"",
+      "npmScript": "test:g21:forced-red"
     },
     {
-      "id": "manifest-command:be7cc9581fd5740e381b1a839c8862e6329175d4c526ebc827c6ca535a07661b",
-      "type": "manifest-command",
-      "command": "npm run test:g20:candidate",
-      "commandId": "g27-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G27_CANDIDATE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:518251e099d83e857a2bc3966b642433e4cf8ead12d4788d76bcdb35f8e8bac3",
+      "type": "npm-script",
+      "command": "npm run test:g25 && node -e \"if (process.env.SDT_G25_FORCE_FAILURE === '1') throw new Error('SDT-G25 forced-red CI wiring proof')\"",
+      "npmScript": "test:g25:forced-red"
     },
     {
-      "id": "manifest-command:c04b4a001ccd174d0055d09f226a36139c0df6f81b7bfea738d930d110d16920",
-      "type": "manifest-command",
-      "command": "npm run test:g44:forced-red",
-      "commandId": "g44-red",
-      "lane": "g44",
-      "tier": "local",
-      "env": {
-        "SDT_G44_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:51b03abc077fa05c6a92e07b2edb5c7bc9cfdffe6f6ddfd0c225b238a3ffe1ec",
+      "type": "npm-script",
+      "command": "vitest run --config vitest.g24-deploy.config.ts test/g26-topology.spec.mjs",
+      "npmScript": "test:g26:topology"
     },
     {
-      "id": "manifest-command:c398c97b0407fde866245a5405ad61ec7a084f3c43ba222cb6035a46e0e96118",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundary:source",
-      "commandId": "g28-source-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "source"
-      }
+      "id": "npm-script:53443f12a1cda3b6959c90032de47b2b76a6d1d238b858bf505ee2b81e14f887",
+      "type": "npm-script",
+      "command": "G15_INCLUDE_QUERY_VIEWS=true G15_LOCAL_REPORT=.artifacts/g16-local-e2e.json bash scripts/deploy/g15-local-e2e.sh",
+      "npmScript": "e2e:g16:local"
     },
     {
-      "id": "manifest-command:c412150196ed2316127bc85acf66539ae11417ffe243448e29c6a4f597ca32a5",
-      "type": "manifest-command",
-      "command": "npm run build:packages",
-      "commandId": "g28-build",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:54b2225dbdffa81d0df8f914569f08cf867a9c77bf2bb8607b3217f440ddadc7",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g29-diagnostics.spec.ts",
+      "npmScript": "test:g29:diagnostics"
     },
     {
-      "id": "manifest-command:c424ad4732b07509ace883ea42a7795ada50ef1edcf73ce9a371ebe4b20ee5c2",
-      "type": "manifest-command",
-      "command": "npm run test:g27",
-      "commandId": "g27",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:5913457dada17b6bb8bd8011fae4bfe257391324dba09fb9bd285f94c6da43ed",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g31-waitfor.spec.ts test/g31-sample.spec.ts test/g31-witness.spec.ts && node scripts/g31-waitfor-check.mjs",
+      "npmScript": "test:g31"
     },
     {
-      "id": "manifest-command:c54fdd6a0e8acc82331a51e6cbda69a11869b753116f6cf43d7b42b11c225f38",
-      "type": "manifest-command",
-      "command": "npm run e2e:g16:local",
-      "commandId": "g16-e2e",
-      "lane": "local-e2e",
-      "tier": "local",
-      "env": {
-        "G15_LOCAL_PORT": "8788",
-        "G15_LOCAL_SERVICE_ID": "ci-g16-local",
-        "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g16-wrangler-state"
-      }
+      "id": "npm-script:593d7d296c35654c9488490b1d294339ebfc2f58e905401e5d4e9272ddb88807",
+      "type": "npm-script",
+      "command": "npm run test:g31 && node -e \"if (process.env.SDT_G31_FORCE_FAILURE === '1') throw new Error('SDT-G31 forced-red CI wiring proof')\"",
+      "npmScript": "test:g31:forced-red"
     },
     {
-      "id": "manifest-command:c67ee3c521a6648316577a1881c847fcb469e3584c83150c1ffd2c469d46b888",
-      "type": "manifest-command",
-      "command": "npm run test:g65:forced-red",
-      "commandId": "g65-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G65_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:5f3ad2ea2e78b833fc7d89b71ca133701bd6ddf2563a2a6824c3b6c049f6244f",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g27-identity.spec.ts",
+      "npmScript": "test:g27"
     },
     {
-      "id": "manifest-command:c67fadf04f4f035e709f51d9833c3bb8da306b3156de574cc9e79f3de5a2dda2",
-      "type": "manifest-command",
-      "command": "npm run test:g29:domain-source:forced-red",
-      "commandId": "g29-domain-source-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_DOMAIN_SOURCE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:5fb19de33132986bd1778f3273339c8a0286b61a4743e41f311523b6c625e817",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g29-meeting-room.spec.ts test/meeting-room.spec.ts",
+      "npmScript": "test:g29:sample"
     },
     {
-      "id": "manifest-command:c6a50dcafa39abc7f83554478b1f9d2a20e8fbb18418279df8bddae669711410",
-      "type": "manifest-command",
-      "command": "npm run test:g56:forced-red",
-      "commandId": "g56-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G56_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:62d42fffaeeaf83ee2572ebfcadf9cc692dcf3d66dc20bfca0d09c3b943ff118",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g29-mapping.spec.ts && npm run test:g29:mapping:runner",
+      "npmScript": "test:g29:mapping"
     },
     {
-      "id": "manifest-command:c7a0412963c94c88c3c2e817af20f0bdd0fe5ab1fc8399884f890fc56ad8bf2c",
-      "type": "manifest-command",
-      "command": "npm run test:g20",
-      "commandId": "g20",
-      "lane": "cosmos",
-      "tier": "local"
+      "id": "npm-script:65960055d6d1af1396322fb083069eb6edfc2454ac1eee08fb80edf2eeef2be6",
+      "type": "npm-script",
+      "command": "node scripts/g32-candidate-check.mjs --self-test && node scripts/g32-candidate-check.mjs",
+      "npmScript": "test:g32:candidate"
     },
     {
-      "id": "manifest-command:c95bcf896b3af510e1bec71de95168385a9c947065420a97d33f687686cb1df9",
-      "type": "manifest-command",
-      "command": "npm run test:g24:forced-red",
-      "commandId": "g24-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G24_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:6ba054f66e440da1665f124b94c127c350e0f22712093868915656a4a2eb3341",
+      "type": "npm-script",
+      "command": "node scripts/g13-boundary-check.mjs",
+      "npmScript": "test:boundaries"
     },
     {
-      "id": "manifest-command:c98d7ed4c90c1e5a71608000f7086d318fcc46ff465b56a556d310198457d6b6",
-      "type": "manifest-command",
-      "command": "node scripts/g40-verify-needs.mjs --self-test",
-      "commandId": "g40-verify-self-test",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:6e399047157ea20e4a39829cbc82bd1c5503cbbe1791256aa2a28dc5d4ace866",
+      "type": "npm-script",
+      "command": "vitest run --config vitest.config.ts test/g29-witness.spec.ts",
+      "npmScript": "test:g29:witness"
     },
     {
-      "id": "manifest-command:caa7a7f6d1d296e0cf000ea0a0b2d46fb3f55a010bdacac4913b6265551abf4e",
-      "type": "manifest-command",
-      "command": "npm run test:g43:forced-red",
-      "commandId": "g43-red",
-      "lane": "g43",
-      "tier": "local",
-      "env": {
-        "SDT_G79_INVOCATION": "forced-red"
-      }
+      "id": "npm-script:6eb2903f610f93d6f87cac529f31ab4c9c0ac2b00f69aa65584b719d29c952d0",
+      "type": "npm-script",
+      "command": "node scripts/g37-sanitized-evidence-check.mjs",
+      "npmScript": "test:g37:evidence"
     },
     {
-      "id": "manifest-command:cb36ba97523b960fb0f567161220a3a923a4bf6c561ad490688052d089ae8804",
-      "type": "manifest-command",
-      "command": "npm run test:g62:forced-red",
-      "commandId": "g62-red",
-      "lane": "g44",
-      "tier": "local",
-      "env": {
-        "SDT_G62_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:706769a4b5df1cc10647de27d154da448b895ada0d0a8c9d849db0dcd1ddf5e8",
+      "type": "npm-script",
+      "command": "eslint . --max-warnings=0",
+      "npmScript": "lint"
     },
     {
-      "id": "manifest-command:cdad48607e2ef6204d7edc50cb9dc2b658959e239829f570e697fb052572f39b",
-      "type": "manifest-command",
-      "command": "npm run test:g56",
-      "commandId": "g56",
-      "lane": "g21-g25",
-      "tier": "local"
+      "id": "npm-script:7635c7593991f3441fc61f9fd77bb150e0c3da57762892836c7d1239659e4490",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g24-hardening.spec.ts && vitest run --config vitest.g24-deploy.config.ts test/g24-deploy-preflight.spec.mjs",
+      "npmScript": "test:g24"
     },
     {
-      "id": "manifest-command:d36dae8cb952cf0903b4f5472786c23cd3a0dd284828bbceddbda59d5c3827c5",
-      "type": "manifest-command",
-      "command": "npm run test:g29:sample",
-      "commandId": "g29-sample",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:7b2b7307d14743885632466ca95a4d9b44125085e2e5d3bee88c464152699b83",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/bootstrap.spec.ts",
+      "npmScript": "test:g21"
     },
     {
-      "id": "manifest-command:d6c311ea1c0d7034b81d68e74c5ad6f103b1580b67e71584d62d7b92b15173aa",
-      "type": "manifest-command",
-      "command": "node scripts/deploy/g50-commit-latency-guards.mjs\nnode scripts/deploy/g50-commit-latency-check.mjs --sample .artifacts/sdt-g50-w57-commit-latency.json --self-test",
-      "commandId": "foundation-g50-guards",
-      "lane": "foundation",
-      "tier": "pr"
+      "id": "npm-script:7bceb6cd7b9315c78cd78fe9cd35af30b794fe6500bf0c14b276183270956bf8",
+      "type": "npm-script",
+      "command": "node scripts/g38-tombstone-check.mjs --self-test && node scripts/g38-tombstone-check.mjs && vitest run --config vitest.config.ts test/g38-tombstone.spec.ts",
+      "npmScript": "test:g38:tombstone"
     },
     {
-      "id": "manifest-command:d8282162484e12cadf42f1be0e5199de27e23309841d445ec5b61bdccbaaf008",
-      "type": "manifest-command",
-      "command": "npm run test:g38:prep",
-      "commandId": "g38",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:7f6017cf439edd3127af3dc6a3ca4ba20872f167d0ea1b865ecc6481d1bc01ea",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g19-materializer.spec.ts test/d1-mv.spec.ts",
+      "npmScript": "test:mv"
     },
     {
-      "id": "manifest-command:db0c17d144808703a9541fd4472de8e650a5f7d4164777df221275889ba503b2",
-      "type": "manifest-command",
-      "command": "git fetch --no-tags origin 8dbb4be825e084adef92065496cc0ffdc22b28ed 5439b8bda255144b608fcdeb6c89dc44dcb667d7 38219c8a6526a0209295e9f06450cce9e2217005 2f024d019d6861ad8ff43a2d194eabdcd975cbc0 95197cf1140d1179b52e1f01280002bc090bb891 36de26747ba71a583908f1f6f22102150e98f72b f1d3d7163f08a55c70fb8f66a38070be74f7caaf da2a8356fdbd898fa044884469b57a51ed8da996 1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6 1a9a5f22238a4755b8f15cdc17aec4f68bcde79d f401342df68461d3239f58b14ff6891db4214ac6 50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f f7d306c0018b1b7046095891186b8409c9b16863 16afe111b8e3aa3a48dc949b0caa33160b08f29f f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7 6308fb446335000d8729d490b170b189734461a4 5951844348bfd0ffadddb5c7c3c2bb0f57b100c6 cc4d0a86b749dc3ba09fe366a470c70b329bd10f 4a67b0a62120c85ec6aec855f09e38aca430557f 2db888bc9e57e04b66b4525270d312e8ddf78530 d6bfb5c5b4f5da1d44985199a4820786be6e89a1 13e8006be334454dc8a4a3c40972ba8ec15707b0 12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d 41e3665c055a366eb3f0d1ebff49be5d9414fa99 b8024fccca140d4cc3c76e715d4e5dd6c368b847 c5fff88620af3883b95639004dda08197618cc7e 87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c 0cef60307a37964b5a4a4423f5abdc3d50b01e21 9543fccfb0e1f7858042e815867f1d6f2a33216d 9bf654eb555e56a2b0d5ed9f04d0aad670866e9e fc89572e2e0a8b84447591f87be5d05d57396435 a8f98355bb6de0454725d34f0238cd12efd4519c 0b38755443cce9d4a1a4383e18ba42499c390f63 c5441dc23e144466d26e13d7ffab4db7eca2e6ae aff97424b136be9f88e6804ced1562d9b81709cd 825b7c7795c3695ee7054131bf1f4e79f59f5602",
-      "commandId": "cosmos-retained-history",
-      "lane": "cosmos",
-      "tier": "local"
+      "id": "npm-script:815d01cfa00793ca908f0cddc59d1f7f185631b9beb4901dbf0a2fca01c20b2b",
+      "type": "npm-script",
+      "command": "node scripts/g17-rollout-order-fixture.mjs",
+      "npmScript": "test:g17:rollout-order"
     },
     {
-      "id": "manifest-command:ddbcfd765de487f61b7a2e2b9b0ed127ebea093acb25fa6a9e006b067733f4ec",
-      "type": "manifest-command",
-      "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a",
-      "commandId": "g32-source",
-      "lane": "g32-parity",
-      "tier": "local"
+      "id": "npm-script:81d6a2d9162d35badd75c17bd39eb15f7d27e9cf85d1c9b30f64ce8fcb52a26a",
+      "type": "npm-script",
+      "command": "npm run test:g29:candidate",
+      "npmScript": "test:g29:candidate:forced-red"
     },
     {
-      "id": "manifest-command:df5e929d409d31e47b3bb6998a496f73d1c46a6e08cd9833245ccfd09bfaaf8b",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundary:package",
-      "commandId": "g28-package-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "package-manifest"
-      }
+      "id": "npm-script:8261cf85c97c2fb5d128b7e204b9bdcdf22f305b961d1f84347eee6a015b2fc5",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g16-query.spec.ts test/g16-frontend.spec.ts && node scripts/g16-ui-check.mjs",
+      "npmScript": "test:g16"
     },
     {
-      "id": "manifest-command:e41b5e7e6a61ffae104a7d901778eeb8518ef6e7a458109b92cb002a583cb8fe",
-      "type": "manifest-command",
-      "command": "npm run test:g20:candidate",
-      "commandId": "g20-candidate",
-      "lane": "cosmos",
-      "tier": "local"
+      "id": "npm-script:8f5d8b098c1ec451484232432023f9b9dcd4cea21aedd46192966a39bb3d457d",
+      "type": "npm-script",
+      "command": "npm run test:g29:mapping && node -e \"if (process.env.SDT_G29_MAPPING_FORCE_FAILURE === '1') throw new Error('SDT-G29 mapping forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:mapping:forced-red"
     },
     {
-      "id": "manifest-command:e44a451f7833ce42431661a533a09d5a275801e8436a5735ebf03a2c978d536d",
-      "type": "manifest-command",
-      "command": "npm run test:g75:certificate-scope",
-      "commandId": "g75",
-      "lane": "g44",
-      "tier": "local"
+      "id": "npm-script:8fa605e3810e9ae16bee3f84cf4a1dc7ffa65f988ee4ab51371beb7a2388ae14",
+      "type": "npm-script",
+      "command": "npm run typecheck && node scripts/g30-portable-import-check.mjs && vitest run --config vitest.config.ts test/g30-trace.spec.ts test/g30-b0.spec.ts && node scripts/commit-trace-contract.mjs --check && node scripts/commit-trace-contract.mjs --self-test && node scripts/g30-b0-contract.mjs --self-test && node scripts/g30-ac5-structural-check.mjs --self-test && node scripts/g30-ac5-mutation-runner.mjs && node scripts/g30-config-check.mjs && node scripts/g30-config-check.mjs --self-test && node scripts/g30-config-mutation-runner.mjs && node scripts/g30-trace-mutation-runner.mjs && node scripts/deploy/g30-deployment-witness.mjs --self-test && node scripts/deploy/g30-observability-query.mjs --self-test && node scripts/deploy/g30-b0-record-evidence.mjs --self-test && bash -n scripts/deploy/g30-b0-deploy.sh",
+      "npmScript": "test:g30"
     },
     {
-      "id": "manifest-command:e5392bdb613bc5dcbaa74be9fcdf845d6b302c36132faca9527773295a4e6c10",
-      "type": "manifest-command",
-      "command": "npm run test:g29:domain-source",
-      "commandId": "g29-domain-source",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:90ca0ab611d777eda54a5ef0c4df1b7bde93504d24ca7c8fe9d786605d53e8cb",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g23-unsafe-window.spec.ts",
+      "npmScript": "test:g23"
     },
     {
-      "id": "manifest-command:e6aa7dea6caa461092ad1911d77ca5d88c94230579b71b4cf14e293f17b03c87",
-      "type": "manifest-command",
-      "command": "npm run test:g52",
-      "commandId": "foundation-g52",
-      "lane": "foundation",
-      "tier": "pr"
+      "id": "npm-script:951e90dbdac64409caae5c9962ad7592639735a86d6d9e55ea84eca8341a0dff",
+      "type": "npm-script",
+      "command": "tsc -p packages/dcb-domain/tsconfig.typecheck.json --noEmit && node scripts/dcb-domain-compile-fail-check.mjs",
+      "npmScript": "test:g28:compile-fail"
     },
     {
-      "id": "manifest-command:e6d3704607057b65cdc81f47949ed2286d1905e1304917d087df92f3073869f3",
-      "type": "manifest-command",
-      "command": "npm run test:g20:candidate",
-      "commandId": "g26-candidate-red",
-      "lane": "cosmos",
-      "tier": "local",
-      "env": {
-        "SDT_G26_CANDIDATE_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:98dcaf0820bfbc4c1a34b8f348d7e883840037ced4e8c3ee4426833830b6d73e",
+      "type": "npm-script",
+      "command": "npm run test:g32:candidate",
+      "npmScript": "test:g32:candidate:forced-red"
     },
     {
-      "id": "manifest-command:e8aeb87f850eeaeb39fc83c928d5e0058c4a920729228b013959ac0119853601",
-      "type": "manifest-command",
-      "command": "npm run test:cosmos",
-      "commandId": "cosmos",
-      "lane": "cosmos",
-      "tier": "local"
+      "id": "npm-script:994b4e2af335c09c8818947a76f86c3e25bbd30f8d677fc817e8cf7dcae07de8",
+      "type": "npm-script",
+      "command": "npm run build:packages && node scripts/store-contract.mjs --require-real-cosmos",
+      "npmScript": "test:cosmos"
     },
     {
-      "id": "manifest-command:e9ee298db6447bd6be08f1d1a41d93e0908b16a955138ab55ff4e31038c7bfca",
-      "type": "manifest-command",
-      "command": "npm run test:g53",
-      "commandId": "g53",
-      "lane": "g21-g25",
-      "tier": "local"
+      "id": "npm-script:9ceb3ca68f3e5daff61e1faaf97ac53c6fc357f26c427ad303568e86d3785e85",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g17-lineage.spec.ts",
+      "npmScript": "test:g17"
     },
     {
-      "id": "manifest-command:ed18f838c77c15aaa185e27f1ea0211007df57b14cdb56abae10d3486b0633d8",
-      "type": "manifest-command",
-      "command": "npm run test:g25:forced-red",
-      "commandId": "g25-red",
-      "lane": "g21-g25",
-      "tier": "local",
-      "env": {
-        "SDT_G25_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:a35fc9cdf466a0656da34f5d8f6711b427c99e1dd4c88cc5be79b02a30340645",
+      "type": "npm-script",
+      "command": "npm run build:packages && tsc --noEmit",
+      "npmScript": "typecheck"
     },
     {
-      "id": "manifest-command:f095ebd883f4499f013f4b18cc8c8796b038460b6e0622f3f26a2bd94bc874f0",
-      "type": "manifest-command",
-      "command": "npm run test:g28:boundary:negative",
-      "commandId": "g28-negative-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "negative-fixtures"
-      }
+      "id": "npm-script:a53f9b53c9d6629efc25c7f84360682891cf50b5019824cf245136185689b630",
+      "type": "npm-script",
+      "command": "npm run test:g27 && node -e \"if (process.env.SDT_G27_FORCE_FAILURE === '1') throw new Error('SDT-G27 forced-red CI wiring proof')\"",
+      "npmScript": "test:g27:forced-red"
     },
     {
-      "id": "manifest-command:f3f7ae9b95a6517e5bcaccbc7804cada8fe4256b64e224c144d5ca626fb67726",
-      "type": "manifest-command",
-      "command": "npm run test:g54",
-      "commandId": "g54",
-      "lane": "g21-g25",
-      "tier": "local"
+      "id": "npm-script:a5930e74bca8cbc283e069e7b0b8315304bcd5e2729b6e33d8d8436faefb7854",
+      "type": "npm-script",
+      "command": "npm run test:g23 && node -e \"if (process.env.SDT_G23_FORCE_FAILURE === '1') throw new Error('SDT-G23 forced-red CI wiring proof')\"",
+      "npmScript": "test:g23:forced-red"
     },
     {
-      "id": "manifest-command:f3f860d7f88bfaaf68de76bb78cc52b76e6c5c6e100c6c7fa099662d0547b52e",
-      "type": "manifest-command",
-      "command": "npm run test:g44",
-      "commandId": "g44",
-      "lane": "g44",
-      "tier": "local"
+      "id": "npm-script:a7f97131fab1379fdd6c8f240ec933cf00fd2dd42c1f0abf63de4d59c00b1468",
+      "type": "npm-script",
+      "command": "npm run test:g29:witness && node -e \"if (process.env.SDT_G29_WITNESS_FORCE_FAILURE === '1') throw new Error('SDT-G29 witness forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:witness:forced-red"
     },
     {
-      "id": "manifest-command:f65b3f83230574004f136e7cbe1a11b392a7ec682a3258e1ec32d641145ff254",
-      "type": "manifest-command",
-      "command": "node scripts/g40-ci-mutation-proof.mjs",
-      "commandId": "g40-mutation",
-      "lane": "cheap",
-      "tier": "pr"
+      "id": "npm-script:ac011f6656e293fccc5c95aac83484fd4b5536011a08cc8c7a7afa5d35a7f7c3",
+      "type": "npm-script",
+      "command": "node scripts/g29-domain-source-check.mjs",
+      "npmScript": "test:g29:domain-source"
     },
     {
-      "id": "manifest-command:f6f46e37c8482143229e21fce1c1537ba84fb3099b01d695b8795c9eb59723eb",
-      "type": "manifest-command",
-      "command": "npm run test:g76:regression-matrix",
-      "commandId": "foundation-g76",
-      "lane": "foundation",
-      "tier": "pr"
+      "id": "npm-script:ada1fef8d018ce55b68fccfc3e335edd1147c395a21d5e6c2e404abf4b531f3e",
+      "type": "npm-script",
+      "command": "node scripts/g31-candidate-check.mjs --self-test && node scripts/g31-candidate-check.mjs",
+      "npmScript": "test:g31:candidate"
     },
     {
-      "id": "manifest-command:f788865091fb20c2a0d3202acd0782e5555de797aa5f73065831118fb6cfb531",
-      "type": "manifest-command",
-      "command": "npm run test:g46",
-      "commandId": "g46",
-      "lane": "g46",
-      "tier": "local"
+      "id": "npm-script:aff9e352b56984fce1f316dde34ea54ba4630e5de8cff393badabe116cf8bc41",
+      "type": "npm-script",
+      "command": "npm run test:g30 && node -e \"if (process.env.SDT_G30_FORCE_FAILURE === '1') throw new Error('SDT-G30 forced-red CI wiring proof')\"",
+      "npmScript": "test:g30:forced-red"
     },
     {
-      "id": "manifest-command:f946d9a774edc02b9ec222e07c6e90612debfa7ffd6ef3b9932ba146327a8bd5",
-      "type": "manifest-command",
-      "command": "npm run test:g73:guard",
-      "commandId": "foundation-g73",
-      "lane": "foundation",
-      "tier": "pr"
+      "id": "npm-script:b201a8b94db8b81074bde6a38a08d4871f0139bbcae1e2d44f9930523fa2c08a",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.g20.config.ts test/g25-composition.spec.ts",
+      "npmScript": "test:g25"
     },
     {
-      "id": "manifest-command:fa5b9e9b3ffbbb1e6908d1c0726bd2b2e32ec20960aa6f3fe4675f8465d50cb2",
-      "type": "manifest-command",
-      "command": "npm run test:g29:mapping:forced-red",
-      "commandId": "g29-mapping-red",
-      "lane": "cheap",
-      "tier": "pr",
-      "env": {
-        "SDT_G29_MAPPING_FORCE_FAILURE": "1"
-      }
+      "id": "npm-script:b353d9a7f422e994ce31801dc8ec98eb0d0c44c6c444eee60cf444b7136cafd5",
+      "type": "npm-script",
+      "command": "node scripts/dcb-domain-boundary-check.mjs --gate negative-fixtures",
+      "npmScript": "test:g28:boundary:negative"
     },
     {
-      "id": "workflow-run:2d7fb09eeb86396d16324a95e53845a9e937cc36be56636c522288645b9ce16c",
+      "id": "npm-script:b413c1cc5581439569d88c5dfc209c709bb315f6b5f54a6cf7c5f3f6c560c05e",
+      "type": "npm-script",
+      "command": "npm run test:g30:candidate",
+      "npmScript": "test:g30:candidate:forced-red"
+    },
+    {
+      "id": "npm-script:b5e01f232ad8577b53defbdb32c9ffc89f41a8fce64c1eaa9f8f806f27c7bd19",
+      "type": "npm-script",
+      "command": "node scripts/dcb-domain-boundary-check.mjs --gate source",
+      "npmScript": "test:g28:boundary:source"
+    },
+    {
+      "id": "npm-script:b80671479175714af0b0f06e61051a17efe96b32a3c7938b448dd9291fcbbef0",
+      "type": "npm-script",
+      "command": "npm run test:g29:domain-source && node -e \"if (process.env.SDT_G29_DOMAIN_SOURCE_FORCE_FAILURE === '1') throw new Error('SDT-G29 domain source forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:domain-source:forced-red"
+    },
+    {
+      "id": "npm-script:bb2dc03efc1b4936c887a57780c8b07ea57d44066261e47eaccdf80358505d70",
+      "type": "npm-script",
+      "command": "node scripts/dcb-domain-boundary-check.mjs --gate package-manifest",
+      "npmScript": "test:g28:boundary:package"
+    },
+    {
+      "id": "npm-script:c18e541de3fcf0901df64043a08b43124dedec72e9f84320e57f232d5e6b9e70",
+      "type": "npm-script",
+      "command": "npm run test:g29:diagnostics && node -e \"if (process.env.SDT_G29_DIAGNOSTICS_FORCE_FAILURE === '1') throw new Error('SDT-G29 diagnostics forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:diagnostics:forced-red"
+    },
+    {
+      "id": "npm-script:cac8a362d83d2547c08048d869e061ebe649bdec1799fad47951e04097191eb2",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.g20.config.ts test/g20-cloudflare.spec.ts",
+      "npmScript": "test:g20"
+    },
+    {
+      "id": "npm-script:cb90c089ddde2333fa0f96792728cfdf0cb270f8b13ced8b3c4d7307ab6d09d2",
+      "type": "npm-script",
+      "command": "npm run test:g29:sample && node -e \"if (process.env.SDT_G29_SAMPLE_FORCE_FAILURE === '1') throw new Error('SDT-G29 sample forced-red CI wiring proof')\"",
+      "npmScript": "test:g29:sample:forced-red"
+    },
+    {
+      "id": "npm-script:cbd262cc2b1327ace7fafb391eb8bb4a4006761d1d663d00c606d6ce7f2c2ff4",
+      "type": "npm-script",
+      "command": "node scripts/g29-mapping-contract.mjs",
+      "npmScript": "test:g29:mapping:runner"
+    },
+    {
+      "id": "npm-script:d0bc4ab7c22d9ab82fe2c56de71b1f122e0db8c0b1d9bf898ac046d0e41dc14f",
+      "type": "npm-script",
+      "command": "npm run test:g32 && node -e \"if (process.env.SDT_G32_FORCE_FAILURE === '1') throw new Error('SDT-G32 forced-red CI wiring proof')\"",
+      "npmScript": "test:g32:forced-red"
+    },
+    {
+      "id": "npm-script:d1501482435c3be21780abdab07add460255b5f234aa76d7a1658db4cf226912",
+      "type": "npm-script",
+      "command": "npm run test:g38:prep && node -e \"if (process.env.SDT_G38_FORCE_FAILURE === '1') throw new Error('SDT-G38 forced-red CI wiring proof')\"",
+      "npmScript": "test:g38:prep:forced-red"
+    },
+    {
+      "id": "npm-script:d327afcdebb7da6e17c3018848efeba2619b9181fbaa232c453f0aca41299802",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g22-bootstrap-provider.spec.ts test/g22-bootstrap-d1.spec.ts",
+      "npmScript": "test:g22"
+    },
+    {
+      "id": "npm-script:e451e4acb19613352066d07823f179df5a2e51c20d2ae1b2d48cadca03d11f37",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g29-delivery.spec.ts && node scripts/g29-delivery-matrix.mjs",
+      "npmScript": "test:g29:delivery"
+    },
+    {
+      "id": "npm-script:e8055309882ccae0b295c8300d07bc705a3cfb785a7b532e381e39ecb9d943a2",
+      "type": "npm-script",
+      "command": "npm run build:packages && node scripts/g13-consumer-fixture.mjs",
+      "npmScript": "test:consumer"
+    },
+    {
+      "id": "npm-script:ee33f471ca663c3a17a09a1531b23693649275ab90b57a1d9e840f4f7a5c4a84",
+      "type": "npm-script",
+      "command": "npm run test:g38:packet && npm run test:g38:primary-config && npm run test:g38:receiver-surface && npm run test:g38:tombstone && vitest run --config vitest.config.ts test/g38-receiver-surface.spec.ts",
+      "npmScript": "test:g38:prep"
+    },
+    {
+      "id": "npm-script:efc3410d791d366d25682cd3a37adf151eb7946291a064b6ba7821ab04572381",
+      "type": "npm-script",
+      "command": "npm run test:g28:compile-fail && node -e \"if (process.env.SDT_G28_COMPILE_FAIL_FORCE_FAILURE === '1') throw new Error('SDT-G28 compile-fail forced-red CI wiring proof')\"",
+      "npmScript": "test:g28:compile-fail:forced-red"
+    },
+    {
+      "id": "npm-script:fc89e6709c37881a88fb458f91845784105fc0ef2545e786abb3ade8396db40e",
+      "type": "npm-script",
+      "command": "npm run build:packages && vitest run --config vitest.config.ts test/g29-compatibility.spec.ts",
+      "npmScript": "test:g29:compatibility"
+    },
+    {
+      "id": "npm-script:fd246841ddad42e8c3846a984bf1355fccc632ba8258e7cce75bcdb3530543d7",
+      "type": "npm-script",
+      "command": "node scripts/g30-candidate-check.mjs --self-test && node scripts/g30-candidate-check.mjs",
+      "npmScript": "test:g30:candidate"
+    },
+    {
+      "id": "npm-script:fdeef98b65d757c17a1cbe2c1e0cca965eb3589c4274f66d833345d64c1c1167",
+      "type": "npm-script",
+      "command": "node scripts/g38-primary-config-check.mjs --self-test && node scripts/g38-primary-config-check.mjs",
+      "npmScript": "test:g38:primary-config"
+    },
+    {
+      "id": "npm-script:fe882be705df40f4e1d9facc8bb5e0620d24284ebd56f78949c275ac56b88bec",
+      "type": "npm-script",
+      "command": "node scripts/cosmos-ci-wiring-check.mjs",
+      "npmScript": "test:cosmos-wiring"
+    },
+    {
+      "id": "npm-workspace-invocation:0cc4a078f028b256c4b94e2a0e0f85cc1347b24ad653a8f96338bb35ba622512",
+      "type": "npm-workspace-invocation",
+      "command": "npm run build --workspaces --if-present",
+      "npmScript": "build"
+    },
+    {
+      "id": "npm-workspace-script:3f74a81e6f85f595318f8bb1c3ad09998696190ff170be2f3b6df5b4bb1f169e",
+      "type": "npm-workspace-script",
+      "command": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js && esbuild src/testing.ts --bundle --format=esm --platform=neutral --outfile=dist/testing.js",
+      "npmScript": "build",
+      "workspace": "packages/dcb-domain"
+    },
+    {
+      "id": "npm-workspace-script:c16cddbc0530c61c4e82d013601539f0c08acba43e320fe572cff3d586b665ac",
+      "type": "npm-workspace-script",
+      "command": "tsc -p tsconfig.build.json --noEmit",
+      "npmScript": "build",
+      "workspace": "samples/meeting-room"
+    },
+    {
+      "id": "npm-workspace-script:c27039ed040ce8d5ba2f52c2820db35c1f97346120c3185558675a17f69c5f48",
+      "type": "npm-workspace-script",
+      "command": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/index.js && esbuild src/cosmos.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/cosmos.js && esbuild src/d1.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/d1.js && esbuild src/d1-mv.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/d1-mv.js && esbuild src/cloudflare.ts --bundle --format=esm --platform=neutral --external:cloudflare:workers --outfile=dist/cloudflare.js && esbuild src/mv/index.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=dist/mv/index.js",
+      "npmScript": "build",
+      "workspace": "packages/dcb-runtime"
+    },
+    {
+      "id": "npm-workspace-script:c92a54d1be6388f82ef3c2d13ae04de271b3b7e20776abc4cc4c2c22fef4db83",
+      "type": "npm-workspace-script",
+      "command": "tsc -p tsconfig.build.json && esbuild src/index.ts --bundle --format=esm --platform=neutral --outfile=dist/index.js",
+      "npmScript": "build",
+      "workspace": "packages/dcb-core"
+    },
+    {
+      "id": "workflow-run:001ad1fcc5f7d001bd67d8ff5b0c346cbe0699b34679cc99af3db17e2a13b859",
       "type": "workflow-run",
-      "command": "node scripts/g40-verify-needs.mjs",
+      "command": "docker run --detach --name sdt-g12-cosmos\n--publish 8080:8080 --publish 8081:8081 --publish 1234:1234\n--volume \"$COSMOS_KEY_FILE:/cosmos.key:ro\"\nmcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview@sha256:6ce44ed4ac69cf69a6cb7982d0536cfaa22696172168fc9fe9a722a189d38f99\n--key-file /cosmos.key",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 378
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:03a0729ea359ca6de2e9b8ee9fd26462a8ef1b9d439646189c3900e4f5b77d7e",
+      "type": "workflow-run",
+      "command": "npm run test:g29:delivery",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 173
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:1573926b56833c62dbeab76c83bd26cffad7ae2a677c59811ff0b565433e2e16",
+      "type": "workflow-run",
+      "command": "npm run test:g29:sample",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 209
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:16c0e4305ac213dff39fc82b69b6e08aeeb8758e33cd72d7c409752a70e9f054",
+      "type": "workflow-run",
+      "command": "npm run build",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 271
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:1719cbf086f85c30c20915be5679d38af1f10ed609040a18765541b30371d59c",
+      "type": "workflow-run",
+      "command": "set -euo pipefail\nkey_file=\"$RUNNER_TEMP/sdt-g12-cosmos.key\"\nopenssl rand -base64 64 | tr -d '\\n' > \"$key_file\"\nchmod 600 \"$key_file\"\nprintf 'COSMOS_KEY_FILE=%s\\n' \"$key_file\" >> \"$GITHUB_ENV\"",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 371
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:18b4f5b9f3f2d4cc1b33f14d4febe378705e73534fa6a615090769ae43d09174",
+      "type": "workflow-run",
+      "command": "if SDT_G29_MAPPING_FORCE_FAILURE=1 npm run test:g29:mapping:forced-red; then\necho \"SDT-G29 mapping forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 171
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:1afe4b1497afccb77ee7d27c3c4f64153e0ff1d2a7be1534e335fbccbe7dd871",
+      "type": "workflow-run",
+      "command": "npm run test:g22",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 109
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:1bcd61cc9dad44df89cedd072992b935d91073f2b85f3cccb52963dacf204531",
+      "type": "workflow-run",
+      "command": "if SDT_G24_FORCE_FAILURE=1 npm run test:g24:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 131
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:214de5939e3288255ebea965dfb71bb3cc15f77d196fef743ba14e191e08d672",
+      "type": "workflow-run",
+      "command": "if SDT_G22_FORCE_FAILURE=1 npm run test:g22:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 115
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:23801015c23ba1220a94c7859582f5226d163ee7d943ac1152509e1d687a9748",
+      "type": "workflow-run",
+      "command": "npm run test:g16",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 294
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:2450aa31ac5dc494931f2b51b303204770b5e92d8fbb27aab3aad164db3aa3f1",
+      "type": "workflow-run",
+      "command": "npm run test:g20:candidate",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 392
+        },
+        {
+          "job": "cosmos-emulator",
+          "line": 412
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:2649c60d4829dc2bc6b6beb04a27f04c3ecb4a5e552371e2524ac5a5c937f8ae",
+      "type": "workflow-run",
+      "command": "npm run test:g21",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 101
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:2f8f100db872df9c432b2f31386b1285164315d6dc50a4be62d119041f68b0c6",
+      "type": "workflow-run",
+      "command": "npm run test:g17",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 98
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:326d9800e732eb9d5a5eb56384a547a097ed84be317cb2852cea5bb574831812",
+      "type": "workflow-run",
+      "command": "npm run lint",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 49
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:328e123c63857fd8473bd4bd3581e655b08b7440d7f5d2c31cc375607582f539",
+      "type": "workflow-run",
+      "command": "npm test",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 97
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:347abad93fcb37a3e17a5885818de3edd6b47920efd280e5620565477f172997",
+      "type": "workflow-run",
+      "command": "if SDT_G29_DIAGNOSTICS_FORCE_FAILURE=1 npm run test:g29:diagnostics:forced-red; then\necho \"SDT-G29 diagnostics forced-red probe unexpectedly passed\"\nexit 1\nfi\nif SDT_G29_COMPATIBILITY_FORCE_FAILURE=1 npm run test:g29:compatibility:forced-red; then\necho \"SDT-G29 compatibility forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 191
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:35f5db8f82ae7e833dd75c86904b72fe5eee5acccea3a661b7e777d3f2114412",
+      "type": "workflow-run",
+      "command": "if SDT_G26_FORCE_FAILURE=1 npm run test:g26:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 155
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:38df94f38c443c6382595e1f3dbfa07730351205e6600ad34af17a714c1ccce8",
+      "type": "workflow-run",
+      "command": "npm run test:store-contract",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 264
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:3d4f3cc1c7f10babec985ddaba6fc9be237066d3c990f6345979037650566981",
+      "type": "workflow-run",
+      "command": "npm run test:g31:candidate",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 428
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:3fff5cf19ffc4ec0f4ace2d681152f5903c5f1cd6a487ed41e3c3a1b9e1a01b1",
+      "type": "workflow-run",
+      "command": "npm run test:g32",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 233
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:40ca8cb972e7f7550d8ae83e6153c4868e220520b92cc4375827d086fa8adec8",
+      "type": "workflow-run",
+      "command": "npm run test:consumer",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 270
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:420743ae649c3a0e1db9d6be8ae06cf3183252ed384d1d43e71117ac7d50743d",
+      "type": "workflow-run",
+      "command": "npm run test:g28:boundary:package",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 70
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:446a994af1e86597bab10b084daa0c8368dd625a190d5c2fac3154ec0b5057cf",
+      "type": "workflow-run",
+      "command": "npm run test:g17:rollout-order",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 99
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:4496b883fe4f55aa31b06206c362fef20f5aa95f754c586e71bb40756beda786",
+      "type": "workflow-run",
+      "command": "npm run test:g22:cosmos",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 384
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:4548a4a8a590f0afad064047136ecb14184851e34357d281c96c158ee2acfaa9",
+      "type": "workflow-run",
+      "command": "npm run test:g38:prep",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 257
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:479f80591b7777c3f5f4644ff15292cab89a072e74115023d7f4ae17c358186f",
+      "type": "workflow-run",
+      "command": "if SDT_G27_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then\necho \"candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 410
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:48740dd7d2e800ff9c1753c5160223710d7d4d7cbfd9fceca488e3650f8bc85c",
+      "type": "workflow-run",
+      "command": "if SDT_G30_FORCE_FAILURE=1 npm run test:g30:forced-red; then\necho \"SDT-G30 forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 247
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:49b057e7025b91e832c42328727998fd4df744471c2f0312d4b6054c5ec0bbcb",
+      "type": "workflow-run",
+      "command": "npm run test:g29:domain-source",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 193
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:4c131fcc14fe32b8ac74a2e87dcb97f0026aa4a5ddeead56a65ec91419601a0f",
+      "type": "workflow-run",
+      "command": "if SDT_G27_FORCE_FAILURE=1 npm run test:g27:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 149
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:52f9af9284a40b7d579c0983bc5af3d71bc16a53213602d50d80a8214963eb91",
+      "type": "workflow-run",
+      "command": "set -euo pipefail\ndatabase=\"sdt_g16_${GITHUB_RUN_ID}\"\npsql --host 127.0.0.1 --username postgres --dbname postgres \\\n--command \"CREATE DATABASE \\\"${database}\\\"\"\nprintf 'POSTGRES_URL=postgresql://postgres:postgres@127.0.0.1:5432/%s\\n' \"${database}\" >> \"${GITHUB_ENV}\"",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 293
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:5699083e133ffc03539046f022d198d88f252ff3a608142f445dba88908e9e66",
+      "type": "workflow-run",
+      "command": "if SDT_G38_FORCE_FAILURE=1 npm run test:g38:prep:forced-red; then\necho \"SDT-G38 forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 263
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:5700a5fc3449e698a1e314d22c278410d28778184d685c123b9f80a1ecce9bc3",
+      "type": "workflow-run",
+      "command": "npm run test:g20",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 388
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:585a07308629e7e4199b2ffc72adb8478a109216b4d2cd279a5c29cfda45c77b",
+      "type": "workflow-run",
+      "command": "if SDT_G29_AUTHORING_DOC_FORCE_FAILURE=1 npm run test:g29:authoring-doc:forced-red; then\necho \"SDT-G29 authoring correspondence forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 207
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:599471ff2fc1b802d0048037b9c95422e517e98d248bc568a9f927e9e971c7ba",
+      "type": "workflow-run",
+      "command": "if SDT_G30_CANDIDATE_FORCE_FAILURE=1 npm run test:g30:candidate:forced-red; then\necho \"SDT-G30 candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 255
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:5d72bf39ef4e3dffc81e20cf841b75cdc64aab5af37bc3ccfd38fd114ebbccc9",
+      "type": "workflow-run",
+      "command": "npm run test:g28",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 62
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:61a9f5730bdfa3ea0f77b7809af2fb37699d770ee6ee9fa86fd0103fcfa4a0d9",
+      "type": "workflow-run",
+      "command": "npm run test:g27",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 143
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:62b1d702c626eb3495273bd8eeb534fd2bff126074dd5134e5dad4cd6635f4cd",
+      "type": "workflow-run",
+      "command": "if SDT_G28_BOUNDARY_FORCE_FAILURE=1 npm run test:g28:boundaries; then\necho \"SDT-G28 boundary forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 82
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:67d21fb37e28525e2e60e5bc3f180a8726949318e8a22bdb3eaa972b85237a6e",
+      "type": "workflow-run",
+      "command": "if SDT_G32_CANDIDATE_FORCE_FAILURE=1 npm run test:g32:candidate:forced-red; then\necho \"SDT-G32 candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 443
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:6923d8b7fcee7e420d0aaa659050dbe3249885c0efaa746be7d48daaf8d27214",
+      "type": "workflow-run",
+      "command": "if SDT_G26_TOPOLOGY_FORCE_FAILURE=1 npm run test:g26:topology; then\necho \"topology forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 163
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:6df694affd3773c32f1b950d8c4a51510b062ff7a89988852a5e8eaf0dc8a57b",
+      "type": "workflow-run",
+      "command": "npm run test:g37:evidence",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 51
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:6f4f8913c2d0651cfb910b2290261c2887f65aef17209947cfcfb3b9b36545c5",
+      "type": "workflow-run",
+      "command": "if SDT_G22_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then\necho \"candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 398
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:704974dd05808a152ad5e30e0e4ba3ae163a30d015ca25ad297ae8c177d718aa",
+      "type": "workflow-run",
+      "command": "npm run test:g28:boundaries",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 64
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:7968ffcdab5730e828f5e994d0b8924e6e2f52e31620abf1e509ef783c66a3e0",
+      "type": "workflow-run",
+      "command": "npm run test:g28:boundary:negative",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 68
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:7d3d89661b44cfc9667fc6c4889b67347de428825fa0ef813663e92d5f80cb7a",
+      "type": "workflow-run",
+      "command": "npm run test:g23",
       "sources": [
         {
           "job": "verify",
@@ -1237,24 +1024,178 @@
       ]
     },
     {
-      "id": "workflow-run:4113452b7383031c34f2c6585b25ea3d4ec8d3eb83b2f926066046452c37f981",
+      "id": "workflow-run:8198ea81262be8d018855c3fd5ac11f0af9fe6f1d74d4b857122f524455095d5",
       "type": "workflow-run",
-      "command": "node scripts/ci-local.mjs --lane foundation --ci",
+      "command": "curl --fail --silent --show-error --retry 60 --retry-delay 2 --retry-connrefused --retry-all-errors http://127.0.0.1:8080/ready >/dev/null",
       "sources": [
         {
-          "job": "ci-foundation",
-          "line": 61
+          "job": "cosmos-emulator",
+          "line": 380
         }
       ]
     },
     {
-      "id": "workflow-run:80031af481b955c7f06c6ea135b8b3d6c41fba00a0669796d15cda7a1efdbbd0",
+      "id": "workflow-run:81d6a2d9162d35badd75c17bd39eb15f7d27e9cf85d1c9b30f64ce8fcb52a26a",
       "type": "workflow-run",
-      "command": "node scripts/ci-local.mjs --lane cheap --ci",
+      "command": "npm run test:g29:candidate",
       "sources": [
         {
-          "job": "ci-pr-cheap",
-          "line": 101
+          "job": "cosmos-emulator",
+          "line": 420
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:83eec9620f705592cbd97cd869e7aa95551e4bf188211b39ff4af5214c4c448b",
+      "type": "workflow-run",
+      "command": "npm run test:g29:authoring-doc",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 201
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:864d8b2a9a999b3957e01eb391d5602ff5f0e989b35a2510dd3d193e7d65bd66",
+      "type": "workflow-run",
+      "command": "npm run test:g30",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 241
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:86a90faf7f5062a60455068190c978adbd9ea5733b7b5d62130065b882f86797",
+      "type": "workflow-run",
+      "command": "if SDT_G21_FORCE_FAILURE=1 npm run test:g21:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 107
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:8723ff8f1fe52812a4206eafdcf9a31d0837efd96d1c31db875c7828b516b786",
+      "type": "workflow-run",
+      "command": "npm run test:g28:compile-fail",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 54
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:8783a7dafb863fd50d993e661b274fa3205b62a267ad7bb2910a8659b665029e",
+      "type": "workflow-run",
+      "command": "npm run test:g29:mapping",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 165
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:897dbd7083963cbb0427575265406c92ff7cabc05f9af48e8a59d69a4ef0bf66",
+      "type": "workflow-run",
+      "command": "if SDT_G26_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then\necho \"candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 404
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:8daa644e991b400d99764b60e45ddda164aa15c2b4ffd58a621ca31263f6ee5f",
+      "type": "workflow-run",
+      "command": "npm run test:g31",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 225
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:96db45bce516f4435bdc80c06fd95a3317166e61715882d1091552a8d0cb179e",
+      "type": "workflow-run",
+      "command": "npm run test:boundaries",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 269
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:982c1455e5e73c8ccab2d70a550c972e2841a0582596e26a7fcc53b80e14aa14",
+      "type": "workflow-run",
+      "command": "npm run typecheck",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 52
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:984dc6800b8af65ccfe4541b222905a009648317ae646818138a36e0141a6cc2",
+      "type": "workflow-run",
+      "command": "if SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=source npm run test:g28:boundary:source; then\necho \"SDT-G28 source gate forced-red probe unexpectedly passed\"\nexit 1\nfi\nif SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=negative-fixtures npm run test:g28:boundary:negative; then\necho \"SDT-G28 negative-fixtures gate forced-red probe unexpectedly passed\"\nexit 1\nfi\nif SDT_G28_BOUNDARY_FORCE_FAILURE_GATE=package-manifest npm run test:g28:boundary:package; then\necho \"SDT-G28 package-manifest gate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 96
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:98dcaf0820bfbc4c1a34b8f348d7e883840037ced4e8c3ee4426833830b6d73e",
+      "type": "workflow-run",
+      "command": "npm run test:g32:candidate",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 436
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:9a221b1d20944c21c68191cd39929059791a4b7590ca1fdbc715374275ae4c66",
+      "type": "workflow-run",
+      "command": "npm run test:g28:boundary:source",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 66
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:9b13a4b2d626291fe24cc6ab1cac7910ab3dad64b8b74df2912fae2474773f18",
+      "type": "workflow-run",
+      "command": "if SDT_G25_FORCE_FAILURE=1 npm run test:g25:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 139
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:9cdabcfa4819afd4c8264042bbf1fb10e520804b3a705d386037d2a9e00f5b79",
+      "type": "workflow-run",
+      "command": "if SDT_G28_COMPILE_FAIL_FORCE_FAILURE=1 npm run test:g28:compile-fail:forced-red; then\necho \"SDT-G28 compile-fail forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 60
         }
       ]
     },
@@ -1264,12 +1205,298 @@
       "command": "npm ci",
       "sources": [
         {
-          "job": "ci-foundation",
-          "line": 58
+          "job": "cosmos-emulator",
+          "line": 363
         },
         {
-          "job": "ci-pr-cheap",
-          "line": 98
+          "job": "verify",
+          "line": 48
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:9f55ae5812e6becef6d71c7afe28136854c3630a2fdc6eb9b2d8b52c1bdedbb0",
+      "type": "workflow-run",
+      "command": "npm run test:g26:topology",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 157
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:a31189d01a5d9389ae794c9a16df83b0ec31af3e53a350347a581dd05489dc41",
+      "type": "workflow-run",
+      "command": "npm run test:cosmos-wiring",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 386
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:a49880582e6c93220f07729ecae0efcc538e61378b7244f17f72799e1cf2882c",
+      "type": "workflow-run",
+      "command": "if SDT_G29_SAMPLE_FORCE_FAILURE=1 npm run test:g29:sample:forced-red; then\necho \"SDT-G29 sample forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 215
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:aa400c4eb06aba992416b7edcb22547c1dbeae1dac724c76561598efebf55082",
+      "type": "workflow-run",
+      "command": "npm run test:g29:witness",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 217
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:b1c77a1ed81b63c29ecfd18e0977e3438276e85cfd50aaa1a6709ed37ffbcbcb",
+      "type": "workflow-run",
+      "command": "if SDT_G28_CANDIDATE_FORCE_FAILURE=1 npm run test:g20:candidate; then\necho \"candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 418
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:b24835b612b8962cc59935250f1d0f07abe8ed6ad1f3b1034896f62b43637429",
+      "type": "workflow-run",
+      "command": "if SDT_G28_FORCE_FAILURE=1 npm run test:g28:forced-red; then\necho \"SDT-G28 forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 76
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:b413c1cc5581439569d88c5dfc209c709bb315f6b5f54a6cf7c5f3f6c560c05e",
+      "type": "workflow-run",
+      "command": "npm run test:g30:candidate",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 249
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:b6a708367001c33d1c32b4bd5384b01736bdff6e0a73bf3aa3dd0fefdbbb36b5",
+      "type": "workflow-run",
+      "command": "if SDT_G31_FORCE_FAILURE=1 npm run test:g31:forced-red; then\necho \"SDT-G31 forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 231
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:bb80a4109036fda3886db3cc2599ceac99597662416d395453a1fdaa4c69275d",
+      "type": "workflow-run",
+      "command": "npm run test:g20:gate",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 390
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:c9b6ceaef5135dc6ca49efcd9ed41af33fcee25e7f549e8a219959c651469e3b",
+      "type": "workflow-run",
+      "command": "npm run test:mv",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 268
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:cce32aa679c8d7460ec92d6392a2b9d362f6e9c8c76f7b0e15508c8c18961919",
+      "type": "workflow-run",
+      "command": "npm run test:d1",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 266
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:cf417835f0c9205b460468c394bd1e7200fd6ee6993da650f6c078dccd0e89bd",
+      "type": "workflow-run",
+      "command": "npm run e2e:g15:local",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 277
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:cf6eb43b96120f53b70d07eb4c349f4c0c94235edb5f271465e5eb93db287044",
+      "type": "workflow-run",
+      "command": "npm run test:g25",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 133
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:d28ff499bec149e4998ee9e921fd87b592ea83a1cf7cf220b9f2a83519813525",
+      "type": "workflow-run",
+      "command": "git fetch --no-tags origin\n8dbb4be825e084adef92065496cc0ffdc22b28ed\n5439b8bda255144b608fcdeb6c89dc44dcb667d7\n38219c8a6526a0209295e9f06450cce9e2217004\n2f024d019d6861ad8ff43a2d194eabdcd975cbc0\n95197cf1140d1179b52e1f01280002bc090bb891\n36de26747ba71a583908f1f6f22102150e98f72b\nf1d3d7163f08a55c70fb8f66a38070be74f7caaf\nda2a8356fdbd898fa044884469b57a51ed8da996\n1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6\n1a9a5f22238a4755b8f15cdc17aec4f68bcde79d\nf401342df68461d3239f58b14ff6891db4214ac6\n50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f\nf7d306c0018b1b7046095891186b8409c9b16863\n16afe111b8e3aa3a48dc949b0caa33160b08f29f\nf4dfd8192aaee9ed43116d7e5109d496ac2a6ce7\n6308fb446335000d8729d490b170b189734461a4\n5951844348bfd0ffadddb5c7c3c2bb0f57b100c6\ncc4d0a86b749dc3ba09fe366a470c70b329bd10f\n4a67b0a62120c85ec6aec855f09e38aca430557f\n2db888bc9e57e04b66b4525270d312e8ddf78530\nd6bfb5c5b4f5da1d44985199a4820786be6e89a1\n13e8006be334454dc8a4a3c40972ba8ec15707b0\n12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d\n41e3665c055a366eb3f0d1ebff49be5d9414fa99\nb8024fccca140d4cc3c76e715d4e5dd6c368b847\nc5fff88620af3883b95639004dda08197618cc7e\n87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c\n0cef60307a37964b5a4a4423f5abdc3d50b01e21\n9543fccfb0e1f7858042e815867f1d6f2a33216d\n9bf654eb555e56a2b0d5ed9f04d0aad670866e9e\nfc89572e2e0a8b84447591f87be5d05d57396435\na8f98355bb6de0454725d34f0238cd12efd4519c\n0b38755443cce9d4a1a4383e18ba42499c390f63\nc5441dc23e144466d26e13d7ffab4db7eca2e6ae\naff97424b136be9f88e6804ced1562d9b81709cd\n825b7c7795c3695ee7054131bf1f4e79f59f5602",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 358
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:dfaa8c6e2d0001b56141fba3db5ae7168ae0801d67500a1f7aff235e26226b78",
+      "type": "workflow-run",
+      "command": "if SDT_G29_WITNESS_FORCE_FAILURE=1 npm run test:g29:witness:forced-red; then\necho \"SDT-G29 witness forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 223
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:e23182af8949631d00cac31fde50f9e42381f5ce9e7ee977535f31e00f943c91",
+      "type": "workflow-run",
+      "command": "npm run test:g24",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 125
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:e3a064226d987945f1aa3b23e257e0266ecdf9012bccbd03f2c9106daa4944d8",
+      "type": "workflow-run",
+      "command": "if SDT_G29_DELIVERY_FORCE_FAILURE=1 npm run test:g29:delivery:forced-red; then\necho \"SDT-G29 delivery forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 179
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:e4019e6ee11dd48fd8f69485086cb909e28ddec2139f0c55147d40af14754984",
+      "type": "workflow-run",
+      "command": "npm run test:g29:diagnostics && npm run test:g29:compatibility",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 181
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:e643f07f952c5c58e15095e47c5a9a9b223e471148811a8aef15b90ac2b4d9fd",
+      "type": "workflow-run",
+      "command": "if SDT_G32_FORCE_FAILURE=1 npm run test:g32:forced-red; then\necho \"SDT-G32 forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 239
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:eb6a0993a98d5bd1a0919d82d2459f50e15927864bed61e5cd852ea8378d6e70",
+      "type": "workflow-run",
+      "command": "if SDT_G29_CANDIDATE_FORCE_FAILURE=1 npm run test:g29:candidate:forced-red; then\necho \"SDT-G29 candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 426
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:ebac4b66e86c2bba4a80ae144e7ec98fe02676882b2ae055ec5dab05bfb11022",
+      "type": "workflow-run",
+      "command": "npm run test:g26",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 141
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:eec2ecafb726884fc674f76d814e17e747728a62447eac14355ae1292a0ccefd",
+      "type": "workflow-run",
+      "command": "npm run test:cosmos",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 382
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:f5cb0203814ad5227b01a4b741ac21ffcb7ed7cb1ac273aac37e47d7ddedd105",
+      "type": "workflow-run",
+      "command": "npm run e2e:g16:local",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 300
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:fb5d0d325bc04d19a54cf39eda3901c61d711384777610392ff7ef06c57eddf8",
+      "type": "workflow-run",
+      "command": "if SDT_G29_DOMAIN_SOURCE_FORCE_FAILURE=1 npm run test:g29:domain-source:forced-red; then\necho \"SDT-G29 domain source forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 199
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:fc4bfb93cad3a436a0d61700b47acf3ad5d80267b17a905658d92e943e30bd6f",
+      "type": "workflow-run",
+      "command": "if SDT_G23_FORCE_FAILURE=1 npm run test:g23:forced-red; then\necho \"forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "verify",
+          "line": 123
+        }
+      ]
+    },
+    {
+      "id": "workflow-run:feaef264d6160f17efecd25b598c914e6af24326a58a4f7cda9c36464d12dabe",
+      "type": "workflow-run",
+      "command": "if SDT_G31_CANDIDATE_FORCE_FAILURE=1 npm run test:g31:candidate:forced-red; then\necho \"SDT-G31 candidate forced-red probe unexpectedly passed\"\nexit 1\nfi",
+      "sources": [
+        {
+          "job": "cosmos-emulator",
+          "line": 434
         }
       ]
     }

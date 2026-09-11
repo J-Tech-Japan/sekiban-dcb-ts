@@ -4,13 +4,14 @@
  *
  * The manifest is the authority for commands.  GitHub CI uses this runner in
  * --ci mode after its checkout/setup steps; a developer uses the same runner
- * locally, where it owns fresh Docker services and writes one receipt per
- * lane.  Keeping execution here prevents the local and hosted command lists
- * from drifting apart.
+ * locally, where every selected lane is executed from a new detached HEAD
+ * worktree and owns fresh Docker services.  Keeping execution here prevents
+ * the local and hosted command lists from drifting apart.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 
 const ROOT = process.cwd();
 const DEFAULT_MANIFEST = "ci/lanes.json";
@@ -125,9 +126,9 @@ function loadManifest(path) {
   return { manifest, manifestPath };
 }
 
-function run(command, env, label) {
+function run(command, env, label, cwd = ROOT) {
   const result = spawnSync("bash", ["-lc", command], {
-    cwd: ROOT,
+    cwd,
     env,
     stdio: "inherit",
   });
@@ -135,9 +136,9 @@ function run(command, env, label) {
   return { status: result.status ?? 1, signal: result.signal ?? null };
 }
 
-function gitOutput(args) {
+function gitOutput(args, cwd = ROOT) {
   try {
-    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
+    return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
   } catch (error) {
     fail(`git ${args.join(" ")} failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -148,8 +149,29 @@ function assertCleanTree() {
   if (status.length > 0) fail("refusing a dirty working tree; commit or stash changes before collecting receipts");
 }
 
-function currentSha() {
-  return gitOutput(["rev-parse", "HEAD"]);
+function createDetachedWorktree(sha, laneName) {
+  const path = mkdtempSync(join(tmpdir(), `sdt-g84-${laneName.replace(/[^a-z0-9-]+/gi, "-")}-`));
+  try {
+    execFileSync("git", ["worktree", "add", "--detach", "--quiet", path, sha], { cwd: ROOT, stdio: "inherit" });
+  } catch (error) {
+    rmSync(path, { recursive: true, force: true });
+    fail(`could not create detached worktree for ${laneName}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return path;
+}
+
+function removeDetachedWorktree(path, laneName) {
+  try {
+    execFileSync("git", ["worktree", "remove", "--force", path], { cwd: ROOT, stdio: "inherit" });
+  } catch (error) {
+    fail(`could not remove detached worktree for ${laneName}: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    rmSync(path, { recursive: true, force: true });
+  }
+}
+
+function currentSha(cwd = ROOT) {
+  return gitOutput(["rev-parse", "HEAD"], cwd);
 }
 
 function changedPaths(base) {
@@ -236,18 +258,18 @@ function waitForCosmos(url) {
   fail("Cosmos emulator did not become ready within 120 seconds");
 }
 
-function startServices(manifest, lanes, sha) {
-  const services = new Set(lanes.flatMap((lane) => lane.services));
+function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.env) {
+  const services = new Set(lane.services);
   const cleanup = [];
-  const env = { ...process.env };
+  const env = { ...initialEnv };
   if (services.has("postgres")) {
-    const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-postgres`;
+    const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-postgres`;
     docker(["run", "--detach", "--rm", "--name", container, "--env", "POSTGRES_DB=serialized_dcb", "--env", "POSTGRES_PASSWORD=postgres", "--env", "POSTGRES_USER=postgres", "--publish", "127.0.0.1::5432", "postgres:16-alpine"], "postgres container");
     cleanup.push(() => docker(["rm", "--force", container], "postgres cleanup", true));
     waitForPostgres(container);
     const postgresPort = mappedPort(container, 5432);
     env.POSTGRES_URL = `postgresql://postgres:postgres@127.0.0.1:${postgresPort}/serialized_dcb`;
-    const isolatedDatabase = `sdt_g16_${sha.slice(0, 12)}`;
+    const isolatedDatabase = `sdt_g16_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
     let createDatabase;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       createDatabase = docker(["exec", container, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `CREATE DATABASE "${isolatedDatabase}"`], "G16 isolated database", true);
@@ -260,14 +282,13 @@ function startServices(manifest, lanes, sha) {
     env.G16_POSTGRES_URL = `postgresql://postgres:postgres@127.0.0.1:${postgresPort}/${isolatedDatabase}`;
   }
   if (services.has("cosmos")) {
-    const root = resolve(ROOT, ".artifacts/ci-local", sha);
-    mkdirSync(root, { recursive: true });
-    const keyFile = resolve(root, "cosmos.key");
+    mkdirSync(receiptRoot, { recursive: true });
+    const keyFile = resolve(receiptRoot, `${lane.name}.cosmos.key`);
     const key = spawnSync("openssl", ["rand", "-base64", "64"], { encoding: "utf8" });
     if (key.status !== 0) fail("openssl could not create the Cosmos credential");
     writeFileSync(keyFile, String(key.stdout).replace(/\n/g, ""), { mode: 0o600 });
     chmodSync(keyFile, 0o600);
-    const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-cosmos`;
+    const container = `sdt-g84-${sha.slice(0, 12)}-${process.pid}-${lane.name}-cosmos`;
     const image = manifest.services.cosmos.image;
     docker(["run", "--detach", "--rm", "--name", container, "--publish", "127.0.0.1::8080", "--publish", "127.0.0.1::8081", "--publish", "127.0.0.1::1234", "--volume", `${keyFile}:/cosmos.key:ro`, image, "--key-file", "/cosmos.key"], "Cosmos container");
     cleanup.push(() => docker(["rm", "--force", container], "Cosmos cleanup", true));
@@ -275,13 +296,13 @@ function startServices(manifest, lanes, sha) {
     const port8081 = mappedPort(container, 8081);
     waitForCosmos(`http://127.0.0.1:${port8080}/ready`);
     env.COSMOS_ENDPOINT = `http://127.0.0.1:${port8081}/`;
-    env.COSMOS_DATABASE = `sdt_g12_${sha.slice(0, 12)}`;
+    env.COSMOS_DATABASE = `sdt_g12_${sha.slice(0, 12)}_${lane.name.replace(/[^a-z0-9_]+/gi, "_")}`;
     env.COSMOS_KEY_FILE = keyFile;
   }
   return { env, cleanup, services: [...services] };
 }
 
-function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed) {
+function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed, execution, bootstrap) {
   mkdirSync(root, { recursive: true });
   const receipt = {
     schema: "sdt-ci-local-receipt/v1",
@@ -293,6 +314,8 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     exitStatus: status,
     durationMs: Math.max(0, Date.now() - startedAt),
     forcedRed: forcedRedPassed,
+    execution,
+    bootstrap,
     environment: lane.env ?? {},
     buildSettings: {
       UseSharedCompilation: lane.env?.UseSharedCompilation ?? null,
@@ -309,14 +332,14 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
   return { path, receipt };
 }
 
-function executeLane(lane, baseEnv, receiptRoot, sha) {
+function executeLane(lane, baseEnv, receiptRoot, sha, execution, bootstrap, cwd) {
   const startedAt = Date.now();
   const commandReceipts = [];
   let status = 0;
   let forcedRedPassed = true;
   for (const command of lane.commands) {
     const commandStartedAt = Date.now();
-    const result = run(command.command, { ...baseEnv, ...(command.env ?? {}) }, `${lane.name}/${command.id}`);
+    const result = run(command.command, { ...baseEnv, ...(command.env ?? {}) }, `${lane.name}/${command.id}`, cwd);
     const expectedRed = command.expect === "red";
     const passed = expectedRed ? result.status !== 0 : result.status === 0;
     commandReceipts.push({
@@ -335,8 +358,42 @@ function executeLane(lane, baseEnv, receiptRoot, sha) {
       break;
     }
   }
-  const { path, receipt } = writeReceipt(receiptRoot, lane, sha, commandReceipts, status, startedAt, forcedRedPassed);
+  const { path, receipt } = writeReceipt(receiptRoot, lane, sha, commandReceipts, status, startedAt, forcedRedPassed, execution, bootstrap);
   return { path, receipt };
+}
+
+function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
+  const detached = !options.ci;
+  const executionRoot = detached ? createDetachedWorktree(sha, lane.name) : ROOT;
+  const executionEnv = detached ? { ...process.env, INIT_CWD: executionRoot } : { ...process.env };
+  const execution = {
+    mode: detached ? "fresh-detached-worktree" : "ci-checkout",
+    detachedHead: detached,
+    checkoutSha: sha,
+    worktreeRemoved: detached,
+  };
+  let bootstrap = {
+    commands: detached ? manifest.bootstrapCommands : [],
+    status: "skipped",
+    reason: options.ci ? "hosted-checkout-installs-dependencies-before-runner" : "--skip-bootstrap",
+  };
+  let serviceState = { env: { ...process.env }, cleanup: [], services: [] };
+  try {
+    if (detached && options.skipBootstrap && !existsSync(resolve(executionRoot, "node_modules"))) {
+      fail(`${lane.name} --skip-bootstrap requires node_modules in the fresh detached worktree`);
+    }
+    if (detached && !options.skipBootstrap) {
+      const result = run(manifest.bootstrapCommands.join("\n"), executionEnv, `${lane.name}/bootstrap`, executionRoot);
+      bootstrap = { commands: manifest.bootstrapCommands, status: result.status, signal: result.signal, reason: "runner-bootstrap" };
+      if (result.status !== 0) fail(`${lane.name} bootstrap failed with status ${result.status}`);
+    }
+    if (detached) serviceState = startServices(manifest, lane, sha, receiptRoot, executionEnv);
+    const laneEnv = { ...serviceState.env, ...(lane.env ?? {}) };
+    return executeLane(lane, laneEnv, receiptRoot, sha, execution, bootstrap, executionRoot);
+  } finally {
+    for (const cleanup of serviceState.cleanup.reverse()) cleanup();
+    if (detached) removeDetachedWorktree(executionRoot, lane.name);
+  }
 }
 
 function main() {
@@ -350,7 +407,24 @@ function main() {
       !matchesGlob("test/g43-tag-sql.spec.ts", "test/g46-*.ts"),
     ];
     if (!globProof.every(Boolean)) fail("glob matcher self-test failed");
-    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof }, null, 2)}\n`);
+    const sha = currentSha();
+    const selfTestWorktree = createDetachedWorktree(sha, "self-test");
+    let worktreeProof;
+    try {
+      const detachedSha = currentSha(selfTestWorktree);
+      const clean = gitOutput(["status", "--porcelain"], selfTestWorktree) === "";
+      worktreeProof = {
+        mode: "fresh-detached-worktree",
+        detachedSha,
+        matchesHead: detachedSha === sha,
+        clean,
+        dependenciesAreNotImplicitlyCopied: !existsSync(resolve(selfTestWorktree, "node_modules")),
+      };
+      if (detachedSha !== sha || !clean) fail("detached worktree self-test failed");
+    } finally {
+      removeDetachedWorktree(selfTestWorktree, "self-test");
+    }
+    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof }, null, 2)}\n`);
     return;
   }
   const lanes = selectLanes(manifest, options);
@@ -362,19 +436,9 @@ function main() {
     process.stdout.write(JSON.stringify({ schema: "sdt-ci-local/v1", commitSha: sha, selectedLanes: [], status: "no-op" }, null, 2) + "\n");
     return;
   }
-  if (!options.ci && !options.skipBootstrap) {
-    const bootstrap = run(manifest.bootstrapCommands.join("\n"), process.env, "bootstrap");
-    if (bootstrap.status !== 0) fail(`bootstrap failed with status ${bootstrap.status}`);
-  }
-  const serviceState = options.ci ? { env: { ...process.env }, cleanup: [], services: [] } : startServices(manifest, lanes, sha);
   const results = [];
-  try {
-    for (const lane of lanes) {
-      const laneEnv = { ...serviceState.env, ...(lane.env ?? {}) };
-      results.push(executeLane(lane, laneEnv, receiptRoot, sha));
-    }
-  } finally {
-    for (const cleanup of serviceState.cleanup.reverse()) cleanup();
+  for (const lane of lanes) {
+    results.push(executeSelectedLane(manifest, lane, options, sha, receiptRoot));
   }
   const failed = results.filter(({ receipt }) => receipt.exitStatus !== 0);
   process.stdout.write(`${JSON.stringify({
