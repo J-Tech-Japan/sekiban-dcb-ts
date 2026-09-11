@@ -106,6 +106,7 @@ function loadManifest(path) {
     names.add(lane.name);
     if (!["pr", "local"].includes(lane.tier)) fail(`${lane.name} has invalid tier ${lane.tier}`);
     if (!Array.isArray(lane.services)) fail(`${lane.name}.services must be an array`);
+    if (lane.env !== undefined) object(lane.env, `${lane.name}.env`);
     for (const service of lane.services) {
       if (!Object.hasOwn(manifest.services ?? {}, service)) fail(`${lane.name} references unknown service ${service}`);
     }
@@ -292,6 +293,12 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     exitStatus: status,
     durationMs: Math.max(0, Date.now() - startedAt),
     forcedRed: forcedRedPassed,
+    environment: lane.env ?? {},
+    buildSettings: {
+      UseSharedCompilation: lane.env?.UseSharedCompilation ?? null,
+      MSBUILDDISABLENODEREUSE: lane.env?.MSBUILDDISABLENODEREUSE ?? null,
+      DOTNET_CLI_USE_MSBUILD_SERVER: lane.env?.DOTNET_CLI_USE_MSBUILD_SERVER ?? null,
+    },
     node: process.version,
     npm: String(spawnSync("npm", ["--version"], { encoding: "utf8" }).stdout ?? "").trim(),
     containerImages: lane.services,

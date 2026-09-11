@@ -60,12 +60,17 @@ function buildCsharpRunner(source) {
   // The pinned Sekiban projects can emit compiler warnings.  Build them once
   // outside the JSON transport, then run the parity program without rebuilding
   // so C# -> TS has a single, machine-readable stdout artifact.
-  run("dotnet", [
+  const args = [
     "build",
     project,
     "--nologo",
     `-p:SekibanSourceRoot=${source}`,
-  ]);
+  ];
+  // G84's local parity lane must not delegate output writes to a shared
+  // compiler node.  The lane records the environment settings; this property
+  // is the corresponding MSBuild switch for UseSharedCompilation.
+  if (process.env.UseSharedCompilation === "false") args.push("-p:UseSharedCompilation=false");
+  run("dotnet", args);
 }
 
 function csharpArtifact(source) {

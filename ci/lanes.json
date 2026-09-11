@@ -156,6 +156,11 @@
       "name": "g32-parity",
       "tier": "local",
       "services": ["postgres"],
+      "env": {
+        "UseSharedCompilation": "false",
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
+      },
       "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**"],
       "commands": [
         {"id": "g32-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
