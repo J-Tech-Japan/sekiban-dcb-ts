@@ -9,7 +9,7 @@
  * the local and hosted command lists from drifting apart.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -168,6 +168,29 @@ function removeDetachedWorktree(path, laneName) {
   } finally {
     rmSync(path, { recursive: true, force: true });
   }
+}
+
+function prepareDetachedDependencies(executionRoot, options, manifest) {
+  const target = resolve(executionRoot, "node_modules");
+  if (existsSync(target)) {
+    return { commands: [], status: "skipped", reason: "worktree-already-has-dependencies" };
+  }
+  const shared = resolve(ROOT, "node_modules");
+  if (existsSync(shared)) {
+    // Dependencies are not source state. Reusing the already-installed tree
+    // avoids an npm-cache mutation for every lane while each command still
+    // runs from its own detached checkout. The receipt records this choice so
+    // it cannot be mistaken for an independent npm ci installation.
+    symlinkSync(shared, target, "dir");
+    return { commands: [], status: "linked", reason: "reused-driver-node_modules-in-detached-worktree" };
+  }
+  if (options.skipBootstrap) {
+    fail("--skip-bootstrap requires node_modules in the fresh detached worktree or driver checkout");
+  }
+  const result = run(manifest.bootstrapCommands.join("\n"), { ...process.env, INIT_CWD: executionRoot }, "bootstrap", executionRoot);
+  const bootstrap = { commands: manifest.bootstrapCommands, status: result.status, signal: result.signal, reason: "runner-bootstrap" };
+  if (result.status !== 0) fail(`bootstrap failed with status ${result.status}`);
+  return bootstrap;
 }
 
 function currentSha(cwd = ROOT) {
@@ -379,14 +402,7 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
   };
   let serviceState = { env: { ...process.env }, cleanup: [], services: [] };
   try {
-    if (detached && options.skipBootstrap && !existsSync(resolve(executionRoot, "node_modules"))) {
-      fail(`${lane.name} --skip-bootstrap requires node_modules in the fresh detached worktree`);
-    }
-    if (detached && !options.skipBootstrap) {
-      const result = run(manifest.bootstrapCommands.join("\n"), executionEnv, `${lane.name}/bootstrap`, executionRoot);
-      bootstrap = { commands: manifest.bootstrapCommands, status: result.status, signal: result.signal, reason: "runner-bootstrap" };
-      if (result.status !== 0) fail(`${lane.name} bootstrap failed with status ${result.status}`);
-    }
+    if (detached) bootstrap = prepareDetachedDependencies(executionRoot, options, manifest);
     if (detached) serviceState = startServices(manifest, lane, sha, receiptRoot, executionEnv);
     const laneEnv = { ...serviceState.env, ...(lane.env ?? {}) };
     return executeLane(lane, laneEnv, receiptRoot, sha, execution, bootstrap, executionRoot);
