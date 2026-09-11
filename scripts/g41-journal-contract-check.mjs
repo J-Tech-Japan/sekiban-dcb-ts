@@ -236,6 +236,7 @@ function snapshot() {
     evidence: read("docs/SDT-G41-evidence.md"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
+    laneManifest: JSON.parse(read("ci/lanes.json")),
   };
 }
 
@@ -413,8 +414,12 @@ export function assertG41JournalRemovalContract(value) {
     "means/06, means/07, and means/08",
   ]) requireContains(value.evidence, token, "G41 evidence");
   requireContains(value.packageJson, '"test:g41"', "package scripts");
-  requireContains(value.ci, "ci-g41:", "CI G41 lane");
-  requireContains(value.ci, "ci-g41", "verify dependencies");
+  const legacyWorkflowWiring = value.ci.includes("ci-g41:") && value.ci.includes("ci-g41");
+  const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "cheap");
+  const normal = lane?.commands?.find((entry) => entry?.id === "g41");
+  const forcedRed = lane?.commands?.find((entry) => entry?.id === "g41-red");
+  const manifestWiring = normal?.command === "npm run test:g41" && forcedRed?.command === "npm run test:g41:forced-red" && forcedRed?.env?.SDT_G41_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
+  if (!legacyWorkflowWiring && !manifestWiring) fail("G41 lane and forced-red proof are absent from both the legacy workflow and the manifest");
 }
 
 function mutateInventory(text, callback) {

@@ -51,6 +51,7 @@ function snapshot() {
     evidence: read("docs/SDT-G46-evidence.md"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
+    laneManifest: JSON.parse(read("ci/lanes.json")),
     rootConfig: read("wrangler.jsonc"),
     sampleConfigs,
   };
@@ -189,8 +190,12 @@ export function assertG46TagStateContract(value) {
   ]) requireContains(evidence, token, "G46 evidence");
 
   requireContains(packageJson, '"test:g46"', "package scripts");
-  requireContains(ci, "ci-g46:", "G46 CI lane");
-  requireContains(ci, "ci-g46", "G46 verify dependency");
+  const legacyWorkflowWiring = ci.includes("ci-g46:") && ci.includes("ci-g46");
+  const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "g46");
+  const normal = lane?.commands?.find((entry) => entry?.id === "g46");
+  const forcedRed = lane?.commands?.find((entry) => entry?.id === "g46-red");
+  const manifestWiring = normal?.command === "npm run test:g46" && forcedRed?.command === "npm run test:g46:forced-red" && forcedRed?.env?.SDT_G46_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
+  if (!legacyWorkflowWiring && !manifestWiring) fail("G46 lane and forced-red proof are absent from both the legacy workflow and the manifest");
 }
 
 function expectRed(mutator, label) {

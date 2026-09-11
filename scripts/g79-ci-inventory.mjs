@@ -13,6 +13,7 @@ import { resolve } from "node:path";
 
 const root = process.cwd();
 const workflowPath = resolve(root, ".github/workflows/ci.yml");
+const manifestPath = resolve(root, "ci/lanes.json");
 const packageJsonPath = resolve(root, "package.json");
 const historicalSourceHead = "21427a58534efe8af4b3553322268f84fd6cbbd6";
 const reviewedHead = "cd15a2729ea2aa062515012ad1938266856ede2b";
@@ -56,6 +57,14 @@ function packageScripts() {
     return JSON.parse(readFileSync(packageJsonPath, "utf8")).scripts ?? {};
   } catch {
     return {};
+  }
+}
+
+function laneManifest() {
+  try {
+    return JSON.parse(readFileSync(manifestPath, "utf8"));
+  } catch {
+    return { lanes: [] };
   }
 }
 
@@ -137,30 +146,81 @@ function parseJobs(workflow) {
   return jobs;
 }
 
+function expandManifestRunnerCommand(command, manifest) {
+  const match = command.match(/node scripts\/ci-local\.mjs --lane ([A-Za-z0-9-]+) --ci/);
+  if (!match) return null;
+  const lane = manifest?.lanes?.find((entry) => entry?.name === match[1]);
+  if (!lane) return null;
+  return lane.commands.map((entry) => ({
+    command: entry.command,
+    executionTier: lane.tier,
+    lane: lane.name,
+    commandId: entry.id,
+  }));
+}
+
+function manifestRows(manifest, scripts, metadata) {
+  return (manifest?.lanes ?? [])
+    .filter((lane) => lane.tier === "local")
+    .flatMap((lane) => lane.commands.map((entry, index) => ({
+      ...metadata,
+      workflow: "ci-local",
+      hostedJob: `local:${lane.name}`,
+      executionTier: lane.tier,
+      lane: lane.name,
+      commandId: entry.id,
+      invocation: index + 1,
+      command: entry.command,
+      ...laneMeasurement(entry.command, scripts),
+    })));
+}
+
 function inventory() {
   const jobs = parseJobs(readFileSync(workflowPath, "utf8"));
+  const manifest = laneManifest();
   const scripts = packageScripts();
   const workflowCheckoutSha = checkedOutCommitSha();
   const sha = sourceHeadSha(workflowCheckoutSha);
-  const rows = jobs.flatMap((job) => {
-    return job.commands.map((command, index) => ({
-      workflowRunId: process.env.GITHUB_RUN_ID ?? null,
-      workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
-      commitSha: sha,
-      workflowCheckoutSha,
-      sourceReceiptClass: sourceReceiptClass(sha),
-      workflow: process.env.GITHUB_WORKFLOW ?? "CI",
+  const metadata = {
+    workflowRunId: process.env.GITHUB_RUN_ID ?? null,
+    workflowAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    commitSha: sha,
+    workflowCheckoutSha,
+    sourceReceiptClass: sourceReceiptClass(sha),
+    workflow: process.env.GITHUB_WORKFLOW ?? "CI",
+  };
+  const workflowRows = jobs.flatMap((job) => job.commands.flatMap((command, index) => {
+    const expanded = expandManifestRunnerCommand(command, manifest);
+    if (expanded !== null) {
+      return expanded.map((entry, expandedIndex) => ({
+        ...metadata,
+        hostedJob: job.name,
+        executionTier: entry.executionTier,
+        lane: entry.lane,
+        commandId: entry.commandId,
+        invocation: expandedIndex + 1,
+        command: entry.command,
+        ...laneMeasurement(entry.command, scripts),
+      }));
+    }
+    return [{
+      ...metadata,
       hostedJob: job.name,
+      executionTier: "workflow",
       invocation: index + 1,
       command,
       ...laneMeasurement(command, scripts),
-    }));
-  });
+    }];
+  }));
+  const rows = [...workflowRows, ...manifestRows(manifest, scripts, metadata)];
   return {
     workflowPath,
+    manifestPath,
     commitSha: sha,
     workflowCheckoutSha,
+    sourceReceiptClass: sourceReceiptClass(sha),
     jobs: jobs.map((job) => job.name),
+    manifestLanes: (manifest.lanes ?? []).map((lane) => ({ name: lane.name, tier: lane.tier })),
     invocations: rows,
   };
 }
@@ -169,24 +229,21 @@ function selfTest() {
   const result = inventory();
   const requiredJobs = [
     "ci-foundation",
-    "ci-g43",
-    "ci-g44",
-    "ci-g46",
-    "cosmos-emulator",
-    "ci-coverage",
+    "ci-pr-cheap",
+    "verify",
   ];
   const missingJobs = requiredJobs.filter((job) => !result.jobs.includes(job));
   if (missingJobs.length > 0) throw new Error(`SDT-G79 CI inventory missing jobs: ${missingJobs.join(", ")}`);
-  if (!result.invocations.some((row) => row.hostedJob === "ci-g43" && row.command.includes("npm run test:g43"))) {
-    throw new Error("SDT-G79 CI inventory did not find the G43 hosted invocation");
+  if (!result.invocations.some((row) => row.hostedJob === "local:g43" && row.executionTier === "local" && row.command.includes("npm run test:g43"))) {
+    throw new Error("SDT-G79 CI inventory did not find the G43 local-manifest invocation");
   }
-  if (!result.invocations.some((row) => row.hostedJob === "ci-foundation" && row.command.includes("npm test"))) {
-    throw new Error("SDT-G79 CI inventory did not find the foundation npm test invocation");
+  if (!result.invocations.some((row) => row.hostedJob === "ci-foundation" && row.executionTier === "pr" && row.command.includes("npm test"))) {
+    throw new Error("SDT-G79 CI inventory did not expand the foundation npm test invocation");
   }
   if (result.invocations.some((row) => row.status === "missing-per-test-receipt" || row.status === "partial-named-receipts")) {
     throw new Error("SDT-G79 CI inventory retained a stale partial/missing timing classification");
   }
-  if (!result.invocations.some((row) => row.status === "per-test-reporter-required" && row.hostedJob === "ci-foundation")) {
+  if (!result.invocations.some((row) => row.status === "per-test-reporter-required" && row.hostedJob === "ci-foundation" && row.executionTier === "pr")) {
     throw new Error("SDT-G79 CI inventory did not classify the foundation Vitest invocation for hosted measurement");
   }
   console.log(JSON.stringify({
@@ -204,6 +261,7 @@ function main() {
   }
   console.log(`SDT-G79_HOSTED_CI_INVOCATION_SUMMARY ${JSON.stringify({
     workflowPath,
+    manifestPath,
     commitSha: result.commitSha,
     workflowCheckoutSha: result.workflowCheckoutSha,
     sourceReceiptClass: sourceReceiptClass(result.commitSha),

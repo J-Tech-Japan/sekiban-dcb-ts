@@ -7,3 +7,8 @@ tools/**/bin/
 tools/**/obj/
 .wrangler/
 coverage/
+.artifacts/ci-local/
+.artifacts/g40-sekiban-source/
+.artifacts/sdt-g79-vitest.json
+.artifacts/g15-wrangler.log
+.artifacts/g16-local-e2e.json

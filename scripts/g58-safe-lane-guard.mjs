@@ -37,6 +37,7 @@ function snapshot() {
     migration: read("migrations/d1/g32/0003_g58_safe_lane_health.sql"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
+    laneManifest: JSON.parse(read("ci/lanes.json")),
   };
 }
 
@@ -88,8 +89,12 @@ export function assertG58SafeLaneContract(value) {
   requireContains(value.readProof, "expectedTagHead", "tag-scoped AC5 head oracle");
   requireContains(value.readProof, "noProjectionPollQuery", "read-only AC5 proof boundary");
   requireContains(value.packageJson, '"test:g58"', "dedicated G58 package lane");
-  requireContains(value.ci, "Run SDT-G58 safe-lane and live-projection reliability lane", "G58 CI invocation");
-  requireContains(value.ci, "SDT_G58_FORCE_FAILURE", "G58 forced-red CI reachability");
+  const legacyWorkflowWiring = value.ci.includes("Run SDT-G58 safe-lane and live-projection reliability lane") && value.ci.includes("SDT_G58_FORCE_FAILURE");
+  const lane = value.laneManifest?.lanes?.find((entry) => entry?.name === "g44");
+  const normal = lane?.commands?.find((entry) => entry?.id === "g58");
+  const forcedRed = lane?.commands?.find((entry) => entry?.id === "g58-red");
+  const manifestWiring = normal?.command === "npm run test:g58" && forcedRed?.command === "npm run test:g58:forced-red" && forcedRed?.env?.SDT_G58_FORCE_FAILURE === "1" && forcedRed?.expect === "red";
+  if (!legacyWorkflowWiring && !manifestWiring) fail("G58 lane and forced-red proof are absent from both the legacy workflow and the manifest");
 }
 
 function expectRed(value, mutate, label) {

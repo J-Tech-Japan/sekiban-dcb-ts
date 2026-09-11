@@ -157,11 +157,15 @@ export function auditG32LegacyIngress() {
   }
   const packageJson = JSON.parse(read("package.json"));
   const workflow = read(".github/workflows/ci.yml");
+  const manifest = JSON.parse(read("ci/lanes.json"));
+  const cosmosLane = manifest?.lanes?.find((lane) => lane?.name === "cosmos");
+  const g22Cosmos = cosmosLane?.commands?.find((command) => command?.id === "g22-cosmos");
+  const legacyWorkflowWiring = workflow.includes("Run SDT-G22 real Cosmos bootstrap provider contract") && workflow.includes("npm run test:g22:cosmos");
+  const manifestWiring = g22Cosmos?.command === "npm run test:g22:cosmos" && cosmosLane?.tier === "local";
   if (
     !String(packageJson?.scripts?.["test:g22:cosmos"] ?? "").includes("scripts/g22-bootstrap-cosmos-contract.mjs --require-real-cosmos") ||
     !String(packageJson?.scripts?.["test:g32"] ?? "").includes("scripts/g22-bootstrap-cosmos-contract.mjs --self-test") ||
-    !workflow.includes("Run SDT-G22 real Cosmos bootstrap provider contract") ||
-    !workflow.includes("npm run test:g22:cosmos")
+    (!legacyWorkflowWiring && !manifestWiring)
   ) throw new Error("G32 real-Cosmos CI lane is not wired through the G32 positive/negative audit");
 
   const requiredNegativeMarkers = [
