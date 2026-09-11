@@ -132,10 +132,20 @@ mutation proof was local. The complete W236 handoff is retained at
 `sdt-g81-pr165-rebase-ci-w236.md`. These receipts remain historical after the
 W238 validator repair.
 
-## Lifecycle
+## W238 terminal repair evidence
 
-The W230 issue claim and immediate PR-created completion remain historical. For
-W238, the PR was claimed through the canonical GitHub-only PR repair flow before
-editing, and completion will be recorded as `repair-pushed` after the bounded
-validator/evidence push. Fresh W238 PR/CI/preflight identities and the final
-head are recorded below once terminal.
+W230 remains historical implementation evidence, and W236 remains historical
+rebase evidence. W238 is the observed terminal repair that closed the semantic
+validator finding before this evidence-only follow-up:
+
+- Base: `5bc9d2226bded255875f04c5f6b6bd032463033d`.
+- Final W238 PR head: `2a33f41275945d9f655f87eddaf0c6255e0890a4`.
+- Exact-head CI [workflow 34562783479](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34562783479), attempt 1, has `headSha=2a33f41275945d9f655f87eddaf0c6255e0890a4`, terminal conclusion `success`, and all 21 jobs green. The required receipts include [ci-foundation job 103148752881](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34562783479/job/103148752881), [ci-g46 job 103148753117](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34562783479/job/103148753117), and [verify job 103156206048](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34562783479/job/103156206048).
+- Exact-head release preflight [workflow 34562792705](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34562792705) has the same head and terminal conclusion `success`; its [dcb-domain-release-preflight job 103148783749](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34562792705/job/103148783749) is green.
+- No diagnostic or lucky rerun was used for W238. These are the original terminal receipts for the repair head, not a later rerun or a relabelled historical receipt.
+- The actual canonical W238 worker completion was `repair-pushed`, run after the push and terminal receipts with `proceed=true`, `applied=true`, no errors or warnings, adding `intent-pr-rereview-ready` and removing `intent-pr-update-in-progress` plus `intent-pr-request-update`.
+
+This section is the durable observed W238 record. The W230/W236 sections above
+remain historical and are not re-attributed to W238; the W238 workflow head,
+PR head, and timing-reporter merge checkout identities remain distinct as
+described above.
