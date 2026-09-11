@@ -4,7 +4,8 @@
 
 W244 resumes PR #169 after the request-update lifecycle was restored. The
 bounded source repair is committed at
-`a320d2610a911d7c41a15786e5a80ec6be14f477`, based on
+`a320d2610a911d7c41a15786e5a80ec6be14f477` and
+`964c5ea9f9df1a96d752e88ceacae441fe602055`, based on
 `247d6d90902cf90cead08835d358e8d0197a297a`. The evidence push contains the
 source repair and this evidence update together; the exact pushed head and
 same-head local receipts are recorded in the W244 handoff after collection.
@@ -24,13 +25,17 @@ reports the full unmatched command rows, so the allowlist is not a wildcard
 or a command-count-only bypass.
 
 `ci:local` now creates and removes a fresh detached-HEAD worktree for each
-selected local lane, sets `INIT_CWD` to that worktree, bootstraps it there, and
-records the checkout SHA, detached execution mode, bootstrap result and
-cleanup in the lane receipt. Hosted `--ci` mode remains on its existing
-checkout. The G32 and G53 guards remain present and now require their
-manifest-owned lane/forced-red entries rather than accepting stale workflow
-wiring. No test body, product source, G43 coordination, global timeout, retry,
-skip or forced-red proof was changed.
+selected local lane, sets `INIT_CWD` to that worktree, and records the checkout
+SHA, detached execution mode, bootstrap/dependency result and cleanup in the
+lane receipt. On this macOS host the first bootstrap attempt was stopped by
+the pre-existing root-owned npm cache (`EPERM`, before any lane command); the
+repair records the explicit reuse of the already-installed driver dependency
+tree through a worktree-local symlink, while retaining `npm ci` as the
+fallback when no dependency tree exists. Hosted `--ci` mode remains on its
+existing checkout. The G32 and G53 guards remain present and now require
+their manifest-owned lane/forced-red entries rather than accepting stale
+workflow wiring. No test body, product source, G43 coordination, global
+timeout, retry, skip or forced-red proof was changed.
 
 ## W243 hosted attempt and bounded guard repair (2026-09-11)
 
