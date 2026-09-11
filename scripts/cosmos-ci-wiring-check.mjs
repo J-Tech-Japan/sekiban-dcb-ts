@@ -67,8 +67,8 @@ function assertManifest(manifest, baselineHistory) {
 }
 
 function assertFullWorkflow(workflow, manifest) {
-  assert.match(workflow, /^  full:\s*$/m, "the full workflow must define its full job");
-  assert.match(workflow, /^\s+run:\s+node scripts\/ci-local\.mjs --full\s*$/m, "the full workflow must execute the full manifest tier");
+  assert.match(workflow, /^\s{2}full:\s*$/m, "the full workflow must define its full job");
+  assert.match(workflow, /^\s+run:\s+node scripts\/ci-local\.mjs\s+--full\s*$/m, "the full workflow must execute the full manifest tier");
   assert.ok(manifest.tiers?.full?.includes?.includes("local"), "the full tier must include local lanes");
   assert.ok(manifest.lanes.some((entry) => entry?.name === "cosmos" && entry.tier === "local"), "the full workflow's manifest closure must include the Cosmos job");
 }
