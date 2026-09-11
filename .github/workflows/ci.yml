@@ -62,6 +62,8 @@ jobs:
         run: npm run test:g71
       - name: Run SDT-G73 driver-timing equality guard
         run: npm run test:g73:guard
+      - name: Run SDT-G76 partial-write regression matrix and red mutants
+        run: npm run test:g76:regression-matrix
       - run: npm run test:g17
       - run: npm run test:g17:rollout-order
 
