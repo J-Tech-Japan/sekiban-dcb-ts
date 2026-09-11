@@ -1,5 +1,92 @@
 # SDT-G84 evidence
 
+## W243 current implementation checkpoint (2026-09-11)
+
+This is the W243 continuation of the W242 checkout. The current source
+validation commit is `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` on
+`claude/sdt-g84-implementation-w242`, based on current `origin/main`
+`247d6d90902cf90cead08835d358e8d0197a297a`. The branch is not yet represented
+by a PR at this checkpoint; no hosted workflow has been started. The prior W242
+claim was already in progress: the required GitHub-only issue claim was retried
+and returned `proceed=false`, `applied=false`, with the exact stale-claim error
+`claim.stale.already-in-progress: issue already carries 'intent-issue-in-progress'.`
+No label was manually changed. This is retained as a protocol receipt, not a
+successful new claim.
+
+W243 contains only the G84 CI/lane work. The bounded post-W242 commits are:
+
+* `489f452` isolates the G32 parity compiler invocation.
+* `b8cb771` preserves the G32 build-shape oracle while adding the lane's
+  in-process switches.
+* `89be104` serializes the parity restore/build path and records the required
+  settings in the receipt.
+* `9e7e857` wires the existing G43 forced-red command to its required manifest
+  environment (`SDT_G43_FORCE_FAILURE=1`); it does not alter G43 production code,
+  test assertions, coordination, budgets, or timing guards.
+
+The stale G53 and G32 workflow guards remain present and now recognize their
+manifest-owned commands; neither guard was deleted. The exact source diff has
+no product-source or test-body changes. Existing G73/G43 behavior and every
+forced-red proof remain intact.
+
+### Current local receipts
+
+The receipts below are the observed terminal results. A receipt's `commitSha`
+is its actual source identity; the later evidence-only commit will not be
+silently relabelled as an execution receipt.
+
+| Source receipt | Lane | Result | Evidence |
+| --- | --- | --- | --- |
+| `89be104e0c7b87533a24850cd9fe95f97bd9cb72` | `g32-parity` | green | `.artifacts/ci-local/89be104e0c7b87533a24850cd9fe95f97bd9cb72/g32-parity.json`; exit 0, 989,468 ms; source clone, 10-file G32 suite, real parity command and forced-red command all had expected results |
+| `89be104e0c7b87533a24850cd9fe95f97bd9cb72` | `g30` | green | `.artifacts/ci-local/89be104e0c7b87533a24850cd9fe95f97bd9cb72/g30.json`; exit 0, 3,257,578 ms; uninterrupted normal G30, G51, candidate proof and forced-red proof completed |
+| `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` | `g43` | blocked | `.artifacts/ci-local/9e7e8579096b6b30c82fb8c20bcb175af69eeb3a/g43.json`; normal `npm run test:g43` exited 1 after 11,944 ms at the existing `test/g43-measurement.spec.ts:276` assertion (`commit.rowsRead all-points spread: expected 33 to be <= 2`). This is preserved G43/G79 measurement evidence; W243 does not repair or weaken it. |
+| `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` | `g44` | green | `.artifacts/ci-local/9e7e8579096b6b30c82fb8c20bcb175af69eeb3a/g44.json`; exit 0, 483,682 ms; normal G44/G75/G58/G62/G67/G61 commands and all expected red mutations passed |
+| `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` | `g46` | green | `.artifacts/ci-local/9e7e8579096b6b30c82fb8c20bcb175af69eeb3a/g46.json`; exit 0, 298,781 ms; G46/G49 normal and expected forced-red commands passed |
+| `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` | `local-e2e` | green | `.artifacts/ci-local/9e7e8579096b6b30c82fb8c20bcb175af69eeb3a/local-e2e.json`; exit 0, 81,045 ms; store, D1, MV, boundaries, consumer, build, G15 and G16 local paths passed |
+| `9e7e8579096b6b30c82fb8c20bcb175af69eeb3a` | `cosmos` | blocked by environment | `.artifacts/ci-local/9e7e8579096b6b30c82fb8c20bcb175af69eeb3a/cosmos.json`; exit 128 after 1,022 ms. The first retained-history command failed before the Cosmos tests with `fatal: remote error: upload-pack: not our ref 38219c8a6526a0209295e9f06450cce9e2217005`. This is an unavailable remote object/reference, not a Cosmos assertion; no retry was made. |
+
+The W243 run did not rerun unchanged `g21-g25`; the W242 `g21-g25` receipt
+remains historical at `08328f176b5b7f023d1d46569a97e670e8ea9049`. Therefore the
+current source head does not yet have a complete all-local-lane green receipt.
+The generated G79 timing logs from the G43 attempts were moved to the local
+temporary evidence directory and are not claimed as tracked source changes.
+
+The G32 receipt records all three required in-process settings in both its
+`environment` and `buildSettings` objects:
+
+```text
+UseSharedCompilation=false
+MSBUILDDISABLENODEREUSE=1
+DOTNET_CLI_USE_MSBUILD_SERVER=0
+```
+
+NuGet restore succeeded with isolated `NUGET_PACKAGES` and
+`NUGET_HTTP_CACHE_PATH` directories. No `dotnet build-server shutdown` and no
+process kill was run; no CS2012 failure persisted. The G30 elapsed time was
+3,257,578 ms (about 54m18s), below the required two-times threshold of 82–90
+minutes derived from the 41–45 minute CI reference. It is not flagged as over
+twice the reference.
+
+### Verification and disposition
+
+`npm run test:g40:tiers`, lint, typecheck, the G32 runner/oracle and focused
+package checks passed at the source-equivalent W243 commits. The G40 structural
+check reported `pr=2`, `local=8`, `manifestCommandCount=123`, unchanged
+baseline/current leaf inventory `136/136`, and no missing or added historical
+commands; PR jobs remain `ci-foundation` and `ci-pr-cheap`, with `verify` as the
+aggregator. The G79 inventory self-test reported three workflow jobs, 133
+manifest/workflow invocations, 73 reporter-classified per-test invocations and
+60 proof-only invocations.
+
+The W243 implementation is not claimed complete: the current G43 measurement
+assertion is a real preserved lane failure, Cosmos cannot resolve a pinned
+historical object from the remote, and current-head g21-g25 evidence is absent.
+These findings are outside the permitted G84 calibration scope. The next
+authorized step is the requested ready-for-review PR and its exact-head hosted
+pull-request measurement; no release-preflight workflow-dispatch run is to be
+started before merge. The first post-merge full workflow-dispatch run is
+`pending`, not collected.
+
 Status: blocked at the local implementation checkpoint. This document records the
 bounded evidence collected locally; it does not claim a hosted PR result.
 
