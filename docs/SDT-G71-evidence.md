@@ -197,7 +197,7 @@ unique and requires a passing healthy control. Results:
 | `list-consistency-dropped` | the public list lane must reach every serialized adapter | behavioral product mutant red |
 | `abort-collapsed-to-transport` | an aborted read must remain distinct from transport failure | behavioral product mutant red |
 | `composition-unsafe-option-dropped` | the sample held unsafe page must include B | behavioral product mutant red |
-| `composition-safe-head-from-wrong-observation` | the held safe page and empty page must retain A's checkpoint | behavioral product mutant red |
+| `composition-safe-head-from-wrong-observation` | replace the safe checkpoint with `maxReflectedSuid(rows)`; the held empty safe page must reject `""` and retain A's checkpoint | behavioral product mutant red |
 
 The lane-forwarding oracle is also asserted for every adapter: dropping the
 public list consistency before transport makes that focused test fail. No
@@ -214,6 +214,40 @@ runner's self-test covers all of those rejection cases; its actual eight-mutant
 run produced status 1 with the named assertion failure for every mutant,
 including the two W227 composition mutants, and restored the source bytes after
 each mutation.
+
+## W231 F1 repair — page maximum is a real wrong observation
+
+Review W229 identified that the prior composition head mutant used a constant
+empty string. That was insufficient: an empty safe page also has an empty page
+maximum, so the mutant could pass the required page-2 assertion. The repaired
+`composition-safe-head-from-wrong-observation` target now replaces the safe
+checkpoint branch with `readHead: maxReflectedSuid(rows)`, the unsafe-page
+observation. In the required two-commit held scenario, safe page 2 has no rows,
+so this mutation reports `""` instead of A's non-empty checkpoint SUID and the
+named composition assertion fails. This is a semantic wrong-observation
+mutant, not a constant-empty source-shape placeholder.
+
+The W231 local mutation receipt is:
+
+```text
+composition-safe-head-from-wrong-observation
+processStatus=1 signal=null
+named oracle: SDT-G71 Cloudflare-only composition G71 composition: safe and unsafe pages diverge while SafeWindow holds
+failed assertion: expected '' to be '062135598800000000000641477751'
+location: test/g71-composition.spec.ts:313:38
+```
+
+All eight mutants remain in the same runner and are still restricted to their
+declared G71 tests. The six W223 contract mutants and the W227 unsafe-option
+mutant are unchanged. The runner's structured validator, healthy controls,
+status-1/null-signal requirement, named assertion/location evidence, and
+failure-class rejection self-tests are unchanged.
+
+W231 focused validation on the repaired source completed with the existing
+G71-only commands: the runner self-test passed, the full eight-mutant runner
+returned `all-g71-behavioral-product-mutants-red`, and the page-maximum mutant
+returned status 1 with `signal=null` and the named page-2 assertion above.
+No G67 file or product source was modified by W231.
 
 ## 0.2.0 migration and release proof
 
@@ -285,8 +319,8 @@ W227's added composition proof was then run in the same isolated worktree:
   validator self-test.
 - `npm run lint`, `npm run typecheck`, and `git diff --check`: passed.
 
-The W227 local receipts above were collected before the repair commit; hosted
-CI is reported separately against the pushed exact W227 head.
+The W227 local receipts above were collected before the W231 repair commit;
+hosted CI is reported separately against the pushed exact W231 head.
 
 No unchanged full suite was rerun merely for luck.
 

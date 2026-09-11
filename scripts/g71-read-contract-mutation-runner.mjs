@@ -76,9 +76,9 @@ const mutations = Object.freeze([
     sourceFile: "packages/dcb-runtime/src/mv/MaterializedViewStore.ts",
     testFile: "test/g71-composition.spec.ts",
     from: "      readHead: options.consistency === \"unsafe\" ? maxReflectedSuid(rows) : selectedInstance.lastSuid,",
-    to: "      readHead: options.consistency === \"unsafe\" ? maxReflectedSuid(rows) : \"\",",
+    to: "      readHead: maxReflectedSuid(rows),",
     oracle: "G71 composition: safe and unsafe pages diverge while SafeWindow holds",
-    reason: "safe pages, including an empty second page, must report the checkpoint used for their rows",
+    reason: "a page maximum is not the safe checkpoint and makes the held empty safe page report an empty head instead of SUID A",
   },
 ]);
 
