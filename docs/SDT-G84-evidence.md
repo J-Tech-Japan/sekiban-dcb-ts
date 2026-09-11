@@ -1,5 +1,37 @@
 # SDT-G84 evidence
 
+## W244 amended-ruling repair (source/evidence push, 2026-09-11)
+
+W244 resumes PR #169 after the request-update lifecycle was restored. The
+bounded source repair is committed at
+`a320d2610a911d7c41a15786e5a80ec6be14f477`, based on
+`247d6d90902cf90cead08835d358e8d0197a297a`. The evidence push contains the
+source repair and this evidence update together; the exact pushed head and
+same-head local receipts are recorded in the W244 handoff after collection.
+
+The restored `docs/evidence/SDT-G40-ci-step-inventory-baseline.json` is
+byte-for-byte equal to `origin/main` (SHA-256
+`48aa022c2be3412ecf5481863ea365a056d54c303ee06886636db6d9202a3598`). The
+manifest retains exactly one `cosmos-retained-history` occurrence of pinned
+SHA `38219c8a6526a0209295e9f06450cce9e2217005`; the G40 coverage checker now
+enforces that value and the third G40 mutant changes one character and is
+rejected. The new
+`docs/evidence/SDT-G40-ci-step-inventory-allowlist.json` records the reviewed
+G84 workflow-to-manifest transition with exact normalized command-text and
+entry-identity digests: 86 historical workflow leaves, 132 manifest commands,
+55 recursive package leaves, and three retained workflow steps. The checker
+reports the full unmatched command rows, so the allowlist is not a wildcard
+or a command-count-only bypass.
+
+`ci:local` now creates and removes a fresh detached-HEAD worktree for each
+selected local lane, sets `INIT_CWD` to that worktree, bootstraps it there, and
+records the checkout SHA, detached execution mode, bootstrap result and
+cleanup in the lane receipt. Hosted `--ci` mode remains on its existing
+checkout. The G32 and G53 guards remain present and now require their
+manifest-owned lane/forced-red entries rather than accepting stale workflow
+wiring. No test body, product source, G43 coordination, global timeout, retry,
+skip or forced-red proof was changed.
+
 ## W243 hosted attempt and bounded guard repair (2026-09-11)
 
 PR #169 was created from the dedicated branch against `main` at
