@@ -73,17 +73,18 @@ The direct calibration output from the successful local proof was:
 | field | value |
 | --- | ---: |
 | healthy G67 body | 776 ms |
-| healthy budget margin | 9,224 ms |
-| 32-round body | 1,075 ms |
+| healthy budget margin | 9224 ms |
+| 32-round body | 1075 ms |
 | signed whole-test difference | 299 ms (cross-check only) |
 | direct median cost | 6.25 ms/round |
-| predicted 32-round added cost | 200 ms |
-| observed/predicted ratio | 1.495 |
+| direct conservative lower-bound cost | 5.25 ms/round |
+| predicted 32-round added cost from lower bound | 168 ms |
+| whole-test attribution ratio | 1.7797619047619047 (diagnostic only) |
 | chunk durations | 27, 54, 67, 21, 25 ms for 4, 8, 12, 4, 4 rounds |
-| per-round scaling ratio | 1.2857 |
+| direct rate range | 5.25 to 6.75 ms/round |
 | matched-residual allowance | 2.5 ms/round |
 
-The two 4-round chunks are the matched repeated controls. The allowance is
+The three 4-round chunks are the matched repeated controls. The allowance is
 declared from their per-round residuals (`1.5`, `0.5`, `1` ms), the median
 absolute deviation (`0.5` ms), the three-MAD factor, and a one-millisecond
 clock-resolution floor. The scaling and residual checks are two-sided and
@@ -99,13 +100,161 @@ Each outcome is emitted with raw measurements before its branch and on failure:
 | outcome | condition |
 | --- | --- |
 | `HEALTHY_OR_ORACLE_FAILURE` | missing/malformed process report, receipt, marker, target, setup, signal, or process state |
-| `CALIBRATION_INCONCLUSIVE` | negative/small signal, no valid matched residual allowance, missing two-sided scaling, or inconsistent whole-test cross-check |
+| `CALIBRATION_INCONCLUSIVE` | malformed direct signal, no valid matched residual allowance, a direct rate outside either predeclared cross-size bound, an equal-size residual above its predeclared bound, or a direct lower bound that does not dominate the same-unit allowance |
 | `REPRESENTATIVE_RANGE_EXCEEDED` | a valid conservative estimate requires more than the unchanged 4,096 representative rounds |
 
 Representative escalation occurs only after the named healthy target passes.
-The representative is chosen from the measured direct rate and existing 1.5
-safety factor, with no retry-until-green behavior. Timeout overshoot is retained
-as a censored observation rather than used as a workload margin.
+The representative is chosen from the conservative direct lower-bound rate and
+the existing 1.5 safety factor, with no retry-until-green behavior. Timeout
+overshoot is retained as a censored observation rather than used as a workload
+margin.
+
+## W266 — accepted bounded-calibration decision
+
+The W266 repair applies the accepted W265 ruling to the runner beginning at
+source head `f8d5c34c6c4ffb4e7eef4de37cc5125e39002aee`. The measurement contract
+is predeclared before the direct observation: every chunk rate must be within
+`[0.5 × median, 2 × median]`, every same-size residual must be at most `10`
+ms/round, and the direct lower-bound rate must be strictly greater than the
+MAD-derived allowance. These are rates and allowances in the same ms/round
+unit. The unchanged `safetyFactor: 1.5` and `maxRepresentativeRounds: 4096`
+remain in force.
+
+The retained W264 hosted receipt can be evaluated against the repaired rule
+without rerunning it. Its raw direct timing values were:
+
+| value | raw full-precision receipt value |
+| --- | ---: |
+| chunk rounds | `[4, 8, 12, 4, 4]` |
+| chunk durations (ms) | `[104, 148, 338, 68, 81]` |
+| direct costs (ms/round) | `[26, 18.5, 28.166666666666668, 17, 20.25]` |
+| direct-rate median | `20.25` |
+| cross-size lower/upper bounds | `10.125` / `40.5` |
+| observed direct-rate minimum/maximum | `17` / `28.166666666666668` |
+| same-size residuals (ms/round) | `[9, 5.75, 3.25]` |
+| same-size residual maximum / bound | `9` / `10` |
+| MAD-derived allowance (ms/round) | `13.25` |
+| conservative direct lower-bound rate | `17` |
+| healthy body / calibration body (ms) | `631` / `583` |
+| signed whole-test difference (ms) | `-48` |
+| lower-bound 32-round predicted work (ms) | `544` |
+| whole-test attribution ratio | `-0.08823529411764706` |
+
+The historical hosted pair's healthy and calibration body values are retained
+as attribution diagnostics only; the negative whole-test difference is not a
+failure condition. The exact repaired decision path is: (1) parse one
+structured direct marker; (2) validate real `performance.now` D1 probes,
+complete deliveries, exact operations and waiter drains; (3) pass all five
+chunk rates through the predeclared two-sided bounds; (4) pass the three
+same-size residuals through the `10` ms/round bound; (5) accept because
+`17 > 13.25` in ms/round; and (6) size representative rounds from the
+conservative `17` ms/round lower bound. The whole-test `-48` ms value is
+reported for attribution and is deliberately not compared with `13.25`.
+
+The retained W264 local proof has the following exact arithmetic, also kept
+without rounding in the repaired evidence: chunk durations
+`[27, 54, 67, 21, 25]` ms produce direct rates
+`[6.75, 6.75, 5.583333333333333, 5.25, 6.25]` ms/round; median `6.25`,
+cross-size bounds `[3.125, 12.5]`, direct lower bound `5.25`, same-size
+residuals `[1.5, 0.5, 1]`, residual maximum `1.5`, allowance `2.5`, healthy
+body `776`, calibration body `1075`, signed whole-test difference `299`,
+lower-bound predicted work `168`, and whole-test attribution ratio
+`1.7797619047619047`. It passes the same path because `5.25 > 2.5`.
+
+The post-repair focused local proof (not a hosted AC6 instance) emitted these
+raw values at the W266 working tree: healthy body `1648` ms, healthy margin
+`8352` ms, calibration body `2783` ms, signed whole-test difference `1135` ms,
+direct rates `[14.5, 15.125, 16.166666666666668, 12, 13.5]` ms/round, direct
+median `14.5`, conservative lower bound `12`, cross-size bounds `[7.25, 29]`,
+same-size residuals `[2.5, 1, 1.5]`, residual maximum `2.5`, allowance `3`,
+lower-bound predicted work `384`, and whole-test attribution ratio
+`2.9557291666666665`. The decision accepted only because `12 > 3`; it then
+selected `1044` representative rounds from the lower bound and observed a
+`15179` ms target body, `5179` ms over the 10000 ms budget, with one exact
+structured timeout, process status `1`, and `signal: null`. This is a
+mechanism proof; it does not substitute for the later hosted receipts.
+
+The runner self-test now retains named structured mutant results:
+
+| mutant | exact fixture and expected red reason |
+| --- | --- |
+| whole-test/per-round unit mismatch | rates `[10, 10, 11]`, allowance `1`, signed difference `0.5`; accepted by the direct gate and marked attribution-only, so the old whole-test-ms-versus-per-round-ms gate is killed |
+| inconclusive direct signal | rates `[0.25, 0.25, 0.2625]`, allowance `1`, lower bound `0.25`; rejected because the direct lower bound does not dominate the same-unit allowance |
+| low cross-size bound | rates `[4, 10, 11]`, median `10`, lower bound `5`; rejected because `4 < 5` |
+| high cross-size bound | rates `[10, 25, 11]`, median `11`, upper bound `22`; rejected because `25 > 22` |
+| equal-size residual | rates `[8, 10, 19]`, median `10`, cross-size bounds `[5, 20]`; rejected because the repeated-size residual `11 > 10` |
+
+The self-test also retains the ANSI/truncated/missing direct-marker checks,
+the healthy and named-timeout controls, and the existing G67 source-shape
+proof. No G67 fixture, product behavior, workflow, timeout, retry, skip or
+unrelated lane was changed.
+
+## W266 — accepted bounded-calibration decision
+
+The W266 repair applies the accepted W265 ruling to the runner beginning at
+source head `f8d5c34c6c4ffb4e7eef4de37cc5125e39002aee`. The measurement contract
+is predeclared before the direct observation: every chunk rate must be within
+`[0.5 × median, 2 × median]`, every same-size residual must be at most `10`
+ms/round, and the direct lower-bound rate must be strictly greater than the
+MAD-derived allowance. These are rates and allowances in the same ms/round
+unit. The unchanged `safetyFactor: 1.5` and `maxRepresentativeRounds: 4096`
+remain in force.
+
+The retained W264 hosted receipt can be evaluated against the repaired rule
+without rerunning it. Its raw direct timing values were:
+
+| value | raw full-precision receipt value |
+| --- | ---: |
+| chunk rounds | `[4, 8, 12, 4, 4]` |
+| chunk durations (ms) | `[104, 148, 338, 68, 81]` |
+| direct costs (ms/round) | `[26, 18.5, 28.166666666666668, 17, 20.25]` |
+| direct-rate median | `20.25` |
+| cross-size lower/upper bounds | `10.125` / `40.5` |
+| observed direct-rate minimum/maximum | `17` / `28.166666666666668` |
+| same-size residuals (ms/round) | `[9, 5.75, 3.25]` |
+| same-size residual maximum / bound | `9` / `10` |
+| MAD-derived allowance (ms/round) | `13.25` |
+| conservative direct lower-bound rate | `17` |
+| healthy body / calibration body (ms) | `631` / `583` |
+| signed whole-test difference (ms) | `-48` |
+| lower-bound 32-round predicted work (ms) | `544` |
+| whole-test attribution ratio | `-0.08823529411764706` |
+
+The historical hosted pair's healthy and calibration body values are retained
+as attribution diagnostics only; the negative whole-test difference is not a
+failure condition. The exact repaired decision path is: (1) parse one
+structured direct marker; (2) validate real `performance.now` D1 probes,
+complete deliveries, exact operations and waiter drains; (3) pass all five
+chunk rates through the predeclared two-sided bounds; (4) pass the three
+same-size residuals through the `10` ms/round bound; (5) accept because
+`17 > 13.25` in ms/round; and (6) size representative rounds from the
+conservative `17` ms/round lower bound. The whole-test `-48` ms value is
+reported for attribution and is deliberately not compared with `13.25`.
+
+The retained W264 local proof has the following exact arithmetic, also kept
+without rounding in the repaired evidence: chunk durations
+`[27, 54, 67, 21, 25]` ms produce direct rates
+`[6.75, 6.75, 5.583333333333333, 5.25, 6.25]` ms/round; median `6.25`,
+cross-size bounds `[3.125, 12.5]`, direct lower bound `5.25`, same-size
+residuals `[1.5, 0.5, 1]`, residual maximum `1.5`, allowance `2.5`, healthy
+body `776`, calibration body `1075`, signed whole-test difference `299`,
+lower-bound predicted work `168`, and whole-test attribution ratio
+`1.7797619047619047`. It passes the same path because `5.25 > 2.5`.
+
+The runner self-test now retains named structured mutant results:
+
+| mutant | exact fixture and expected red reason |
+| --- | --- |
+| whole-test/per-round unit mismatch | rates `[10, 10, 11]`, allowance `1`, signed difference `-50`; accepted by the direct gate and marked attribution-only, so the old whole-test gate is killed |
+| inconclusive direct signal | rates `[0.25, 0.25, 0.2625]`, allowance `1`, lower bound `0.25`; rejected because the direct lower bound does not dominate the same-unit allowance |
+| low cross-size bound | rates `[4, 10, 11]`, median `10`, lower bound `5`; rejected because `4 < 5` |
+| high cross-size bound | rates `[10, 25, 11]`, median `11`, upper bound `22`; rejected because `25 > 22` |
+| equal-size residual | rates `[8, 10, 19]`, median `10`, cross-size bounds `[5, 20]`; rejected because the repeated-size residual `11 > 10` |
+
+The self-test also retains the ANSI/truncated/missing direct-marker checks,
+the healthy and named-timeout controls, and the existing G67 source-shape
+proof. No G67 fixture, product behavior, workflow, timeout, retry, skip or
+unrelated lane was changed.
 
 ## AC4 — structured named timeout oracle
 

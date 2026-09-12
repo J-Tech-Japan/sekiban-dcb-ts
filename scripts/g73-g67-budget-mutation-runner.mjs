@@ -42,6 +42,12 @@ const sgrSequencePattern = new RegExp(
 const observationRoot = resolve(root, ".artifacts", "sdt-g80-observation");
 const timerResolutionFloorMs = 1;
 const allowanceMadFactor = 3;
+// These bounds are declared before any measurement is collected.  The direct
+// signal must be stable across the intentionally different chunk sizes, while
+// the repeated-size pair supplies the same-unit residual allowance.
+const crossSizeRateLowerBoundRatio = 0.5;
+const crossSizeRateUpperBoundRatio = 2;
+const equalSizeResidualBoundMs = 10;
 const directTimingPlan = Object.freeze({
   chunks: [4, 8, 12, 4, 4],
   maxElapsedMs: 5_000,
@@ -613,6 +619,29 @@ function validateDirectTiming(timing) {
 
 function deriveAllowance(timing) {
   const costs = timing.chunks.map((chunk) => chunk.durationMs / chunk.rounds);
+  const referenceRateMs = median(costs);
+  const crossSizeRateBounds = {
+    referenceRateMs,
+    lowerRatio: crossSizeRateLowerBoundRatio,
+    upperRatio: crossSizeRateUpperBoundRatio,
+    lowerMs: referenceRateMs * crossSizeRateLowerBoundRatio,
+    upperMs: referenceRateMs * crossSizeRateUpperBoundRatio,
+    observedMinMs: Math.min(...costs),
+    observedMaxMs: Math.max(...costs),
+  };
+  const crossSizeViolations = costs.flatMap((costMs, index) =>
+    costMs < crossSizeRateBounds.lowerMs || costMs > crossSizeRateBounds.upperMs
+      ? [{ index, costMs }]
+      : [],
+  );
+  if (crossSizeViolations.length > 0) {
+    throw outcomeError("CALIBRATION_INCONCLUSIVE", {
+      reason: "a direct per-round rate escaped the predeclared two-sided cross-size bounds",
+      crossSizeRateBounds,
+      crossSizeViolations,
+      costsPerRoundMs: costs,
+    });
+  }
   const pairedResiduals = [];
   for (let index = 0; index < timing.chunks.length; index += 1) {
     for (let next = index + 1; next < timing.chunks.length; next += 1) {
@@ -630,6 +659,15 @@ function deriveAllowance(timing) {
     min: Math.min(...pairedResiduals),
     max: Math.max(...pairedResiduals),
   };
+  if (residualRangeMs.max > equalSizeResidualBoundMs) {
+    throw outcomeError("CALIBRATION_INCONCLUSIVE", {
+      reason: "the equal-size residual escaped the predeclared same-unit bound",
+      equalSizeResidualBoundMs,
+      residualRangeMs,
+      pairedResidualsMs: pairedResiduals,
+      costsPerRoundMs: costs,
+    });
+  }
   const madMs = medianAbsoluteDeviation(pairedResiduals);
   const allowanceMs = Math.max(
     timerResolutionFloorMs,
@@ -639,10 +677,14 @@ function deriveAllowance(timing) {
     costsPerRoundMs: costs,
     pairedResidualsMs: pairedResiduals,
     residualRangeMs,
+    equalSizeResidualBoundMs,
     madMs,
     timerResolutionFloorMs,
     allowanceMadFactor,
     allowanceMs,
+    crossSizeRateBounds,
+    directRateLowerBoundMs: Math.min(...costs),
+    directRateMedianMs: referenceRateMs,
   };
 }
 
@@ -666,32 +708,44 @@ function decideCalibration(healthy, calibration) {
     });
   }
   const timing = validateDirectTiming(calibration.directTiming);
-  const allowance = deriveAllowance(timing);
   const signedDifferenceMs = calibration.bodyDurationMs - healthy.bodyDurationMs;
-  const directPerRoundMs = median(allowance.costsPerRoundMs);
-  const predictedAddedWorkMs = directPerRoundMs * calibrationRounds;
-  const predictionRatio = signedDifferenceMs / predictedAddedWorkMs;
-  const sortedCosts = [...allowance.costsPerRoundMs].sort((left, right) => left - right);
-  const scalingRatio = sortedCosts.at(-1) / sortedCosts[0];
-  const scalingDemonstrated = Number.isFinite(scalingRatio) && scalingRatio >= 0.5;
-  const predictionConsistent =
-    Number.isFinite(predictionRatio) &&
-    predictionRatio > 0 &&
-    predictionRatio >= 0.25 &&
-    predictionRatio <= 4;
-  if (
-    !Number.isFinite(signedDifferenceMs) ||
-    signedDifferenceMs <= allowance.allowanceMs ||
-    !scalingDemonstrated ||
-    !predictionConsistent
-  ) {
+  let allowance;
+  try {
+    allowance = deriveAllowance(timing);
+  } catch (error) {
+    if (error?.outcome === "CALIBRATION_INCONCLUSIVE") {
+      error.details = {
+        ...error.details,
+        healthyBodyMs: healthy.bodyDurationMs,
+        calibrationBodyMs: calibration.bodyDurationMs,
+        signedDifferenceMs,
+      };
+    }
+    throw error;
+  }
+  const directRateLowerBoundMs = allowance.directRateLowerBoundMs;
+  const directRateMedianMs = allowance.directRateMedianMs;
+  const scalingRatio = allowance.crossSizeRateBounds.observedMaxMs /
+    allowance.crossSizeRateBounds.observedMinMs;
+  // Representative sizing and the acceptance gate use only the direct
+  // per-round lower bound.  Whole-test timing is retained below as an
+  // attribution diagnostic and is deliberately never compared with the
+  // per-round allowance.
+  const predictedAddedWorkMs = directRateLowerBoundMs * calibrationRounds;
+  const wholeTestAttributionRatio = Number.isFinite(signedDifferenceMs) && predictedAddedWorkMs > 0
+    ? signedDifferenceMs / predictedAddedWorkMs
+    : null;
+  if (!Number.isFinite(directRateLowerBoundMs) || directRateLowerBoundMs <= allowance.allowanceMs) {
     throw outcomeError("CALIBRATION_INCONCLUSIVE", {
-      reason: "the paired direct signal did not dominate the predeclared allowance",
+      reason: "the direct per-round lower bound did not dominate the predeclared per-round allowance",
+      comparison: "directRateLowerBoundMs > allowanceMs",
+      directRateLowerBoundMs,
+      directRateMedianMs,
+      allowanceMs: allowance.allowanceMs,
       signedDifferenceMs,
       allowance,
       predictedAddedWorkMs,
-      predictionRatio,
-      scalingRatio,
+      wholeTestAttributionRatio,
       timing,
     });
   }
@@ -699,10 +753,23 @@ function decideCalibration(healthy, calibration) {
     timing,
     allowance,
     signedDifferenceMs,
-    directPerRoundMs,
+    directPerRoundMs: directRateLowerBoundMs,
+    directRateLowerBoundMs,
+    directRateMedianMs,
+    directSignalDominatesAllowance: true,
     predictedAddedWorkMs,
-    predictionRatio,
+    wholeTestAttributionRatio,
     scalingRatio,
+    // Compatibility field for retained receipts; it is diagnostic only.
+    predictionRatio: wholeTestAttributionRatio,
+    decisionPath: {
+      directMeasurement: "bounded performance.now per-round delivery timing",
+      crossSizeRateBounds: "passed",
+      equalSizeResidualBound: "passed",
+      directSignal: "lower-bound dominates same-unit allowance",
+      scalingRatio,
+      wholeTestDifference: "attribution-only",
+    },
   };
 }
 
@@ -799,8 +866,9 @@ function representativeRoundsFor(healthyBodyMs, calibrationDecision) {
       budgetMs,
     });
   }
+  const directRateLowerBoundMs = calibrationDecision.directRateLowerBoundMs ?? calibrationDecision.directPerRoundMs;
   const estimatedRounds = Math.ceil(
-    (healthyMarginMs / calibrationDecision.directPerRoundMs) * safetyFactor,
+    (healthyMarginMs / directRateLowerBoundMs) * safetyFactor,
   );
   const representativeRounds = Math.max(
     calibrationRounds + 1,
@@ -811,6 +879,7 @@ function representativeRoundsFor(healthyBodyMs, calibrationDecision) {
       representativeRounds,
       maxRepresentativeRounds,
       safetyFactor,
+      directRateLowerBoundMs,
       directPerRoundMs: calibrationDecision.directPerRoundMs,
     });
   }
@@ -963,7 +1032,51 @@ function selfTest() {
     throw new Error("G80 self-test accepted more than one direct timing marker");
   }
   validateDirectTiming(validTiming);
-  deriveAllowance(validTiming);
+  const validAllowance = deriveAllowance(validTiming);
+  if (
+    validAllowance.directRateLowerBoundMs !== 10 ||
+    validAllowance.directRateMedianMs !== 10 ||
+    validAllowance.allowanceMs !== 1 ||
+    validAllowance.crossSizeRateBounds.lowerMs !== 5 ||
+    validAllowance.crossSizeRateBounds.upperMs !== 20 ||
+    validAllowance.equalSizeResidualBoundMs !== equalSizeResidualBoundMs
+  ) {
+    throw new Error("G80 self-test did not retain the predeclared direct-rate/residual bounds");
+  }
+  const timingWithRates = (rates) => ({
+    ...validTiming,
+    chunks: validTiming.chunks.map((chunk, index) => ({
+      ...chunk,
+      durationMs: chunk.rounds * rates[index],
+    })),
+  });
+  const expectAllowanceRejection = (name, timing, expectedReason) => {
+    try {
+      deriveAllowance(timing);
+    } catch (error) {
+      if (
+        error?.outcome === "CALIBRATION_INCONCLUSIVE" &&
+        error?.details?.reason === expectedReason
+      ) return;
+      throw new Error("G80 self-test rejected " + name + " for the wrong reason: " + String(error));
+    }
+    throw new Error("G80 self-test accepted " + name);
+  };
+  expectAllowanceRejection(
+    "low cross-size rate mutant",
+    timingWithRates([4, 10, 11]),
+    "a direct per-round rate escaped the predeclared two-sided cross-size bounds",
+  );
+  expectAllowanceRejection(
+    "high cross-size rate mutant",
+    timingWithRates([10, 25, 11]),
+    "a direct per-round rate escaped the predeclared two-sided cross-size bounds",
+  );
+  expectAllowanceRejection(
+    "equal-size residual mutant",
+    timingWithRates([8, 10, 19]),
+    "the equal-size residual escaped the predeclared same-unit bound",
+  );
   const invalidTimingCases = [
     ["mocked/frozen clock", { clock: "Date.now" }],
     ["zero duration", { chunks: validTiming.chunks.map((chunk, index) => index === 0 ? { ...chunk, durationMs: 0 } : chunk) }],
@@ -1024,9 +1137,9 @@ function selfTest() {
     }
     if (!rejected) throw new Error("G80 self-test accepted an invalid timeout receipt: " + name);
   }
-  let inconclusive = false;
+  let unitMismatchMutant = false;
   try {
-    decideCalibration(
+    const unitMismatchDecision = decideCalibration(
       { bodyDurationMs: 100, label: "healthy" },
       {
         label: "calibration",
@@ -1034,16 +1147,44 @@ function selfTest() {
         targetCount: 1,
         directTimingError: null,
         directTiming: validTiming,
-        bodyDurationMs: 100,
+        // The whole-test interval is a sub-allowance attribution in this fixture;
+        // it must not be compared to the positive ms/round allowance.
+        bodyDurationMs: 100.5,
+      },
+    );
+    unitMismatchMutant =
+      unitMismatchDecision.signedDifferenceMs === 0.5 &&
+      unitMismatchDecision.directRateLowerBoundMs === 10 &&
+      unitMismatchDecision.decisionPath.wholeTestDifference === "attribution-only";
+  } catch (error) {
+    throw new Error("G80 unit-mismatch mutant was incorrectly rejected: " + String(error));
+  }
+  if (!unitMismatchMutant) throw new Error("G80 self-test did not prove whole-test attribution is non-authoritative");
+  let inconclusiveDirectSignal = false;
+  try {
+    decideCalibration(
+      { bodyDurationMs: 100, label: "healthy" },
+      {
+        label: "calibration-direct-signal-too-small",
+        reportError: null,
+        targetCount: 1,
+        directTimingError: null,
+        directTiming: timingWithRates([0.25, 0.25, 0.2625]),
+        bodyDurationMs: 200,
       },
     );
   } catch (error) {
-    inconclusive = error?.outcome === "CALIBRATION_INCONCLUSIVE";
+    inconclusiveDirectSignal =
+      error?.outcome === "CALIBRATION_INCONCLUSIVE" &&
+      error?.details?.reason === "the direct per-round lower bound did not dominate the predeclared per-round allowance";
   }
-  if (!inconclusive) throw new Error("G80 self-test did not exercise CALIBRATION_INCONCLUSIVE");
+  if (!inconclusiveDirectSignal) throw new Error("G80 self-test did not reject an inconclusive direct signal");
   let rangeExceeded = false;
   try {
-    representativeRoundsFor(9_999, { directPerRoundMs: 0.0001 });
+    representativeRoundsFor(9_999, {
+      directPerRoundMs: 0.0001,
+      directRateLowerBoundMs: 0.0001,
+    });
   } catch (error) {
     rangeExceeded = error?.outcome === "REPRESENTATIVE_RANGE_EXCEEDED";
   }
@@ -1061,8 +1202,18 @@ function selfTest() {
     calibrationRounds,
     g69OperationsPerRound,
     safetyFactor,
+    crossSizeRateLowerBoundRatio,
+    crossSizeRateUpperBoundRatio,
+    equalSizeResidualBoundMs,
     structuredTimeout,
-    selfTest: "vitest-body-clock-and-g69-path-valid",
+    selfTest: {
+      directTiming: "vitest-body-clock-and-g69-path-valid",
+      unitMismatchMutant: "red-by-avoiding-whole-test-vs-per-round-comparison",
+      inconclusiveDirectSignal: "red",
+      crossSizeRateLowerBoundMutant: "red",
+      crossSizeRateUpperBoundMutant: "red",
+      equalSizeResidualMutant: "red",
+    },
   }) + "\n");
 }
 
@@ -1145,10 +1296,17 @@ function main() {
       calibrationRounds,
       calibrationBodyMs: calibration.bodyDurationMs,
       signedDifferenceMs: calibrationDecision.signedDifferenceMs,
-      directPerRoundMs: Number(calibrationDecision.directPerRoundMs.toFixed(4)),
-      predictedAddedWorkMs: Number(calibrationDecision.predictedAddedWorkMs.toFixed(2)),
-      predictionRatio: Number(calibrationDecision.predictionRatio.toFixed(4)),
-      scalingRatio: Number(calibrationDecision.scalingRatio.toFixed(4)),
+      directPerRoundMs: calibrationDecision.directPerRoundMs,
+      directRateLowerBoundMs: calibrationDecision.directRateLowerBoundMs,
+      directRateMedianMs: calibrationDecision.directRateMedianMs,
+      predictedAddedWorkMs: calibrationDecision.predictedAddedWorkMs,
+      wholeTestAttributionRatio: calibrationDecision.wholeTestAttributionRatio,
+      directSignalDominatesAllowance: calibrationDecision.directSignalDominatesAllowance,
+      predictionRatio: calibrationDecision.predictionRatio,
+      scalingRatio: calibrationDecision.scalingRatio,
+      crossSizeRateBounds: calibrationDecision.allowance.crossSizeRateBounds,
+      equalSizeResidualBoundMs: calibrationDecision.allowance.equalSizeResidualBoundMs,
+      decisionPath: calibrationDecision.decisionPath,
       allowance: calibrationDecision.allowance,
       directTiming: calibrationDecision.timing,
       representativeRounds,
