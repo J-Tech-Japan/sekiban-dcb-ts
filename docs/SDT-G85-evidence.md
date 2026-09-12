@@ -84,7 +84,7 @@ unchanged. The prior failure receipt remains historical. No Full CI
 workflow-dispatch is performed before this repair is merged; after merge,
 exactly one post-repair backstop dispatch is required by AC5.
 
-## Verification and pending hosted receipts
+## Verification and hosted PR-tier receipt
 
 The following focused checks passed at the implementation checkpoint:
 
@@ -95,8 +95,33 @@ node scripts/ci-local.mjs --self-test                    PASS
 git diff --check                                          PASS
 ```
 
-The ready-for-review PR, its exact-head pull-request CI result and its
-worker-completion receipt will be appended after publication. The one
-post-repair Full CI backstop dispatch is intentionally pending until the PR is
-merged; run 34661042762 will not be rerun and no pre-merge Full CI dispatch is
-claimed here.
+The ready-for-review PR is [#172](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/172),
+based on `main` at `bbfb6b6fcc20de6cbc92fecc12dce0cd98b8ec2e`, with final
+source head `dc40f51521ada428bc392c54d008369ac21ef272`. The branch is
+`claude/sdt-g85-ci-local-cleanup-w255`; the base is an ancestor of the head.
+The PR body retains `Closes #171`.
+
+The exact-head pull-request workflow
+[34671000923](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923)
+completed successfully at `dc40f51521ada428bc392c54d008369ac21ef272`:
+
+| Job | Receipt | Result |
+| --- | --- | --- |
+| `ci-foundation` | [103492270830](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923/job/103492270830) | success |
+| `ci-pr-cheap` | [103492270915](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923/job/103492270915) | success |
+| `verify` | [103493926406](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923/job/103493926406) | success |
+
+The first push's superseded workflow [34670911418](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34670911418)
+is historical; the terminal evidence above is the second push's exact-head
+workflow. The issue claim was applied before implementation, and the
+canonical issue-to-PR completion was recorded immediately after PR creation
+with outcome `pr-created` for PR #172. The completion response reported
+`proceed=true` and `applied=true`; its host-linkage warning is retained as a
+host-owned follow-up rather than represented as implementation evidence.
+
+No Full CI workflow-dispatch was performed before merge, and the historical
+failed backstop [34661042762](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34661042762)
+was not rerun. AC5 therefore remains explicitly pending the owner-controlled
+merge followed by exactly one post-repair Full CI backstop dispatch. That
+dispatch must include Cosmos and publish every lane's result; it is not
+claimed by this pre-merge implementation receipt.
