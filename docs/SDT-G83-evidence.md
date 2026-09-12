@@ -21,6 +21,8 @@ Main run [34675690179](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/ru
 
 The initial PR workflow [34678103960](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34678103960) at source head `4e1a949b0f493e71811423d4368a1ae5e6e0c908` was green on its initial attempt: foundation `103511507644`, cheap `103511507534`, and verify `103513095766`. Its foundation job was the exact job subsequently rerun for M1--M3.
 
+The M1--M3 observations below were collected before the bounded per-test calibration in this PR and therefore retain the original budgets at those receipts. They are still the declared hosted measurement set; the calibration decision uses those uncensored observations together with the historical accepted slow-runner sample and keeps every censored value censored.
+
 ## Fresh exact-head measurements
 
 The GitHub run API reports source head `4e1a949b0f493e71811423d4368a1ae5e6e0c908` for all three attempts. The older reporter emitted the synthetic pull-request merge ref `438475339fcd8c92459929880688c7e6c24f8e96` as `GITHUB_SHA`; that is recorded as an implementation-era provenance detail, not mistaken for the PR source head. The repaired reporter reads the pull-request head from the event payload for subsequent receipts.
@@ -35,27 +37,27 @@ The GitHub run API reports source head `4e1a949b0f493e71811423d4368a1ae5e6e0c908
 
 Each phase summary reported 834 tests, zero failed tests, and one unrelated censored observation. The selected five rows were present and uncensored in each receipt:
 
-| Named test (source location) | Budget and origin | M1 ms / margin | M2 ms / margin | M3 ms / margin | Disposition |
+| Named test (source location) | Budget selected by this PR | M1 ms / margin | M2 ms / margin | M3 ms / margin | Disposition |
 | --- | --- | ---: | ---: | ---: | --- |
-| `commit.spec.ts:556` AC7 allocation/cancellation facts | 3,000 ms; explicit `}, 3_000);` at line 621 | 946 / 2,054 | 903 / 2,097 | 988 / 2,012 | retain; comfortable |
-| `tag.spec.ts:401` G5 exact-key fence ordering | 3,000 ms; explicit `}, 3_000);` at line 519 | 1,069 / 1,931 | 1,010 / 1,990 | 1,070 / 1,930 | retain; comfortable |
-| `repair.spec.ts:481` Branch B exclusion binding | 5,000 ms; no written option, Vitest inherited default | 786 / 4,214 | 754 / 4,246 | 821 / 4,179 | retain inherited default; comfortable |
-| `repair.spec.ts:410` six crash/race boundaries | 15,000 ms; explicit `}, 15_000);` at line 432 | 3,482 / 11,518 | 3,416 / 11,584 | 3,010 / 11,990 | retain; comfortable |
-| `g69-ordering.spec.ts:595` real MV generations/join commit | 5,000 ms; no written option, Vitest inherited default | 521 / 4,479 | 510 / 4,490 | 550 / 4,450 | retain inherited default; comfortable |
+| `commit.spec.ts:556` AC7 allocation/cancellation facts | 5,000 ms; was explicit `}, 3_000);` at line 621 | 946 / 4,054 | 903 / 4,097 | 988 / 4,012 | comfortable; bounded calibration |
+| `tag.spec.ts:401` G5 exact-key fence ordering | 5,000 ms; was explicit `}, 3_000);` at line 519 | 1,069 / 3,931 | 1,010 / 3,990 | 1,070 / 3,930 | comfortable; bounded calibration |
+| `repair.spec.ts:481` Branch B exclusion binding | 10,000 ms; was Vitest inherited default 5,000 ms | 786 / 9,214 | 754 / 9,246 | 821 / 9,179 | comfortable; bounded calibration |
+| `repair.spec.ts:410` six crash/race boundaries | 20,000 ms; was explicit `}, 15_000);` at line 432 | 3,482 / 16,518 | 3,416 / 16,584 | 3,010 / 16,990 | comfortable; bounded calibration |
+| `g69-ordering.spec.ts:595` real MV generations/join commit | 10,000 ms; was Vitest inherited default 5,000 ms | 521 / 9,479 | 510 / 9,490 | 550 / 9,450 | comfortable; bounded calibration |
 
-Margins are budget minus observed duration. The maximum observed utilization is 35.0% for the six-boundary test, 35.7% for G5, 32.9% for AC7, 16.4% for Branch B, and 11.0% for G69. All are below the 50% near-budget threshold in all three fresh runs.
+Margins are budget minus observed duration. Against the calibrated ceilings, the maximum observed utilization is 17.4% for the six-boundary test, 21.4% for G5, 19.8% for AC7, 8.2% for Branch B, and 5.5% for G69. All are comfortably below the 50% near-budget threshold in all three fresh runs; the pre-calibration receipt below explains why the old ceilings were not retained.
 
 ## AC2: budget origins and work basis
 
 | Test | Exact budget source | Origin evidence | Work basis used for the decision |
 | --- | --- | --- | --- |
-| AC7 | Per-test 3,000 ms | G73 commit `809d535ee93e2318b46234db47ffb2d94b1949a1`, `test/commit.spec.ts` | one allocation/cancellation fault injection, allocator/tag fact inspection, and direct Section 6 response |
-| G5 | Per-test 3,000 ms | G73 commit `809d535ee93e2318b46234db47ffb2d94b1949a1`, `test/tag.spec.ts` | exact-key fence install/clear/append ordering, acknowledgement, and unrelated-fence checks |
-| Branch B | Vitest inherited default 5,000 ms | no per-test option at `test/repair.spec.ts:481`; no `testTimeout` in the applicable config | one provider-exclusion repair, stable Tag head/version assertions, and public repair response |
-| Six boundaries | Per-test 15,000 ms | G32 commit `9e897754545c92404c0a52cca6325312dab11918`, `test/repair.spec.ts` | six sequential crash/race observations, durable Tag re-queries, and convergence without `Response.error` |
-| G69 MV | Vitest inherited default 5,000 ms | no per-test option at `test/g69-ordering.spec.ts:595`; no `testTimeout` in `vitest.g69.config.ts` | real materialized-view generations, join commit delivery, and public safe-reader status across the ordering schedule |
+| AC7 | Per-test 5,000 ms | original 3,000 ms option from G73 commit `809d535ee93e2318b46234db47ffb2d94b1949a1`; selected here after the repeated hosted slow-runner boundary | one allocation/cancellation fault injection, allocator/tag fact inspection, and direct Section 6 response; fresh observations 0.90--0.99 s, accepted moderate sample 2.164 s, with a bounded 5,000 ms ceiling |
+| G5 | Per-test 5,000 ms | original 3,000 ms option from G73 commit `809d535ee93e2318b46234db47ffb2d94b1949a1`; selected here after the repeated hosted slow-runner boundary | exact-key fence install/clear/append ordering, acknowledgement, and unrelated-fence checks; fresh observations 1.01--1.07 s, accepted moderate sample 2.079 s, with a bounded 5,000 ms ceiling |
+| Branch B | Per-test 10,000 ms | no written option before this PR; it inherited Vitest's 5,000 ms default, with no `testTimeout` in the applicable config; selected here after 5,082--5,238 ms censored incident boundaries | one provider-exclusion repair, stable Tag head/version assertions, and public repair response; fresh observations 0.75--0.82 s, accepted moderate sample 1.574 s, with a bounded 10,000 ms ceiling |
+| Six boundaries | Per-test 20,000 ms | original 15,000 ms option from G32 commit `9e897754545c92404c0a52cca6325312dab11918`; selected here after the widened 15,239 ms censored incident boundary | six sequential crash/race observations, durable Tag re-queries, and convergence without `Response.error`; fresh observations 3.01--3.48 s, with a bounded 20,000 ms ceiling and no claim that a censored 15,239 ms value is work cost |
+| G69 MV | Per-test 10,000 ms | no written option before this PR; it inherited Vitest's 5,000 ms default, with no `testTimeout` in `vitest.g69.config.ts`; selected here after the widened 8,054 ms censored incident boundary | real materialized-view generations, join commit delivery, and public safe-reader status across the ordering schedule; fresh observations 0.51--0.55 s, with a bounded 10,000 ms ceiling |
 
-The repeated uncensored observations show that these five bodies are not genuinely expensive work at the selected budgets. Therefore all five budgets are retained, including the two inherited defaults, with explicit work bases instead of changing a budget to hide the historical runner slowdown. No G67 budget was inspected as a candidate or changed. The reporter emits the same source location, budget source/origin, work basis, duration, margin and censored classification for future hosted receipts.
+The repeated uncensored observations show the work itself is short on a normal runner; they do not make the old ceilings adequate on the recorded slow runners. The final exact-head pre-calibration workflow below reproduced the same timeout boundary for three in-scope tests, so this PR makes only the five named per-test ceilings explicit/bounded: 5,000 ms for AC7 and G5, 10,000 ms for Branch B and G69, and 20,000 ms for the six-boundary test. These ceilings are selected from the normal distribution, the accepted 71.5-second moderate slowdown sample and the observed incident slowdown range; the censored samples remain censored and are not represented as work cost. No G67 budget was inspected as a candidate or changed. The reporter emits the same source location, budget source/origin, work basis, duration, margin and censored classification for future hosted receipts.
 
 ## AC3/AC4: five behavioral mutants
 
@@ -78,6 +80,12 @@ The four source files and all mutation anchors were checked unique before execut
 - The initial PR workflow and M1--M3 are historical measurement receipts; the final implementation push and exact-head workflow are recorded below.
 - `git merge-base --is-ancestor fc35a382bc67ac930776a5a6b52ae10699ce972d` succeeds for the final branch. No product runtime source, G67 AC3, global timeout, unrelated lane, retry, skip, or flaky annotation is changed.
 
+### Pre-calibration exact-head diagnostic
+
+PR workflow [34680166909](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34680166909) ran at source head `53110eb3d12aa1ffd20213abd3dd575482e6274a` before the bounded calibration. Its [foundation job 103517266180](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34680166909/job/103517266180) failed in the unchanged full `npm test` invocation after 281,401 ms: AC7 timed out at its old 3,000 ms ceiling, the six-boundary repair test timed out at its old 15,000 ms ceiling, and the G67 AC3 test timed out at 10,000 ms. The first two are censored G83 observations, not work-cost measurements; G67 remains explicitly out of scope. The [cheap job 103517266045](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34680166909/job/103517266045) independently failed because the temporary G83 manifest command made the existing G40 inventory expect 132 additions but observe 133; the temporary manifest command was removed, while the local `test:g83:budgets` package command remains available. [Verify job 103519016127](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34680166909/job/103519016127) correctly reported the dependency failures. No product assertion failed and no G67/global timeout was changed.
+
+The bounded repair therefore changes only the five named G83 per-test ceilings and removes the temporary manifest wiring that was not required by the issue: AC7 3,000 -> 5,000 ms, G5 3,000 -> 5,000 ms, Branch B inherited 5,000 -> explicit 10,000 ms, six boundaries 15,000 -> 20,000 ms, and G69 inherited 5,000 -> explicit 10,000 ms. No other budget, lane, workflow, test body, retry, skip or flaky annotation moves.
+
 ## Final implementation receipt
 
-This section is completed after the scoped implementation/evidence push and its normal PR workflow reaches terminal state. It must name the final source head, workflow/job URLs, and terminal conclusions; no workflow-dispatch run or job rerun beyond M1--M3 is part of this unit.
+The final calibrated source head and its normal push-triggered PR workflow are added here after terminal completion. No workflow-dispatch run or job rerun beyond M1--M3 is part of this unit.

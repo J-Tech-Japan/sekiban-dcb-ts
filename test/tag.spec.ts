@@ -516,7 +516,7 @@ describe("TagDurableObject", () => {
       epoch: 1,
     }))).toBe("fence_overlap_blocked");
     expect((await post(scope, "/fence/install", { reason: "missing-epoch", attemptId: "x" })).status).toBe(400);
-  }, 3_000);
+  }, 5_000);
 
   it("G5: serializes fence install/clear races with normal operations and preserves every unrelated fence", async () => {
     const scope = newScope();

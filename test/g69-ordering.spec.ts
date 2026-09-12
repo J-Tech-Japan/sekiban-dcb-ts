@@ -749,7 +749,7 @@ describe("SDT-G69 allocator-to-Tag-to-D1 ordering proof", () => {
       expect.objectContaining({ name: "late-lower-control", classification: "late-lower-suid", generation: 0, quarantine: true, safeStatus: 503, unsafeStatus: 200 }),
     ]));
     console.log("G69_REAL_GENERATION_PUBLIC_PROOF", JSON.stringify(cases));
-  });
+  }, 10_000);
 
   it("returns core admission while the bounded diagnostic receipt is still pending", async () => {
     const database = pipeline();
