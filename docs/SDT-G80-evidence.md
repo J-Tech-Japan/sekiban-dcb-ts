@@ -182,15 +182,121 @@ PR description only; it must not change the runner, reporter, fixture or
 lockfile. Its ordinary exact-head PR CI runs once and does not repeat the three
 observations.
 
-### W268 measurement receipt table (pending first staged proof)
+### W268 measurement receipts — implementation-source head
 
-| observation | source/lockfile head | workflow attempt / job | outcome | full-precision values and cost |
-| --- | --- | --- | --- | --- |
-| 1 | pending ordinary-CI-green implementation head | pending | not collected | predeclared; no value claimed |
-| 2 | same immutable head as observation 1 | pending | not collected | predeclared; no value claimed |
-| 3 | same immutable head as observation 1 | pending | not collected | predeclared; no value claimed |
+The implementation-source head is
+`2c40420a1c3d6c50b04b74a7a45cc43c1b8e19e3`; `package-lock.json` was unchanged
+and its blob is `e611de40b6c7423faebd8325e8ba45f870681d5f`. Ordinary PR CI was
+green before measurement: [workflow 34709546015](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34709546015),
+attempt 1, with foundation `103595650118`, cheap `103595650332`, and verify
+`103597666718` successful. Exactly the following predeclared job-level
+observations were then collected from that successful foundation job. Every
+observation used the same implementation source/lockfile head, Linux, Node
+`v24.20.0`, and installed/receipt Vitest `4.1.10`.
 
-The final W268 section will replace only the pending cells with exact receipts,
-raw full-precision fields, and per-run cost; it will retain this predeclared
-plan, all historical tables above, and the byte-identity comparison between
-measurement and evidence-only heads.
+| observation | workflow attempt / exact foundation job | hosted interval | result and cost |
+| --- | --- | --- | --- |
+| 1 | [34709546015 attempt 2 / 103597812538](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34709546015/job/103597812538) | `2026-09-12T18:09:19Z`–`2026-09-12T18:16:48Z` (`7m29s`) | success; about 8 billable minutes |
+| 2 | [34709546015 attempt 3 / 103599199329](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34709546015/job/103599199329) | `2026-09-12T18:19:19Z`–`2026-09-12T18:27:06Z` (`7m47s`) | success; about 8 billable minutes |
+| 3 | [34709546015 attempt 4 / 103600351190](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34709546015/job/103600351190) | `2026-09-12T18:27:47Z`–`2026-09-12T18:35:32Z` (`7m45s`) | success; about 8 billable minutes |
+
+These are all retained results, not replacements or retry-until-green runs;
+the three job-level observations cost about 24 billable minutes in aggregate.
+Their verify jobs were also successful: `103598860958` (attempt 2),
+`103600265116` (attempt 3), and `103601409619` (attempt 4). The reporter's
+`sourceSha` `1625eb96fe730a53238daf033b1f83087d67198c` is the generated
+mutated-source digest, not the repository commit SHA.
+
+#### Raw direct timing and decisions
+
+Observation 1 healthy was process `0`, receipt `passed`, body `2991` ms,
+process elapsed `9338` ms, with expected direct-marker absence. Calibration was
+process `0`, receipt `passed`, body `3938` ms, process elapsed `10266` ms,
+receipt/installed version `4.1.10`/`4.1.10`:
+
+```text
+clock=performance.now; clockValidation={probeQuery:"D1 SELECT 1",samples:3,queriesPerSample:32,minAdvanceMs:29,maxAdvanceMs:31,monotonic:true}; initializationMs=2; initializationSeparated=true
+chunks=[{rounds:4,operations:8,deliveryCount:8,durationMs:89,waitersDrained:true},{rounds:8,operations:16,deliveryCount:16,durationMs:169,waitersDrained:true},{rounds:12,operations:24,deliveryCount:24,durationMs:233,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:78,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:77,waitersDrained:true}]; totalRounds=32; operationsPerRound=2; deliveryCount=64; waitersDrained=true; skippedDeliveries=0; omittedWaiterDrain=false; wrongCount=false; timerOnly=false; clockAdvancesDuringRealWork=true; minObservedAdvanceMs=77
+```
+
+Its raw summary was `signedDifferenceMs=947` (whole-test attribution only),
+`directPerRoundMs=19.25`, `directRateLowerBoundMs=19.25`,
+`directRateMedianMs=19.5`, `predictedAddedWorkMs=616`,
+`wholeTestAttributionRatio=1.5373376623376624`,
+`directSignalDominatesAllowance=true`, `predictionRatio=1.5373376623376624`,
+`scalingRatio=1.155844155844156`,
+`crossSizeRateBounds={referenceRateMs:19.5,lowerRatio:0.5,upperRatio:2,lowerMs:9.75,upperMs:39,observedMinMs:19.25,observedMaxMs:22.25}`, and
+`equalSizeResidualBoundMs=10`. The raw allowance was
+`costsPerRoundMs=[22.25,21.125,19.416666666666668,19.5,19.25]`,
+`pairedResidualsMs=[2.75,3,0.25]`, residual range `0.25..3`,
+`madMs=0.25`, `timerResolutionFloorMs=1`, `allowanceMadFactor=3`,
+`allowanceMs=3.5`. The exact named target selected `547` representative
+rounds from the conservative direct lower bound, then the exact timeout proof
+was `regressionBodyMs=10073`, `regressionOverBudgetMs=73`, process `1`, signal
+`null`, target count `1`, receipt-target count `1`, first line
+`Test timed out in 10000ms.`; final result was
+`healthy-green-g69-path-timeout-red`.
+
+Observation 2 healthy was process `0`, receipt `passed`, body `3396` ms,
+process elapsed `9727` ms. Calibration was process `0`, receipt `passed`, body
+`4096` ms, process elapsed `10505` ms, versions `4.1.10`/`4.1.10`:
+
+```text
+clock=performance.now; clockValidation={probeQuery:"D1 SELECT 1",samples:3,queriesPerSample:32,minAdvanceMs:33,maxAdvanceMs:36,monotonic:true}; initializationMs=2; initializationSeparated=true
+chunks=[{rounds:4,operations:8,deliveryCount:8,durationMs:99,waitersDrained:true},{rounds:8,operations:16,deliveryCount:16,durationMs:183,waitersDrained:true},{rounds:12,operations:24,deliveryCount:24,durationMs:246,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:84,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:77,waitersDrained:true}]; totalRounds=32; operationsPerRound=2; deliveryCount=64; waitersDrained=true; skippedDeliveries=0; omittedWaiterDrain=false; wrongCount=false; timerOnly=false; clockAdvancesDuringRealWork=true; minObservedAdvanceMs=77
+```
+
+Its raw summary was `healthyMarginMs=6604`, `signedDifferenceMs=700`
+(attribution only), `directPerRoundMs=19.25`, `directRateLowerBoundMs=19.25`,
+`directRateMedianMs=21`, `predictedAddedWorkMs=616`,
+`wholeTestAttributionRatio=1.1363636363636365`,
+`directSignalDominatesAllowance=true`, `predictionRatio=1.1363636363636365`,
+`scalingRatio=1.2857142857142858`,
+`crossSizeRateBounds={referenceRateMs:21,lowerRatio:0.5,upperRatio:2,lowerMs:10.5,upperMs:42,observedMinMs:19.25,observedMaxMs:24.75}`, and
+`equalSizeResidualBoundMs=10`. The raw allowance was
+`costsPerRoundMs=[24.75,22.875,20.5,21,19.25]`,
+`pairedResidualsMs=[3.75,5.5,1.75]`, residual range `1.75..5.5`,
+`madMs=1.75`, `timerResolutionFloorMs=1`, `allowanceMadFactor=3`,
+`allowanceMs=9`. The exact named target selected `515` representative rounds,
+then timed out with `regressionBodyMs=11287`,
+`regressionOverBudgetMs=1287`, process `1`, signal `null`, target count `1`,
+receipt-target count `1`, and first line `Test timed out in 10000ms.`; final
+result was `healthy-green-g69-path-timeout-red`.
+
+Observation 3 healthy was process `0`, receipt `passed`, body `3453` ms,
+process elapsed `9971` ms. Calibration was process `0`, receipt `passed`, body
+`4436` ms, process elapsed `10916` ms, versions `4.1.10`/`4.1.10`:
+
+```text
+clock=performance.now; clockValidation={probeQuery:"D1 SELECT 1",samples:3,queriesPerSample:32,minAdvanceMs:33,maxAdvanceMs:33,monotonic:true}; initializationMs=2; initializationSeparated=true
+chunks=[{rounds:4,operations:8,deliveryCount:8,durationMs:98,waitersDrained:true},{rounds:8,operations:16,deliveryCount:16,durationMs:175,waitersDrained:true},{rounds:12,operations:24,deliveryCount:24,durationMs:242,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:81,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:78,waitersDrained:true}]; totalRounds=32; operationsPerRound=2; deliveryCount=64; waitersDrained=true; skippedDeliveries=0; omittedWaiterDrain=false; wrongCount=false; timerOnly=false; clockAdvancesDuringRealWork=true; minObservedAdvanceMs=78
+```
+
+Its raw summary was `healthyMarginMs=6547`, `signedDifferenceMs=983`
+(attribution only), `directPerRoundMs=19.5`, `directRateLowerBoundMs=19.5`,
+`directRateMedianMs=20.25`, `predictedAddedWorkMs=624`,
+`wholeTestAttributionRatio=1.5753205128205128`,
+`directSignalDominatesAllowance=true`, `predictionRatio=1.5753205128205128`,
+`scalingRatio=1.2564102564102564`,
+`crossSizeRateBounds={referenceRateMs:20.25,lowerRatio:0.5,upperRatio:2,lowerMs:10.125,upperMs:40.5,observedMinMs:19.5,observedMaxMs:24.5}`, and
+`equalSizeResidualBoundMs=10`. The raw allowance was
+`costsPerRoundMs=[24.5,21.875,20.166666666666668,20.25,19.5]`,
+`pairedResidualsMs=[4.25,5,0.75]`, residual range `0.75..5`,
+`madMs=0.75`, `timerResolutionFloorMs=1`, `allowanceMadFactor=3`,
+`allowanceMs=6.5`. The exact named target selected `504` representative rounds,
+then timed out with `regressionBodyMs=10871`,
+`regressionOverBudgetMs=871`, process `1`, signal `null`, target count `1`,
+receipt-target count `1`, and first line `Test timed out in 10000ms.`; final
+result was `healthy-green-g69-path-timeout-red`.
+
+All three calibrations had positive validated clock advancement, separated
+initialization, complete 32-round/64-delivery work, and drained waiters. No
+calibration failed in these fresh observations. Representatives were selected
+only after exact valid named-target passes and were accepted only by the exact
+named timeout. The fail-closed failure paths emit their raw applicable fields,
+`representativeSelection:"not-reached"`, `attempts:[]`, and
+`semanticTimeout:"not-reached"`; the local self-tests cover those paths.
+
+The evidence-only commit may change only this document and the PR description;
+it must not change the runner, reporter, fixture, or lockfile. No fresh
+foundation observation will be repeated on the evidence-only head.
