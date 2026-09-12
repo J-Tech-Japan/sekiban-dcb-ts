@@ -612,7 +612,7 @@ function startServices(manifest, lane, sha, receiptRoot, initialEnv = process.en
   return { env, cleanup, services: [...services], containerProvenance };
 }
 
-function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed, execution, bootstrap, startedServices, containerProvenance, error = null) {
+function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPassed, execution, bootstrap, startedServices, containerProvenance) {
   mkdirSync(root, { recursive: true });
   const nugetIsolation = bootstrap.nugetIsolation ?? null;
   validateContainerProvenance(containerProvenance, startedServices);
@@ -627,7 +627,6 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     exitStatus: status,
     durationMs: Math.max(0, Date.now() - startedAt),
     forcedRed: forcedRedPassed,
-    error,
     cleanup: execution.cleanup ?? null,
     execution,
     bootstrap,
@@ -738,12 +737,12 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
       bootstrap,
       [],
       [],
-      creationError,
     );
-    return result;
+    return { ...result, error: creationError };
   }
   const executionEnv = detached ? { ...process.env, INIT_CWD: executionRoot } : { ...process.env };
   let executionResult = null;
+  let serviceCleanupErrors = [];
   try {
     if (detached) bootstrap = prepareDetachedDependencies(executionRoot, options, manifest, lane);
     if (detached) serviceState = startServices(manifest, lane, sha, receiptRoot, executionEnv);
@@ -771,7 +770,7 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
     } catch (error) {
       cleanupErrors.push(errorMessage(error));
     }
-    execution.serviceCleanupErrors = cleanupErrors;
+    serviceCleanupErrors = cleanupErrors;
     if (detached) {
       execution.cleanup = removeDetachedWorktree(executionRoot, lane.name);
       execution.worktreeRemoved = execution.cleanup.ok;
@@ -787,15 +786,15 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
   };
   let error = executionResult.error;
   let status = executionResult.status;
-  if (execution.serviceCleanupErrors.length > 0) {
+  if (serviceCleanupErrors.length > 0) {
     status = status || 1;
-    error = error ?? `service cleanup failed: ${execution.serviceCleanupErrors.join("; ")}`;
+    error = error ?? `service cleanup failed: ${serviceCleanupErrors.join("; ")}`;
   }
   if (execution.cleanup !== null && !execution.cleanup.ok) {
     status = status || 1;
     error = error ?? `worktree cleanup failed: ${execution.cleanup.failureReason ?? "cleanup state is not clean"}`;
   }
-  return writeReceipt(
+  const result = writeReceipt(
     receiptRoot,
     lane,
     sha,
@@ -807,8 +806,8 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
     bootstrap,
     serviceState.services,
     serviceState.containerProvenance,
-    error,
   );
+  return { ...result, error };
 }
 
 function executeLaneSequence(lanes, executor) {
@@ -819,10 +818,10 @@ function executeLaneSequence(lanes, executor) {
     } catch (error) {
       results.push({
         path: null,
+        error: errorMessage(error),
         receipt: {
           lane: lane.name,
           exitStatus: 1,
-          error: errorMessage(error),
           execution: { cleanup: null },
         },
       });
@@ -832,11 +831,11 @@ function executeLaneSequence(lanes, executor) {
 }
 
 function summarizeLaneResults(results) {
-  return results.map(({ path, receipt }) => ({
+  return results.map(({ path, receipt, error }) => ({
     lane: receipt.lane,
     status: receipt.exitStatus === 0 ? "green" : "failed",
     exitStatus: receipt.exitStatus,
-    error: receipt.error ?? null,
+    error: error ?? receipt.error ?? null,
     cleanup: receipt.cleanup ?? receipt.execution?.cleanup ?? null,
     receipt: path,
   }));
