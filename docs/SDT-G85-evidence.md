@@ -96,8 +96,9 @@ git diff --check                                          PASS
 ```
 
 The ready-for-review PR is [#172](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/172),
-based on `main` at `bbfb6b6fcc20de6cbc92fecc12dce0cd98b8ec2e`, with final
-source head `dc40f51521ada428bc392c54d008369ac21ef272`. The branch is
+based on `main` at `bbfb6b6fcc20de6cbc92fecc12dce0cd98b8ec2e`. The source
+repair head was `dc40f51521ada428bc392c54d008369ac21ef272`; the final evidence
+head is `82856d97e15cbd340a66051fd643304fd14850b4`. The branch is
 `claude/sdt-g85-ci-local-cleanup-w255`; the base is an ancestor of the head.
 The PR body retains `Closes #171`.
 
@@ -118,6 +119,24 @@ canonical issue-to-PR completion was recorded immediately after PR creation
 with outcome `pr-created` for PR #172. The completion response reported
 `proceed=true` and `applied=true`; its host-linkage warning is retained as a
 host-owned follow-up rather than represented as implementation evidence.
+
+The final evidence-head pull-request workflow
+[34671677008](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008)
+completed successfully at `82856d97e15cbd340a66051fd643304fd14850b4`:
+
+| Job | Receipt | Result |
+| --- | --- | --- |
+| `ci-pr-cheap` | [103494066461](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008/job/103494066461) | success |
+| `ci-foundation` | [103494066576](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008/job/103494066576) | success |
+| `verify` | [103495903455](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008/job/103495903455) | success |
+
+The preceding exact source-head workflow
+[34671000923](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923)
+at `dc40f51521ada428bc392c54d008369ac21ef272` was also terminal success and
+is retained as historical source-head evidence. The initial superseded
+[34670911418](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34670911418)
+was cancelled; it is not used as a green receipt. The final head differs from
+the source repair only by this durable evidence and PR-description update.
 
 No Full CI workflow-dispatch was performed before merge, and the historical
 failed backstop [34661042762](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34661042762)
