@@ -80,7 +80,6 @@ const mutations = Object.freeze([
     to: `    const safe = await publicGenerationRead(serviceId, mv, "unsafe");`,
     expectedValues: ["503", "200"],
     semanticBoundary: "a quarantined late-lower case must remain safe 503 rather than unsafe 200",
-    configFile: "vitest.g69.config.ts",
   },
 ]);
 

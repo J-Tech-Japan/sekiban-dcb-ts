@@ -99,3 +99,58 @@ The calibrated implementation source head is `6947b29d33377d308c2f179e3a53113428
 The final foundation timing summary reported `durationMs: 164072`, `testCount: 834`, `failedCount: 0`, and `censoredCount: 1`; the one censored observation was unrelated to the five selected G83 tests. The selected final-head observations were all uncensored and passed: AC7 `test/commit.spec.ts:556` 1,276 ms under 5,000 ms; G5 `test/tag.spec.ts:401` 1,157 ms under 5,000 ms; Branch B `test/repair.spec.ts:481` 1,041 ms under 10,000 ms; six crash/race boundaries `test/repair.spec.ts:410` 3,499 ms under 20,000 ms; and G69 real MV generations/join commit `test/g69-ordering.spec.ts:595` 668 ms under 10,000 ms. The five budgets remain the bounded, evidence-backed choices described above; G67 AC3 remains unchanged and out of scope.
 
 The same exact head passed the release preflight [34681164050](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164050), including [job 103519941438](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164050/job/103519941438). The preflight completed successfully through the package, consumer, release-check and credential-free dry-run steps. These receipts are terminal; no additional workflow dispatch or job rerun is part of this unit.
+
+## W261 review repair: regression visibility and G69 configuration
+
+The following matrix makes the regression each ceiling can still expose
+explicit. A named test that exceeds the listed ceiling fails; passing one
+normal-speed sample is not treated as proof that a later slowdown is harmless.
+
+| Named test and semantic workload | Ceiling | Regression remains visible when |
+| --- | ---: | --- |
+| `test/commit.spec.ts:556` AC7 allocation/cancellation faults, allocator/tag fact inspection and direct response | 5,000 ms | the same allocation/cancellation recovery workload takes more than 5,000 ms, or its allocator/tag facts or public response regress; the timeout remains a failure rather than being hidden by the enlarged room |
+| `test/tag.spec.ts:401` G5 exact-key fence installation, clearing, append ordering and acknowledgement | 5,000 ms | the exact-key fence workload takes more than 5,000 ms, or its ordering/response assertions regress; a different key or a missing fence cannot turn the named proof green |
+| `test/repair.spec.ts:481` Branch B provider-exclusion binding and stable Tag head/version response | 10,000 ms | Branch B recovery and its exclusion binding takes more than 10,000 ms, or the public response/head assertions fail; the explicit room does not remove the semantic guard |
+| `test/repair.spec.ts:410` six sequential crash/race boundaries, durable Tag re-queries and convergence without `Response.error` | 20,000 ms | the complete six-boundary workload takes more than 20,000 ms, or any re-observation/convergence assertion fails; this is the smallest defensible ceiling supported by the recorded tail analysis below |
+| `test/g69-ordering.spec.ts:595` real materialized-view generations, join commit delivery and public safe-reader ordering | 10,000 ms | the real-MV generation/join schedule and safe-reader operation takes more than 10,000 ms, or the safe/unsafe status assertion regresses; the same per-test option applies in both Vitest configurations |
+
+### Six-boundary tail reconciliation
+
+The uncensored fresh distribution for `test/repair.spec.ts:410` is 3,010--3,499
+ms: M1 3,482 ms, M2 3,416 ms, M3 3,010 ms, and the calibrated source-head
+receipt 3,499 ms. Two separate incident boundaries must remain distinct:
+
+| Receipt | Source head | npm-test phase | Boundary observation | Classification |
+| --- | --- | ---: | ---: | --- |
+| Main run [34675690179](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34675690179), foundation `103509892567` | `fc35a382bc67ac930776a5a6b52ae10699ce972d` | 205.6 s | 15,239 ms against the former 15,000 ms ceiling | censored; budget-plus-cleanup/timeout boundary, not work cost |
+| Pre-calibration PR run [34680166909](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34680166909), foundation `103517266180` | `53110eb3d12aa1ffd20213abd3dd575482e6274a` | 281.4 s | 15,063 ms against the former 15,000 ms ceiling | censored; budget-plus-cleanup/timeout boundary, not work cost |
+
+Neither 15,239 nor 15,063 ms is presented as the six-boundary work cost. They
+are censored observations from different runs with different phase totals.
+They do, however, show a worse-than-linear tail relative to the fresh rows:
+the fresh test row is about 3.0--3.5 s while the censored boundary is about
+15.1--15.2 s, roughly 4.3--5.1 times the fresh row, whereas the full npm-test
+phase is only about 1.3--1.8 times the 156--158 s fresh measurement phase.
+Because the boundary is censored, this comparison is a sensitivity signal,
+not a claim that the test consumed 15 seconds of useful work. The six
+sequential awaits, repeated durable Tag observations, and cleanup/coordination
+around the crash/race cases amplify whole-run contention and explain why a
+phase-wide slowdown is not a linear per-test cost multiplier.
+
+20,000 ms is the smallest defensible ceiling selected here: retaining 15,000
+ms would reproduce both recorded censored failures, while 20,000 ms is the
+first stated round-number room above the highest 15,239 ms boundary with
+roughly 31% additional boundary room. It still fails a materially slower
+complete six-boundary workload above 20 seconds and therefore does not turn
+the test into an unbounded allowance. No ceiling is raised beyond the prior
+calibrated choice, and no censored value is recast as work cost.
+
+### G69 option provenance
+
+The focused G69 control and semantic mutant now both run under
+`vitest.config.ts`, the configuration used by `ci-foundation` for the hosted
+observations. The G69 lane also reads the same `test/g69-ordering.spec.ts`
+file under `vitest.g69.config.ts`; therefore the per-test `10,000 ms` option
+written in the spec governs both configurations. The option is not in either
+config file, and neither config was edited. The structured `503`-versus-`200`
+validator and its failure-class controls are unchanged.
