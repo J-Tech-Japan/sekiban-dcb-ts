@@ -9,11 +9,13 @@ PR: [#174](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/174)
 This repair continues the existing dedicated branch
 `claude/sdt-g80-implementation-w264` from base
 `e0988822b91ad664cfddfdb9125d0251faa5fb37`. The closed historical PR #163 and
-its branch are not reused. The change is limited to the G80 mutation runner,
-its structured Vitest receipt reporter, a sanitized historical receipt fixture,
-and this evidence document. Product source, the checked-in G67 AC3 body and
-budget, G73 guard semantics, G71, G74, G77, G78, workflows, and unrelated lanes
-remain out of scope.
+its branch are not reused. The G80 change is limited to the mutation runner
+`scripts/g73-g67-budget-mutation-runner.mjs`, the G80 receipt reporter
+`scripts/g80-vitest-receipt-reporter.mjs`, a sanitized historical receipt
+fixture, and this evidence document. Product source, the checked-in G67 AC3
+body and budget, G73 guard semantics, G71, G74, G77, G78, workflows, and
+unrelated lanes remain out of scope. The separate G79 hosted reporter is not a
+G80 component and is not part of the G80 evidence claim.
 
 Whole-test `signedDifferenceMs` is retained only as attribution data. It is not
 compared with a per-round allowance and cannot select representative work.
@@ -170,7 +172,7 @@ workflow, timeout, retry, skip, or unrelated lane was changed.
 
 ## W268 staged proof plan — predeclared before fresh measurements
 
-The first W268 push contains the runner/reporter/fixture implementation and
+The first W268 push contains the G80 runner/receipt-reporter/fixture implementation and
 this predeclared skeleton. The implementation-source and lockfile head for
 measurement will be recorded after that push; no W268 measurement value is
 claimed before the ordinary exact-head PR checks for that head are green.
@@ -307,18 +309,21 @@ foundation observation will be repeated on the evidence-only head.
 ## W270 — durable line-safe receipts and hosted AC6 observations
 
 W270 repaired the durable-output gap identified by W269. The implementation
-source head is `af7baff737b89a781850d8198881b7035a5b52b8`, on branch
+source head used for the observations is
+`af7baff737b89a781850d8198881b7035a5b52b8`, on branch
 `claude/sdt-g80-implementation-w264`, based on
-`e0988822b91ad664cfddfdb9125d0251faa5fb37`. The source change is confined to
-`scripts/g73-g67-budget-mutation-runner.mjs` and
-`scripts/g79-vitest-hosted-reporter.mjs`; no workflow, package-lock, product,
-G67, G73, G79, or unrelated lane file changed. The runner emits schema
-`sdt-g80-calibration-record-v2` stage and summary lines bounded at 12,000 UTF-8
-bytes. Each line contains workflow/run attempt, job, source/checkout identity,
-stable observation/stage identity, canonical record digest, and the compact
-AC6 fields. A summary references every stage and carries a reconstruction
-digest. The hosted reporter emits bounded compact timing lines and does not
-duplicate captured output or report objects.
+`e0988822b91ad664cfddfdb9125d0251faa5fb37`. The G80-relevant source change is
+the mutation runner `scripts/g73-g67-budget-mutation-runner.mjs`. The separate
+G79 hosted reporter is outside G80, has no import or reference from the G80
+subprocess path, and is restored to its base blob by W272. G80 invokes the
+command-line JSON/verbose and G80 receipt reporters, which replace configured
+reporters, so restoring the unrelated G79 reporter does not invalidate W270
+observations. The G80 runner emits schema `sdt-g80-calibration-record-v2`
+stage and summary lines bounded at 12,000 UTF-8 bytes. Each line contains
+workflow/run attempt, job, source/checkout identity, stable observation/stage
+identity, canonical record digest, and the compact AC6 fields. A summary
+references every stage and carries a reconstruction digest; captured output
+and duplicated report objects are excluded.
 
 The local self-test passed for bounded success/failure reconstruction, digest
 tampering, missing stage, unrelated output, and overlong-line rejection. The
@@ -481,3 +486,26 @@ that evidence head are recorded in the W270 handoff and PR body after push;
 the implementation source head and every measured immutable checkout identity
 remain as stated above. No fresh foundation observation is repeated on the
 evidence-only head.
+
+## W272 — G79 exclusion and restoration
+
+W272 restores `scripts/g79-vitest-hosted-reporter.mjs` exactly to the base
+blob `a4ea6d4e3f13f72e67dd2d79d2591cdce435b225`. That reporter is outside the
+G80 source scope and is not claimed as a G80 change. The G80 runner has no
+import or reference to it; its command-line JSON/verbose and G80 receipt
+reporters replace configured reporters for the measured invocations. The W270
+O1–O3 records therefore remain valid without measurement or job reruns.
+
+The measured G80 components remain byte-identical to their W270 values:
+
+| measured G80 path | blob |
+| --- | --- |
+| `scripts/g73-g67-budget-mutation-runner.mjs` | `ceb91239accd843c9d6a7ba0611020a46c8ee892` |
+| `scripts/g80-vitest-receipt-reporter.mjs` | `1cad69dd34de905f8135f49fb81bcebc0f2be17d` |
+| `scripts/fixtures/g80-w226-stack-trace-error.json` | `afa4dc4667b61963deaea621c44616e46808e4bd` |
+| `package-lock.json` | `e611de40b6c7423faebd8325e8ba45f870681d5f` |
+
+The restored G79 blob and the four measured G80 blobs were checked directly
+against their required base/measurement identities. This is a source/doc
+correction only; no workflow, product code, test, budget, measurement or
+rerun was changed or initiated.

@@ -3,8 +3,6 @@ import { dirname, relative, resolve } from "node:path";
 
 const ENABLED = process.env.SDT_G79_HOSTED_MEASURE === "1";
 const ARTIFACT = resolve(process.cwd(), ".artifacts/sdt-g79-hosted-test-timing.jsonl");
-const CONSOLE_PREFIX = "SDT_G79_HOSTED_TEST_TIMING";
-const MAX_CONSOLE_RECORD_BYTES = 8_000;
 
 function numberOrNull(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -19,44 +17,6 @@ function jsonError(value) {
   } catch {
     return String(value);
   }
-}
-
-function boundedText(value, maxBytes = 512) {
-  if (value === null || value === undefined) return null;
-  const text = String(value);
-  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-  let end = text.length;
-  while (end > 0 && Buffer.byteLength(text.slice(0, end) + "...[truncated]", "utf8") > maxBytes) end -= 1;
-  return text.slice(0, end) + "...[truncated]";
-}
-
-function compactTest(test) {
-  return {
-    testId: boundedText(test?.testId, 256),
-    file: boundedText(test?.file, 256),
-    name: boundedText(test?.name, 512),
-    location: boundedText(test?.location, 256),
-    state: test?.state ?? null,
-    durationMs: numberOrNull(test?.durationMs),
-    budgetMs: numberOrNull(test?.budgetMs),
-    budgetSource: boundedText(test?.budgetSource, 128),
-    budgetOrigin: boundedText(test?.budgetOrigin, 256),
-    budgetBasis: boundedText(test?.budgetBasis, 512),
-    classification: test?.classification ?? null,
-    censored: test?.censored ?? false,
-  };
-}
-
-function emitConsoleRecord(record) {
-  const line = `${CONSOLE_PREFIX} ${JSON.stringify({
-    schema: "sdt-g79-hosted-vitest-console-v2",
-    ...runIdentity(),
-    ...record,
-  })}`;
-  if (Buffer.byteLength(line, "utf8") > MAX_CONSOLE_RECORD_BYTES) {
-    throw new Error(`hosted timing console record exceeds ${MAX_CONSOLE_RECORD_BYTES} bytes`);
-  }
-  console.log(line);
 }
 
 function gitHead() {
@@ -76,13 +36,11 @@ function gitHead() {
 }
 
 function runIdentity() {
-  const immutableHead = gitHead();
   return {
     workflowRunId: process.env.GITHUB_RUN_ID ?? null,
     workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
     job: process.env.GITHUB_JOB ?? null,
-    immutableHead,
-    sha: immutableHead,
+    sha: gitHead(),
     invocation: `${process.env.GITHUB_JOB ?? process.env.npm_lifecycle_event ?? "vitest"}:${process.pid}`,
   };
 }
@@ -294,20 +252,7 @@ export default class G79HostedVitestReporter {
       ...record,
     });
     appendFileSync(ARTIFACT, `${line}\n`);
-    const consoleRecord = record.recordType === "test"
-      ? compactTest(record)
-      : {
-          recordType: record.recordType,
-          reason: boundedText(record.reason, 256),
-          durationMs: numberOrNull(record.durationMs),
-          testCount: record.testCount ?? null,
-          failedCount: record.failedCount ?? null,
-          censoredCount: record.censoredCount ?? null,
-          unhandledErrors: Array.isArray(record.unhandledErrors)
-            ? record.unhandledErrors.slice(0, 8).map((error) => boundedText(error, 512))
-            : [],
-        };
-    emitConsoleRecord(consoleRecord);
+    console.log(`SDT-G79_HOSTED_TEST_TIMING ${line}`);
   }
 
   rowFor(test, stateOverride) {
