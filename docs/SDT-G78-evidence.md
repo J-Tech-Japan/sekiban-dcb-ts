@@ -165,11 +165,30 @@ PR's claim.
 
 ## AC7 process and verification
 
-The issue claim preceded source changes on the dedicated branch. The planned
-PR will target `main` and use `Closes #157`. No Full CI, workflow dispatch,
+The issue claim preceded source changes on the dedicated branch. PR #175
+targets `main` and uses `Closes #157`. The initial implementation head was
+`7933373be77e5bbf2ddf7ca6f78829f6fcc96db5`, based on
+`994a44c3560e617cc82886336132574630d60de2`. No Full CI, workflow dispatch,
 npm publication, release preparation, G74, or G77 work is part of this unit.
 
-Final exact-head CI and review receipts will be appended here after the PR is
-created and the ordinary PR workflow reaches its terminal state. Historical
-receipts, if any, will remain labelled historical rather than being reused as
+The first ordinary PR workflow at the initial head was run
+`34723313704`:
+
+| receipt | result | exact first error |
+| --- | --- | --- |
+| `ci-pr-cheap` job `103632976081` | failed | the G40 allowlist still expected 132 manifest commands while the reviewed G78 manifest contained 133 |
+| `ci-foundation` job `103632976207` | failed | unchanged `test/commit.spec.ts:556` inherited Vitest 5,000 ms timeout; 99 files and 839 tests passed, with one skipped, before the timeout |
+| `verify` job `103634192360` | failed by dependency | it did not add an independent G78 failure |
+
+The same push's automatic release-preflight `34723313753` completed
+successfully. The cheap-lane failure was a bounded G40 inventory consequence
+of the intended foundation-g78 manifest command, so this repair updates only
+the reviewed allowlist counts and digests; it does not alter the G40 guard or
+any test. The foundation timeout is an unchanged baseline failure and is not
+calibrated or masked by G78.
+
+The repair commit records the corrected G40 allowlist and the next ordinary
+PR workflow will be the exact-head verification for that repair. Its terminal
+run identity and result will be appended without reusing the initial receipt.
+Historical receipts remain labelled historical rather than being reused as
 current-head evidence.
