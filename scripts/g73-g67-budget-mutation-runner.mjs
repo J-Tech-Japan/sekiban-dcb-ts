@@ -18,6 +18,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -48,6 +49,10 @@ const allowanceMadFactor = 3;
 const crossSizeRateLowerBoundRatio = 0.5;
 const crossSizeRateUpperBoundRatio = 2;
 const equalSizeResidualBoundMs = 10;
+const durableRecordPrefix = "G80_CALIBRATION_RECORD";
+const durableSummaryPrefix = "G80_CALIBRATION_SUMMARY";
+const maxDurableRecordBytes = 12_000;
+const durableRecordSchema = "sdt-g80-calibration-record-v2";
 const directTimingPlan = Object.freeze({
   chunks: [4, 8, 12, 4, 4],
   maxElapsedMs: 5_000,
@@ -86,8 +91,10 @@ function gitIdentity() {
 }
 
 function receiptMetadata() {
+  const immutableHead = process.env.GITHUB_SHA ?? gitIdentity();
   return {
-    sourceSha: process.env.GITHUB_SHA ?? gitIdentity(),
+    sourceSha: immutableHead,
+    immutableHead,
     checkout: root,
     workflow: process.env.GITHUB_WORKFLOW ?? "local",
     job: process.env.GITHUB_JOB ?? "local",
@@ -139,34 +146,213 @@ function matchingReceiptTests(receipt) {
   );
 }
 
+function boundedText(value, maxBytes = 512) {
+  if (value === null || value === undefined) return null;
+  const text = String(value);
+  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
+  let end = text.length;
+  while (end > 0 && Buffer.byteLength(text.slice(0, end) + "...[truncated]", "utf8") > maxBytes) {
+    end -= 1;
+  }
+  return text.slice(0, end) + "...[truncated]";
+}
+
+function compactError(error) {
+  if (error === null || error === undefined) return null;
+  if (typeof error === "string") return boundedText(error);
+  return {
+    name: boundedText(error.name ?? null, 128),
+    message: boundedText(error.message ?? error, 512),
+    stack: boundedText(error.stack ?? null, 512),
+    code: boundedText(error.code ?? null, 128),
+  };
+}
+
+function compactTarget(target) {
+  if (target === null || target === undefined) return null;
+  return {
+    module: boundedText(target.module ?? target.fileName ?? null, 256),
+    fullName: boundedText(target.fullName ?? null, 512),
+    state: target.state ?? null,
+    status: target.status ?? null,
+    durationMs: Number.isFinite(target.durationMs) ? target.durationMs : null,
+    configuredTimeoutMs: Number.isFinite(target.configuredTimeoutMs)
+      ? target.configuredTimeoutMs
+      : null,
+    retryCount: target.retryCount ?? null,
+    repeatCount: target.repeatCount ?? null,
+    errors: Array.isArray(target.errors)
+      ? target.errors.slice(0, 8).map(compactError)
+      : [],
+  };
+}
+
 function oracleEvidence(result) {
   if (result === null || result === undefined) return null;
   return {
-    label: result.label,
-    processStatus: result.processStatus,
-    signal: result.signal,
-    spawnError: result.spawnError,
-    processElapsedMs: result.processElapsedMs,
-    bodyStatus: result.bodyStatus,
-    bodyDurationMs: result.bodyDurationMs,
-    failureMessages: result.failureMessages,
-    targetCount: result.targetCount,
-    receiptTargetCount: result.receiptTargetCount,
-    reportTarget: result.reportTarget,
-    receiptTarget: result.receiptTarget,
+    label: boundedText(result.label, 256),
+    process: {
+      status: result.processStatus,
+      signal: result.signal,
+      spawnError: boundedText(result.spawnError, 512),
+      elapsedMs: result.processElapsedMs,
+    },
+    body: {
+      status: result.bodyStatus ?? null,
+      durationMs: Number.isFinite(result.bodyDurationMs) ? result.bodyDurationMs : null,
+    },
+    target: {
+      reportCount: result.targetCount,
+      receiptCount: result.receiptTargetCount,
+      report: compactTarget(result.reportTarget),
+      receipt: compactTarget(result.receiptTarget),
+      failedTestCount: Array.isArray(result.receiptTests)
+        ? result.receiptTests.filter((test) => test?.state === "failed").length
+        : null,
+    },
+    versions: {
+      report: boundedText(result.vitestVersion, 64),
+      receipt: boundedText(result.receiptVitestVersion, 64),
+      installed: boundedText(result.installedVitestVersion, 64),
+    },
     receiptFinalStatus: result.receiptFinalStatus,
-    vitestVersion: result.vitestVersion,
-    receiptVitestVersion: result.receiptVitestVersion,
-    installedVitestVersion: result.installedVitestVersion,
-    receiptTests: result.receiptTests,
-    collectionErrors: result.collectionErrors,
-    unhandledErrors: result.unhandledErrors,
-    reportError: result.reportError,
-    receiptError: result.receiptError,
+    failureMessages: Array.isArray(result.failureMessages)
+      ? result.failureMessages.slice(0, 8).map((message) => boundedText(message, 512))
+      : [],
+    collectionErrors: Array.isArray(result.collectionErrors)
+      ? result.collectionErrors.slice(0, 8).map(compactError)
+      : [],
+    unhandledErrors: Array.isArray(result.unhandledErrors)
+      ? result.unhandledErrors.slice(0, 8).map(compactError)
+      : [],
+    reportError: boundedText(result.reportError, 512),
+    receiptError: boundedText(result.receiptError, 512),
     directTiming: result.directTiming,
-    directTimingError: result.directTimingError,
-    output: result.output,
+    directTimingError: boundedText(result.directTimingError, 512),
   };
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalize(value[key])]),
+    );
+  }
+  return value;
+}
+
+function canonicalDigest(value) {
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalize(value)))
+    .digest("hex");
+}
+
+function stripRecordDigests(record) {
+  const core = { ...record };
+  delete core.canonicalDigest;
+  delete core.reconstructionDigest;
+  return core;
+}
+
+function durableRecordLine(prefix, record) {
+  const line = prefix + " " + JSON.stringify(record);
+  const bytes = Buffer.byteLength(line, "utf8");
+  if (bytes > maxDurableRecordBytes) {
+    throw new Error(`G80 durable ${prefix} record exceeds ${maxDurableRecordBytes} bytes: ${bytes}`);
+  }
+  return line;
+}
+
+function createDurableRecord(core) {
+  return {
+    ...core,
+    canonicalDigest: canonicalDigest(core),
+  };
+}
+
+function emitDurableRecord(prefix, core) {
+  const record = createDurableRecord(core);
+  process.stdout.write(durableRecordLine(prefix, record) + "\n");
+  return record;
+}
+
+function recordReference(record) {
+  return {
+    stageId: record.stageId,
+    canonicalDigest: record.canonicalDigest,
+  };
+}
+
+function createDurableSummary(stageRecords, fields) {
+  const stageRefs = stageRecords.map(recordReference);
+  const core = {
+    schema: durableRecordSchema,
+    recordType: "summary",
+    observationId: fields.observationId ?? "g80-calibration-run",
+    metadata: receiptMetadata(),
+    ...fields,
+    stageRefs,
+  };
+  return createDurableRecord({
+    ...core,
+    reconstructionDigest: canonicalDigest({ summary: core, stages: stageRefs }),
+  });
+}
+
+function reconstructDurableRecords(lines) {
+  const stages = [];
+  const summaries = [];
+  const sourceLines = Array.isArray(lines) ? lines : String(lines).split("\n");
+  for (const line of sourceLines.filter((value) => value.length > 0)) {
+    const prefix = line.startsWith(durableRecordPrefix + " ")
+      ? durableRecordPrefix
+      : line.startsWith(durableSummaryPrefix + " ")
+        ? durableSummaryPrefix
+        : null;
+    if (prefix === null) throw new Error("G80 durable reconstruction found an unrelated line");
+    if (Buffer.byteLength(line, "utf8") > maxDurableRecordBytes) {
+      throw new Error("G80 durable reconstruction found a line over the bounded limit");
+    }
+    let record;
+    try {
+      record = JSON.parse(line.slice(prefix.length + 1));
+    } catch (error) {
+      throw new Error("G80 durable reconstruction found malformed JSON: " + String(error));
+    }
+    if (record?.schema !== durableRecordSchema || typeof record.canonicalDigest !== "string") {
+      throw new Error("G80 durable reconstruction found an incomplete record");
+    }
+    const canonicalCore = { ...record };
+    delete canonicalCore.canonicalDigest;
+    if (canonicalDigest(canonicalCore) !== record.canonicalDigest) {
+      throw new Error("G80 durable reconstruction canonical digest mismatch");
+    }
+    if (prefix === durableRecordPrefix) stages.push(record);
+    else summaries.push(record);
+  }
+  if (summaries.length !== 1) throw new Error("G80 durable reconstruction requires exactly one summary");
+  const summary = summaries[0];
+  if (!Array.isArray(summary.stageRefs) || summary.stageRefs.length !== stages.length) {
+    throw new Error("G80 durable reconstruction stage references are incomplete");
+  }
+  const stagesById = new Map(stages.map((stage) => [stage.stageId, stage]));
+  for (const reference of summary.stageRefs) {
+    const stage = stagesById.get(reference.stageId);
+    if (!stage || stage.canonicalDigest !== reference.canonicalDigest) {
+      throw new Error("G80 durable reconstruction stage reference mismatch");
+    }
+  }
+  if (typeof summary.reconstructionDigest !== "string") {
+    throw new Error("G80 durable reconstruction digest is missing");
+  }
+  const summaryCore = stripRecordDigests(summary);
+  if (canonicalDigest({ summary: summaryCore, stages: summary.stageRefs }) !== summary.reconstructionDigest) {
+    throw new Error("G80 durable reconstruction digest mismatch");
+  }
+  return { stages, summary };
 }
 
 function pinnedVitestVersionMatches(result) {
@@ -204,18 +390,62 @@ function calibrationFailureDetails(healthy, calibration, extra = {}) {
   };
 }
 
+function compactFailureDetails(details) {
+  if (!details || typeof details !== "object") return {};
+  const retainedKeys = [
+    "reason",
+    "comparison",
+    "healthyBodyMs",
+    "calibrationBodyMs",
+    "signedDifferenceMs",
+    "directTiming",
+    "directTimingError",
+    "uncertainty",
+    "allowance",
+    "allowanceMs",
+    "directRateLowerBoundMs",
+    "directRateMedianMs",
+    "predictedAddedWorkMs",
+    "wholeTestAttributionRatio",
+    "timing",
+    "crossSizeRateBounds",
+    "crossSizeViolations",
+    "costsPerRoundMs",
+    "pairedResidualsMs",
+    "residualRangeMs",
+    "equalSizeResidualBoundMs",
+    "healthyObservation",
+    "calibrationObservation",
+  ];
+  return Object.fromEntries(
+    retainedKeys
+      .filter((key) => details[key] !== undefined)
+      .map((key) => [key, details[key]]),
+  );
+}
+
 function emitStage(stages, stage, result, fields = {}) {
-  const record = {
+  const {
+    observationId: suppliedObservationId,
+    stageId: suppliedStageId,
+    ...stageFields
+  } = fields;
+  const observationId = safeLabel(
+    suppliedObservationId ?? result?.label ?? `g80-${stage}`,
+  );
+  const stageId = suppliedStageId ?? `${observationId}:${safeLabel(stage)}:${stages.length + 1}`;
+  const record = emitDurableRecord(durableRecordPrefix, {
+    schema: durableRecordSchema,
+    recordType: "stage",
+    observationId,
+    stageId,
     stage,
-    ...fields,
-    observation: oracleEvidence(result),
-  };
-  stages.push(record);
-  process.stdout.write(JSON.stringify({
-    phase: "G80_CALIBRATION_STAGE",
     metadata: receiptMetadata(),
-    ...record,
-  }) + "\n");
+    ...stageFields,
+    observation: oracleEvidence(result),
+  });
+  stages.push(record);
+  return record;
 }
 
 function ensureObservationRoot() {
@@ -480,6 +710,7 @@ function runOracle(label, { retainReport = false } = {}) {
     env: {
       ...process.env,
       CI: "1",
+      SDT_G80_OBSERVATION_ID: safeLabel(label),
       SDT_G80_RECEIPT_PATH: receiptPath,
       SDT_G80_TEST_TIMEOUT_MS: String(budgetMs),
     },
@@ -880,8 +1111,8 @@ function legacyObservationRecord(pairIndex, healthy, calibration) {
         : rawAddedWorkPerRoundMs;
   return {
     pairIndex,
-    healthy,
-    calibration,
+    healthyObservation: oracleEvidence(healthy),
+    calibrationObservation: oracleEvidence(calibration),
     signedDifferenceMs:
       Number.isFinite(healthyBodyMs) && Number.isFinite(calibrationBodyMs)
         ? calibrationBodyMs - healthyBodyMs
@@ -894,11 +1125,15 @@ function legacyObservationRecord(pairIndex, healthy, calibration) {
 }
 
 function emitObservation(record) {
-  process.stdout.write(JSON.stringify({
-    phase: "G80_AC1_OBSERVATION_INPUT",
+  return emitDurableRecord(durableRecordPrefix, {
+    schema: durableRecordSchema,
+    recordType: "observation-input",
+    observationId: `g80-observation-pair-${record.pairIndex}`,
+    stageId: `g80-observation-pair-${record.pairIndex}:input`,
+    stage: "observation-input",
     metadata: receiptMetadata(),
     record,
-  }) + "\n");
+  });
 }
 
 function observationOnly(sourcePath, original) {
@@ -910,6 +1145,7 @@ function observationOnly(sourcePath, original) {
     throw new Error("G80 observation pairs must be a positive integer");
   }
   const records = [];
+  const observationStages = [];
   ensureObservationRoot();
   for (let pairIndex = 1; pairIndex <= requestedPairs; pairIndex += 1) {
     const healthy = runOracle(
@@ -924,29 +1160,28 @@ function observationOnly(sourcePath, original) {
     writeFileSync(sourcePath, original, "utf8");
     const record = legacyObservationRecord(pairIndex, healthy, calibration);
     records.push(record);
-    emitObservation(record);
+    observationStages.push(emitObservation(record));
   }
-  const summary = {
-    phase: "G80_AC1_OBSERVATION_SUMMARY",
+  const summary = createDurableSummary(observationStages, {
+    observationId: "g80-observation-only",
     metadata: receiptMetadata(),
     predeclaredPairs: requestedPairs,
     requiredFreshHostedJobInstances: true,
     originalRunnerSha256,
-    records,
     missingOrFailedPairs: records.filter((record) =>
-      record.healthy.processStatus !== 0 ||
-      record.healthy.bodyStatus !== "passed" ||
-      record.calibration.processStatus !== 0 ||
-      record.calibration.bodyStatus !== "passed"
+      record.healthyObservation?.process?.status !== 0 ||
+      record.healthyObservation?.body?.status !== "passed" ||
+      record.calibrationObservation?.process?.status !== 0 ||
+      record.calibrationObservation?.body?.status !== "passed"
     ).map((record) => record.pairIndex),
     note: "A local invocation cannot claim fresh hosted job separation; hosted receipts remain required evidence.",
-  };
+  });
   writeFileSync(
     resolve(observationRoot, "summary-" + process.pid + ".json"),
     JSON.stringify(summary, null, 2),
     "utf8",
   );
-  process.stdout.write(JSON.stringify(summary) + "\n");
+  process.stdout.write(durableRecordLine(durableSummaryPrefix, summary) + "\n");
 }
 
 function representativeRoundsFor(healthyBodyMs, calibrationDecision) {
@@ -1035,8 +1270,212 @@ function runStructuredTimeoutReceiptSelfTest() {
     processStatus: result.status,
     signal: result.signal ?? null,
     vitestVersion: receipt.vitestVersion,
-    target: target[0],
+    target: compactTarget(target[0]),
     receiptFinalStatus: receipt.finalStatus,
+  };
+}
+
+function runDurableRecordSelfTest() {
+  const selfTestMetadata = {
+    workflow: "self-test-workflow",
+    runId: "self-test-run",
+    runAttempt: "1",
+    job: "self-test-job",
+    immutableHead: "self-test-head",
+  };
+  const observation = ({ status, durationMs, directTiming, directTimingError = null }) => ({
+    label: "self-test-observation",
+    process: { status, signal: null, spawnError: null, elapsedMs: 20.125 },
+    body: { status, durationMs },
+    target: {
+      reportCount: 1,
+      receiptCount: 1,
+      report: { module: testFile, fullName: testName, state: status, durationMs, errors: [] },
+      receipt: { module: testFile, fullName: testName, state: status, durationMs, errors: [] },
+      failedTestCount: status === "failed" ? 1 : 0,
+    },
+    versions: { report: pinnedVitestVersion, receipt: pinnedVitestVersion, installed: pinnedVitestVersion },
+    receiptFinalStatus: status,
+    failureMessages: status === "failed" ? ["Test timed out in 10000ms."] : [],
+    collectionErrors: [],
+    unhandledErrors: [],
+    reportError: null,
+    receiptError: null,
+    directTiming,
+    directTimingError,
+  });
+  const directTiming = {
+    clock: "performance.now",
+    initializationMs: 1.25,
+    clockValidation: { probe: "D1 SELECT 1", samples: 3, queriesPerSample: 32, minAdvanceMs: 0.125, maxAdvanceMs: 0.375, monotonic: true },
+    chunks: [{ rounds: 4, operations: 8, deliveryCount: 8, durationMs: 40.5, waitersDrained: true }],
+    totalRounds: 4,
+    operationsPerRound: 2,
+    waitersDrained: true,
+    skippedDeliveries: 0,
+    omittedWaiterDrain: false,
+    wrongCount: false,
+    timerOnly: false,
+    clockAdvancesDuringRealWork: true,
+    minObservedAdvanceMs: 40.5,
+  };
+  const healthyStage = createDurableRecord({
+    schema: durableRecordSchema,
+    recordType: "stage",
+    observationId: "self-test-success",
+    stageId: "self-test-success:healthy:1",
+    stage: "healthy",
+    metadata: selfTestMetadata,
+    observation: observation({ status: "passed", durationMs: 123.456, directTiming: null }),
+  });
+  const calibrationStage = createDurableRecord({
+    schema: durableRecordSchema,
+    recordType: "stage",
+    observationId: "self-test-success",
+    stageId: "self-test-success:calibration:2",
+    stage: "calibration",
+    metadata: selfTestMetadata,
+    observation: observation({ status: "passed", durationMs: 234.567, directTiming }),
+  });
+  const representativeStage = createDurableRecord({
+    schema: durableRecordSchema,
+    recordType: "stage",
+    observationId: "self-test-success",
+    stageId: "self-test-success:representative:3",
+    stage: "representative-attempt",
+    metadata: selfTestMetadata,
+    rounds: 512,
+    observation: observation({ status: "failed", durationMs: 10_001.125, directTiming: null }),
+  });
+  const successSummary = createDurableSummary(
+    [healthyStage, calibrationStage, representativeStage],
+    {
+      observationId: "self-test-success",
+      metadata: selfTestMetadata,
+      outcome: "healthy-green-g69-path-timeout-red",
+      disposition: "exact-named-target-timeout",
+      directTiming,
+      allowanceInputs: { lowerMs: 5.25, upperMs: 21, equalSizeResidualBoundMs: 10 },
+      wholeTestAttribution: { signedDifferenceMs: 111.111, unit: "whole-test-ms-attribution-only" },
+      representativeSelection: { status: "selected", rounds: 512, source: "conservative direct per-round lower bound" },
+      attempts: [recordReference(representativeStage)],
+      semanticTimeout: { status: "exact-named-target-timeout", expected: "Test timed out in 10000ms.", received: "Test timed out in 10000ms." },
+    },
+  );
+  const successLines = [
+    durableRecordLine(durableRecordPrefix, healthyStage),
+    durableRecordLine(durableRecordPrefix, calibrationStage),
+    durableRecordLine(durableRecordPrefix, representativeStage),
+    durableRecordLine(durableSummaryPrefix, successSummary),
+  ];
+  const reconstructedSuccess = reconstructDurableRecords(successLines);
+  if (
+    reconstructedSuccess.stages.length !== 3 ||
+    reconstructedSuccess.summary.outcome !== "healthy-green-g69-path-timeout-red" ||
+    reconstructedSuccess.summary.directTiming.chunks.length !== 1 ||
+    reconstructedSuccess.summary.wholeTestAttribution.unit !== "whole-test-ms-attribution-only" ||
+    reconstructedSuccess.summary.attempts.length !== 1 ||
+    reconstructedSuccess.summary.semanticTimeout.status !== "exact-named-target-timeout"
+  ) {
+    throw new Error("G80 durable success record reconstruction dropped required AC6 fields");
+  }
+
+  const failureStage = createDurableRecord({
+    schema: durableRecordSchema,
+    recordType: "stage",
+    observationId: "self-test-failure",
+    stageId: "self-test-failure:calibration:1",
+    stage: "calibration",
+    metadata: selfTestMetadata,
+    observation: observation({
+      status: null,
+      durationMs: null,
+      directTiming: null,
+      directTimingError: "direct timing marker missing",
+    }),
+  });
+  const failureSummary = createDurableSummary([failureStage], {
+    observationId: "self-test-failure",
+    metadata: selfTestMetadata,
+    outcome: "HEALTHY_OR_ORACLE_FAILURE",
+    disposition: "fail-closed",
+    directTiming: null,
+    allowanceInputs: null,
+    wholeTestAttribution: { signedDifferenceMs: null, unit: "whole-test-ms-attribution-only" },
+    representativeSelection: "not-reached",
+    attempts: [],
+    semanticTimeout: "not-reached",
+    failure: {
+      process: { status: 1, signal: null, error: "named target receipt missing" },
+      target: { reportCount: 0, receiptCount: 0 },
+      version: { expected: pinnedVitestVersion, receipt: null, installed: pinnedVitestVersion },
+      body: { status: null, durationMs: null },
+      directTimingError: "direct timing marker missing",
+    },
+  });
+  const failureLines = [
+    durableRecordLine(durableRecordPrefix, failureStage),
+    durableRecordLine(durableSummaryPrefix, failureSummary),
+  ];
+  const reconstructedFailure = reconstructDurableRecords(failureLines);
+  if (
+    reconstructedFailure.summary.outcome !== "HEALTHY_OR_ORACLE_FAILURE" ||
+    reconstructedFailure.summary.disposition !== "fail-closed" ||
+    reconstructedFailure.summary.representativeSelection !== "not-reached" ||
+    reconstructedFailure.summary.semanticTimeout !== "not-reached" ||
+    reconstructedFailure.summary.failure.directTimingError !== "direct timing marker missing"
+  ) {
+    throw new Error("G80 durable failure record reconstruction dropped fail-closed evidence");
+  }
+
+  const expectReconstructionFailure = (name, candidateLines) => {
+    try {
+      reconstructDurableRecords(candidateLines);
+    } catch {
+      return;
+    }
+    throw new Error("G80 durable self-test accepted invalid " + name);
+  };
+  const tamperedSuccess = JSON.parse(successLines[1].slice(durableRecordPrefix.length + 1));
+  tamperedSuccess.observation.body.durationMs = 999;
+  expectReconstructionFailure("tampered digest", [
+    successLines[0],
+    durableRecordLine(durableRecordPrefix, tamperedSuccess),
+    successLines[2],
+    successLines[3],
+  ]);
+  expectReconstructionFailure("missing stage", successLines.filter((line) => !line.includes(calibrationStage.stageId)));
+  expectReconstructionFailure("unrelated line", [...successLines, "Vitest output without a durable receipt"]);
+  const oversized = createDurableRecord({
+    schema: durableRecordSchema,
+    recordType: "stage",
+    observationId: "self-test-overflow",
+    stageId: "self-test-overflow:stage:1",
+    stage: "overflow",
+    metadata: selfTestMetadata,
+    payload: "x".repeat(maxDurableRecordBytes),
+  });
+  let overlongRejected = false;
+  try {
+    durableRecordLine(durableRecordPrefix, oversized);
+  } catch {
+    overlongRejected = true;
+  }
+  if (!overlongRejected) throw new Error("G80 durable self-test accepted an overlong line");
+  const maxSuccessLineBytes = Math.max(...successLines.map((line) => Buffer.byteLength(line, "utf8")));
+  const maxFailureLineBytes = Math.max(...failureLines.map((line) => Buffer.byteLength(line, "utf8")));
+  return {
+    schema: durableRecordSchema,
+    maxBytes: maxDurableRecordBytes,
+    successRecordCount: successLines.length,
+    failureRecordCount: failureLines.length,
+    maxSuccessLineBytes,
+    maxFailureLineBytes,
+    successReconstruction: "passed",
+    failureReconstruction: "passed",
+    tamperedDigest: "rejected",
+    missingStage: "rejected",
+    overlongLine: "rejected",
   };
 }
 
@@ -1418,6 +1857,7 @@ function selfTest() {
   }
   if (!oracleFailure) throw new Error("G80 self-test did not exercise HEALTHY_OR_ORACLE_FAILURE");
   const structuredTimeout = runStructuredTimeoutReceiptSelfTest();
+  const durableRecords = runDurableRecordSelfTest();
   process.stdout.write(JSON.stringify({
     budgetMs,
     calibrationRounds,
@@ -1427,6 +1867,7 @@ function selfTest() {
     crossSizeRateUpperBoundRatio,
     equalSizeResidualBoundMs,
     structuredTimeout,
+    durableRecords,
     selfTest: {
       directTiming: "vitest-body-clock-and-g69-path-valid",
       unitMismatchMutant: "red-by-avoiding-whole-test-vs-per-round-comparison",
@@ -1454,7 +1895,7 @@ function main() {
       return observationOnly(sourcePath, original);
     }
     healthy = runOracle("G67 AC3 healthy", { retainReport: true });
-    emitStage(stages, "healthy", healthy, { status: "observed" });
+    const healthyStage = emitStage(stages, "healthy", healthy, { status: "observed" });
     requireHealthy(healthy);
     if (healthy.bodyDurationMs >= budgetMs) {
       throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
@@ -1473,7 +1914,7 @@ function main() {
       "G67 AC3 " + calibrationRounds + "-round G69 direct calibration",
       { retainReport: true },
     );
-    emitStage(stages, "calibration", calibration, { status: "observed" });
+    const calibrationStage = emitStage(stages, "calibration", calibration, { status: "observed" });
     requireHealthy(calibration);
     const calibrationDecision = decideCalibration(healthy, calibration);
     try {
@@ -1517,22 +1958,25 @@ function main() {
         "G67 AC3 " + representativeRounds + "-round G69 representative",
         { retainReport: true },
       );
-      const attempt = {
-        rounds: representativeRounds,
-        observation: oracleEvidence(regression),
-      };
-      attempts.push(attempt);
-      emitStage(stages, "representative-attempt", regression, {
+      const attemptStage = emitStage(stages, "representative-attempt", regression, {
         status: "observed",
         attemptIndex: attempts.length,
         rounds: representativeRounds,
+      });
+      attempts.push({
+        rounds: representativeRounds,
+        stageId: attemptStage.stageId,
+        canonicalDigest: attemptStage.canonicalDigest,
       });
       const classification = classifyRepresentativeResult(regression);
       if (classification.kind === "semantic-timeout") {
         semanticTimeout = {
           status: "exact-named-target-timeout",
           rounds: representativeRounds,
-          observation: oracleEvidence(regression),
+          stageId: attemptStage.stageId,
+          canonicalDigest: attemptStage.canonicalDigest,
+          expected: "Test timed out in 10000ms.",
+          received: regression.receiptTarget?.errors?.[0]?.message?.split("\n", 1)[0] ?? null,
         };
         break;
       }
@@ -1545,47 +1989,54 @@ function main() {
         reason: "G67 representative did not produce an exact named-target timeout before the bounded range ended",
       });
     }
-    process.stdout.write(JSON.stringify({
-      budgetMs,
+    const summary = createDurableSummary(stages, {
       testName,
       originalRunnerSha256,
+      outcome: "healthy-green-g69-path-timeout-red",
+      disposition: "exact-named-target-timeout",
+      budgetMs,
+      calibrationRounds,
       healthyBodyMs: healthy.bodyDurationMs,
       healthyMarginMs: estimate.healthyMarginMs,
-      calibrationRounds,
       calibrationBodyMs: calibration.bodyDurationMs,
       signedDifferenceMs: calibrationDecision.signedDifferenceMs,
+      wholeTestAttribution: {
+        signedDifferenceMs: calibrationDecision.signedDifferenceMs,
+        ratio: calibrationDecision.wholeTestAttributionRatio,
+        unit: "whole-test-ms-attribution-only",
+      },
+      directTiming: calibrationDecision.timing,
+      allowance: calibrationDecision.allowance,
+      uncertainty: {
+        crossSizeRateBounds: calibrationDecision.allowance.crossSizeRateBounds,
+        equalSizeResidualBoundMs: calibrationDecision.allowance.equalSizeResidualBoundMs,
+      },
       directPerRoundMs: calibrationDecision.directPerRoundMs,
       directRateLowerBoundMs: calibrationDecision.directRateLowerBoundMs,
       directRateMedianMs: calibrationDecision.directRateMedianMs,
       predictedAddedWorkMs: calibrationDecision.predictedAddedWorkMs,
-      wholeTestAttributionRatio: calibrationDecision.wholeTestAttributionRatio,
       directSignalDominatesAllowance: calibrationDecision.directSignalDominatesAllowance,
-      predictionRatio: calibrationDecision.predictionRatio,
       scalingRatio: calibrationDecision.scalingRatio,
-      crossSizeRateBounds: calibrationDecision.allowance.crossSizeRateBounds,
-      equalSizeResidualBoundMs: calibrationDecision.allowance.equalSizeResidualBoundMs,
       decisionPath: calibrationDecision.decisionPath,
-      allowance: calibrationDecision.allowance,
-      directTiming: calibrationDecision.timing,
       representativeRounds,
       regressionBodyMs: regression.bodyDurationMs,
       regressionOverBudgetMs: regression.bodyDurationMs - budgetMs,
-      timeoutMessage: "Test timed out in 10000ms",
       processOverheadMs: {
         healthy: healthy.processElapsedMs - healthy.bodyDurationMs,
         calibration: calibration.processElapsedMs - calibration.bodyDurationMs,
         regression: regression.processElapsedMs - regression.bodyDurationMs,
       },
-      attempts,
-      stages,
       representativeSelection,
+      attempts,
       semanticTimeout,
-      result: "healthy-green-g69-path-timeout-red",
-    }) + "\n");
+      healthyStageId: healthyStage.stageId,
+      calibrationStageId: calibrationStage.stageId,
+    });
+    process.stdout.write(durableRecordLine(durableSummaryPrefix, summary) + "\n");
   } catch (error) {
     const outcome = error?.outcome ?? "HEALTHY_OR_ORACLE_FAILURE";
     const details = {
-      ...(error?.details ?? {}),
+      ...compactFailureDetails(error?.details),
       healthyObservation: error?.details?.healthyObservation ?? oracleEvidence(healthy),
       calibrationObservation: error?.details?.calibrationObservation ?? oracleEvidence(calibration),
       directTiming: error?.details?.directTiming ?? calibration?.directTiming ?? null,
@@ -1595,13 +2046,38 @@ function main() {
       representativeSelection,
       attempts,
       semanticTimeout,
-      stages,
     };
-    process.stderr.write(JSON.stringify({
-      result: "failed",
+    const failure = { ...details };
+    delete failure.directTiming;
+    delete failure.directTimingError;
+    delete failure.timing;
+    delete failure.uncertainty;
+    delete failure.healthyObservation;
+    delete failure.calibrationObservation;
+    delete failure.representativeSelection;
+    delete failure.attempts;
+    delete failure.semanticTimeout;
+    const summary = createDurableSummary(stages, {
       outcome,
-      details,
-      message: String(error?.message ?? error),
+      disposition: "fail-closed",
+      budgetMs,
+      testName,
+      originalRunnerSha256,
+      failure,
+      directTiming: details.directTiming,
+      directTimingError: details.directTimingError,
+      uncertainty: details.uncertainty,
+      representativeSelection,
+      attempts,
+      semanticTimeout,
+      healthyStageId: stages.find((stage) => stage.stage === "healthy")?.stageId ?? null,
+      calibrationStageId: stages.find((stage) => stage.stage === "calibration")?.stageId ?? null,
+    });
+    process.stderr.write(durableRecordLine(durableSummaryPrefix, summary) + "\n");
+    process.stderr.write("G80_CALIBRATION_FAILURE " + JSON.stringify({
+      outcome,
+      canonicalDigest: summary.canonicalDigest,
+      reconstructionDigest: summary.reconstructionDigest,
     }) + "\n");
     process.exitCode = 1;
   } finally {
