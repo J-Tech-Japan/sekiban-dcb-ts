@@ -60,6 +60,9 @@ function workBasis(file, name) {
   if (value.includes("g43-measurement")) {
     return "five history sizes across real Tag-DO SQL transitions and a closed range-plan predicate";
   }
+  if (value.includes("g71-composition")) {
+    return "two real SELF.fetch commits, scoped Tag deliveries through the sample worker.queue, SafeWindow hold and logical-clock release, safe and unsafe reads through the executor and sample route";
+  }
   if (value.includes("g67-safe-lane")) {
     return "ten paced real D1/DO commits, queue kicks, and safe-reader convergence";
   }
