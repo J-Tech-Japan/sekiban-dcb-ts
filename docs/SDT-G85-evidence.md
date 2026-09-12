@@ -97,8 +97,8 @@ git diff --check                                          PASS
 
 The ready-for-review PR is [#172](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/172),
 based on `main` at `bbfb6b6fcc20de6cbc92fecc12dce0cd98b8ec2e`. The source
-repair head was `dc40f51521ada428bc392c54d008369ac21ef272`; the final evidence
-head is `82856d97e15cbd340a66051fd643304fd14850b4`. The branch is
+repair head was `dc40f51521ada428bc392c54d008369ac21ef272` and the subsequent
+evidence commits are docs-only. The branch is
 `claude/sdt-g85-ci-local-cleanup-w255`; the base is an ancestor of the head.
 The PR body retains `Closes #171`.
 
@@ -113,16 +113,17 @@ completed successfully at `dc40f51521ada428bc392c54d008369ac21ef272`:
 | `verify` | [103493926406](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923/job/103493926406) | success |
 
 The first push's superseded workflow [34670911418](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34670911418)
-is historical; the terminal evidence above is the second push's exact-head
+is historical; the terminal evidence above is the source-repair push's exact-head
 workflow. The issue claim was applied before implementation, and the
 canonical issue-to-PR completion was recorded immediately after PR creation
 with outcome `pr-created` for PR #172. The completion response reported
 `proceed=true` and `applied=true`; its host-linkage warning is retained as a
 host-owned follow-up rather than represented as implementation evidence.
 
-The final evidence-head pull-request workflow
+The first evidence-only pull-request workflow
 [34671677008](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008)
-completed successfully at `82856d97e15cbd340a66051fd643304fd14850b4`:
+completed successfully at docs-only evidence head
+`82856d97e15cbd340a66051fd643304fd14850b4`:
 
 | Job | Receipt | Result |
 | --- | --- | --- |
@@ -130,6 +131,19 @@ completed successfully at `82856d97e15cbd340a66051fd643304fd14850b4`:
 | `ci-foundation` | [103494066576](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008/job/103494066576) | success |
 | `verify` | [103495903455](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671677008/job/103495903455) | success |
 
+The next docs-only pull-request workflow
+[34672390867](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34672390867)
+completed successfully at `5365efed9f92e3c87b96ba32820d9a65c4a74540`:
+
+| Job | Receipt | Result |
+| --- | --- | --- |
+| `ci-foundation` | [103496088031](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34672390867/job/103496088031) | success |
+| `ci-pr-cheap` | [103496088113](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34672390867/job/103496088113) | success |
+| `verify` | [103497886758](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34672390867/job/103497886758) | success |
+
+The current handoff's exact final head and its matching newest normal PR
+workflow are recorded in the implementation artifact; this document does
+not relabel a historical receipt as a receipt for a later evidence-only push.
 The preceding exact source-head workflow
 [34671000923](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34671000923)
 at `dc40f51521ada428bc392c54d008369ac21ef272` was also terminal success and
