@@ -170,9 +170,29 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function registeredWorktree(path) {
-  const output = execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: ROOT, encoding: "utf8" });
-  return output.split("\n").some((line) => line.startsWith("worktree ") && line.slice("worktree ".length) === path);
+function normalizeWorktreeIdentity(path) {
+  const normalized = resolve(path);
+  if (normalized === "/private/var") return "/var";
+  if (normalized.startsWith("/private/var/")) return normalized.slice("/private".length);
+  return normalized;
+}
+
+function worktreeIdentity(path) {
+  const normalized = resolve(path);
+  try {
+    return normalizeWorktreeIdentity(realpathSync.native(normalized));
+  } catch {
+    // A fallback cleanup can remove the directory before registration is
+    // checked. Preserve the lexical identity in that case, including the
+    // macOS /var and /private/var aliases.
+    return normalizeWorktreeIdentity(normalized);
+  }
+}
+
+function registeredWorktree(path, operations = {}) {
+  const output = operations.listWorktrees?.() ?? execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: ROOT, encoding: "utf8" });
+  const expectedIdentity = worktreeIdentity(path);
+  return output.split("\n").some((line) => line.startsWith("worktree ") && worktreeIdentity(line.slice("worktree ".length)) === expectedIdentity);
 }
 
 function removeDetachedWorktree(path, laneName, operations = {}) {
@@ -883,6 +903,29 @@ function runCleanupSelfTests() {
     fail("cleanup failure self-test failed");
   }
 
+  const aliasState = { directoryExists: true };
+  const aliasPath = "/var/sdt-g85-alias-worktree";
+  const listedAliasPath = "/private/var/sdt-g85-alias-worktree";
+  const alias = removeDetachedWorktree(aliasPath, "cleanup-alias-path", {
+    removeWorktree() {
+      throw new Error("simulated refusal after registration was created");
+    },
+    removeDirectory() {
+      aliasState.directoryExists = false;
+    },
+    prune() {
+      throw new Error("simulated prune refusal");
+    },
+    directoryExists: () => aliasState.directoryExists,
+    checkRegistration: () => registeredWorktree(aliasPath, {
+      listWorktrees: () => `worktree ${listedAliasPath}\n\n`,
+    }),
+  });
+  const aliasLaneStatus = alias.ok ? 0 : 1;
+  if (alias.ok || aliasLaneStatus !== 1 || !alias.directoryGone || alias.worktreeRegistered !== true || alias.pruneStatus !== "failed") {
+    fail("cleanup alias-path self-test failed");
+  }
+
   return {
     fallbackRefusal: {
       scenario: "untracked run-created directory",
@@ -899,6 +942,17 @@ function runCleanupSelfTests() {
       directoryGone: impossible.directoryGone,
       worktreeRegistered: impossible.worktreeRegistered,
       failureReason: impossible.failureReason,
+    },
+    aliasPathRegistration: {
+      scenario: "directory removed but canonical-equivalent registration remains after prune refusal",
+      result: aliasLaneStatus === 0 ? "green" : "red-lane",
+      suppliedPath: aliasPath,
+      listedPath: listedAliasPath,
+      method: alias.method,
+      directoryGone: alias.directoryGone,
+      worktreeRegistered: alias.worktreeRegistered,
+      pruneStatus: alias.pruneStatus,
+      failureReason: alias.failureReason,
     },
   };
 }

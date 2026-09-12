@@ -18,15 +18,19 @@ historical evidence only.
 
 ### AC1 — cleanup outcome is explicit and best-effort
 
-`removeDetachedWorktree` (current source lines 178–254) first attempts
+`worktreeIdentity`/`registeredWorktree` (current source lines 173–196) provide
+the registration identity, and `removeDetachedWorktree` (lines 198–273) first
+attempts
 `git worktree remove --force`. If that refuses, or if its post-attempt state is
 not clean, it removes the worktree directory and runs `git worktree prune`.
 It then checks both the directory and `git worktree list --porcelain`. The
-returned cleanup record includes the method (`removed` or `fallback-prune`),
-remove/prune status, directory state, registration state and any errors. The
-caller marks the lane failed only when cleanup cannot prove
-`directoryGone=true` and `worktreeRegistered=false`; worktree creation remains
-fatal to that lane.
+registration check uses the physical path when available and a lexical
+fallback that treats the macOS `/var` and `/private/var` spellings as the same
+identity after the directory has gone away. The returned cleanup record
+includes the method (`removed` or `fallback-prune`), remove/prune status,
+directory state, registration state and any errors. The caller marks the lane
+failed only when cleanup cannot prove `directoryGone=true` and
+`worktreeRegistered=false`; worktree creation remains fatal to that lane.
 
 The record is attached to both `receipt.cleanup` and `receipt.execution.cleanup`
 and is written after the cleanup attempt. Consequently, a cleanup refusal
@@ -44,7 +48,7 @@ fails; the continuation changes control flow, not the lane's own verdict.
 
 ### AC3 — semantic self-tests
 
-The existing `node scripts/ci-local.mjs --self-test` surface now runs three
+The existing `node scripts/ci-local.mjs --self-test` surface now runs four
 additional semantic checks. They use the same cleanup and lane-sequence
 functions as production execution; no test framework was added.
 
@@ -53,6 +57,7 @@ functions as production execution; no test framework was added.
 | cleanup fallback | A simulated run-created untracked directory makes forced worktree removal refuse; fallback removal plus prune leaves no directory and no registration, and the lane remains green. | green |
 | unrecoverable cleanup | A simulated directory and registration deliberately remain after both attempts; the returned cleanup record is not OK and the lane disposition is red. | red-lane |
 | lane continuation | A synthetic first lane throws and a later lane runs; the summary contains both `early-failure` and `later-lane`, with failed then green statuses. | failed-after-summary |
+| canonical-equivalent registration | A supplied `/var/...` path is listed by Git as `/private/var/...`; directory removal succeeds, prune refuses, and the registration remains detected, so the lane is red. | red-lane; `worktreeRegistered=true` |
 
 The self-test output also retains the pre-existing detached-worktree, isolated
 NuGet and container-provenance controls. The current terminal output was:
@@ -74,6 +79,37 @@ selfTestCleanup: method=removed; directoryGone=true; worktreeRegistered=false; o
 Each case is asserted against the semantic boundary: removing the fallback,
 accepting an uncleared worktree, or stopping the lane sequence makes the
 self-test fail rather than merely changing a label or exit-code heuristic.
+
+### W257 F1 — canonical worktree identity and red mutant
+
+The reviewed head `7fa3ce6e0abfc99fc0f96a48b25a82e98c60d026` exposed a
+fail-open comparison: Node created a worktree using `/var/...`, while Git
+reported the same macOS path as `/private/var/...`. `registeredWorktree` now
+resolves both sides with `realpathSync.native` while the path exists and
+normalizes the surviving `/var`/`/private/var` alias when fallback cleanup has
+removed the directory. The receipt retains the original supplied path; only
+the registration identity comparison is canonicalized.
+
+The new self-test exercises the cleanup sequence with:
+
+```text
+suppliedPath=/var/sdt-g85-alias-worktree
+listedPath=/private/var/sdt-g85-alias-worktree
+directoryGone=true
+pruneStatus=failed
+worktreeRegistered=true
+result=red-lane
+failureReason=worktree remains registered
+```
+
+The healthy source restored the alias case and complete self-test with exit 0.
+For the required semantic mutant, the comparison was temporarily restored to
+the raw `line.slice(...) === path` check. `node scripts/ci-local.mjs
+--self-test` then exited 1 with the named failure
+`ci-local:cleanup alias-path self-test failed`; the source was restored before
+verification and no mutant was pushed. This demonstrates that a registration
+reported with the equivalent spelling cannot silently turn an uncleared lane
+green.
 
 ### AC4 — unchanged surfaces
 
