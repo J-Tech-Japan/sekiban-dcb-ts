@@ -166,14 +166,111 @@ function createDetachedWorktree(sha, laneName) {
   return path;
 }
 
-function removeDetachedWorktree(path, laneName) {
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeWorktreeIdentity(path) {
+  const normalized = resolve(path);
+  if (normalized === "/private/var") return "/var";
+  if (normalized.startsWith("/private/var/")) return normalized.slice("/private".length);
+  return normalized;
+}
+
+function worktreeIdentity(path) {
+  const normalized = resolve(path);
   try {
-    execFileSync("git", ["worktree", "remove", "--force", path], { cwd: ROOT, stdio: "inherit" });
-  } catch (error) {
-    fail(`could not remove detached worktree for ${laneName}: ${error instanceof Error ? error.message : String(error)}`);
-  } finally {
-    rmSync(path, { recursive: true, force: true });
+    return normalizeWorktreeIdentity(realpathSync.native(normalized));
+  } catch {
+    // A fallback cleanup can remove the directory before registration is
+    // checked. Preserve the lexical identity in that case, including the
+    // macOS /var and /private/var aliases.
+    return normalizeWorktreeIdentity(normalized);
   }
+}
+
+function registeredWorktree(path, operations = {}) {
+  const output = operations.listWorktrees?.() ?? execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: ROOT, encoding: "utf8" });
+  const expectedIdentity = worktreeIdentity(path);
+  return output.split("\n").some((line) => line.startsWith("worktree ") && worktreeIdentity(line.slice("worktree ".length)) === expectedIdentity);
+}
+
+function removeDetachedWorktree(path, laneName, operations = {}) {
+  const removeWorktree = operations.removeWorktree ?? (() => {
+    execFileSync("git", ["worktree", "remove", "--force", path], { cwd: ROOT, stdio: "inherit" });
+  });
+  const removeDirectory = operations.removeDirectory ?? (() => rmSync(path, { recursive: true, force: true }));
+  const prune = operations.prune ?? (() => {
+    execFileSync("git", ["worktree", "prune"], { cwd: ROOT, stdio: "inherit" });
+  });
+  const directoryExists = operations.directoryExists ?? (() => existsSync(path));
+  const checkRegistration = operations.checkRegistration ?? (() => registeredWorktree(path));
+  const outcome = {
+    lane: laneName,
+    path,
+    method: "removed",
+    removeAttempted: true,
+    removeStatus: "unknown",
+    directoryGone: false,
+    worktreeRegistered: null,
+    pruneAttempted: false,
+    pruneStatus: null,
+    removeError: null,
+    pruneError: null,
+    registrationCheckError: null,
+    ok: false,
+  };
+
+  let needsFallback = false;
+  try {
+    removeWorktree();
+    outcome.removeStatus = "succeeded";
+  } catch (error) {
+    outcome.removeStatus = "failed";
+    outcome.removeError = errorMessage(error);
+    needsFallback = true;
+  }
+
+  const verify = () => {
+    outcome.directoryGone = !directoryExists();
+    try {
+      outcome.worktreeRegistered = checkRegistration();
+    } catch (error) {
+      outcome.worktreeRegistered = null;
+      outcome.registrationCheckError = errorMessage(error);
+    }
+    outcome.ok = outcome.directoryGone && outcome.worktreeRegistered === false;
+  };
+  verify();
+
+  if (!outcome.ok) needsFallback = true;
+  if (needsFallback) {
+    outcome.method = "fallback-prune";
+    try {
+      removeDirectory();
+    } catch (error) {
+      outcome.removeError = outcome.removeError ?? errorMessage(error);
+    }
+    outcome.pruneAttempted = true;
+    try {
+      prune();
+      outcome.pruneStatus = "succeeded";
+    } catch (error) {
+      outcome.pruneStatus = "failed";
+      outcome.pruneError = errorMessage(error);
+    }
+    outcome.registrationCheckError = null;
+    verify();
+  }
+
+  if (!outcome.ok) {
+    const reasons = [];
+    if (!outcome.directoryGone) reasons.push("directory remains");
+    if (outcome.worktreeRegistered === true) reasons.push("worktree remains registered");
+    if (outcome.worktreeRegistered === null) reasons.push("worktree registration could not be verified");
+    outcome.failureReason = reasons.join(", ") || "cleanup state is not clean";
+  }
+  return outcome;
 }
 
 function isInsidePath(parent, candidate) {
@@ -550,6 +647,7 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
     exitStatus: status,
     durationMs: Math.max(0, Date.now() - startedAt),
     forcedRed: forcedRedPassed,
+    cleanup: execution.cleanup ?? null,
     execution,
     bootstrap,
     nugetIsolation: nugetIsolation === null ? null : {
@@ -574,11 +672,12 @@ function writeReceipt(root, lane, sha, commands, status, startedAt, forcedRedPas
   return { path, receipt };
 }
 
-function executeLane(lane, baseEnv, receiptRoot, sha, execution, bootstrap, cwd, startedServices, containerProvenance) {
+function executeLane(lane, baseEnv, cwd) {
   const startedAt = Date.now();
   const commandReceipts = [];
   let status = 0;
   let forcedRedPassed = true;
+  let error = null;
   for (const command of lane.commands) {
     const commandStartedAt = Date.now();
     const result = run(command.command, { ...baseEnv, ...(command.env ?? {}) }, `${lane.name}/${command.id}`, cwd);
@@ -596,23 +695,33 @@ function executeLane(lane, baseEnv, receiptRoot, sha, execution, bootstrap, cwd,
     if (expectedRed) forcedRedPassed &&= passed;
     if (!passed) {
       status = result.status || 1;
-      if (expectedRed) fail(`${lane.name}/${command.id} forced-red command unexpectedly passed`);
+      error = expectedRed
+        ? `${lane.name}/${command.id} forced-red command unexpectedly passed`
+        : `${lane.name}/${command.id} failed with status ${status}`;
       break;
     }
   }
-  const { path, receipt } = writeReceipt(receiptRoot, lane, sha, commandReceipts, status, startedAt, forcedRedPassed, execution, bootstrap, startedServices, containerProvenance);
-  return { path, receipt };
+  return { commands: commandReceipts, status, forcedRedPassed, startedAt, error };
 }
 
 function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
   const detached = !options.ci;
-  const executionRoot = detached ? createDetachedWorktree(sha, lane.name) : ROOT;
-  const executionEnv = detached ? { ...process.env, INIT_CWD: executionRoot } : { ...process.env };
+  const laneStartedAt = Date.now();
+  let executionRoot = ROOT;
+  let creationError = null;
+  if (detached) {
+    try {
+      executionRoot = createDetachedWorktree(sha, lane.name);
+    } catch (error) {
+      creationError = errorMessage(error);
+    }
+  }
   const execution = {
     mode: detached ? "fresh-detached-worktree" : "ci-checkout",
     detachedHead: detached,
     checkoutSha: sha,
-    worktreeRemoved: detached,
+    worktreeRemoved: !detached,
+    cleanup: null,
   };
   let bootstrap = {
     commands: detached ? manifest.bootstrapCommands : [],
@@ -620,16 +729,261 @@ function executeSelectedLane(manifest, lane, options, sha, receiptRoot) {
     reason: options.ci ? "hosted-checkout-installs-dependencies-before-runner" : "--skip-bootstrap",
   };
   let serviceState = { env: { ...process.env }, cleanup: [], services: [], containerProvenance: [] };
+  if (creationError !== null) {
+    execution.cleanup = {
+      lane: lane.name,
+      path: null,
+      method: "not-created",
+      removeAttempted: false,
+      removeStatus: "not-attempted",
+      directoryGone: null,
+      worktreeRegistered: null,
+      pruneAttempted: false,
+      pruneStatus: null,
+      removeError: null,
+      pruneError: null,
+      registrationCheckError: null,
+      ok: null,
+    };
+    const result = writeReceipt(
+      receiptRoot,
+      lane,
+      sha,
+      [],
+      1,
+      laneStartedAt,
+      false,
+      execution,
+      bootstrap,
+      [],
+      [],
+    );
+    return { ...result, error: creationError };
+  }
+  const executionEnv = detached ? { ...process.env, INIT_CWD: executionRoot } : { ...process.env };
+  let executionResult = null;
+  let serviceCleanupErrors = [];
   try {
     if (detached) bootstrap = prepareDetachedDependencies(executionRoot, options, manifest, lane);
     if (detached) serviceState = startServices(manifest, lane, sha, receiptRoot, executionEnv);
     const laneEnv = { ...serviceState.env, ...(bootstrap.nugetIsolation?.paths ?? {}), ...(lane.env ?? {}) };
-    return executeLane(lane, laneEnv, receiptRoot, sha, execution, bootstrap, executionRoot, serviceState.services, serviceState.containerProvenance);
+    executionResult = executeLane(lane, laneEnv, executionRoot);
+  } catch (error) {
+    executionResult = {
+      commands: [],
+      status: 1,
+      forcedRedPassed: false,
+      startedAt: laneStartedAt,
+      error: errorMessage(error),
+    };
   } finally {
-    for (const cleanup of serviceState.cleanup.reverse()) cleanup();
-    removeNugetIsolation(bootstrap.nugetIsolation);
-    if (detached) removeDetachedWorktree(executionRoot, lane.name);
+    const cleanupErrors = [];
+    for (const cleanup of serviceState.cleanup.reverse()) {
+      try {
+        cleanup();
+      } catch (error) {
+        cleanupErrors.push(errorMessage(error));
+      }
+    }
+    try {
+      removeNugetIsolation(bootstrap.nugetIsolation);
+    } catch (error) {
+      cleanupErrors.push(errorMessage(error));
+    }
+    serviceCleanupErrors = cleanupErrors;
+    if (detached) {
+      execution.cleanup = removeDetachedWorktree(executionRoot, lane.name);
+      execution.worktreeRemoved = execution.cleanup.ok;
+    }
   }
+
+  executionResult ??= {
+    commands: [],
+    status: 1,
+    forcedRedPassed: false,
+    startedAt: laneStartedAt,
+    error: "lane did not produce a command result",
+  };
+  let error = executionResult.error;
+  let status = executionResult.status;
+  if (serviceCleanupErrors.length > 0) {
+    status = status || 1;
+    error = error ?? `service cleanup failed: ${serviceCleanupErrors.join("; ")}`;
+  }
+  if (execution.cleanup !== null && !execution.cleanup.ok) {
+    status = status || 1;
+    error = error ?? `worktree cleanup failed: ${execution.cleanup.failureReason ?? "cleanup state is not clean"}`;
+  }
+  const result = writeReceipt(
+    receiptRoot,
+    lane,
+    sha,
+    executionResult.commands,
+    status,
+    executionResult.startedAt,
+    executionResult.forcedRedPassed,
+    execution,
+    bootstrap,
+    serviceState.services,
+    serviceState.containerProvenance,
+  );
+  return { ...result, error };
+}
+
+function executeLaneSequence(lanes, executor) {
+  const results = [];
+  for (const lane of lanes) {
+    try {
+      results.push(executor(lane));
+    } catch (error) {
+      results.push({
+        path: null,
+        error: errorMessage(error),
+        receipt: {
+          lane: lane.name,
+          exitStatus: 1,
+          execution: { cleanup: null },
+        },
+      });
+    }
+  }
+  return results;
+}
+
+function summarizeLaneResults(results) {
+  return results.map(({ path, receipt, error }) => ({
+    lane: receipt.lane,
+    status: receipt.exitStatus === 0 ? "green" : "failed",
+    exitStatus: receipt.exitStatus,
+    error: error ?? receipt.error ?? null,
+    cleanup: receipt.cleanup ?? receipt.execution?.cleanup ?? null,
+    receipt: path,
+  }));
+}
+
+function runCleanupSelfTests() {
+  const fallbackState = { directoryExists: true, registered: true };
+  const fallback = removeDetachedWorktree("/self-test/untracked-worktree", "cleanup-fallback", {
+    removeWorktree() {
+      if (fallbackState.directoryExists) throw new Error("Directory not empty: untracked run output");
+    },
+    removeDirectory() {
+      fallbackState.directoryExists = false;
+    },
+    prune() {
+      fallbackState.registered = false;
+    },
+    directoryExists: () => fallbackState.directoryExists,
+    checkRegistration: () => fallbackState.registered,
+  });
+  if (!fallback.ok || fallback.method !== "fallback-prune" || !fallback.directoryGone || fallback.worktreeRegistered !== false) {
+    fail("cleanup fallback self-test failed");
+  }
+
+  const impossibleState = { directoryExists: true, registered: true };
+  let impossible;
+  try {
+    impossible = removeDetachedWorktree("/self-test/unremovable-worktree", "cleanup-failure", {
+      removeWorktree() {
+        throw new Error("simulated refusal");
+      },
+      removeDirectory() {
+        // The directory is deliberately retained to prove this is a lane failure.
+      },
+      prune() {
+        // The registration is deliberately retained to prove this is a lane failure.
+      },
+      directoryExists: () => impossibleState.directoryExists,
+      checkRegistration: () => impossibleState.registered,
+    });
+  } catch (error) {
+    fail(`cleanup failure self-test unexpectedly threw: ${errorMessage(error)}`);
+  }
+  if (impossible.ok || impossible.method !== "fallback-prune" || impossible.directoryGone || impossible.worktreeRegistered !== true || impossible.failureReason === undefined) {
+    fail("cleanup failure self-test failed");
+  }
+
+  const aliasState = { directoryExists: true };
+  const aliasPath = "/var/sdt-g85-alias-worktree";
+  const listedAliasPath = "/private/var/sdt-g85-alias-worktree";
+  const alias = removeDetachedWorktree(aliasPath, "cleanup-alias-path", {
+    removeWorktree() {
+      throw new Error("simulated refusal after registration was created");
+    },
+    removeDirectory() {
+      aliasState.directoryExists = false;
+    },
+    prune() {
+      throw new Error("simulated prune refusal");
+    },
+    directoryExists: () => aliasState.directoryExists,
+    checkRegistration: () => registeredWorktree(aliasPath, {
+      listWorktrees: () => `worktree ${listedAliasPath}\n\n`,
+    }),
+  });
+  const aliasLaneStatus = alias.ok ? 0 : 1;
+  if (alias.ok || aliasLaneStatus !== 1 || !alias.directoryGone || alias.worktreeRegistered !== true || alias.pruneStatus !== "failed") {
+    fail("cleanup alias-path self-test failed");
+  }
+
+  return {
+    fallbackRefusal: {
+      scenario: "untracked run-created directory",
+      result: "green",
+      method: fallback.method,
+      directoryGone: fallback.directoryGone,
+      worktreeRegistered: fallback.worktreeRegistered,
+      removeError: fallback.removeError,
+    },
+    unrecoverableCleanup: {
+      scenario: "directory and registration remain",
+      result: "red-lane",
+      method: impossible.method,
+      directoryGone: impossible.directoryGone,
+      worktreeRegistered: impossible.worktreeRegistered,
+      failureReason: impossible.failureReason,
+    },
+    aliasPathRegistration: {
+      scenario: "directory removed but canonical-equivalent registration remains after prune refusal",
+      result: aliasLaneStatus === 0 ? "green" : "red-lane",
+      suppliedPath: aliasPath,
+      listedPath: listedAliasPath,
+      method: alias.method,
+      directoryGone: alias.directoryGone,
+      worktreeRegistered: alias.worktreeRegistered,
+      pruneStatus: alias.pruneStatus,
+      failureReason: alias.failureReason,
+    },
+  };
+}
+
+function runLaneContinuationSelfTest() {
+  const invoked = [];
+  const results = executeLaneSequence([
+    { name: "early-failure" },
+    { name: "later-lane" },
+  ], (lane) => {
+    invoked.push(lane.name);
+    if (lane.name === "early-failure") throw new Error("synthetic lane failure");
+    return {
+      path: "/self-test/later-lane.json",
+      receipt: {
+        lane: lane.name,
+        exitStatus: 0,
+        error: null,
+        execution: { cleanup: null },
+      },
+    };
+  });
+  const summary = summarizeLaneResults(results);
+  if (invoked.join(",") !== "early-failure,later-lane" || summary.length !== 2 || summary[0].status !== "failed" || summary[1].status !== "green") {
+    fail("lane continuation self-test failed");
+  }
+  return {
+    invoked,
+    summary,
+    processResult: "failed-after-summary",
+  };
 }
 
 function main() {
@@ -648,6 +1002,9 @@ function main() {
     let worktreeProof;
     let nugetProof;
     let containerProof;
+    let selfTestCleanup;
+    let cleanupProof;
+    let continuationProof;
     try {
       const detachedSha = currentSha(selfTestWorktree);
       const clean = gitOutput(["status", "--porcelain"], selfTestWorktree) === "";
@@ -683,11 +1040,14 @@ function main() {
         aliasOnlyMutation: "red",
         error: aliasMutationError,
       };
+      cleanupProof = runCleanupSelfTests();
+      continuationProof = runLaneContinuationSelfTest();
     } finally {
       removeNugetIsolation(nugetProof);
-      removeDetachedWorktree(selfTestWorktree, "self-test");
+      selfTestCleanup = removeDetachedWorktree(selfTestWorktree, "self-test");
     }
-    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true }, containerProof }, null, 2)}\n`);
+    if (!selfTestCleanup.ok) fail("self-test worktree cleanup did not finish cleanly");
+    process.stdout.write(`${JSON.stringify({ schema: "sdt-ci-local-self-test/v1", manifest: manifest.lanes.length, globProof, worktreeProof, nugetProof: { variableCount: NUGET_ENV_NAMES.length, insideWorktree: true }, containerProof, cleanupProof, continuationProof, selfTestCleanup }, null, 2)}\n`);
     return;
   }
   const lanes = selectLanes(manifest, options);
@@ -699,11 +1059,9 @@ function main() {
     process.stdout.write(JSON.stringify({ schema: "sdt-ci-local/v1", commitSha: sha, selectedLanes: [], status: "no-op" }, null, 2) + "\n");
     return;
   }
-  const results = [];
-  for (const lane of lanes) {
-    results.push(executeSelectedLane(manifest, lane, options, sha, receiptRoot));
-  }
+  const results = executeLaneSequence(lanes, (lane) => executeSelectedLane(manifest, lane, options, sha, receiptRoot));
   const failed = results.filter(({ receipt }) => receipt.exitStatus !== 0);
+  const summary = summarizeLaneResults(results);
   process.stdout.write(`${JSON.stringify({
     schema: "sdt-ci-local/v1",
     commitSha: sha,
@@ -711,6 +1069,7 @@ function main() {
     receiptRoot: `.artifacts/ci-local/${sha}`,
     receipts: results.map(({ path }) => path),
     failed: failed.map(({ receipt }) => receipt.lane),
+    summary,
     status: failed.length === 0 ? "green" : "failed",
   }, null, 2)}\n`);
   if (failed.length > 0) process.exitCode = 1;
