@@ -7,7 +7,7 @@ This document records the SDT-G83 measure-before-choice process for issue #167. 
 The plan was declared in the first dedicated-branch commit before M1 began:
 
 - Repository: `J-Tech-Japan/sekiban-dcb-ts`.
-- Base: `origin/main` at `fc35a382bc67ac930776a5a6b52ae10699ce972d2`.
+- Base: `origin/main` at `fc35a382bc67ac930776a5a6b52ae10699ce972d`.
 - Measurement source: the PR #173 workflow for source head `4e1a949b0f493e71811423d4368a1ae5e6e0c908`, workflow `34678103960`.
 - Initial PR attempt 1 foundation job: `103511507644`. The main baseline job `103509892567` in run `34675690179` is historical comparison evidence; it was not rerun.
 - M1, M2 and M3 are three fresh `gh run rerun --job` invocations of the PR foundation job, declared before M1. No whole workflow or unrelated job was dispatched.
@@ -17,7 +17,7 @@ The first declaration text called the historical main job the source job. The re
 
 ## Historical baseline
 
-Main run [34675690179](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34675690179) at `fc35a382bc67ac930776a5a6b52ae10699ce972d2`, foundation job `103509892567`, recorded an npm-test phase of 205.6 seconds and six timeout failures. The five in-scope observations were censored at their applicable budgets: AC7 at 3,000 ms, G5 at 3,000 ms, Branch B at the inherited 5,000 ms, the six-boundary repair test at 15,000 ms, and G69 MV at the inherited 5,000 ms. G67 AC3 also timed out at 10,000 ms, but is excluded from this unit. The historical censored values are retained as failure evidence, not treated as measurements from which to enlarge a budget.
+Main run [34675690179](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34675690179) at `fc35a382bc67ac930776a5a6b52ae10699ce972d`, foundation job `103509892567`, recorded an npm-test phase of 205.6 seconds and six timeout failures. The five in-scope observations were censored at their applicable budgets: AC7 at 3,000 ms, G5 at 3,000 ms, Branch B at the inherited 5,000 ms, the six-boundary repair test at 15,000 ms, and G69 MV at the inherited 5,000 ms. G67 AC3 also timed out at 10,000 ms, but is excluded from this unit. The historical censored values are retained as failure evidence, not treated as measurements from which to enlarge a budget.
 
 The initial PR workflow [34678103960](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34678103960) at source head `4e1a949b0f493e71811423d4368a1ae5e6e0c908` was green on its initial attempt: foundation `103511507644`, cheap `103511507534`, and verify `103513095766`. Its foundation job was the exact job subsequently rerun for M1--M3.
 
