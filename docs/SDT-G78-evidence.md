@@ -187,8 +187,21 @@ the reviewed allowlist counts and digests; it does not alter the G40 guard or
 any test. The foundation timeout is an unchanged baseline failure and is not
 calibrated or masked by G78.
 
-The repair commit records the corrected G40 allowlist and the next ordinary
-PR workflow will be the exact-head verification for that repair. Its terminal
-run identity and result will be appended without reusing the initial receipt.
-Historical receipts remain labelled historical rather than being reused as
-current-head evidence.
+The G40 allowlist repair was committed as `582a1344b7786d3558fd5ae16412c05c69e62fc5`,
+and the packed-consumer cache portability repair was committed as
+`ddb66c70876fbcce6fc4d20be5f0db713e4824cf`. The exact-head hosted receipts
+are recorded without replacing either earlier attempt:
+
+| head | ordinary PR workflow | terminal jobs | paired release preflight |
+| --- | --- | --- | --- |
+| `7933373be77e5bbf2ddf7ca6f78829f6fcc96db5` | [34723313704](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34723313704), failure | `ci-pr-cheap` 103632976081 failed on the intended G78 manifest command not yet being in the G40 allowlist; `ci-foundation` 103632976207 failed at unchanged `test/commit.spec.ts:556` inherited 5,000 ms timeout; `verify` 103634192360 failed by dependency | [34723313753](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34723313753), success |
+| `582a1344b7786d3558fd5ae16412c05c69e62fc5` | [34724022299](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34724022299), failure | `ci-pr-cheap` 103634871199 passed; `ci-foundation` 103634871282 exposed the in-scope packed-consumer default cache defect (`EACCES` creating `/private`); `verify` 103636669770 failed by dependency | [34724022294](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34724022294), success |
+| `ddb66c70876fbcce6fc4d20be5f0db713e4824cf` | [34724802064](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34724802064), success | `ci-pr-cheap` 103636954489 success (15m04s); `ci-foundation` 103636954610 success (8m19s); `verify` 103638713620 success (5s) | [34724802054](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34724802054), success; job 103636954395 |
+
+The final row is the current exact-head verification: head
+`ddb66c70876fbcce6fc4d20be5f0db713e4824cf`, base
+`994a44c3560e617cc82886336132574630d60de2`, branch
+`claude/sdt-g78-implementation-w274`, PR #175. The final workflow was an
+ordinary pull-request run; no manual dispatch, Full CI, rerun, publication,
+release preparation, G74, or G77 work was used. The earlier rows remain
+historical receipts and are not renamed or reused as final evidence.
