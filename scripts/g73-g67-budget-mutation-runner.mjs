@@ -61,6 +61,17 @@ const directTimingPlan = Object.freeze({
 });
 let reportCounter = 0;
 const vitest = resolve(root, "node_modules/vitest/vitest.mjs");
+const pinnedVitestVersion = "4.1.10";
+
+function installedVitestVersion() {
+  try {
+    return JSON.parse(
+      readFileSync(resolve(root, "node_modules/vitest/package.json"), "utf8"),
+    ).version ?? null;
+  } catch {
+    return null;
+  }
+}
 
 function safeLabel(label) {
   return String(label).replace(/[^a-zA-Z0-9._-]+/g, "-");
@@ -126,6 +137,85 @@ function matchingReceiptTests(receipt) {
     typeof test?.fullName === "string" &&
     test.fullName.endsWith(testName),
   );
+}
+
+function oracleEvidence(result) {
+  if (result === null || result === undefined) return null;
+  return {
+    label: result.label,
+    processStatus: result.processStatus,
+    signal: result.signal,
+    spawnError: result.spawnError,
+    processElapsedMs: result.processElapsedMs,
+    bodyStatus: result.bodyStatus,
+    bodyDurationMs: result.bodyDurationMs,
+    failureMessages: result.failureMessages,
+    targetCount: result.targetCount,
+    receiptTargetCount: result.receiptTargetCount,
+    reportTarget: result.reportTarget,
+    receiptTarget: result.receiptTarget,
+    receiptFinalStatus: result.receiptFinalStatus,
+    vitestVersion: result.vitestVersion,
+    receiptVitestVersion: result.receiptVitestVersion,
+    installedVitestVersion: result.installedVitestVersion,
+    receiptTests: result.receiptTests,
+    collectionErrors: result.collectionErrors,
+    unhandledErrors: result.unhandledErrors,
+    reportError: result.reportError,
+    receiptError: result.receiptError,
+    directTiming: result.directTiming,
+    directTimingError: result.directTimingError,
+    output: result.output,
+  };
+}
+
+function pinnedVitestVersionMatches(result) {
+  return result?.receiptVitestVersion === pinnedVitestVersion &&
+    result?.installedVitestVersion === pinnedVitestVersion;
+}
+
+function calibrationFailureDetails(healthy, calibration, extra = {}) {
+  const healthyBodyMs = healthy?.bodyDurationMs;
+  const calibrationBodyMs = calibration?.bodyDurationMs;
+  const signedDifferenceMs = Number.isFinite(healthyBodyMs) && Number.isFinite(calibrationBodyMs)
+    ? calibrationBodyMs - healthyBodyMs
+    : null;
+  return {
+    ...extra,
+    healthyBodyMs: Number.isFinite(healthyBodyMs) ? healthyBodyMs : null,
+    calibrationBodyMs: Number.isFinite(calibrationBodyMs) ? calibrationBodyMs : null,
+    signedDifferenceMs,
+    healthyObservation: oracleEvidence(healthy),
+    calibrationObservation: oracleEvidence(calibration),
+    directTiming: calibration?.directTiming ?? null,
+    directTimingError: calibration?.directTimingError ?? null,
+    uncertainty: {
+      crossSizeRateBounds: extra.crossSizeRateBounds ?? null,
+      crossSizeViolations: extra.crossSizeViolations ?? [],
+      costsPerRoundMs: extra.costsPerRoundMs ?? null,
+      pairedResidualsMs: extra.pairedResidualsMs ?? null,
+      residualRangeMs: extra.residualRangeMs ?? null,
+      equalSizeResidualBoundMs: extra.equalSizeResidualBoundMs ?? equalSizeResidualBoundMs,
+      allowanceMs: extra.allowanceMs ?? null,
+    },
+    representativeSelection: "not-reached",
+    attempts: [],
+    semanticTimeout: "not-reached",
+  };
+}
+
+function emitStage(stages, stage, result, fields = {}) {
+  const record = {
+    stage,
+    ...fields,
+    observation: oracleEvidence(result),
+  };
+  stages.push(record);
+  process.stdout.write(JSON.stringify({
+    phase: "G80_CALIBRATION_STAGE",
+    metadata: receiptMetadata(),
+    ...record,
+  }) + "\n");
 }
 
 function ensureObservationRoot() {
@@ -414,6 +504,8 @@ function runOracle(label, { retainReport = false } = {}) {
   const test = targets.length === 1 ? targets[0] : undefined;
   const receiptTargets = matchingReceiptTests(receipt);
   const receiptTarget = receiptTargets.length === 1 ? receiptTargets[0] : undefined;
+  const installedVersion = installedVitestVersion();
+  const receiptVersion = receipt?.vitestVersion ?? null;
   let reportRetentionPath = null;
   let receiptRetentionPath = null;
   if (retainReport) {
@@ -449,8 +541,12 @@ function runOracle(label, { retainReport = false } = {}) {
       failureMessages: test?.failureMessages ?? receiptTarget?.errors?.map((error) => error.message).filter(Boolean) ?? [],
       targetCount: targets.length,
       receiptTargetCount: receiptTargets.length,
+      reportTarget: test ?? null,
       receiptTarget,
       receiptFinalStatus: receipt?.finalStatus ?? null,
+      vitestVersion: receiptVersion,
+      receiptVitestVersion: receiptVersion,
+      installedVitestVersion: installedVersion,
       receiptTests: receipt?.tests ?? [],
       collectionErrors: receipt?.collectionErrors ?? [],
       unhandledErrors: receipt?.unhandledErrors ?? [],
@@ -483,26 +579,17 @@ function requireHealthy(result) {
     result.receiptError === null &&
     result.receiptFinalStatus === "passed" &&
     result.bodyStatus === "passed" &&
+    result.targetCount === 1 &&
     result.receiptTargetCount === 1 &&
+    result.receiptTarget?.state === "passed" &&
+    pinnedVitestVersionMatches(result) &&
     Array.isArray(result.collectionErrors) && result.collectionErrors.length === 0 &&
     Array.isArray(result.unhandledErrors) && result.unhandledErrors.length === 0
   ) return;
   throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
     label: result.label,
-    processStatus: result.processStatus,
-    signal: result.signal,
-    bodyStatus: result.bodyStatus,
-    targetCount: result.targetCount,
-    receiptTargetCount: result.receiptTargetCount,
-    receiptTarget: result.receiptTarget,
-    receiptFinalStatus: result.receiptFinalStatus,
-    collectionErrors: result.collectionErrors,
-    unhandledErrors: result.unhandledErrors,
-    spawnError: result.spawnError,
-    reportError: result.reportError,
-    receiptError: result.receiptError,
-    directTimingError: result.directTimingError,
-    output: result.output,
+    reason: "healthy oracle receipt is not a complete pinned-version named-target pass",
+    rawObservation: oracleEvidence(result),
   });
 }
 
@@ -520,6 +607,9 @@ function requireTimeoutRegression(result) {
     result.receiptError === null &&
     result.targetCount === 1 &&
     result.receiptTargetCount === 1 &&
+    result.receiptTarget?.state === "failed" &&
+    typeof result.receiptTarget?.fullName === "string" &&
+    result.receiptTarget.fullName.endsWith(testName) &&
     typeof result.processStatus === "number" &&
     result.processStatus !== 0 &&
     result.signal === null &&
@@ -530,29 +620,34 @@ function requireTimeoutRegression(result) {
     result.bodyDurationMs >= budgetMs &&
     exactReceiptTimeout &&
     noOtherFailures &&
+    pinnedVitestVersionMatches(result) &&
     Array.isArray(result.collectionErrors) && result.collectionErrors.length === 0 &&
     Array.isArray(result.unhandledErrors) && result.unhandledErrors.length === 0;
   if (isExactTargetTimeout) return;
   throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
     label: result.label,
     reason: "representative did not produce exactly one named target timeout",
-    processStatus: result.processStatus,
-    signal: result.signal,
-    bodyStatus: result.bodyStatus,
-    bodyDurationMs: result.bodyDurationMs,
-    targetCount: result.targetCount,
-    receiptTargetCount: result.receiptTargetCount,
-    receiptTarget: result.receiptTarget,
-    receiptTests: result.receiptTests,
-    receiptFinalStatus: result.receiptFinalStatus,
-    collectionErrors: result.collectionErrors,
-    unhandledErrors: result.unhandledErrors,
-    spawnError: result.spawnError,
-    reportError: result.reportError,
-    receiptError: result.receiptError,
-    failureMessages: result.failureMessages,
-    output: result.output,
+    rawObservation: oracleEvidence(result),
   });
+}
+
+function classifyRepresentativeResult(result) {
+  try {
+    requireTimeoutRegression(result);
+    return { kind: "semantic-timeout" };
+  } catch {
+    // A clean pass of the exact named target is the only state that permits
+    // another representative size. Every other state is fail-closed below.
+  }
+  try {
+    requireHealthy(result);
+    return { kind: "named-target-pass" };
+  } catch {
+    throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
+      reason: "representative oracle state is neither an exact named-target pass nor an exact timeout",
+      rawObservation: oracleEvidence(result),
+    });
+  }
 }
 
 function validateDirectTiming(timing) {
@@ -689,37 +784,34 @@ function deriveAllowance(timing) {
 }
 
 function decideCalibration(healthy, calibration) {
+  const invalidReceiptDetails = calibrationFailureDetails(healthy, calibration, {
+    reason: "calibration report, receipt, version or direct timing marker was missing/malformed",
+  });
   if (
     calibration.reportError !== null ||
     calibration.targetCount !== 1 ||
     calibration.directTimingError !== null ||
-    calibration.directTiming === null
+    calibration.directTiming === null ||
+    !pinnedVitestVersionMatches(calibration)
   ) {
-    throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
-      label: calibration.label,
-      reason: "calibration report or direct timing marker was missing/malformed",
-      processStatus: calibration.processStatus,
-      signal: calibration.signal,
-      bodyStatus: calibration.bodyStatus,
-      targetCount: calibration.targetCount,
-      reportError: calibration.reportError,
-      directTimingError: calibration.directTimingError,
-      output: calibration.output,
-    });
+    throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", invalidReceiptDetails);
   }
-  const timing = validateDirectTiming(calibration.directTiming);
+  let timing;
+  try {
+    timing = validateDirectTiming(calibration.directTiming);
+  } catch (error) {
+    throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", calibrationFailureDetails(healthy, calibration, {
+      reason: "calibration direct timing failed validation",
+      validationError: String(error?.message ?? error),
+    }));
+  }
   const signedDifferenceMs = calibration.bodyDurationMs - healthy.bodyDurationMs;
   let allowance;
   try {
     allowance = deriveAllowance(timing);
   } catch (error) {
     if (error?.outcome === "CALIBRATION_INCONCLUSIVE") {
-      error.details = {
-        ...error.details,
-        healthyBodyMs: healthy.bodyDurationMs,
-        calibrationBodyMs: calibration.bodyDurationMs,
-        signedDifferenceMs,
-      };
+      error.details = calibrationFailureDetails(healthy, calibration, error.details);
     }
     throw error;
   }
@@ -736,7 +828,7 @@ function decideCalibration(healthy, calibration) {
     ? signedDifferenceMs / predictedAddedWorkMs
     : null;
   if (!Number.isFinite(directRateLowerBoundMs) || directRateLowerBoundMs <= allowance.allowanceMs) {
-    throw outcomeError("CALIBRATION_INCONCLUSIVE", {
+    throw outcomeError("CALIBRATION_INCONCLUSIVE", calibrationFailureDetails(healthy, calibration, {
       reason: "the direct per-round lower bound did not dominate the predeclared per-round allowance",
       comparison: "directRateLowerBoundMs > allowanceMs",
       directRateLowerBoundMs,
@@ -747,7 +839,7 @@ function decideCalibration(healthy, calibration) {
       predictedAddedWorkMs,
       wholeTestAttributionRatio,
       timing,
-    });
+    }));
   }
   return {
     timing,
@@ -924,6 +1016,8 @@ function runStructuredTimeoutReceiptSelfTest() {
     result?.status === 0 ||
     result?.signal !== null ||
     receipt?.finalStatus !== "failed" ||
+    receipt?.vitestVersion !== pinnedVitestVersion ||
+    installedVitestVersion() !== pinnedVitestVersion ||
     target.length !== 1 ||
     target[0]?.state !== "failed" ||
     target[0]?.configuredTimeoutMs !== 10 ||
@@ -940,6 +1034,7 @@ function runStructuredTimeoutReceiptSelfTest() {
   return {
     processStatus: result.status,
     signal: result.signal ?? null,
+    vitestVersion: receipt.vitestVersion,
     target: target[0],
     receiptFinalStatus: receipt.finalStatus,
   };
@@ -1107,28 +1202,94 @@ function selfTest() {
     bodyStatus: "failed",
     bodyDurationMs: 10_001,
     receiptFinalStatus: "failed",
+    vitestVersion: pinnedVitestVersion,
+    receiptVitestVersion: pinnedVitestVersion,
+    installedVitestVersion: pinnedVitestVersion,
     receiptTarget: {
+      module: testFile,
+      fullName: testName,
       state: "failed",
       errors: [{ name: "Error", message: "Test timed out in 10000ms.", stack: "Error: Test timed out in 10000ms." }],
     },
-    receiptTests: [{ state: "failed", errors: [{ message: "Test timed out in 10000ms." }] }],
+    receiptTests: [{ module: testFile, fullName: testName, state: "failed", errors: [{ message: "Test timed out in 10000ms." }] }],
     collectionErrors: [],
     unhandledErrors: [],
     failureMessages: ["Test timed out in 10000ms."],
     output: "",
   };
   requireTimeoutRegression(validTimeoutReceipt);
-  for (const [name, rejectedReceipt] of [
+  const w226Fixture = JSON.parse(readFileSync(
+    resolve(root, "scripts/fixtures/g80-w226-stack-trace-error.json"),
+    "utf8",
+  ));
+  const w226StackTraceShape = {
+    ...validTimeoutReceipt,
+    vitestVersion: w226Fixture.vitestVersion,
+    receiptVitestVersion: w226Fixture.vitestVersion,
+    receiptTarget: w226Fixture.tests[0],
+    receiptTests: w226Fixture.tests,
+    receiptFinalStatus: w226Fixture.finalStatus,
+  };
+  const invalidTimeoutReceipts = [
+    ["hook timeout", {
+      ...validTimeoutReceipt,
+      receiptTarget: {
+        ...validTimeoutReceipt.receiptTarget,
+        errors: [{ name: "Error", message: "Hook timed out in 10000ms.", stack: "Error: Hook timed out in 10000ms." }],
+      },
+    }],
+    ["selected-target assertion", {
+      ...validTimeoutReceipt,
+      receiptTarget: {
+        ...validTimeoutReceipt.receiptTarget,
+        errors: [{ name: "AssertionError", message: "expected 32 to be 31", stack: "AssertionError: expected 32 to be 31" }],
+      },
+    }],
+    ["mixed timeout and assertion messages", {
+      ...validTimeoutReceipt,
+      receiptTarget: {
+        ...validTimeoutReceipt.receiptTarget,
+        errors: [
+          { name: "Error", message: "Test timed out in 10000ms.", stack: "Error: Test timed out in 10000ms." },
+          { name: "AssertionError", message: "expected 32 to be 31", stack: "AssertionError: expected 32 to be 31" },
+        ],
+      },
+    }],
+    ["other failed target", {
+      ...validTimeoutReceipt,
+      receiptTests: [
+        ...validTimeoutReceipt.receiptTests,
+        { module: "test/other.spec.ts", fullName: "other failed target", state: "failed", errors: [{ message: "unrelated" }] },
+      ],
+    }],
+    ["duplicate selected target", {
+      ...validTimeoutReceipt,
+      targetCount: 2,
+      receiptTargetCount: 2,
+      receiptTarget: undefined,
+      receiptTests: [validTimeoutReceipt.receiptTests[0], validTimeoutReceipt.receiptTests[0]],
+    }],
+    ["output-only fabricated timeout", {
+      ...validTimeoutReceipt,
+      targetCount: 0,
+      receiptTargetCount: 0,
+      receiptTarget: undefined,
+      receiptTests: [],
+      output: "Test timed out in 10000ms.",
+    }],
+    ["sanitized W226 STACK_TRACE_ERROR", w226StackTraceShape],
     ["signal termination", { ...validTimeoutReceipt, signal: "SIGTERM" }],
     ["missing target", { ...validTimeoutReceipt, targetCount: 0, receiptTargetCount: 0, receiptTarget: undefined }],
     ["setup/import failure", { ...validTimeoutReceipt, collectionErrors: [{ message: "Failed to load setup file" }] }],
     ["unhandled error", { ...validTimeoutReceipt, unhandledErrors: [{ message: "unhandled" }] }],
-    ["green target", { ...validTimeoutReceipt, bodyStatus: "passed", receiptFinalStatus: "passed", receiptTarget: { state: "passed", errors: [] }, receiptTests: [{ state: "passed", errors: [] }] }],
-    ["wrong timeout message", { ...validTimeoutReceipt, failureMessages: ["Test timed out in 5000ms."], receiptTarget: { state: "failed", errors: [{ message: "Test timed out in 5000ms." }] } }],
+    ["green target", { ...validTimeoutReceipt, bodyStatus: "passed", receiptFinalStatus: "passed", receiptTarget: { ...validTimeoutReceipt.receiptTarget, state: "passed", errors: [] }, receiptTests: [{ ...validTimeoutReceipt.receiptTests[0], state: "passed", errors: [] }] }],
+    ["wrong timeout message", { ...validTimeoutReceipt, failureMessages: ["Test timed out in 5000ms."], receiptTarget: { ...validTimeoutReceipt.receiptTarget, errors: [{ name: "Error", message: "Test timed out in 5000ms." }] } }],
     ["incomplete process", { ...validTimeoutReceipt, processStatus: null }],
     ["spawn error", { ...validTimeoutReceipt, spawnError: "spawn failed" }],
-    ["unrelated failed test", { ...validTimeoutReceipt, receiptTests: [{ state: "failed", errors: [{ message: "Test timed out in 10000ms." }] }, { state: "failed", errors: [{ message: "AssertionError: unrelated" }] }] }],
-  ]) {
+    ["missing Vitest version", { ...validTimeoutReceipt, receiptVitestVersion: null }],
+    ["wrong Vitest version", { ...validTimeoutReceipt, receiptVitestVersion: "4.1.9" }],
+  ];
+  for (const [name, rejectedReceipt] of invalidTimeoutReceipts) {
     let rejected = false;
     try {
       requireTimeoutRegression(rejectedReceipt);
@@ -1136,6 +1297,49 @@ function selfTest() {
       rejected = true;
     }
     if (!rejected) throw new Error("G80 self-test accepted an invalid timeout receipt: " + name);
+  }
+  const validNamedPass = {
+    ...validTimeoutReceipt,
+    processStatus: 0,
+    bodyStatus: "passed",
+    bodyDurationMs: 2_000,
+    receiptFinalStatus: "passed",
+    receiptTarget: {
+      ...validTimeoutReceipt.receiptTarget,
+      state: "passed",
+      errors: [],
+    },
+    receiptTests: [{
+      ...validTimeoutReceipt.receiptTests[0],
+      state: "passed",
+      errors: [],
+    }],
+    failureMessages: [],
+  };
+  if (classifyRepresentativeResult(validNamedPass).kind !== "named-target-pass") {
+    throw new Error("G80 self-test did not classify a valid named-target pass");
+  }
+  let simulatedRepresentativeInvocations = 0;
+  let immediateStop = false;
+  try {
+    simulatedRepresentativeInvocations += 1;
+    classifyRepresentativeResult({
+      ...validNamedPass,
+      signal: "SIGTERM",
+      processStatus: null,
+      bodyStatus: undefined,
+      receiptFinalStatus: null,
+      receiptTarget: undefined,
+      receiptTargetCount: 0,
+      targetCount: 0,
+    });
+    simulatedRepresentativeInvocations += 1;
+    classifyRepresentativeResult(validNamedPass);
+  } catch (error) {
+    immediateStop = error?.outcome === "HEALTHY_OR_ORACLE_FAILURE";
+  }
+  if (!immediateStop || simulatedRepresentativeInvocations !== 1) {
+    throw new Error("G80 self-test permitted escalation after an invalid representative observation");
   }
   let unitMismatchMutant = false;
   try {
@@ -1147,6 +1351,8 @@ function selfTest() {
         targetCount: 1,
         directTimingError: null,
         directTiming: validTiming,
+        receiptVitestVersion: pinnedVitestVersion,
+        installedVitestVersion: pinnedVitestVersion,
         // The whole-test interval is a sub-allowance attribution in this fixture;
         // it must not be compared to the positive ms/round allowance.
         bodyDurationMs: 100.5,
@@ -1161,6 +1367,7 @@ function selfTest() {
   }
   if (!unitMismatchMutant) throw new Error("G80 self-test did not prove whole-test attribution is non-authoritative");
   let inconclusiveDirectSignal = false;
+  let inconclusiveDirectDetails;
   try {
     decideCalibration(
       { bodyDurationMs: 100, label: "healthy" },
@@ -1170,6 +1377,8 @@ function selfTest() {
         targetCount: 1,
         directTimingError: null,
         directTiming: timingWithRates([0.25, 0.25, 0.2625]),
+        receiptVitestVersion: pinnedVitestVersion,
+        installedVitestVersion: pinnedVitestVersion,
         bodyDurationMs: 200,
       },
     );
@@ -1177,8 +1386,20 @@ function selfTest() {
     inconclusiveDirectSignal =
       error?.outcome === "CALIBRATION_INCONCLUSIVE" &&
       error?.details?.reason === "the direct per-round lower bound did not dominate the predeclared per-round allowance";
+    inconclusiveDirectDetails = error?.details;
   }
   if (!inconclusiveDirectSignal) throw new Error("G80 self-test did not reject an inconclusive direct signal");
+  if (
+    inconclusiveDirectDetails?.directTiming === null ||
+    inconclusiveDirectDetails?.calibrationObservation?.directTiming === null ||
+    inconclusiveDirectDetails?.healthyObservation === null ||
+    inconclusiveDirectDetails?.representativeSelection !== "not-reached" ||
+    JSON.stringify(inconclusiveDirectDetails?.attempts) !== "[]" ||
+    inconclusiveDirectDetails?.semanticTimeout !== "not-reached" ||
+    inconclusiveDirectDetails?.uncertainty?.allowanceMs === null
+  ) {
+    throw new Error("G80 self-test did not retain complete inconclusive calibration evidence");
+  }
   let rangeExceeded = false;
   try {
     representativeRoundsFor(9_999, {
@@ -1221,11 +1442,19 @@ function main() {
   const sourcePath = resolve(root, testFile);
   const original = readFileSync(sourcePath, "utf8");
   if (process.argv.includes("--self-test")) return selfTest();
+  let healthy = null;
+  let calibration = null;
+  let estimate = "not-reached";
+  let representativeSelection = "not-reached";
+  let semanticTimeout = "not-reached";
+  const stages = [];
+  const attempts = [];
   try {
     if (process.argv.includes("--observation-only")) {
       return observationOnly(sourcePath, original);
     }
-    const healthy = runOracle("G67 AC3 healthy", { retainReport: true });
+    healthy = runOracle("G67 AC3 healthy", { retainReport: true });
+    emitStage(stages, "healthy", healthy, { status: "observed" });
     requireHealthy(healthy);
     if (healthy.bodyDurationMs >= budgetMs) {
       throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
@@ -1240,18 +1469,42 @@ function main() {
       mutate(original, calibrationRounds, { directTiming: true }),
       "utf8",
     );
-    const calibration = runOracle(
+    calibration = runOracle(
       "G67 AC3 " + calibrationRounds + "-round G69 direct calibration",
       { retainReport: true },
     );
+    emitStage(stages, "calibration", calibration, { status: "observed" });
     requireHealthy(calibration);
     const calibrationDecision = decideCalibration(healthy, calibration);
-    const estimate = representativeRoundsFor(
-      healthy.bodyDurationMs,
-      calibrationDecision,
-    );
+    try {
+      estimate = representativeRoundsFor(
+        healthy.bodyDurationMs,
+        calibrationDecision,
+      );
+      representativeSelection = {
+        status: "selected",
+        rounds: estimate.representativeRounds,
+        healthyMarginMs: estimate.healthyMarginMs,
+        source: "conservative direct per-round lower bound",
+      };
+      emitStage(stages, "estimate", null, {
+        status: "selected",
+        estimate,
+        representativeSelection,
+      });
+    } catch (error) {
+      emitStage(stages, "estimate", null, {
+        status: "failed",
+        error: {
+          outcome: error?.outcome ?? null,
+          message: String(error?.message ?? error),
+          details: error?.details ?? null,
+        },
+        representativeSelection,
+      });
+      throw error;
+    }
 
-    const attempts = [];
     let representativeRounds = estimate.representativeRounds;
     let regression;
     while (representativeRounds <= maxRepresentativeRounds) {
@@ -1264,29 +1517,34 @@ function main() {
         "G67 AC3 " + representativeRounds + "-round G69 representative",
         { retainReport: true },
       );
-      attempts.push({
+      const attempt = {
         rounds: representativeRounds,
-        processStatus: regression.processStatus,
-        signal: regression.signal,
-        bodyStatus: regression.bodyStatus,
-        bodyDurationMs: regression.bodyDurationMs,
-        processElapsedMs: regression.processElapsedMs,
-        targetCount: regression.targetCount,
-        failureMessages: regression.failureMessages,
+        observation: oracleEvidence(regression),
+      };
+      attempts.push(attempt);
+      emitStage(stages, "representative-attempt", regression, {
+        status: "observed",
+        attemptIndex: attempts.length,
+        rounds: representativeRounds,
       });
-      if (regression.processStatus !== 0 && regression.bodyStatus === "failed") {
+      const classification = classifyRepresentativeResult(regression);
+      if (classification.kind === "semantic-timeout") {
+        semanticTimeout = {
+          status: "exact-named-target-timeout",
+          rounds: representativeRounds,
+          observation: oracleEvidence(regression),
+        };
         break;
       }
       const nextRounds = Math.ceil(representativeRounds * safetyFactor);
       if (nextRounds <= representativeRounds) break;
       representativeRounds = nextRounds;
     }
-    if (regression === undefined) {
+    if (regression === undefined || semanticTimeout === "not-reached") {
       throw outcomeError("HEALTHY_OR_ORACLE_FAILURE", {
-        reason: "G67 representative did not run",
+        reason: "G67 representative did not produce an exact named-target timeout before the bounded range ended",
       });
     }
-    requireTimeoutRegression(regression);
     process.stdout.write(JSON.stringify({
       budgetMs,
       testName,
@@ -1319,14 +1577,30 @@ function main() {
         regression: regression.processElapsedMs - regression.bodyDurationMs,
       },
       attempts,
+      stages,
+      representativeSelection,
+      semanticTimeout,
       result: "healthy-green-g69-path-timeout-red",
     }) + "\n");
   } catch (error) {
     const outcome = error?.outcome ?? "HEALTHY_OR_ORACLE_FAILURE";
+    const details = {
+      ...(error?.details ?? {}),
+      healthyObservation: error?.details?.healthyObservation ?? oracleEvidence(healthy),
+      calibrationObservation: error?.details?.calibrationObservation ?? oracleEvidence(calibration),
+      directTiming: error?.details?.directTiming ?? calibration?.directTiming ?? null,
+      directTimingError: error?.details?.directTimingError ?? calibration?.directTimingError ?? null,
+      uncertainty: error?.details?.uncertainty ?? null,
+      estimate,
+      representativeSelection,
+      attempts,
+      semanticTimeout,
+      stages,
+    };
     process.stderr.write(JSON.stringify({
       result: "failed",
       outcome,
-      details: error?.details ?? null,
+      details,
       message: String(error?.message ?? error),
     }) + "\n");
     process.exitCode = 1;
