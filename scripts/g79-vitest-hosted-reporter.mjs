@@ -20,7 +20,19 @@ function jsonError(value) {
 }
 
 function gitHead() {
-  return process.env.GITHUB_SHA ?? process.env.GIT_COMMIT ?? "local-unresolved";
+  const explicit = process.env.GITHUB_HEAD_SHA ?? process.env.GIT_COMMIT;
+  if (explicit) return explicit;
+  const eventPath = process.env.GITHUB_EVENT_PATH;
+  if (eventPath) {
+    try {
+      const event = JSON.parse(readFileSync(eventPath, "utf8"));
+      const pullRequestHead = event?.pull_request?.head?.sha;
+      if (typeof pullRequestHead === "string" && pullRequestHead.length > 0) return pullRequestHead;
+    } catch {
+      // Fall through to the standard workflow SHA when the event is absent or unreadable.
+    }
+  }
+  return process.env.GITHUB_SHA ?? "local-unresolved";
 }
 
 function runIdentity() {
@@ -56,6 +68,21 @@ function workBasis(file, name) {
   const value = `${file} ${name}`;
   if (value.includes("g43-tag-sql") || value.includes("backlog larger than one alarm")) {
     return "33 sequential durable appends, SQL LIMIT 32, two alarm passes, acknowledgements, and re-arm";
+  }
+  if (value.includes("commit.spec") && value.includes("AC7: allocation and cancellation faults")) {
+    return "one allocation/cancellation fault injection, allocator/tag fact inspection, and the direct Section 6 response; observed 0.90–0.99 s on the three fresh runs, bounded at 5,000 ms for the recorded slow-runner margin";
+  }
+  if (value.includes("tag.spec") && value.includes("G5: treats fences as an exact-key")) {
+    return "exact-key fence install/clear/append ordering with the named fence acknowledgement and unrelated-fence checks; observed 1.01–1.07 s on the three fresh runs, bounded at 5,000 ms for the recorded slow-runner margin";
+  }
+  if (value.includes("repair.spec") && value.includes("takes Branch B")) {
+    return "one provider-exclusion Branch B repair, stable Tag head/version assertions, and the public repair response; observed 0.75–0.82 s on the three fresh runs, bounded at 10,000 ms for the recorded slow-runner margin";
+  }
+  if (value.includes("repair.spec") && value.includes("six crash/race boundaries")) {
+    return "six sequential crash/race boundary observations, durable Tag re-queries, and convergence without Response.error; observed 3.01–3.48 s on the three fresh runs, bounded at 20,000 ms for the recorded slow-runner margin";
+  }
+  if (value.includes("g69-ordering") && value.includes("real MV generations")) {
+    return "real materialized-view generations, join commit delivery, and public safe-reader status across the ordering schedule; observed 0.51–0.55 s on the three fresh runs, bounded at 10,000 ms for the recorded slow-runner margin";
   }
   if (value.includes("g43-measurement")) {
     return "five history sizes across real Tag-DO SQL transitions and a closed range-plan predicate";

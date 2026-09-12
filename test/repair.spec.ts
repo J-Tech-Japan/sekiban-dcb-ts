@@ -429,7 +429,7 @@ describe("SDT-G6 operator repair vertical slice", () => {
       expect(journal.state).toBe("PARTIAL");
       expect(journal.repairObservations.map((entry) => entry.phase)).toContain("CLEARED");
     }
-  }, 15_000);
+  }, 20_000);
 
   it("uses a bounded scan checkpoint and clears only after the resumed durable scope is complete", async () => {
     const prepared = await partialAttempt("checkpoint", { candidateCount: 2 });
@@ -506,7 +506,7 @@ describe("SDT-G6 operator repair vertical slice", () => {
     const resolution = after.facts.resolutions.find((entry) => entry.attemptId === prepared.attemptId)!;
     expect(resolution.branch).toBe("EXCLUDED_AUDITED");
     expect((await journalState(prepared.attemptId)).state).toBe("PARTIAL");
-  });
+  }, 10_000);
 
   it("records a head-ahead exclusion without advancing the Tag head or version", async () => {
     const target = tag("head-ahead-direct");
