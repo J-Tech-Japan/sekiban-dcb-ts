@@ -85,3 +85,55 @@ composition mutants continue to target the named assertion rather than a
 timeout; the six other G71 mutants and `test/g67-safe-lane.spec.ts` are
 outside this diff. No lane was removed or reordered, and no retry, skip,
 flaky marker, product behavior, or global timeout changed.
+
+## AC3 focused proof receipt
+
+At local checkout head `1d74264e93ab4a8a8aeb162a930e824a4aef40fd`,
+`npm run test:g71` exited 0. The workspace build, both G71 files (16 tests),
+the mutation self-test, and all eight product-mutant runs completed. The
+summary was `all-g71-behavioral-product-mutants-red`; every mutant process had
+status 1 and null signal. The two composition rows retained their actual
+named-oracle excerpts:
+
+| mutant | named oracle | process result | assertion evidence |
+| --- | --- | --- | --- |
+| `composition-unsafe-option-dropped` | `SDT-G71 Cloudflare-only composition G71 composition: safe and unsafe pages diverge while SafeWindow holds` | status 1, signal null | `test/g71-composition.spec.ts:300:37`: expected the held unsafe page's queued event, but the actual rows did not contain it |
+| `composition-safe-head-from-wrong-observation` | same named oracle | status 1, signal null | `test/g71-composition.spec.ts:313:38`: expected `SUID_A` but received an empty head on the held empty safe page |
+
+The six preceding G71 product mutants also remained red; the self-test
+rejected setup/import failure, timeout, process kill, missing or skipped
+oracle, unrelated assertion failure, and a green escape. This is the
+semantic proof that the 10,000 ms budget did not turn the composition proof
+into a timeout-only oracle.
+
+## AC4/AC5 final PR receipt
+
+The dedicated branch is `claude/sdt-g82-g71-budget-w253`, based on
+`origin/main` `2e37d04ec0ac37266270d86bcb78a811742bdf74`. The ready-for-review
+PR is [#170](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/170), created
+at implementation head `1d74264e93ab4a8a8aeb162a930e824a4aef40fd`; its body
+contains `Closes #166`.
+
+The exact-head push-triggered [CI workflow
+34666875982](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982)
+completed successfully at that head. Its retained job receipts are:
+
+* [ci-foundation job 103480450114](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982/job/103480450114), 02:09:33Z–02:17:09Z, success;
+* [ci-pr-cheap job 103480450009](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982/job/103480450009), 02:09:33Z–02:24:49Z, success;
+* [verify job 103482559236](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982/job/103482559236), 02:24:52Z–02:24:59Z, success.
+
+The workflow wall-clock was 15m31s (02:09:29Z–02:25:00Z). For a checkable
+before/after comparison, the issue's historical main attempt 1 of
+[workflow 34548851696](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34548851696/attempts/1)
+ran 43m26s (01:00:11Z–01:43:37Z) and failed in its then-unbudgeted G71
+foundation path; the current green workflow uses the G84 PR-tier split. This
+comparison is a whole-workflow observation, not a causal benchmark.
+
+The lifecycle receipts were also completed before hosted CI: the issue claim
+returned `proceed:true`, `applied:true`, and added `intent-issue-in-progress`;
+PR creation was followed immediately by `worker result-summary` outcome
+`pr-created` and `worker complete` outcome `pr-created`, with no errors. The
+complete call added `intent-pr-created` and removed
+`intent-issue-in-progress` on the source issue. No evidence is claimed for a
+release-preflight or for a whole-workflow dispatch: the predeclared AC1 plan
+explicitly excluded both.
