@@ -13,13 +13,15 @@ import { tmpdir } from "node:os";
 const root = resolve(new URL("..", import.meta.url).pathname);
 const packageRoots = ["dcb-core", "dcb-domain", "dcb-client"].map((name) => join(root, "packages", name));
 const fixtureRoot = join(root, "test/fixtures/g78-cloud-client-contract");
+const temp = await mkdtemp(join(tmpdir(), "sdt-g78-packed-consumer-"));
+const npmCache = process.env.NPM_CONFIG_CACHE ?? join(temp, ".npm-cache");
 
 function run(command, args, cwd) {
   return new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, NPM_CONFIG_CACHE: process.env.NPM_CONFIG_CACHE ?? "/private/tmp/g78-w275-npm-cache" },
+      env: { ...process.env, NPM_CONFIG_CACHE: npmCache },
     });
     let stdout = "";
     let stderr = "";
@@ -34,7 +36,6 @@ function run(command, args, cwd) {
   });
 }
 
-const temp = await mkdtemp(join(tmpdir(), "sdt-g78-packed-consumer-"));
 try {
   await writeFile(join(temp, "package.json"), JSON.stringify({ private: true, type: "module" }, null, 2));
   await mkdir(join(temp, "src"), { recursive: true });
