@@ -174,12 +174,11 @@ authoritative checkpoint API.
 | existing tag-state frontier remains below captured authority after one retry | `ClientError` code `read_unavailable`, status 503 |
 | transport has no authority method | `ClientError` code `unsupported_capability`, status 501 |
 
-The cloud-specific credential wrapper remains the existing dcb-client export
-in this release; its ownership move and cloud-specific error preservation are
-SDT-G78 work and are intentionally not changed by G71. The generic HTTP,
-in-process, sample V1, and exported client paths above use the G71 read
-classification directly. This separation prevents G71 from claiming a G78
-change while making the generic published contract checkable.
+The cloud-specific runtime wrapper is owned by SDT-G78 and is no longer a
+dcb-client export. G71's generic HTTP, in-process, sample V1, and exported
+client paths above use the G71 read classification directly. This separation
+prevents G71 from claiming downstream cloud runtime behavior while making the
+generic published contract checkable.
 
 ## Product mutants (all required mutants red)
 
@@ -255,16 +254,16 @@ The matched public set is now `@sekiban/dcb-core@0.2.0`,
 `@sekiban/dcb-domain@0.2.0`, and `@sekiban/dcb-client@0.2.0`. The existing
 release checks pass with `dcb-v0.2.0`; the packed-package consumer passes
 Node16, bundler, and esbuild compile/runtime checks, and the raw V1 envelope
-remains byte-identical. The packed consumer now also reads one portable
-snapshot, executes snapshot-only with a throwing/counting read transport, and
-proves zero additional read calls; list-only safe/unsafe options compile
-positively while raw tag-state/exists/query consistency options fail in both
-Node16 and Bundler checks. The dry-run publication guard passes without
-publishing or handling credentials. `docs/SDT-G71-migration.md` gives the
-consumer changes and the 0.x/caret compatibility rationale. The exact
-downstream factory currently carried by the package is
-`createSekibanCloudTransport` on dcb-client 0.2.0; its move to the cloud
-package is explicitly deferred to G78.
+remains byte-identical. The packed consumer also reads one portable snapshot,
+executes snapshot-only with a throwing/counting read transport, and proves
+zero additional read calls; list-only safe/unsafe options compile positively
+while raw tag-state/exists/query consistency options fail in both Node16 and
+Bundler checks. The dry-run publication guard passes without publishing or
+handling credentials. `docs/SDT-G71-migration.md` gives the consumer changes
+and the 0.x/caret compatibility rationale. G78 owns the staged move of the
+runtime `createSekibanCloudTransport` export to the designated
+`@sekiban/cloud-client@0.2.0` contract target; this G71 evidence does not claim
+that downstream runtime is implemented or published.
 
 ## Verification receipts
 

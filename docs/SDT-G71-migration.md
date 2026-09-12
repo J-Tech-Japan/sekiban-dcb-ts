@@ -41,13 +41,14 @@ SUID reflected by that particular unsafe page.
 5. Use `readHead` only on list-query responses and do not derive a head for a
    generic query result.
 
-The current package still exposes the pre-existing
-`createSekibanCloudTransport` factory in `@sekiban/dcb-client@0.2.0`; its
-ownership move, scoped URL contract, and cloud-specific error preservation are
-SDT-G78 work and are deliberately not changed by G71. Consumers adopting the
-G71 read contract can therefore migrate the generic HTTP/in-process executor
-surface independently, while the cloud import remains on its existing export
-until G78 publishes its matching package contract.
+SDT-G78 moves the runtime `createSekibanCloudTransport` factory out of
+`@sekiban/dcb-client@0.2.0`. The replacement identity is the named export from
+`@sekiban/cloud-client@0.2.0`; that package is a separately gated contract
+target and this repository does not claim its runtime implementation,
+publication, or fetch-wrapper behavior. Consumers adopting the G71 read
+contract can migrate the generic HTTP/in-process executor surface
+independently, while cloud-client runtime adoption remains a downstream
+deliverable.
 
 The matched-set version is intentionally a 0.x compatibility boundary:
 `^0.2.0` permits `0.2.x` but not `0.3.0`, while `0.1.x` is not a compatible
@@ -59,8 +60,9 @@ snapshot once, pass it as the command's snapshot input with
 `readMode: "snapshot-only"`, and treat any read method invoked by that path as
 a defect. The W223 packed consumer proves this with a throwing/counting
 transport and also compiles safe/unsafe consistency only on `listQuery`; it
-does not claim a new cloud implementation. G78 owns that staged factory move
-and its cloud error contract.
+does not claim a cloud implementation. G78 owns the staged factory move and
+the scoped cloud contract; its packed consumer is compile-only evidence for
+the designated downstream identity.
 
 The release workflow remains credential-free unless the operator explicitly
 selects a publish path. This change does not publish packages, create tags,

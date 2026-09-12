@@ -1,0 +1,16 @@
+{
+  "name": "@sekiban/cloud-client",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "dependencies": {
+    "@sekiban/dcb-client": "0.2.0"
+  }
+}

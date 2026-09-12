@@ -5,7 +5,6 @@ import {
   ClientError,
   createHttpTransport,
   createInProcessTransport,
-  createSekibanCloudTransport,
   createSekibanExecutor,
   type CommitEnvelope,
   type ReadonlyTagStateResponse,
@@ -377,58 +376,10 @@ describe("SDT-G57 executor facade deploy-free contract", () => {
     });
   });
 
-  it("AC4: maps cloud credentials to typed rejection without leaking the secret and rejects scope mismatch", async () => {
-    const secret = "fixture-secret-that-must-not-escape";
-    let calls = 0;
-    const cloud = createSekibanCloudTransport({
-      BaseUrl: "https://cloud.test",
-      ServiceId: "service-a",
-      CredentialId: "credential-a",
-      CredentialSecret: secret,
-      fetch: async () => {
-        calls += 1;
-        return response(403, { code: "unauthorized", error: "credential rejected" });
-      },
-    });
-    await expect(cloud.query({ queryType: "q", queryParamsJson: "{}" })).rejects.toMatchObject({ code: "credential.rejected", status: 403 });
-    await expect(cloud.query({ queryType: "q", queryParamsJson: "{}" })).rejects.not.toThrow(secret);
-    expect(calls).toBe(2);
-
-    const cloudFailure = createSekibanCloudTransport({
-      BaseUrl: "https://cloud.test",
-      ServiceId: "service-a",
-      CredentialId: "credential-a",
-      CredentialSecret: secret,
-      fetch: async () => response(500, { code: secret, error: secret, detail: secret }, {
-        "content-type": "application/json",
-        "x-cloud-credential": secret,
-      }),
-    });
-    const rawFailure = await cloudFailure.commit({ candidates: [], consistency: [] });
-    expect(rawFailure).toMatchObject({ status: 500, headers: {}, body: { code: "transport", error: "SekibanCloud request failed" } });
-    expect(JSON.stringify(rawFailure)).not.toContain(secret);
-
-    const classifiedCloud = createSekibanCloudTransport({
-      BaseUrl: "https://cloud.test",
-      ServiceId: "service-a",
-      CredentialId: "credential-a",
-      CredentialSecret: secret,
-      fetch: async () => response(409, { code: "consistency_conflict", error: secret }, { "x-cloud-credential": secret }),
-    });
-    const classifiedFailure = await classifiedCloud.commit({ candidates: [], consistency: [] });
-    expect(classifiedFailure).toMatchObject({ status: 409, headers: {}, body: { code: "consistency_conflict", error: "SekibanCloud request failed" } });
-    expect(JSON.stringify(classifiedFailure)).not.toContain(secret);
-
-    const failureResult = await createSekibanExecutor(cloudFailure).execute(createRoomCommand, { roomId: "room-1", name: "Room" }, {
-      snapshots: [snapshot(roomProjector, roomTag("room-1"), { status: "empty", version: 0, roomId: null, name: "" }, null, false)],
-      readMode: "snapshot-only",
-    });
-    expect(JSON.stringify(failureResult)).not.toContain(secret);
-
+  it("AC2: preserves service-scope mismatch as a typed command result", async () => {
     const mismatch = createSekibanExecutor(fixtureTransport({ serviceId: "service-a" }), { serviceId: "service-b" });
     const result = await mismatch.execute(createRoomCommand, { roomId: "room-1", name: "Room" });
     expect(result).toMatchObject({ kind: "invalid", code: "scope.mismatch" });
-    expect(result).not.toHaveProperty("error", expect.stringContaining(secret));
     expect(new ClientError("scope.mismatch", "scope mismatch")).toBeInstanceOf(Error);
   });
 });

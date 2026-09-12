@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "operations": ["commit", "tag-state", "tag-latest-sortable", "query", "list-query"],
+  "pathTemplate": "/api/{ServiceId}/sekiban/serialized/{operation}",
+  "serviceHeader": "X-Sekiban-Service-Id"
+}

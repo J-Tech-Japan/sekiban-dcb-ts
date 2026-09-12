@@ -575,4 +575,5 @@ export const createSerializedDcbClient = (baseUrl: string, fetchImpl?: typeof fe
 
 export type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput };
 
+export type { SekibanCloudTransportOptions } from "./cloud-contract.js";
 export * from "./executor.js";

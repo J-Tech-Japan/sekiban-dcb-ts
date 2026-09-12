@@ -96,14 +96,6 @@ export interface SekibanExecutor {
   readonly transport: SerializedDcbTransport;
 }
 
-export interface SekibanCloudTransportOptions {
-  readonly BaseUrl: string;
-  readonly ServiceId: string;
-  readonly CredentialId: string;
-  readonly CredentialSecret: string;
-  readonly fetch?: typeof fetch;
-}
-
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -165,11 +157,28 @@ function isAbortError(error: unknown): boolean {
   return isRecord(error) && error.name === "AbortError";
 }
 
+/**
+ * Preserve the documented code/status boundary when a transport was built
+ * against another copy of @sekiban/dcb-client.  `instanceof` is not a stable
+ * interop boundary for package copies or non-JavaScript adapters.
+ */
+function clientErrorFrom(error: unknown): ClientError | undefined {
+  if (error instanceof ClientError) return error;
+  if (!isRecord(error) || typeof error.code !== "string") return undefined;
+  const message = typeof error.message === "string" ? error.message : "Client transport error";
+  return new ClientError(error.code, message, {
+    status: typeof error.status === "number" ? error.status : undefined,
+    partial: error.partial,
+    cause: error,
+  });
+}
+
 async function readCall<T>(operation: () => Promise<T | CommitHttpResult>, label: string): Promise<T> {
   try {
     return successfulBody(await operation());
   } catch (error) {
-    if (error instanceof ClientError) throw error;
+    const typed = clientErrorFrom(error);
+    if (typed !== undefined) throw typed;
     if (isAbortError(error)) throw new ClientError("aborted", `${label} read was aborted`, { cause: error });
     throw new ClientError("transport", `${label} read failed`, { cause: error });
   }
@@ -370,57 +379,6 @@ export function createHttpTransport(options: {
   readonly serviceId?: string;
 }): SerializedDcbTransport {
   return makeHttpTransport(options);
-}
-
-function cloudResult<T>(value: T | CommitHttpResult, credentials: readonly string[] = []): T | CommitHttpResult {
-  if (isHttpResult(value) && (value.status === 401 || value.status === 403)) {
-    throw new ClientError("credential.rejected", "SekibanCloud credential was rejected", { status: value.status });
-  }
-  if (isHttpResult(value) && (value.status < 200 || value.status >= 300)) {
-    const body = value.body;
-    const candidateCode = isRecord(body) && typeof body.code === "string" ? body.code : undefined;
-    const code = candidateCode !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(candidateCode) &&
-      !credentials.some((credential) => credential.length > 0 && candidateCode.includes(credential))
-      ? candidateCode
-      : "transport";
-    return {
-      ...value,
-      headers: {},
-      body: { code, error: "SekibanCloud request failed" },
-    };
-  }
-  return value;
-}
-
-export function createSekibanCloudTransport(options: SekibanCloudTransportOptions): SerializedDcbTransport {
-  const base = makeHttpTransport({
-    baseUrl: options.BaseUrl,
-    serviceId: options.ServiceId,
-    fetch: options.fetch,
-    headers: {
-      "X-Sekiban-Service-Id": options.ServiceId,
-      "X-Sekiban-Credential-Id": options.CredentialId,
-      "X-Sekiban-Credential-Secret": options.CredentialSecret,
-    },
-  });
-  const protect = async <T>(operation: () => Promise<T | CommitHttpResult>): Promise<T | CommitHttpResult> => {
-    try {
-      return cloudResult(await operation(), [options.CredentialId, options.CredentialSecret]);
-    } catch (error) {
-      if (error instanceof ClientError && error.code === "credential.rejected") throw error;
-      throw new ClientError("transport", "SekibanCloud request failed");
-    }
-  };
-  return Object.freeze({
-    serviceId: options.ServiceId,
-    readTagState: (request: { readonly tagStateId: string }, signal?: AbortSignal) =>
-      protect(() => base.readTagState(request, signal)),
-    readTagLatestSortable: (request: { readonly tag: string }, signal?: AbortSignal) =>
-      protect(() => base.readTagLatestSortable!(request, signal)),
-    commit: (request: CommitEnvelope, signal?: AbortSignal) => protect(() => base.commit(request, signal)),
-    query: (request: QueryRequest, signal?: AbortSignal) => protect(() => base.query(request, signal)),
-    listQuery: (request: ListQueryRequest, signal?: AbortSignal) => protect(() => base.listQuery(request, signal)),
-  });
 }
 
 function snapshotKey(projectorId: string, tag: Tag): string {
@@ -804,9 +762,10 @@ export function createSekibanExecutor(
       if (authoringCode === "COMMAND_INPUT_INVALID") {
         return { kind: "invalid", attempts: 1, code: "invalid_command_input", error: errorText(error) };
       }
-      if (error instanceof ClientError) {
-        if (error.code === "timeout" || error.code === "aborted") return { kind: "timeout", attempts: 1, code: error.code, error: error.message };
-        return { kind: "invalid", attempts: 1, status: error.status, code: error.code, error: error.message };
+      const clientError = clientErrorFrom(error);
+      if (clientError !== undefined) {
+        if (clientError.code === "timeout" || clientError.code === "aborted") return { kind: "timeout", attempts: 1, code: clientError.code, error: clientError.message };
+        return { kind: "invalid", attempts: 1, status: clientError.status, code: clientError.code, error: clientError.message };
       }
       return { kind: "transport", attempts: 1, error: errorText(error) };
     }
