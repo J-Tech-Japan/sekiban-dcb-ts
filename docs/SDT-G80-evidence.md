@@ -106,13 +106,16 @@ path is the repair for that evidence gap.
 
 Every normal invocation emits a structured stage record before validation or
 branching for `healthy`, `calibration`, `estimate`, and every representative
-attempt. Each stage carries process status, signal/spawn error, JSON/report
-target, structured receipt target and errors, final status, Vitest version,
-direct timing marker/error, raw output, and applicable body timings. A
-calibration failure additionally carries the raw direct timing record (or its
-absence), clock validation, separated initialization, chunk costs, uncertainty
-inputs, signed whole-test attribution, `representativeSelection:
-"not-reached"`, `attempts: []`, and `semanticTimeout: "not-reached"`.
+attempt. Each stage carries process status, signal/spawn error, compact
+JSON/report target and receipt target/error facts, final status, Vitest version,
+direct timing marker/error, and applicable body timings. Captured child output
+is intentionally excluded from durable records; bounded target/error fields,
+stable stage references, and digests preserve the required evidence without
+duplicating verbose reports. A calibration failure additionally carries the
+raw direct timing record (or its absence), clock validation, separated
+initialization, chunk costs, uncertainty inputs, signed whole-test attribution,
+`representativeSelection: "not-reached"`, `attempts: []`, and
+`semanticTimeout: "not-reached"`.
 
 The representative classifier has exactly two advancing states: an exact
 named-target pass may escalate, and an exact named-target timeout completes
@@ -300,3 +303,181 @@ named timeout. The fail-closed failure paths emit their raw applicable fields,
 The evidence-only commit may change only this document and the PR description;
 it must not change the runner, reporter, fixture, or lockfile. No fresh
 foundation observation will be repeated on the evidence-only head.
+
+## W270 — durable line-safe receipts and hosted AC6 observations
+
+W270 repaired the durable-output gap identified by W269. The implementation
+source head is `af7baff737b89a781850d8198881b7035a5b52b8`, on branch
+`claude/sdt-g80-implementation-w264`, based on
+`e0988822b91ad664cfddfdb9125d0251faa5fb37`. The source change is confined to
+`scripts/g73-g67-budget-mutation-runner.mjs` and
+`scripts/g79-vitest-hosted-reporter.mjs`; no workflow, package-lock, product,
+G67, G73, G79, or unrelated lane file changed. The runner emits schema
+`sdt-g80-calibration-record-v2` stage and summary lines bounded at 12,000 UTF-8
+bytes. Each line contains workflow/run attempt, job, source/checkout identity,
+stable observation/stage identity, canonical record digest, and the compact
+AC6 fields. A summary references every stage and carries a reconstruction
+digest. The hosted reporter emits bounded compact timing lines and does not
+duplicate captured output or report objects.
+
+The local self-test passed for bounded success/failure reconstruction, digest
+tampering, missing stage, unrelated output, and overlong-line rejection. The
+focused `npm run test:g73:guard` invocation also retained the known W266 local
+`CALIBRATION_INCONCLUSIVE` boundary where the local direct lower bound equaled
+the allowance; that local result is not promoted to hosted evidence and no
+calibration rule was weakened.
+
+### Source-head ordinary CI gate and pre-declaration
+
+Before any fresh observation, ordinary pull-request CI was green at the
+immutable PR head `af7baff737b89a781850d8198881b7035a5b52b8` in [workflow
+34715044250](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250),
+attempt 1: foundation job
+`103610674123` (19:44:34Z–19:52:27Z, 7m53s), cheap job
+`103610673984` (19:44:34Z–19:59:46Z, 15m12s), and verify job
+`103612595870` (19:59:49Z–19:59:58Z) all completed successfully. The
+ordinary source-head CI gate is distinct from the observations below.
+
+The pre-declaration was posted before O1 in [PR comment
+5648335415](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/174#issuecomment-5648335415).
+It named O1, O2 and O3 as exactly three sequential job-level reruns of the
+successful `ci-foundation` job, at about eight billable minutes each, with no
+replacement, whole-workflow dispatch, unrelated job, retry-until-green, or
+fourth observation. Each archived log was read and independently
+reconstructed before the next rerun.
+
+GitHub reports the pull-request source `headSha` as `af7baff...` for all four
+workflow attempts. The durable record metadata reports
+`sourceSha`/`immutableHead` as
+`935ff5dacf52fd8d601273c27c1176f348ad3611`, the actual immutable GitHub
+pull-request merge-ref checkout seen by the job. These are different
+identities and are recorded separately, not conflated. Every durable record
+also carries workflow `34715044250`, its attempt, `ci-foundation`, Linux,
+Node `v24.20.0`, and receipt/report/installed Vitest `4.1.10`.
+
+### Observation receipts and log reconstruction
+
+All three observations used the same implementation source and lockfile head;
+all were terminal-success jobs whose exact named representative outcome was
+the intended `healthy-green-g69-path-timeout-red` with disposition
+`exact-named-target-timeout`. Every log contained four stage records plus one
+summary record; every record-level canonical digest, stage reference, summary
+reconstruction digest, and 12,000-byte line bound verified independently.
+The saved local downloads were obtained with `gh run view --log` using the
+isolated cache path `/private/tmp/g80-w270-gh-cache`; the linked GitHub job
+pages are the durable receipts.
+
+| observation | hosted job and verify receipt | hosted interval / cost | records and reconstruction |
+| --- | --- | --- | --- |
+| O1 | [attempt 2 / ci-foundation 103612773497](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250/job/103612773497); [verify 103613776337](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250/job/103613776337) | `2026-09-12T20:01:02Z`–`20:08:21Z` (`7m19s`), about 8 billable minutes | `/private/tmp/g80-w270-o1-job-103612773497.log`; 5 records; maximum line `4808` bytes; reconstruction digest `3ac74960922929bc5cd46ce6be5d037c17b0c1366298e9a4910eaaf910df9dc2`; verified |
+| O2 | [attempt 3 / ci-foundation 103613981262](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250/job/103613981262); [verify 103615008802](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250/job/103615008802) | `2026-09-12T20:09:54Z`–`20:17:26Z` (`7m32s`), about 8 billable minutes | `/private/tmp/g80-w270-o2-job-103613981262.log`; 5 records; maximum line `4712` bytes; reconstruction digest `62f312ddbf963e2e577be5cd68df4115b44f72240eba48ad9b10f3f88077adfe`; verified |
+| O3 | [attempt 4 / ci-foundation 103615184353](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250/job/103615184353); [verify 103616203578](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34715044250/job/103616203578) | `2026-09-12T20:18:50Z`–`20:26:33Z` (`7m43s`), about 8 billable minutes | `/private/tmp/g80-w270-o3-job-103615184353.log`; 5 records; maximum line `4747` bytes; reconstruction digest `d2f500d34859ba3c0402e235892174c32e31bc877df3ea33832dc1e099792ca3`; verified |
+
+The common exact target in all logs was
+`test/g67-safe-lane.spec.ts` / `AC3: ten paced commits converge through
+kicks with cron disabled and record delivery-to-safe intervals`. Healthy and
+calibration each had report count `1`, receipt count `1`, receipt state
+`passed`, no collection errors, and no unhandled errors. Representatives each
+had report count `1`, receipt count `1`, receipt state `failed`, exactly one
+failed target, no collection errors, no unhandled errors, and the exact first
+line `Test timed out in 10000ms.`. Report, receipt, and installed Vitest were
+`4.1.10` in every stage that ran.
+
+#### O1 raw full-precision fields
+
+O1 healthy: process status `0`, elapsed `9064` ms, body `passed/2857` ms;
+calibration: process status `0`, elapsed `9949` ms, body `passed/3628` ms;
+representative: process status `1`, signal `null`, elapsed `17565` ms, body
+`failed/11206` ms, over-budget `1206` ms. The direct signal was:
+
+```text
+clock=performance.now; clockValidation={probe:"D1 SELECT 1",samples:3,queriesPerSample:32,minAdvanceMs:26,maxAdvanceMs:27,monotonic:true}; initializationMs=2; initializationSeparated=true; chunks=[{rounds:4,operations:8,deliveryCount:8,durationMs:105,waitersDrained:true},{rounds:8,operations:16,deliveryCount:16,durationMs:151,waitersDrained:true},{rounds:12,operations:24,deliveryCount:24,durationMs:208,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:70,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:72,waitersDrained:true}]; totalRounds=32; operationsPerRound=2; deliveryCount=64; waitersDrained=true; skippedDeliveries=0; omittedWaiterDrain=false; wrongCount=false; timerOnly=false; clockAdvancesDuringRealWork=true; minObservedAdvanceMs=70
+```
+
+The raw allowance was `costsPerRoundMs=[26.25,18.875,17.333333333333332,17.5,18]`,
+`pairedResidualsMs=[8.75,8.25,0.5]`, residual range `0.5..8.75`, MAD `0.5`,
+timer floor `1`, MAD factor `3`, allowance `9.75`, equal-size bound `10`.
+Cross-size bounds used reference `18`, ratios `0.5..2`, bounds `9..36`, and
+observed range `17.333333333333332..26.25`. The direct lower bound was
+`17.333333333333332`, median `18`, predicted added work
+`554.6666666666666` ms, and direct signal dominated the allowance. Scaling
+ratio was `1.514423076923077`; process overhead was healthy `6207`, calibration
+`6321`, representative `6359` ms. Whole-test `signedDifferenceMs=771` and
+ratio `1.3900240384615385` are attribution-only. The named representative was
+selected at `619` rounds from the conservative direct lower bound, and the
+semantic timeout expected and received the same exact message. Stage refs were
+`G67-AC3-healthy:healthy:1`,
+`G67-AC3-32-round-G69-direct-calibration:calibration:2`,
+`g80-estimate:estimate:3`, and
+`G67-AC3-619-round-G69-representative:representative-attempt:4`.
+
+#### O2 raw full-precision fields
+
+O2 healthy: process status `0`, elapsed `9480` ms, body `passed/3258` ms;
+calibration: process status `0`, elapsed `10417` ms, body `passed/4066` ms;
+representative: process status `1`, signal `null`, elapsed `17565` ms, body
+`failed/11262` ms, over-budget `1262` ms. The direct signal was:
+
+```text
+clock=performance.now; clockValidation={probe:"D1 SELECT 1",samples:3,queriesPerSample:32,minAdvanceMs:31,maxAdvanceMs:33,monotonic:true}; initializationMs=2; initializationSeparated=true; chunks=[{rounds:4,operations:8,deliveryCount:8,durationMs:95,waitersDrained:true},{rounds:8,operations:16,deliveryCount:16,durationMs:175,waitersDrained:true},{rounds:12,operations:24,deliveryCount:24,durationMs:233,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:76,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:79,waitersDrained:true}]; totalRounds=32; operationsPerRound=2; deliveryCount=64; waitersDrained=true; skippedDeliveries=0; omittedWaiterDrain=false; wrongCount=false; timerOnly=false; clockAdvancesDuringRealWork=true; minObservedAdvanceMs=76
+```
+
+The raw allowance was `costsPerRoundMs=[23.75,21.875,19.416666666666668,19,19.75]`,
+`pairedResidualsMs=[4.75,4,0.75]`, residual range `0.75..4.75`, MAD `0.75`,
+timer floor `1`, MAD factor `3`, allowance `6.25`, equal-size bound `10`.
+Cross-size bounds used reference `19.75`, ratios `0.5..2`, bounds
+`9.875..39.5`, and observed range `19..23.75`. The direct lower bound was
+`19`, median `19.75`, predicted added work `608` ms, and direct signal
+dominated the allowance. Scaling ratio was `1.25`; process overhead was
+healthy `6222`, calibration `6351`, representative `6303` ms. Whole-test
+`signedDifferenceMs=808` and ratio `1.3289473684210527` are attribution-only.
+The named representative was selected at `533` rounds from the conservative
+direct lower bound, and the semantic timeout expected and received the same
+exact message. Stage refs were `G67-AC3-healthy:healthy:1`,
+`G67-AC3-32-round-G69-direct-calibration:calibration:2`,
+`g80-estimate:estimate:3`, and
+`G67-AC3-533-round-G69-representative:representative-attempt:4`.
+
+#### O3 raw full-precision fields
+
+O3 healthy: process status `0`, elapsed `9705` ms, body `passed/3451` ms;
+calibration: process status `0`, elapsed `10391` ms, body `passed/4052` ms;
+representative: process status `1`, signal `null`, elapsed `17363` ms, body
+`failed/10960` ms, over-budget `960` ms. The direct signal was:
+
+```text
+clock=performance.now; clockValidation={probe:"D1 SELECT 1",samples:3,queriesPerSample:32,minAdvanceMs:31,maxAdvanceMs:34,monotonic:true}; initializationMs=2; initializationSeparated=true; chunks=[{rounds:4,operations:8,deliveryCount:8,durationMs:95,waitersDrained:true},{rounds:8,operations:16,deliveryCount:16,durationMs:187,waitersDrained:true},{rounds:12,operations:24,deliveryCount:24,durationMs:248,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:78,waitersDrained:true},{rounds:4,operations:8,deliveryCount:8,durationMs:91,waitersDrained:true}]; totalRounds=32; operationsPerRound=2; deliveryCount=64; waitersDrained=true; skippedDeliveries=0; omittedWaiterDrain=false; wrongCount=false; timerOnly=false; clockAdvancesDuringRealWork=true; minObservedAdvanceMs=78
+```
+
+The raw allowance was `costsPerRoundMs=[23.75,23.375,20.666666666666668,19.5,22.75]`,
+`pairedResidualsMs=[4.25,1,3.25]`, residual range `1..4.25`, MAD `1`, timer
+floor `1`, MAD factor `3`, allowance `6.25`, equal-size bound `10`.
+Cross-size bounds used reference `22.75`, ratios `0.5..2`, bounds
+`11.375..45.5`, and observed range `19.5..23.75`. The direct lower bound was
+`19.5`, median `22.75`, predicted added work `624` ms, and direct signal
+dominated the allowance. Scaling ratio was `1.2179487179487178`; process
+overhead was healthy `6254`, calibration `6339`, representative `6403` ms.
+Whole-test `signedDifferenceMs=601` and ratio `0.9631410256410257` are
+attribution-only. The named representative was selected at `504` rounds from
+the conservative direct lower bound, and the semantic timeout expected and
+received the same exact message. Stage refs were `G67-AC3-healthy:healthy:1`,
+`G67-AC3-32-round-G69-direct-calibration:calibration:2`,
+`g80-estimate:estimate:3`, and
+`G67-AC3-504-round-G69-representative:representative-attempt:4`.
+
+### AC6 disposition and evidence-only boundary
+
+All three predeclared job-level observations completed and all three archived
+logs reconstructed successfully, so this is an AC6-qualifying hosted proof for
+the implementation-source head. The three representative timeouts are
+semantic proof of the exact named target, not infrastructure or setup
+failures. No fourth observation is authorized. W268 attempts and W266
+observations remain historical and are not renamed or replaced.
+
+The single evidence-only publication commit contains this W270 section and
+the full-precision records above. It does not modify the runner, reporter,
+fixture, or lockfile. Its exact evidence head and the ordinary CI result for
+that evidence head are recorded in the W270 handoff and PR body after push;
+the implementation source head and every measured immutable checkout identity
+remain as stated above. No fresh foundation observation is repeated on the
+evidence-only head.
