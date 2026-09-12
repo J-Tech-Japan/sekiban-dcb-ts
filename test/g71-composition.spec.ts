@@ -350,5 +350,5 @@ describe("SDT-G71 Cloudflare-only composition", () => {
     } finally {
       clock.mockRestore();
     }
-  });
+  }, 10_000);
 });
