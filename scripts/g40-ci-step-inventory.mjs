@@ -196,7 +196,15 @@ function sourceText(path, ref) {
   }
 }
 
-export function generateInventory({ workflowText, packageText, workspacePackageTexts = {}, source = {} }) {
+function optionalSourceText(path, ref) {
+  try {
+    return sourceText(path, ref);
+  } catch {
+    return undefined;
+  }
+}
+
+export function generateInventory({ workflowText, packageText, workspacePackageTexts = {}, manifestText, source = {} }) {
   let packageDocument;
   try {
     packageDocument = JSON.parse(packageText);
@@ -225,6 +233,47 @@ export function generateInventory({ workflowText, packageText, workspacePackageT
         continue;
       }
       expandNpmScript(invocation.name, scripts, workspaceScripts, entries);
+    }
+  }
+
+  // G84's manifest is part of the inventory, not a parallel undocumented
+  // command list. Keep one entry per manifest command even when two commands
+  // happen to invoke the same npm script with different forced-red env.
+  if (manifestText !== undefined) {
+    let manifest;
+    try {
+      manifest = JSON.parse(manifestText);
+    } catch (error) {
+      fail(`ci/lanes.json is invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    for (const lane of manifest.lanes ?? []) {
+      for (const command of lane.commands ?? []) {
+        const commandId = `manifest-command:${digest(`${lane.name}:${command.id}`)}`;
+        entries.set(commandId, {
+          id: commandId,
+          type: "manifest-command",
+          command: normalizeCommand(command.command),
+          commandId: command.id,
+          lane: lane.name,
+          tier: lane.tier,
+          ...(command.env === undefined ? {} : { env: command.env }),
+        });
+
+        // A manifest command is an invocation surface, just like a workflow
+        // `run:` block.  Keep the recursively expanded package/workspace
+        // leaves in the inventory as well.  This lets the coverage gate
+        // compare exact command text for commands that moved from workflow
+        // steps into the manifest instead of treating the move as a silent
+        // deletion of the underlying test.
+        for (const invocation of invokedNpmScripts(command.command)) {
+          if (invocation.workspace) {
+            addEntry(entries, "npm-workspace-invocation", invocation.invocation, { npmScript: invocation.name });
+            expandWorkspaceScript(invocation.name, workspaceScripts, entries);
+            continue;
+          }
+          expandNpmScript(invocation.name, scripts, workspaceScripts, entries);
+        }
+      }
     }
   }
 
@@ -262,6 +311,7 @@ function main() {
     workflowText: sourceText(options.workflow, options.ref),
     packageText: sourceText(options.packagePath, options.ref),
     workspacePackageTexts: readWorkspacePackageTexts(sourceText(options.packagePath, options.ref), (path) => sourceText(path, options.ref)),
+    manifestText: optionalSourceText("ci/lanes.json", options.ref),
     source: {
       workflow: options.workflow,
       packageJson: options.packagePath,

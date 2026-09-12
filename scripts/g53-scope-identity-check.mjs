@@ -49,7 +49,13 @@ function snapshot() {
     downstreamMutation: read("scripts/g53-downstream-scope-mutation-runner.mjs"),
     packageJson: read("package.json"),
     ci: read(".github/workflows/ci.yml"),
+    laneManifest: JSON.parse(read("ci/lanes.json")),
   };
+}
+
+function manifestCommand(manifest, laneName, commandId) {
+  const lane = manifest?.lanes?.find((entry) => entry?.name === laneName);
+  return lane?.commands?.find((entry) => entry?.id === commandId) ?? null;
 }
 
 export function assertG53ScopeIdentityContract(value) {
@@ -104,8 +110,10 @@ export function assertG53ScopeIdentityContract(value) {
   requireContains(value.downstreamMutation, "outbox-drain-retired-service-pipe-tag-name", "downstream old-name mutation");
   requireContains(value.downstreamMutation, "G53 scoped Queue-to-D1 oracle", "downstream mutation oracle");
   requireContains(value.packageJson, '"test:g53"', "G53 package lane");
-  requireContains(value.ci, "Run SDT-G53 scoped Durable Object identity lane", "G53 CI lane");
-  requireContains(value.ci, "SDT_G53_FORCE_FAILURE", "G53 CI forced-red reachability");
+  const manifestLane = manifestCommand(value.laneManifest, "g21-g25", "g53");
+  const manifestForcedRed = manifestCommand(value.laneManifest, "g21-g25", "g53-red");
+  const manifestWiring = manifestLane?.command === "npm run test:g53" && manifestForcedRed?.command === "npm run test:g53:forced-red" && manifestForcedRed?.env?.SDT_G53_FORCE_FAILURE === "1" && manifestForcedRed?.expect === "red";
+  if (!manifestWiring) fail("G53 lane and forced-red proof are absent from the authoritative lane manifest");
 }
 
 function expectRed(value, mutate, label) {

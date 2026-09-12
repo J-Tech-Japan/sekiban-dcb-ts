@@ -1,0 +1,269 @@
+{
+  "schema": "sdt-ci-lanes/v1",
+  "generatedBy": "SDT-G84",
+  "bootstrapCommands": ["npm ci"],
+  "tiers": {
+    "pr": {
+      "trigger": "pull_request and push to main",
+      "purpose": "The only tier executed by .github/workflows/ci.yml"
+    },
+    "local": {
+      "trigger": "npm run ci:local on the development machine",
+      "purpose": "Heavy lanes moved out of the pull-request budget"
+    },
+    "full": {
+      "trigger": "weekly schedule or workflow_dispatch on main",
+      "includes": ["pr", "local"],
+      "purpose": "GitHub backstop for every manifest lane"
+    }
+  },
+  "pathsIgnore": [
+    "docs/SDT-G84-evidence.md"
+  ],
+  "requiredLanes": [
+    "foundation",
+    "cheap",
+    "g21-g25",
+    "g32-parity",
+    "g30",
+    "g43",
+    "g44",
+    "g46",
+    "local-e2e",
+    "cosmos"
+  ],
+  "services": {
+    "postgres": {
+      "image": "postgres:16-alpine",
+      "database": "serialized_dcb",
+      "user": "postgres",
+      "password": "postgres",
+      "healthCommand": "pg_isready -U postgres -d serialized_dcb"
+    },
+    "cosmos": {
+      "image": "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-preview@sha256:6ce44ed4ac69cf69a6cb7982d0536cfaa22696172168fc9fe9a722a189d38f99",
+      "ports": [8080, 8081, 1234],
+      "readiness": "http://127.0.0.1:8080/ready"
+    }
+  },
+  "lanes": [
+    {
+      "name": "foundation",
+      "tier": "pr",
+      "services": ["postgres"],
+      "affectedPaths": ["package.json", "package-lock.json", "packages/**", "test/**", "scripts/**", "vitest*.ts", "tsconfig*.json"],
+      "commands": [
+        {"id": "foundation-lint", "command": "npm run lint"},
+        {"id": "foundation-g37-evidence", "command": "npm run test:g37:evidence"},
+        {"id": "foundation-g50-guards", "command": "node scripts/deploy/g50-commit-latency-guards.mjs\nnode scripts/deploy/g50-commit-latency-check.mjs --sample .artifacts/sdt-g50-w57-commit-latency.json --self-test"},
+        {"id": "foundation-g52", "command": "npm run test:g52"},
+        {"id": "foundation-typecheck", "command": "npm run typecheck"},
+        {"id": "foundation-test", "command": "npm test"},
+        {"id": "foundation-g71", "command": "npm run test:g71"},
+        {"id": "foundation-g73", "command": "npm run test:g73:guard"},
+        {"id": "foundation-g76", "command": "npm run test:g76:regression-matrix"},
+        {"id": "foundation-g17", "command": "npm run test:g17"},
+        {"id": "foundation-g17-rollout", "command": "npm run test:g17:rollout-order"}
+      ]
+    },
+    {
+      "name": "cheap",
+      "tier": "pr",
+      "services": ["postgres"],
+      "affectedPaths": ["package.json", "package-lock.json", "packages/**", "test/**", "scripts/**", "vitest*.ts", "tsconfig*.json"],
+      "commands": [
+        {"id": "g28-build", "command": "npm run build:packages"},
+        {"id": "g28-compile-fail", "command": "npm run test:g28:compile-fail"},
+        {"id": "g28-compile-fail-red", "command": "npm run test:g28:compile-fail:forced-red", "env": {"SDT_G28_COMPILE_FAIL_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g28", "command": "npm run test:g28"},
+        {"id": "g28-boundaries", "command": "npm run test:g28:boundaries"},
+        {"id": "g28-boundary-source", "command": "npm run test:g28:boundary:source"},
+        {"id": "g28-boundary-negative", "command": "npm run test:g28:boundary:negative"},
+        {"id": "g28-boundary-package", "command": "npm run test:g28:boundary:package"},
+        {"id": "g28-red", "command": "npm run test:g28:forced-red", "env": {"SDT_G28_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g28-boundaries-red", "command": "npm run test:g28:boundaries", "env": {"SDT_G28_BOUNDARY_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g28-source-red", "command": "npm run test:g28:boundary:source", "env": {"SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "source"}, "expect": "red"},
+        {"id": "g28-negative-red", "command": "npm run test:g28:boundary:negative", "env": {"SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "negative-fixtures"}, "expect": "red"},
+        {"id": "g28-package-red", "command": "npm run test:g28:boundary:package", "env": {"SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "package-manifest"}, "expect": "red"},
+        {"id": "g64", "command": "npm run test:g64"},
+        {"id": "g72", "command": "npm run test:g72:trusted-publishing"},
+        {"id": "g64-red", "command": "npm run test:g64:forced-red", "env": {"SDT_G64_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g26", "command": "npm run test:g26"},
+        {"id": "g27", "command": "npm run test:g27"},
+        {"id": "g27-red", "command": "npm run test:g27:forced-red", "env": {"SDT_G27_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g26-red", "command": "npm run test:g26:forced-red", "env": {"SDT_G26_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g26-topology", "command": "npm run test:g26:topology"},
+        {"id": "g26-topology-red", "command": "npm run test:g26:topology", "env": {"SDT_G26_TOPOLOGY_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g60", "command": "npm run test:g60:required"},
+        {"id": "g65", "command": "npm run test:g65:required"},
+        {"id": "g65-red", "command": "npm run test:g65:forced-red", "env": {"SDT_G65_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-mapping", "command": "npm run test:g29:mapping"},
+        {"id": "g29-mapping-red", "command": "npm run test:g29:mapping:forced-red", "env": {"SDT_G29_MAPPING_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-delivery", "command": "npm run test:g29:delivery"},
+        {"id": "g29-delivery-red", "command": "npm run test:g29:delivery:forced-red", "env": {"SDT_G29_DELIVERY_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-diagnostics", "command": "npm run test:g29:diagnostics\nnpm run test:g29:compatibility"},
+        {"id": "g29-diagnostics-red", "command": "npm run test:g29:diagnostics:forced-red", "env": {"SDT_G29_DIAGNOSTICS_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-compatibility-red", "command": "npm run test:g29:compatibility:forced-red", "env": {"SDT_G29_COMPATIBILITY_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-domain-source", "command": "npm run test:g29:domain-source"},
+        {"id": "g29-domain-source-red", "command": "npm run test:g29:domain-source:forced-red", "env": {"SDT_G29_DOMAIN_SOURCE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-authoring-doc", "command": "npm run test:g29:authoring-doc"},
+        {"id": "g29-authoring-doc-red", "command": "npm run test:g29:authoring-doc:forced-red", "env": {"SDT_G29_AUTHORING_DOC_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-sample", "command": "npm run test:g29:sample"},
+        {"id": "g29-sample-red", "command": "npm run test:g29:sample:forced-red", "env": {"SDT_G29_SAMPLE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-witness", "command": "npm run test:g29:witness"},
+        {"id": "g29-witness-red", "command": "npm run test:g29:witness:forced-red", "env": {"SDT_G29_WITNESS_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g31", "command": "npm run test:g31"},
+        {"id": "g31-red", "command": "npm run test:g31:forced-red", "env": {"SDT_G31_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g38", "command": "npm run test:g38:prep"},
+        {"id": "g38-red", "command": "npm run test:g38:prep:forced-red", "env": {"SDT_G38_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g42", "command": "npm run test:g42"},
+        {"id": "g42-red", "command": "npm run test:g42:forced-red", "env": {"SDT_G42_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g45", "command": "npm run test:g45"},
+        {"id": "g45-red", "command": "npm run test:g45:forced-red", "env": {"SDT_G45_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g41", "command": "npm run test:g41"},
+        {"id": "g41-red", "command": "npm run test:g41:forced-red", "env": {"SDT_G41_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g40-coverage", "command": "node scripts/g40-ci-coverage-check.mjs"},
+        {"id": "g40-mutation", "command": "node scripts/g40-ci-mutation-proof.mjs"},
+        {"id": "g40-verify-self-test", "command": "node scripts/g40-verify-needs.mjs --self-test"},
+        {"id": "g40-ignored-paths", "command": "node scripts/g40-ignored-paths-check.mjs"}
+      ]
+    },
+    {
+      "name": "g21-g25",
+      "tier": "local",
+      "services": ["postgres"],
+      "affectedPaths": ["test/bootstrap.spec.ts", "test/g22-*.ts", "test/g23-*.ts", "test/g24-*.ts", "test/g25-*.ts", "scripts/g22-*.mjs", "scripts/g24-*.mjs"],
+      "commands": [
+        {"id": "g21", "command": "npm run test:g21"},
+        {"id": "g21-red", "command": "npm run test:g21:forced-red", "env": {"SDT_G21_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g22", "command": "npm run test:g22"},
+        {"id": "g22-red", "command": "npm run test:g22:forced-red", "env": {"SDT_G22_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g23", "command": "npm run test:g23"},
+        {"id": "g23-red", "command": "npm run test:g23:forced-red", "env": {"SDT_G23_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g24", "command": "npm run test:g24"},
+        {"id": "g24-red", "command": "npm run test:g24:forced-red", "env": {"SDT_G24_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g25", "command": "npm run test:g25"},
+        {"id": "g25-red", "command": "npm run test:g25:forced-red", "env": {"SDT_G25_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g54", "command": "npm run test:g54"},
+        {"id": "g54-red", "command": "npm run test:g54:forced-red", "env": {"SDT_G54_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g56", "command": "npm run test:g56"},
+        {"id": "g56-red", "command": "npm run test:g56:forced-red", "env": {"SDT_G56_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g53", "command": "npm run test:g53"},
+        {"id": "g53-red", "command": "npm run test:g53:forced-red", "env": {"SDT_G53_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "g32-parity",
+      "tier": "local",
+      "services": ["postgres"],
+      "env": {
+        "UseSharedCompilation": "false",
+        "MSBUILDDISABLENODEREUSE": "1",
+        "DOTNET_CLI_USE_MSBUILD_SERVER": "0"
+      },
+      "affectedPaths": ["test/g32-*.ts", "scripts/g32-*.mjs", "tools/sekiban-parity/**"],
+      "commands": [
+        {"id": "g32-source", "command": "git clone --filter=blob:none https://github.com/J-Tech-Japan/Sekiban.git .artifacts/g40-sekiban-source && git -C .artifacts/g40-sekiban-source checkout --detach 855feaa93564fef54defec76e9ccff969d4ee01a"},
+        {"id": "g32", "command": "npm run test:g32"},
+        {"id": "g32-red", "command": "npm run test:g32:forced-red", "env": {"SDT_G32_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "g30",
+      "tier": "local",
+      "services": ["postgres"],
+      "affectedPaths": ["test/g30-*.ts", "scripts/g30-*.mjs", "scripts/deploy/g30-*.mjs", "scripts/deploy/g30-*.sh"],
+      "commands": [
+        {"id": "g30", "command": "npm run test:g30"},
+        {"id": "g51", "command": "npm run test:g51"},
+        {"id": "g30-candidate", "command": "npm run test:g30:candidate"},
+        {"id": "g30-candidate-red", "command": "npm run test:g30:candidate:forced-red", "env": {"SDT_G30_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g30-forced-red", "command": "npm run test:g30:forced-red", "env": {"SDT_G30_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "g43",
+      "tier": "local",
+      "services": ["postgres"],
+      "env": {"SDT_G79_HOSTED_MEASURE": "1"},
+      "affectedPaths": ["test/g43-*.ts", "scripts/g43-*.mjs", "scripts/g73-g43-*.mjs", "scripts/g79-*.mjs"],
+      "commands": [
+        {"id": "g43", "command": "npm run test:g43"},
+        {"id": "g43-red", "command": "npm run test:g43:forced-red", "env": {"SDT_G79_INVOCATION": "forced-red", "SDT_G43_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "g44",
+      "tier": "local",
+      "services": ["postgres"],
+      "affectedPaths": ["test/g44-*.ts", "test/g58-*.ts", "test/g62-*.ts", "test/g67-*.ts", "scripts/g44-*.mjs", "scripts/g58-*.mjs", "scripts/g62-*.mjs", "scripts/g67-*.mjs"],
+      "commands": [
+        {"id": "g44", "command": "npm run test:g44"},
+        {"id": "g75", "command": "npm run test:g75:certificate-scope"},
+        {"id": "g44-red", "command": "npm run test:g44:forced-red", "env": {"SDT_G44_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g58", "command": "npm run test:g58"},
+        {"id": "g58-red", "command": "npm run test:g58:forced-red", "env": {"SDT_G58_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g62", "command": "npm run test:g62"},
+        {"id": "g62-red", "command": "npm run test:g62:forced-red", "env": {"SDT_G62_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g67", "command": "npm run test:g67"},
+        {"id": "g67-red", "command": "npm run test:g67:forced-red", "env": {"SDT_G67_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g61", "command": "npm run test:g61"},
+        {"id": "g61-red", "command": "npm run test:g61:forced-red", "env": {"SDT_G61_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "g46",
+      "tier": "local",
+      "services": ["postgres"],
+      "affectedPaths": ["test/read.spec.ts", "test/g13-wire-invariance.spec.ts", "test/g43-measurement.spec.ts", "test/g46-*.ts", "scripts/g46-*.mjs", "scripts/g49-*.mjs"],
+      "commands": [
+        {"id": "g46", "command": "npm run test:g46"},
+        {"id": "g46-red", "command": "npm run test:g46:forced-red", "env": {"SDT_G46_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g49", "command": "npm run test:g49"},
+        {"id": "g49-red", "command": "npm run test:g49:forced-red", "env": {"SDT_G49_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    },
+    {
+      "name": "local-e2e",
+      "tier": "local",
+      "services": ["postgres"],
+      "affectedPaths": ["test/d1-*.ts", "test/g19-*.ts", "test/g16-*.ts", "test/meeting-room.spec.ts", "scripts/g13-*.mjs", "scripts/deploy/g15-*.py", "scripts/deploy/g15-*.sh", "samples/meeting-room/**"],
+      "commands": [
+        {"id": "store-contract", "command": "npm run test:store-contract"},
+        {"id": "d1", "command": "npm run test:d1"},
+        {"id": "mv", "command": "npm run test:mv"},
+        {"id": "boundaries", "command": "npm run test:boundaries"},
+        {"id": "consumer", "command": "npm run test:consumer"},
+        {"id": "build", "command": "npm run build"},
+        {"id": "g15-e2e", "command": "npm run e2e:g15:local", "env": {"G15_LOCAL_PORT": "8787", "G15_LOCAL_SERVICE_ID": "ci-g15-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g15-wrangler-state"}},
+        {"id": "g16-test", "command": "POSTGRES_URL=\"$G16_POSTGRES_URL\" npm run test:g16"},
+        {"id": "g16-e2e", "command": "npm run e2e:g16:local", "env": {"G15_LOCAL_PORT": "8788", "G15_LOCAL_SERVICE_ID": "ci-g16-local", "G15_LOCAL_PERSIST_DIR": ".artifacts/ci-local/g16-wrangler-state"}}
+      ]
+    },
+    {
+      "name": "cosmos",
+      "tier": "local",
+      "services": ["cosmos"],
+      "affectedPaths": ["test/g20-*.ts", "test/g22-*.ts", "scripts/cosmos-*.mjs", "scripts/g20-*.mjs", "scripts/g22-*.mjs", "tools/sekiban-parity/**"],
+      "commands": [
+        {"id": "cosmos-retained-history", "command": "git fetch --no-tags origin 8dbb4be825e084adef92065496cc0ffdc22b28ed 5439b8bda255144b608fcdeb6c89dc44dcb667d7 38219c8a6526a0209295e9f06450cce9e2217004 2f024d019d6861ad8ff43a2d194eabdcd975cbc0 95197cf1140d1179b52e1f01280002bc090bb891 36de26747ba71a583908f1f6f22102150e98f72b f1d3d7163f08a55c70fb8f66a38070be74f7caaf da2a8356fdbd898fa044884469b57a51ed8da996 1b5a8ff1d4aaac95c79cb9ddbd6cc311080479f6 1a9a5f22238a4755b8f15cdc17aec4f68bcde79d f401342df68461d3239f58b14ff6891db4214ac6 50200ef2c6a29531d1e9d25a2f7ea7e6d07a838f f7d306c0018b1b7046095891186b8409c9b16863 16afe111b8e3aa3a48dc949b0caa33160b08f29f f4dfd8192aaee9ed43116d7e5109d496ac2a6ce7 6308fb446335000d8729d490b170b189734461a4 5951844348bfd0ffadddb5c7c3c2bb0f57b100c6 cc4d0a86b749dc3ba09fe366a470c70b329bd10f 4a67b0a62120c85ec6aec855f09e38aca430557f 2db888bc9e57e04b66b4525270d312e8ddf78530 d6bfb5c5b4f5da1d44985199a4820786be6e89a1 13e8006be334454dc8a4a3c40972ba8ec15707b0 12cc9f862c7a1b1c4f54493bf40f5ccc1c39e01d 41e3665c055a366eb3f0d1ebff49be5d9414fa99 b8024fccca140d4cc3c76e715d4e5dd6c368b847 c5fff88620af3883b95639004dda08197618cc7e 87da1e97bc6ada9c89f9cf490d7aa6b201d94f1c 0cef60307a37964b5a4a4423f5abdc3d50b01e21 9543fccfb0e1f7858042e815867f1d6f2a33216d 9bf654eb555e56a2b0d5ed9f04d0aad670866e9e fc89572e2e0a8b84447591f87be5d05d57396435 a8f98355bb6de0454725d34f0238cd12efd4519c 0b38755443cce9d4a1a4383e18ba42499c390f63 c5441dc23e144466d26e13d7ffab4db7eca2e6ae aff97424b136be9f88e6804ced1562d9b81709cd 825b7c7795c3695ee7054131bf1f4e79f59f5602"},
+        {"id": "cosmos", "command": "npm run test:cosmos"},
+        {"id": "g22-cosmos", "command": "npm run test:g22:cosmos"},
+        {"id": "cosmos-wiring", "command": "npm run test:cosmos-wiring"},
+        {"id": "g20", "command": "npm run test:g20"},
+        {"id": "g20-gate", "command": "npm run test:g20:gate"},
+        {"id": "g20-candidate", "command": "npm run test:g20:candidate"},
+        {"id": "g22-candidate-red", "command": "npm run test:g20:candidate", "env": {"SDT_G22_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g26-candidate-red", "command": "npm run test:g20:candidate", "env": {"SDT_G26_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g27-candidate-red", "command": "npm run test:g20:candidate", "env": {"SDT_G27_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g28-candidate-red", "command": "npm run test:g20:candidate", "env": {"SDT_G28_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g29-candidate", "command": "npm run test:g29:candidate"},
+        {"id": "g29-candidate-red", "command": "npm run test:g29:candidate:forced-red", "env": {"SDT_G29_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g31-candidate", "command": "npm run test:g31:candidate"},
+        {"id": "g31-candidate-red", "command": "npm run test:g31:candidate:forced-red", "env": {"SDT_G31_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g32-candidate", "command": "npm run test:g32:candidate"},
+        {"id": "g32-candidate-red", "command": "npm run test:g32:candidate:forced-red", "env": {"SDT_G32_CANDIDATE_FORCE_FAILURE": "1"}, "expect": "red"}
+      ]
+    }
+  ]
+}
