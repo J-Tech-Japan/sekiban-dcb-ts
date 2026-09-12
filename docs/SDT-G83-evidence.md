@@ -88,4 +88,14 @@ The bounded repair therefore changes only the five named G83 per-test ceilings a
 
 ## Final implementation receipt
 
-The final calibrated source head and its normal push-triggered PR workflow are added here after terminal completion. No workflow-dispatch run or job rerun beyond M1--M3 is part of this unit.
+The calibrated implementation source head is `6947b29d33377d308c2f179e3a53113428ab0871` on base `fc35a382bc67ac930776a5a6b52ae10699ce972d`. Its normal push-triggered PR workflow [34681164059](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164059) was terminal `success` at that exact head; no workflow-dispatch run or job rerun beyond the predeclared M1--M3 measurements was used.
+
+| Job | Receipt | Terminal result |
+| --- | --- | --- |
+| `ci-foundation` | [103519941730](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164059/job/103519941730) | success; 7m55s; full `npm test` 164,072 ms; 98 files passed, 1 skipped; 833 tests passed, 1 skipped; no failed tests |
+| `ci-pr-cheap` | [103519941845](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164059/job/103519941845) | success; manifest PR-cheap/G40 checks passed |
+| `verify` | [103521269237](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164059/job/103521269237) | success; dependency gate passed |
+
+The final foundation timing summary reported `durationMs: 164072`, `testCount: 834`, `failedCount: 0`, and `censoredCount: 1`; the one censored observation was unrelated to the five selected G83 tests. The selected final-head observations were all uncensored and passed: AC7 `test/commit.spec.ts:556` 1,276 ms under 5,000 ms; G5 `test/tag.spec.ts:401` 1,157 ms under 5,000 ms; Branch B `test/repair.spec.ts:481` 1,041 ms under 10,000 ms; six crash/race boundaries `test/repair.spec.ts:410` 3,499 ms under 20,000 ms; and G69 real MV generations/join commit `test/g69-ordering.spec.ts:595` 668 ms under 10,000 ms. The five budgets remain the bounded, evidence-backed choices described above; G67 AC3 remains unchanged and out of scope.
+
+The same exact head passed the release preflight [34681164050](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164050), including [job 103519941438](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34681164050/job/103519941438). The preflight completed successfully through the package, consumer, release-check and credential-free dry-run steps. These receipts are terminal; no additional workflow dispatch or job rerun is part of this unit.
