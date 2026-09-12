@@ -1,0 +1,25 @@
+{
+  "schema": "sdt-g80-vitest-receipt-v1",
+  "source": "g80-vitest-receipt-reporter",
+  "vitestVersion": "4.1.10",
+  "finalStatus": "failed",
+  "tests": [
+    {
+      "module": "test/g67-safe-lane.spec.ts",
+      "fullName": "G67 safe lane > AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals",
+      "title": "AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals",
+      "state": "failed",
+      "durationMs": 10006,
+      "configuredTimeoutMs": 10000,
+      "errors": [
+        {
+          "name": "Error",
+          "message": "STACK_TRACE_ERROR",
+          "stack": "Error: STACK_TRACE_ERROR\n    at sanitized W226 timeout receipt"
+        }
+      ]
+    }
+  ],
+  "collectionErrors": [],
+  "unhandledErrors": []
+}
