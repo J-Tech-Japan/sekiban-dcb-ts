@@ -111,19 +111,29 @@ into a timeout-only oracle.
 The dedicated branch is `claude/sdt-g82-g71-budget-w253`, based on
 `origin/main` `2e37d04ec0ac37266270d86bcb78a811742bdf74`. The ready-for-review
 PR is [#170](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/170), created
-at implementation head `1d74264e93ab4a8a8aeb162a930e824a4aef40fd`; its body
-contains `Closes #166`.
+with implementation head `1d74264e93ab4a8a8aeb162a930e824a4aef40fd`; its body
+contains `Closes #166`. The final evidence-only push is head
+`79a6887ce1c442ec34010718b017210cd45e4cf6`; it changes only this document.
 
-The exact-head push-triggered [CI workflow
+The first exact-head push-triggered [CI workflow
 34666875982](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982)
-completed successfully at that head. Its retained job receipts are:
+is retained as historical implementation-head evidence at `1d74264e`; its
+foundation, cheap, and verify jobs were all successful (job receipts
+103480450114, 103480450009, and 103482559236) and its whole-workflow wall
+clock was 15m31s (02:09:29Z–02:25:00Z).
 
-* [ci-foundation job 103480450114](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982/job/103480450114), 02:09:33Z–02:17:09Z, success;
-* [ci-pr-cheap job 103480450009](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982/job/103480450009), 02:09:33Z–02:24:49Z, success;
-* [verify job 103482559236](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34666875982/job/103482559236), 02:24:52Z–02:24:59Z, success.
+The final exact-head [CI workflow
+34667686639](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34667686639)
+completed successfully at `79a6887ce1c442ec34010718b017210cd45e4cf6`. Its
+retained job receipts are:
 
-The workflow wall-clock was 15m31s (02:09:29Z–02:25:00Z). For a checkable
-before/after comparison, the issue's historical main attempt 1 of
+* [ci-foundation job 103482839594](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34667686639/job/103482839594), 02:27:00Z–02:34:41Z, success;
+* [ci-pr-cheap job 103482839454](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34667686639/job/103482839454), 02:27:00Z–02:42:01Z, success;
+* [verify job 103484854303](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34667686639/job/103484854303), 02:42:04Z–02:42:13Z, success.
+
+The final evidence-head workflow wall-clock was 15m17s
+(02:26:56Z–02:42:13Z). For a checkable before/after comparison, the issue's
+historical main attempt 1 of
 [workflow 34548851696](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34548851696/attempts/1)
 ran 43m26s (01:00:11Z–01:43:37Z) and failed in its then-unbudgeted G71
 foundation path; the current green workflow uses the G84 PR-tier split. This
