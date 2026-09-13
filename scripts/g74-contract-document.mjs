@@ -235,7 +235,6 @@ lines.push(
   "The next review step is design disposition of the three missing acknowledgements: obtain the exact acknowledgements, or record an explicit waiver listing each unanswered item. If a concrete interface contradiction is raised, resolve it before declaring the freeze; if no contradiction is raised and the waiver is authorized, the branch can be packaged into a PR and ordinary exact-head CI can run.",
   "",
   `Generated from ${code("docs/SDT-G74-surface-baseline.json")} by ${code("scripts/g74-contract-document.mjs")} on 2026-09-12.`,
-  "",
 );
 
 const output = `${lines.join("\n")}\n`;
