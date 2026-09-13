@@ -12,10 +12,12 @@ const evidencePath = resolve(root, "docs/SDT-G78-evidence.md");
 
 const classifications = Object.freeze({
   aborted: { class: "caller-abort", action: "stop automatic work; reconcile if dispatch may have happened" },
+  authority_unavailable: { class: "malformed-or-unknown", action: "do not infer absence; inspect or reconcile the unavailable authority" },
   assert_empty_failed: { class: "definite-refusal", action: "fix the input/state assertion" },
   claim_not_in_candidate_tags: { class: "definite-refusal", action: "fix the command consistency claim" },
   command_rejected: { class: "definite-refusal", action: "act on the command rejection" },
   consistency_conflict: { class: "definite-refusal", action: "reread and recompute the conflict" },
+  "credential.rejected": { class: "definite-refusal", action: "fix credentials; never expose the credential response" },
   duplicate_consistency_entry: { class: "definite-refusal", action: "fix duplicate consistency input" },
   incoherent_read_snapshot: { class: "malformed-or-unknown", action: "do not infer absence or blindly retry" },
   invalid_command_input: { class: "definite-refusal", action: "fix the command input" },
@@ -25,6 +27,8 @@ const classifications = Object.freeze({
   invalid_query_response: { class: "malformed-or-unknown", action: "do not trust or blindly retry the response" },
   invalid_read_snapshot: { class: "malformed-or-unknown", action: "do not trust or blindly retry the snapshot" },
   http_error: { class: "malformed-or-unknown", action: "inspect the typed status/code; never infer definiteness from 5xx" },
+  partial_write: { class: "definite-refusal", action: "reconcile the committed/failed facts; never blindly retry" },
+  projection_unavailable: { class: "deadline-or-unknown", action: "renew the read budget before retrying projection work" },
   read_unavailable: { class: "deadline-or-unknown", action: "retry a read only under a renewed budget" },
   "scope.mismatch": { class: "definite-refusal", action: "fix the executor/transport service scope" },
   timeout: { class: "deadline-or-unknown", action: "reconcile a command; retry a read only under a renewed budget" },
@@ -45,6 +49,10 @@ async function sources() {
 function derive(sourceMap) {
   const found = new Map();
   for (const [name, source] of Object.entries(sourceMap)) {
+    const safeMessages = source.match(/const SAFE_MESSAGES[\s\S]*?\n\}\);/m)?.[0];
+    for (const match of safeMessages?.matchAll(/^\s*(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_.]*))\s*:/gm) ?? []) {
+      found.set(match[1] ?? match[2], `${name}:documented safe code`);
+    }
     for (const match of source.matchAll(/new ClientError\(\s*["']([^"']+)/g)) found.set(match[1], `${name}:new ClientError`);
     for (const match of source.matchAll(/\bcode:\s*["']([^"']+)/g)) found.set(match[1], `${name}:result code`);
     for (const match of source.matchAll(/(?:const|let)\s+code\s*=.*?\?\s*[^:]+:\s*["']([^"']+)/g)) found.set(match[1], `${name}:default code`);

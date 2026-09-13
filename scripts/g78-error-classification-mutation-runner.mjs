@@ -6,14 +6,14 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 
 const root = process.cwd();
-const sourceFile = resolve(root, "packages/dcb-client/src/executor.ts");
+const sourceFile = resolve(root, "packages/dcb-client/src/errors.ts");
 const vitest = [resolve(root, "node_modules/vitest/vitest.mjs"), resolve(root, "../node_modules/vitest/vitest.mjs")].find((candidate) => existsSync(candidate));
 if (vitest === undefined) throw new Error("G78 error-classification mutation runner: Vitest executable is unavailable");
 
 const mutation = Object.freeze({
   id: "abort-collapsed-to-transport",
-  from: 'if (isAbortError(error)) throw new ClientError("aborted", `${label} read was aborted`, { cause: error });',
-  to: 'if (isAbortError(error)) throw new ClientError("transport", `${label} read was aborted`, { cause: error });',
+  from: 'if (abortLike(error)) {\n    code = "aborted";',
+  to: 'if (abortLike(error)) {\n    code = "transport";',
   oracle: "AC3/AC4: preserves caller abort, deadline, definite refusal and unknown outcome distinctly",
 });
 

@@ -84,10 +84,12 @@ The source-derived classification table is:
 | code | class | dispatch/action basis | source derivation |
 | --- | --- | --- | --- |
 | `aborted` | caller-abort | caller cancellation; stop, and reconcile if dispatched | `executor.ts` read boundary; `index.ts` controlled execution |
+| `authority_unavailable` | malformed/unknown | legacy G71 authority wire code is safe-listed; do not infer absence | G71 public wire contract; `errors.ts` finite safe-code set |
 | `assert_empty_failed` | definite-refusal | local state assertion rejected before commit | `index.ts` `ClaimLedgerExecutor` |
 | `claim_not_in_candidate_tags` | definite-refusal | consistency claim does not cover a candidate | `index.ts` `preflightCommit` |
 | `command_rejected` | definite-refusal | authored command rejected without a commit | `executor.ts`/`index.ts` result mapping |
 | `consistency_conflict` | definite-refusal | server conflict; reread and recompute | `executor.ts`/`index.ts` commit mapping |
+| `credential.rejected` | definite-refusal | downstream credential refusal; keep credential response details private | finite sanitizer code set in `errors.ts` |
 | `duplicate_consistency_entry` | definite-refusal | malformed commit consistency input | `index.ts` `preflightCommit` |
 | `incoherent_read_snapshot` | malformed/unknown | identity/head observations cannot be trusted | `executor.ts`/`index.ts` normalization |
 | `invalid_command_input` | definite-refusal | authored input validation failed before dispatch | `executor.ts` result mapping |
@@ -97,6 +99,8 @@ The source-derived classification table is:
 | `invalid_query_response` | malformed/unknown | query response shape is not trusted | `executor.ts` response validation |
 | `invalid_read_snapshot` | malformed/unknown | tag-state/authority response shape is not trusted | `executor.ts`/`index.ts` normalization |
 | `http_error` | malformed/unknown | default non-2xx code; status must be inspected | `executor.ts`/`index.ts` HTTP normalization |
+| `partial_write` | definite-refusal | retain only validated write facts; reconcile and never blindly retry | `errors.ts` sanitizer plus commit mapping |
+| `projection_unavailable` | deadline/unknown | renew the read budget before retrying projection work | `errors.ts` status fallback plus result mapping |
 | `read_unavailable` | deadline/unknown | bounded authority/frontier read did not converge | `executor.ts` bounded read |
 | `scope.mismatch` | definite-refusal | executor and transport scopes conflict | `executor.ts` executor guard |
 | `timeout` | deadline/unknown | caller budget expired; reconcile commands | `index.ts` controlled execution |
@@ -106,17 +110,24 @@ The source-derived classification table is:
 | `unsupported_consistency_mode` | definite-refusal | consistency supplied outside list-query | `executor.ts` lane guard |
 
 The row set is not copied from prose: `scripts/g78-error-classification-guard.mjs`
-derives `new ClientError(...)` codes, result `code` literals, and HTTP/unknown
-defaults from every dcb-client source file, then requires a row for each and
-rejects an injected future code in its self-test. This source has no
-`credential.rejected` cloud-wrapper implementation after AC1; that code is a
-downstream contract detail, not a client-raised code here.
+derives the finite safe-message code set, `new ClientError(...)` codes, result
+`code` literals, and HTTP/unknown defaults from every dcb-client source file,
+then requires a row for each and rejects an injected future code in its
+self-test. `authority_unavailable` is retained as the finite legacy G71
+authority wire code, but its transport message is replaced with a canonical
+safe message. `credential.rejected` is included as a documented downstream
+contract code even though no cloud wrapper implementation remains in this
+package after AC1.
 
 The public focused suite proves caller abort before dispatch, abort after
 dispatch, deadline, definite refusal, unknown outcome, malformed response,
-and a typed error object from another package copy. The cross-copy case uses
-`code`, `status`, and `partial`, not `instanceof`; the public error contains
-only sanitized detail and excludes the synthetic credential secret.
+and sanitation of same-package, structural cross-copy, and HTTP-shaped
+transport errors. Distinct synthetic secrets are placed in the foreign
+message, cause, headers, partial object, and extension fields; the assertions
+inspect `message`, `cause`, `headers`, `partial`, `code`, `status`, own public
+name, and JSON output. The public error is a fresh canonical error with no
+foreign detail. A separate command proof keeps only validated partial-write
+facts, remains `kind: "partial"`, and does not create a retryable outcome.
 
 `node scripts/g78-error-classification-mutation-runner.mjs --self-test`
 changes the abort classification to `transport`. The named public
@@ -125,6 +136,15 @@ source is restored. The cloud-client wrapper's fetch-level classify-before-
 sanitize behavior remains outside this repository's implementation claim;
 this repository proves preservation of classifications emitted by a
 conforming injected transport.
+
+`node scripts/g78-error-sanitization-mutation-runner.mjs --self-test` verifies
+unique source anchors and rejects green, missing-report, signal, spawn,
+timeout, setup/import, and unrelated-failure receipts. Its focused behavioral
+run records three red mutants: preserving the raw cause, preserving the raw
+message, and preserving the raw partial object. Each has a clean status-1
+process, one failed named public assertion, and no unrelated failure; each
+source file is restored after mutation. Together with the retained abort
+class-collapse mutant, this is the four-mutant AC4 proof.
 
 ## AC5 — 0.2.0 migration contract
 
@@ -155,7 +175,7 @@ packages to the same exact version when reproducibility matters.
 | ownership move | `scripts/g78-ownership-guard.mjs`, focused root test, source diff |
 | scoped URL/header | JSON golden fixture, focused five-operation test, two red behavioral mutants |
 | classification/action map | source-derived guard, focused public boundary tests, table above |
-| classify-before-sanitize boundary | typed cross-copy sanitized fixture with synthetic-secret exclusion; downstream fetch wrapper explicitly not claimed |
+| classify-before-sanitize boundary | same-package, structural cross-copy and HTTP-shaped fixtures inspect all public properties; foreign command partial-write keeps validated facts; three sanitation mutants plus retained abort class-collapse mutant are red |
 | migration | clean packed compile-only consumer for `@sekiban/cloud-client@0.2.0` |
 | unchanged adjacent behavior | existing G57/local transport tests and package build; no local transport path changes |
 

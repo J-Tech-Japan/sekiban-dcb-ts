@@ -8,6 +8,9 @@ import type {
   TagInput,
 } from "@sekiban/dcb-core";
 import { assertJsonValue, defineTag } from "@sekiban/dcb-core";
+import { ClientError, sanitizeTransportError } from "./errors.js";
+
+export { ClientError } from "./errors.js";
 
 export interface ReadonlyTagStateResponse {
   readonly payload: JsonValue;
@@ -97,20 +100,6 @@ export interface SerializedDcbTransport {
   readonly serviceId?: string;
 }
 
-export class ClientError extends Error {
-  readonly code: string;
-  readonly status?: number;
-  readonly partial?: unknown;
-
-  constructor(code: string, message: string, options?: { readonly status?: number; readonly partial?: unknown; readonly cause?: unknown }) {
-    super(message, options?.cause === undefined ? undefined : { cause: options.cause });
-    this.name = "ClientError";
-    this.code = code;
-    this.status = options?.status;
-    this.partial = options?.partial;
-  }
-}
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -158,13 +147,7 @@ function normalizeSnapshot(value: unknown, requestedTagStateId?: string): TagSta
 function unwrapHttpBody(value: unknown): unknown {
   if (isRecord(value) && typeof value.status === "number" && "body" in value) {
     if (value.status < 200 || value.status >= 300) {
-      const body = value.body;
-      const code = isRecord(body) && typeof body.code === "string" ? body.code : "http_error";
-      const message = isRecord(body) && typeof body.error === "string" ? body.error : `HTTP ${value.status}`;
-      throw new ClientError(code, message, {
-        status: value.status,
-        partial: isRecord(body) ? body.partial : undefined,
-      });
+      throw sanitizeTransportError(value, { fallbackCode: "http_error", status: value.status });
     }
     return value.body;
   }
@@ -243,16 +226,11 @@ export class SerializedDcbClient implements SerializedDcbTransport {
     let body: unknown;
     try {
       body = await response.json();
-    } catch (error) {
-      throw new ClientError("transport", "Serialized DCB response was not JSON", { status: response.status, cause: error });
+    } catch {
+      throw sanitizeTransportError({ status: response.status }, { fallbackCode: "transport", status: response.status });
     }
     if (!response.ok) {
-      const code = isRecord(body) && typeof body.code === "string" ? body.code : "http_error";
-      const message = isRecord(body) && typeof body.error === "string" ? body.error : `HTTP ${response.status}`;
-      throw new ClientError(code, message, {
-        status: response.status,
-        partial: isRecord(body) ? body.partial : undefined,
-      });
+      throw sanitizeTransportError({ status: response.status, body }, { fallbackCode: "http_error", status: response.status });
     }
     return requestedTagStateId === undefined ? body : normalizeSnapshot(body, requestedTagStateId);
   }
@@ -279,8 +257,7 @@ export class ClaimLedger {
     try {
       response = await this.transport.readTagState({ tagStateId: requestedTagStateId }, signal);
     } catch (error) {
-      if (error instanceof ClientError) throw error;
-      throw new ClientError("transport", "Tag-state request failed", { cause: error });
+      throw sanitizeTransportError(error, { fallbackCode: "transport" });
     }
     const snapshot = normalizeSnapshot(response, requestedTagStateId);
     const existingForTag = this.snapshotsByTag.get(snapshot.tag);
@@ -431,37 +408,40 @@ async function awaitControlled<T>(
 }
 
 const classifyError = (error: unknown, attempts: number): ExecuteResult => {
-  if (error instanceof ClientError) {
-    if (error.code === "timeout" || error.code === "aborted") return { kind: "timeout", attempts, status: error.status, code: error.code, error: error.message, cause: error };
-    if (error.code === "projection_unavailable") return { kind: "unavailable", attempts, status: error.status, code: error.code, error: error.message, cause: error };
-    if (error.code === "partial_write" || error.partial !== undefined) return { kind: "partial", attempts, status: error.status, code: error.code, error: error.message, partial: error.partial, cause: error };
-    if (error.code === "consistency_conflict") return { kind: "conflict", attempts, status: error.status, code: error.code, error: error.message, cause: error };
-    return { kind: "invalid", attempts, status: error.status, code: error.code, error: error.message, cause: error };
+  const publicError = error instanceof ClientError ? error : sanitizeTransportError(error);
+  if (publicError.code === "timeout" || publicError.code === "aborted" || publicError.code === "unknown_outcome") {
+    return { kind: "timeout", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
   }
-  return { kind: "transport", attempts, error: error instanceof Error ? error.message : "Transport request failed", cause: error };
+  if (publicError.code === "projection_unavailable" || publicError.code === "read_unavailable") {
+    return { kind: "unavailable", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
+  }
+  if (publicError.code === "partial_write" || publicError.partial !== undefined) {
+    return { kind: "partial", attempts, status: publicError.status, code: publicError.code, error: publicError.message, partial: publicError.partial };
+  }
+  if (publicError.code === "consistency_conflict") {
+    return { kind: "conflict", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
+  }
+  if (publicError.code === "transport" || publicError.code === "http_error") {
+    return { kind: "transport", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
+  }
+  if (publicError.code === "credential.rejected" || publicError.code === "command_rejected") {
+    return { kind: "rejected", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
+  }
+  return { kind: "invalid", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
 };
 
 function classifyCommitResponse(value: unknown, attempts: number): ExecuteResult {
   if (value instanceof Response) {
-    return { kind: "transport", attempts, error: "A raw Response must be normalized by SerializedDcbClient" };
+    return { kind: "transport", attempts, code: "transport", error: "Transport request failed" };
   }
   if (isRecord(value) && typeof value.status === "number" && "body" in value) {
     const status = value.status;
     const body = value.body;
-    const code = isRecord(body) && typeof body.code === "string" ? body.code : undefined;
-    const error = isRecord(body) && typeof body.error === "string" ? body.error : undefined;
-    const partial = isRecord(body) ? body.partial : undefined;
     if (status >= 200 && status < 300) return { kind: "committed", attempts, status, response: body };
-    if (code === "consistency_conflict" || status === 409) return { kind: "conflict", attempts, status, code, error, response: body };
-    if (code === "partial_write" || partial !== undefined) return { kind: "partial", attempts, status, code, error, partial };
-    if (code === "timeout" || status === 504) return { kind: "timeout", attempts, status, code, error };
-    if (code === "projection_unavailable" || status === 503) return { kind: "unavailable", attempts, status, code, error };
-    if (status >= 400 && status < 500) return { kind: "rejected", attempts, status, code, error: error ?? `HTTP ${status}` };
-    return { kind: "transport", attempts, status, code, error: error ?? `HTTP ${status}` };
+    return classifyError(sanitizeTransportError(value, { fallbackCode: "http_error", status }), attempts);
   }
   if (isRecord(value) && typeof value.code === "string") {
-    if (value.code === "consistency_conflict") return { kind: "conflict", attempts, code: value.code, response: value };
-    if (value.code === "partial_write") return { kind: "partial", attempts, code: value.code, partial: value.partial };
+    return classifyError(sanitizeTransportError(value), attempts);
   }
   return { kind: "committed", attempts, status: 200, response: value };
 }
@@ -554,7 +534,17 @@ export class ClaimLedgerExecutor {
         });
         preflightCommit({ candidates, consistency: envelope.consistency, claims: context.claims });
         const signal = options.signal;
-        const result = await awaitControlled(this.transport.commit(envelope, signal), signal, deadline);
+        const result = await awaitControlled(
+          (async () => {
+            try {
+              return await this.transport.commit(envelope, signal);
+            } catch (error) {
+              throw sanitizeTransportError(error, { fallbackCode: "transport" });
+            }
+          })(),
+          signal,
+          deadline,
+        );
         const classified = classifyCommitResponse(result, attempts);
         if (classified.kind === "conflict" && attempts <= maxRetries) continue;
         return classified;
