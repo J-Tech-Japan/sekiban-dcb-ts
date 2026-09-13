@@ -16,8 +16,8 @@
   },
   "addedManifestClosure": {
     "count": 56,
-    "entrySetSha256": "c282677e53dcbfa90fb3b72e020d1ab4607654caf08bfa9e4ba911102ef8d150",
-    "idSetSha256": "00bcf8cb4dbc600b581a1651b0daa5d30bbb90e6db77bf794eb994cf4e3cd191",
+    "entrySetSha256": "46218b54cb6a043c79c0e27a33e655f72d94cf9688ece3578181779829d42d24",
+    "idSetSha256": "38df9766c15d18982110140bc8abef1a506ee706079e6a91917179b8e794edea",
     "reason": "These npm/workspace leaves are the exact recursive package-script closure of the reviewed manifest commands, not an untracked command source."
   },
   "addedWorkflowSteps": {

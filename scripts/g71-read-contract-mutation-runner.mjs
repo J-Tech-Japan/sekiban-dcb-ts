@@ -57,8 +57,9 @@ const mutations = Object.freeze([
   },
   {
     id: "abort-collapsed-to-transport",
-    from: "if (isAbortError(error)) throw new ClientError(\"aborted\", `${label} read was aborted`, { cause: error });",
-    to: "if (isAbortError(error)) throw new ClientError(\"transport\", `${label} read was aborted`, { cause: error });",
+    sourceFile: "packages/dcb-client/src/errors.ts",
+    from: "if (abortLike(error)) {\n    code = \"aborted\";",
+    to: "if (abortLike(error)) {\n    code = \"transport\";",
     oracle: "keeps refusal, abort, and transport failures distinguishable at the read boundary",
     reason: "an aborted read must not be collapsed into an ordinary transport failure",
   },
