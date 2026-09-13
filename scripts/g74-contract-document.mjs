@@ -212,7 +212,7 @@ lines.push(
   "",
   "## Consumer consultation (AC10 gate)",
   "",
-  "The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash `ccabaf7f92118a5f5232fab5f472b0dab44fceebabb19aeed7646c3c662cb692`, designated version `executor-facade-v1`/proposed `1.0.0`, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:",
+  `The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash ${code(model.publicSurfaceHash)}, designated version ${code("executor-facade-v1")}/proposed ${code("1.0.0")}, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:`,
   "",
   "| consumer | available comment/status | missing AC10 fact |",
   "| --- | --- | --- |",
