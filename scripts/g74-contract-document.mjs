@@ -15,6 +15,12 @@ const classifiedExecutorExports = Object.keys(classification.exports ?? {}).sort
 if (classifiedExecutorExports.length !== 14 || classifiedExecutorExports.some((name) => classification.exports[name] !== "public")) {
   throw new Error("SDT-G74 classification ledger must contain exactly 14 public executor exports");
 }
+const packageVersions = [...new Set(model.packages.map((pkg) => pkg.version))];
+if (packageVersions.length !== 1 || packageVersions[0] !== "0.2.0") {
+  throw new Error("SDT-G74 carrying version must be the operator-selected 0.2.0 package graph");
+}
+const carryingVersion = packageVersions[0];
+const contractLabel = "executor-facade-v1";
 
 const text = (value) => String(value).replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
 const code = (value) => `\`${text(value)}\``;
@@ -208,11 +214,11 @@ lines.push(
   "",
   "## Version designation and migration facts",
   "",
-  "The candidate graph is `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, and `@sekiban/dcb-client@0.2.0`; the installable comparison graph recorded in the packet is the matched `0.1.0` set. Source `0.1.1` was never published and is not a migration target. The designated v1 label for this contract is `executor-facade-v1`, with proposed carrying package version `1.0.0`; this is a designation, not an observed npm publication. No package was published here. A future `1.0.0` release must be separately approved and published by its release process.",
+  `The candidate graph is \`@sekiban/dcb-core@0.2.0\`, \`@sekiban/dcb-domain@0.2.0\`, and \`@sekiban/dcb-client@0.2.0\`; the installable comparison graph recorded in the packet is the matched \`0.1.0\` set. Source \`0.1.1\` was never published and is not a migration target. The designated v1 label for this contract is \`${contractLabel}\`, with operator-selected carrying package version \`${carryingVersion}\`. This is the selected contract version, not an observed npm publication. No package was published here. Any future package release must be separately approved and published by its release process.`,
   "",
   "## Consumer consultation (AC10 gate)",
   "",
-  `The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash ${code(model.publicSurfaceHash)}, designated version ${code("executor-facade-v1")}/proposed ${code("1.0.0")}, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:`,
+  `The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash ${code(model.publicSurfaceHash)}, designated version ${code(contractLabel)}/carrying ${code(carryingVersion)}, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:`,
   "",
   "| consumer | available comment/status | missing AC10 fact |",
   "| --- | --- | --- |",

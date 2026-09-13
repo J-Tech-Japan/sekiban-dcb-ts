@@ -423,11 +423,11 @@ The client executor barrel is explicit and mechanically preserves the prior valu
 
 ## Version designation and migration facts
 
-The candidate graph is `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, and `@sekiban/dcb-client@0.2.0`; the installable comparison graph recorded in the packet is the matched `0.1.0` set. Source `0.1.1` was never published and is not a migration target. The designated v1 label for this contract is `executor-facade-v1`, with proposed carrying package version `1.0.0`; this is a designation, not an observed npm publication. No package was published here. A future `1.0.0` release must be separately approved and published by its release process.
+The candidate graph is `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, and `@sekiban/dcb-client@0.2.0`; the installable comparison graph recorded in the packet is the matched `0.1.0` set. Source `0.1.1` was never published and is not a migration target. The designated v1 label for this contract is `executor-facade-v1`, with operator-selected carrying package version `0.2.0`. This is the selected contract version, not an observed npm publication. No package was published here. Any future package release must be separately approved and published by its release process.
 
 ## Consumer consultation (AC10 gate)
 
-The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash `ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a`, designated version `executor-facade-v1`/proposed `1.0.0`, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:
+The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash `ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a`, designated version `executor-facade-v1`/carrying `0.2.0`, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:
 
 | consumer | available comment/status | missing AC10 fact |
 | --- | --- | --- |

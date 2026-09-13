@@ -140,16 +140,16 @@ budget/cancellation/wait semantics, or shipped HTTP interoperability.
 The candidate package graph is `0.2.0`; the installable comparison graph is
 the matched published `0.1.0` set. Repository `0.1.1` was never published and
 is not a migration target. The contract designation is
-`executor-facade-v1`, with proposed carrying version `1.0.0`. That is a
-designation only, not an observed npm publication; no package was published
-by this task.
+`executor-facade-v1`, with operator-selected carrying version `0.2.0`. This is
+the selected contract version, not an observed npm publication; no package was
+published by this task.
 
 ## AC10 — consumer consultation blocker
 
 The required pre-freeze acknowledgement must be from a named owner and must
 identify the exact surface hash
 `ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a`, designated
-version `executor-facade-v1`/proposed `1.0.0`, the compatibility policy and the
+version `executor-facade-v1`/carrying `0.2.0`, the compatibility policy and the
 dated risks, with no interface blocker or a concrete objection. The available
 records do not meet that contract:
 
