@@ -26,6 +26,7 @@ import {
   type SerializedDcbTransport,
   type TagLatestSortableResponse,
 } from "./index";
+import { sanitizeTransportError } from "./errors.js";
 
 /** The small Worker-side binding surface needed by the in-process adapter. */
 export interface RuntimeBindings {
@@ -96,14 +97,6 @@ export interface SekibanExecutor {
   readonly transport: SerializedDcbTransport;
 }
 
-export interface SekibanCloudTransportOptions {
-  readonly BaseUrl: string;
-  readonly ServiceId: string;
-  readonly CredentialId: string;
-  readonly CredentialSecret: string;
-  readonly fetch?: typeof fetch;
-}
-
 type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -144,13 +137,7 @@ function bodyOf(value: unknown): unknown {
 }
 
 function httpFailure(value: CommitHttpResult): ClientError {
-  const body = value.body;
-  const code = isRecord(body) && typeof body.code === "string" ? body.code : "http_error";
-  const message = isRecord(body) && typeof body.error === "string" ? body.error : `HTTP ${value.status}`;
-  return new ClientError(code, message, {
-    status: value.status,
-    partial: isRecord(body) ? body.partial : undefined,
-  });
+  return sanitizeTransportError(value, { fallbackCode: "http_error", status: value.status });
 }
 
 function successfulBody<T>(value: T | CommitHttpResult): T {
@@ -161,17 +148,12 @@ function successfulBody<T>(value: T | CommitHttpResult): T {
   return value;
 }
 
-function isAbortError(error: unknown): boolean {
-  return isRecord(error) && error.name === "AbortError";
-}
-
 async function readCall<T>(operation: () => Promise<T | CommitHttpResult>, label: string): Promise<T> {
+  void label;
   try {
     return successfulBody(await operation());
   } catch (error) {
-    if (error instanceof ClientError) throw error;
-    if (isAbortError(error)) throw new ClientError("aborted", `${label} read was aborted`, { cause: error });
-    throw new ClientError("transport", `${label} read failed`, { cause: error });
+    throw sanitizeTransportError(error, { fallbackCode: "transport" });
   }
 }
 
@@ -372,57 +354,6 @@ export function createHttpTransport(options: {
   return makeHttpTransport(options);
 }
 
-function cloudResult<T>(value: T | CommitHttpResult, credentials: readonly string[] = []): T | CommitHttpResult {
-  if (isHttpResult(value) && (value.status === 401 || value.status === 403)) {
-    throw new ClientError("credential.rejected", "SekibanCloud credential was rejected", { status: value.status });
-  }
-  if (isHttpResult(value) && (value.status < 200 || value.status >= 300)) {
-    const body = value.body;
-    const candidateCode = isRecord(body) && typeof body.code === "string" ? body.code : undefined;
-    const code = candidateCode !== undefined && /^[A-Za-z0-9_.-]{1,64}$/.test(candidateCode) &&
-      !credentials.some((credential) => credential.length > 0 && candidateCode.includes(credential))
-      ? candidateCode
-      : "transport";
-    return {
-      ...value,
-      headers: {},
-      body: { code, error: "SekibanCloud request failed" },
-    };
-  }
-  return value;
-}
-
-export function createSekibanCloudTransport(options: SekibanCloudTransportOptions): SerializedDcbTransport {
-  const base = makeHttpTransport({
-    baseUrl: options.BaseUrl,
-    serviceId: options.ServiceId,
-    fetch: options.fetch,
-    headers: {
-      "X-Sekiban-Service-Id": options.ServiceId,
-      "X-Sekiban-Credential-Id": options.CredentialId,
-      "X-Sekiban-Credential-Secret": options.CredentialSecret,
-    },
-  });
-  const protect = async <T>(operation: () => Promise<T | CommitHttpResult>): Promise<T | CommitHttpResult> => {
-    try {
-      return cloudResult(await operation(), [options.CredentialId, options.CredentialSecret]);
-    } catch (error) {
-      if (error instanceof ClientError && error.code === "credential.rejected") throw error;
-      throw new ClientError("transport", "SekibanCloud request failed");
-    }
-  };
-  return Object.freeze({
-    serviceId: options.ServiceId,
-    readTagState: (request: { readonly tagStateId: string }, signal?: AbortSignal) =>
-      protect(() => base.readTagState(request, signal)),
-    readTagLatestSortable: (request: { readonly tag: string }, signal?: AbortSignal) =>
-      protect(() => base.readTagLatestSortable!(request, signal)),
-    commit: (request: CommitEnvelope, signal?: AbortSignal) => protect(() => base.commit(request, signal)),
-    query: (request: QueryRequest, signal?: AbortSignal) => protect(() => base.query(request, signal)),
-    listQuery: (request: ListQueryRequest, signal?: AbortSignal) => protect(() => base.listQuery(request, signal)),
-  });
-}
-
 function snapshotKey(projectorId: string, tag: Tag): string {
   return `${projectorId}\u0000${tag.id}`;
 }
@@ -607,17 +538,31 @@ function envelopeFor(candidate: CandidateEnvelope): CommitEnvelope {
 
 function commitDecision(value: unknown): { readonly kind: "accepted" | "consistency-conflict" | "unknown" | "rejected"; readonly error?: unknown } {
   if (!isHttpResult(value)) return { kind: "accepted" };
-  const body = value.body;
-  const code = stringField(body, "code");
   if (value.status >= 200 && value.status < 300) return { kind: "accepted" };
-  if (value.status === 409 || code === "consistency_conflict") return { kind: "consistency-conflict", error: body };
-  if (value.status >= 500 || code === "unknown_outcome") return { kind: "unknown", error: body };
-  return { kind: "rejected", error: body };
+  const error = sanitizeTransportError(value, { fallbackCode: "http_error", status: value.status });
+  if (error.code === "consistency_conflict") return { kind: "consistency-conflict", error };
+  if (error.code === "unknown_outcome" || value.status >= 500) return { kind: "unknown", error };
+  return { kind: "rejected", error };
 }
 
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
+  if (isRecord(error) && error.error instanceof Error) return error.error.message;
   return isRecord(error) && typeof error.error === "string" ? error.error : String(error);
+}
+
+function commitErrorFrom(error: unknown): ClientError | undefined {
+  if (error instanceof ClientError) return error;
+  if (isRecord(error) && error.error !== undefined) {
+    if (error.error instanceof ClientError) return error.error;
+    if (isRecord(error.error) && typeof error.error.code === "string") {
+      return sanitizeTransportError(error.error, { fallbackCode: "transport" });
+    }
+  }
+  if (isRecord(error) && typeof error.code === "string") {
+    return sanitizeTransportError(error, { fallbackCode: "transport" });
+  }
+  return undefined;
 }
 
 export function createSekibanExecutor(
@@ -719,7 +664,13 @@ export function createSekibanExecutor(
         maxConflictRetries,
         commit: async (candidate) => {
           commitAttempts += 1;
-          const raw = await transport.commit(envelopeFor(candidate), executeOptions.signal);
+          const raw = await (async () => {
+            try {
+              return await transport.commit(envelopeFor(candidate), executeOptions.signal);
+            } catch (error) {
+              throw sanitizeTransportError(error, { fallbackCode: "transport" });
+            }
+          })();
           lastResponse = raw;
           const decision = commitDecision(raw);
           if (decision.kind === "consistency-conflict") {
@@ -761,20 +712,24 @@ export function createSekibanExecutor(
         };
       }
       if (result.status === "rejected") {
-        const conflict = result.error !== undefined && lastResponse !== undefined && isHttpResult(lastResponse)
-          && (lastResponse.status === 409 || stringField(lastResponse.body, "code") === "consistency_conflict");
+        const commitError = commitErrorFrom(result.error);
+        const conflict = commitError?.code === "consistency_conflict";
         if (conflict) {
           return {
             kind: "conflict",
             attempts: result.attempts,
-            status: isHttpResult(lastResponse) ? lastResponse.status : undefined,
+            status: commitError?.status,
             code: "consistency_conflict",
-            response: bodyOf(lastResponse),
             conflicts: conflictDetails(lastResponse),
           };
         }
         if (result.error !== undefined) {
-          return { kind: "rejected", attempts: result.attempts, error: errorText(result.error), code: stringField(result.error, "code") };
+          return {
+            kind: "rejected",
+            attempts: result.attempts,
+            error: errorText(commitError ?? result.error),
+            ...(commitError === undefined ? {} : { code: commitError.code, status: commitError.status }),
+          };
         }
         const details = result.decision.kind === "reject" && typeof result.decision.details === "string"
           ? result.decision.details
@@ -786,7 +741,15 @@ export function createSekibanExecutor(
           code: result.decision.kind === "reject" ? details ?? result.decision.code : "command_rejected",
         };
       }
-      if (result.status === "unknown") return { kind: "timeout", attempts: result.attempts, code: "unknown_outcome", error: errorText(result.error) };
+      if (result.status === "unknown") {
+        const commitError = commitErrorFrom(result.error);
+        return {
+          kind: "timeout",
+          attempts: result.attempts,
+          code: "unknown_outcome",
+          error: commitError?.message ?? "The command outcome is unknown",
+        };
+      }
       return { kind: "rejected", attempts: result.attempts, error: `Command ${command.id} was rejected`, code: "command_rejected" };
     } catch (error) {
       // The facade and the authored sample can resolve separate package
@@ -804,9 +767,14 @@ export function createSekibanExecutor(
       if (authoringCode === "COMMAND_INPUT_INVALID") {
         return { kind: "invalid", attempts: 1, code: "invalid_command_input", error: errorText(error) };
       }
-      if (error instanceof ClientError) {
-        if (error.code === "timeout" || error.code === "aborted") return { kind: "timeout", attempts: 1, code: error.code, error: error.message };
-        return { kind: "invalid", attempts: 1, status: error.status, code: error.code, error: error.message };
+      const clientError = error instanceof ClientError
+        ? error
+        : isRecord(error) && typeof error.code === "string"
+          ? sanitizeTransportError(error, { fallbackCode: "transport" })
+          : undefined;
+      if (clientError !== undefined) {
+        if (clientError.code === "timeout" || clientError.code === "aborted") return { kind: "timeout", attempts: 1, code: clientError.code, error: clientError.message };
+        return { kind: "invalid", attempts: 1, status: clientError.status, code: clientError.code, error: clientError.message };
       }
       return { kind: "transport", attempts: 1, error: errorText(error) };
     }
