@@ -1,0 +1,25 @@
+{
+  "schema": "sdt-g74-export-classification/v1",
+  "module": "packages/dcb-client/src/executor.ts",
+  "rule": "Every executor declaration is explicitly classified before a public-root export is accepted.",
+  "exports": {
+    "RuntimeBindings": "public",
+    "ExecuteCommandOptions": "public",
+    "ReadOptions": "public",
+    "ReadConsistency": "public",
+    "ListQueryOptions": "public",
+    "WrittenEvent": "public",
+    "TagWriteResult": "public",
+    "ExecutorCommitted": "public",
+    "ExecutorConflict": "public",
+    "ExecuteCommandResult": "public",
+    "SekibanExecutor": "public",
+    "createInProcessTransport": "public",
+    "createHttpTransport": "public",
+    "createSekibanExecutor": "public"
+  },
+  "reviewedModuleInternal": [],
+  "publicRootAdditionProof": "A new declaration exported through packages/dcb-client/src/index.ts must change the release model and fail the surface guard; an executor-only declaration is not public and must be classified before publication.",
+  "approvedBy": "SDT-G74 implementation review",
+  "approvedAt": "2026-09-12"
+}

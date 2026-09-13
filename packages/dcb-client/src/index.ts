@@ -586,4 +586,21 @@ export const createSerializedDcbClient = (baseUrl: string, fetchImpl?: typeof fe
 export type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput };
 
 export type { SekibanCloudTransportOptions } from "./cloud-contract.js";
-export * from "./executor.js";
+export {
+  createHttpTransport,
+  createInProcessTransport,
+  createSekibanExecutor,
+} from "./executor.js";
+export type {
+  ExecuteCommandOptions,
+  ExecuteCommandResult,
+  ExecutorCommitted,
+  ExecutorConflict,
+  ListQueryOptions,
+  ReadConsistency,
+  ReadOptions,
+  RuntimeBindings,
+  SekibanExecutor,
+  TagWriteResult,
+  WrittenEvent,
+} from "./executor.js";

@@ -1,4 +1,4 @@
-import { assertJsonValue, type JsonValue } from "./index";
+import { assertJsonValue, type JsonValue } from "./index.js";
 
 /** The only scalar representations that may be persisted in an MV index. */
 export type MaterializedViewIndexValueType = "text" | "integer" | "real";
