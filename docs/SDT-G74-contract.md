@@ -444,4 +444,3 @@ The issue claim was acquired before source edits and the dedicated branch is `cl
 The next review step is design disposition of the three missing acknowledgements: obtain the exact acknowledgements, or record an explicit waiver listing each unanswered item. If a concrete interface contradiction is raised, resolve it before declaring the freeze; if no contradiction is raised and the waiver is authorized, the branch can be packaged into a PR and ordinary exact-head CI can run.
 
 Generated from `docs/SDT-G74-surface-baseline.json` by `scripts/g74-contract-document.mjs` on 2026-09-12.
-
