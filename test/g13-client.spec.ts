@@ -4,6 +4,7 @@ import {
   ClaimLedger,
   ClaimLedgerExecutor,
   ClientError,
+  type ClientCommandContext,
   type CommitEnvelope,
   type ReadonlyTagStateResponse,
   type SerializedDcbTransport,
@@ -230,5 +231,43 @@ describe("SDT-G13 claim-ledger client", () => {
     });
     expect(result).toMatchObject({ kind: "timeout", attempts: 1, code: "timeout" });
     expect(commits).toBe(1);
+  });
+  it("SDT-G86 AC4: refuses an invalid totalBudgetMs before any command or commit call", async () => {
+    const event = defineEvent("Added");
+    const counts = { executions: 0, commits: 0 };
+    const transport = transportFor(
+      () => snapshot("group", "content", "projector", "s-1"),
+      async () => {
+        counts.commits += 1;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { status: 200, body: { writtenEvents: [] } };
+      },
+    );
+    const appendCommand = async (context: ClientCommandContext) => {
+      counts.executions += 1;
+      context.append(event, { value: 1 }, ["group:content"]);
+      return { kind: "committed" as const };
+    };
+    for (const totalBudgetMs of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 2 ** 31]) {
+      const perCall = await new ClaimLedgerExecutor({ transport }).execute(appendCommand, { totalBudgetMs });
+      expect({ perCall, counts }, `per-call totalBudgetMs=${String(totalBudgetMs)}`).toMatchObject({
+        perCall: { kind: "invalid", attempts: 0, code: "invalid_execute_options" },
+        counts: { executions: 0, commits: 0 },
+      });
+      const fromDefault = await new ClaimLedgerExecutor({ transport, totalBudgetMs }).execute(appendCommand, { totalBudgetMs: 1000 });
+      expect({ fromDefault, counts }, `default totalBudgetMs=${String(totalBudgetMs)}`).toMatchObject({
+        fromDefault: { kind: "invalid", attempts: 0, code: "invalid_execute_options" },
+        counts: { executions: 0, commits: 0 },
+      });
+    }
+    for (const totalBudgetMs of [1000, 2147483647]) {
+      counts.executions = 0;
+      counts.commits = 0;
+      const accepted = await new ClaimLedgerExecutor({ transport, totalBudgetMs }).execute(appendCommand);
+      expect({ accepted, counts }, `accepted totalBudgetMs=${totalBudgetMs}`).toMatchObject({
+        accepted: { kind: "committed" },
+        counts: { executions: 1, commits: 1 },
+      });
+    }
   });
 });

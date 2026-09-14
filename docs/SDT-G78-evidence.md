@@ -90,6 +90,7 @@ The source-derived classification table is:
 | `command_rejected` | definite-refusal | authored command rejected without a commit | `executor.ts`/`index.ts` result mapping |
 | `consistency_conflict` | definite-refusal | server conflict; reread and recompute | `executor.ts`/`index.ts` commit mapping |
 | `credential.rejected` | definite-refusal | downstream credential refusal; keep credential response details private | finite sanitizer code set in `errors.ts` |
+| `domain_authoring_error` | definite-refusal | a handler or domain-layer `DomainAuthoringError` (for example `SNAPSHOT_STATE_INVALID`); the authoring code is in `error`; fix the command or domain authoring, nothing was sent | `executor.ts` result mapping (SDT-G86) |
 | `duplicate_consistency_entry` | definite-refusal | malformed commit consistency input | `index.ts` `preflightCommit` |
 | `incoherent_read_snapshot` | malformed/unknown | identity/head observations cannot be trusted | `executor.ts`/`index.ts` normalization |
 | `invalid_command_input` | definite-refusal | authored input validation failed before dispatch | `executor.ts` result mapping |

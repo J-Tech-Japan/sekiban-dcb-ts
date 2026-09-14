@@ -6,8 +6,10 @@ import {
   type CandidateEnvelope,
   type CommandDefinition,
   type CommandInput,
+  type CommitAttemptResult,
   type PortableSnapshot,
   type ProjectorLike,
+  type RejectKind,
   type SnapshotReader,
   type Tag,
 } from "@sekiban/dcb-domain";
@@ -17,6 +19,7 @@ import {
   type CommitHttpResult,
   type ExecuteCommitted,
   type ExecuteConflict,
+  type ExecuteRejected,
   type ExecuteResult,
   type ListQueryRequest,
   type ListQueryResponse,
@@ -26,6 +29,8 @@ import {
   type SerializedDcbTransport,
   type TagLatestSortableResponse,
 } from "./index";
+import { classifyFailure, commitReplyError, failureKindForCode } from "./classification.js";
+import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { sanitizeTransportError } from "./errors.js";
 
 /** The small Worker-side binding surface needed by the in-process adapter. */
@@ -79,10 +84,17 @@ export type ExecutorConflict = ExecuteConflict & {
   }[];
 };
 
+/** A rejection; `rejectKind` and `details` are present only for a handler's reject decision. */
+export type ExecutorRejected = ExecuteRejected & {
+  readonly rejectKind?: RejectKind;
+  readonly details?: unknown;
+};
+
 export type ExecuteCommandResult =
   | ExecutorCommitted
   | ExecutorConflict
-  | Exclude<ExecuteResult, ExecuteCommitted | ExecuteConflict>;
+  | ExecutorRejected
+  | Exclude<ExecuteResult, ExecuteCommitted | ExecuteConflict | ExecuteRejected>;
 
 export interface SekibanExecutor {
   execute<C extends CommandDefinition>(
@@ -148,13 +160,21 @@ function successfulBody<T>(value: T | CommitHttpResult): T {
   return value;
 }
 
-async function readCall<T>(operation: () => Promise<T | CommitHttpResult>, label: string): Promise<T> {
+/** Runs one adapter call; the executor passes a controlled runner for the reads `execute` makes. */
+type AdapterRunner = <T>(operation: () => Promise<T> | T) => Promise<T>;
+
+const uncontrolled: AdapterRunner = async (operation) => operation();
+
+async function readCall<T>(operation: () => Promise<T | CommitHttpResult>, label: string, run: AdapterRunner = uncontrolled): Promise<T> {
   void label;
-  try {
-    return successfulBody(await operation());
-  } catch (error) {
-    throw sanitizeTransportError(error, { fallbackCode: "transport" });
-  }
+  // The runner's own abort/timeout refusal stays outside the sanitizer.
+  return run(async () => {
+    try {
+      return successfulBody(await operation());
+    } catch (error) {
+      throw sanitizeTransportError(error, { fallbackCode: "transport" });
+    }
+  });
 }
 
 function compareSortableUniqueId(left: string, right: string): number {
@@ -192,6 +212,7 @@ async function readAuthority(
   transport: SerializedDcbTransport,
   tag: string,
   signal: AbortSignal | undefined,
+  run: AdapterRunner,
 ): Promise<TagLatestSortableResponse> {
   if (transport.readTagLatestSortable === undefined) {
     throw new ClientError(
@@ -203,6 +224,7 @@ async function readAuthority(
   const value = await readCall(
     () => transport.readTagLatestSortable!({ tag }, signal),
     "Tag-latest-sortable authority",
+    run,
   );
   return normalizeAuthority(value);
 }
@@ -358,10 +380,16 @@ function snapshotKey(projectorId: string, tag: Tag): string {
   return `${projectorId}\u0000${tag.id}`;
 }
 
+interface ExecuteReads {
+  readonly readState: (projector: ProjectorLike, tag: Tag) => Promise<PortableSnapshot>;
+  readonly exists: (tag: Tag) => Promise<PortableSnapshot<undefined>>;
+}
+
 function snapshotReaderFrom(
-  executor: SekibanExecutor,
+  reads: ExecuteReads,
   supplied: SnapshotReader | readonly PortableSnapshot[] | undefined,
   readMode: "read-through" | "snapshot-only",
+  run: AdapterRunner,
 ): SnapshotReader {
   const isSnapshotArray = (value: SnapshotReader | readonly PortableSnapshot[] | undefined): value is readonly PortableSnapshot[] => Array.isArray(value);
   const array = isSnapshotArray(supplied) ? supplied : undefined;
@@ -382,35 +410,56 @@ function snapshotReaderFrom(
       if (readMode === "snapshot-only") return missing(projector.id, tag);
     }
     if (reader !== undefined) {
-      try {
-        return await reader.read(projector, tag);
-      } catch (error) {
-        if (readMode === "snapshot-only") return missing(projector.id, tag);
-        throw error;
-      }
+      // A supplied reader has no signal parameter; the runner bounds it, and
+      // its own budget or abort refusal is not turned into a missing snapshot.
+      return run(async () => {
+        try {
+          return await reader.read(projector, tag);
+        } catch (error) {
+          if (readMode === "snapshot-only") return missing(projector.id, tag);
+          throw error;
+        }
+      });
     }
     if (readMode === "snapshot-only") return missing(projector.id, tag);
-    return executor.readState(projector, tag);
+    return reads.readState(projector, tag);
   };
   const fallbackExists = async (tag: Tag): Promise<boolean> => {
     const found = byTag.get(tag.id);
     if (found !== undefined) return found.exists;
     if (reader !== undefined && reader.exists !== undefined) {
-      return reader.exists(tag);
+      const exists = reader.exists;
+      return run(() => exists(tag));
     }
     if (readMode === "snapshot-only") return missing(undefined, tag);
-    return (await executor.exists(tag)).exists;
+    return (await reads.exists(tag)).exists;
   };
   const fallbackHead = async (tag: Tag): Promise<string | null> => {
     const found = byTag.get(tag.id);
     if (found !== undefined) return found.head;
     if (reader !== undefined && reader.head !== undefined) {
-      return reader.head(tag);
+      const head = reader.head;
+      return run(() => head(tag));
     }
     if (readMode === "snapshot-only") return missing(undefined, tag);
-    return (await executor.exists(tag)).head;
+    return (await reads.exists(tag)).head;
   };
   return { read: fallbackRead, exists: fallbackExists, head: fallbackHead };
+}
+
+/**
+ * Parse a decoded tag-state payload through the projector's state schema when
+ * it carries one. `ProjectorLike` does not declare `validateState`, so the
+ * check is structural; a projector without it is not constrained.
+ */
+function parsedReadState(projector: ProjectorLike, decoded: unknown): unknown {
+  const validateState = (projector as { readonly validateState?: unknown }).validateState;
+  if (typeof validateState !== "function") return decoded;
+  try {
+    return (validateState as (state: unknown) => unknown).call(projector, decoded);
+  } catch {
+    throw new ClientError("invalid_read_snapshot", "Tag-state payload did not match the projector state schema");
+  }
 }
 
 function normalizedResponse(value: unknown, requestedTagStateId: string): ReadonlyTagStateResponse {
@@ -517,11 +566,11 @@ function conflictDetails(value: unknown): ExecutorConflict["conflicts"] {
   });
 }
 
-function conflictResult(attempts: number, commitError: ClientError | undefined, response: unknown): ExecutorConflict {
+function conflictResult(attempts: number, commitError: unknown, response: unknown): ExecutorConflict {
   return {
     kind: "conflict",
     attempts,
-    status: commitError?.status,
+    status: commitError instanceof ClientError ? commitError.status : undefined,
     code: "consistency_conflict",
     conflicts: conflictDetails(response),
   };
@@ -546,13 +595,21 @@ function envelopeFor(candidate: CandidateEnvelope): CommitEnvelope {
   };
 }
 
-function commitDecision(value: unknown): { readonly kind: "accepted" | "consistency-conflict" | "unknown" | "rejected"; readonly error?: unknown } {
-  if (!isHttpResult(value)) return { kind: "accepted" };
+/**
+ * What executeCommand needs to know about one commit reply. Only a 2xx reply
+ * is accepted and only a consistency conflict is returned for a retry; every
+ * other reply is thrown as its public error and classified once, by the
+ * shared table, together with every other failure of `execute`.
+ */
+function commitAttemptResult(value: unknown): CommitAttemptResult {
+  if (!isHttpResult(value)) {
+    // A reply the facade does not recognise is not proof of a commit.
+    throw new ClientError("unknown_outcome", "The command outcome is unknown");
+  }
   if (value.status >= 200 && value.status < 300) return { kind: "accepted" };
-  const error = sanitizeTransportError(value, { fallbackCode: "http_error", status: value.status });
-  if (error.code === "consistency_conflict") return { kind: "consistency-conflict", error };
-  if (error.code === "unknown_outcome" || value.status >= 500) return { kind: "unknown", error };
-  return { kind: "rejected", error };
+  const error = commitReplyError(value);
+  if (failureKindForCode(error.code) === "conflict") return { kind: "consistency-conflict", error };
+  throw error;
 }
 
 function errorText(error: unknown): string {
@@ -561,18 +618,37 @@ function errorText(error: unknown): string {
   return isRecord(error) && typeof error.error === "string" ? error.error : String(error);
 }
 
-function commitErrorFrom(error: unknown): ClientError | undefined {
-  if (error instanceof ClientError) return error;
-  if (isRecord(error) && error.error !== undefined) {
-    if (error.error instanceof ClientError) return error.error;
-    if (isRecord(error.error) && typeof error.error.code === "string") {
-      return sanitizeTransportError(error.error, { fallbackCode: "transport" });
-    }
+/** Error names of dcb-domain's DomainAuthoringError family, for a copy that fails instanceof. */
+const DOMAIN_AUTHORING_ERROR_NAMES = new Set([
+  "DomainAuthoringError",
+  "DomainRegistrationError",
+  "BoundaryParseError",
+  "SessionStateError",
+  "UndeclaredReadError",
+  "IncoherentSnapshotError",
+]);
+
+function isDomainAuthoringError(error: unknown): error is { readonly code: string } {
+  if (error instanceof DomainAuthoringError) return true;
+  return isRecord(error) && typeof error.code === "string" && typeof error.name === "string" && DOMAIN_AUTHORING_ERROR_NAMES.has(error.name);
+}
+
+function maxConflictRetriesProblem(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return undefined;
+  return `maxConflictRetries must be undefined or a non-negative safe integer; received ${String(value)}`;
+}
+
+/** Every failure of `execute` takes its kind from the shared classification table. */
+function failureResult(error: unknown, attempts: number): ExecuteCommandResult {
+  const failure = classifyFailure(error);
+  const common = { attempts, status: failure.status, code: failure.code, error: failure.error };
+  switch (failure.kind) {
+    case "partial": return { kind: "partial", ...common, partial: failure.partial };
+    case "conflict": return { kind: "conflict", ...common, conflicts: [] };
+    case "rejected": return { kind: "rejected", ...common };
+    default: return { kind: failure.kind, ...common };
   }
-  if (isRecord(error) && typeof error.code === "string") {
-    return sanitizeTransportError(error, { fallbackCode: "transport" });
-  }
-  return undefined;
 }
 
 export function createSekibanExecutor(
@@ -590,8 +666,11 @@ export function createSekibanExecutor(
     execute: SekibanExecutor["execute"];
   };
 
-  const readState = async <P extends ProjectorLike>(projector: P, tag: Tag, readOptions: ReadOptions = {}): Promise<PortableSnapshot> => {
-    rejectUnsupportedConsistency(readOptions);
+  const assertScope = (): void => {
+    if (scopeMismatch) throw new ClientError("scope.mismatch", "Executor service scope does not match its transport");
+  };
+
+  const readStateWith = async (projector: ProjectorLike, tag: Tag, signal: AbortSignal | undefined, run: AdapterRunner): Promise<PortableSnapshot> => {
     const tagValue = normalizeTag(tag);
     const stateId = `${tagValue.id}:${projector.id}`;
     const emptyState = () => typeof projector.initialState === "function" ? projector.initialState() : projector.initialState;
@@ -599,7 +678,7 @@ export function createSekibanExecutor(
     // stale projector response is never relabelled as an absent tag or an
     // apparently coherent snapshot.
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const authority = await readAuthority(transport, tagValue.id, readOptions.signal);
+      const authority = await readAuthority(transport, tagValue.id, signal, run);
       if (!authority.exists) {
         return Object.freeze({
           projectorId: projector.id,
@@ -610,8 +689,9 @@ export function createSekibanExecutor(
         });
       }
       const raw = await readCall(
-        () => transport.readTagState({ tagStateId: stateId }, readOptions.signal),
+        () => transport.readTagState({ tagStateId: stateId }, signal),
         "Tag-state",
+        run,
       );
       const response = normalizedResponse(raw, stateId);
       if (compareSortableUniqueId(response.lastSortedUniqueId, authority.lastSortableUniqueId) < 0) {
@@ -628,17 +708,16 @@ export function createSekibanExecutor(
         projectorId: projector.id,
         tag: tagValue,
         head: response.lastSortedUniqueId.length === 0 ? null : response.lastSortedUniqueId,
-        state: empty ? emptyState() : decoded,
+        state: empty ? emptyState() : parsedReadState(projector, decoded),
         exists: true,
       });
     }
     throw new ClientError("read_unavailable", "Tag-state read could not reach a coherent authority observation", { status: 503 });
   };
 
-  const exists = async (tag: Tag, readOptions: ReadOptions = {}): Promise<PortableSnapshot<undefined>> => {
-    rejectUnsupportedConsistency(readOptions);
+  const existsWith = async (tag: Tag, signal: AbortSignal | undefined, run: AdapterRunner): Promise<PortableSnapshot<undefined>> => {
     const tagValue = normalizeTag(tag);
-    const value = await readAuthority(transport, tagValue.id, readOptions.signal);
+    const value = await readAuthority(transport, tagValue.id, signal, run);
     return Object.freeze({
       projectorId: "exists",
       tag: tagValue,
@@ -648,12 +727,26 @@ export function createSekibanExecutor(
     });
   };
 
+  const readState = async <P extends ProjectorLike>(projector: P, tag: Tag, readOptions: ReadOptions = {}): Promise<PortableSnapshot> => {
+    assertScope();
+    rejectUnsupportedConsistency(readOptions);
+    return readStateWith(projector, tag, readOptions.signal, uncontrolled);
+  };
+
+  const exists = async (tag: Tag, readOptions: ReadOptions = {}): Promise<PortableSnapshot<undefined>> => {
+    assertScope();
+    rejectUnsupportedConsistency(readOptions);
+    return existsWith(tag, readOptions.signal, uncontrolled);
+  };
+
   const query = async (request: QueryRequest, readOptions: ReadOptions = {}): Promise<QueryResponse> => {
+    assertScope();
     rejectUnsupportedConsistency(readOptions);
     rejectQueryEmbeddedConsistency(request);
     return normalizedQueryResponse(await readCall(() => transport.query(request, readOptions.signal), "Query"));
   };
   const listQuery = async (request: ListQueryRequest, readOptions: ListQueryOptions = {}): Promise<ListQueryResponse> => {
+    assertScope();
     const withConsistency = requestWithListConsistency(request, readOptions);
     return normalizedListQueryResponse(await readCall(
       () => transport.listQuery(withConsistency, readOptions.signal),
@@ -663,9 +756,24 @@ export function createSekibanExecutor(
 
   const execute = async <C extends CommandDefinition>(command: C, input: CommandInput<C>, executeOptions: ExecuteCommandOptions = {}): Promise<ExecuteCommandResult> => {
     if (scopeMismatch) return { kind: "invalid", attempts: 0, code: "scope.mismatch", error: "Executor service scope does not match its transport" };
-    const snapshots = snapshotReaderFrom(executor, executeOptions.snapshots, executeOptions.readMode ?? "read-through");
-    const maxConflictRetries = executeOptions.readMode === "snapshot-only" ? 0 : executeOptions.maxConflictRetries ?? 1;
+    // Options are refused before any read or commit, and before snapshot-only
+    // replaces the retry count, so an invalid value is never silently ignored.
+    const optionsProblem = totalBudgetMsProblem(executeOptions.totalBudgetMs) ?? maxConflictRetriesProblem(executeOptions.maxConflictRetries);
+    if (optionsProblem !== undefined) return failureResult(new ClientError("invalid_execute_options", optionsProblem), 0);
+    const readMode = executeOptions.readMode ?? "read-through";
+    const signal = executeOptions.signal;
+    // One deadline for the whole execute; every adapter and reader call runs under it.
+    const deadline = executeOptions.totalBudgetMs === undefined ? undefined : Date.now() + executeOptions.totalBudgetMs;
+    const run: AdapterRunner = (operation) => awaitControlled(operation, signal, deadline);
+    if (signal?.aborted) return failureResult(new ClientError("aborted", "Execution was aborted"), 0);
+    if (deadline !== undefined && deadline - Date.now() <= 0) return failureResult(new ClientError("timeout", "Execution budget expired"), 0);
+    const snapshots = snapshotReaderFrom({
+      readState: (projector, tag) => readStateWith(projector, tag, signal, run),
+      exists: (tag) => existsWith(tag, signal, run),
+    }, executeOptions.snapshots, readMode, run);
+    const maxConflictRetries = readMode === "snapshot-only" ? 0 : executeOptions.maxConflictRetries ?? 1;
     let commitAttempts = 0;
+    let committing = false;
     let lastResponse: unknown;
     try {
       const result = await executeCommand(command, input, {
@@ -674,27 +782,24 @@ export function createSekibanExecutor(
         maxConflictRetries,
         commit: async (candidate) => {
           commitAttempts += 1;
-          const raw = await (async () => {
+          committing = true;
+          // A dispatched commit that expires or is aborted is an unknown
+          // outcome: it rejects out of executeCommand and is never retried.
+          const raw = await run(async () => {
             try {
-              return await transport.commit(envelopeFor(candidate), executeOptions.signal);
+              return await transport.commit(envelopeFor(candidate), signal);
             } catch (error) {
               throw sanitizeTransportError(error, { fallbackCode: "transport" });
             }
-          })();
+          });
           lastResponse = raw;
-          const decision = commitDecision(raw);
-          if (decision.kind === "consistency-conflict") {
-            return commitAttempts > maxConflictRetries
-              ? { kind: "rejected", error: decision.error }
-              : { kind: "consistency-conflict", error: decision.error };
-          }
-          if (decision.kind === "unknown") return { kind: "unknown", error: decision.error };
-          if (decision.kind === "rejected") return { kind: "rejected", error: decision.error };
-          return { kind: "accepted" };
+          const attemptResult = commitAttemptResult(raw);
+          committing = false;
+          return attemptResult;
         },
         onPropagation: undefined,
       });
-      if (result.status === "accepted") {
+      if (result.status === "accepted" && result.decision.kind === "done") {
         const events = writtenEvents(lastResponse);
         const head = responseHead(lastResponse, events);
         const updatedTags = new Set(result.envelope?.events.flatMap((event) => event.tags.map((tag) => tag.id)) ?? []);
@@ -707,58 +812,28 @@ export function createSekibanExecutor(
           tagWriteResults: tagWriteResults(lastResponse),
           head,
           heads: responseHeads(lastResponse, result.envelope?.readClaims.map((claim) => ({ tag: claim.tag, head: claim.head })) ?? [], head, updatedTags, result.envelope?.events ?? []),
-        };
-      }
-      if (result.status === "discarded") {
-        if (result.decision.kind === "none") return { kind: "noop", attempts: result.attempts, reason: result.decision.reason };
-        const details = result.decision.kind === "reject" && typeof result.decision.details === "string"
-          ? result.decision.details
-          : undefined;
-        return {
-          kind: "rejected",
-          attempts: result.attempts,
-          error: result.decision.kind === "reject" ? result.decision.reason : "Command was rejected",
-          code: result.decision.kind === "reject" ? details ?? result.decision.code : "command_rejected",
+          ...(result.decision.value === undefined ? {} : { value: result.decision.value }),
         };
       }
       if (result.status === "conflict") {
-        return conflictResult(result.attempts, commitErrorFrom(result.error), lastResponse);
+        return conflictResult(result.attempts, result.error, lastResponse);
       }
-      if (result.status === "rejected") {
-        const commitError = commitErrorFrom(result.error);
-        // The commit closure still converts the final conflict to rejected
-        // (SDT-G86 removes that conversion); keep it typed as a conflict.
-        if (commitError?.code === "consistency_conflict") {
-          return conflictResult(result.attempts, commitError, lastResponse);
-        }
-        if (result.error !== undefined) {
-          return {
-            kind: "rejected",
-            attempts: result.attempts,
-            error: errorText(commitError ?? result.error),
-            ...(commitError === undefined ? {} : { code: commitError.code, status: commitError.status }),
-          };
-        }
-        const details = result.decision.kind === "reject" && typeof result.decision.details === "string"
-          ? result.decision.details
-          : undefined;
+      if (result.decision.kind === "none") return { kind: "noop", attempts: result.attempts, reason: result.decision.reason };
+      if (result.decision.kind === "reject") {
+        const decision = result.decision;
         return {
           kind: "rejected",
           attempts: result.attempts,
-          error: result.decision.kind === "reject" ? result.decision.reason : "Command was rejected",
-          code: result.decision.kind === "reject" ? details ?? result.decision.code : "command_rejected",
+          error: decision.reason,
+          // SDT-G57: a string details is the application code, else the V1 reject code.
+          code: typeof decision.details === "string" ? decision.details : decision.code,
+          rejectKind: decision.rejectKind,
+          ...(decision.details === undefined ? {} : { details: decision.details }),
         };
       }
-      if (result.status === "unknown") {
-        const commitError = commitErrorFrom(result.error);
-        return {
-          kind: "timeout",
-          attempts: result.attempts,
-          code: "unknown_outcome",
-          error: commitError?.message ?? "The command outcome is unknown",
-        };
-      }
-      return { kind: "rejected", attempts: result.attempts, error: `Command ${command.id} was rejected`, code: "command_rejected" };
+      // The commit closure accepts, retries a conflict or throws; any other
+      // status cannot be trusted as a commit.
+      return failureResult(new ClientError("unknown_outcome", "The command outcome is unknown"), result.attempts);
     } catch (error) {
       // The facade and the authored sample can resolve separate package
       // copies in a Worker bundle, so preserve the domain error code across
@@ -779,16 +854,13 @@ export function createSekibanExecutor(
       if (authoringCode === "COMMAND_INPUT_INVALID") {
         return { kind: "invalid", attempts: 1, code: "invalid_command_input", error: errorText(error) };
       }
-      const clientError = error instanceof ClientError
-        ? error
-        : isRecord(error) && typeof error.code === "string"
-          ? sanitizeTransportError(error, { fallbackCode: "transport" })
-          : undefined;
-      if (clientError !== undefined) {
-        if (clientError.code === "timeout" || clientError.code === "aborted") return { kind: "timeout", attempts: 1, code: clientError.code, error: clientError.message };
-        return { kind: "invalid", attempts: 1, status: clientError.status, code: clientError.code, error: clientError.message };
+      const attempts = committing ? commitAttempts : commitAttempts + 1;
+      // Any other authoring error from the handler or the domain layer is a
+      // definite refusal; nothing was sent for it.
+      if (isDomainAuthoringError(error)) {
+        return { kind: "invalid", attempts, code: "domain_authoring_error", error: error.code };
       }
-      return { kind: "transport", attempts: 1, error: errorText(error) };
+      return failureResult(error, attempts);
     }
   };
   executor.readState = readState;

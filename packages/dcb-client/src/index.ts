@@ -8,6 +8,9 @@ import type {
   TagInput,
 } from "@sekiban/dcb-core";
 import { assertJsonValue, defineTag } from "@sekiban/dcb-core";
+import type { JsonValue as DomainJsonValue } from "@sekiban/dcb-domain";
+import { classifyFailure, commitReplyError } from "./classification.js";
+import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { ClientError, sanitizeTransportError } from "./errors.js";
 
 export { ClientError } from "./errors.js";
@@ -343,7 +346,12 @@ export interface ExecuteCommon {
   readonly error?: string;
   readonly cause?: unknown;
 }
-export interface ExecuteCommitted extends ExecuteCommon { readonly kind: "committed"; readonly response: unknown; }
+export interface ExecuteCommitted extends ExecuteCommon {
+  readonly kind: "committed";
+  readonly response: unknown;
+  /** The value of the command's done decision, when it has one. */
+  readonly value?: DomainJsonValue;
+}
 export interface ExecuteNoop extends ExecuteCommon { readonly kind: "noop"; readonly reason?: string; }
 export interface ExecuteRejected extends ExecuteCommon { readonly kind: "rejected"; readonly error: string; }
 export interface ExecuteConflict extends ExecuteCommon { readonly kind: "conflict"; readonly response?: unknown; }
@@ -371,63 +379,12 @@ const newEventId = (): string => {
   return `client-event-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-async function awaitControlled<T>(
-  operation: Promise<T>,
-  signal: AbortSignal | undefined,
-  deadline: number | undefined,
-): Promise<T> {
-  if (signal?.aborted) throw new ClientError("aborted", "Execution was aborted");
-  const remaining = deadline === undefined ? undefined : deadline - Date.now();
-  if (remaining !== undefined && remaining <= 0) throw new ClientError("timeout", "Execution budget expired");
-  if (signal === undefined && remaining === undefined) return operation;
-  return new Promise<T>((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const cleanup = () => {
-      if (timer !== undefined) clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-    };
-    const onAbort = () => {
-      cleanup();
-      reject(new ClientError("aborted", "Execution was aborted"));
-    };
-    if (remaining !== undefined) {
-      timer = setTimeout(() => {
-        cleanup();
-        reject(new ClientError("timeout", "Execution budget expired"));
-      }, remaining);
-    }
-    signal?.addEventListener("abort", onAbort, { once: true });
-    operation.then((value) => {
-      cleanup();
-      resolve(value);
-    }, (error: unknown) => {
-      cleanup();
-      reject(error);
-    });
-  });
-}
-
 const classifyError = (error: unknown, attempts: number): ExecuteResult => {
-  const publicError = error instanceof ClientError ? error : sanitizeTransportError(error);
-  if (publicError.code === "timeout" || publicError.code === "aborted" || publicError.code === "unknown_outcome") {
-    return { kind: "timeout", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
+  const failure = classifyFailure(error);
+  if (failure.kind === "partial") {
+    return { kind: "partial", attempts, status: failure.status, code: failure.code, error: failure.error, partial: failure.partial };
   }
-  if (publicError.code === "projection_unavailable" || publicError.code === "read_unavailable") {
-    return { kind: "unavailable", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
-  }
-  if (publicError.code === "partial_write" || publicError.partial !== undefined) {
-    return { kind: "partial", attempts, status: publicError.status, code: publicError.code, error: publicError.message, partial: publicError.partial };
-  }
-  if (publicError.code === "consistency_conflict") {
-    return { kind: "conflict", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
-  }
-  if (publicError.code === "transport" || publicError.code === "http_error") {
-    return { kind: "transport", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
-  }
-  if (publicError.code === "credential.rejected" || publicError.code === "command_rejected") {
-    return { kind: "rejected", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
-  }
-  return { kind: "invalid", attempts, status: publicError.status, code: publicError.code, error: publicError.message };
+  return { kind: failure.kind, attempts, status: failure.status, code: failure.code, error: failure.error };
 };
 
 function classifyCommitResponse(value: unknown, attempts: number): ExecuteResult {
@@ -438,7 +395,7 @@ function classifyCommitResponse(value: unknown, attempts: number): ExecuteResult
     const status = value.status;
     const body = value.body;
     if (status >= 200 && status < 300) return { kind: "committed", attempts, status, response: body };
-    return classifyError(sanitizeTransportError(value, { fallbackCode: "http_error", status }), attempts);
+    return classifyError(commitReplyError({ ...value, status }), attempts);
   }
   if (isRecord(value) && typeof value.code === "string") {
     return classifyError(sanitizeTransportError(value), attempts);
@@ -458,6 +415,12 @@ export class ClaimLedgerExecutor {
   }
 
   async execute(command: CommandLike, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+    // A non-finite or out-of-range budget would reach setTimeout and report a
+    // dispatched commit as a timeout; refuse it before any call.
+    const budgetProblem = totalBudgetMsProblem(options.totalBudgetMs) ?? totalBudgetMsProblem(this.defaultBudget);
+    if (budgetProblem !== undefined) {
+      return classifyError(new ClientError("invalid_execute_options", budgetProblem), 0);
+    }
     const maxRetries = Math.min(1, Math.max(0, options.maxConflictRetries ?? this.defaultRetries));
     const deadline = options.totalBudgetMs === undefined && this.defaultBudget === undefined
       ? undefined
@@ -500,9 +463,9 @@ export class ClaimLedgerExecutor {
           get candidates() { return Object.freeze([...attemptCandidates]); },
         };
         if (typeof command === "function") {
-          decision = await awaitControlled(Promise.resolve(command(context, options.input)), options.signal, deadline);
+          decision = await awaitControlled(() => command(context, options.input), options.signal, deadline);
         } else {
-          const outcome = await awaitControlled(Promise.resolve(command.execute(options.input)), options.signal, deadline);
+          const outcome = await awaitControlled(() => command.execute(options.input), options.signal, deadline);
           decision = outcome.kind === "committed"
             ? { kind: "committed", value: outcome.value }
             : outcome.kind === "noop"
@@ -535,13 +498,13 @@ export class ClaimLedgerExecutor {
         preflightCommit({ candidates, consistency: envelope.consistency, claims: context.claims });
         const signal = options.signal;
         const result = await awaitControlled(
-          (async () => {
+          async () => {
             try {
               return await this.transport.commit(envelope, signal);
             } catch (error) {
               throw sanitizeTransportError(error, { fallbackCode: "transport" });
             }
-          })(),
+          },
           signal,
           deadline,
         );
