@@ -1,6 +1,6 @@
 # SDT-G74 — executor facade v1 contract
 
-> Status: `QUESTION — contract freeze is not declared because AC10 exact consumer acknowledgements or an explicit design waiver are not present in the available records.`
+> Status: `AC10 GATE SATISFIED BY EXPLICIT DESIGN WAIVERS — all three consumers were silent through the design-set review window and raised no interface contradiction; no consumer agreement is claimed.`
 
 This document is the readable companion to `docs/SDT-G74-surface-baseline.json`. It records the release-shaped candidate inspected on 2026-09-12; it does not assert publication, downstream runtime conformance, or consumer agreement. The machine model is authoritative for the complete declaration graph and this document makes the complete exported-name set reviewable.
 
@@ -427,20 +427,24 @@ The candidate graph is `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, a
 
 ## Consumer consultation (AC10 gate)
 
-The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash `ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a`, designated version `executor-facade-v1`/carrying `0.2.0`, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection. The available issue comments do not meet that requirement:
+The required acknowledgement is exact: a named owner must acknowledge the immutable surface hash `ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a`, designated version `executor-facade-v1`/carrying `0.2.0`, the compatibility policy, and the dated risks, with either no interface blocker or a specific objection.
 
-| consumer | available comment/status | missing AC10 fact |
-| --- | --- | --- |
-| [SekibanWasmRuntime #283](https://github.com/J-Tech-Japan/SekibanWasmRuntime/issues/283) | shape/G57/G64 discussion; no exact G74 acknowledgement | named owner, exact hash, designated version, policy/risk acknowledgement |
-| [SekibanAsAService #1914](https://github.com/J-Tech-Japan/SekibanAsAService/issues/1914) | AGREE to cloud/API shape; no exact G74 acknowledgement | named owner, exact hash, designated version, policy/risk acknowledgement |
-| [Sekiban #1172](https://github.com/J-Tech-Japan/sekiban/issues/1172) | G57 facade no-objection comment; no exact G74 acknowledgement | named owner, exact hash, designated version, policy/risk acknowledgement |
+The design-set review window opened when the three consultations were posted on 2026-09-13 and closed at `2026-09-14T08:11:06Z`. Following the operating rule of not reclassifying before the deadline, the threads were read after it, at `2026-09-14T08:12:14Z`:
 
-These are recorded as `missing-exact-acknowledgement`, not `received`, `no-objection`, `agreed`, or `adopted`. No explicit design-waiver receipt with unanswered items is present in the available dispatch/issue records. This is a concrete AC10 readiness question, not a declaration that the consumers disagree; rollout unreadiness would not itself block a freeze, but the required acknowledgement or waiver is currently absent.
+| consumer | consultation comment | posted | comments after consultation | reactions on consultation | AC10 disposition |
+| --- | --- | --- | --- | --- | --- |
+| [SekibanWasmRuntime #283](https://github.com/J-Tech-Japan/SekibanWasmRuntime/issues/283) | [5652138647](https://github.com/J-Tech-Japan/SekibanWasmRuntime/issues/283#issuecomment-5652138647) | 2026-09-13T08:11:05Z | 0 | 0 | explicit design waiver |
+| [SekibanAsAService #1914](https://github.com/J-Tech-Japan/SekibanAsAService/issues/1914) | [5652138706](https://github.com/J-Tech-Japan/SekibanAsAService/issues/1914#issuecomment-5652138706) | 2026-09-13T08:11:06Z | 0 | 0 | explicit design waiver |
+| [Sekiban #1172](https://github.com/J-Tech-Japan/sekiban/issues/1172) | [5652138750](https://github.com/J-Tech-Japan/sekiban/issues/1172#issuecomment-5652138750) | 2026-09-13T08:11:06Z | 0 | 0 | explicit design waiver |
+
+No named owner raised a concrete interface contradiction, so the freeze is not blocked. Silence is not translated into agreement: none of the three is recorded as `received`, `no-objection`, `agreed`, or `adopted`. Each consumer instead carries an explicit design waiver, recorded on 2026-09-14, that names it and lists every unanswered item: a named-owner acknowledgement of receipt, the contract label `executor-facade-v1`, the carrying version `0.2.0`, the public-surface hash `ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a`, the bounded compatibility policy above, the dated risks above, and a statement of either no interface-level blocker or a specific objection. The waiver exists so that the freeze does not wait indefinitely; it is not a substitute for agreement.
+
+After landing, all three consumers are notified with the immutable enumeration, the package and release status, the migration instructions and the risks. The notification locations are then recorded, and `received`, `no-objection`, `agreed` and `adopted` are recorded separately as each actually arrives.
 
 ## Verification and process disposition
 
-The issue claim was acquired before source edits and the dedicated branch is `claude/sdt-g74-implementation-w281` from `origin/main` at `a0d6add00fe940dced471fdd5ff14a389c0545df`. Focused local proof commands are wired as `test:g74:surface`, `test:g74:consumer`, and `test:g74:contract`; the final local results are recorded in the companion evidence document. No PR was created and no worker `pr-created` completion was emitted because AC10's missing exact acknowledgement/waiver is a concrete design gate. Therefore no hosted exact-head CI result exists for this delegation; reporting a PR or green hosted CI would be unsupported.
+The issue claim was acquired before source edits and the dedicated branch is `claude/sdt-g74-implementation-w281` from `origin/main` at `a0d6add00fe940dced471fdd5ff14a389c0545df`. Focused local proof commands are wired as `test:g74:surface`, `test:g74:consumer`, and `test:g74:contract`; the final local results are recorded in the companion evidence document.
 
-The next review step is design disposition of the three missing acknowledgements: obtain the exact acknowledgements, or record an explicit waiver listing each unanswered item. If a concrete interface contradiction is raised, resolve it before declaring the freeze; if no contradiction is raised and the waiver is authorized, the branch can be packaged into a PR and ordinary exact-head CI can run.
+With the AC10 gate satisfied by the explicit design waivers, the branch is packaged into a pull request that closes #151, followed by one ordinary exact-head PR CI run and an independent review. No merge is claimed before approval, and no Full CI run, manual rerun, npm publication or release operation is part of this unit.
 
-Generated from `docs/SDT-G74-surface-baseline.json` by `scripts/g74-contract-document.mjs` on 2026-09-12.
+Generated from `docs/SDT-G74-surface-baseline.json` by `scripts/g74-contract-document.mjs`; the declaration surface was inspected on 2026-09-12 and the AC10 disposition was recorded on 2026-09-14.
