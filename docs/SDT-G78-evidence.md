@@ -95,6 +95,7 @@ The source-derived classification table is:
 | `invalid_command_input` | definite-refusal | authored input validation failed before dispatch | `executor.ts` result mapping |
 | `invalid_command_result` | malformed/unknown | command did not return a trusted decision | `index.ts` decision validation |
 | `invalid_consistency` | definite-refusal | list-query lane value is invalid | `executor.ts` request validation |
+| `invalid_execute_options` | definite-refusal | executor options are invalid (maxConflictRetries is not a non-negative safe integer); refused before any read or commit | `executor.ts` result mapping (SDT-G88) |
 | `invalid_query_request` | definite-refusal | list-query request JSON is malformed | `executor.ts` request validation |
 | `invalid_query_response` | malformed/unknown | query response shape is not trusted | `executor.ts` response validation |
 | `invalid_read_snapshot` | malformed/unknown | tag-state/authority response shape is not trusted | `executor.ts`/`index.ts` normalization |

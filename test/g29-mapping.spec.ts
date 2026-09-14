@@ -62,7 +62,7 @@ describe("SDT-G29 mapping authority", () => {
     expect(observed.decisionLogBytes).toContain("mapping-fixed-now");
     expect(execution.runtimeBridgeOutcome).toBe("committed");
     expect(execution.eventTypes).toEqual(meetingRoomDomain.events.map((event) => event.eventType));
-    expect(execution.viewManifest).toEqual(meetingRoomRuntimeConfig.deliveryViews.map((view) => expect.objectContaining({ id: view.id })));
+    expect(execution.viewManifest).toEqual(meetingRoomDomain.views.map((view) => expect.objectContaining({ id: view.id })));
     expect(execution.restoredSnapshot).toEqual(execution.portableSnapshot);
     expect(execution.doTs.outcome).toBe(execution.portable.outcome);
     expect(execution.doTs.candidate.events).toEqual(execution.portable.candidate.events);

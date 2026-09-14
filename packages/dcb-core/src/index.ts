@@ -348,26 +348,25 @@ export interface AppendedEvent {
   readonly tags: readonly TagDefinition[];
 }
 
-export interface CommandContext<TState extends JsonValue = JsonValue> {
+export interface CommandContext {
   readonly state: <T extends JsonValue = JsonValue>(tag: TagInput) => T | undefined;
   readonly assertEmpty: (tag: TagInput) => void;
   readonly append: (event: EventDefinition, payload: unknown, tags?: readonly TagInput[]) => AppendedEvent;
-  readonly done: (value?: JsonValue) => CommandDone<TState>;
+  readonly done: (value?: JsonValue) => CommandDone;
   readonly noop: (reason?: string) => Omit<CommandNoop, "events">;
   readonly reject: (reason: string, code?: string) => Omit<CommandRejected, "events">;
   readonly appendedEvents: readonly AppendedEvent[];
 }
 
-export interface CommandCommitted<TState extends JsonValue = JsonValue> {
+/** `done` commits the appended candidates with an optional value; it carries no state. */
+export interface CommandCommitted {
   readonly kind: "committed";
   readonly value?: JsonValue;
-  readonly state?: TState;
   readonly events: readonly AppendedEvent[];
 }
-export interface CommandDone<TState extends JsonValue = JsonValue> {
+export interface CommandDone {
   readonly kind: "committed";
   readonly value?: JsonValue;
-  readonly state?: TState;
 }
 export interface CommandNoop {
   readonly kind: "noop";
@@ -380,41 +379,41 @@ export interface CommandRejected {
   readonly code: string;
   readonly events: readonly [];
 }
-export type CommandHandlerOutcome<TState extends JsonValue = JsonValue> = CommandDone<TState> | Omit<CommandNoop, "events"> | Omit<CommandRejected, "events">;
-export type CommandOutcome<TState extends JsonValue = JsonValue> = CommandCommitted<TState> | CommandNoop | CommandRejected;
+export type CommandHandlerOutcome = CommandDone | Omit<CommandNoop, "events"> | Omit<CommandRejected, "events">;
+export type CommandOutcome = CommandCommitted | CommandNoop | CommandRejected;
 
-export const done = <TState extends JsonValue = JsonValue>(value?: JsonValue, state?: TState): CommandDone<TState> =>
-  Object.freeze({ kind: "committed" as const, value, state });
+export const done = (value?: JsonValue): CommandDone =>
+  Object.freeze({ kind: "committed" as const, value });
 export const noop = (reason?: string): CommandNoop => Object.freeze({ kind: "noop" as const, reason, events: [] as const });
 export const reject = (reason: string, code = "command_rejected"): CommandRejected =>
   Object.freeze({ kind: "rejected" as const, reason, code, events: [] as const });
 
 export type CommandInputParser<TInput> = (input: unknown) => TInput;
-export type CommandHandler<TInput, TState extends JsonValue = JsonValue> = (
+export type CommandHandler<TInput> = (
   input: TInput,
-  context: CommandContext<TState>,
-) => CommandHandlerOutcome<TState>;
+  context: CommandContext,
+) => CommandHandlerOutcome;
 
-export interface CommandDefinition<TInput = unknown, TState extends JsonValue = JsonValue> {
+export interface CommandDefinition<TInput = unknown> {
   readonly id: string;
   readonly name: string;
   readonly parseInput: (input: unknown) => TInput;
-  readonly execute: (input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>> }) => CommandOutcome<TState>;
-  readonly handle: CommandDefinition<TInput, TState>["execute"];
+  readonly execute: (input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>> }) => CommandOutcome;
+  readonly handle: CommandDefinition<TInput>["execute"];
 }
 
-export type CommandDefinitionOptions<TInput, TState extends JsonValue = JsonValue> = {
+export type CommandDefinitionOptions<TInput> = {
   readonly id?: string;
   readonly name?: string;
   readonly parseInput?: CommandInputParser<TInput>;
   readonly inputParser?: CommandInputParser<TInput>;
   readonly input?: CommandInputParser<TInput>;
-  readonly handler: CommandHandler<TInput, TState>;
+  readonly handler: CommandHandler<TInput>;
 };
 
-export function defineCommand<TInput, TState extends JsonValue = JsonValue>(
-  options: CommandDefinitionOptions<TInput, TState>,
-): CommandDefinition<TInput, TState> {
+export function defineCommand<TInput>(
+  options: CommandDefinitionOptions<TInput>,
+): CommandDefinition<TInput> {
   const id = options.id ?? options.name;
   if (!id) throw new DcbDefinitionError("COMMAND_ID_REQUIRED", "Command id is required");
   const parser = options.parseInput ?? options.inputParser ?? options.input;
@@ -429,10 +428,10 @@ export function defineCommand<TInput, TState extends JsonValue = JsonValue>(
     assertJsonValue(parsed, "command-input");
     return parsed as TInput;
   };
-  const execute = (input: unknown, executionOptions?: { readonly state?: Readonly<Record<string, JsonValue>> }): CommandOutcome<TState> => {
+  const execute = (input: unknown, executionOptions?: { readonly state?: Readonly<Record<string, JsonValue>> }): CommandOutcome => {
     const appended: AppendedEvent[] = [];
     const stateMap = executionOptions?.state ?? {};
-    const context: CommandContext<TState> = {
+    const context: CommandContext = {
       state: <T extends JsonValue = JsonValue>(tag: TagInput) => stateMap[defineTag(tag).id] as T | undefined,
       assertEmpty: (tag: TagInput) => {
         if (stateMap[defineTag(tag).id] !== undefined) throw new DcbDefinitionError("ASSERT_EMPTY_FAILED", `Tag ${defineTag(tag).id} is not empty`);
@@ -451,7 +450,9 @@ export function defineCommand<TInput, TState extends JsonValue = JsonValue>(
     if (!outcome || typeof outcome !== "object" || !["committed", "noop", "rejected"].includes(outcome.kind)) {
       throw new DcbDefinitionError("COMMAND_OUTCOME_INVALID", `Command ${id} must return done, noop, or reject`);
     }
-    if (outcome.kind === "committed") return Object.freeze({ ...outcome, events: Object.freeze([...appended]) });
+    if (outcome.kind === "committed") {
+      return Object.freeze({ kind: "committed" as const, value: outcome.value, events: Object.freeze([...appended]) });
+    }
     if (appended.length > 0) throw new DcbDefinitionError("COMMAND_EVENTS_WITHOUT_COMMIT", `Command ${id} appended events but did not return done`);
     return outcome.kind === "noop"
       ? Object.freeze({ ...outcome, events: [] as const })

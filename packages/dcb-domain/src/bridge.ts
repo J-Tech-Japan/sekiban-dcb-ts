@@ -10,7 +10,7 @@ import {
 import { executeCommand, type ExecuteCommandResult } from "./session";
 import type { CommandDefinition } from "./command";
 import type { EventDefinition, RuntimeEventValue } from "./event";
-import type { AuthoringDomain, DomainViewDefinition } from "./domain";
+import { deliveryPolicyFromDomain, type AuthoringDomain, type DomainViewDefinition, type ViewDeliveryClass } from "./domain";
 import type { ProjectorDefinition } from "./state";
 
 export interface RuntimeProjectionEvent {
@@ -137,7 +137,8 @@ export interface RuntimeDomainDefinition {
   readonly events: readonly RuntimeEventDefinition[];
   readonly commands: readonly RuntimeCommandDefinition[];
   readonly projectors: readonly RuntimeProjectorDefinition[];
-  readonly views: readonly DomainViewDefinition[];
+  /** Each view carries its effective deliveryClass: the runtime per-view delivery descriptor. */
+  readonly views: readonly (DomainViewDefinition & { readonly deliveryClass: ViewDeliveryClass })[];
   readonly queries: readonly [];
   readonly materializedViews: readonly [];
   readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>;
@@ -355,6 +356,14 @@ function runtimeOutcomeFrom(result: ExecuteCommandResult): RuntimeCommandOutcome
       events: Object.freeze([]) as readonly [],
     });
   }
+  if (result.status === "conflict") {
+    return Object.freeze({
+      kind: "rejected" as const,
+      reason: "Command commit exhausted its consistency-conflict retries",
+      code: "consistency_conflict",
+      events: Object.freeze([]) as readonly [],
+    });
+  }
   if (result.status === "rejected") {
     return Object.freeze({
       kind: "rejected" as const,
@@ -415,11 +424,13 @@ export function toRuntimeDomain(
       ? adaptRuntimeCommand(command as CommandDefinition)
       : command as RuntimeCommandDefinition,
   );
+  const deliveryPolicy = deliveryPolicyFromDomain(domain);
+  const views = (domain.views ?? []).map((view) => Object.freeze({ ...view, deliveryClass: deliveryPolicy[view.id] }));
   return Object.freeze({
     events: Object.freeze(events),
     commands: Object.freeze(commands),
     projectors: Object.freeze(projectors),
-    views: Object.freeze([...(domain.views ?? [])]),
+    views: Object.freeze(views),
     queries: Object.freeze([]) as readonly [],
     materializedViews: Object.freeze([]) as readonly [],
     eventByName: byName,

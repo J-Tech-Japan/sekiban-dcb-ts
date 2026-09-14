@@ -7,6 +7,7 @@ import {
   defineEvent,
   defineProjector,
   defineTag,
+  done,
   noop,
 } from "../packages/dcb-core/src/index";
 import { describe, expect, it } from "vitest";
@@ -71,6 +72,36 @@ describe("SDT-G13 dcb-core definitions", () => {
     expect(outcome.events.map((event) => event.event.name)).toEqual(["First", "Second"]);
     expect(() => command.execute({ tag: "g13:one", extra: Number.NaN })).toThrow(JsonValidationError);
     expect(noop("nothing").kind).toBe("noop");
+  });
+
+  it("SDT-G88 AC8: builds the committed outcome from kind, value and events only", () => {
+    const appended = defineEvent("G88Appended");
+    const parseInput = (value: unknown) => {
+      if (typeof value !== "object" || value === null || typeof (value as { mode?: unknown }).mode !== "string") throw new Error("mode required");
+      return value as { mode: "context" | "exported" | "literal" };
+    };
+    const command = defineCommand({
+      id: "g88-done-state",
+      parseInput,
+      handler: (input, context) => {
+        context.append(appended, { n: 1 }, ["g88:done"]);
+        if (input.mode === "context") return context.done({ accepted: "context" });
+        if (input.mode === "exported") {
+          // @ts-expect-error SDT-G88 removed the state parameter from dcb-core done.
+          return done({ accepted: "exported" }, { leaked: true });
+        }
+        const withState = { kind: "committed" as const, value: { accepted: "literal" }, state: { leaked: true } };
+        return withState;
+      },
+    });
+    for (const mode of ["context", "exported", "literal"] as const) {
+      const outcome = command.execute({ mode });
+      expect(outcome, mode).not.toHaveProperty("state");
+      expect(Object.keys(outcome).sort(), mode).toEqual(["events", "kind", "value"]);
+      expect(outcome, mode).toMatchObject({ kind: "committed", value: { accepted: mode }, events: [{ event: { name: "G88Appended" } }] });
+    }
+    // @ts-expect-error SDT-G88 removed the state parameter from dcb-core done.
+    expect(done({ accepted: true }, { leaked: true })).not.toHaveProperty("state");
   });
 
   it("reports every duplicate family in one typed domain error", () => {

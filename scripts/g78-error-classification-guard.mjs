@@ -23,6 +23,7 @@ const classifications = Object.freeze({
   invalid_command_input: { class: "definite-refusal", action: "fix the command input" },
   invalid_command_result: { class: "malformed-or-unknown", action: "do not trust the command result" },
   invalid_consistency: { class: "definite-refusal", action: "fix list-query consistency input" },
+  invalid_execute_options: { class: "definite-refusal", action: "fix the executor options before dispatch" },
   invalid_query_request: { class: "definite-refusal", action: "fix the query request" },
   invalid_query_response: { class: "malformed-or-unknown", action: "do not trust or blindly retry the response" },
   invalid_read_snapshot: { class: "malformed-or-unknown", action: "do not trust or blindly retry the snapshot" },

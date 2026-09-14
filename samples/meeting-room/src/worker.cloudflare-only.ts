@@ -30,7 +30,8 @@ import {
   parseMeetingRoomCommandRequest,
 } from "./transport";
 import { ClientError, createSekibanExecutor } from "@sekiban/dcb-client";
-import { meetingRoomDeliveryPolicy, meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
+import { deliveryPolicyFromDomain } from "@sekiban/dcb-domain";
+import { meetingRoomDomain, meetingRoomRuntimeConfig, reservationTag, roomTag } from "./domain";
 import {
   catchUpMeetingRoomMaterializedViews,
   drainMeetingRoomUnsafeKicks,
@@ -977,7 +978,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     return runtimeFetch(new Request(target.toString(), request), env, ctx);
   }
   if (url.pathname === "/conformance/v1/g26-config") {
-    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, deliveryPolicyFromDomain(meetingRoomDomain));
     return json({
       task: "SDT-G26",
       viewCount: Number(env.G26_VIEW_COUNT ?? "2"),
@@ -992,7 +993,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     });
   }
   if (url.pathname === "/conformance/v1/g29-config") {
-    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, deliveryPolicyFromDomain(meetingRoomDomain));
     return json({
       task: "SDT-G29",
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
@@ -1014,7 +1015,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     });
   }
   if (url.pathname === "/conformance/v1/g31-config") {
-    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, deliveryPolicyFromDomain(meetingRoomDomain));
     return json({
       task: "SDT-G31",
       worker: "sekiban-dcb-meeting-room-cloudflare-only",
@@ -1035,7 +1036,7 @@ async function conformance(request: Request, env: MeetingRoomCloudflareEnv, ctx:
     });
   }
   if (url.pathname === "/conformance/v1/g32-config") {
-    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, meetingRoomDeliveryPolicy);
+    const config = readDirectDoorbellConfig(env as unknown as Record<string, unknown>, meetingRoomRuntimeConfig.deliveryClass, deliveryPolicyFromDomain(meetingRoomDomain));
     return json({
       task: "SDT-G32",
       phase: env.G32_CUTOVER_PHASE ?? null,
