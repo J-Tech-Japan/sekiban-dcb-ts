@@ -35,8 +35,6 @@ export interface RuntimeQueryDefinition {
 export interface RuntimeWorkerConfig {
   /** Domain layer of the two-layer direct-delivery opt-in. */
   readonly deliveryClass?: DeliveryClass;
-  /** Domain-owned per-view policy; deployment may only select from these views. */
-  readonly deliveryViews?: readonly { readonly id: string; readonly deliveryClass: DeliveryClass }[];
   readonly queries?: readonly RuntimeQueryDefinition[];
   readonly queryDefinitions?: readonly RuntimeQueryDefinition[];
   readonly projectorPayloadNames?: Readonly<Record<string, string>>;
@@ -96,7 +94,6 @@ export interface RuntimeDomainLike {
   readonly commands?: readonly unknown[];
   readonly projectors?: readonly unknown[];
   readonly queries?: readonly RuntimeQueryDefinition[];
-  readonly views?: readonly { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: DeliveryClass }[];
 }
 
 /** Registered domain parsers are the exact-case admission authority. */

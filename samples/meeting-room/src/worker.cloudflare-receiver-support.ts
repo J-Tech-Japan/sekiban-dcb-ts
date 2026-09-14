@@ -13,7 +13,8 @@ import {
 } from "@sekiban/dcb-runtime/cloudflare";
 import { createD1StoreProvider } from "@sekiban/dcb-runtime/d1";
 import { assertG32FinalFence } from "./compatibility";
-import { meetingRoomDeliveryPolicy, meetingRoomRuntimeConfig } from "./domain";
+import { deliveryPolicyFromDomain } from "@sekiban/dcb-domain";
+import { meetingRoomDomain, meetingRoomRuntimeConfig } from "./domain";
 import { meetingRoomDeliveryViews } from "./d1-mv";
 import type { MeetingRoomCloudflareEnv } from "./worker.cloudflare-env";
 
@@ -27,6 +28,18 @@ export async function assertFinalCutoverFenceIfConfigured(env: MeetingRoomCloudf
     token: env.G32_CUTOVER_FENCE_TOKEN,
     tokenFingerprint: env.G32_CUTOVER_FENCE_FINGERPRINT,
   });
+}
+
+/**
+ * The per-view policy comes only from the domain's view descriptors. The
+ * in-process test seam may substitute descriptors, never a separate policy map.
+ */
+function meetingRoomDoorbellConfig(env: MeetingRoomCloudflareEnv) {
+  return readDirectDoorbellConfig(
+    env as unknown as Record<string, unknown>,
+    meetingRoomRuntimeConfig.deliveryClass,
+    deliveryPolicyFromDomain({ views: env.__G29_DOORBELL_TEST__?.domainViews ?? meetingRoomDomain.views }),
+  );
 }
 
 /**
@@ -47,11 +60,7 @@ export async function deliverMeetingRoomDoorbell(
   if (testOverrides?.faultBarrier !== undefined) {
     await waitForTestFaultBarrier(testOverrides.faultBarrier, attemptId);
   }
-  const config = readDirectDoorbellConfig(
-    env as unknown as Record<string, unknown>,
-    meetingRoomRuntimeConfig.deliveryClass,
-    testOverrides?.deliveryPolicy ?? meetingRoomDeliveryPolicy,
-  );
+  const config = meetingRoomDoorbellConfig(env);
   // The local receiver-only fixtures do not bind D1. The deployed G38
   // receiver does, and that binding is the durable RING authority for AC0.
   // Keeping the fixture fallback preserves the existing transport-only G29/G38
@@ -66,11 +75,7 @@ async function applyMeetingRoomDoorbell(
   env: MeetingRoomCloudflareEnv,
   ctx: ExecutionContext,
   message: unknown,
-  config = readDirectDoorbellConfig(
-    env as unknown as Record<string, unknown>,
-    meetingRoomRuntimeConfig.deliveryClass,
-    env.__G29_DOORBELL_TEST__?.deliveryPolicy ?? meetingRoomDeliveryPolicy,
-  ),
+  config = meetingRoomDoorbellConfig(env),
 ) {
   const testOverrides = env.__G29_DOORBELL_TEST__;
   const attemptId = message !== null && typeof message === "object" && typeof (message as { attemptId?: unknown }).attemptId === "string"

@@ -3,10 +3,14 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   BoundaryParseError,
+  DomainAuthoringError,
   DomainRegistrationError,
   Session,
+  adaptRuntimeCommand,
   assertParsedAt,
+  command,
   createWasmRestoreDecoder,
+  deliveryPolicyFromDomain,
   domain,
   done,
   event,
@@ -30,6 +34,8 @@ import {
   toRuntimeDomain,
   deserializePortableSnapshot,
   UndeclaredReadError,
+  type DecisionLog,
+  type DomainViewDefinition,
   type Tag,
 } from "@sekiban/dcb-domain";
 import {
@@ -755,5 +761,383 @@ describe("SDT-G28 authoring surface", () => {
       expected: { kind: "placed", orderId: "o-table" },
     }]);
     expect(table[0]?.state).toEqual({ kind: "placed", orderId: "o-table" });
+  });
+});
+
+describe("SDT-G88 command outcomes and authoring options", () => {
+  const placeOrder = command({
+    id: "g88-place-order",
+    input: z.object({ orderId: z.string() }),
+    reads: (input) => read(orderProjector, order.of(input.orderId)),
+    handle: (input, context) => {
+      context.append(placed, placed.make(input));
+      return done({ orderId: input.orderId });
+    },
+  });
+  const emptySnapshots = {
+    read: (projectorValue: { readonly id: string }, tag: Tag) => ({
+      projectorId: projectorValue.id,
+      tag,
+      head: "g88-head",
+      state: { kind: "empty" },
+      exists: false,
+    }),
+  };
+
+  it("AC1: reports an exhausted consistency conflict as conflict, never accepted", async () => {
+    const cases = [
+      { maxConflictRetries: 0, attempts: 1 },
+      { maxConflictRetries: 1, attempts: 2 },
+      { maxConflictRetries: 2, attempts: 3 },
+      { maxConflictRetries: undefined, attempts: 2 },
+    ] as const;
+    for (const testCase of cases) {
+      const conflictError = { code: "consistency_conflict", message: `exhausted after ${testCase.attempts}` };
+      const envelopes: unknown[] = [];
+      const result = await executeCommand(placeOrder, { orderId: "g88-conflict" }, {
+        maxConflictRetries: testCase.maxConflictRetries,
+        timeProvider: { now: () => "g88-now" },
+        snapshots: emptySnapshots,
+        commit: (envelope) => {
+          envelopes.push(envelope);
+          return { kind: "consistency-conflict", error: conflictError };
+        },
+      });
+      const label = `maxConflictRetries=${String(testCase.maxConflictRetries)}`;
+      expect(result.status, label).toBe("conflict");
+      expect(result.attempts, label).toBe(testCase.attempts);
+      expect(envelopes, label).toHaveLength(testCase.attempts);
+      expect(result.now).toBe("g88-now");
+      expect(result.decision).toMatchObject({ kind: "done", value: { orderId: "g88-conflict" } });
+      expect(result.envelope).toBe(envelopes.at(-1));
+      expect(result.log.terminal).toBe(result.decision);
+      expect(result.session.status).toBe("SEALED");
+      expect(result.error).toBe(conflictError);
+    }
+  });
+
+  it("AC1: still accepts a conflict followed by an accepted commit", async () => {
+    let commits = 0;
+    const result = await executeCommand(placeOrder, { orderId: "g88-conflict-then-accepted" }, {
+      maxConflictRetries: 2,
+      snapshots: emptySnapshots,
+      commit: () => {
+        commits += 1;
+        return commits < 3 ? { kind: "consistency-conflict" } : { kind: "accepted" };
+      },
+    });
+    expect(result).toMatchObject({ status: "accepted", attempts: 3 });
+    expect(result).not.toHaveProperty("error");
+    expect(commits).toBe(3);
+  });
+
+  it("AC2: refuses an invalid maxConflictRetries before any read, handler call or commit", async () => {
+    const calls = { parse: 0, reads: 0, snapshots: 0, handle: 0, commit: 0, clock: 0 };
+    const counted = command({
+      id: "g88-counted",
+      input: z.object({ orderId: z.string() }).refine(() => {
+        calls.parse += 1;
+        return true;
+      }),
+      reads: (input) => {
+        calls.reads += 1;
+        return read(orderProjector, order.of(input.orderId));
+      },
+      handle: (input, context) => {
+        calls.handle += 1;
+        context.append(placed, placed.make(input));
+        return done();
+      },
+    });
+    const invalid = [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1, 0.5, 1.5, Number.MAX_SAFE_INTEGER + 1];
+    for (const maxConflictRetries of invalid) {
+      let failure: unknown;
+      try {
+        await executeCommand(counted, { orderId: "g88-invalid-retries" }, {
+          maxConflictRetries,
+          timeProvider: {
+            now: () => {
+              calls.clock += 1;
+              return 0;
+            },
+          },
+          snapshots: {
+            read: (projectorValue, tag) => {
+              calls.snapshots += 1;
+              return emptySnapshots.read(projectorValue, tag);
+            },
+          },
+          commit: () => {
+            calls.commit += 1;
+            return { kind: "accepted" };
+          },
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure, String(maxConflictRetries)).toBeInstanceOf(DomainAuthoringError);
+      expect((failure as DomainAuthoringError).code, String(maxConflictRetries)).toBe("EXECUTE_OPTIONS_INVALID");
+    }
+    expect(calls).toEqual({ parse: 0, reads: 0, snapshots: 0, handle: 0, commit: 0, clock: 0 });
+    for (const maxConflictRetries of [undefined, 0, 1, 2, Number.MAX_SAFE_INTEGER]) {
+      const result = await executeCommand(placeOrder, { orderId: "g88-valid-retries" }, {
+        maxConflictRetries,
+        snapshots: emptySnapshots,
+        commit: () => ({ kind: "accepted" }),
+      });
+      expect(result.status, String(maxConflictRetries)).toBe("accepted");
+    }
+  });
+
+  it("AC3: accepts only undefined, true and { kind: accepted }; every other reply is unknown", async () => {
+    const run = (reply: unknown, maxConflictRetries = 1) => executeCommand(placeOrder, { orderId: "g88-reply" }, {
+      maxConflictRetries,
+      snapshots: emptySnapshots,
+      commit: () => reply,
+    });
+    for (const reply of [undefined, true, { kind: "accepted" }]) {
+      const result = await run(reply);
+      expect(result.status, JSON.stringify(reply)).toBe("accepted");
+      expect(result).not.toHaveProperty("error");
+    }
+    for (const reply of [null, false, 0, 1, "", "accepted", {}, [], { kind: "committed" }, { kind: "ok" }, { status: 200 }]) {
+      const result = await run(reply);
+      expect(result.status, JSON.stringify(reply)).toBe("unknown");
+      expect(result.error, JSON.stringify(reply)).toBe(reply);
+    }
+    const replyError = new Error("g88 reply error");
+    const withOwnError = await run({ kind: "mystery", error: replyError });
+    expect(withOwnError.status).toBe("unknown");
+    expect(withOwnError.error).toBe(replyError);
+    const recognised = [
+      { reply: { kind: "consistency-conflict", error: replyError }, status: "conflict", error: replyError },
+      { reply: { kind: "conflict" }, status: "conflict", error: "reply" },
+      { reply: { code: "consistency_conflict" }, status: "conflict", error: "reply" },
+      { reply: { kind: "unknown", error: replyError }, status: "unknown", error: replyError },
+      { reply: { kind: "timeout" }, status: "unknown", error: "reply" },
+      { reply: { code: "unknown_outcome" }, status: "unknown", error: "reply" },
+      { reply: { kind: "rejected", error: replyError }, status: "rejected", error: replyError },
+      { reply: { kind: "invalid" }, status: "rejected", error: "reply" },
+    ] as const;
+    for (const testCase of recognised) {
+      const result = await run(testCase.reply, 0);
+      expect(result.status, JSON.stringify(testCase.reply)).toBe(testCase.status);
+      expect(result.error, JSON.stringify(testCase.reply)).toBe(testCase.error === "reply" ? testCase.reply : testCase.error);
+    }
+  });
+
+  it("AC4: maps an always-conflicting runtime port to a rejected consistency_conflict outcome", async () => {
+    const runtimeCommand = adaptRuntimeCommand(placeOrder);
+    let commits = 0;
+    const outcome = await runtimeCommand.execute({ orderId: "g88-runtime-conflict" }, {
+      now: 7,
+      runtimePort: {
+        commit: () => {
+          commits += 1;
+          return { kind: "consistency-conflict" as const, error: { code: "consistency_conflict" } };
+        },
+      },
+    });
+    expect(outcome).toMatchObject({ kind: "rejected", code: "consistency_conflict", events: [] });
+    expect(commits).toBe(2);
+    let barriers = 0;
+    const barrierOutcome = await runtimeCommand.execute({ orderId: "g88-runtime-barrier-conflict" }, {
+      runtimePort: {
+        conflictBarrier: () => {
+          barriers += 1;
+          return { kind: "consistency-conflict" as const };
+        },
+      },
+    });
+    expect(barrierOutcome).toMatchObject({ kind: "rejected", code: "consistency_conflict", events: [] });
+    expect(barriers).toBe(2);
+  });
+
+  it("AC5: leaves the discriminator to the zod union while states() keeps its option", () => {
+    const schema = z.discriminatedUnion("status", [
+      z.object({ status: z.literal("open") }),
+      z.object({ status: z.literal("closed") }),
+    ]);
+    const statusUnion = stateUnion(schema, { initial: { status: "open" } });
+    expect(statusUnion).not.toHaveProperty("discriminator");
+    expect(Object.keys(statusUnion).sort()).toEqual(["initial", "kind", "parse", "schema"]);
+    expect(() => statusUnion.parse({ status: "unknown" })).toThrow();
+    // @ts-expect-error SDT-G88 removed the discriminator option from stateUnion and state.
+    const legacyOption = stateUnion(schema, { discriminator: "bogus", initial: { status: "open" } });
+    expect(legacyOption).not.toHaveProperty("discriminator");
+    const byStatus = states([
+      z.object({ status: z.literal("open") }),
+      z.object({ status: z.literal("closed") }),
+    ], { discriminator: "status", initial: { status: "closed" } });
+    expect(byStatus.parse({ status: "open" })).toEqual({ status: "open" });
+    expect(() => byStatus.parse({ status: "unknown" })).toThrow();
+    expect(byStatus).not.toHaveProperty("discriminator");
+  });
+
+  it("AC6: supplies the projector initial state from state and validates it at definition", () => {
+    const counterState = stateUnion(z.object({ count: z.number().int().nonnegative() }), { initial: { count: 0 } });
+    const fromState = projector({
+      id: "g88-from-state",
+      tag: order,
+      events: [placed, cancelled],
+      state: counterState,
+      handlers: {
+        OrderPlaced: (value) => ({ count: value.count + 1 }),
+        OrderCancelled: (value) => value,
+      },
+    });
+    expect(fromState.initialState).toEqual({ count: 0 });
+    expect(fromState.apply({ count: 0 }, {
+      eventType: placed.eventType,
+      eventName: placed.name,
+      payload: { orderId: "g88-count" },
+      tags: [order.of("g88-count")],
+      ordinal: "0",
+    })).toEqual({ count: 1 });
+    const fromFunction = projector({
+      id: "g88-from-function",
+      tag: order,
+      events: [placed, cancelled],
+      state: stateUnion(z.object({ count: z.number() }), { initial: () => ({ count: 5 }) }),
+      handlers: { OrderPlaced: (value) => value, OrderCancelled: (value) => value },
+    });
+    expect(fromFunction.initialState).toEqual({ count: 5 });
+    const handlers = {
+      OrderPlaced: (value: { readonly count: number }) => value,
+      OrderCancelled: (value: { readonly count: number }) => value,
+    };
+    const explicitInitialState = projector({ id: "g88-explicit-initial-state", tag: order, events: [placed, cancelled], state: counterState, initialState: { count: 2 }, initial: { count: 3 }, handlers });
+    expect(explicitInitialState.initialState).toEqual({ count: 2 });
+    const explicitInitial = projector({ id: "g88-explicit-initial", tag: order, events: [placed, cancelled], state: counterState, initial: { count: 3 }, handlers });
+    expect(explicitInitial.initialState).toEqual({ count: 3 });
+    const invalidDefinitions = [
+      () => projector({ id: "g88-invalid-default", tag: order, events: [placed, cancelled], state: stateUnion(z.object({ count: z.number().int().nonnegative() }), { initial: { count: -1 } }), handlers }),
+      () => projector({ id: "g88-invalid-initial-state", tag: order, events: [placed, cancelled], state: counterState, initialState: { count: 1.5 }, handlers }),
+      () => projector({ id: "g88-invalid-initial", tag: order, events: [placed, cancelled], state: counterState, initial: () => ({ count: -2 }), handlers }),
+    ];
+    for (const define of invalidDefinitions) {
+      let failure: unknown;
+      try {
+        define();
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeInstanceOf(DomainAuthoringError);
+      expect((failure as DomainAuthoringError).code).toBe("PROJECTOR_INITIAL_STATE_INVALID");
+    }
+  });
+
+  it("AC6: parses restored projector state and fails closed on a schema violation", () => {
+    expect(orderProjector.deserializeState(JSON.stringify({ kind: "placed", orderId: "g88-restored" })))
+      .toEqual({ kind: "placed", orderId: "g88-restored" });
+    expect(() => orderProjector.deserializeState(JSON.stringify({ kind: "placed" }))).toThrow();
+    expect(() => orderProjector.deserializeState(JSON.stringify({ kind: "bogus" }))).toThrow();
+    const customRestore = projector<OrderState, "order", [typeof placed, typeof cancelled]>({
+      id: "g88-custom-restore",
+      tag: order,
+      events: [placed, cancelled],
+      state: stateUnion(z.discriminatedUnion("kind", [
+        z.object({ kind: z.literal("empty") }),
+        z.object({ kind: z.literal("placed"), orderId: z.string() }),
+      ]), { initial: { kind: "empty" } }),
+      deserializeState: () => JSON.parse(JSON.stringify({ kind: "placed", orderId: 42 })) as OrderState,
+      handlers: {
+        OrderPlaced: (_state, eventValue) => ({ kind: "placed", orderId: eventValue.payload.orderId }),
+        OrderCancelled: () => ({ kind: "empty" }),
+      },
+    });
+    expect(customRestore.initialState).toEqual({ kind: "empty" });
+    expect(() => customRestore.deserializeState("ignored")).toThrow();
+    const runtimeProjector = toRuntimeDomain(domain({ events: [placed, cancelled], projectors: [orderProjector] })).projectors[0]!;
+    expect(() => runtimeProjector.deserializeState(JSON.stringify({ kind: "placed" }))).toThrow();
+    expect(orderMirrorProjector.deserializeState(JSON.stringify({ unvalidated: true }))).toEqual({ unvalidated: true });
+  });
+
+  it("AC7: validates view deliveryClass and derives the per-view delivery policy from the domain", () => {
+    const views: readonly DomainViewDefinition[] = [
+      { id: "g88-immediate", source: orderProjector.id, deliveryClass: "immediate-preferred" },
+      { id: "g88-queued", source: orderProjector.id, deliveryClass: "queued" },
+      { id: "g88-default", source: orderProjector.id },
+    ];
+    const authored = domain({ events: [placed, cancelled], projectors: [orderProjector], views });
+    expect(deliveryPolicyFromDomain(authored)).toEqual({
+      "g88-immediate": "immediate-preferred",
+      "g88-queued": "queued",
+      "g88-default": "queued",
+    });
+    const runtime = toRuntimeDomain(authored);
+    expect(runtime.views.map((view) => [view.id, view.deliveryClass])).toEqual([
+      ["g88-immediate", "immediate-preferred"],
+      ["g88-queued", "queued"],
+      ["g88-default", "queued"],
+    ]);
+    expect(deliveryPolicyFromDomain(runtime)).toEqual(deliveryPolicyFromDomain(authored));
+    expect(deliveryPolicyFromDomain(domain({ events: [placed, cancelled], projectors: [orderProjector] }))).toEqual({});
+    for (const deliveryClass of ["immediate", "direct", "", null, 1]) {
+      const invalidView = JSON.parse(JSON.stringify({ id: "g88-invalid", source: orderProjector.id, deliveryClass })) as DomainViewDefinition;
+      expect(() => domain({ events: [placed, cancelled], projectors: [orderProjector], views: [invalidView] }), String(deliveryClass))
+        .toThrow(DomainRegistrationError);
+      expect(() => deliveryPolicyFromDomain({ views: [invalidView] }), String(deliveryClass)).toThrow(DomainRegistrationError);
+    }
+  });
+
+  it("AC9: keeps caller-owned objects mutable through event.make and serializeDecisionLog", async () => {
+    const carried = event("G88Carried", z.object({ orderId: z.string(), meta: z.unknown(), extra: z.any() }), {
+      tags: (payload) => [order.of(payload.orderId)],
+    });
+    const meta = { nested: { count: 1 } };
+    const extra = [{ flag: true }];
+    const payload = carried.make({ orderId: "g88-carried", meta, extra });
+    expect(Object.isFrozen(meta)).toBe(false);
+    expect(Object.isFrozen(meta.nested)).toBe(false);
+    expect(Object.isFrozen(extra)).toBe(false);
+    expect(Object.isFrozen(extra[0])).toBe(false);
+    meta.nested.count = 2;
+    extra[0]!.flag = false;
+    expect(payload).toEqual({ orderId: "g88-carried", meta: { nested: { count: 1 } }, extra: [{ flag: true }] });
+    expect(Object.isFrozen(payload)).toBe(true);
+    const cyclicMeta: Record<string, unknown> = { name: "cycle" };
+    cyclicMeta.self = cyclicMeta;
+    let makeFailure: unknown;
+    try {
+      carried.make({ orderId: "g88-cyclic", meta: cyclicMeta, extra: [] });
+    } catch (error) {
+      makeFailure = error;
+    }
+    expect(makeFailure).toBeInstanceOf(DomainAuthoringError);
+    expect((makeFailure as DomainAuthoringError).code).toBe("INVALID_JSON_VALUE");
+
+    const handlerValue = { orderId: "g88-log", nested: { count: 1 } };
+    const logged = command({
+      id: "g88-logged",
+      input: z.object({ orderId: z.string() }),
+      reads: (input) => read(orderProjector, order.of(input.orderId)),
+      handle: (input, context) => {
+        context.append(placed, placed.make(input));
+        return done(handlerValue);
+      },
+    });
+    const result = await executeCommand(logged, { orderId: "g88-log" }, { snapshots: emptySnapshots });
+    expect(JSON.parse(serializeDecisionLog(result.log))).toMatchObject({ terminal: { kind: "done", value: handlerValue } });
+    expect(Object.isFrozen(handlerValue)).toBe(false);
+    expect(Object.isFrozen(handlerValue.nested)).toBe(false);
+
+    const details = { field: "orderId", hints: [{ text: "g88" }] };
+    const callerLog: DecisionLog = { now: 1, events: [], readClaims: [], terminal: reject("validation", "g88 invalid", details) };
+    expect(JSON.parse(serializeDecisionLog(callerLog))).toMatchObject({ terminal: { details } });
+    expect(Object.isFrozen(callerLog)).toBe(false);
+    expect(Object.isFrozen(callerLog.events)).toBe(false);
+    expect(Object.isFrozen(details)).toBe(false);
+    expect(Object.isFrozen(details.hints)).toBe(false);
+
+    const cyclicDetails: Record<string, unknown> = { field: "cycle" };
+    cyclicDetails.self = cyclicDetails;
+    let logFailure: unknown;
+    try {
+      serializeDecisionLog({ now: 1, events: [], readClaims: [], terminal: reject("validation", "g88 cyclic", cyclicDetails) });
+    } catch (error) {
+      logFailure = error;
+    }
+    expect(logFailure).toBeInstanceOf(TypeError);
   });
 });

@@ -16,7 +16,6 @@ import {
   meetingRoomAuthoringDomain,
   meetingRoomDomain,
   meetingRoomProjectors,
-  meetingRoomRuntimeConfig,
   reserveRoomCommand,
   reservationTag,
   roomTag,
@@ -130,7 +129,7 @@ function observedContract(input: MappingContractInput): MappingContract {
   const sameIdentity = candidateEvent?.eventType === portableEvent?.eventType && candidateEvent?.eventType === input.admission.eventType;
   const sameTags = candidateEvent?.tags.map((tag) => tag.id).join(",") === input.admission.tags.join(",");
   const commandInputValidated = meetingRoomAuthoringDomain.commands.find((command) => command.id === createRoomCommand.id)?.parseInput(MAPPING_INPUT) !== undefined;
-  const allViewsHaveProjectors = input.viewManifest.length === meetingRoomRuntimeConfig.deliveryViews.length && input.viewManifest.every((view) => typeof view.projector === "string");
+  const allViewsHaveProjectors = input.viewManifest.length === meetingRoomDomain.views.length && input.viewManifest.every((view) => typeof view.projector === "string");
   if (!sameIdentity || !sameTags || !snapshotRoundTrip || !commandInputValidated || !allViewsHaveProjectors) {
     throw new Error("G29 mapping shared execution evidence diverged at an observed boundary");
   }
@@ -270,7 +269,7 @@ function observedContract(input: MappingContractInput): MappingContract {
       ["field", checked("view descriptor", allViewsHaveProjectors, "view-descriptor/field")],
       ["wire", "tagProjector/query view identity; no V1 shape change"],
       ["owner", "domain view registration and deployment policy"],
-      ["doTs", checked("domain.views entry", input.viewManifest.length === meetingRoomRuntimeConfig.deliveryViews.length, "view-descriptor/doTs")],
+      ["doTs", checked("domain.views entry", input.viewManifest.length === meetingRoomDomain.views.length, "view-descriptor/doTs")],
       ["portable", "id/source/projector/deliveryClass descriptor"],
       ["version", "descriptor schemaVersion 1"],
       ["unsupported", "global deployment variable overriding a view"],

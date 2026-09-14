@@ -200,8 +200,10 @@ export const cancelReservationCommand = command({
 | --- | --- | --- | --- |
 | Event | `Event<TPayload>` / event definition | `event("RoomCreated", z.object(...), { tags })` | The registered definition assigns the durable `EventType` `RoomCreated`; a payload revision uses a different name. The `version` option is not supported. |
 | Tags | `Tag<Room>` / `Tag<Reservation>` | `tagFamily("room").of(roomId)` | Tags are derived from the parsed payload once, retain emission order in the logical event record, and are preserved through V1, stored, Queue, and projection hops. |
-| State | `State<T>` with a closed discriminator | `stateUnion(z.discriminatedUnion("status", ...))` | Projector state remains JSON and is validated on every evolution. |
-| Projector | `Projector<TState, TTag>` | `projector({ id, tag, events, state, handlers })` | A projector subscribes only to its registered event identities and tag family. |
+| State | `State<T>` with a closed discriminator | `stateUnion(z.discriminatedUnion("status", ...), { initial })` | The zod discriminated union is the only discriminator. Projector state remains JSON and is validated at definition (the initial state), on restore, and on every evolution. |
+| Projector | `Projector<TState, TTag>` | `projector({ id, tag, events, state, handlers })` | A projector subscribes only to its registered event identities and tag family. Without `initialState` or `initial`, the state's `initial` is the initial state. |
+| View delivery | per-view delivery policy | `domain({ views: [{ id, source, deliveryClass }] })` | `deliveryClass` is `immediate-preferred` or `queued` (the default). The declaration is the delivery-policy authority; `deliveryPolicyFromDomain(domain)` derives the per-view doorbell policy. |
+| Conflict retry | reread and recompute | `executeCommand(command, input, { maxConflictRetries })` | `maxConflictRetries` is a non-negative safe integer (default 1); a conflict on the last permitted attempt is `status: "conflict"`, never accepted. |
 | Validate | decider validation function | `validate((state, input) => ...)` | Validation can return a typed reject before an append. |
 | Evolve | pure event-to-state function | `evolve((state, event) => ...)` | Evolve has no clock, network, allocator, or side effect. |
 | Command | `Decide` / declared read set | `command({ input, reads, handle })` | `read(...)` and `readSet(...)` are the complete snapshot authority for a session. |

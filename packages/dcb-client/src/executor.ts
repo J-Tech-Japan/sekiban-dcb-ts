@@ -517,6 +517,16 @@ function conflictDetails(value: unknown): ExecutorConflict["conflicts"] {
   });
 }
 
+function conflictResult(attempts: number, commitError: ClientError | undefined, response: unknown): ExecutorConflict {
+  return {
+    kind: "conflict",
+    attempts,
+    status: commitError?.status,
+    code: "consistency_conflict",
+    conflicts: conflictDetails(response),
+  };
+}
+
 function envelopeFor(candidate: CandidateEnvelope): CommitEnvelope {
   const eventTags = new Set(candidate.events.flatMap((event) => event.tags.map((tag) => tag.id)));
   const consistency = new Map<string, string>();
@@ -711,17 +721,15 @@ export function createSekibanExecutor(
           code: result.decision.kind === "reject" ? details ?? result.decision.code : "command_rejected",
         };
       }
+      if (result.status === "conflict") {
+        return conflictResult(result.attempts, commitErrorFrom(result.error), lastResponse);
+      }
       if (result.status === "rejected") {
         const commitError = commitErrorFrom(result.error);
-        const conflict = commitError?.code === "consistency_conflict";
-        if (conflict) {
-          return {
-            kind: "conflict",
-            attempts: result.attempts,
-            status: commitError?.status,
-            code: "consistency_conflict",
-            conflicts: conflictDetails(lastResponse),
-          };
+        // The commit closure still converts the final conflict to rejected
+        // (SDT-G86 removes that conversion); keep it typed as a conflict.
+        if (commitError?.code === "consistency_conflict") {
+          return conflictResult(result.attempts, commitError, lastResponse);
         }
         if (result.error !== undefined) {
           return {
@@ -760,6 +768,10 @@ export function createSekibanExecutor(
         : isRecord(error) && typeof error.code === "string" ? error.code : undefined;
       if (authoringCode === "executor.snapshot_missing") {
         return { kind: "invalid", attempts: 0, code: authoringCode, error: errorText(error) };
+      }
+      // An invalid retry count is refused before any read or commit.
+      if (authoringCode === "EXECUTE_OPTIONS_INVALID") {
+        return { kind: "invalid", attempts: 0, code: "invalid_execute_options", error: errorText(error) };
       }
       // Command input validation is a typed application rejection, not a
       // transport failure. The executor facade must preserve the public

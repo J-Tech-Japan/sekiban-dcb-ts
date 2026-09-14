@@ -7,12 +7,40 @@ import type { ProjectorDefinition } from "./state";
 
 export type DomainEventInput = EventDefinition | EventUnion;
 
+/** The declared delivery classes for a view. */
+export type ViewDeliveryClass = "immediate-preferred" | "queued";
+
+const VIEW_DELIVERY_CLASSES: readonly unknown[] = Object.freeze(["immediate-preferred", "queued"] satisfies ViewDeliveryClass[]);
+
 export interface DomainViewDefinition {
   readonly id: string;
   readonly source: string;
   readonly projector?: string;
-  /** Domain-owned half of the per-view delivery policy. */
-  readonly deliveryClass?: "immediate-preferred" | "queued";
+  /** Domain-owned half of the per-view delivery policy; a view without one is `queued`. */
+  readonly deliveryClass?: ViewDeliveryClass;
+}
+
+function effectiveDeliveryClass(view: DomainViewDefinition): ViewDeliveryClass {
+  if (view.deliveryClass === undefined) return "queued";
+  if (VIEW_DELIVERY_CLASSES.includes(view.deliveryClass)) return view.deliveryClass;
+  throw new DomainRegistrationError(`View ${view.id} has an undeclared deliveryClass ${String(view.deliveryClass)}`, [view.id]);
+}
+
+/**
+ * The per-view delivery policy. The domain's view declarations are the only
+ * authority: each view maps to its declared deliveryClass, defaulting to `queued`.
+ */
+export function deliveryPolicyFromDomain(
+  domainValue: { readonly views?: readonly DomainViewDefinition[] },
+): Readonly<Record<string, ViewDeliveryClass>> {
+  const policy: Record<string, ViewDeliveryClass> = {};
+  for (const view of domainValue.views ?? []) {
+    if (Object.prototype.hasOwnProperty.call(policy, view.id)) {
+      throw new DomainRegistrationError(`View ${view.id} is declared more than once`, [view.id]);
+    }
+    policy[view.id] = effectiveDeliveryClass(view);
+  }
+  return Object.freeze(policy);
 }
 
 export interface AuthoringDomain<
@@ -112,6 +140,7 @@ export function domain<
     })) {
       throw new DomainRegistrationError(`View ${view.id} has no registered source projector`, [view.id]);
     }
+    effectiveDeliveryClass(view);
   }
   return Object.freeze({
     events: Object.freeze(events),

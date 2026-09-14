@@ -14,20 +14,22 @@ const projectorFamilyInvariant: unique symbol = Symbol("projector-family-invaria
 
 export interface StateUnion<Schema extends z.ZodTypeAny = z.ZodTypeAny> {
   readonly kind: "state-union";
-  readonly discriminator: string;
   readonly schema: Schema;
   readonly parse: (value: unknown) => z.infer<Schema>;
+  /** The projector initial state when the projector declares neither `initialState` nor `initial`. */
   readonly initial: z.infer<Schema> | (() => z.infer<Schema>);
 }
 
+/**
+ * Bind a closed state schema. A discriminated union's discriminator is owned by
+ * the zod schema itself, which `parse` enforces; there is no separate option.
+ */
 export function stateUnion<Schema extends z.ZodTypeAny>(
   schema: Schema,
-  options: { readonly discriminator?: string; readonly initial: z.infer<Schema> | (() => z.infer<Schema>) },
+  options: { readonly initial: z.infer<Schema> | (() => z.infer<Schema>) },
 ): StateUnion<Schema> {
-  const discriminator = options.discriminator ?? "kind";
   return Object.freeze({
     kind: "state-union" as const,
-    discriminator,
     schema,
     parse: (value: unknown) => schema.parse(value),
     initial: options.initial,
@@ -47,7 +49,7 @@ export function states<
   // The cast is limited to the public variadic tuple surface; callers are
   // expected to provide object variants carrying the selected discriminator.
   const schema = z.discriminatedUnion(discriminator, variants as never) as z.ZodType<z.infer<Variants[number]>>;
-  return stateUnion(schema, { discriminator, initial: options.initial });
+  return stateUnion(schema, { initial: options.initial });
 }
 
 export type StateOf<Definition extends StateUnion> = z.infer<Definition["schema"]>;
@@ -178,13 +180,23 @@ export function projector<
   }
   const version = options.version ?? 1;
   if (!Number.isSafeInteger(version) || version < 1) throw new DomainAuthoringError("PROJECTOR_VERSION_INVALID", "Projector version must be positive");
-  const initialState = options.initialState ?? options.initial;
-  const validateState = options.state === undefined
+  const stateSchema = options.state;
+  const validateState = stateSchema === undefined
     ? (value: unknown) => value as State
-    : (value: unknown) => options.state!.parse(value);
+    : (value: unknown) => stateSchema.parse(value);
   const serializeState = options.serializeState ?? ((state: State) => JSON.stringify(state));
-  const deserializeState = options.deserializeState ?? ((serialized: string) => JSON.parse(serialized) as State);
-  const initial = initialStateOf(initialState);
+  const restoreState = options.deserializeState ?? ((serialized: string) => JSON.parse(serialized) as State);
+  // Restored bytes pass through the same schema as every evolution, so a
+  // corrupt persisted state fails closed instead of reaching a handler.
+  const deserializeState = (serialized: string): State => validateState(restoreState(serialized));
+  // An explicit initialState or initial keeps precedence over the state default.
+  const declaredInitial = initialStateOf(options.initialState ?? options.initial ?? stateSchema?.initial);
+  let initial: State;
+  try {
+    initial = validateState(declaredInitial);
+  } catch (error) {
+    throw new DomainAuthoringError("PROJECTOR_INITIAL_STATE_INVALID", `Projector ${options.id} initial state does not match its state schema`, { cause: error });
+  }
   const byType = new Map(events.map((definition) => [definition.eventType, definition]));
   const apply = (state: State, event: EventRecord): State => {
     const definition = byType.get(event.eventType);

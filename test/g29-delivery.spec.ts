@@ -10,7 +10,8 @@ import { handleDownstreamQueue } from "../packages/dcb-runtime/src/downstream/Do
 import type { PipelineStore, StoredEvent } from "../packages/dcb-runtime/src/store/types";
 import { assertDeliveryMatrix } from "../scripts/g29-delivery-matrix.mjs";
 import matrix from "../docs/SDT-G29-delivery-matrix.json";
-import { meetingRoomDeliveryPolicy } from "../samples/meeting-room/src/domain";
+import { deliveryPolicyFromDomain, type DomainViewDefinition } from "@sekiban/dcb-domain";
+import { meetingRoomDomain } from "../samples/meeting-room/src/domain";
 import { MeetingRoomDownstreamDoorbell, type MeetingRoomCloudflareEnv } from "../samples/meeting-room/src/worker.cloudflare-only";
 import type { DownstreamOutboxMessage } from "../packages/dcb-runtime/src/downstream/types";
 import { g32Message, g32StoredEvent } from "./helpers/g32-fixtures";
@@ -22,7 +23,11 @@ const enabled = {
   DIRECT_DOORBELL_MAX_INVOCATIONS: "32",
 };
 
-const allQueued = { RoomProjector: "queued" as const, ReservationProjector: "queued" as const };
+// The per-view domain descriptor is the only policy source: each case supplies
+// view declarations and the doorbell policy is derived from them.
+const meetingRoomViews: readonly DomainViewDefinition[] = meetingRoomDomain.views;
+const allQueuedViews: readonly DomainViewDefinition[] = meetingRoomViews.map((view) => ({ ...view, deliveryClass: "queued" as const }));
+const meetingRoomPolicy = deliveryPolicyFromDomain(meetingRoomDomain);
 
 function message(id: string): DownstreamOutboxMessage {
   return g32Message({
@@ -99,17 +104,17 @@ async function invokeQueue(views: readonly DeliveryViewHandler[], id: string): P
 describe("SDT-G29 per-view delivery policy", () => {
   it("matches the published branch matrix against the real receiver and Queue entry points", async () => {
     const cases = {
-      "immediate-enabled-allowed": { env: enabled, domain: "immediate-preferred" as const, policy: meetingRoomDeliveryPolicy },
-      "immediate-enabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "immediate-preferred" as const, policy: meetingRoomDeliveryPolicy },
-      "immediate-disabled-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false" }, domain: "immediate-preferred" as const, policy: meetingRoomDeliveryPolicy },
-      "immediate-disabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false", DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "immediate-preferred" as const, policy: meetingRoomDeliveryPolicy },
-      "queued-enabled-allowed": { env: enabled, domain: "queued" as const, policy: allQueued },
-      "queued-enabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "queued" as const, policy: allQueued },
-      "queued-disabled-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false" }, domain: "queued" as const, policy: allQueued },
-      "queued-disabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false", DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "queued" as const, policy: allQueued },
+      "immediate-enabled-allowed": { env: enabled, domain: "immediate-preferred" as const, domainViews: meetingRoomViews },
+      "immediate-enabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "immediate-preferred" as const, domainViews: meetingRoomViews },
+      "immediate-disabled-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false" }, domain: "immediate-preferred" as const, domainViews: meetingRoomViews },
+      "immediate-disabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false", DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "immediate-preferred" as const, domainViews: meetingRoomViews },
+      "queued-enabled-allowed": { env: enabled, domain: "queued" as const, domainViews: allQueuedViews },
+      "queued-enabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "queued" as const, domainViews: allQueuedViews },
+      "queued-disabled-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false" }, domain: "queued" as const, domainViews: allQueuedViews },
+      "queued-disabled-not-allowed": { env: { ...enabled, DIRECT_DOORBELL: "false", DIRECT_DOORBELL_ALLOWED_VIEWS: "" }, domain: "queued" as const, domainViews: allQueuedViews },
     } as const;
     const actual = Object.fromEntries(await Promise.all(Object.entries(cases).map(async ([rowId, value]) => {
-      const config = readDirectDoorbellConfig(value.env, value.domain, value.policy);
+      const config = readDirectDoorbellConfig(value.env, value.domain, deliveryPolicyFromDomain({ views: value.domainViews }));
       const preflight = preflightDirectDoorbell(config);
       const status = preflight.status;
       const selected = status === "ready" ? selectDirectDoorbellViews(views, config).map((view) => view.id) : [];
@@ -117,7 +122,7 @@ describe("SDT-G29 per-view delivery policy", () => {
       const directCalls: string[] = [];
       const queueCalls: string[] = [];
       if (status === "ready") {
-        await invokeDirect({ ...value.env, SDT_SERVICE_ID: "g29-delivery-fixture", __G29_DOORBELL_TEST__: { store: fakeStore(), views: spyViews(directCalls), deliveryPolicy: value.policy, afterDelivery: async () => undefined } } as unknown as MeetingRoomCloudflareEnv, rowId);
+        await invokeDirect({ ...value.env, SDT_SERVICE_ID: "g29-delivery-fixture", __G29_DOORBELL_TEST__: { store: fakeStore(), views: spyViews(directCalls), domainViews: value.domainViews, afterDelivery: async () => undefined } } as unknown as MeetingRoomCloudflareEnv, rowId);
       } else if (value.domain === "queued") {
         await invokeQueue(spyViews(queueCalls), rowId);
       }
@@ -138,8 +143,8 @@ describe("SDT-G29 per-view delivery policy", () => {
   it("keeps the C3 Room-only/Reservation-queued regression visible through MeetingRoomDownstreamDoorbell.deliver", async () => {
     const directCalls: string[] = [];
     const queueCalls: string[] = [];
-    const policy = { RoomProjector: "immediate-preferred" as const, ReservationProjector: "queued" as const };
-    await invokeDirect({ ...enabled, SDT_SERVICE_ID: "g29-c3-regression", __G29_DOORBELL_TEST__: { store: fakeStore(), views: spyViews(directCalls), deliveryPolicy: policy, afterDelivery: async () => undefined } } as unknown as MeetingRoomCloudflareEnv, "c3-regression");
+    const domainViews = meetingRoomViews.map((view) => ({ ...view, deliveryClass: view.id === "RoomProjector" ? "immediate-preferred" as const : "queued" as const }));
+    await invokeDirect({ ...enabled, SDT_SERVICE_ID: "g29-c3-regression", __G29_DOORBELL_TEST__: { store: fakeStore(), views: spyViews(directCalls), domainViews, afterDelivery: async () => undefined } } as unknown as MeetingRoomCloudflareEnv, "c3-regression");
     await invokeQueue(spyViews(queueCalls).filter((view) => view.id === "ReservationProjector"), "c3-regression-queue");
     expect(directCalls).toEqual(["RoomProjector"]);
     expect(directCalls).not.toContain("ReservationProjector");
@@ -157,7 +162,6 @@ describe("SDT-G29 per-view delivery policy", () => {
         __G29_DOORBELL_TEST__: {
           store: fakeStore(),
           views: spyViews([]),
-          deliveryPolicy: meetingRoomDeliveryPolicy,
           afterDelivery: async () => undefined,
           faultBarrier: {
             barrierId: "g30-fixture-doorbell",
@@ -188,7 +192,7 @@ describe("SDT-G29 per-view delivery policy", () => {
     const config = readDirectDoorbellConfig({
       ...enabled,
       DOMAIN_DELIVERY_CLASS: "queued",
-    }, "immediate-preferred", meetingRoomDeliveryPolicy);
+    }, "immediate-preferred", meetingRoomPolicy);
     expect(config.deliveryClass).toBe("immediate-preferred");
     expect(selectDirectDoorbellViews(views, config).map((view) => view.id)).toEqual(["RoomProjector", "ReservationProjector"]);
   });
@@ -200,7 +204,7 @@ describe("SDT-G29 per-view delivery policy", () => {
   });
 
   it("does not silently degrade the queued-degraded branch", () => {
-    const config = readDirectDoorbellConfig({ ...enabled, DIRECT_DOORBELL: "false", DIRECT_DOORBELL_DEGRADATION: "queued-degraded" }, "immediate-preferred", meetingRoomDeliveryPolicy);
+    const config = readDirectDoorbellConfig({ ...enabled, DIRECT_DOORBELL: "false", DIRECT_DOORBELL_DEGRADATION: "queued-degraded" }, "immediate-preferred", meetingRoomPolicy);
     expect(preflightDirectDoorbell(config)).toMatchObject({ status: "queued-degraded", reason: "deployment_direct_doorbell_disabled" });
     expect(selectDirectDoorbellViews(views, config)).toEqual([]);
   });
@@ -211,5 +215,11 @@ describe("SDT-G29 per-view delivery policy", () => {
       ReservationProjector: "immediate-preferred",
     });
     expect(selectDirectDoorbellViews(views, config).map((view) => view.id)).toEqual(["RoomProjector", "ReservationProjector"]);
+  });
+
+  it("SDT-G88 AC7: derives the sample doorbell policy from the domain view descriptors", () => {
+    expect(meetingRoomPolicy).toEqual(matrix.descriptor);
+    expect(Object.keys(meetingRoomPolicy)).toEqual(meetingRoomDomain.views.map((view) => view.id));
+    expect(meetingRoomDomain.views.map((view) => view.deliveryClass)).toEqual(Object.values(matrix.descriptor));
   });
 });

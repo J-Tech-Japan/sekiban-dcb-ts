@@ -1,7 +1,6 @@
 import { z } from "zod";
 import {
   assertJsonValue,
-  cloneAndFreeze,
   DomainAuthoringError,
   type EventOf,
   type EventPayload,
@@ -24,6 +23,18 @@ function rememberPayload<T>(value: T): T {
 
 export function isEventPayload(value: unknown): boolean {
   return typeof value === "object" && value !== null && brandedPayloads.has(value);
+}
+
+/**
+ * Freeze a copy of an already validated JSON value. Objects under `z.any()` or
+ * `z.unknown()` still belong to the caller, so they are never frozen in place.
+ */
+function frozenJsonCopy<T>(value: T): T {
+  if (Array.isArray(value)) return Object.freeze(value.map(frozenJsonCopy)) as T;
+  if (typeof value === "object" && value !== null) {
+    return Object.freeze(Object.fromEntries(Object.entries(value).map(([key, item]) => [key, frozenJsonCopy(item)]))) as T;
+  }
+  return value;
 }
 
 /**
@@ -119,7 +130,7 @@ export function event<
     return parsed;
   };
   const make = (payload: unknown): EventOf<EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>>> => {
-    const parsed = cloneAndFreeze(parse(payload));
+    const parsed = frozenJsonCopy(parse(payload));
     return rememberPayload(parsed) as EventPayload<EventDefinition<Name, Schema, TagFamilyOfDeriver<Deriver>>>;
   };
   const create = (payload: unknown): RuntimeEventValue => {

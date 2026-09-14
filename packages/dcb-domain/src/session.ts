@@ -1,7 +1,6 @@
 import {
   assertJsonValue,
   DomainAuthoringError,
-  cloneAndFreeze,
   normalizeTag,
   type CandidateEnvelope,
   type CommitCandidateEvent,
@@ -400,9 +399,10 @@ export class Session {
   }
 }
 
+/** A commit reply as executeCommand understands it; `error` is the reply's own error, or the reply itself. */
 export type CommitAttemptResult =
   | { readonly kind: "accepted" }
-  | { readonly kind: "consistency-conflict" }
+  | { readonly kind: "consistency-conflict"; readonly error?: unknown }
   | { readonly kind: "unknown"; readonly error?: unknown }
   | { readonly kind: "rejected"; readonly error?: unknown };
 
@@ -415,7 +415,8 @@ export interface ExecuteCommandOptions {
 }
 
 export interface ExecuteCommandResult {
-  readonly status: "accepted" | "discarded" | "unknown" | "rejected";
+  /** `conflict` is the last permitted attempt ending in a consistency conflict. */
+  readonly status: "accepted" | "discarded" | "unknown" | "rejected" | "conflict";
   readonly attempts: number;
   readonly now: FixedNow;
   readonly decision: TerminalDecision;
@@ -426,24 +427,39 @@ export interface ExecuteCommandResult {
 }
 
 function classifyCommitResult(value: unknown): CommitAttemptResult {
+  // `undefined` and `true` are the shorthand for a commit port with nothing to report.
   if (value === undefined || value === true) return { kind: "accepted" };
-  if (typeof value !== "object" || value === null) return { kind: "accepted" };
+  // Any other reply that is not recognised must be reconciled, never assumed committed.
+  if (typeof value !== "object" || value === null) return { kind: "unknown", error: value };
   const record = value as Record<string, unknown>;
+  const error = record.error !== undefined ? record.error : value;
   if (record.kind === "consistency-conflict" || record.kind === "conflict" || record.code === "consistency_conflict") {
-    return { kind: "consistency-conflict" };
+    return { kind: "consistency-conflict", error };
   }
   if (record.kind === "unknown" || record.kind === "timeout" || record.code === "unknown_outcome") {
-    return { kind: "unknown", error: value };
+    return { kind: "unknown", error };
   }
-  if (record.kind === "rejected" || record.kind === "invalid") return { kind: "rejected", error: value };
-  return { kind: "accepted" };
+  if (record.kind === "rejected" || record.kind === "invalid") return { kind: "rejected", error };
+  if (record.kind === "accepted") return { kind: "accepted" };
+  return { kind: "unknown", error };
+}
+
+function conflictRetryLimit(maxConflictRetries: number | undefined): number {
+  if (maxConflictRetries === undefined) return 1;
+  // A NaN, infinite, negative or fractional count is a caller bug; refuse it
+  // rather than normalising it into a different retry policy.
+  if (Number.isSafeInteger(maxConflictRetries) && maxConflictRetries >= 0) return maxConflictRetries;
+  throw new DomainAuthoringError(
+    "EXECUTE_OPTIONS_INVALID",
+    `maxConflictRetries must be undefined or a non-negative safe integer; received ${String(maxConflictRetries)}`,
+  );
 }
 
 export async function executeCommand<
   Command extends CommandDefinition,
 >(command: Command, input: unknown, options: ExecuteCommandOptions = {}): Promise<ExecuteCommandResult> {
+  const maxRetries = conflictRetryLimit(options.maxConflictRetries);
   const fixedNow = options.timeProvider?.now() ?? 0;
-  const maxRetries = Math.max(0, Math.floor(options.maxConflictRetries ?? 1));
   const parsed = command.parseInput(input);
   let attempts = 0;
   for (;;) {
@@ -468,7 +484,10 @@ export async function executeCommand<
         return Object.freeze({ status: "accepted" as const, attempts, now: fixedNow, decision, envelope, log, session });
       }
       const commitResult = classifyCommitResult(await options.commit(envelope));
-      if (commitResult.kind === "consistency-conflict" && attempts <= maxRetries) continue;
+      if (commitResult.kind === "consistency-conflict") {
+        if (attempts <= maxRetries) continue;
+        return Object.freeze({ status: "conflict" as const, attempts, now: fixedNow, decision, envelope, log, session, error: commitResult.error });
+      }
       if (commitResult.kind === "unknown") return Object.freeze({ status: "unknown" as const, attempts, now: fixedNow, decision, envelope, log, session, error: commitResult.error });
       if (commitResult.kind === "rejected") return Object.freeze({ status: "rejected" as const, attempts, now: fixedNow, decision, envelope, log, session, error: commitResult.error });
       return Object.freeze({ status: "accepted" as const, attempts, now: fixedNow, decision, envelope, log, session });
@@ -484,5 +503,7 @@ export const runSession = executeCommand;
 export const executePortableCommand = executeCommand;
 
 export function serializeDecisionLog(log: DecisionLog): string {
-  return JSON.stringify(cloneAndFreeze(log));
+  // The log and the values it carries still belong to the caller and handler;
+  // serialising must not freeze them. JSON.stringify rejects a cyclic value.
+  return JSON.stringify(log);
 }

@@ -382,4 +382,46 @@ describe("SDT-G57 executor facade deploy-free contract", () => {
     expect(result).toMatchObject({ kind: "invalid", code: "scope.mismatch" });
     expect(new ClientError("scope.mismatch", "scope mismatch")).toBeInstanceOf(Error);
   });
+
+  it("SDT-G88 AC4: refuses an invalid maxConflictRetries as invalid_execute_options without a commit", async () => {
+    let commits = 0;
+    const executor = createSekibanExecutor(fixtureTransport({
+      commit: async () => {
+        commits += 1;
+        return { status: 409, body: { code: "consistency_conflict", conflicts: [] } };
+      },
+    }));
+    for (const maxConflictRetries of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0.5]) {
+      const result = await executor.execute(createRoomCommand, { roomId: "room-1", name: "Room" }, { maxConflictRetries });
+      expect(result, String(maxConflictRetries)).toMatchObject({ kind: "invalid", attempts: 0, code: "invalid_execute_options" });
+    }
+    expect(commits).toBe(0);
+  });
+
+  it("SDT-G88 AC4: keeps an exhausted conflict typed for maxConflictRetries 1 and 2", async () => {
+    for (const [maxConflictRetries, attempts] of [[1, 2], [2, 3]] as const) {
+      let commits = 0;
+      const executor = createSekibanExecutor(fixtureTransport({
+        commit: async () => {
+          commits += 1;
+          return {
+            status: 409,
+            body: {
+              code: "consistency_conflict",
+              conflicts: [{ tag: "room:room-1", expectedHead: "", actualHead: `suid-existing-${commits}` }],
+            },
+          };
+        },
+      }));
+      const result = await executor.execute(createRoomCommand, { roomId: "room-1", name: "Room" }, { maxConflictRetries });
+      expect(result, String(maxConflictRetries)).toMatchObject({
+        kind: "conflict",
+        attempts,
+        status: 409,
+        code: "consistency_conflict",
+        conflicts: [{ tag: { id: "room:room-1" }, expectedHead: "", actualHead: `suid-existing-${attempts}` }],
+      });
+      expect(commits).toBe(attempts);
+    }
+  });
 });

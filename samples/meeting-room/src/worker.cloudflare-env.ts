@@ -1,4 +1,5 @@
 import type { CloudflareOnlyEnv, DeliveryCoreOptions } from "@sekiban/dcb-runtime/cloudflare";
+import type { DomainViewDefinition } from "@sekiban/dcb-domain";
 
 /**
  * Bindings shared by the primary facade and the receiver-only service entry.
@@ -27,7 +28,8 @@ export interface MeetingRoomCloudflareEnv extends CloudflareOnlyEnv {
   readonly G38_DOORBELL_DELIVERY_ROLE?: string;
   /** In-process integration seam; never configured by a deployed Worker. */
   readonly __G29_DOORBELL_TEST__?: Pick<DeliveryCoreOptions, "store" | "views" | "afterDelivery" | "beforeViews"> & {
-    readonly deliveryPolicy?: Readonly<Record<string, "immediate-preferred" | "queued">>;
+    /** Substitute view descriptors; the doorbell policy is still derived from them. */
+    readonly domainViews?: readonly DomainViewDefinition[];
     /** Existing in-process test seam only; no deployed binding can enable it. */
     readonly faultBarrier?: Readonly<{
       barrierId: string;

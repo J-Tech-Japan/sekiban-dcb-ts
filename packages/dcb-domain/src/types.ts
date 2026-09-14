@@ -236,28 +236,28 @@ export interface ProjectorLike {
 }
 
 export function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  if (typeof value !== "object") return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  return Object.values(value).every(isJsonValue);
+  // Track the objects on the current path so a cyclic value is reported as
+  // non-JSON instead of recursing until the stack overflows.
+  const ancestors = new Set<object>();
+  const visit = (candidate: unknown): boolean => {
+    if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") return true;
+    if (typeof candidate === "number") return Number.isFinite(candidate);
+    if (typeof candidate !== "object" || ancestors.has(candidate)) return false;
+    if (!Array.isArray(candidate)) {
+      const prototype = Object.getPrototypeOf(candidate);
+      if (prototype !== Object.prototype && prototype !== null) return false;
+    }
+    ancestors.add(candidate);
+    try {
+      return Array.isArray(candidate) ? candidate.every(visit) : Object.values(candidate).every(visit);
+    } finally {
+      ancestors.delete(candidate);
+    }
+  };
+  return visit(value);
 }
 
 export function assertJsonValue(value: unknown, boundary = "value"): JsonValue {
   if (!isJsonValue(value)) throw new DomainAuthoringError("INVALID_JSON_VALUE", `Value was not JSON serializable at ${boundary}`);
-  return value;
-}
-
-export function cloneAndFreeze<T>(value: T): T {
-  if (Array.isArray(value)) {
-    value.forEach(cloneAndFreeze);
-    return Object.freeze(value);
-  }
-  if (typeof value === "object" && value !== null) {
-    Object.values(value).forEach(cloneAndFreeze);
-    return Object.freeze(value);
-  }
   return value;
 }

@@ -36,8 +36,9 @@ const orderProjector = projector({
   id: "orders",
   tag: order,
   events: [placed],
+  // The state supplies the initial state; initial and restored states are
+  // parsed through the same schema as every evolution.
   state: stateUnion(z.object({ count: z.number() }), { initial: { count: 0 } }),
-  initialState: { count: 0 },
   handlers: {
     OrderPlaced: (state) => ({ count: state.count + 1 }),
   },
@@ -71,6 +72,10 @@ bounded read set and receive only `state`, `exists`, `now`, and `append`.
 
 Sessions use one executor-captured `now`, per-(projector, tag) snapshots, a
 fresh session on consistency-conflict retry, and an atomic `done` envelope.
+`executeCommand` reports a conflict that exhausts `maxConflictRetries` (a
+non-negative safe integer, default 1) as `status: "conflict"`, and any commit
+reply other than `undefined`, `true` or `{ kind: "accepted" }` that it does not
+recognise as `status: "unknown"`.
 `none`, `reject`, thrown errors, and cancellation discard all tentative work.
 Portable snapshots, decision logs, and the five ingress/query parse boundaries
 are exported from the main entrypoint. Pure command/evolve exercises are
