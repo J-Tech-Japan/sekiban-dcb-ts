@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
+  ClientError,
   createHttpTransport,
   createInProcessTransport,
   createSekibanExecutor,
@@ -17,7 +19,19 @@ import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 import type { QueryProjectionStore } from "../packages/dcb-runtime/src/query/ProjectionQueryStore";
 import type { ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
 import type { TagRecord } from "../packages/dcb-runtime/src/tag/types";
-import { tagFamily, type ProjectorLike, type Tag } from "@sekiban/dcb-domain";
+import {
+  command,
+  done,
+  DomainAuthoringError,
+  event,
+  projector as defineProjector,
+  read,
+  stateUnion,
+  tagFamily,
+  type ProjectorLike,
+  type SnapshotReader,
+  type Tag,
+} from "@sekiban/dcb-domain";
 import { createV1Transport } from "../samples/meeting-room/src/transport";
 import { g32EventId, g32Suid, G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
 
@@ -31,6 +45,26 @@ const projector: ProjectorLike = {
   subscribes: () => true,
   apply: (state) => state,
 };
+
+const g86ReadTag = tags.of("g86-read");
+const g86Recorded = event("G86ReadRecorded", z.object({ value: z.string() }), { tags: () => [g86ReadTag] });
+const g86ReadProjector = defineProjector({
+  id: "G86ReadProjector",
+  tag: tags,
+  events: [g86Recorded],
+  state: stateUnion(z.object({ status: z.string() }), { initial: { status: "empty" } }),
+  handlers: { G86ReadRecorded: (state) => state },
+});
+const g86ReadCommand = command({
+  id: "g86-read-command",
+  input: z.object({ value: z.string() }),
+  reads: () => read(g86ReadProjector, g86ReadTag),
+  handle: async (input, context) => {
+    await context.state(g86ReadProjector, g86ReadTag);
+    context.append(g86Recorded, g86Recorded.make({ value: input.value }));
+    return done();
+  },
+});
 
 function base64Json(value: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
@@ -393,6 +427,115 @@ describe("SDT-G71 published read contract", () => {
     const unsupported = createSekibanExecutor(withoutAuthority);
     await expect(unsupported.readState(projector, matrixTag)).rejects.toMatchObject({ code: "unsupported_capability", status: 501 });
     await expect(unsupported.exists(matrixTag)).rejects.toMatchObject({ code: "unsupported_capability", status: 501 });
+  });
+
+  it("SDT-G86 AC3: classifies a failure raised while execute reads through the shared table", async () => {
+    const readyState = (): ReadonlyTagStateResponse => ({
+      ...stateResponse(g86ReadTag, base64Json({ status: "ready" }), ""),
+      tagProjector: g86ReadProjector.id,
+    });
+    const cases: readonly {
+      readonly name: string;
+      readonly authority?: SerializedDcbTransport["readTagLatestSortable"];
+      readonly state?: SerializedDcbTransport["readTagState"];
+      readonly snapshots?: SnapshotReader;
+      readonly expected: { readonly kind: string; readonly code: string; readonly status?: number };
+      readonly calls: readonly string[];
+    }[] = [
+      {
+        name: "read-through without the authority capability",
+        authority: undefined,
+        expected: { kind: "invalid", code: "unsupported_capability", status: 501 },
+        calls: [],
+      },
+      {
+        name: "authority 503 without a code",
+        authority: async () => ({ status: 503, body: { error: "authority down" } }),
+        expected: { kind: "unavailable", code: "projection_unavailable", status: 503 },
+        calls: ["authority"],
+      },
+      {
+        name: "authority reply carrying authority_unavailable",
+        authority: async () => ({ status: 503, body: { code: "authority_unavailable", error: "authority unavailable" } }),
+        expected: { kind: "transport", code: "authority_unavailable", status: 503 },
+        calls: ["authority"],
+      },
+      {
+        name: "thrown transport failure during the authority read",
+        authority: async () => { throw new TypeError("fetch failed"); },
+        expected: { kind: "transport", code: "transport" },
+        calls: ["authority"],
+      },
+      {
+        name: "tag-state 503 without a code",
+        state: async () => ({ status: 503, body: { error: "state down" } }),
+        expected: { kind: "unavailable", code: "projection_unavailable", status: 503 },
+        calls: ["authority", "tag-state"],
+      },
+      {
+        name: "supplied SnapshotReader raising read_unavailable",
+        snapshots: { read: () => { throw new ClientError("read_unavailable", "reader did not converge", { status: 503 }); } },
+        expected: { kind: "unavailable", code: "read_unavailable", status: 503 },
+        calls: [],
+      },
+      {
+        name: "supplied SnapshotReader throwing a plain error",
+        snapshots: { read: () => { throw new Error("reader exploded"); } },
+        expected: { kind: "transport", code: "transport" },
+        calls: [],
+      },
+    ];
+    for (const testCase of cases) {
+      const calls: string[] = [];
+      const hasAuthority = !("authority" in testCase) || testCase.authority !== undefined;
+      const transport: SerializedDcbTransport = {
+        ...transportWith(
+          async (request, signal) => {
+            calls.push("authority");
+            return testCase.authority === undefined ? { exists: true, lastSortableUniqueId: "" } : testCase.authority(request, signal);
+          },
+          async (request, signal) => {
+            calls.push("tag-state");
+            return testCase.state === undefined ? readyState() : testCase.state(request, signal);
+          },
+        ),
+        commit: async () => {
+          calls.push("commit");
+          return { status: 200, body: {} };
+        },
+      };
+      const executor = createSekibanExecutor(hasAuthority ? transport : { ...transport, readTagLatestSortable: undefined });
+      const result = await executor.execute(g86ReadCommand, { value: "x" }, testCase.snapshots === undefined ? {} : { snapshots: testCase.snapshots });
+      expect({ kind: result.kind, code: result.code, status: result.status }, testCase.name).toEqual(testCase.expected);
+      expect(calls, testCase.name).toEqual(testCase.calls);
+    }
+
+    const noCalls: string[] = [];
+    const quiet = createSekibanExecutor({
+      ...transportWith(async () => { noCalls.push("authority"); return { exists: true, lastSortableUniqueId: "" }; }, async () => { noCalls.push("tag-state"); return readyState(); }),
+      commit: async () => { noCalls.push("commit"); return { status: 200, body: {} }; },
+    });
+    await expect(quiet.execute(g86ReadCommand, { value: "x" }, { snapshots: [], readMode: "snapshot-only" })).resolves.toMatchObject({ kind: "invalid", code: "executor.snapshot_missing" });
+    await expect(quiet.execute(g86ReadCommand, { value: 42 } as never)).resolves.toMatchObject({ kind: "invalid", code: "invalid_command_input" });
+    const authoring = command({
+      id: "g86-authoring-error",
+      input: z.object({}),
+      reads: () => read(g86ReadProjector, g86ReadTag),
+      handle: () => { throw new DomainAuthoringError("G86_HANDLER_AUTHORING", "handler authoring failed"); },
+    });
+    await expect(quiet.execute(authoring, {}, { snapshots: [], readMode: "snapshot-only" })).resolves.toMatchObject({ kind: "invalid", code: "executor.snapshot_missing" });
+    await expect(quiet.execute(authoring, {})).resolves.toMatchObject({ kind: "invalid", code: "domain_authoring_error", error: "G86_HANDLER_AUTHORING" });
+    const undeclared = command({
+      id: "g86-undeclared-read",
+      input: z.object({}),
+      reads: () => read(g86ReadProjector, g86ReadTag),
+      handle: async (_input, context) => {
+        await context.state(g86ReadProjector, tags.of("g86-undeclared"));
+        return done();
+      },
+    });
+    await expect(quiet.execute(undeclared, {})).resolves.toMatchObject({ kind: "invalid", code: "domain_authoring_error", error: "UNDECLARED_DYNAMIC_READ" });
+    expect(noCalls.filter((call) => call === "commit")).toEqual([]);
   });
 
   it("bounds authority/frontier reconciliation instead of combining mismatched observations", async () => {

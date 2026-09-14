@@ -124,6 +124,28 @@ function initialState(projector: ProjectorLike): unknown {
     : projector.initialState;
 }
 
+/**
+ * Caller-supplied snapshot state is a restore boundary (R29-7): when the
+ * projector exposes its state schema through `validateState`, the state is
+ * parsed through it before any handler sees it. `ProjectorLike` does not
+ * declare `validateState`, so the check is structural.
+ */
+function validatedSuppliedSnapshot(projector: ProjectorLike, tag: Tag, snapshot: PortableSnapshot): PortableSnapshot {
+  const validateState = (projector as { readonly validateState?: unknown }).validateState;
+  if (typeof validateState !== "function") return snapshot;
+  let state: unknown;
+  try {
+    state = (validateState as (value: unknown) => unknown).call(projector, snapshot.state);
+  } catch (error) {
+    throw new DomainAuthoringError(
+      "SNAPSHOT_STATE_INVALID",
+      `Snapshot state for ${projector.id}/${tag.id} does not match the projector state schema`,
+      { cause: error },
+    );
+  }
+  return Object.freeze({ ...snapshot, state });
+}
+
 function eventEligible(
   projector: Pick<ProjectorLike, "tag" | "subscribes">,
   cellTag: Tag,
@@ -214,13 +236,14 @@ export class Session {
     const key = cellKey(projector, tag);
     const cached = this.snapshotByCell.get(key);
     if (cached !== undefined) return cached as PortableSnapshot<State>;
-    const supplied = this.snapshots === undefined
+    const read = this.snapshots === undefined
       ? { projectorId: projector.id, tag, head: null, state: initialState(projector), exists: false }
       : await this.snapshots.read(projector, tag);
-    const suppliedTag = normalizeTag(supplied.tag);
-    if (suppliedTag.id !== tag.id || supplied.projectorId !== projector.id) {
+    const suppliedTag = normalizeTag(read.tag);
+    if (suppliedTag.id !== tag.id || read.projectorId !== projector.id) {
       throw new DomainAuthoringError("SNAPSHOT_IDENTITY_INVALID", `Snapshot identity did not match ${projector.id}/${tag.id}`);
     }
+    const supplied = this.snapshots === undefined ? read : validatedSuppliedSnapshot(projector, tag, read);
     const suppliedHead = supplied.head ?? "";
     const existingHead = this.headByTag.get(tag.id);
     if (existingHead !== undefined && existingHead !== suppliedHead) {

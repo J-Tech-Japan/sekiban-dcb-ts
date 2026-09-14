@@ -1141,3 +1141,97 @@ describe("SDT-G88 command outcomes and authoring options", () => {
     expect(logFailure).toBeInstanceOf(TypeError);
   });
 });
+
+describe("SDT-G86 supplied snapshot state validation", () => {
+  const readerWith = (state: unknown) => ({
+    read: (projectorValue: { readonly id: string }, tag: Tag) => ({
+      projectorId: projectorValue.id,
+      tag,
+      head: "g86-head",
+      state,
+      exists: true,
+    }),
+  });
+
+  it("AC9: validates SnapshotReader state through the projector state schema before the handler and commit", async () => {
+    const calls = { handle: 0, commit: 0 };
+    const seen: unknown[] = [];
+    const recordOrder = command({
+      id: "g86-record-order",
+      input: z.object({ orderId: z.string() }),
+      reads: (input) => read(orderProjector, order.of(input.orderId)),
+      handle: async (input, context) => {
+        calls.handle += 1;
+        const state = await context.state(orderProjector, order.of(input.orderId));
+        seen.push(state);
+        if (state.kind === "placed") return none("already placed");
+        context.append(placed, placed.make(input));
+        return done();
+      },
+    });
+    for (const state of [{ kind: "unknown" }, { kind: "placed" }, { kind: "placed", orderId: 5 }, null, "empty"]) {
+      let failure: unknown;
+      try {
+        await executeCommand(recordOrder, { orderId: "g86-invalid" }, {
+          snapshots: readerWith(state),
+          commit: () => {
+            calls.commit += 1;
+            return { kind: "accepted" };
+          },
+        });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure, JSON.stringify(state)).toBeInstanceOf(DomainAuthoringError);
+      expect((failure as DomainAuthoringError).code, JSON.stringify(state)).toBe("SNAPSHOT_STATE_INVALID");
+    }
+    expect(calls).toEqual({ handle: 0, commit: 0 });
+
+    const valid = await executeCommand(recordOrder, { orderId: "g86-valid" }, {
+      snapshots: readerWith({ kind: "placed", orderId: "g86-valid", extra: "not in the schema" }),
+    });
+    expect(valid.status).toBe("discarded");
+    expect(seen).toEqual([{ kind: "placed", orderId: "g86-valid" }]);
+
+    const mirrorCommand = command({
+      id: "g86-mirror-order",
+      input: z.object({ orderId: z.string() }),
+      reads: (input) => read(orderMirrorProjector, order.of(input.orderId)),
+      handle: async (input, context) => {
+        seen.push(await context.state(orderMirrorProjector, order.of(input.orderId)));
+        return none("observed");
+      },
+    });
+    seen.length = 0;
+    await expect(executeCommand(mirrorCommand, { orderId: "g86-mirror" }, { snapshots: readerWith({ anything: true }) })).resolves.toMatchObject({ status: "discarded" });
+    expect(seen).toEqual([{ anything: true }]);
+  });
+
+  it("AC9: adaptRuntimeCommand refuses a schema-invalid supplied snapshot", async () => {
+    const placeOrder = command({
+      id: "g86-runtime-place-order",
+      input: z.object({ orderId: z.string() }),
+      reads: (input) => read(orderProjector, order.of(input.orderId)),
+      handle: (input, context) => {
+        context.append(placed, placed.make(input));
+        return done({ orderId: input.orderId });
+      },
+    });
+    const runtimeCommand = adaptRuntimeCommand(placeOrder);
+    let commits = 0;
+    const runtimePort = {
+      commit: () => {
+        commits += 1;
+        return { kind: "accepted" as const };
+      },
+    };
+    await expect(runtimeCommand.execute({ orderId: "g86-runtime" }, { snapshots: readerWith({ kind: "unknown" }), runtimePort }))
+      .rejects.toMatchObject({ name: "DomainAuthoringError", code: "SNAPSHOT_STATE_INVALID" });
+    await expect(runtimeCommand.execute({ orderId: "g86-runtime" }, { state: { "order:g86-runtime": { kind: "placed" } }, runtimePort }))
+      .rejects.toMatchObject({ name: "DomainAuthoringError", code: "SNAPSHOT_STATE_INVALID" });
+    expect(commits).toBe(0);
+    await expect(runtimeCommand.execute({ orderId: "g86-runtime" }, { state: { "order:g86-runtime": { kind: "empty" } }, runtimePort }))
+      .resolves.toMatchObject({ kind: "committed", value: { orderId: "g86-runtime" } });
+    expect(commits).toBe(1);
+  });
+});

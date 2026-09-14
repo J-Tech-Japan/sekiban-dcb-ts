@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import {
   ClientError,
@@ -8,6 +9,7 @@ import {
   type ClientCommandContext,
   type SerializedDcbTransport,
 } from "../packages/dcb-client/src/index";
+import { command, done, event, readSet, tagFamily } from "@sekiban/dcb-domain";
 
 const queryRequest = { queryType: "G78Fixture", queryParamsJson: "{}" };
 
@@ -35,6 +37,89 @@ async function appendFixture(context: ClientCommandContext): Promise<{ readonly 
 
 function abortError(): Error {
   return Object.assign(new Error("caller cancelled"), { name: "AbortError" });
+}
+
+const g86Tags = tagFamily("g86");
+const g86Appended = event("G86ParityAppended", z.object({ id: z.string() }), {
+  tags: (payload) => [g86Tags.of(payload.id)],
+});
+const g86AppendCommand = command({
+  id: "g86-parity-append",
+  input: z.object({ id: z.string() }),
+  reads: () => readSet(),
+  handle: (input, context) => {
+    context.append(g86Appended, g86Appended.make({ id: input.id }));
+    return done();
+  },
+});
+
+interface G86Outcome {
+  readonly kind: string;
+  readonly code?: string;
+  readonly status?: number;
+}
+
+interface G86ParityRow {
+  readonly reply: string;
+  readonly commit: () => Promise<unknown>;
+  readonly expected: G86Outcome;
+  readonly partial?: unknown;
+}
+
+const g86PartialFacts = Object.freeze({
+  retryable: false,
+  writtenEventIds: ["g86-written"],
+  failedEventIds: ["g86-failed"],
+  writtenTags: ["g86:parity"],
+  missingTags: [],
+  eventsDeleted: false,
+});
+
+const g86ParityRows: readonly G86ParityRow[] = [
+  { reply: "2xx", commit: async () => ({ status: 200, body: { writtenEvents: [] } }), expected: { kind: "committed", status: 200 } },
+  { reply: "409 no code", commit: async () => ({ status: 409, body: { error: "conflict" } }), expected: { kind: "conflict", code: "consistency_conflict", status: 409 } },
+  { reply: "409 consistency_conflict", commit: async () => ({ status: 409, body: { code: "consistency_conflict", error: "conflict" } }), expected: { kind: "conflict", code: "consistency_conflict", status: 409 } },
+  { reply: "400 no code", commit: async () => ({ status: 400, body: { error: "bad request" } }), expected: { kind: "transport", code: "http_error", status: 400 } },
+  { reply: "400 command_rejected", commit: async () => ({ status: 400, body: { code: "command_rejected", error: "rejected" } }), expected: { kind: "rejected", code: "command_rejected", status: 400 } },
+  { reply: "422 unknown code", commit: async () => ({ status: 422, body: { code: "g86_unknown_code", error: "unknown" } }), expected: { kind: "transport", code: "transport", status: 422 } },
+  { reply: "500 no code", commit: async () => ({ status: 500, body: { error: "internal" } }), expected: { kind: "timeout", code: "unknown_outcome", status: 500 } },
+  { reply: "500 internal_error", commit: async () => ({ status: 500, body: { code: "internal_error", error: "internal" } }), expected: { kind: "transport", code: "transport", status: 500 } },
+  {
+    reply: "500 partial_write (validated partial body)",
+    commit: async () => ({ status: 500, body: { code: "partial_write", error: "partial", partial: g86PartialFacts } }),
+    expected: { kind: "partial", code: "partial_write", status: 500 },
+    partial: g86PartialFacts,
+  },
+  { reply: "503 no code", commit: async () => ({ status: 503, body: { error: "unavailable" } }), expected: { kind: "timeout", code: "unknown_outcome", status: 503 } },
+  { reply: "503 projection_unavailable", commit: async () => ({ status: 503, body: { code: "projection_unavailable", error: "unavailable" } }), expected: { kind: "unavailable", code: "projection_unavailable", status: 503 } },
+  { reply: "504 no code", commit: async () => ({ status: 504, body: { error: "gateway timeout" } }), expected: { kind: "timeout", code: "unknown_outcome", status: 504 } },
+  { reply: "thrown TypeError", commit: async () => { throw new TypeError("fetch failed"); }, expected: { kind: "transport", code: "transport" } },
+  { reply: "thrown AbortError", commit: async () => { throw abortError(); }, expected: { kind: "timeout", code: "aborted" } },
+  {
+    reply: "thrown foreign error carrying partial_write",
+    commit: async () => { throw Object.assign(new Error("foreign partial"), { name: "ClientError", code: "partial_write", partial: g86PartialFacts }); },
+    expected: { kind: "partial", code: "partial_write" },
+    partial: g86PartialFacts,
+  },
+];
+
+function g86Outcome(result: { readonly kind: string; readonly code?: string; readonly status?: number }): G86Outcome {
+  return {
+    kind: result.kind,
+    ...(result.code === undefined ? {} : { code: result.code }),
+    ...(result.status === undefined ? {} : { status: result.status }),
+  };
+}
+
+function g86Cell(outcome: G86Outcome): string {
+  return `${outcome.kind} / ${outcome.code ?? "-"} / ${outcome.status ?? "-"}`;
+}
+
+function g86CallerAction(kind: string): string {
+  if (kind === "committed") return "committed";
+  if (kind === "conflict") return "reread and recompute";
+  if (kind === "rejected" || kind === "invalid") return "fix the request";
+  return "reconcile, never blindly reissue";
 }
 
 function assertNoForeignTransportDetail(value: unknown, secret: string): asserts value is ClientError {
@@ -213,6 +298,36 @@ describe("SDT-G78 public error classification", () => {
     expect(JSON.stringify(result)).not.toContain(secretCause);
     expect(JSON.stringify(result)).not.toContain(secretHeader);
     expect(JSON.stringify(result)).not.toContain(secretExtra);
+  });
+
+  it("SDT-G86 AC2: classifies identical commit replies identically through both executors", async () => {
+    const observed: { readonly row: G86ParityRow; readonly ledger: G86Outcome; readonly facade: G86Outcome; readonly ledgerPartial: unknown; readonly facadePartial: unknown }[] = [];
+    for (const row of g86ParityRows) {
+      const ledger = await new ClaimLedgerExecutor({ transport: baseTransport({ commit: row.commit }) }).execute(appendFixture);
+      const facade = await createSekibanExecutor(baseTransport({ commit: row.commit })).execute(g86AppendCommand, { id: "parity" });
+      observed.push({
+        row,
+        ledger: g86Outcome(ledger),
+        facade: g86Outcome(facade),
+        ledgerPartial: (ledger as { readonly partial?: unknown }).partial,
+        facadePartial: (facade as { readonly partial?: unknown }).partial,
+      });
+    }
+    const table = [
+      "| adapter reply | expected kind / code / status | ClaimLedgerExecutor | SekibanExecutor | caller action |",
+      "| --- | --- | --- | --- | --- |",
+      ...observed.map(({ row, ledger, facade }) =>
+        `| ${row.reply} | ${g86Cell(row.expected)} | ${g86Cell(ledger)} | ${g86Cell(facade)} | ${g86CallerAction(row.expected.kind)} |`),
+    ].join("\n");
+    console.log(`SDT-G86 AC2 commit outcome table\n${table}`);
+    for (const { row, ledger, facade, ledgerPartial, facadePartial } of observed) {
+      expect(ledger, `${row.reply} via ClaimLedgerExecutor`).toEqual(row.expected);
+      expect(facade, `${row.reply} via SekibanExecutor`).toEqual(row.expected);
+      if (row.partial !== undefined) {
+        expect(ledgerPartial, `${row.reply} partial via ClaimLedgerExecutor`).toEqual(row.partial);
+        expect(facadePartial, `${row.reply} partial via SekibanExecutor`).toEqual(row.partial);
+      }
+    }
   });
 
   it("AC3/AC4: rejects malformed public responses without turning them into absence or refusal", async () => {
