@@ -33,6 +33,7 @@ import {
   type Tag,
 } from "@sekiban/dcb-domain";
 import { createV1Transport } from "../samples/meeting-room/src/transport";
+import { createRoomCommand } from "../samples/meeting-room/src/domain";
 import { g32EventId, g32Suid, G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
 
 const tags = tagFamily("g71");

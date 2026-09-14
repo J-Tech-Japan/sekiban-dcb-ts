@@ -1,10 +1,15 @@
 # SDT-G74 implementation evidence
 
-Status: **candidate updated after independent review; AC10 open.** The explicit
-design waivers recorded on 2026-09-14 were withdrawn the same day, and the
-consumers are being re-consulted on the surface hash
-`0c87402de0a3e8a3c894fe73d33506f44789fac6e027728dc90e2c69a573ffce`. The freeze
-is not declared. No merge, npm publication or release operation is claimed.
+Status: **blocked on prerequisite units; AC10 open.** A second independent
+review (head `0de5b2d1787ea275d519b85a9caca5feabc510a2`) and an audit of every
+option in the three packages found declared options that nothing implements and
+behaviour defects. By design ruling (host history, 2026-09-14 12:40 UTC) they are
+fixed by SDT-G88, SDT-G86, SDT-G87 and SDT-G89 before this unit freezes the
+surface. The surface hash will change when those land; the consumers are
+consulted only on the final hash. Sections below describe the extractor and
+proofs at this head; the option matrix, the 0.1.0 comparison and the hash are
+rewritten after the prerequisites land. No merge, npm publication or release
+operation is claimed.
 
 ## Provenance and scope
 
@@ -112,8 +117,8 @@ status `501`, without it (`packages/dcb-client/src/executor.ts` `readAuthority`;
 asserted at `test/g71-read-contract.spec.ts:383`). `query`, `listQuery`,
 `commit` and a snapshot-only `execute` do not use it.
 
-Two limitations were found while completing the matrix and are recorded rather
-than changed, because G74 does not change runtime behaviour:
+Two defects were found while completing the matrix. G74 does not change runtime
+behaviour, so by design ruling SDT-G86 fixes them before the freeze:
 
 - `ExecuteCommandOptions.totalBudgetMs` is declared but not read by
   `SekibanExecutor.execute`, exactly as in 0.1.0; only `ClaimLedgerExecutor`

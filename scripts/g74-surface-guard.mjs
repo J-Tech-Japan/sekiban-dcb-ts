@@ -37,23 +37,35 @@ function assertSurfaceEqual(baseline, current) {
   if (drifted.length > 0) fail(`release-shaped public surface drifted in: ${drifted.join(", ")}`);
 }
 
+/**
+ * The executor module's exports as the type checker sees them, so `export enum`,
+ * `export namespace`, `export *` and `export default` are counted as well as the
+ * common declaration forms. The source text is served from memory so the
+ * self-test can add an export without touching the file.
+ */
 function sourceExportNames(sourceText) {
-  const source = ts.createSourceFile("executor.ts", sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const names = new Set();
-  for (const statement of source.statements) {
-    const exported = statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) === true;
-    if (!exported) continue;
-    if (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
-      if (statement.name !== undefined) names.add(statement.name.text);
-    } else if (ts.isVariableStatement(statement)) {
-      for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name)) names.add(declaration.name.text);
-      }
-    } else if (ts.isExportDeclaration(statement) && statement.exportClause !== undefined && ts.isNamedExports(statement.exportClause)) {
-      for (const element of statement.exportClause.elements) names.add((element.name ?? element.propertyName).text);
-    }
-  }
-  return [...names].sort();
+  const fileName = join(root, "packages/dcb-client/src/executor.ts");
+  const options = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.Node16,
+    moduleResolution: ts.ModuleResolutionKind.Node16,
+    noEmit: true,
+    skipLibCheck: true,
+    types: [],
+  };
+  const host = ts.createCompilerHost(options, true);
+  const readSourceFile = host.getSourceFile.bind(host);
+  const readFileText = host.readFile.bind(host);
+  host.getSourceFile = (name, languageVersion, onError, shouldCreate) => (resolve(name) === fileName
+    ? ts.createSourceFile(name, sourceText, languageVersion, true, ts.ScriptKind.TS)
+    : readSourceFile(name, languageVersion, onError, shouldCreate));
+  host.readFile = (name) => (resolve(name) === fileName ? sourceText : readFileText(name));
+  const program = ts.createProgram([fileName], options, host);
+  const checker = program.getTypeChecker();
+  const sourceFile = program.getSourceFile(fileName);
+  const moduleSymbol = sourceFile === undefined ? undefined : checker.getSymbolAtLocation(sourceFile);
+  if (moduleSymbol === undefined) fail("executor module symbol could not be resolved");
+  return checker.getExportsOfModule(moduleSymbol).map((symbol) => symbol.name).sort();
 }
 
 function assertClassification(sourceText, ledger) {
@@ -142,14 +154,22 @@ if (process.argv.includes("--self-test")) {
     entry.symbols.push(template);
     entry.symbols.sort((left, right) => left.name.localeCompare(right.name));
   }, baseline));
-  let unclassifiedRed = false;
-  try {
-    assertClassification(sourceText + "\nexport interface NewlyUnclassified { value: string }\n", ledger);
-  } catch (error) {
-    unclassifiedRed = true;
-    comparatorResults.push({ label: "unclassified-executor-export", result: "RED_DETECTED", reason: error instanceof Error ? error.message : String(error) });
+  const unclassifiedForms = [
+    ["unclassified-executor-export", "\nexport interface NewlyUnclassified { value: string }\n"],
+    ["unclassified-executor-enum", "\nexport enum NewlyUnclassifiedEnum { One }\n"],
+    ["unclassified-executor-namespace", "\nexport namespace NewlyUnclassifiedNamespace { export const value = 1; }\n"],
+    ["unclassified-executor-star-reexport", "\nexport * from \"./errors.js\";\n"],
+  ];
+  for (const [label, addition] of unclassifiedForms) {
+    let red = false;
+    try {
+      assertClassification(sourceText + addition, ledger);
+    } catch (error) {
+      red = true;
+      comparatorResults.push({ label, result: "RED_DETECTED", reason: error instanceof Error ? error.message : String(error) });
+    }
+    if (!red) fail(`${label} self-test unexpectedly passed`);
   }
-  if (!unclassifiedRed) fail("unclassified executor export self-test unexpectedly passed");
   process.stdout.write(`${JSON.stringify({ schema: "sdt-g74-surface-guard-self-test/v1", status: "PASS", note: "comparator unit tests over in-memory JSON; they do not touch the release artifact", comparatorTests: comparatorResults }, null, 2)}\n`);
 } else {
   const current = await extractCurrent();

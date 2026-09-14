@@ -7,8 +7,10 @@
  * The hash covers what a consumer of executor-facade-v1 can observe, and
  * deliberately excludes facts that change without any API change:
  *
- * - package version numbers, and the versions of intra-@sekiban dependencies,
- *   which change on every release without changing the surface;
+ * - package version numbers, and an intra-@sekiban dependency range that pins
+ *   exactly the package's own version, which moves on every release without
+ *   changing the surface (a looser or different intra-scope range is kept);
+ * - comments, which the extractor already removes from declaration text;
  * - TypeScript's internal symbol ids in names such as `__@eventPayloadBrand@40873`,
  *   which depend on program construction order rather than on the declaration;
  * - the re-export `alias` flag, which distinguishes `export *` from an explicit
@@ -31,12 +33,15 @@ export function normalizeInternalSymbolIds(value) {
   return value;
 }
 
-function normalizeDependencies(dependencies) {
-  return Object.fromEntries(Object.entries(dependencies ?? {}).map(([name, range]) => [
+function normalizeDependencies(dependencies, ownVersion) {
+  if (dependencies === undefined) return undefined;
+  return Object.fromEntries(Object.entries(dependencies).map(([name, range]) => [
     name,
-    name.startsWith(INTRA_SCOPE) ? "<intra-scope>" : range,
+    name.startsWith(INTRA_SCOPE) && range === ownVersion ? "<intra-scope-exact>" : range,
   ]));
 }
+
+const DEPENDENCY_FIELDS = ["peerDependencies", "optionalDependencies"];
 
 /** A shallow copy without the named keys, keeping the order of the rest. */
 function omit(value, ...keys) {
@@ -53,14 +58,19 @@ function withoutAlias(symbol) {
 export function hashProjection(model) {
   return normalizeInternalSymbolIds({
     packages: (model.packages ?? []).map((pkg) => ({
-      ...omit(pkg, "version", "dependencies"),
-      dependencies: normalizeDependencies(pkg.dependencies),
+      ...omit(pkg, "version", "dependencies", "otherFields"),
+      dependencies: normalizeDependencies(pkg.dependencies ?? {}, pkg.version),
+      otherFields: Object.fromEntries(Object.entries(pkg.otherFields ?? {}).map(([key, value]) => [
+        key,
+        DEPENDENCY_FIELDS.includes(key) ? normalizeDependencies(value, pkg.version) : value,
+      ])),
     })),
     entryPoints: (model.entryPoints ?? []).map((entry) => ({
       ...omit(entry, "version", "symbols"),
       symbols: (entry.symbols ?? []).map(withoutAlias),
     })),
     reachableDeclarations: model.reachableDeclarations ?? [],
+    declarationFiles: model.declarationFiles ?? [],
     runtimeNamespaces: model.runtimeNamespaces ?? {},
   });
 }

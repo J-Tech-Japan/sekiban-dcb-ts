@@ -20,7 +20,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { publicSurfaceHash } from "./g74-surface-hash.mjs";
+import { hashProjection, publicSurfaceHash } from "./g74-surface-hash.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const extractor = resolve(root, "scripts/g74-release-surface.mjs");
@@ -32,32 +32,49 @@ const preflight = "export declare function preflightCommit(input: PreflightInput
 
 /** Each mutant is one or more text edits with an exact expected match count. */
 const MUTANTS = [
-  { id: "removed-export", category: "removal", edits: [
+  { id: "removed-export", category: "removal", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: `${preflight}\n`, replace: "", expectedMatches: 1 }] },
-  { id: "renamed-export", category: "rename", edits: [
+  { id: "renamed-export", category: "rename", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: "export declare function preflightCommit(", replace: "export declare function preflightCommitRenamed(", expectedMatches: 1 }] },
-  { id: "parameter-change", category: "parameter", edits: [
+  { id: "parameter-change", category: "parameter", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: preflight, replace: "export declare function preflightCommit(input: PreflightInput, extra: string): void;", expectedMatches: 1 }] },
-  { id: "return-change", category: "return", edits: [
+  { id: "return-change", category: "return", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: preflight, replace: "export declare function preflightCommit(input: PreflightInput): boolean;", expectedMatches: 1 }] },
-  { id: "type-widening", category: "type", edits: [
+  { id: "type-widening", category: "type", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-core", file: CLIENT_DTS, search: "export type JsonPrimitive = null | boolean | number | string;", replace: "export type JsonPrimitive = null | boolean | number | string | undefined;", expectedMatches: 1 }] },
-  { id: "type-narrowing", category: "type", edits: [
+  { id: "type-narrowing", category: "type", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-core", file: CLIENT_DTS, search: "export type JsonPrimitive = null | boolean | number | string;", replace: "export type JsonPrimitive = string;", expectedMatches: 1 }] },
-  { id: "public-root-export-addition", category: "export-addition", edits: [
+  { id: "public-root-export-addition", category: "export-addition", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: 'export { ClientError } from "./errors.js";', replace: 'export { ClientError } from "./errors.js";\nexport declare const UnexpectedPublicRootAddition: string;', expectedMatches: 1 }] },
-  { id: "adapter-optional-member-required", category: "adapter-contract", edits: [
+  { id: "adapter-optional-member-required", category: "adapter-contract", expectedSections: ["entryPoints"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: "readonly readTagLatestSortable?: (request: {", replace: "readonly readTagLatestSortable: (request: {", expectedMatches: 1 }] },
-  { id: "reachable-nonexported-optional-to-required", category: "reachable-type", edits: [
+  { id: "reachable-nonexported-optional-to-required", category: "reachable-type", expectedSections: ["reachableDeclarations"], edits: [
     { package: "dcb-domain", file: "dist/bridge.d.ts", search: "interface LegacyEventDefinition {\n    readonly name?: string;", replace: "interface LegacyEventDefinition {\n    readonly name: string;", expectedMatches: 1 }] },
-  { id: "reachable-nonexported-parameter-widening", category: "reachable-type", edits: [
+  { id: "reachable-nonexported-parameter-widening", category: "reachable-type", expectedSections: ["reachableDeclarations"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: "| Promise<ClientCommandDecision>) | CommandDefinition;", replace: "| Promise<ClientCommandDecision>) | CommandDefinition<any, any>;", expectedMatches: 1 }] },
-  { id: "brand-identity-collapse", category: "brand", edits: [
+  { id: "brand-identity-collapse", category: "brand", expectedSections: ["reachableDeclarations"], edits: [
     { package: "dcb-domain", file: "dist/types.d.ts", search: "declare const parsedBoundaryBrand: unique symbol;", replace: "declare const parsedBoundaryBrand: typeof eventPayloadBrand;", expectedMatches: 1 }] },
-  { id: "engine-floor-change", category: "package-fact", edits: [
+  { id: "engine-floor-change", category: "package-fact", expectedSections: ["packages"], edits: [
     { package: "dcb-client", file: "package.json", search: '"node": ">=20"', replace: '"node": ">=18"', expectedMatches: 1 }] },
-  { id: "export-condition-addition", category: "package-fact", edits: [
+  { id: "export-condition-addition", category: "package-fact", expectedSections: ["packages"], edits: [
     { package: "dcb-client", file: "package.json", search: '      "import": "./dist/index.js"', replace: '      "import": "./dist/index.js",\n      "require": "./dist/index.js"', expectedMatches: 1 }] },
+  { id: "export-condition-reorder", category: "package-fact", expectedSections: ["packages"], edits: [
+    { package: "dcb-client", file: "package.json", search: '      "types": "./dist/index.d.ts",\n      "import": "./dist/index.js"', replace: '      "import": "./dist/index.js",\n      "types": "./dist/index.d.ts"', expectedMatches: 1 }] },
+  { id: "peer-dependency-addition", category: "package-fact", expectedSections: ["packages"], edits: [
+    { package: "dcb-client", file: "package.json", search: '  "sideEffects": false,\n', replace: '  "sideEffects": false,\n  "peerDependencies": { "zod": "^3.0.0" },\n', expectedMatches: 1 }] },
+  { id: "side-effects-removal", category: "package-fact", expectedSections: ["packages"], edits: [
+    { package: "dcb-client", file: "package.json", search: '  "sideEffects": false,\n', replace: "", expectedMatches: 1 }] },
+  { id: "internal-dependency-loosened", category: "package-fact", expectedSections: ["packages"], edits: [
+    { package: "dcb-client", file: "package.json", search: '"@sekiban/dcb-core": "0.2.0"', replace: '"@sekiban/dcb-core": "^0.2.0"', expectedMatches: 1 }] },
+  { id: "reference-lib-directive", category: "declaration-file", expectedSections: ["declarationFiles"], edits: [
+    { package: "dcb-client", file: CLIENT_DTS, search: "import type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", replace: "/// <reference lib=\"dom\" />\nimport type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", expectedMatches: 1 }] },
+  { id: "global-augmentation", category: "declaration-file", expectedSections: ["declarationFiles"], edits: [
+    { package: "dcb-client", file: CLIENT_DTS, search: 'export { ClientError } from "./errors.js";', replace: 'export { ClientError } from "./errors.js";\ndeclare global { interface Array<T> { readonly g74Augmented?: T; } }', expectedMatches: 1 }] },
+  { id: "type-only-value-reexport", category: "export-kind", expectedSections: ["entryPoints"], edits: [
+    { package: "dcb-client", file: CLIENT_DTS, search: 'export { ClientError } from "./errors.js";', replace: 'export type { ClientError } from "./errors.js";', expectedMatches: 1 }] },
+  // Negative control: documentation is not surface, so this edit must leave the hash unchanged.
+  { id: "member-jsdoc-only", category: "documentation", expectHashUnchanged: true, edits: [
+    { package: "dcb-client", file: CLIENT_DTS, search: "/** The durable read-side head that actually backs this page, when supplied. */", replace: "/** Reworded documentation for the durable read-side head; no type change. */", expectedMatches: 1 }] },
 ];
 
 
@@ -83,13 +100,28 @@ function hashParticipation(model) {
     proof("package-module-type-participates", "TS1479: a commonjs flip cannot produce a resolvable artifact, so participation is proven on the model", true,
       (copy) => { copy.packages[0].type = copy.packages[0].type === "module" ? "commonjs" : "module"; }),
     proof("version-number-excluded", "a release version bump must not change the surface identity", false,
-      (copy) => { for (const pkg of copy.packages) pkg.version = "9.9.9"; for (const entry of copy.entryPoints) entry.version = "9.9.9"; }),
+      (copy) => {
+        // A release moves every package version and the exact intra-scope pins together.
+        for (const pkg of copy.packages) {
+          for (const [name, range] of Object.entries(pkg.dependencies ?? {})) if (name.startsWith("@sekiban/") && range === pkg.version) pkg.dependencies[name] = "9.9.9";
+          pkg.version = "9.9.9";
+        }
+        for (const entry of copy.entryPoints) entry.version = "9.9.9";
+      }),
   ];
 }
 
+class RunnerFailure extends Error {}
+
+/** Throw rather than exit, so the temporary directory is always removed. */
 function fail(message) {
-  process.stderr.write(`SDT-G74 drift runner: ${message}\n`);
-  process.exit(1);
+  throw new RunnerFailure(message);
+}
+
+function driftedSections(left, right) {
+  const a = hashProjection(left);
+  const b = hashProjection(right);
+  return Object.keys({ ...a, ...b }).filter((key) => JSON.stringify(a[key]) !== JSON.stringify(b[key])).sort();
 }
 
 function extract(workdir, packDir, spec) {
@@ -102,7 +134,8 @@ function extract(workdir, packDir, spec) {
   }
   const result = spawnSync(process.execPath, args, { cwd: root, encoding: "utf8", env: process.env });
   if (result.status !== 0) return { ok: false, detail: `${result.stderr}${result.stdout}`.trim().split("\n").slice(-3).join(" | ") };
-  return { ok: true, hash: JSON.parse(readFileSync(output, "utf8")).publicSurfaceHash };
+  const model = JSON.parse(readFileSync(output, "utf8"));
+  return { ok: true, hash: model.publicSurfaceHash, model };
 }
 
 const workdir = mkdtempSync(join(tmpdir(), "sdt-g74-drift-"));
@@ -124,32 +157,52 @@ try {
     fail(`positive control does not reproduce the committed baseline (${control.hash} != ${baseline.publicSurfaceHash}); refresh the baseline before trusting any mutant`);
   }
 
+  // RED requires the hash to move and every section the mutant targets to be among
+  // the drifted ones, so a mutant cannot pass by disturbing an unrelated section.
   const results = MUTANTS.map((mutant) => {
     const run = extract(workdir, packDir, mutant);
     if (!run.ok) return { id: mutant.id, category: mutant.category, result: "INVALID", detail: run.detail };
-    return { id: mutant.id, category: mutant.category, result: run.hash === baseline.publicSurfaceHash ? "MISSED" : "RED", hash: run.hash };
+    const sections = driftedSections(baseline, run.model);
+    const moved = run.hash !== baseline.publicSurfaceHash;
+    if (mutant.expectHashUnchanged === true) {
+      return { id: mutant.id, category: mutant.category, result: moved ? "FALSE_POSITIVE" : "UNCHANGED", driftedSections: sections };
+    }
+    if (!moved) return { id: mutant.id, category: mutant.category, result: "MISSED", driftedSections: sections };
+    const missingSections = mutant.expectedSections.filter((section) => !sections.includes(section));
+    return {
+      id: mutant.id,
+      category: mutant.category,
+      result: missingSections.length === 0 ? "RED" : "WRONG_SECTION",
+      expectedSections: mutant.expectedSections,
+      driftedSections: sections,
+      hash: run.hash,
+    };
   });
 
   const guardSelfTest = spawnSync(process.execPath, [guard, "--self-test"], { cwd: root, encoding: "utf8", env: process.env });
   if (guardSelfTest.status !== 0) fail(`guard self-test failed: ${guardSelfTest.stderr}`);
-  const classification = (JSON.parse(guardSelfTest.stdout).comparatorTests ?? []).find((entry) => entry.label === "unclassified-executor-export");
-  if (classification?.result !== "RED_DETECTED") fail("source-level unclassified-executor-export check was not red");
+  const classificationForms = (JSON.parse(guardSelfTest.stdout).comparatorTests ?? []).filter((entry) => entry.label.startsWith("unclassified-executor-"));
+  if (classificationForms.length < 4 || classificationForms.some((entry) => entry.result !== "RED_DETECTED")) fail("source-level unclassified executor export checks were not all red");
 
   const participation = hashParticipation(baseline);
   const badParticipation = participation.filter((entry) => entry.result !== "HOLDS");
-  const bad = results.filter((entry) => entry.result !== "RED");
+  const expectedResult = (entry) => (MUTANTS.find((mutant) => mutant.id === entry.id)?.expectHashUnchanged === true ? "UNCHANGED" : "RED");
+  const bad = results.filter((entry) => entry.result !== expectedResult(entry));
   const receipt = {
-    schema: "sdt-g74-drift-mutation/v2",
+    schema: "sdt-g74-drift-mutation/v3",
     status: bad.length === 0 && badParticipation.length === 0 ? "PASS" : "FAIL",
     baselineHash: baseline.publicSurfaceHash,
     positiveControl: { result: "REPRODUCES_BASELINE", hash: control.hash },
     artifactMutants: results,
-    sourceClassification: { id: "unclassified-executor-export", result: classification.result },
+    sourceClassification: classificationForms.map((entry) => ({ id: entry.label, result: entry.result })),
     hashParticipation: participation,
   };
   process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
   if (bad.length > 0) fail(`${bad.length} mutant(s) not red: ${bad.map((entry) => `${entry.id}=${entry.result}`).join(", ")}`);
   if (badParticipation.length > 0) fail(`hash participation failed: ${badParticipation.map((entry) => entry.id).join(", ")}`);
+} catch (error) {
+  process.stderr.write(`SDT-G74 drift runner: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
 } finally {
   rmSync(workdir, { recursive: true, force: true });
 }

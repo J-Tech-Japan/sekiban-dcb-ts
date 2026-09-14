@@ -39,10 +39,27 @@ function parseJsonOutput(output, label) {
   }
 }
 
+/**
+ * Comments are documentation, not surface: a JSDoc edit on a member must not move
+ * the surface identity any more than one on a top-level declaration does (whose
+ * leading comment `getText()` already excludes). The TypeScript scanner drops
+ * comment trivia without touching string or template literal contents.
+ */
+function withoutComments(text) {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, text);
+  let result = "";
+  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) {
+      result += " ";
+      continue;
+    }
+    result += scanner.getTokenText();
+  }
+  return result;
+}
+
 function normalizedText(text) {
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/\/\/#[^\n]*\n/g, "\n")
+  return withoutComments(text.replace(/\r\n/g, "\n"))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -149,15 +166,32 @@ function memberFacts(checker, symbol, declaration) {
   });
 }
 
+/** True when any hop of an export alias chain is `export type`. */
+function exportedTypeOnly(symbol, checker) {
+  let current = symbol;
+  for (let hop = 0; hop < 32 && current !== undefined && (current.flags & ts.SymbolFlags.Alias) !== 0; hop += 1) {
+    for (const declaration of current.declarations ?? []) {
+      if (ts.isExportSpecifier(declaration) && (declaration.isTypeOnly || declaration.parent?.parent?.isTypeOnly)) return true;
+      if (ts.isExportDeclaration(declaration) && declaration.isTypeOnly) return true;
+      if (ts.isImportSpecifier(declaration) && (declaration.isTypeOnly || declaration.parent?.parent?.isTypeOnly)) return true;
+      if (ts.isImportClause(declaration) && declaration.isTypeOnly) return true;
+    }
+    current = checker.getImmediateAliasedSymbol(current);
+  }
+  return false;
+}
+
 function symbolNamespaceFlags(symbol, checker) {
   const resolved = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+  const typeOnly = exportedTypeOnly(symbol, checker);
   const valueMask = ts.SymbolFlags.Class | ts.SymbolFlags.Function | ts.SymbolFlags.Variable |
     ts.SymbolFlags.Enum | ts.SymbolFlags.ValueModule | ts.SymbolFlags.Method |
     ts.SymbolFlags.GetAccessor | ts.SymbolFlags.SetAccessor;
   const typeMask = ts.SymbolFlags.Interface | ts.SymbolFlags.TypeAlias | ts.SymbolFlags.TypeParameter |
     ts.SymbolFlags.TypeLiteral | ts.SymbolFlags.Type | ts.SymbolFlags.NamespaceModule;
   return {
-    value: (resolved.flags & valueMask) !== 0,
+    // A value re-exported with `export type` is not a value to a consumer.
+    value: (resolved.flags & valueMask) !== 0 && !typeOnly,
     type: (resolved.flags & typeMask) !== 0 || (resolved.flags & ts.SymbolFlags.Class) !== 0,
     alias: (symbol.flags & ts.SymbolFlags.Alias) !== 0,
   };
@@ -280,6 +314,19 @@ async function createResolutionRoot(temp, packages) {
   return resolutionRoot;
 }
 
+/**
+ * Node picks the first matching export condition, so condition order is part of
+ * the contract. Subpaths are sorted; conditions keep their manifest order as
+ * [condition, target] pairs.
+ */
+function exportsInResolutionOrder(exportsField) {
+  const conditions = (value) => (value !== null && typeof value === "object" && !Array.isArray(value)
+    ? Object.entries(value).map(([condition, target]) => [condition, conditions(target)])
+    : value);
+  if (typeof exportsField === "string") return exportsField;
+  return Object.fromEntries(Object.keys(exportsField).sort().map((subpath) => [subpath, conditions(exportsField[subpath])]));
+}
+
 function sortedDeep(value) {
   if (Array.isArray(value)) return value.map(sortedDeep);
   if (value !== null && typeof value === "object") {
@@ -322,6 +369,47 @@ function resolveDeclaration(entry, packageDir, resolutionRoot) {
   return { specifier, fileName: result.resolvedFileName, expectedImport: entry.import };
 }
 
+
+/** Package metadata that is not part of what a consumer compiles or runs against. */
+const MANIFEST_METADATA_FIELDS = new Set([
+  "author", "bugs", "contributors", "description", "devDependencies", "files", "funding",
+  "gitHead", "homepage", "keywords", "license", "publishConfig", "readme", "readmeFilename",
+  "repository", "scripts",
+]);
+
+/**
+ * Facts a declaration file carries outside its exports: triple-slash directives
+ * pull lib, types or files into every consumer's program, and `declare global` or
+ * `declare module` augmentations change types the consumer did not import from us.
+ * Only files that carry at least one such fact are recorded.
+ */
+function declarationFileFacts(program, scopeRoot) {
+  const scope = realpathSync(scopeRoot);
+  const facts = [];
+  for (const sourceFile of program.getSourceFiles()) {
+    const fileName = realpathSync(sourceFile.fileName);
+    if (!fileName.startsWith(scope)) continue;
+    const packageDir = fileName.slice(scope.length + 1).split("/")[0];
+    const directives = {
+      lib: sourceFile.libReferenceDirectives.map((directive) => directive.fileName).sort(),
+      path: sourceFile.referencedFiles.map((directive) => directive.fileName).sort(),
+      types: sourceFile.typeReferenceDirectives.map((directive) => directive.fileName).sort(),
+    };
+    const augmentations = sourceFile.statements
+      .filter((statement) => ts.isModuleDeclaration(statement) && (
+        (statement.flags & ts.NodeFlags.GlobalAugmentation) !== 0 || ts.isStringLiteral(statement.name)))
+      .map((statement) => normalizedText(statement.getText()))
+      .sort();
+    if (directives.lib.length + directives.path.length + directives.types.length + augmentations.length === 0) continue;
+    facts.push({
+      package: `@sekiban/${packageDir}`,
+      file: relativeDeclarationPath(sourceFile.fileName, join(scopeRoot, packageDir)),
+      directives,
+      augmentations,
+    });
+  }
+  return facts.sort((left, right) => left.package.localeCompare(right.package) || left.file.localeCompare(right.file));
+}
 
 const TYPE_REFERENCE_NAMES = (node) => {
   if (ts.isTypeReferenceNode(node)) return node.typeName;
@@ -457,25 +545,32 @@ async function extractModel() {
     }
     const manifestFacts = packageNames.map((shortName) => {
       const manifest = packages[shortName].manifest;
+      for (const subpath of Object.keys(manifest.exports ?? {})) declarationEntry(manifest, subpath);
+      // Deny by default: every manifest field is a consumer-visible fact unless it
+      // is named here as package metadata. A new peerDependencies, sideEffects,
+      // types or bin field therefore changes the model without anyone listing it.
+      const extra = Object.fromEntries(Object.keys(manifest)
+        .filter((key) => !MANIFEST_METADATA_FIELDS.has(key) && !["name", "version", "private", "type", "engines", "exports", "dependencies"].includes(key))
+        .sort()
+        .map((key) => [key, sortedDeep(manifest[key])]));
       return {
         name: manifest.name,
         version: manifest.version,
         private: manifest.private ?? false,
         type: manifest.type ?? null,
         engines: sortedDeep(manifest.engines ?? {}),
-        exports: Object.fromEntries(Object.keys(manifest.exports ?? {}).sort().map((subpath) => {
-          declarationEntry(manifest, subpath);
-          return [subpath, sortedDeep(manifest.exports[subpath])];
-        })),
+        exports: exportsInResolutionOrder(manifest.exports ?? {}),
         dependencies: Object.fromEntries(Object.entries(manifest.dependencies ?? {}).sort()),
+        otherFields: extra,
       };
     });
     const model = {
-      schema: "sdt-g74-surface/v2",
+      schema: "sdt-g74-surface/v3",
       generatedBy: { typescript: compilerVersion, module: "Node16", moduleResolution: "Node16", target: "ES2022", source: "npm pack + prepack + exports-map-resolved declarations" },
       packages: manifestFacts,
       entryPoints: modelEntries,
       reachableDeclarations: reachableDeclarationFacts(checker, allExportedSymbols, join(resolutionRoot, "node_modules", "@sekiban")),
+      declarationFiles: declarationFileFacts(program, join(resolutionRoot, "node_modules", "@sekiban")),
     };
     const runtimeNamespaces = {};
     for (const entry of entries) {

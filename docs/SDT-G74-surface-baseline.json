@@ -1,5 +1,5 @@
 {
-  "schema": "sdt-g74-surface/v2",
+  "schema": "sdt-g74-surface/v3",
   "generatedBy": {
     "typescript": "5.9.3",
     "module": "Node16",
@@ -17,12 +17,22 @@
         "node": ">=20"
       },
       "exports": {
-        ".": {
-          "import": "./dist/index.js",
-          "types": "./dist/index.d.ts"
-        }
+        ".": [
+          [
+            "types",
+            "./dist/index.d.ts"
+          ],
+          [
+            "import",
+            "./dist/index.js"
+          ]
+        ]
       },
-      "dependencies": {}
+      "dependencies": {},
+      "otherFields": {
+        "sideEffects": false,
+        "types": "./dist/index.d.ts"
+      }
     },
     {
       "name": "@sekiban/dcb-domain",
@@ -33,17 +43,33 @@
         "node": ">=20"
       },
       "exports": {
-        ".": {
-          "import": "./dist/index.js",
-          "types": "./dist/index.d.ts"
-        },
-        "./testing": {
-          "import": "./dist/testing.js",
-          "types": "./dist/testing.d.ts"
-        }
+        ".": [
+          [
+            "types",
+            "./dist/index.d.ts"
+          ],
+          [
+            "import",
+            "./dist/index.js"
+          ]
+        ],
+        "./testing": [
+          [
+            "types",
+            "./dist/testing.d.ts"
+          ],
+          [
+            "import",
+            "./dist/testing.js"
+          ]
+        ]
       },
       "dependencies": {
         "zod": "4.4.3"
+      },
+      "otherFields": {
+        "sideEffects": false,
+        "types": "./dist/index.d.ts"
       }
     },
     {
@@ -55,14 +81,24 @@
         "node": ">=20"
       },
       "exports": {
-        ".": {
-          "import": "./dist/index.js",
-          "types": "./dist/index.d.ts"
-        }
+        ".": [
+          [
+            "types",
+            "./dist/index.d.ts"
+          ],
+          [
+            "import",
+            "./dist/index.js"
+          ]
+        ]
       },
       "dependencies": {
         "@sekiban/dcb-core": "0.2.0",
         "@sekiban/dcb-domain": "0.2.0"
+      },
+      "otherFields": {
+        "sideEffects": false,
+        "types": "./dist/index.d.ts"
       }
     }
   ],
@@ -2284,7 +2320,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type EventDefinitionOptions<TPayload extends JsonValue> = { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; /** Removed by G32: new payload revisions use a new eventPayloadName. */ readonly version?: never; readonly parse?: EventParser<TPayload>; readonly parser?: EventParser<TPayload>; readonly validate?: EventParser<TPayload>; };",
+              "text": "export type EventDefinitionOptions<TPayload extends JsonValue> = { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly version?: never; readonly parse?: EventParser<TPayload>; readonly parser?: EventParser<TPayload>; readonly validate?: EventParser<TPayload>; };",
               "typeParameters": [
                 {
                   "name": "TPayload",
@@ -2295,7 +2331,7 @@
               ]
             }
           ],
-          "type": "{ readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; /** Removed by G32: new payload revisions use a new eventPayloadName. */ readonly version?: never; readonly parse?: EventParser<TPayload>; readonly parser?: EventParser<TPayload>; readonly validate?: EventParser<TPayload>; }",
+          "type": "{ readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly version?: never; readonly parse?: EventParser<TPayload>; readonly parser?: EventParser<TPayload>; readonly validate?: EventParser<TPayload>; }",
           "signatures": {
             "call": [],
             "construct": []
@@ -3858,7 +3894,7 @@
             {
               "file": "dist/materializedView.d.ts",
               "kind": "interface",
-              "text": "export interface MaterializedViewRowMaterializerOptions<TEvent = unknown> { readonly id: string; readonly version?: number; readonly indexDescriptors?: readonly MaterializedViewIndexDescriptor<TEvent>[]; readonly indexes?: readonly MaterializedViewIndexDescriptor<TEvent>[]; /** Return row upserts/deletes, or a complete plan when custom indexes are needed. */ readonly materialize?: (event: TEvent) => MaterializedViewMaterializeResult; readonly plan?: (event: TEvent) => MaterializedViewMaterializeResult; }",
+              "text": "export interface MaterializedViewRowMaterializerOptions<TEvent = unknown> { readonly id: string; readonly version?: number; readonly indexDescriptors?: readonly MaterializedViewIndexDescriptor<TEvent>[]; readonly indexes?: readonly MaterializedViewIndexDescriptor<TEvent>[]; readonly materialize?: (event: TEvent) => MaterializedViewMaterializeResult; readonly plan?: (event: TEvent) => MaterializedViewMaterializeResult; }",
               "typeParameters": [
                 {
                   "name": "TEvent",
@@ -4346,7 +4382,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type ProjectorDefinitionOptions<TState extends JsonValue = JsonValue> = { readonly id?: string; readonly projectorId?: string; readonly version?: number; readonly projectorVersion?: number; readonly subscribedEventNames?: readonly string[]; readonly subscriptions?: readonly string[]; readonly events?: readonly (string | EventDefinition)[]; readonly subscribedEventTypes?: readonly string[]; readonly initialState: TState; readonly handlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly eventHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; /** Optional canonical-key handlers; name handlers remain valid for v1. */ readonly eventTypeHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly serializeState?: (state: TState) => string; readonly deserializeState?: (serialized: string) => TState; };",
+              "text": "export type ProjectorDefinitionOptions<TState extends JsonValue = JsonValue> = { readonly id?: string; readonly projectorId?: string; readonly version?: number; readonly projectorVersion?: number; readonly subscribedEventNames?: readonly string[]; readonly subscriptions?: readonly string[]; readonly events?: readonly (string | EventDefinition)[]; readonly subscribedEventTypes?: readonly string[]; readonly initialState: TState; readonly handlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly eventHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly eventTypeHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly serializeState?: (state: TState) => string; readonly deserializeState?: (serialized: string) => TState; };",
               "typeParameters": [
                 {
                   "name": "TState",
@@ -4357,7 +4393,7 @@
               ]
             }
           ],
-          "type": "{ readonly id?: string; readonly projectorId?: string; readonly version?: number; readonly projectorVersion?: number; readonly subscribedEventNames?: readonly string[]; readonly subscriptions?: readonly string[]; readonly events?: readonly (string | EventDefinition)[]; readonly subscribedEventTypes?: readonly string[]; readonly initialState: TState; readonly handlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly eventHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; /** Optional canonical-key handlers; name handlers remain valid for v1. */ readonly eventTypeHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly serializeState?: (state: TState) => string; readonly deserializeState?: (serialized: string) => TState; }",
+          "type": "{ readonly id?: string; readonly projectorId?: string; readonly version?: number; readonly projectorVersion?: number; readonly subscribedEventNames?: readonly string[]; readonly subscriptions?: readonly string[]; readonly events?: readonly (string | EventDefinition)[]; readonly subscribedEventTypes?: readonly string[]; readonly initialState: TState; readonly handlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly eventHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly eventTypeHandlers?: Readonly<Record<string, ProjectorHandler<TState>>>; readonly serializeState?: (state: TState) => string; readonly deserializeState?: (serialized: string) => TState; }",
           "signatures": {
             "call": [],
             "construct": []
@@ -7131,7 +7167,7 @@
             {
               "file": "dist/domain.d.ts",
               "kind": "interface",
-              "text": "export interface DomainViewDefinition { readonly id: string; readonly source: string; readonly projector?: string; /** Domain-owned half of the per-view delivery policy. */ readonly deliveryClass?: \"immediate-preferred\" | \"queued\"; }",
+              "text": "export interface DomainViewDefinition { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: \"immediate-preferred\" | \"queued\"; }",
               "typeParameters": []
             }
           ],
@@ -7582,7 +7618,7 @@
             {
               "file": "dist/event.d.ts",
               "kind": "interface",
-              "text": "export interface EventOptions<Payload, Deriver extends TagDeriver<Payload>> { readonly tags: Deriver; /** Removed by G32: define a distinct event name for each payload revision. */ readonly version?: never; readonly tagFamily?: TagFamily | string; }",
+              "text": "export interface EventOptions<Payload, Deriver extends TagDeriver<Payload>> { readonly tags: Deriver; readonly version?: never; readonly tagFamily?: TagFamily | string; }",
               "typeParameters": [
                 {
                   "name": "Payload",
@@ -11710,7 +11746,7 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeAllocationVector { readonly candidates: readonly { readonly ordinal: string; readonly suid: string; }[]; readonly allocatorLineageId?: string; /** Durable attempt identity returned by the runtime allocator/admission path. */ readonly attemptId?: string; }",
+              "text": "export interface RuntimeAllocationVector { readonly candidates: readonly { readonly ordinal: string; readonly suid: string; }[]; readonly allocatorLineageId?: string; readonly attemptId?: string; }",
               "typeParameters": []
             }
           ],
@@ -12250,7 +12286,7 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeCommandPort { /** Read-only conflict barrier. A conflict here must not enter any write port. */ readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; /** Admission write gate runs after the read-only conflict barrier and before allocation. */ readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; /** Allocation is deliberately after admission and receives no durable id from the authoring log. */ readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector; /** Commit receives the one allocated vector and the same canonical G27 event identity. */ readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; /** An unknown outcome is reconciled against the same immutable candidate/attempt/vector, never resubmitted as new work. */ readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; }",
+              "text": "export interface RuntimeCommandPort { readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector; readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; }",
               "typeParameters": []
             }
           ],
@@ -13662,7 +13698,7 @@
             {
               "file": "dist/types.d.ts",
               "kind": "interface",
-              "text": "export interface SnapshotReader { readonly read: (projector: ProjectorLike, tag: Tag) => Promise<PortableSnapshot> | PortableSnapshot; readonly exists?: (tag: Tag) => Promise<boolean> | boolean; /** Optional exact head for exists-only reads; null is the assert-empty head. */ readonly head?: (tag: Tag) => Promise<string | null> | string | null; }",
+              "text": "export interface SnapshotReader { readonly read: (projector: ProjectorLike, tag: Tag) => Promise<PortableSnapshot> | PortableSnapshot; readonly exists?: (tag: Tag) => Promise<boolean> | boolean; readonly head?: (tag: Tag) => Promise<string | null> | string | null; }",
               "typeParameters": []
             }
           ],
@@ -17392,7 +17428,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface ConsistencyEntry { readonly tag: string; /** §3.1 commit-envelope spelling; §5.3 tag-state keeps lastSortedUniqueId. */ readonly lastSortableUniqueId: string; }",
+              "text": "export interface ConsistencyEntry { readonly tag: string; readonly lastSortableUniqueId: string; }",
               "typeParameters": []
             }
           ],
@@ -19114,7 +19150,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface ListQueryResponse { readonly itemsJson: string; readonly totalCount: number; readonly totalPages: number; readonly currentPage: number; readonly pageSize: number; /** The durable read-side head that actually backs this page, when supplied. */ readonly readHead?: string; }",
+              "text": "export interface ListQueryResponse { readonly itemsJson: string; readonly totalCount: number; readonly totalPages: number; readonly currentPage: number; readonly pageSize: number; readonly readHead?: string; }",
               "typeParameters": []
             }
           ],
@@ -19720,7 +19756,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface ReadonlyTagStateResponse { readonly payload: JsonValue; readonly version: number; readonly lastSortedUniqueId: string; readonly tagGroup: string; readonly tagContent: string; readonly tagProjector: string; readonly tagPayloadName?: string; /** Runtime tag-state responses serialize projectorVersion as a string. */ readonly projectorVersion?: string; }",
+              "text": "export interface ReadonlyTagStateResponse { readonly payload: JsonValue; readonly version: number; readonly lastSortedUniqueId: string; readonly tagGroup: string; readonly tagContent: string; readonly tagProjector: string; readonly tagPayloadName?: string; readonly projectorVersion?: string; }",
               "typeParameters": []
             }
           ],
@@ -20153,7 +20189,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface SerializedDcbTransport { readonly readTagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse | CommitHttpResult>; readonly readTagLatestSortable?: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse | CommitHttpResult>; readonly commit: (request: CommitEnvelope, signal?: AbortSignal) => Promise<unknown | CommitHttpResult>; /** G57 makes the two read-only query endpoints part of every transport. */ readonly query: (request: QueryRequest, signal?: AbortSignal) => Promise<QueryResponse | CommitHttpResult>; readonly listQuery: (request: ListQueryRequest, signal?: AbortSignal) => Promise<ListQueryResponse | CommitHttpResult>; /** Optional identity supplied by a transport that is already scoped. */ readonly serviceId?: string; }",
+              "text": "export interface SerializedDcbTransport { readonly readTagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse | CommitHttpResult>; readonly readTagLatestSortable?: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse | CommitHttpResult>; readonly commit: (request: CommitEnvelope, signal?: AbortSignal) => Promise<unknown | CommitHttpResult>; readonly query: (request: QueryRequest, signal?: AbortSignal) => Promise<QueryResponse | CommitHttpResult>; readonly listQuery: (request: ListQueryRequest, signal?: AbortSignal) => Promise<ListQueryResponse | CommitHttpResult>; readonly serviceId?: string; }",
               "typeParameters": []
             }
           ],
@@ -21806,6 +21842,7 @@
       "text": "Values"
     }
   ],
+  "declarationFiles": [],
   "runtimeNamespaces": {
     "@sekiban/dcb-core": [
       "CanonicalEventIdentityError",
@@ -21909,5 +21946,5 @@
       "preflightCommit"
     ]
   },
-  "publicSurfaceHash": "0c87402de0a3e8a3c894fe73d33506f44789fac6e027728dc90e2c69a573ffce"
+  "publicSurfaceHash": "99e97a72fa864a15c842dc1bfb5cf050eae773b100dc584a3acc57554421cf39"
 }

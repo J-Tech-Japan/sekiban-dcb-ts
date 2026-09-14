@@ -405,7 +405,7 @@ try {
   process.stdout.write(`${JSON.stringify({
     status: "PASS",
     proof: "release-shaped-packed-consumer",
-    packages: ["@sekiban/dcb-core@0.2.0", "@sekiban/dcb-domain@0.2.0", "@sekiban/dcb-client@0.2.0"],
+    packages: await Promise.all(packageRoots.map(async (packageRoot) => { const manifest = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")); return `${manifest.name}@${manifest.version}`; })),
     compile: {
       node16: { status: node16.status, signal: node16.signal },
       bundler: { status: bundler.status, signal: bundler.signal },
