@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /** Guard the committed release-shaped G74 surface and its export classification. */
 import { readFile, mkdtemp, rm } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { hashProjection, publicSurfaceHash } from "./g74-surface-hash.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = join(root, "docs/SDT-G74-surface-baseline.json");
@@ -20,20 +21,20 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function compareProjection(left, right) {
-  const project = (model) => ({ packages: model.packages, entryPoints: model.entryPoints, runtimeNamespaces: model.runtimeNamespaces });
-  return JSON.stringify(project(left)) === JSON.stringify(project(right));
-}
-
-function expectedHash(model) {
-  return createHash("sha256").update(JSON.stringify(model.entryPoints)).digest("hex");
+/** Name the projection sections that differ, so a drift report says where. */
+function driftedSections(left, right) {
+  const a = hashProjection(left);
+  const b = hashProjection(right);
+  return Object.keys(a).filter((key) => JSON.stringify(a[key]) !== JSON.stringify(b[key]));
 }
 
 function assertSurfaceEqual(baseline, current) {
   if (baseline.schema !== current.schema) fail(`schema changed from ${baseline.schema} to ${current.schema}`);
   if (baseline.generatedBy?.typescript !== current.generatedBy?.typescript) fail("extractor TypeScript version changed");
-  if (!compareProjection(baseline, current)) fail("release-shaped public surface drifted");
-  if (current.publicSurfaceHash !== expectedHash(current)) fail("current publicSurfaceHash does not match the enumerated entry points");
+  if (current.publicSurfaceHash !== publicSurfaceHash(current)) fail("current publicSurfaceHash does not match its own projection");
+  if (baseline.publicSurfaceHash !== publicSurfaceHash(baseline)) fail("committed baseline publicSurfaceHash does not match its own projection");
+  const drifted = driftedSections(baseline, current);
+  if (drifted.length > 0) fail(`release-shaped public surface drifted in: ${drifted.join(", ")}`);
 }
 
 function sourceExportNames(sourceText) {
@@ -92,14 +93,17 @@ function firstSymbol(model, predicate = () => true) {
 }
 
 async function extractCurrent() {
-  const temp = await mkdtemp(join(root, ".g74-surface-guard-"));
-  const output = join(temp, "current.json");
-  const environment = { ...process.env };
-  const result = spawnSync(process.execPath, [extractorPath, "--output", output], { cwd: root, env: environment, encoding: "utf8" });
-  if (result.status !== 0) fail(`release extractor failed\n${result.stdout}\n${result.stderr}`);
-  const current = JSON.parse(await readFile(output, "utf8"));
-  await rm(temp, { recursive: true, force: true });
-  return current;
+  // The temporary directory lives outside the repository and is removed even when
+  // extraction fails, so a failed run never leaves an empty directory behind.
+  const temp = await mkdtemp(join(tmpdir(), "sdt-g74-surface-guard-"));
+  try {
+    const output = join(temp, "current.json");
+    const result = spawnSync(process.execPath, [extractorPath, "--output", output], { cwd: root, env: { ...process.env }, encoding: "utf8" });
+    if (result.status !== 0) fail(`release extractor failed\n${result.stdout}\n${result.stderr}`);
+    return JSON.parse(await readFile(output, "utf8"));
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 }
 
 const baseline = JSON.parse(await readFile(baselinePath, "utf8"));
@@ -108,30 +112,30 @@ const sourceText = await readFile(join(root, "packages/dcb-client/src/executor.t
 assertClassification(sourceText, ledger);
 
 if (process.argv.includes("--self-test")) {
-  const mutationResults = [];
-  mutationResults.push(expectMutationRed("removed-export", (model) => {
+  const comparatorResults = []; // JSON comparator unit tests only; real drift proofs live in g74-drift-mutation-runner.mjs
+  comparatorResults.push(expectMutationRed("removed-export", (model) => {
     clientRoot(model).symbols = clientRoot(model).symbols.filter((symbol) => symbol.name !== "SekibanExecutor");
   }, baseline));
-  mutationResults.push(expectMutationRed("renamed-export", (model) => {
+  comparatorResults.push(expectMutationRed("renamed-export", (model) => {
     firstSymbol(model, (symbol) => symbol.name === "SekibanExecutor").name = "SekibanExecutorRenamed";
   }, baseline));
-  mutationResults.push(expectMutationRed("parameter-type-change", (model) => {
+  comparatorResults.push(expectMutationRed("parameter-type-change", (model) => {
     const symbol = firstSymbol(model, (candidate) => candidate.signatures.call[0]?.parameters.length > 0);
     symbol.signatures.call[0].parameters[0].type = "never";
   }, baseline));
-  mutationResults.push(expectMutationRed("return-type-change", (model) => {
+  comparatorResults.push(expectMutationRed("return-type-change", (model) => {
     const symbol = firstSymbol(model, (candidate) => candidate.signatures.call.length > 0);
     symbol.signatures.call[0].returnType = "never";
   }, baseline));
-  mutationResults.push(expectMutationRed("type-widening", (model) => {
+  comparatorResults.push(expectMutationRed("type-widening", (model) => {
     const symbol = firstSymbol(model, (candidate) => candidate.name === "JsonPrimitive");
     symbol.type = `${symbol.type} | undefined`;
   }, baseline));
-  mutationResults.push(expectMutationRed("type-narrowing", (model) => {
+  comparatorResults.push(expectMutationRed("type-narrowing", (model) => {
     const symbol = firstSymbol(model, (candidate) => candidate.name === "JsonPrimitive");
     symbol.type = "string";
   }, baseline));
-  mutationResults.push(expectMutationRed("public-root-export-addition", (model) => {
+  comparatorResults.push(expectMutationRed("public-root-export-addition", (model) => {
     const entry = clientRoot(model);
     const template = clone(entry.symbols[0]);
     template.name = "UnexpectedPublicRootAddition";
@@ -143,10 +147,10 @@ if (process.argv.includes("--self-test")) {
     assertClassification(sourceText + "\nexport interface NewlyUnclassified { value: string }\n", ledger);
   } catch (error) {
     unclassifiedRed = true;
-    mutationResults.push({ label: "unclassified-executor-export", result: "RED_DETECTED", reason: error instanceof Error ? error.message : String(error) });
+    comparatorResults.push({ label: "unclassified-executor-export", result: "RED_DETECTED", reason: error instanceof Error ? error.message : String(error) });
   }
   if (!unclassifiedRed) fail("unclassified executor export self-test unexpectedly passed");
-  process.stdout.write(`${JSON.stringify({ schema: "sdt-g74-surface-guard-self-test/v1", status: "PASS", mutations: mutationResults }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ schema: "sdt-g74-surface-guard-self-test/v1", status: "PASS", note: "comparator unit tests over in-memory JSON; they do not touch the release artifact", comparatorTests: comparatorResults }, null, 2)}\n`);
 } else {
   const current = await extractCurrent();
   assertSurfaceEqual(baseline, current);

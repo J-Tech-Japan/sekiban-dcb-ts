@@ -6,14 +6,14 @@
  * through each package's exports map with TypeScript's Node16 resolver.  It
  * is not a source grep or an assignability-only approximation.
  */
-import { createHash } from "node:crypto";
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { realpathSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import ts from "typescript";
+import { publicSurfaceHash } from "./g74-surface-hash.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const packageNames = ["dcb-core", "dcb-domain", "dcb-client"];
@@ -202,19 +202,67 @@ function exportedSymbolFacts(checker, symbol, packageRoot) {
   };
 }
 
+
+/**
+ * Drift proofs must change the release artifact itself, not a copy of the
+ * baseline JSON. `--mutate <spec.json>` names text edits applied to the extracted
+ * tarball contents before any fact is read. Every edit states how many matches it
+ * expects; a stale anchor that matches nothing fails loudly instead of silently
+ * turning a mutant into a no-op.
+ */
+const packDirFlag = process.argv.indexOf("--pack-dir");
+const packCacheDir = packDirFlag === -1 ? undefined : resolve(root, process.argv[packDirFlag + 1] ?? "");
+if (packDirFlag !== -1 && (process.argv[packDirFlag + 1] === undefined || process.argv[packDirFlag + 1].startsWith("--"))) {
+  process.stderr.write("g74-release-surface: --pack-dir requires a directory\n");
+  process.exit(2);
+}
+const mutateFlag = process.argv.indexOf("--mutate");
+const mutationSpecPath = mutateFlag === -1 ? undefined : process.argv[mutateFlag + 1];
+if (mutateFlag !== -1 && (mutationSpecPath === undefined || mutationSpecPath.startsWith("--"))) {
+  process.stderr.write("g74-release-surface: --mutate requires a spec path\n");
+  process.exit(2);
+}
+const artifactMutations = mutationSpecPath === undefined
+  ? []
+  : JSON.parse(readFileSync(resolve(root, mutationSpecPath), "utf8")).edits;
+
+async function applyArtifactMutations(shortName, extractedRoot) {
+  for (const edit of artifactMutations.filter((candidate) => candidate.package === shortName)) {
+    const target = join(extractedRoot, edit.file);
+    const text = await readFile(target, "utf8");
+    const matches = text.split(edit.search).length - 1;
+    if (matches !== edit.expectedMatches) {
+      fail(`mutation anchor for ${shortName}/${edit.file} matched ${matches} time(s), expected ${edit.expectedMatches}: ${JSON.stringify(edit.search)}`);
+    }
+    await writeFile(target, text.split(edit.search).join(edit.replace));
+  }
+}
+
 async function packedPackages(temp) {
   const packRoot = join(temp, "packs");
   await mkdir(packRoot, { recursive: true });
   const packages = {};
   for (const shortName of packageNames) {
     const packageRoot = resolve(root, "packages", shortName);
-    const report = parseJsonOutput(run("npm", ["pack", "--json", "--pack-destination", packRoot], packageRoot), `${shortName} npm pack`)[0];
-    if (report === undefined || typeof report.filename !== "string") fail(`${shortName} pack report missing filename`);
-    const archive = join(packRoot, report.filename);
+    let report;
+    let archive;
+    if (packCacheDir === undefined) {
+      report = parseJsonOutput(run("npm", ["pack", "--json", "--pack-destination", packRoot], packageRoot), `${shortName} npm pack`)[0];
+      if (report === undefined || typeof report.filename !== "string") fail(`${shortName} pack report missing filename`);
+      archive = join(packRoot, report.filename);
+    } else {
+      // Reuse tarballs already produced by `npm pack` for this exact head. Each run
+      // still extracts a fresh copy, so an artifact mutation never leaks into the next.
+      const candidates = readdirSync(packCacheDir).filter((name) => name.startsWith(`sekiban-${shortName}-`) && name.endsWith(".tgz"));
+      if (candidates.length !== 1) fail(`--pack-dir must hold exactly one sekiban-${shortName}-*.tgz, found ${candidates.length}`);
+      archive = join(packCacheDir, candidates[0]);
+      report = { filename: candidates[0], reusedFrom: "pack-dir" };
+    }
     const extraction = join(temp, "extracted", shortName);
     await mkdir(extraction, { recursive: true });
     run("tar", ["-xzf", archive, "-C", extraction], root);
     const extractedRoot = join(extraction, "package");
+    await applyArtifactMutations(shortName, extractedRoot);
     const manifest = JSON.parse(await readFile(join(extractedRoot, "package.json"), "utf8"));
     packages[shortName] = { shortName, packageRoot, extractedRoot, manifest, report };
   }
@@ -230,6 +278,14 @@ async function createResolutionRoot(temp, packages) {
   }
   await cp(join(root, "node_modules", "zod"), join(resolutionRoot, "node_modules", "zod"), { recursive: true });
   return resolutionRoot;
+}
+
+function sortedDeep(value) {
+  if (Array.isArray(value)) return value.map(sortedDeep);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortedDeep(value[key])]));
+  }
+  return value;
 }
 
 function declarationEntry(manifest, subpath) {
@@ -264,6 +320,74 @@ function resolveDeclaration(entry, packageDir, resolutionRoot) {
     fail(`${specifier} resolved to ${result.resolvedFileName}, expected ${expected}`);
   }
   return { specifier, fileName: result.resolvedFileName, expectedImport: entry.import };
+}
+
+
+const TYPE_REFERENCE_NAMES = (node) => {
+  if (ts.isTypeReferenceNode(node)) return node.typeName;
+  if (ts.isExpressionWithTypeArguments(node)) return node.expression;
+  if (ts.isTypeQueryNode(node)) return node.exprName;
+  if (ts.isImportTypeNode(node)) return node.qualifier;
+  // A brand member `readonly [tagFamilyBrand]: F` reaches the non-exported
+  // `declare const tagFamilyBrand: unique symbol` through its computed name.
+  if (ts.isComputedPropertyName(node)) return node.expression;
+  return undefined;
+};
+
+/**
+ * Walk every type the public signatures can reach and record the declarations
+ * that live inside the packed @sekiban packages but are not themselves exported.
+ * A public function taking `LegacyDomainDefinition` exposes that interface's
+ * shape even though its name is not exported, so making one of its members
+ * required is a breaking change the surface must see.
+ */
+function reachableDeclarationFacts(checker, exportedSymbols, scopeRoot) {
+  const inScope = (declaration) => realpathSync(declaration.getSourceFile().fileName).startsWith(realpathSync(scopeRoot));
+  const keyOf = (declaration) => `${realpathSync(declaration.getSourceFile().fileName)}:${declaration.getStart()}`;
+  const exportedKeys = new Set();
+  const queue = [];
+  for (const symbol of exportedSymbols) {
+    const resolved = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+    for (const declaration of resolved.declarations ?? []) {
+      if (!inScope(declaration)) continue;
+      exportedKeys.add(keyOf(declaration));
+      queue.push(declaration);
+    }
+  }
+  const visited = new Set(exportedKeys);
+  const recorded = [];
+  while (queue.length > 0) {
+    const declaration = queue.shift();
+    const visit = (node) => {
+      const nameNode = TYPE_REFERENCE_NAMES(node);
+      if (nameNode !== undefined) {
+        let target = checker.getSymbolAtLocation(nameNode);
+        if (target !== undefined && target.flags & ts.SymbolFlags.Alias) target = checker.getAliasedSymbol(target);
+        for (const referenced of target?.declarations ?? []) {
+          if (!inScope(referenced)) continue;
+          const key = keyOf(referenced);
+          if (visited.has(key)) continue;
+          visited.add(key);
+          queue.push(referenced);
+          const packageDir = realpathSync(referenced.getSourceFile().fileName).slice(realpathSync(scopeRoot).length + 1).split("/")[0];
+          recorded.push({
+            package: `@sekiban/${packageDir}`,
+            file: relativeDeclarationPath(referenced.getSourceFile().fileName, join(scopeRoot, packageDir)),
+            name: referenced.name?.getText?.() ?? target.name,
+            kind: declarationKind(referenced),
+            text: normalizedText(referenced.getText()),
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(declaration);
+  }
+  return recorded.sort((left, right) =>
+    left.package.localeCompare(right.package) ||
+    left.file.localeCompare(right.file) ||
+    left.name.localeCompare(right.name) ||
+    left.text.localeCompare(right.text));
 }
 
 async function extractModel() {
@@ -308,12 +432,15 @@ async function extractModel() {
       fail(`strict declaration resolution emitted ${declarationDiagnostics.length} error(s)\n${rendered}`);
     }
     const modelEntries = [];
+    const allExportedSymbols = [];
     for (const entry of entries) {
       const sourceFile = program.getSourceFile(entry.resolved.fileName);
       if (sourceFile === undefined) fail(`TypeScript program did not contain ${entry.resolved.fileName}`);
       const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
       if (moduleSymbol === undefined) fail(`no module symbol for ${entry.resolved.specifier}`);
-      const symbols = checker.getExportsOfModule(moduleSymbol)
+      const exportedModuleSymbols = checker.getExportsOfModule(moduleSymbol);
+      allExportedSymbols.push(...exportedModuleSymbols);
+      const symbols = exportedModuleSymbols
         .map((symbol) => exportedSymbolFacts(checker, symbol, join(resolutionRoot, "node_modules", "@sekiban", entry.shortName)))
         .sort((left, right) => left.name.localeCompare(right.name));
       modelEntries.push({
@@ -334,16 +461,21 @@ async function extractModel() {
         name: manifest.name,
         version: manifest.version,
         private: manifest.private ?? false,
-        exports: Object.fromEntries(Object.keys(manifest.exports ?? {}).sort().map((subpath) => [subpath, declarationEntry(manifest, subpath)])),
+        type: manifest.type ?? null,
+        engines: sortedDeep(manifest.engines ?? {}),
+        exports: Object.fromEntries(Object.keys(manifest.exports ?? {}).sort().map((subpath) => {
+          declarationEntry(manifest, subpath);
+          return [subpath, sortedDeep(manifest.exports[subpath])];
+        })),
         dependencies: Object.fromEntries(Object.entries(manifest.dependencies ?? {}).sort()),
       };
     });
     const model = {
-      schema: "sdt-g74-surface/v1",
+      schema: "sdt-g74-surface/v2",
       generatedBy: { typescript: compilerVersion, module: "Node16", moduleResolution: "Node16", target: "ES2022", source: "npm pack + prepack + exports-map-resolved declarations" },
       packages: manifestFacts,
       entryPoints: modelEntries,
-      publicSurfaceHash: createHash("sha256").update(JSON.stringify(modelEntries)).digest("hex"),
+      reachableDeclarations: reachableDeclarationFacts(checker, allExportedSymbols, join(resolutionRoot, "node_modules", "@sekiban")),
     };
     const runtimeNamespaces = {};
     for (const entry of entries) {
@@ -353,6 +485,7 @@ async function extractModel() {
       runtimeNamespaces[key] = Object.keys(namespace).sort();
     }
     model.runtimeNamespaces = runtimeNamespaces;
+    model.publicSurfaceHash = publicSurfaceHash(model);
     return { model, temp };
   } catch (error) {
     await rm(temp, { recursive: true, force: true });
@@ -360,7 +493,14 @@ async function extractModel() {
   }
 }
 
-const output = process.argv[process.argv.indexOf("--output") + 1];
+const outputFlag = process.argv.indexOf("--output");
+// A missing --output means stdout. indexOf returns -1 when the flag is absent,
+// and -1 + 1 is 0, which is argv[0]: the node executable. Never write there.
+const output = outputFlag === -1 ? undefined : process.argv[outputFlag + 1];
+if (outputFlag !== -1 && (output === undefined || output.startsWith("--"))) {
+  process.stderr.write("g74-release-surface: --output requires a path\n");
+  process.exit(2);
+}
 const keep = process.argv.includes("--keep-temp");
 const result = await extractModel();
 if (output === undefined) {

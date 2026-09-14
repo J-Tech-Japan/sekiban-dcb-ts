@@ -20,6 +20,7 @@
   },
   "reviewedModuleInternal": [],
   "publicRootAdditionProof": "A new declaration exported through packages/dcb-client/src/index.ts must change the release model and fail the surface guard; an executor-only declaration is not public and must be classified before publication.",
-  "approvedBy": "SDT-G74 implementation review",
-  "approvedAt": "2026-09-12"
+  "proposedBy": "SDT-G74 implementation, branch claude/sdt-g74-implementation-w281",
+  "proposedAt": "2026-09-12",
+  "reviewStatus": "Not self-approved. The classification is accepted only through the independent review of pull request J-Tech-Japan/sekiban-dcb-ts#176; this file records the proposal, and the approving review is recorded on that pull request."
 }

@@ -1,5 +1,5 @@
 {
-  "schema": "sdt-g74-surface/v1",
+  "schema": "sdt-g74-surface/v2",
   "generatedBy": {
     "typescript": "5.9.3",
     "module": "Node16",
@@ -12,11 +12,14 @@
       "name": "@sekiban/dcb-core",
       "version": "0.2.0",
       "private": false,
+      "type": "module",
+      "engines": {
+        "node": ">=20"
+      },
       "exports": {
         ".": {
-          "subpath": ".",
-          "types": "./dist/index.d.ts",
-          "import": "./dist/index.js"
+          "import": "./dist/index.js",
+          "types": "./dist/index.d.ts"
         }
       },
       "dependencies": {}
@@ -25,16 +28,18 @@
       "name": "@sekiban/dcb-domain",
       "version": "0.2.0",
       "private": false,
+      "type": "module",
+      "engines": {
+        "node": ">=20"
+      },
       "exports": {
         ".": {
-          "subpath": ".",
-          "types": "./dist/index.d.ts",
-          "import": "./dist/index.js"
+          "import": "./dist/index.js",
+          "types": "./dist/index.d.ts"
         },
         "./testing": {
-          "subpath": "./testing",
-          "types": "./dist/testing.d.ts",
-          "import": "./dist/testing.js"
+          "import": "./dist/testing.js",
+          "types": "./dist/testing.d.ts"
         }
       },
       "dependencies": {
@@ -45,11 +50,14 @@
       "name": "@sekiban/dcb-client",
       "version": "0.2.0",
       "private": false,
+      "type": "module",
+      "engines": {
+        "node": ">=20"
+      },
       "exports": {
         ".": {
-          "subpath": ".",
-          "types": "./dist/index.d.ts",
-          "import": "./dist/index.js"
+          "import": "./dist/index.js",
+          "types": "./dist/index.d.ts"
         }
       },
       "dependencies": {
@@ -20543,7 +20551,1261 @@
       ]
     }
   ],
-  "publicSurfaceHash": "ebc3da21f00d3a2bcbde5a55548b5226d93e4e6c6ea623142699f94e499e668a",
+  "reachableDeclarations": [
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "C",
+      "kind": "TypeParameter",
+      "text": "C extends CommandDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
+      "name": "P",
+      "kind": "TypeParameter",
+      "text": "P extends ProjectorLike"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/index.d.ts",
+      "name": "CommandLike",
+      "kind": "type",
+      "text": "type CommandLike = ((context: ClientCommandContext, input?: unknown) => ClientCommandDecision | Promise<ClientCommandDecision>) | CommandDefinition;"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "T",
+      "kind": "TypeParameter",
+      "text": "T extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TInput",
+      "kind": "TypeParameter",
+      "text": "TInput"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TInput",
+      "kind": "TypeParameter",
+      "text": "TInput"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TInput",
+      "kind": "TypeParameter",
+      "text": "TInput"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TInput",
+      "kind": "TypeParameter",
+      "text": "TInput"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TInput",
+      "kind": "TypeParameter",
+      "text": "TInput = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TPayload",
+      "kind": "TypeParameter",
+      "text": "TPayload extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/index.d.ts",
+      "name": "TState",
+      "kind": "TypeParameter",
+      "text": "TState extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/materializedView.d.ts",
+      "name": "TEvent",
+      "kind": "TypeParameter",
+      "text": "TEvent = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/materializedView.d.ts",
+      "name": "TEvent",
+      "kind": "TypeParameter",
+      "text": "TEvent = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/materializedView.d.ts",
+      "name": "TEvent",
+      "kind": "TypeParameter",
+      "text": "TEvent = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/materializedView.d.ts",
+      "name": "TEvent",
+      "kind": "TypeParameter",
+      "text": "TEvent = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-core",
+      "file": "dist/materializedView.d.ts",
+      "name": "TEvent",
+      "kind": "TypeParameter",
+      "text": "TEvent = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "LegacyDomainDefinition",
+      "kind": "interface",
+      "text": "interface LegacyDomainDefinition { readonly events?: readonly LegacyEventDefinition[]; readonly commands?: readonly RuntimeCommandDefinition[]; readonly projectors?: readonly RuntimeProjectorDefinition[]; readonly views?: readonly DomainViewDefinition[]; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/bridge.d.ts",
+      "name": "LegacyEventDefinition",
+      "kind": "interface",
+      "text": "interface LegacyEventDefinition { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly eventType?: string; readonly parse?: (payload: unknown) => unknown; readonly create?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string; }; readonly construct?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string; }; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Definition",
+      "kind": "TypeParameter",
+      "text": "Definition extends CommandDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Definition",
+      "kind": "TypeParameter",
+      "text": "Definition extends CommandDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Details",
+      "kind": "TypeParameter",
+      "text": "Details = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition = EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "const Id extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Id",
+      "kind": "TypeParameter",
+      "text": "Id extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "InputSchema",
+      "kind": "TypeParameter",
+      "text": "InputSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "InputSchema",
+      "kind": "TypeParameter",
+      "text": "InputSchema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "InputSchema",
+      "kind": "TypeParameter",
+      "text": "InputSchema extends z.ZodTypeAny = z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends RejectKind"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/command.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Commands",
+      "kind": "TypeParameter",
+      "text": "Commands extends readonly unknown[] = readonly CommandDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Commands",
+      "kind": "TypeParameter",
+      "text": "Commands extends readonly unknown[] = readonly CommandDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Commands",
+      "kind": "TypeParameter",
+      "text": "const Commands extends readonly unknown[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "const Events extends readonly DomainEventInput[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly DomainEventInput[] = readonly DomainEventInput[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[] = readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Projectors",
+      "kind": "TypeParameter",
+      "text": "const Projectors extends readonly unknown[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Projectors",
+      "kind": "TypeParameter",
+      "text": "Projectors extends readonly unknown[] = readonly ProjectorDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/domain.d.ts",
+      "name": "Projectors",
+      "kind": "TypeParameter",
+      "text": "Projectors extends readonly unknown[] = readonly ProjectorDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Deriver",
+      "kind": "TypeParameter",
+      "text": "Deriver extends TagDeriver<Payload>"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Deriver",
+      "kind": "TypeParameter",
+      "text": "Deriver extends TagDeriver<z.infer<Schema>>"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Discriminator",
+      "kind": "TypeParameter",
+      "text": "const Discriminator extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "const Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "const Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[] = readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Name",
+      "kind": "TypeParameter",
+      "text": "const Name extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Name",
+      "kind": "TypeParameter",
+      "text": "Name extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Payload",
+      "kind": "TypeParameter",
+      "text": "Payload"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny = z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Union",
+      "kind": "TypeParameter",
+      "text": "Union extends EventUnion"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/event.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Boundary",
+      "kind": "TypeParameter",
+      "text": "Boundary extends DomainBoundary"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Boundary",
+      "kind": "TypeParameter",
+      "text": "Boundary extends DomainBoundary"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/parse.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/session.d.ts",
+      "name": "Command",
+      "kind": "TypeParameter",
+      "text": "Command extends CommandDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/session.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Args",
+      "kind": "TypeParameter",
+      "text": "Args"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Args",
+      "kind": "TypeParameter",
+      "text": "Args"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Args",
+      "kind": "TypeParameter",
+      "text": "Args"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Args",
+      "kind": "TypeParameter",
+      "text": "Args"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Definition",
+      "kind": "TypeParameter",
+      "text": "Definition extends ProjectorDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Definition",
+      "kind": "TypeParameter",
+      "text": "Definition extends ProjectorDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Definition",
+      "kind": "TypeParameter",
+      "text": "Definition extends StateUnion"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Details",
+      "kind": "TypeParameter",
+      "text": "Details = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Details",
+      "kind": "TypeParameter",
+      "text": "Details = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Details",
+      "kind": "TypeParameter",
+      "text": "Details = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Details",
+      "kind": "TypeParameter",
+      "text": "Details = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition = EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition = EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition = EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends EventDefinition = EventDefinition"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "const Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[] = readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "const Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "projectorFamilyInvariant",
+      "kind": "variable",
+      "text": "projectorFamilyInvariant: unique symbol"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Schema",
+      "kind": "TypeParameter",
+      "text": "Schema extends z.ZodTypeAny = z.ZodTypeAny"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "const State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/state.d.ts",
+      "name": "Variants",
+      "kind": "TypeParameter",
+      "text": "const Variants extends readonly [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "Events",
+      "kind": "TypeParameter",
+      "text": "Events extends readonly EventDefinition[]"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/testing.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Boundary",
+      "kind": "TypeParameter",
+      "text": "Boundary extends DomainBoundary"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Deriver",
+      "kind": "TypeParameter",
+      "text": "Deriver"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Deriver",
+      "kind": "TypeParameter",
+      "text": "Deriver"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Details",
+      "kind": "TypeParameter",
+      "text": "Details = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends { readonly schema: z.ZodTypeAny; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Event",
+      "kind": "TypeParameter",
+      "text": "Event extends { readonly schema: z.ZodTypeAny; }"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "eventPayloadBrand",
+      "kind": "variable",
+      "text": "eventPayloadBrand: unique symbol"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "const Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "const Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "const Family extends string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Family",
+      "kind": "TypeParameter",
+      "text": "Family extends string = string"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Item",
+      "kind": "TypeParameter",
+      "text": "Item"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Kind",
+      "kind": "TypeParameter",
+      "text": "Kind extends RejectKind = RejectKind"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "parsedBoundaryBrand",
+      "kind": "variable",
+      "text": "parsedBoundaryBrand: unique symbol"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Payload",
+      "kind": "TypeParameter",
+      "text": "Payload"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Payload",
+      "kind": "TypeParameter",
+      "text": "Payload = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Result",
+      "kind": "TypeParameter",
+      "text": "Result"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "State",
+      "kind": "TypeParameter",
+      "text": "State = unknown"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "T",
+      "kind": "TypeParameter",
+      "text": "T"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "tagFamilyBrand",
+      "kind": "variable",
+      "text": "tagFamilyBrand: unique symbol"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "terminalDecisionBrand",
+      "kind": "variable",
+      "text": "terminalDecisionBrand: unique symbol"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Value",
+      "kind": "TypeParameter",
+      "text": "Value extends JsonValue = JsonValue"
+    },
+    {
+      "package": "@sekiban/dcb-domain",
+      "file": "dist/types.d.ts",
+      "name": "Values",
+      "kind": "TypeParameter",
+      "text": "Values"
+    }
+  ],
   "runtimeNamespaces": {
     "@sekiban/dcb-core": [
       "CanonicalEventIdentityError",
@@ -20646,5 +21908,6 @@
       "createSerializedDcbClient",
       "preflightCommit"
     ]
-  }
+  },
+  "publicSurfaceHash": "0c87402de0a3e8a3c894fe73d33506f44789fac6e027728dc90e2c69a573ffce"
 }
