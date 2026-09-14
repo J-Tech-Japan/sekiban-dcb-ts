@@ -63,6 +63,7 @@
         {"id": "foundation-g73", "command": "npm run test:g73:guard"},
         {"id": "foundation-g76", "command": "npm run test:g76:regression-matrix"},
         {"id": "foundation-g78", "command": "npm run test:g78"},
+        {"id": "foundation-g74", "command": "npm run test:g74"},
         {"id": "foundation-g17", "command": "npm run test:g17"},
         {"id": "foundation-g17-rollout", "command": "npm run test:g17:rollout-order"}
       ]

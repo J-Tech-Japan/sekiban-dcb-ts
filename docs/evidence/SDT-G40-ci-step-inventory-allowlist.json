@@ -10,14 +10,14 @@
   },
   "addedManifestCommands": {
     "count": 134,
-    "entrySetSha256": "b1c34124cc49ab6baff435b3f11901c59c9ca1cb802c2fedddaab3f5218980f4",
-    "idSetSha256": "39e9a03134d6019801fe945055e869a8f98cccd154478aa0027918b110d0f644",
+    "entrySetSha256": "de3f1d92629c8cc7717832124864bbde1746cd6771359d28ef1f0f00e1d38250",
+    "idSetSha256": "408104385bd7e6fb1f4f4263544ed48a17ff7cbc8ea08511d1bc574cb53674f3",
     "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
   },
   "addedManifestClosure": {
-    "count": 57,
-    "entrySetSha256": "d649a602bdb8890198163b078f422c788205dd658fbdec41a42e563b4a0f8323",
-    "idSetSha256": "b0fd10198b76a000a45fbd5096f9663ef234ba19c65eea6989db3b37d86f5e55",
+    "count": 60,
+    "entrySetSha256": "a9c0ff5858ccba457e2eadc461d91271427e3a741997ef07691b38976b135db7",
+    "idSetSha256": "e526d1c7e97da3545ec115468f860bd6e88cdba12a0f5b2261a77517d3b94597",
     "reason": "These npm/workspace leaves are the exact recursive package-script closure of the reviewed manifest commands, not an untracked command source."
   },
   "addedWorkflowSteps": {
