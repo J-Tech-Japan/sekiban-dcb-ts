@@ -6,9 +6,13 @@ option in the three packages found declared options that nothing implements and
 behaviour defects. By design ruling (host history, 2026-09-14 12:40 UTC) they are
 fixed by SDT-G88, SDT-G86, SDT-G87 and SDT-G89 before this unit freezes the
 surface. The surface hash will change when those land; the consumers are
-consulted only on the final hash. Sections below describe the extractor and
-proofs at this head; the option matrix, the 0.1.0 comparison and the hash are
-rewritten after the prerequisites land. No merge, npm publication or release
+consulted only on the final hash. The sections below are from the previous
+update (13 mutants, hash `0c87402de0a3e8a3c894fe73d33506f44789fac6e027728dc90e2c69a573ffce`)
+and are not yet refreshed for this head, whose extractor is schema v3 with 21
+artifact mutants and a JSDoc-only negative control, and whose baseline hash is
+`99e97a72fa864a15c842dc1bfb5cf050eae773b100dc584a3acc57554421cf39`. The whole
+document, including the option matrix and the 0.1.0 comparison, is rewritten
+after the prerequisites land. No merge, npm publication or release
 operation is claimed.
 
 ## Provenance and scope
