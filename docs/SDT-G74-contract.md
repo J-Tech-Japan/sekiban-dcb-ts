@@ -421,7 +421,7 @@ Every declared option below is mapped to production implementation and existing 
 | --- | --- | --- |
 | `createSekibanExecutor(transport, options?)` | builds the facade over one adapter | `test/g57-executor.spec.ts` AC1–AC3 |
 | `options.serviceId` | when both it and `transport.serviceId` are set and differ, every `execute` returns `invalid` / `scope.mismatch` without committing | `test/g57-executor.spec.ts:382` |
-| `options.clock` | time source for command decisions; defaults to `Date.now` | behavioural coverage: none dedicated at freeze head `a64cf70ac89d8bf9fe6787a8e70b9a8e18b46884`; related coverage: used at `test/g57-executor.spec.ts:190`; status: documented freeze gap; not designated for removal |
+| `options.clock` | time source for command decisions; defaults to `Date.now` | behavioural coverage: none dedicated at surface hash `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`; related coverage: used at `test/g57-executor.spec.ts:193`; status: documented freeze gap; not designated for removal |
 | `execute(command, input, options?)` | runs the command against snapshots or reads, commits, and returns `ExecuteCommandResult` with nine `kind` values | `test/g57-executor.spec.ts` AC1–AC3; exhaustiveness in the packed consumer fixture |
 | `ExecuteCommandOptions.snapshots` | an array of `PortableSnapshot` or a `SnapshotReader`; covered cells are not read | `test/g57-executor.spec.ts:178`, `:269` |
 | `ExecuteCommandOptions.readMode` | `read-through` (default) or `snapshot-only`; snapshot-only makes zero reads, fails closed on an uncovered claim and forces zero conflict retries | `test/g57-executor.spec.ts:178` |
@@ -435,7 +435,7 @@ Every declared option below is mapped to production implementation and existing 
 | `ReadOptions.consistency` | not in the type; runtime refusal `unsupported_consistency_mode` / `400` | `test/g71-read-contract.spec.ts:414`; packed consumer compile rejection |
 | `listQuery(request, options?)` | returns the page and durable `readHead` when supplied | `test/g71-read-contract.spec.ts:460`, `:499`, `:543`, `:648`; `test/g71-composition.spec.ts:255` |
 | `ListQueryOptions.consistency` | `safe` or `unsafe` written into `queryParamsJson` | `test/g71-read-contract.spec.ts:414`; `test/g71-composition.spec.ts:255` |
-| `ListQueryOptions.signal` | forwarded to `transport.listQuery` | behavioural coverage: none dedicated at freeze head `a64cf70ac89d8bf9fe6787a8e70b9a8e18b46884`; related coverage: `packages/dcb-client/src/executor.ts:731`; status: documented freeze gap; not designated for removal |
+| `ListQueryOptions.signal` | forwarded to `transport.listQuery` | behavioural coverage: none dedicated at surface hash `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`; related coverage: `packages/dcb-client/src/executor.ts:731`; status: documented freeze gap; not designated for removal |
 | facade HTTP 400/422/500/503 and thrown errors | classified through the shared table (`invalid`, `rejected`, `transport`, `unavailable`, `timeout`, `partial`, `conflict`) | `test/g78-error-classification.spec.ts`; `test/g57-executor.spec.ts:775` |
 | code-less commit HTTP 5xx | `timeout` / `unknown_outcome` | `test/g78-error-classification.spec.ts` matrix rows |
 | post-dispatch `timeout`, `transport`, commit-side `unavailable` | outcome-unknown; reconcile before retry; no blind reissue | `test/g76-regression-matrix.spec.ts`; policy below |
@@ -502,7 +502,7 @@ The following are not promised by this facade freeze: backend implementation cho
 
 ### Consumer-visible error classification (AC6)
 
-The table below is checked against `docs/SDT-G74-classification-policy.json` and the G78/G86 tests. It records separate caller actions for read and commit paths so `projection_unavailable` unambiguously renews the read budget before retrying projection work while a post-dispatch commit-side `unavailable` requires reconciliation.
+The table below is checked against `docs/SDT-G74-classification-policy.json` and `packages/dcb-client/dist/classification.js` `FAILURE_KINDS` (the same runtime map the G78 guard loads). It records separate caller actions for read and commit paths so `projection_unavailable` unambiguously renews the read budget before retrying projection work while a post-dispatch commit-side `unavailable` requires reconciliation.
 
 | code | result kind | read-path caller action | commit-path caller action |
 | --- | --- | --- | --- |
@@ -527,7 +527,7 @@ Naming these risks authorizes no runtime fix.
 | allocator-to-source ordering gap | SDT-G69 #133 closed not_planned 2026-09-10; SDT-G70 #137 closed not_planned 2026-09-09; remainder SDT-G77 #154 open at 2026-09-14T09:23:55Z (`https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/154`) | open; v1 adds no ordering guarantee |
 | safe-lane latency | SDT-G66 run sdtg66w164-8042cfc, 2026-09-07T19:17:49.862Z to 19:20:30.920Z; paced 10,000 ms (actual 11,965–12,959 ms); safe response-relative p50/p95 45,355/55,942 ms, 10/10 within 180,000 ms (`.artifacts/sdt-g66-w164-production-corrected.json`) | observed figure with run identity, not an SLA |
 | unsafe-lane first-visibility latency | same SDT-G66 W164 cohort; unsafe response-relative p50/p95 2,366/4,650 ms; 10/10 within 5,000 ms bound (`.artifacts/sdt-g66-w164-production-corrected.json`) | observed figure with run identity, not an SLA; naming authorizes no runtime fix |
-| SekibanWasmRuntime no-tags WIT apply-event ABI | RuntimeProjectionEvent.eventTags absent uses host per-tag legacy routing; non-empty stored tags required for multi-tag events (`test/dcb-domain.spec.ts:1385; test/g29-meeting-room.spec.ts:181`) | two sanctioned responses: extend ABI with stored tags, or omit eventTags and use host per-tag routing as a conscious legacy choice |
+| SekibanWasmRuntime no-tags WIT apply-event ABI | RuntimeProjectionEvent.eventTags absent uses host per-tag legacy routing; non-empty stored tags required for multi-tag events; checked 2026-09-15 (`test/dcb-domain.spec.ts:1385; test/g29-meeting-room.spec.ts:181`) | two sanctioned responses: extend ABI with stored tags, or omit eventTags and use host per-tag routing as a conscious legacy choice |
 | cloud transport migration target unpublished | @sekiban/cloud-client E404 from npm registry at 2026-09-14T09:23:55Z (`npm registry check 2026-09-14T09:23:55Z`) | 0.1.0 consumers of createSekibanCloudTransport cannot complete migration until published |
 | prerequisite surface | G71, G78, G88, G86, G87, G89 all landed before extraction (`docs/SDT-G74-evidence.md § Prerequisite commits`) | semantics enumerated, not changed |
 | criteria still outstanding on prerequisite units | checked at 2026-09-15 (`docs/SDT-G74-evidence.md § Prerequisite commits`) | none — all six G74 prerequisites landed and are recorded in this contract |
@@ -571,13 +571,13 @@ The client executor barrel is explicit and all 15 source executor exports are cl
 
 ### AC5 explicit-barrel equivalence
 
-`node scripts/g74-barrel-equivalence.mjs` extracts the release-shaped candidate and simulates an `export * from "./executor.js"` barrel by setting `alias: true` on every executor-origin root symbol. The proof passes when the export name/namespace set is identical and `publicSurfaceHash` matches — only the alias flag differs. A ledger-root cross-check in `node scripts/g74-surface-guard.mjs` requires every ledger-public executor export to reach the client root.
+`node scripts/g74-barrel-equivalence.mjs` extracts the release-shaped candidate twice: once with the committed explicit executor re-exports and once with the packed `packages/dcb-client/dist/index.d.ts` edited to `export * from "./executor.js"` (via `--mutate scripts/fixtures/g74-barrel-wildcard-mutate.json`). The proof passes when the two independently extracted models have identical export name/namespace sets and `publicSurfaceHash` matches — only the alias flag differs. A self-test removes one explicit export and requires RED. A ledger-root cross-check in `node scripts/g74-surface-guard.mjs` requires every ledger-public executor export to reach the client root.
 
 ## Version designation and migration from 0.1.0
 
 The candidate graph is `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, and `@sekiban/dcb-client@0.2.0`. The contract label is `executor-facade-v1`; the carrying package version selected for it is `0.2.0`; no npm publication has been observed or performed. Source `0.1.1` was never published and is not a migration target.
 
-The comparison baseline is tag `dcb-v0.1.0` at `7353b987e94a999d60ec6b41b1df2387efb11ac5`. Installable registry tarballs `@sekiban/dcb-core@0.1.0`, `@sekiban/dcb-domain@0.1.0` and `@sekiban/dcb-client@0.1.0` were extracted with the same extractor after the TS2835 specifier normalization disclosed in `docs/SDT-G74-0.1.0-receipt.json`. Each row below is one contract or informational marker; informational sample-worker rows do not enter the v1 enumeration or baseline hash. The mechanical item list is `docs/SDT-G74-routed-items.json`; `scripts/g74-contract-check.mjs` fails when a diff item lacks a routed row.
+The comparison baseline is tag `dcb-v0.1.0` at `7353b987e94a999d60ec6b41b1df2387efb11ac5`. Installable registry tarballs `@sekiban/dcb-core@0.1.0`, `@sekiban/dcb-domain@0.1.0` and `@sekiban/dcb-client@0.1.0` were extracted with the same extractor after the TS2835 specifier normalization disclosed in `docs/SDT-G74-0.1.0-receipt.json`. Each row below is one contract or informational marker; informational sample-worker rows do not enter the v1 enumeration or baseline hash. The mechanical diff item list is `docs/SDT-G74-diff-items.json`; routed rows keyed to those ids live in `docs/SDT-G74-routed-items.json`; `scripts/g74-contract-check.mjs` fails when a committed diff item lacks a routed row or when a routed row is absent from the contract prose.
 
 | routed item | marker | 0.1.0 | 0.2.0 candidate | migration instruction |
 | --- | --- | --- | --- | --- |

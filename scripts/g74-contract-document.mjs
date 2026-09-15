@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 /** Generate or verify the readable SDT-G74 contract from the reviewed model. */
-import { execSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,7 +15,6 @@ const model = JSON.parse(await readFile(modelPath, "utf8"));
 const classification = JSON.parse(await readFile(classificationPath, "utf8"));
 const classificationPolicy = JSON.parse(await readFile(classificationPolicyPath, "utf8"));
 const datedRisks = JSON.parse(await readFile(datedRisksPath, "utf8"));
-const freezeHead = execSync("git rev-parse HEAD", { cwd: root, encoding: "utf8" }).trim();
 const classifiedExecutorExports = Object.keys(classification.exports ?? {}).sort();
 if (classifiedExecutorExports.length !== 15 || classifiedExecutorExports.some((name) => classification.exports[name] !== "public")) {
   throw new Error("SDT-G74 classification ledger must contain exactly 15 public executor exports");
@@ -221,7 +219,7 @@ lines.push(
   "| --- | --- | --- |",
   "| `createSekibanExecutor(transport, options?)` | builds the facade over one adapter | `test/g57-executor.spec.ts` AC1–AC3 |",
   "| `options.serviceId` | when both it and `transport.serviceId` are set and differ, every `execute` returns `invalid` / `scope.mismatch` without committing | `test/g57-executor.spec.ts:382` |",
-  `| \`options.clock\` | time source for command decisions; defaults to \`Date.now\` | behavioural coverage: none dedicated at freeze head ${code(freezeHead)}; related coverage: used at \`test/g57-executor.spec.ts:190\`; status: documented freeze gap; not designated for removal |`,
+  `| \`options.clock\` | time source for command decisions; defaults to \`Date.now\` | behavioural coverage: none dedicated at surface hash ${code(hash)}; related coverage: used at \`test/g57-executor.spec.ts:193\`; status: documented freeze gap; not designated for removal |`,
   "| `execute(command, input, options?)` | runs the command against snapshots or reads, commits, and returns `ExecuteCommandResult` with nine `kind` values | `test/g57-executor.spec.ts` AC1–AC3; exhaustiveness in the packed consumer fixture |",
   "| `ExecuteCommandOptions.snapshots` | an array of `PortableSnapshot` or a `SnapshotReader`; covered cells are not read | `test/g57-executor.spec.ts:178`, `:269` |",
   "| `ExecuteCommandOptions.readMode` | `read-through` (default) or `snapshot-only`; snapshot-only makes zero reads, fails closed on an uncovered claim and forces zero conflict retries | `test/g57-executor.spec.ts:178` |",
@@ -235,7 +233,7 @@ lines.push(
   "| `ReadOptions.consistency` | not in the type; runtime refusal `unsupported_consistency_mode` / `400` | `test/g71-read-contract.spec.ts:414`; packed consumer compile rejection |",
   "| `listQuery(request, options?)` | returns the page and durable `readHead` when supplied | `test/g71-read-contract.spec.ts:460`, `:499`, `:543`, `:648`; `test/g71-composition.spec.ts:255` |",
   "| `ListQueryOptions.consistency` | `safe` or `unsafe` written into `queryParamsJson` | `test/g71-read-contract.spec.ts:414`; `test/g71-composition.spec.ts:255` |",
-  `| \`ListQueryOptions.signal\` | forwarded to \`transport.listQuery\` | behavioural coverage: none dedicated at freeze head ${code(freezeHead)}; related coverage: \`packages/dcb-client/src/executor.ts:731\`; status: documented freeze gap; not designated for removal |`,
+  `| \`ListQueryOptions.signal\` | forwarded to \`transport.listQuery\` | behavioural coverage: none dedicated at surface hash ${code(hash)}; related coverage: \`packages/dcb-client/src/executor.ts:731\`; status: documented freeze gap; not designated for removal |`,
   "| facade HTTP 400/422/500/503 and thrown errors | classified through the shared table (`invalid`, `rejected`, `transport`, `unavailable`, `timeout`, `partial`, `conflict`) | `test/g78-error-classification.spec.ts`; `test/g57-executor.spec.ts:775` |",
   "| code-less commit HTTP 5xx | `timeout` / `unknown_outcome` | `test/g78-error-classification.spec.ts` matrix rows |",
   "| post-dispatch `timeout`, `transport`, commit-side `unavailable` | outcome-unknown; reconcile before retry; no blind reissue | `test/g76-regression-matrix.spec.ts`; policy below |",
@@ -302,7 +300,7 @@ lines.push(
   "",
   "### Consumer-visible error classification (AC6)",
   "",
-  "The table below is checked against `docs/SDT-G74-classification-policy.json` and the G78/G86 tests. It records separate caller actions for read and commit paths so `projection_unavailable` unambiguously renews the read budget before retrying projection work while a post-dispatch commit-side `unavailable` requires reconciliation.",
+  "The table below is checked against `docs/SDT-G74-classification-policy.json` and `packages/dcb-client/dist/classification.js` `FAILURE_KINDS` (the same runtime map the G78 guard loads). It records separate caller actions for read and commit paths so `projection_unavailable` unambiguously renews the read budget before retrying projection work while a post-dispatch commit-side `unavailable` requires reconciliation.",
   "",
   "| code | result kind | read-path caller action | commit-path caller action |",
   "| --- | --- | --- | --- |",
@@ -358,13 +356,13 @@ lines.push(
   "",
   "### AC5 explicit-barrel equivalence",
   "",
-  "`node scripts/g74-barrel-equivalence.mjs` extracts the release-shaped candidate and simulates an `export * from \"./executor.js\"` barrel by setting `alias: true` on every executor-origin root symbol. The proof passes when the export name/namespace set is identical and `publicSurfaceHash` matches — only the alias flag differs. A ledger-root cross-check in `node scripts/g74-surface-guard.mjs` requires every ledger-public executor export to reach the client root.",
+  "`node scripts/g74-barrel-equivalence.mjs` extracts the release-shaped candidate twice: once with the committed explicit executor re-exports and once with the packed `packages/dcb-client/dist/index.d.ts` edited to `export * from \"./executor.js\"` (via `--mutate scripts/fixtures/g74-barrel-wildcard-mutate.json`). The proof passes when the two independently extracted models have identical export name/namespace sets and `publicSurfaceHash` matches — only the alias flag differs. A self-test removes one explicit export and requires RED. A ledger-root cross-check in `node scripts/g74-surface-guard.mjs` requires every ledger-public executor export to reach the client root.",
   "",
   "## Version designation and migration from 0.1.0",
   "",
   `The candidate graph is \`@sekiban/dcb-core@0.2.0\`, \`@sekiban/dcb-domain@0.2.0\`, and \`@sekiban/dcb-client@0.2.0\`. The contract label is ${code(contractLabel)}; the carrying package version selected for it is ${code(carryingVersion)}; no npm publication has been observed or performed. Source \`0.1.1\` was never published and is not a migration target.`,
   "",
-  `The comparison baseline is tag ${code("dcb-v0.1.0")} at ${code("7353b987e94a999d60ec6b41b1df2387efb11ac5")}. Installable registry tarballs ${code("@sekiban/dcb-core@0.1.0")}, ${code("@sekiban/dcb-domain@0.1.0")} and ${code("@sekiban/dcb-client@0.1.0")} were extracted with the same extractor after the TS2835 specifier normalization disclosed in ${code("docs/SDT-G74-0.1.0-receipt.json")}. Each row below is one contract or informational marker; informational sample-worker rows do not enter the v1 enumeration or baseline hash. The mechanical item list is ${code("docs/SDT-G74-routed-items.json")}; ${code("scripts/g74-contract-check.mjs")} fails when a diff item lacks a routed row.`,
+  `The comparison baseline is tag ${code("dcb-v0.1.0")} at ${code("7353b987e94a999d60ec6b41b1df2387efb11ac5")}. Installable registry tarballs ${code("@sekiban/dcb-core@0.1.0")}, ${code("@sekiban/dcb-domain@0.1.0")} and ${code("@sekiban/dcb-client@0.1.0")} were extracted with the same extractor after the TS2835 specifier normalization disclosed in ${code("docs/SDT-G74-0.1.0-receipt.json")}. Each row below is one contract or informational marker; informational sample-worker rows do not enter the v1 enumeration or baseline hash. The mechanical diff item list is ${code("docs/SDT-G74-diff-items.json")}; routed rows keyed to those ids live in ${code("docs/SDT-G74-routed-items.json")}; ${code("scripts/g74-contract-check.mjs")} fails when a committed diff item lacks a routed row or when a routed row is absent from the contract prose.`,
   "",
   "| routed item | marker | 0.1.0 | 0.2.0 candidate | migration instruction |",
   "| --- | --- | --- | --- | --- |",

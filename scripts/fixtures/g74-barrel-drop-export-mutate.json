@@ -1,0 +1,11 @@
+{
+  "edits": [
+    {
+      "package": "dcb-client",
+      "file": "dist/index.d.ts",
+      "search": "ExecutorRejected, ",
+      "replace": "",
+      "expectedMatches": 1
+    }
+  ]
+}

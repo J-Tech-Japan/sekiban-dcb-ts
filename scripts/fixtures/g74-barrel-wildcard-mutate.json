@@ -1,0 +1,11 @@
+{
+  "edits": [
+    {
+      "package": "dcb-client",
+      "file": "dist/index.d.ts",
+      "search": "export { createHttpTransport, createInProcessTransport, createSekibanExecutor, } from \"./executor.js\";\nexport type { ExecuteCommandOptions, ExecuteCommandResult, ExecutorCommitted, ExecutorConflict, ExecutorRejected, ListQueryOptions, ReadConsistency, ReadOptions, RuntimeBindings, SekibanExecutor, TagWriteResult, WrittenEvent, } from \"./executor.js\";",
+      "replace": "export * from \"./executor.js\";",
+      "expectedMatches": 1
+    }
+  ]
+}

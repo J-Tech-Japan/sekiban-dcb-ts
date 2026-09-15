@@ -12,6 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = join(root, "docs/SDT-G74-surface-baseline.json");
 const receiptPath = join(root, "docs/SDT-G74-0.1.0-receipt.json");
 const routedPath = join(root, "docs/SDT-G74-routed-items.json");
+const diffItemsPath = join(root, "docs/SDT-G74-diff-items.json");
 const extractorPath = join(root, "scripts/g74-release-surface.mjs");
 const mutateSpecPath = join(root, "scripts/fixtures/g74-0.1.0-ts2835-mutate.json");
 const packageNames = ["dcb-core", "dcb-domain", "dcb-client"];
@@ -118,6 +119,19 @@ try {
   };
   if (process.argv.includes("--write")) {
     await writeFile(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    const diffItemsDoc = {
+      schema: "sdt-g74-diff-items/v1",
+      source: "scripts/g74-0.1.0-surface.mjs mechanical export diff against docs/SDT-G74-surface-baseline.json",
+      baselineTag: receipt.sourceTag,
+      baselineCommit: receipt.sourceCommit,
+      receiptPath: "docs/SDT-G74-0.1.0-receipt.json",
+      items: [
+        ...diff.removed.map((id) => ({ id, kind: "removed" })),
+        ...diff.added.map((id) => ({ id, kind: "added" })),
+        ...diff.changed.map(({ id }) => ({ id, kind: "changed" })),
+      ],
+    };
+    await writeFile(diffItemsPath, `${JSON.stringify(diffItemsDoc, null, 2)}\n`);
     const existingRouted = JSON.parse(await readFile(routedPath, "utf8").catch(() => "{\"items\":[]}"));
     existingRouted.receiptModelHash = receipt.modelHash;
     existingRouted.candidateHash = receipt.candidateHash;

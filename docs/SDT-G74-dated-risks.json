@@ -25,7 +25,7 @@
     {
       "key": "wasm-no-tags-wit-abi",
       "risk": "SekibanWasmRuntime no-tags WIT apply-event ABI",
-      "observedBasis": "RuntimeProjectionEvent.eventTags absent uses host per-tag legacy routing; non-empty stored tags required for multi-tag events",
+      "observedBasis": "RuntimeProjectionEvent.eventTags absent uses host per-tag legacy routing; non-empty stored tags required for multi-tag events; checked 2026-09-15",
       "disposition": "two sanctioned responses: extend ABI with stored tags, or omit eventTags and use host per-tag routing as a conscious legacy choice",
       "evidence": "test/dcb-domain.spec.ts:1385; test/g29-meeting-room.spec.ts:181"
     },
