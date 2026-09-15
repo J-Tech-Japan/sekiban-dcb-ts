@@ -1,0 +1,16 @@
+{
+  "schema": "sdt-g74-classification-policy/v1",
+  "source": "scripts/g78-error-classification-guard.mjs classifications plus G74 AC6 read/commit split",
+  "rows": [
+    { "code": "aborted", "kind": "timeout", "readPathAction": "stop automatic work", "commitPathAction": "reconcile if dispatch may have happened; never blindly reissue" },
+    { "code": "projection_unavailable", "kind": "unavailable", "readPathAction": "renew the read budget before retrying projection work", "commitPathAction": "reconcile before retry; never blindly reissue" },
+    { "code": "read_unavailable", "kind": "unavailable", "readPathAction": "retry a read only under a renewed budget", "commitPathAction": "reconcile before retry; never blindly reissue" },
+    { "code": "unknown_outcome", "kind": "timeout", "readPathAction": "not applicable on read paths", "commitPathAction": "reconcile the logical operation; never blindly reissue" },
+    { "code": "incoherent_read_snapshot", "kind": "transport", "readPathAction": "do not infer absence or blindly retry (adapter-backed live read)", "commitPathAction": "inspect or reconcile; do not infer definiteness" },
+    { "code": "domain_authoring_error", "kind": "invalid", "readPathAction": "fix the command or domain authoring; nothing was sent (supplied/snapshot-only path)", "commitPathAction": "fix the command or domain authoring; nothing was sent" },
+    { "code": "timeout", "kind": "timeout", "readPathAction": "retry a read only under a renewed budget (before dispatch)", "commitPathAction": "reconcile before retry; never blindly reissue (after dispatch)" },
+    { "code": "transport", "kind": "transport", "readPathAction": "inspect or reconcile rather than blindly retry", "commitPathAction": "reconcile before retry; never blindly reissue (after dispatch)" },
+    { "code": "(commit-side unavailable)", "kind": "unavailable", "readPathAction": "renew the read budget before retrying projection work when on a read path", "commitPathAction": "reconcile before retry; never blindly reissue (after dispatch)" }
+  ],
+  "evidence": "test/g78-error-classification.spec.ts:304; test/g71-read-contract.spec.ts:432"
+}

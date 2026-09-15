@@ -19,7 +19,12 @@
     "createHttpTransport": "public",
     "createSekibanExecutor": "public"
   },
-  "reviewedModuleInternal": [],
+  "reviewedModuleInternal": [
+    "packages/dcb-client/src/classification.ts"
+  ],
+  "reviewedPublicDomainExports": [
+    "deliveryPolicyFromDomain"
+  ],
   "publicRootAdditionProof": "A new declaration exported through packages/dcb-client/src/index.ts must change the release model and fail the surface guard; an executor-only declaration is not public and must be classified before publication.",
   "proposedBy": "SDT-G74 implementation, branch claude/sdt-g74-implementation-w281",
   "proposedAt": "2026-09-12",

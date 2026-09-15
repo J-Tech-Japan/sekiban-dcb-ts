@@ -79,6 +79,25 @@ function assertClassification(sourceText, ledger) {
   }
 }
 
+/** Every ledger-public executor export must reach the client root with matching namespace. */
+function assertLedgerRootCrossCheck(model, ledger) {
+  const root = clientRoot(model);
+  const rootByName = new Map(root.symbols.map((symbol) => [symbol.name, symbol]));
+  const publicLedger = Object.entries(ledger.exports ?? {}).filter(([, classification]) => classification === "public");
+  for (const [name] of publicLedger) {
+    const symbol = rootByName.get(name);
+    if (symbol === undefined) fail(`ledger-public export ${name} is missing from @sekiban/dcb-client root`);
+  }
+  for (const symbol of root.symbols) {
+    const origin = symbol.declarations?.[0]?.file ?? "";
+    if (!origin.includes("executor")) continue;
+    const classification = ledger.exports?.[symbol.name];
+    if (classification !== "public") {
+      fail(`executor-origin root export ${symbol.name} is not ledger-public (${classification ?? "unclassified"})`);
+    }
+  }
+}
+
 function expectMutationRed(label, mutate, baseline) {
   const mutant = clone(baseline);
   mutate(mutant);
@@ -154,6 +173,16 @@ if (process.argv.includes("--self-test")) {
     entry.symbols.push(template);
     entry.symbols.sort((left, right) => left.name.localeCompare(right.name));
   }, baseline));
+  let ledgerRootRed = false;
+  try {
+    const mutantLedger = clone(ledger);
+    delete mutantLedger.exports.SekibanExecutor;
+    assertLedgerRootCrossCheck(baseline, mutantLedger);
+  } catch (error) {
+    ledgerRootRed = true;
+    comparatorResults.push({ label: "ledger-root-cross-check", result: "RED_DETECTED", reason: error instanceof Error ? error.message : String(error) });
+  }
+  if (!ledgerRootRed) fail("ledger-root-cross-check self-test unexpectedly passed");
   const unclassifiedForms = [
     ["unclassified-executor-export", "\nexport interface NewlyUnclassified { value: string }\n"],
     ["unclassified-executor-enum", "\nexport enum NewlyUnclassifiedEnum { One }\n"],
@@ -174,5 +203,6 @@ if (process.argv.includes("--self-test")) {
 } else {
   const current = await extractCurrent();
   assertSurfaceEqual(baseline, current);
+  assertLedgerRootCrossCheck(current, ledger);
   process.stdout.write(`${JSON.stringify({ status: "PASS", publicSurfaceHash: current.publicSurfaceHash, packages: current.packages.length, entryPoints: current.entryPoints.length, executorExports: Object.keys(ledger.exports).length }, null, 2)}\n`);
 }

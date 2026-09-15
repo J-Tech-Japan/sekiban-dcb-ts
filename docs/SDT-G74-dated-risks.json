@@ -1,0 +1,61 @@
+{
+  "schema": "sdt-g74-dated-risks/v1",
+  "rows": [
+    {
+      "key": "allocator-ordering-gap",
+      "risk": "allocator-to-source ordering gap",
+      "observedBasis": "SDT-G69 #133 closed not_planned 2026-09-10; SDT-G70 #137 closed not_planned 2026-09-09; remainder SDT-G77 #154 open at 2026-09-14T09:23:55Z",
+      "disposition": "open; v1 adds no ordering guarantee",
+      "evidence": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/154"
+    },
+    {
+      "key": "safe-lane-latency",
+      "risk": "safe-lane latency",
+      "observedBasis": "SDT-G66 run sdtg66w164-8042cfc, 2026-09-07T19:17:49.862Z to 19:20:30.920Z; paced 10,000 ms (actual 11,965–12,959 ms); safe response-relative p50/p95 45,355/55,942 ms, 10/10 within 180,000 ms",
+      "disposition": "observed figure with run identity, not an SLA",
+      "evidence": ".artifacts/sdt-g66-w164-production-corrected.json"
+    },
+    {
+      "key": "unsafe-lane-latency",
+      "risk": "unsafe-lane first-visibility latency",
+      "observedBasis": "same SDT-G66 W164 cohort; unsafe response-relative p50/p95 2,366/4,650 ms; 10/10 within 5,000 ms bound",
+      "disposition": "observed figure with run identity, not an SLA; naming authorizes no runtime fix",
+      "evidence": ".artifacts/sdt-g66-w164-production-corrected.json"
+    },
+    {
+      "key": "wasm-no-tags-wit-abi",
+      "risk": "SekibanWasmRuntime no-tags WIT apply-event ABI",
+      "observedBasis": "RuntimeProjectionEvent.eventTags absent uses host per-tag legacy routing; non-empty stored tags required for multi-tag events",
+      "disposition": "two sanctioned responses: extend ABI with stored tags, or omit eventTags and use host per-tag routing as a conscious legacy choice",
+      "evidence": "test/dcb-domain.spec.ts:1385; test/g29-meeting-room.spec.ts:181"
+    },
+    {
+      "key": "cloud-transport-unpublished",
+      "risk": "cloud transport migration target unpublished",
+      "observedBasis": "@sekiban/cloud-client E404 from npm registry at 2026-09-14T09:23:55Z",
+      "disposition": "0.1.0 consumers of createSekibanCloudTransport cannot complete migration until published",
+      "evidence": "npm registry check 2026-09-14T09:23:55Z"
+    },
+    {
+      "key": "prerequisite-surface",
+      "risk": "prerequisite surface",
+      "observedBasis": "G71, G78, G88, G86, G87, G89 all landed before extraction",
+      "disposition": "semantics enumerated, not changed",
+      "evidence": "docs/SDT-G74-evidence.md § Prerequisite commits"
+    },
+    {
+      "key": "outstanding-prerequisite-criteria",
+      "risk": "criteria still outstanding on prerequisite units",
+      "observedBasis": "checked at 2026-09-15",
+      "disposition": "none — all six G74 prerequisites landed and are recorded in this contract",
+      "evidence": "docs/SDT-G74-evidence.md § Prerequisite commits"
+    },
+    {
+      "key": "published-graph",
+      "risk": "published graph",
+      "observedBasis": "registry check 2026-09-14T09:23:55Z: core/domain/client list only 0.1.0; runtime E404; candidate source 0.2.0",
+      "disposition": "comparison facts; no publication claimed",
+      "evidence": "docs/SDT-G74-0.1.0-receipt.json"
+    }
+  ]
+}

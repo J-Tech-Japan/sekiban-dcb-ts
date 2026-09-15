@@ -19167,6 +19167,84 @@
           }
         },
         {
+          "name": "ExecutorRejected",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": true
+          },
+          "declarations": [
+            {
+              "file": "dist/executor.d.ts",
+              "kind": "type",
+              "text": "export type ExecutorRejected = ExecuteRejected & { readonly rejectKind?: RejectKind; readonly details?: unknown; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "ExecuteRejected & { readonly rejectKind?: RejectKind; readonly details?: unknown; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"rejected\""
+            },
+            {
+              "name": "error",
+              "optional": false,
+              "readonly": true,
+              "type": "string"
+            },
+            {
+              "name": "attempts",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "status",
+              "optional": true,
+              "readonly": true,
+              "type": "number | undefined"
+            },
+            {
+              "name": "code",
+              "optional": true,
+              "readonly": true,
+              "type": "string | undefined"
+            },
+            {
+              "name": "rejectKind",
+              "optional": true,
+              "readonly": true,
+              "type": "RejectKind | undefined"
+            },
+            {
+              "name": "details",
+              "optional": true,
+              "readonly": true,
+              "type": "unknown"
+            }
+          ],
+          "syntax": {
+            "union": false,
+            "intersection": true,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "JsonValue",
           "namespace": {
             "value": false,
@@ -20768,13 +20846,6 @@
     {
       "package": "@sekiban/dcb-client",
       "file": "dist/executor.d.ts",
-      "name": "ExecutorRejected",
-      "kind": "type",
-      "text": "export type ExecutorRejected = ExecuteRejected & { readonly rejectKind?: RejectKind; readonly details?: unknown; };"
-    },
-    {
-      "package": "@sekiban/dcb-client",
-      "file": "dist/executor.d.ts",
       "name": "P",
       "kind": "TypeParameter",
       "text": "P extends ProjectorLike"
@@ -22046,5 +22117,5 @@
       "preflightCommit"
     ]
   },
-  "publicSurfaceHash": "22efba80d75f7d2869549849f3451735d0fd69309fb379f4be66017bb2c31ed1"
+  "publicSurfaceHash": "309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db"
 }

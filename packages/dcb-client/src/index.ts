@@ -596,6 +596,7 @@ export type {
   ExecuteCommandResult,
   ExecutorCommitted,
   ExecutorConflict,
+  ExecutorRejected,
   ListQueryOptions,
   ReadConsistency,
   ReadOptions,

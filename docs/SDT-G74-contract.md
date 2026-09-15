@@ -16,10 +16,10 @@ This document is the readable companion to `docs/SDT-G74-surface-baseline.json`.
 | SDT-G87 prerequisite | `2f6b7ddaf62845759333d3e811f6498dcbff4247` (#182) |
 | SDT-G89 prerequisite | `184f6b5d2142a675993f31d22840ddb1f97779b8` (#184) |
 | extractor | `scripts/g74-release-surface.mjs`, model schema `sdt-g74-surface/v3`: npm pack with prepack, exports-map resolution, TypeScript `5.9.3`, `Node16`, strict declaration checking |
-| public surface hash | `22efba80d75f7d2869549849f3451735d0fd69309fb379f4be66017bb2c31ed1` |
+| public surface hash | `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db` |
 | contract label | `executor-facade-v1` |
 | carrying package version | `0.2.0` (selected, not published) |
-| model summary | 280 exported symbols, 284 declaration nodes, 5 overloaded symbols, 246 optional/rest members or parameters, 9 reachable non-exported declarations and 160 reachable type parameters |
+| model summary | 281 exported symbols, 285 declaration nodes, 5 overloaded symbols, 250 optional/rest members or parameters, 8 reachable non-exported declarations and 160 reachable type parameters |
 
 The release candidate is built and packed from the three non-private package roots. Each declared export entry is resolved through the installed package `exports` map, then the resulting `.d.ts` graph is checked with `skipLibCheck: false`. `@sekiban/dcb-runtime` is private, absent from the release workflow, and deliberately excluded. No npm publish, tag, credential, or deployment operation was performed.
 
@@ -291,7 +291,7 @@ Runtime namespace: `evolve`, `evolveTable`, `given`.
 
 ### @sekiban/dcb-client .
 
-Resolved declaration `./dist/index.d.ts`; runtime entry `./dist/index.js`; 55 exported names; 10 runtime names.
+Resolved declaration `./dist/index.d.ts`; runtime entry `./dist/index.js`; 56 exported names; 10 runtime names.
 
 | exported name | declaration and reachable shape |
 | --- | --- |
@@ -328,6 +328,7 @@ Resolved declaration `./dist/index.d.ts`; runtime entry `./dist/index.js`; 55 ex
 | `ExecuteUnavailable` | namespace=type; declaration=interface dist/index.d.ts; members=readonly kind: "unavailable", readonly attempts: number, readonly status?: number \\| undefined, readonly code?: string \\| undefined, readonly error?: string \\| undefined |
 | `ExecutorCommitted` | namespace=type; declaration=type dist/executor.d.ts; members=readonly kind: "committed", readonly response: unknown, readonly value?: DomainJsonValue \\| undefined, readonly attempts: number, readonly status?: number \\| undefined, readonly code?: string \\| undefined, readonly error?: string \\| undefined, readonly writtenEvents: readonly WrittenEvent[], readonly tagWriteResults: readonly TagWriteResult[], readonly head: string, readonly heads: readonly { readonly tag: Tag; readonly head: string; }[]; type=ExecuteCommitted & { readonly writtenEvents: readonly WrittenEvent[]; readonly tagWriteResults: readonly TagWriteResult[]; readonly head: string; readonly heads: readonly { readonly tag: Tag; readonly head: string; }[]; }; syntax=intersection |
 | `ExecutorConflict` | namespace=type; declaration=type dist/executor.d.ts; members=readonly kind: "conflict", readonly attempts: number, readonly status?: number \\| undefined, readonly code?: string \\| undefined, readonly error?: string \\| undefined, readonly conflicts: readonly { readonly tag: Tag; readonly expectedHead: string; readonly actualHead?: string; }[]; type=ExecuteConflict & { readonly conflicts: readonly { readonly tag: Tag; readonly expectedHead: string; readonly actualHead?: string; }[]; }; syntax=intersection |
+| `ExecutorRejected` | namespace=type; declaration=type dist/executor.d.ts; members=readonly kind: "rejected", readonly error: string, readonly attempts: number, readonly status?: number \\| undefined, readonly code?: string \\| undefined, readonly rejectKind?: RejectKind \\| undefined, readonly details?: unknown; type=ExecuteRejected & { readonly rejectKind?: RejectKind; readonly details?: unknown; }; syntax=intersection, unknown |
 | `JsonValue` | namespace=type; declaration=type ../dcb-core/dist/index.d.ts; type=JsonPrimitive \\| JsonValue[] \\| { readonly [key: string]: JsonValue; }; syntax=union, indexSignature |
 | `ListQueryOptions` | namespace=type; declaration=interface dist/executor.d.ts; members=readonly consistency?: ReadConsistency \\| undefined, readonly signal?: AbortSignal \\| undefined |
 | `ListQueryRequest` | namespace=type; declaration=interface dist/index.d.ts; members=readonly queryParamsJson: string, readonly queryType: string, readonly waitForSortableUniqueId?: string \\| undefined |
@@ -359,7 +360,6 @@ A public signature exposes the shape of every type it mentions, whether or not t
 
 | package | file | name | kind | declaration |
 | --- | --- | --- | --- | --- |
-| `@sekiban/dcb-client` | `dist/executor.d.ts` | `ExecutorRejected` | type | `export type ExecutorRejected = ExecuteRejected & { readonly rejectKind?: RejectKind; readonly details?: unknown; };` |
 | `@sekiban/dcb-client` | `dist/index.d.ts` | `ClientCommand` | type | `type ClientCommand = (context: ClientCommandContext, input?: unknown) => ClientCommandDecision \| Promise<ClientCommandDecision>;` |
 | `@sekiban/dcb-domain` | `dist/bridge.d.ts` | `LegacyDomainDefinition` | interface | `interface LegacyDomainDefinition { readonly events?: readonly LegacyEventDefinition[]; readonly commands?: readonly RuntimeCommandDefinition[]; readonly projectors?: readonly RuntimeProjectorDefinition[]; readonly views?: readonly DomainViewDefinition[]; }` |
 | `@sekiban/dcb-domain` | `dist/bridge.d.ts` | `LegacyEventDefinition` | interface | `interface LegacyEventDefinition { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly eventType?: string; readonly parse?: (payload: unknown) => unknown; readonly create?: (payload: unknown) => { readonly payload?: unknown; }; readonly construct?: (payload: unknown) => { readonly payload?: unknown; }; }` |
@@ -392,7 +392,7 @@ An intra-scope dependency (`@sekiban/*`) that pins exactly the package's own ver
 
 ## Shape dimensions captured by the model
 
-The model records package/subpath, conditional type/runtime entries, namespace and alias status (a value re-exported with `export type` counts as type-only), declaration kind/text/file with comments removed, reachable type text, overload order, call/construct signatures, parameter position/optional/rest/type, generic constraints/defaults/const, return type, class/interface members with required/optional and readonly status, syntax markers, reachable non-exported declarations including the unique-symbol brands, declaration-file directives and augmentations, and every manifest field except package metadata (author, bugs, contributors, description, devDependencies, files, funding, gitHead, homepage, keywords, license, publishConfig, readme, repository, scripts). Across this candidate the marker counts are: `union`=72, `intersection`=7, `tuple`=1, `indexSignature`=6, `conditional`=35, `mapped`=0, `unknown`=73, `any`=1, `never`=12, `uniqueSymbol`=0, `brand`=7. External package dependencies are retained in the package facts (`zod` is the domain dependency; core has none; client depends exactly on core and domain). Compiler/module floor is TypeScript `5.9.3`, target `ES2022`, module and resolution `Node16`; the package contract is tested under Node16 and Bundler consumer compilation, with strict declaration resolution separately checked.
+The model records package/subpath, conditional type/runtime entries, namespace and alias status (a value re-exported with `export type` counts as type-only), declaration kind/text/file with comments removed, reachable type text, overload order, call/construct signatures, parameter position/optional/rest/type, generic constraints/defaults/const, return type, class/interface members with required/optional and readonly status, syntax markers, reachable non-exported declarations including the unique-symbol brands, declaration-file directives and augmentations, and every manifest field except package metadata (author, bugs, contributors, description, devDependencies, files, funding, gitHead, homepage, keywords, license, publishConfig, readme, repository, scripts). Across this candidate the marker counts are: `union`=72, `intersection`=8, `tuple`=1, `indexSignature`=6, `conditional`=35, `mapped`=0, `unknown`=74, `any`=1, `never`=12, `uniqueSymbol`=0, `brand`=7. External package dependencies are retained in the package facts (`zod` is the domain dependency; core has none; client depends exactly on core and domain). Compiler/module floor is TypeScript `5.9.3`, target `ES2022`, module and resolution `Node16`; the package contract is tested under Node16 and Bundler consumer compilation, with strict declaration resolution separately checked.
 
 A bidirectional assignability check is intentionally not substituted for this model: assignability can hide overload order, literal/inference changes, discriminant additions, brands, `unknown`/`any`/`never`, and module-resolution failures.
 
@@ -420,13 +420,13 @@ Every declared option below is mapped to production implementation and existing 
 | public operation/option | behaviour in this candidate | test proof |
 | --- | --- | --- |
 | `createSekibanExecutor(transport, options?)` | builds the facade over one adapter | `test/g57-executor.spec.ts` AC1–AC3 |
-| `options.serviceId` | when both it and `transport.serviceId` are set and differ, every `execute` returns `invalid` / `scope.mismatch` without committing | `test/g57-executor.spec.ts:379` |
-| `options.clock` | time source for command decisions; defaults to `Date.now` | used at `test/g57-executor.spec.ts:190`; no test asserts its value |
+| `options.serviceId` | when both it and `transport.serviceId` are set and differ, every `execute` returns `invalid` / `scope.mismatch` without committing | `test/g57-executor.spec.ts:382` |
+| `options.clock` | time source for command decisions; defaults to `Date.now` | behavioural coverage: none dedicated at freeze head `73cbd8a98a8ed91d7d862ea3726cc5b92d3b05d8`; related coverage: used at `test/g57-executor.spec.ts:190`; status: documented freeze gap; not designated for removal |
 | `execute(command, input, options?)` | runs the command against snapshots or reads, commits, and returns `ExecuteCommandResult` with nine `kind` values | `test/g57-executor.spec.ts` AC1–AC3; exhaustiveness in the packed consumer fixture |
 | `ExecuteCommandOptions.snapshots` | an array of `PortableSnapshot` or a `SnapshotReader`; covered cells are not read | `test/g57-executor.spec.ts:178`, `:269` |
 | `ExecuteCommandOptions.readMode` | `read-through` (default) or `snapshot-only`; snapshot-only makes zero reads, fails closed on an uncovered claim and forces zero conflict retries | `test/g57-executor.spec.ts:178` |
 | `ExecuteCommandOptions.maxConflictRetries` | default `1`, no cap; invalid values return `invalid_execute_options` before any commit; `0` returns the typed conflict without retrying; exhausted conflict stays typed | `test/g57-executor.spec.ts:362`, `:389`, `:404`, `:775`; snapshot-only validation at `:178` |
-| `ExecuteCommandOptions.signal` | forwarded to reads and commit; abort before dispatch returns `timeout` / `aborted`; abort during commit returns the classified outcome | `test/g57-executor.spec.ts:516`, `:537`, `:640`; read-through classification at `test/g71-read-contract.spec.ts:433` |
+| `ExecuteCommandOptions.signal` | forwarded to reads and commit; abort before dispatch returns `timeout` / `aborted`; abort during commit returns the classified outcome | `test/g57-executor.spec.ts:516`, `:537`, `:640`; read-through classification at `test/g71-read-contract.spec.ts:432` |
 | `ExecuteCommandOptions.totalBudgetMs` | enforced on reads and commit; invalid values return `invalid_execute_options` before any adapter call; expiry returns `timeout` | `test/g57-executor.spec.ts:446`, `:498`, `:516`, `:537`, `:555` |
 | `readState(projector, tag, options?)` | authority read first; payload-dependent existence; bounded reconciliation; requires `readTagLatestSortable` | `test/g71-read-contract.spec.ts:298`, `:327`, `:345`, `:365`, `:383`, `:398` |
 | `exists(tag, options?)` | authority read only; requires `readTagLatestSortable` | `test/g71-read-contract.spec.ts:298`, `:383`, `:593`, `:611` |
@@ -435,7 +435,7 @@ Every declared option below is mapped to production implementation and existing 
 | `ReadOptions.consistency` | not in the type; runtime refusal `unsupported_consistency_mode` / `400` | `test/g71-read-contract.spec.ts:414`; packed consumer compile rejection |
 | `listQuery(request, options?)` | returns the page and durable `readHead` when supplied | `test/g71-read-contract.spec.ts:460`, `:499`, `:543`, `:648`; `test/g71-composition.spec.ts:255` |
 | `ListQueryOptions.consistency` | `safe` or `unsafe` written into `queryParamsJson` | `test/g71-read-contract.spec.ts:414`; `test/g71-composition.spec.ts:255` |
-| `ListQueryOptions.signal` | forwarded to `transport.listQuery` | no dedicated test |
+| `ListQueryOptions.signal` | forwarded to `transport.listQuery` | behavioural coverage: none dedicated at freeze head `73cbd8a98a8ed91d7d862ea3726cc5b92d3b05d8`; related coverage: `packages/dcb-client/src/executor.ts:731`; status: documented freeze gap; not designated for removal |
 | facade HTTP 400/422/500/503 and thrown errors | classified through the shared table (`invalid`, `rejected`, `transport`, `unavailable`, `timeout`, `partial`, `conflict`) | `test/g78-error-classification.spec.ts`; `test/g57-executor.spec.ts:775` |
 | code-less commit HTTP 5xx | `timeout` / `unknown_outcome` | `test/g78-error-classification.spec.ts` matrix rows |
 | post-dispatch `timeout`, `transport`, commit-side `unavailable` | outcome-unknown; reconcile before retry; no blind reissue | `test/g76-regression-matrix.spec.ts`; policy below |
@@ -455,7 +455,7 @@ Every declared option below is mapped to production implementation and existing 
 | runtime bridge rejected `reason` / `code` | surfaced from port results, not unwrapped errors | `test/dcb-domain.spec.ts:1270` |
 | `RuntimeProjectionEvent.eventTags` | non-empty stored tags used; `[]` throws `RUNTIME_EVENT_TAGS_EMPTY`; absent uses host per-tag legacy routing | `test/g29-meeting-room.spec.ts:181`, `:201`; `test/dcb-domain.spec.ts:1385` |
 | `SekibanCloudTransportOptions` (`BaseUrl`, `ServiceId`, `CredentialId`, `CredentialSecret`, `fetch`) | retained type-only boundary; designated implementer `@sekiban/cloud-client`; **not implemented in this repository and not published** | `test/g78-error-classification.spec.ts`; type-only export in packed `@sekiban/dcb-client` |
-| `packages/dcb-client/src/classification.ts` | module-internal; not exported from the public root | export-classification ledger; surface guard |
+| `packages/dcb-client/src/classification.ts` | module-internal; not exported from the public root | `docs/SDT-G74-export-classification.json` reviewedModuleInternal; surface guard |
 
 ### Intentional removals recorded by prerequisites (not in v1)
 
@@ -465,7 +465,11 @@ Every declared option below is mapped to production implementation and existing 
 | `CommandDefinition` / `CommandOutcome` re-exports from `@sekiban/dcb-client` | SDT-G87 | explicit dcb-client barrel; packed consumer |
 | `ClientCommandDecision.envelope` | SDT-G87 | `test/g13-client.spec.ts:299` |
 | `ExecuteCommon.cause`, `ExecuteConflict.response`, `ExecuteCommitted.response` on client execute results | SDT-G87/G88 | `test/g13-client.spec.ts`; `test/g57-executor.spec.ts:708` |
-| dead domain declarations cleaned by G88 | SDT-G88 | `docs/SDT-G88-evidence.md` |
+| `cloneAndFreeze` export | SDT-G88 | removed from dcb-domain root |
+| `StateUnion.discriminator` / `stateUnion`/`state` discriminator option | SDT-G88 | removed; WasmRuntime impact |
+| `CommandDone.state` / `CommandCommitted.state` | SDT-G88 | removed from dcb-core |
+| `TState` on defineCommand and command types | SDT-G88 | removed from dcb-core |
+| `done()` state parameter | SDT-G88 | removed from dcb-core |
 | `RuntimeProjectionEvent.eventId` / `.suid` | SDT-G89 | bridge/runtime tests in `test/dcb-domain.spec.ts` |
 
 ## Compatibility policy
@@ -496,15 +500,38 @@ The following are not promised by this facade freeze: backend implementation cho
 
 **Post-dispatch unknown outcomes (AC6).** A code-less commit HTTP response at status 500 or above is classified as `timeout` / `unknown_outcome`. After dispatch, `timeout`, `transport`, and commit-side `unavailable` outcomes do not prove that no write occurred: the commit-path caller reconciles before retrying and never blindly reissues. Read-side fallback semantics are unchanged. A partial result never silently becomes safely retryable. Adapter-backed live-read `INCOHERENT_SNAPSHOT` is `transport` / `incoherent_read_snapshot` with no automatic retry; supplied or snapshot-only incoherence is `invalid` / `domain_authoring_error`.
 
+### Consumer-visible error classification (AC6)
+
+The table below is checked against `docs/SDT-G74-classification-policy.json` and the G78/G86 tests. It records separate caller actions for read and commit paths so `projection_unavailable` unambiguously renews the read budget before retrying projection work while a post-dispatch commit-side `unavailable` requires reconciliation.
+
+| code | result kind | read-path caller action | commit-path caller action |
+| --- | --- | --- | --- |
+| `aborted` | `timeout` | stop automatic work | reconcile if dispatch may have happened; never blindly reissue |
+| `projection_unavailable` | `unavailable` | renew the read budget before retrying projection work | reconcile before retry; never blindly reissue |
+| `read_unavailable` | `unavailable` | retry a read only under a renewed budget | reconcile before retry; never blindly reissue |
+| `unknown_outcome` | `timeout` | not applicable on read paths | reconcile the logical operation; never blindly reissue |
+| `incoherent_read_snapshot` | `transport` | do not infer absence or blindly retry (adapter-backed live read) | inspect or reconcile; do not infer definiteness |
+| `domain_authoring_error` | `invalid` | fix the command or domain authoring; nothing was sent (supplied/snapshot-only path) | fix the command or domain authoring; nothing was sent |
+| `timeout` | `timeout` | retry a read only under a renewed budget (before dispatch) | reconcile before retry; never blindly reissue (after dispatch) |
+| `transport` | `transport` | inspect or reconcile rather than blindly retry | reconcile before retry; never blindly reissue (after dispatch) |
+| `(commit-side unavailable)` | `unavailable` | renew the read budget before retrying projection work when on a read path | reconcile before retry; never blindly reissue (after dispatch) |
+
+Evidence: `test/g78-error-classification.spec.ts:304; test/g71-read-contract.spec.ts:432`; generator `scripts/g74-contract-check.mjs`.
+
 ## Dated risks and prerequisite status
+
+Naming these risks authorizes no runtime fix.
 
 | risk | observed basis and date | contract disposition |
 | --- | --- | --- |
-| allocator-to-source ordering gap | SDT-G69 [#133](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/133) was closed `not_planned` on 2026-09-10T09:22:54Z by design ruling: its AC1 was negative (the G44/G62 gate does not close the allocation-to-durable-arrival gap), so AC4 and AC5 were ruled out rather than left undone. SDT-G70 [#137](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/137) was closed `not_planned` on 2026-09-09T09:27:56Z and split into ordered parts. The remaining gap is carried by SDT-G77 [#154](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/154), open when checked at 2026-09-14T09:23:55Z | open; v1 adds no ordering guarantee. If closing the gap needs a change to this facade surface or to a documented outcome, that change is reviewed under the policy above and is not absorbed silently |
-| safe-lane latency | SDT-G66 run `sdtg66w164-8042cfc`, 2026-09-07T19:17:49.862Z to 19:20:30.920Z, source `8042cfcbc7cd5ea207473e62d12aa478b2afc990`, Worker version `f9b2b714-53e5-4b8c-bda9-6c4d35c6389e` at 100% traffic, receipt `.artifacts/sdt-g66-w164-production-corrected.json`, published by #135 on 2026-09-07. Cohort paced at 10,000 ms (actual spacings 11,965–12,959 ms); safe response-relative p50/p95 `45,355/55,942 ms`, 10/10 within the unchanged 180,000 ms bound | an observed figure with its run identity, not an SLA and not a changed timeout. It was not re-measured at this candidate; G71, G75, G76 and G78 landed after it |
-| cloud transport migration target unpublished | `@sekiban/cloud-client` returned E404 from the npm registry at 2026-09-14T09:23:55Z; its implementation and publication belong to SekibanCloud | a 0.1.0 consumer of `createSekibanCloudTransport` cannot complete the migration below until that package is published |
-| prerequisite surface | G71 `102d65f5…`, G78 `a0d6add…`, G88 `681da42…`, G86 `5da349b…`, G87 `2f6b7dd…`, G89 `184f6b5…` | all six landed before this extraction; their semantics are enumerated, not changed |
-| published graph | registry check at 2026-09-14T09:23:55Z: `@sekiban/dcb-core`, `@sekiban/dcb-domain` and `@sekiban/dcb-client` list only `0.1.0`; `@sekiban/dcb-runtime` is E404; the candidate source packages are `0.2.0` | comparison facts; no publication is claimed |
+| allocator-to-source ordering gap | SDT-G69 #133 closed not_planned 2026-09-10; SDT-G70 #137 closed not_planned 2026-09-09; remainder SDT-G77 #154 open at 2026-09-14T09:23:55Z (`https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/154`) | open; v1 adds no ordering guarantee |
+| safe-lane latency | SDT-G66 run sdtg66w164-8042cfc, 2026-09-07T19:17:49.862Z to 19:20:30.920Z; paced 10,000 ms (actual 11,965–12,959 ms); safe response-relative p50/p95 45,355/55,942 ms, 10/10 within 180,000 ms (`.artifacts/sdt-g66-w164-production-corrected.json`) | observed figure with run identity, not an SLA |
+| unsafe-lane first-visibility latency | same SDT-G66 W164 cohort; unsafe response-relative p50/p95 2,366/4,650 ms; 10/10 within 5,000 ms bound (`.artifacts/sdt-g66-w164-production-corrected.json`) | observed figure with run identity, not an SLA; naming authorizes no runtime fix |
+| SekibanWasmRuntime no-tags WIT apply-event ABI | RuntimeProjectionEvent.eventTags absent uses host per-tag legacy routing; non-empty stored tags required for multi-tag events (`test/dcb-domain.spec.ts:1385; test/g29-meeting-room.spec.ts:181`) | two sanctioned responses: extend ABI with stored tags, or omit eventTags and use host per-tag routing as a conscious legacy choice |
+| cloud transport migration target unpublished | @sekiban/cloud-client E404 from npm registry at 2026-09-14T09:23:55Z (`npm registry check 2026-09-14T09:23:55Z`) | 0.1.0 consumers of createSekibanCloudTransport cannot complete migration until published |
+| prerequisite surface | G71, G78, G88, G86, G87, G89 all landed before extraction (`docs/SDT-G74-evidence.md § Prerequisite commits`) | semantics enumerated, not changed |
+| criteria still outstanding on prerequisite units | checked at 2026-09-15 (`docs/SDT-G74-evidence.md § Prerequisite commits`) | none — all six G74 prerequisites landed and are recorded in this contract |
+| published graph | registry check 2026-09-14T09:23:55Z: core/domain/client list only 0.1.0; runtime E404; candidate source 0.2.0 (`docs/SDT-G74-0.1.0-receipt.json`) | comparison facts; no publication claimed |
 
 These are bounded, dated risks rather than an open-ended exception permitting arbitrary retroactive change. A stable API shape does not make the service production-ready. The first consultation, posted on 2026-09-13, described the ordering gap as owned by G69/G70 with AC4/AC5 open, and dated the latency window 2026-09-08; both were wrong at the time and are corrected here and in the re-consultation.
 
@@ -540,44 +567,59 @@ A module-type flip cannot be expressed as a resolvable artifact (TypeScript reje
 
 The packed consumer check adds compile-time proofs that a declaration diff cannot give. One fixture must compile as written while carrying labelled `@ts-expect-error` rejections; the same file with the directives blanked must fail on exactly those lines with the diagnostic each label names. It covers `consistency` on `readState`, `exists` and `query`; exhaustive switches over the facade result, `ExecuteResult`, and dcb-domain `ExecuteCommandResult.status` including `"conflict"`, each with a missing-case negative twin whose `@ts-expect-error` is consumed; the nine-kind discriminant not widening to `string`; and literal inference for `tagFamily`, a tag and an event name. Five declaration mutants applied to the installed packages must each turn that fixture red inside the fixture, and a control proves an unused `@ts-expect-error` is itself an error.
 
-The client executor barrel is explicit and all 15 source executor exports are classified public in `docs/SDT-G74-export-classification.json`, a proposal accepted only through the independent pull-request review. `packages/dcb-client/src/classification.ts` remains module-internal. An internal-only executor export is not allowed to silently enter the public contract, while a deliberate root export addition is independently caught. The domain/core wildcard barrels are followed by the extractor and are not blanket-rewritten.
+The client executor barrel is explicit and all 15 source executor exports are classified public in `docs/SDT-G74-export-classification.json`, a proposal accepted only through the independent pull-request review. `packages/dcb-client/src/classification.ts` is recorded module-internal in the ledger's `reviewedModuleInternal` list. `deliveryPolicyFromDomain` is a new public domain export recorded in the routed-items model, not the executor ledger. An internal-only executor export is not allowed to silently enter the public contract, while a deliberate root export addition is independently caught. The domain/core wildcard barrels are followed by the extractor and are not blanket-rewritten.
+
+### AC5 explicit-barrel equivalence
+
+`node scripts/g74-barrel-equivalence.mjs` extracts the release-shaped candidate and simulates an `export * from "./executor.js"` barrel by setting `alias: true` on every executor-origin root symbol. The proof passes when the export name/namespace set is identical and `publicSurfaceHash` matches — only the alias flag differs. A ledger-root cross-check in `node scripts/g74-surface-guard.mjs` requires every ledger-public executor export to reach the client root.
 
 ## Version designation and migration from 0.1.0
 
 The candidate graph is `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, and `@sekiban/dcb-client@0.2.0`. The contract label is `executor-facade-v1`; the carrying package version selected for it is `0.2.0`; no npm publication has been observed or performed. Source `0.1.1` was never published and is not a migration target.
 
-The comparison baseline is tag `dcb-v0.1.0` at `7353b987e94a999d60ec6b41b1df2387efb11ac5`, built from source and extracted with the same extractor and normalization. Each row below is one contract or informational marker; informational sample-worker rows do not enter the v1 enumeration or baseline hash.
+The comparison baseline is tag `dcb-v0.1.0` at `7353b987e94a999d60ec6b41b1df2387efb11ac5`. Installable registry tarballs `@sekiban/dcb-core@0.1.0`, `@sekiban/dcb-domain@0.1.0` and `@sekiban/dcb-client@0.1.0` were extracted with the same extractor after the TS2835 specifier normalization disclosed in `docs/SDT-G74-0.1.0-receipt.json`. Each row below is one contract or informational marker; informational sample-worker rows do not enter the v1 enumeration or baseline hash. The mechanical item list is `docs/SDT-G74-routed-items.json`; `scripts/g74-contract-check.mjs` fails when a diff item lacks a routed row.
 
 | routed item | marker | 0.1.0 | 0.2.0 candidate | migration instruction |
 | --- | --- | --- | --- | --- |
 | cloud transport factory | contract | `@sekiban/dcb-client` exported `createSekibanCloudTransport` as a value | removed from dcb-client root/runtime; `SekibanCloudTransportOptions` type retained | import from `@sekiban/cloud-client` when published |
-| read consistency placement | contract | `ReadOptions.consistency` on every read; no wire effect | only `ListQueryOptions.consistency` reaches the wire | move `consistency` to `listQuery` only |
-| existence authority | contract | tag-state payload sentinel inferred existence | durable authority via `readTagLatestSortable` | implement authority read on adapters |
-| facade 400/422/500/503 classification | contract | ad hoc / partial | unified table (`invalid`, `rejected`, `transport`, `unavailable`, `timeout`, `partial`, `conflict`) | reclassify handlers against table |
+| read consistency placement | contract | `ReadOptions.consistency` on every read; no wire effect (`test/g71-read-contract.spec.ts:414`) | only `ListQueryOptions.consistency` reaches the wire | move `consistency` to `listQuery` only |
+| existence authority | contract | tag-state payload sentinel inferred existence (`test/g71-read-contract.spec.ts:298`) | durable authority via `readTagLatestSortable` | implement authority read on adapters |
+| facade 400/422/500/503 classification | contract | ad hoc / partial (`test/g78-error-classification.spec.ts:304`) | unified table | reclassify handlers against table |
 | thrown read/commit errors | contract | mixed throw/return | classified into execute result union where applicable | update error handling |
-| ClaimLedgerExecutor malformed codes | contract | inconsistent | unified table via `classifyFailure` | same as facade table |
-| handler/domain-authoring errors | contract | partially surfaced | `invalid` / `domain_authoring_error` with explicit codes | handle new codes |
+| ClaimLedgerExecutor malformed codes | contract | inconsistent | unified table via shared classification | same as facade table |
+| handler/domain-authoring errors | contract | partially surfaced | `invalid` / `domain_authoring_error` | handle new codes |
 | exhausted conflict | contract | often ambiguous | explicit `conflict` kind/status | handle exhaustive `conflict` |
 | unrecognised commit replies | contract | silent/unknown | `unknown_outcome` / classified transport | reconcile before retry |
 | `ExecuteCommandResult.status: "conflict"` | contract | absent | present in domain session | update exhaustive switches |
 | `ExecuteCommitted.value` | contract | not carried | done value on committed results | read optional `value` |
-| `ExecutorRejected.rejectKind` / `.details` | contract | absent | present for handler rejects | optional fields on reject path |
+| `ExecutorRejected.rejectKind` / `.details` | contract | absent (type added at G86) | present for handler rejects | optional fields on reject path |
 | `deliveryPolicyFromDomain` export | contract | absent | new public domain export | adopt when configuring delivery |
-| schema-validated restore | contract | accepted invalid/unknown keys in some paths | fails closed; unknown keys stripped by schema (G88 N5) | validate persisted state bytes |
+| schema-validated restore | contract | accepted invalid/unknown keys in some paths | fails closed; unknown keys stripped (G88 N5) | validate persisted state bytes |
 | undeclared delivery classes / duplicate view ids | contract | accepted silently | `DomainRegistrationError` at registration | fix view declarations |
 | runtime bridge rejected `reason`/`code` | contract | dropped in some paths | preserved from port results (G89) | read rejection fields |
 | `eventTags: []` | contract | accepted/ignored | throws `RUNTIME_EVENT_TAGS_EMPTY` (G89) | omit tags or extend ABI |
 | live vs supplied `INCOHERENT_SNAPSHOT` | contract | undifferentiated | transport vs domain_authoring_error split (G89) | classify by read path |
-| `CommitHttpResult.headers` | contract | absent | on every HTTP adapter response | optional field; not on errors |
+| `CommitHttpResult.headers` | contract | optional field present; population varied | populated on every built-in HTTP adapter response | optional field; not copied into executor results |
 | facade `totalBudgetMs` / `signal` | contract | declared, partially enforced | enforced on reads and commit (G86) | pass valid budgets/signals |
 | ClaimLedger retry/backoff | contract | incorrect/uncapped | default 0, cap 1, full-jitter backoff (G87) | adjust retry expectations |
 | removed `CommandDefinition`/`CommandOutcome` client re-exports | contract | exported | removed (G87) | import from domain/core directly |
 | removed `ClientCommandDecision.envelope` | contract | present | removed (G87) | stop reading envelope |
 | removed execute result fields (`cause`, `response`) | contract | present on some variants | removed (G87/G88) | use typed fields only |
-| Node16 `./index.js` resolution | contract | TS2835 / `any` degradation with skipLibCheck | explicit `.js` imports | narrow on discriminant before fields |
+| `cloneAndFreeze` export | contract | exported from dcb-domain | removed (G88) | stop importing |
+| `StateUnion.discriminator` / discriminator option | contract | present on union and factories | removed (G88) | update domain authoring |
+| `CommandDone.state` / `CommandCommitted.state` | contract | present | removed (G88) | stop reading state members |
+| `TState` on defineCommand and command types | contract | present | removed (G88) | simplify command definitions |
+| `done()` state parameter | contract | present | removed (G88) | use projector initial state only |
+| `ClaimLedgerExecutor.execute` parameter | contract | `CommandLike` | narrowed to `ClientCommand` (G87) | pass function commands |
+| `RuntimeCommandPortResult` | contract | single union type | split into `RuntimePort*Result` variants (G89) | read variant fields |
+| `RuntimeProjectionEvent.eventId` / `.suid` | contract | present | removed (G89) | stop reading removed fields |
+| `ListQueryOptions` / `ReadConsistency` / `ViewDeliveryClass` | contract | absent | new exports (G71/G88) | adopt when needed |
+| `CommitAttemptResult.consistency-conflict.error?` | contract | absent | optional member (G89) | read when present |
+| `SerializedDcbClient.httpResult` | contract | absent | member added (G87) | optional HTTP trace |
+| `ClaimLedgerExecutor.defaultRetries` optionality | contract | required with default | optional with default 0 (G87) | adjust construction |
+| Node16 `./index.js` resolution | contract | TS2835 without normalization (receipt) | explicit `.js` imports | narrow on discriminant before fields |
 | `createHttpTransport.serviceId` / `ListQueryResponse.readHead` | contract | absent | optional additive fields | none required |
 | sample worker HTTP status/body changes | informational | older sample responses | G86 sample worker status/value/rejectKind/details changes | sample-only; not v1 hash |
-| dcb-core / dcb-domain / `./testing` surface | contract | baseline after normalization | unchanged except items above | upgrade three packages together |
 
 ## Consumer consultation (AC10)
 
@@ -585,7 +627,7 @@ AC10 requires each consuming team's named owner to acknowledge receipt of the ex
 
 The first consultation was posted on 2026-09-13 to SekibanWasmRuntime #283, SekibanAsAService #1914 and Sekiban #1172. All three were silent through its window, and explicit design waivers were recorded at 2026-09-14 08:15 UTC. Those waivers were **withdrawn** at 2026-09-14 09:15 UTC, because the consultation they rested on was defective in three independent ways: the surface hash it quoted is not the hash being frozen (fixing the extractor changed it), it described the ordering-gap risk wrongly, and Sekiban #1172 had been closed since 2026-09-02, so it was not a watched channel. A waiver cannot be issued against silence on a consultation that did not carry the right content through a channel that reaches its owner.
 
-The consumers are re-consulted on `22efba80d75f7d2869549849f3451735d0fd69309fb379f4be66017bb2c31ed1`, with the corrected risks and capability statement, through open and watched issues and with a new review window. The consultation locations, the window, and the separate received, no-objection, agreed and adopted statuses are recorded in `docs/SDT-G74-evidence.md` as they actually arrive. The freeze is not declared until AC10 is decided again after that window.
+The consumers are re-consulted on `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`, with the corrected risks and capability statement, through open and watched issues and with a new review window. The consultation locations, the window, and the separate received, no-objection, agreed and adopted statuses are recorded in `docs/SDT-G74-evidence.md` as they actually arrive. The freeze is not declared until AC10 is decided again after that window.
 
 After landing, all three consumers are notified with the immutable enumeration, the package and release status, the migration instructions and the risks, including the note that the first consultation carried the earlier ordering-gap wording.
 

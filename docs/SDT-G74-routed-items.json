@@ -1,0 +1,275 @@
+{
+  "schema": "sdt-g74-routed-items/v1",
+  "baselineTag": "dcb-v0.1.0",
+  "baselineCommit": "7353b987e94a999d60ec6b41b1df2387efb11ac5",
+  "receiptPath": "docs/SDT-G74-0.1.0-receipt.json",
+  "items": [
+    {
+      "marker": "contract",
+      "key": "cloud-transport-factory",
+      "routedItem": "cloud transport factory",
+      "kind": "removed-export"
+    },
+    {
+      "marker": "contract",
+      "key": "read-consistency-placement",
+      "routedItem": "read consistency placement",
+      "kind": "behavioural"
+    },
+    {
+      "marker": "contract",
+      "key": "existence-authority",
+      "routedItem": "existence authority",
+      "kind": "behavioural"
+    },
+    {
+      "marker": "contract",
+      "key": "facade-http-classification",
+      "routedItem": "facade 400/422/500/503 classification",
+      "kind": "behavioural",
+      "evidence": "test/g78-error-classification.spec.ts:304"
+    },
+    {
+      "marker": "contract",
+      "key": "thrown-read-commit-errors",
+      "routedItem": "thrown read/commit errors",
+      "kind": "behavioural",
+      "evidence": "test/g78-error-classification.spec.ts:304"
+    },
+    {
+      "marker": "contract",
+      "key": "claimledger-malformed-codes",
+      "routedItem": "ClaimLedgerExecutor malformed codes",
+      "kind": "behavioural",
+      "evidence": "test/g78-error-classification.spec.ts:304"
+    },
+    {
+      "marker": "contract",
+      "key": "handler-domain-authoring-errors",
+      "routedItem": "handler/domain-authoring errors",
+      "kind": "behavioural",
+      "evidence": "test/g57-executor.spec.ts:921"
+    },
+    {
+      "marker": "contract",
+      "key": "exhausted-conflict",
+      "routedItem": "exhausted conflict",
+      "kind": "behavioural",
+      "evidence": "test/g57-executor.spec.ts:362"
+    },
+    {
+      "marker": "contract",
+      "key": "unrecognised-commit-replies",
+      "routedItem": "unrecognised commit replies",
+      "kind": "behavioural",
+      "evidence": "test/g78-error-classification.spec.ts:85"
+    },
+    {
+      "marker": "contract",
+      "key": "execute-command-result-status-conflict",
+      "routedItem": "ExecuteCommandResult.status: \"conflict\"",
+      "kind": "declaration",
+      "evidence": "test/dcb-domain.spec.ts:808"
+    },
+    {
+      "marker": "contract",
+      "key": "execute-committed-value",
+      "routedItem": "ExecuteCommitted.value",
+      "kind": "declaration",
+      "evidence": "test/g57-executor.spec.ts:708"
+    },
+    {
+      "marker": "contract",
+      "key": "executor-rejected-fields",
+      "routedItem": "ExecutorRejected.rejectKind",
+      "kind": "declaration",
+      "evidence": "test/g57-executor.spec.ts:708"
+    },
+    {
+      "marker": "contract",
+      "key": "delivery-policy-from-domain",
+      "routedItem": "deliveryPolicyFromDomain export",
+      "kind": "added-export"
+    },
+    {
+      "marker": "contract",
+      "key": "schema-validated-restore",
+      "routedItem": "schema-validated restore",
+      "kind": "behavioural",
+      "evidence": "test/dcb-domain.spec.ts:1049"
+    },
+    {
+      "marker": "contract",
+      "key": "undeclared-delivery-classes",
+      "routedItem": "undeclared delivery classes / duplicate view ids",
+      "kind": "behavioural",
+      "evidence": "test/dcb-domain.spec.ts:1075"
+    },
+    {
+      "marker": "contract",
+      "key": "runtime-bridge-rejection-fields",
+      "routedItem": "runtime bridge rejected reason/code",
+      "kind": "behavioural",
+      "evidence": "test/dcb-domain.spec.ts:1270"
+    },
+    {
+      "marker": "contract",
+      "key": "event-tags-empty",
+      "routedItem": "eventTags: []",
+      "kind": "behavioural",
+      "evidence": "test/dcb-domain.spec.ts:1385"
+    },
+    {
+      "marker": "contract",
+      "key": "incoherent-snapshot-split",
+      "routedItem": "live vs supplied INCOHERENT_SNAPSHOT",
+      "kind": "behavioural",
+      "evidence": "test/g57-executor.spec.ts:888"
+    },
+    {
+      "marker": "contract",
+      "key": "commit-http-result-headers",
+      "routedItem": "CommitHttpResult.headers",
+      "kind": "declaration",
+      "evidence": "test/g13-client.spec.ts:441"
+    },
+    {
+      "marker": "contract",
+      "key": "facade-budget-signal",
+      "routedItem": "facade totalBudgetMs / signal",
+      "kind": "behavioural",
+      "evidence": "test/g57-executor.spec.ts:516"
+    },
+    {
+      "marker": "contract",
+      "key": "claimledger-retry-backoff",
+      "routedItem": "ClaimLedger retry/backoff",
+      "kind": "behavioural",
+      "evidence": "test/g13-client.spec.ts:353"
+    },
+    {
+      "marker": "contract",
+      "key": "removed-command-definition-outcome-reexports",
+      "routedItem": "removed CommandDefinition/CommandOutcome client re-exports",
+      "kind": "removed-export"
+    },
+    {
+      "marker": "contract",
+      "key": "removed-client-command-decision-envelope",
+      "routedItem": "removed ClientCommandDecision.envelope",
+      "kind": "removed-member"
+    },
+    {
+      "marker": "contract",
+      "key": "removed-execute-result-fields",
+      "routedItem": "removed execute result fields (cause, response)",
+      "kind": "removed-member"
+    },
+    {
+      "marker": "contract",
+      "key": "node16-js-resolution",
+      "routedItem": "Node16 ./index.js resolution",
+      "kind": "behavioural",
+      "evidence": "scripts/g74-packed-consumer-check.mjs"
+    },
+    {
+      "marker": "contract",
+      "key": "additive-http-transport-serviceid",
+      "routedItem": "createHttpTransport.serviceId / ListQueryResponse.readHead",
+      "kind": "added-member"
+    },
+    {
+      "marker": "informational",
+      "key": "sample-worker-http-changes",
+      "routedItem": "sample worker HTTP status/body changes",
+      "kind": "informational"
+    },
+    {
+      "marker": "contract",
+      "key": "g88-clone-and-freeze",
+      "routedItem": "cloneAndFreeze export",
+      "kind": "removed-export"
+    },
+    {
+      "marker": "contract",
+      "key": "g88-state-union-discriminator",
+      "routedItem": "StateUnion.discriminator / discriminator option",
+      "kind": "removed-member"
+    },
+    {
+      "marker": "contract",
+      "key": "g88-core-command-state-members",
+      "routedItem": "CommandDone.state / CommandCommitted.state",
+      "kind": "removed-member"
+    },
+    {
+      "marker": "contract",
+      "key": "g88-core-tstate-parameter",
+      "routedItem": "TState on defineCommand and command types",
+      "kind": "removed-type-parameter"
+    },
+    {
+      "marker": "contract",
+      "key": "g88-done-state-parameter",
+      "routedItem": "done() state parameter",
+      "kind": "signature-change"
+    },
+    {
+      "marker": "contract",
+      "key": "g87-execute-parameter-narrowing",
+      "routedItem": "ClaimLedgerExecutor.execute parameter",
+      "kind": "signature-change",
+      "evidence": "test/g13-client.spec.ts"
+    },
+    {
+      "marker": "contract",
+      "key": "g89-runtime-port-result-split",
+      "routedItem": "RuntimeCommandPortResult",
+      "kind": "type-restructure"
+    },
+    {
+      "marker": "contract",
+      "key": "g89-runtime-projection-event-fields",
+      "routedItem": "RuntimeProjectionEvent.eventId / .suid",
+      "kind": "removed-member"
+    },
+    {
+      "marker": "contract",
+      "key": "added-list-query-options",
+      "routedItem": "ListQueryOptions / ReadConsistency / ViewDeliveryClass",
+      "kind": "added-export"
+    },
+    {
+      "marker": "contract",
+      "key": "added-read-consistency",
+      "routedItem": "ListQueryOptions / ReadConsistency / ViewDeliveryClass",
+      "kind": "added-export"
+    },
+    {
+      "marker": "contract",
+      "key": "added-view-delivery-class",
+      "routedItem": "ListQueryOptions / ReadConsistency / ViewDeliveryClass",
+      "kind": "added-export"
+    },
+    {
+      "marker": "contract",
+      "key": "commit-attempt-result-consistency-conflict",
+      "routedItem": "CommitAttemptResult.consistency-conflict.error?",
+      "kind": "added-member"
+    },
+    {
+      "marker": "contract",
+      "key": "serialized-dcb-client-http-result",
+      "routedItem": "SerializedDcbClient.httpResult",
+      "kind": "added-member"
+    },
+    {
+      "marker": "contract",
+      "key": "claimledger-default-retries-optionality",
+      "routedItem": "ClaimLedgerExecutor.defaultRetries optionality",
+      "kind": "member-optionality"
+    }
+  ],
+  "receiptModelHash": "86beb8c78d357deabcd3df9b969adc895ff6665e779f1b918a3db371e22b2831",
+  "candidateHash": "309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db"
+}

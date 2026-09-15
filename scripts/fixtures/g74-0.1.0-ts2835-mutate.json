@@ -1,0 +1,18 @@
+{
+  "edits": [
+    {
+      "package": "dcb-client",
+      "file": "dist/executor.d.ts",
+      "search": "from \"./index\"",
+      "replace": "from \"./index.js\"",
+      "expectedMatches": 1
+    },
+    {
+      "package": "dcb-core",
+      "file": "dist/materializedView.d.ts",
+      "search": "from \"./index\"",
+      "replace": "from \"./index.js\"",
+      "expectedMatches": 1
+    }
+  ]
+}
