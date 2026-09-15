@@ -28,7 +28,7 @@ import {
   type ReadonlyTagStateResponse,
   type SerializedDcbTransport,
   type TagLatestSortableResponse,
-} from "./index";
+} from "./index.js";
 import { classifyFailure, commitReplyError, failureKindForCode } from "./classification.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { sanitizeTransportError } from "./errors.js";

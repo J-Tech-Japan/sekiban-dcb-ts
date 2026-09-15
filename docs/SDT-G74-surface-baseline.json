@@ -406,15 +406,8 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface CommandCommitted<TState extends JsonValue = JsonValue> { readonly kind: \"committed\"; readonly value?: JsonValue; readonly state?: TState; readonly events: readonly AppendedEvent[]; }",
-              "typeParameters": [
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
+              "text": "export interface CommandCommitted { readonly kind: \"committed\"; readonly value?: JsonValue; readonly events: readonly AppendedEvent[]; }",
+              "typeParameters": []
             }
           ],
           "type": null,
@@ -436,12 +429,6 @@
               "type": "JsonValue | undefined"
             },
             {
-              "name": "state",
-              "optional": true,
-              "readonly": true,
-              "type": "TState | undefined"
-            },
-            {
               "name": "events",
               "optional": false,
               "readonly": true,
@@ -453,7 +440,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
             "unknown": false,
             "any": false,
@@ -473,15 +460,8 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface CommandContext<TState extends JsonValue = JsonValue> { readonly state: <T extends JsonValue = JsonValue>(tag: TagInput) => T | undefined; readonly assertEmpty: (tag: TagInput) => void; readonly append: (event: EventDefinition, payload: unknown, tags?: readonly TagInput[]) => AppendedEvent; readonly done: (value?: JsonValue) => CommandDone<TState>; readonly noop: (reason?: string) => Omit<CommandNoop, \"events\">; readonly reject: (reason: string, code?: string) => Omit<CommandRejected, \"events\">; readonly appendedEvents: readonly AppendedEvent[]; }",
-              "typeParameters": [
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
+              "text": "export interface CommandContext { readonly state: <T extends JsonValue = JsonValue>(tag: TagInput) => T | undefined; readonly assertEmpty: (tag: TagInput) => void; readonly append: (event: EventDefinition, payload: unknown, tags?: readonly TagInput[]) => AppendedEvent; readonly done: (value?: JsonValue) => CommandDone; readonly noop: (reason?: string) => Omit<CommandNoop, \"events\">; readonly reject: (reason: string, code?: string) => Omit<CommandRejected, \"events\">; readonly appendedEvents: readonly AppendedEvent[]; }",
+              "typeParameters": []
             }
           ],
           "type": null,
@@ -512,7 +492,7 @@
               "name": "done",
               "optional": false,
               "readonly": true,
-              "type": "(value?: JsonValue) => CommandDone<TState>"
+              "type": "(value?: JsonValue) => CommandDone"
             },
             {
               "name": "noop",
@@ -558,18 +538,12 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface CommandDefinition<TInput = unknown, TState extends JsonValue = JsonValue> { readonly id: string; readonly name: string; readonly parseInput: (input: unknown) => TInput; readonly execute: (input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome<TState>; readonly handle: CommandDefinition<TInput, TState>[\"execute\"]; }",
+              "text": "export interface CommandDefinition<TInput = unknown> { readonly id: string; readonly name: string; readonly parseInput: (input: unknown) => TInput; readonly execute: (input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome; readonly handle: CommandDefinition<TInput>[\"execute\"]; }",
               "typeParameters": [
                 {
                   "name": "TInput",
                   "constraint": null,
                   "default": "unknown",
-                  "const": false
-                },
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
                   "const": false
                 }
               ]
@@ -603,13 +577,13 @@
               "name": "execute",
               "optional": false,
               "readonly": true,
-              "type": "(input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome<TState>"
+              "type": "(input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome"
             },
             {
               "name": "handle",
               "optional": false,
               "readonly": true,
-              "type": "(input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome<TState>"
+              "type": "(input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome"
             }
           ],
           "syntax": {
@@ -617,7 +591,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
             "unknown": true,
             "any": false,
@@ -637,24 +611,18 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type CommandDefinitionOptions<TInput, TState extends JsonValue = JsonValue> = { readonly id?: string; readonly name?: string; readonly parseInput?: CommandInputParser<TInput>; readonly inputParser?: CommandInputParser<TInput>; readonly input?: CommandInputParser<TInput>; readonly handler: CommandHandler<TInput, TState>; };",
+              "text": "export type CommandDefinitionOptions<TInput> = { readonly id?: string; readonly name?: string; readonly parseInput?: CommandInputParser<TInput>; readonly inputParser?: CommandInputParser<TInput>; readonly input?: CommandInputParser<TInput>; readonly handler: CommandHandler<TInput>; };",
               "typeParameters": [
                 {
                   "name": "TInput",
                   "constraint": null,
                   "default": null,
                   "const": false
-                },
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
                 }
               ]
             }
           ],
-          "type": "{ readonly id?: string; readonly name?: string; readonly parseInput?: CommandInputParser<TInput>; readonly inputParser?: CommandInputParser<TInput>; readonly input?: CommandInputParser<TInput>; readonly handler: CommandHandler<TInput, TState>; }",
+          "type": "{ readonly id?: string; readonly name?: string; readonly parseInput?: CommandInputParser<TInput>; readonly inputParser?: CommandInputParser<TInput>; readonly input?: CommandInputParser<TInput>; readonly handler: CommandHandler<TInput>; }",
           "signatures": {
             "call": [],
             "construct": []
@@ -694,7 +662,7 @@
               "name": "handler",
               "optional": false,
               "readonly": true,
-              "type": "CommandHandler<TInput, TState>"
+              "type": "CommandHandler<TInput>"
             }
           ],
           "syntax": {
@@ -702,7 +670,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
             "unknown": false,
             "any": false,
@@ -722,15 +690,8 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface CommandDone<TState extends JsonValue = JsonValue> { readonly kind: \"committed\"; readonly value?: JsonValue; readonly state?: TState; }",
-              "typeParameters": [
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
+              "text": "export interface CommandDone { readonly kind: \"committed\"; readonly value?: JsonValue; }",
+              "typeParameters": []
             }
           ],
           "type": null,
@@ -750,12 +711,6 @@
               "optional": true,
               "readonly": true,
               "type": "JsonValue | undefined"
-            },
-            {
-              "name": "state",
-              "optional": true,
-              "readonly": true,
-              "type": "TState | undefined"
             }
           ],
           "syntax": {
@@ -763,7 +718,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
             "unknown": false,
             "any": false,
@@ -783,24 +738,18 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type CommandHandler<TInput, TState extends JsonValue = JsonValue> = (input: TInput, context: CommandContext<TState>) => CommandHandlerOutcome<TState>;",
+              "text": "export type CommandHandler<TInput> = (input: TInput, context: CommandContext) => CommandHandlerOutcome;",
               "typeParameters": [
                 {
                   "name": "TInput",
                   "constraint": null,
                   "default": null,
                   "const": false
-                },
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
                 }
               ]
             }
           ],
-          "type": "(input: TInput, context: CommandContext<TState>) => CommandHandlerOutcome<TState>",
+          "type": "(input: TInput, context: CommandContext) => CommandHandlerOutcome",
           "signatures": {
             "call": [],
             "construct": []
@@ -831,18 +780,11 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type CommandHandlerOutcome<TState extends JsonValue = JsonValue> = CommandDone<TState> | Omit<CommandNoop, \"events\"> | Omit<CommandRejected, \"events\">;",
-              "typeParameters": [
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
+              "text": "export type CommandHandlerOutcome = CommandDone | Omit<CommandNoop, \"events\"> | Omit<CommandRejected, \"events\">;",
+              "typeParameters": []
             }
           ],
-          "type": "CommandDone<TState> | Omit<CommandNoop, \"events\"> | Omit<CommandRejected, \"events\">",
+          "type": "CommandDone | Omit<CommandNoop, \"events\"> | Omit<CommandRejected, \"events\">",
           "signatures": {
             "call": [],
             "construct": []
@@ -976,18 +918,11 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type CommandOutcome<TState extends JsonValue = JsonValue> = CommandCommitted<TState> | CommandNoop | CommandRejected;",
-              "typeParameters": [
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
+              "text": "export type CommandOutcome = CommandCommitted | CommandNoop | CommandRejected;",
+              "typeParameters": []
             }
           ],
-          "type": "CommandCommitted<TState> | CommandNoop | CommandRejected",
+          "type": "CommandCommitted | CommandNoop | CommandRejected",
           "signatures": {
             "call": [],
             "construct": []
@@ -1182,24 +1117,18 @@
             {
               "file": "dist/index.d.ts",
               "kind": "function",
-              "text": "export declare function defineCommand<TInput, TState extends JsonValue = JsonValue>(options: CommandDefinitionOptions<TInput, TState>): CommandDefinition<TInput, TState>;",
+              "text": "export declare function defineCommand<TInput>(options: CommandDefinitionOptions<TInput>): CommandDefinition<TInput>;",
               "typeParameters": [
                 {
                   "name": "TInput",
                   "constraint": null,
                   "default": null,
                   "const": false
-                },
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
                 }
               ]
             }
           ],
-          "type": "<TInput, TState extends JsonValue = JsonValue>(options: CommandDefinitionOptions<TInput, TState>) => CommandDefinition<TInput, TState>",
+          "type": "<TInput>(options: CommandDefinitionOptions<TInput>) => CommandDefinition<TInput>",
           "signatures": {
             "call": [
               {
@@ -1209,12 +1138,6 @@
                     "constraint": "{}",
                     "default": "{}",
                     "const": false
-                  },
-                  {
-                    "name": "TState",
-                    "constraint": "JsonValue",
-                    "default": "JsonValue",
-                    "const": false
                   }
                 ],
                 "parameters": [
@@ -1222,10 +1145,10 @@
                     "name": "options",
                     "optional": false,
                     "rest": false,
-                    "type": "CommandDefinitionOptions<TInput, TState>"
+                    "type": "CommandDefinitionOptions<TInput>"
                   }
                 ],
-                "returnType": "CommandDefinition<TInput, TState>"
+                "returnType": "CommandDefinition<TInput>"
               }
             ],
             "construct": []
@@ -1917,7 +1840,7 @@
               "name": "commands",
               "optional": false,
               "readonly": true,
-              "type": "readonly CommandDefinition<unknown, JsonValue>[]"
+              "type": "readonly CommandDefinition<unknown>[]"
             },
             {
               "name": "projectors",
@@ -2074,7 +1997,7 @@
               "name": "commands",
               "optional": true,
               "readonly": true,
-              "type": "readonly CommandDefinition<unknown, JsonValue>[] | undefined"
+              "type": "readonly CommandDefinition<unknown>[] | undefined"
             },
             {
               "name": "projectors",
@@ -2174,37 +2097,24 @@
             {
               "file": "dist/index.d.ts",
               "kind": "variable",
-              "text": "done: <TState extends JsonValue = JsonValue>(value?: JsonValue, state?: TState) => CommandDone<TState>",
+              "text": "done: (value?: JsonValue) => CommandDone",
               "typeParameters": []
             }
           ],
-          "type": "<TState extends JsonValue = JsonValue>(value?: JsonValue, state?: TState) => CommandDone<TState>",
+          "type": "(value?: JsonValue) => CommandDone",
           "signatures": {
             "call": [
               {
-                "typeParameters": [
-                  {
-                    "name": "TState",
-                    "constraint": "JsonValue",
-                    "default": "JsonValue",
-                    "const": false
-                  }
-                ],
+                "typeParameters": [],
                 "parameters": [
                   {
                     "name": "value",
                     "optional": true,
                     "rest": false,
                     "type": "JsonValue | undefined"
-                  },
-                  {
-                    "name": "state",
-                    "optional": true,
-                    "rest": false,
-                    "type": "TState | undefined"
                   }
                 ],
-                "returnType": "CommandDone<TState>"
+                "returnType": "CommandDone"
               }
             ],
             "construct": []
@@ -2215,7 +2125,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
             "unknown": false,
             "any": false,
@@ -5411,68 +5321,6 @@
           }
         },
         {
-          "name": "cloneAndFreeze",
-          "namespace": {
-            "value": true,
-            "type": false,
-            "alias": false
-          },
-          "declarations": [
-            {
-              "file": "dist/types.d.ts",
-              "kind": "function",
-              "text": "export declare function cloneAndFreeze<T>(value: T): T;",
-              "typeParameters": [
-                {
-                  "name": "T",
-                  "constraint": null,
-                  "default": null,
-                  "const": false
-                }
-              ]
-            }
-          ],
-          "type": "<T>(value: T) => T",
-          "signatures": {
-            "call": [
-              {
-                "typeParameters": [
-                  {
-                    "name": "T",
-                    "constraint": "{}",
-                    "default": "{}",
-                    "const": false
-                  }
-                ],
-                "parameters": [
-                  {
-                    "name": "value",
-                    "optional": false,
-                    "rest": false,
-                    "type": "T"
-                  }
-                ],
-                "returnType": "T"
-              }
-            ],
-            "construct": []
-          },
-          "members": [],
-          "syntax": {
-            "union": false,
-            "intersection": false,
-            "tuple": false,
-            "indexSignature": false,
-            "conditional": false,
-            "mapped": false,
-            "unknown": false,
-            "any": false,
-            "never": false,
-            "uniqueSymbol": false,
-            "brand": false
-          }
-        },
-        {
           "name": "command",
           "namespace": {
             "value": true,
@@ -5634,7 +5482,7 @@
               "type": "\"none\" | \"done\" | \"reject\""
             },
             {
-              "name": "__@terminalDecisionBrand@40875",
+              "name": "__@terminalDecisionBrand@40862",
               "optional": false,
               "readonly": true,
               "type": "\"none\" | \"done\" | \"reject\""
@@ -5901,11 +5749,11 @@
             {
               "file": "dist/session.d.ts",
               "kind": "type",
-              "text": "export type CommitAttemptResult = { readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly error?: unknown; };",
+              "text": "export type CommitAttemptResult = { readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; readonly error?: unknown; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly error?: unknown; };",
               "typeParameters": []
             }
           ],
-          "type": "{ readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly error?: unknown; }",
+          "type": "{ readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; readonly error?: unknown; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly error?: unknown; }",
           "signatures": {
             "call": [],
             "construct": []
@@ -6352,6 +6200,54 @@
                   }
                 ],
                 "returnType": "Tag<Family>"
+              }
+            ],
+            "construct": []
+          },
+          "members": [],
+          "syntax": {
+            "union": false,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "deliveryPolicyFromDomain",
+          "namespace": {
+            "value": true,
+            "type": false,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/domain.d.ts",
+              "kind": "function",
+              "text": "export declare function deliveryPolicyFromDomain(domainValue: { readonly views?: readonly DomainViewDefinition[]; }): Readonly<Record<string, ViewDeliveryClass>>;",
+              "typeParameters": []
+            }
+          ],
+          "type": "(domainValue: { readonly views?: readonly DomainViewDefinition[]; }) => Readonly<Record<string, ViewDeliveryClass>>",
+          "signatures": {
+            "call": [
+              {
+                "typeParameters": [],
+                "parameters": [
+                  {
+                    "name": "domainValue",
+                    "optional": false,
+                    "rest": false,
+                    "type": "{ readonly views?: readonly DomainViewDefinition[]; }"
+                  }
+                ],
+                "returnType": "Readonly<Record<string, ViewDeliveryClass>>"
               }
             ],
             "construct": []
@@ -7167,7 +7063,7 @@
             {
               "file": "dist/domain.d.ts",
               "kind": "interface",
-              "text": "export interface DomainViewDefinition { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: \"immediate-preferred\" | \"queued\"; }",
+              "text": "export interface DomainViewDefinition { readonly id: string; readonly source: string; readonly projector?: string; readonly deliveryClass?: ViewDeliveryClass; }",
               "typeParameters": []
             }
           ],
@@ -7199,11 +7095,11 @@
               "name": "deliveryClass",
               "optional": true,
               "readonly": true,
-              "type": "\"immediate-preferred\" | \"queued\" | undefined"
+              "type": "ViewDeliveryClass | undefined"
             }
           ],
           "syntax": {
-            "union": true,
+            "union": false,
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
@@ -7319,7 +7215,7 @@
               "type": "Value | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40875",
+              "name": "__@terminalDecisionBrand@40862",
               "optional": false,
               "readonly": true,
               "type": "\"done\""
@@ -7587,7 +7483,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40873",
+              "name": "__@eventPayloadBrand@40860",
               "optional": false,
               "readonly": true,
               "type": "Event"
@@ -7703,7 +7599,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40873",
+              "name": "__@eventPayloadBrand@40860",
               "optional": false,
               "readonly": true,
               "type": "Event"
@@ -8083,7 +7979,7 @@
           },
           "members": [
             {
-              "name": "__@eventPayloadBrand@40873",
+              "name": "__@eventPayloadBrand@40860",
               "optional": false,
               "readonly": true,
               "type": "Union[\"events\"][number]"
@@ -8377,7 +8273,7 @@
             {
               "file": "dist/session.d.ts",
               "kind": "interface",
-              "text": "export interface ExecuteCommandResult { readonly status: \"accepted\" | \"discarded\" | \"unknown\" | \"rejected\"; readonly attempts: number; readonly now: FixedNow; readonly decision: TerminalDecision; readonly envelope?: CandidateEnvelope; readonly log: DecisionLog; readonly session: Session; readonly error?: unknown; }",
+              "text": "export interface ExecuteCommandResult { readonly status: \"accepted\" | \"discarded\" | \"unknown\" | \"rejected\" | \"conflict\"; readonly attempts: number; readonly now: FixedNow; readonly decision: TerminalDecision; readonly envelope?: CandidateEnvelope; readonly log: DecisionLog; readonly session: Session; readonly error?: unknown; }",
               "typeParameters": []
             }
           ],
@@ -8391,7 +8287,7 @@
               "name": "status",
               "optional": false,
               "readonly": true,
-              "type": "\"unknown\" | \"rejected\" | \"accepted\" | \"discarded\""
+              "type": "\"unknown\" | \"rejected\" | \"conflict\" | \"accepted\" | \"discarded\""
             },
             {
               "name": "attempts",
@@ -8958,7 +8854,7 @@
               "type": "string | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40875",
+              "name": "__@terminalDecisionBrand@40862",
               "optional": false,
               "readonly": true,
               "type": "\"none\""
@@ -9270,7 +9166,7 @@
           },
           "members": [
             {
-              "name": "__@parsedBoundaryBrand@40874",
+              "name": "__@parsedBoundaryBrand@40861",
               "optional": false,
               "readonly": true,
               "type": "Boundary"
@@ -10055,7 +9951,7 @@
               "type": "(serialized: string) => State"
             },
             {
-              "name": "__@projectorFamilyInvariant@41134",
+              "name": "__@projectorFamilyInvariant@41119",
               "optional": false,
               "readonly": true,
               "type": "(value: Family) => Family"
@@ -11245,7 +11141,7 @@
               "type": "Details | undefined"
             },
             {
-              "name": "__@terminalDecisionBrand@40875",
+              "name": "__@terminalDecisionBrand@40862",
               "optional": false,
               "readonly": true,
               "type": "\"reject\""
@@ -12286,7 +12182,7 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeCommandPort { readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector; readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult; }",
+              "text": "export interface RuntimeCommandPort { readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimePortBarrierResult> | RuntimePortBarrierResult; readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimePortAdmitResult> | RuntimePortAdmitResult; readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector; readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimePortCommitResult> | RuntimePortCommitResult; readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult) => Promise<RuntimePortReconcileResult> | RuntimePortReconcileResult; }",
               "typeParameters": []
             }
           ],
@@ -12300,13 +12196,13 @@
               "name": "conflictBarrier",
               "optional": true,
               "readonly": true,
-              "type": "((candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult) | undefined"
+              "type": "((candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimePortBarrierResult> | RuntimePortBarrierResult) | undefined"
             },
             {
               "name": "admit",
               "optional": true,
               "readonly": true,
-              "type": "((candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult) | undefined"
+              "type": "((candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimePortAdmitResult> | RuntimePortAdmitResult) | undefined"
             },
             {
               "name": "allocate",
@@ -12318,13 +12214,13 @@
               "name": "commit",
               "optional": true,
               "readonly": true,
-              "type": "((candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult) | undefined"
+              "type": "((candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimePortCommitResult> | RuntimePortCommitResult) | undefined"
             },
             {
               "name": "reconcile",
               "optional": true,
               "readonly": true,
-              "type": "((context: RuntimeCommandAttemptContext, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult) | undefined"
+              "type": "((context: RuntimeCommandAttemptContext, outcome: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult) => Promise<RuntimePortReconcileResult> | RuntimePortReconcileResult) | undefined"
             }
           ],
           "syntax": {
@@ -12352,11 +12248,11 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "type",
-              "text": "export type RuntimeCommandPortResult = { readonly kind: \"accepted\"; readonly attemptId?: string; } | { readonly kind: \"consistency-conflict\"; readonly error?: unknown; } | { readonly kind: \"unknown\"; readonly error?: unknown; readonly attemptId?: string; } | { readonly kind: \"rejected\"; readonly error?: unknown; readonly reason?: string; readonly code?: string; };",
+              "text": "export type RuntimeCommandPortResult = RuntimePortBarrierResult | RuntimePortAdmitResult | RuntimePortCommitResult;",
               "typeParameters": []
             }
           ],
-          "type": "{ readonly kind: \"accepted\"; readonly attemptId?: string; } | { readonly kind: \"consistency-conflict\"; readonly error?: unknown; } | { readonly kind: \"unknown\"; readonly error?: unknown; readonly attemptId?: string; } | { readonly kind: \"rejected\"; readonly error?: unknown; readonly reason?: string; readonly code?: string; }",
+          "type": "RuntimePortBarrierResult | RuntimePortAdmitResult | RuntimePortCommitResult",
           "signatures": {
             "call": [],
             "construct": []
@@ -12376,7 +12272,7 @@
             "indexSignature": false,
             "conditional": false,
             "mapped": false,
-            "unknown": true,
+            "unknown": false,
             "any": false,
             "never": false,
             "uniqueSymbol": false,
@@ -12454,7 +12350,7 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeDomainDefinition { readonly events: readonly RuntimeEventDefinition[]; readonly commands: readonly RuntimeCommandDefinition[]; readonly projectors: readonly RuntimeProjectorDefinition[]; readonly views: readonly DomainViewDefinition[]; readonly queries: readonly []; readonly materializedViews: readonly []; readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>; readonly eventByType: ReadonlyMap<string, RuntimeEventDefinition>; readonly __sekibanAuthoringBridge: true; }",
+              "text": "export interface RuntimeDomainDefinition { readonly events: readonly RuntimeEventDefinition[]; readonly commands: readonly RuntimeCommandDefinition[]; readonly projectors: readonly RuntimeProjectorDefinition[]; readonly views: readonly (DomainViewDefinition & { readonly deliveryClass: ViewDeliveryClass; })[]; readonly queries: readonly []; readonly materializedViews: readonly []; readonly eventByName: ReadonlyMap<string, RuntimeEventDefinition>; readonly eventByType: ReadonlyMap<string, RuntimeEventDefinition>; readonly __sekibanAuthoringBridge: true; }",
               "typeParameters": []
             }
           ],
@@ -12486,7 +12382,7 @@
               "name": "views",
               "optional": false,
               "readonly": true,
-              "type": "readonly DomainViewDefinition[]"
+              "type": "readonly (DomainViewDefinition & { readonly deliveryClass: ViewDeliveryClass; })[]"
             },
             {
               "name": "queries",
@@ -12521,7 +12417,7 @@
           ],
           "syntax": {
             "union": false,
-            "intersection": false,
+            "intersection": true,
             "tuple": false,
             "indexSignature": false,
             "conditional": false,
@@ -12678,6 +12574,174 @@
           }
         },
         {
+          "name": "RuntimePortAdmitResult",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "type",
+              "text": "export type RuntimePortAdmitResult = { readonly kind: \"accepted\"; readonly attemptId?: string; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "{ readonly kind: \"accepted\"; readonly attemptId?: string; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"unknown\" | \"rejected\" | \"accepted\" | \"consistency-conflict\""
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimePortBarrierResult",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "type",
+              "text": "export type RuntimePortBarrierResult = { readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "{ readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"unknown\" | \"rejected\" | \"accepted\" | \"consistency-conflict\""
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimePortCommitResult",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "type",
+              "text": "export type RuntimePortCommitResult = { readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; readonly attemptId?: string; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "{ readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; readonly attemptId?: string; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"unknown\" | \"rejected\" | \"accepted\" | \"consistency-conflict\""
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
+          "name": "RuntimePortReconcileResult",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/bridge.d.ts",
+              "kind": "type",
+              "text": "export type RuntimePortReconcileResult = { readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; readonly attemptId?: string; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; };",
+              "typeParameters": []
+            }
+          ],
+          "type": "{ readonly kind: \"accepted\"; } | { readonly kind: \"consistency-conflict\"; } | { readonly kind: \"unknown\"; readonly error?: unknown; readonly attemptId?: string; } | { readonly kind: \"rejected\"; readonly reason?: string; readonly code?: string; }",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "kind",
+              "optional": false,
+              "readonly": true,
+              "type": "\"unknown\" | \"rejected\" | \"accepted\" | \"consistency-conflict\""
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": true,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "RuntimeProjectionEvent",
           "namespace": {
             "value": false,
@@ -12688,7 +12752,7 @@
             {
               "file": "dist/bridge.d.ts",
               "kind": "interface",
-              "text": "export interface RuntimeProjectionEvent { readonly eventId?: string; readonly suid?: string; readonly eventType: string; readonly eventPayloadName?: string; readonly payload: unknown; readonly eventTags?: readonly string[]; readonly provenance?: \"g32\"; }",
+              "text": "export interface RuntimeProjectionEvent { readonly eventType: string; readonly eventPayloadName?: string; readonly payload: unknown; readonly eventTags?: readonly string[]; readonly provenance?: \"g32\"; }",
               "typeParameters": []
             }
           ],
@@ -12698,18 +12762,6 @@
             "construct": []
           },
           "members": [
-            {
-              "name": "eventId",
-              "optional": true,
-              "readonly": true,
-              "type": "string | undefined"
-            },
-            {
-              "name": "suid",
-              "optional": true,
-              "readonly": true,
-              "type": "string | undefined"
-            },
             {
               "name": "eventType",
               "optional": false,
@@ -13829,7 +13881,7 @@
               "typeParameters": []
             }
           ],
-          "type": "<Schema extends z.ZodTypeAny>(schema: Schema, options: { readonly discriminator?: string; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }) => StateUnion<Schema>",
+          "type": "<Schema extends z.ZodTypeAny>(schema: Schema, options: { readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }) => StateUnion<Schema>",
           "signatures": {
             "call": [
               {
@@ -13852,7 +13904,7 @@
                     "name": "options",
                     "optional": false,
                     "rest": false,
-                    "type": "{ readonly discriminator?: string; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }"
+                    "type": "{ readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }"
                   }
                 ],
                 "returnType": "StateUnion<Schema>"
@@ -13996,7 +14048,7 @@
             {
               "file": "dist/state.d.ts",
               "kind": "function",
-              "text": "export declare function stateUnion<Schema extends z.ZodTypeAny>(schema: Schema, options: { readonly discriminator?: string; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }): StateUnion<Schema>;",
+              "text": "export declare function stateUnion<Schema extends z.ZodTypeAny>(schema: Schema, options: { readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }): StateUnion<Schema>;",
               "typeParameters": [
                 {
                   "name": "Schema",
@@ -14007,7 +14059,7 @@
               ]
             }
           ],
-          "type": "<Schema extends z.ZodTypeAny>(schema: Schema, options: { readonly discriminator?: string; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }) => StateUnion<Schema>",
+          "type": "<Schema extends z.ZodTypeAny>(schema: Schema, options: { readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }) => StateUnion<Schema>",
           "signatures": {
             "call": [
               {
@@ -14030,7 +14082,7 @@
                     "name": "options",
                     "optional": false,
                     "rest": false,
-                    "type": "{ readonly discriminator?: string; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }"
+                    "type": "{ readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }"
                   }
                 ],
                 "returnType": "StateUnion<Schema>"
@@ -14044,7 +14096,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
             "unknown": false,
             "any": false,
@@ -14064,7 +14116,7 @@
             {
               "file": "dist/state.d.ts",
               "kind": "interface",
-              "text": "export interface StateUnion<Schema extends z.ZodTypeAny = z.ZodTypeAny> { readonly kind: \"state-union\"; readonly discriminator: string; readonly schema: Schema; readonly parse: (value: unknown) => z.infer<Schema>; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }",
+              "text": "export interface StateUnion<Schema extends z.ZodTypeAny = z.ZodTypeAny> { readonly kind: \"state-union\"; readonly schema: Schema; readonly parse: (value: unknown) => z.infer<Schema>; readonly initial: z.infer<Schema> | (() => z.infer<Schema>); }",
               "typeParameters": [
                 {
                   "name": "Schema",
@@ -14086,12 +14138,6 @@
               "optional": false,
               "readonly": true,
               "type": "\"state-union\""
-            },
-            {
-              "name": "discriminator",
-              "optional": false,
-              "readonly": true,
-              "type": "string"
             },
             {
               "name": "schema",
@@ -14291,7 +14337,7 @@
               "type": "string"
             },
             {
-              "name": "__@tagFamilyBrand@40872",
+              "name": "__@tagFamilyBrand@40859",
               "optional": false,
               "readonly": true,
               "type": "Family"
@@ -14510,7 +14556,7 @@
               "type": "(value: string) => Tag<Family>"
             },
             {
-              "name": "__@tagFamilyBrand@40872",
+              "name": "__@tagFamilyBrand@40859",
               "optional": false,
               "readonly": true,
               "type": "Family"
@@ -15430,7 +15476,7 @@
               "type": "\"none\" | \"done\" | \"reject\""
             },
             {
-              "name": "__@terminalDecisionBrand@40875",
+              "name": "__@terminalDecisionBrand@40862",
               "optional": false,
               "readonly": true,
               "type": "\"none\" | \"done\" | \"reject\""
@@ -15905,6 +15951,342 @@
           }
         },
         {
+          "name": "ViewDeliveryClass",
+          "namespace": {
+            "value": false,
+            "type": true,
+            "alias": false
+          },
+          "declarations": [
+            {
+              "file": "dist/domain.d.ts",
+              "kind": "type",
+              "text": "export type ViewDeliveryClass = \"immediate-preferred\" | \"queued\";",
+              "typeParameters": []
+            }
+          ],
+          "type": "\"immediate-preferred\" | \"queued\"",
+          "signatures": {
+            "call": [],
+            "construct": []
+          },
+          "members": [
+            {
+              "name": "toString",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "charAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(pos: number) => string"
+            },
+            {
+              "name": "charCodeAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(index: number) => number"
+            },
+            {
+              "name": "concat",
+              "optional": false,
+              "readonly": false,
+              "type": "(...strings: string[]) => string"
+            },
+            {
+              "name": "indexOf",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => number"
+            },
+            {
+              "name": "lastIndexOf",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => number"
+            },
+            {
+              "name": "localeCompare",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (that: string): number; (that: string, locales?: string | string[], options?: Intl.CollatorOptions): number; (that: string, locales?: Intl.LocalesArgument, options?: Intl.CollatorOptions): number; }"
+            },
+            {
+              "name": "match",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (regexp: string | RegExp): RegExpMatchArray | null; (matcher: { [Symbol.match](string: string): RegExpMatchArray | null; }): RegExpMatchArray | null; }"
+            },
+            {
+              "name": "replace",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; (searchValue: { [Symbol.replace](string: string, replaceValue: string): string; }, replaceValue: string): string; (searchValue: { [Symbol.replace](string: string, replacer: (substring: string, ...args: any[]) => string): string; }, replacer: (substring: string, ...args: any[]) => string): string; }"
+            },
+            {
+              "name": "search",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (regexp: string | RegExp): number; (searcher: { [Symbol.search](string: string): number; }): number; }"
+            },
+            {
+              "name": "slice",
+              "optional": false,
+              "readonly": false,
+              "type": "(start?: number, end?: number) => string"
+            },
+            {
+              "name": "split",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (separator: string | RegExp, limit?: number): string[]; (splitter: { [Symbol.split](string: string, limit?: number): string[]; }, limit?: number): string[]; }"
+            },
+            {
+              "name": "substring",
+              "optional": false,
+              "readonly": false,
+              "type": "(start: number, end?: number) => string"
+            },
+            {
+              "name": "toLowerCase",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "toLocaleLowerCase",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (locales?: string | string[]): string; (locales?: Intl.LocalesArgument): string; }"
+            },
+            {
+              "name": "toUpperCase",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "toLocaleUpperCase",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (locales?: string | string[]): string; (locales?: Intl.LocalesArgument): string; }"
+            },
+            {
+              "name": "trim",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "length",
+              "optional": false,
+              "readonly": true,
+              "type": "number"
+            },
+            {
+              "name": "substr",
+              "optional": false,
+              "readonly": false,
+              "type": "(from: number, length?: number) => string"
+            },
+            {
+              "name": "valueOf",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "codePointAt",
+              "optional": false,
+              "readonly": false,
+              "type": "(pos: number) => number | undefined"
+            },
+            {
+              "name": "includes",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => boolean"
+            },
+            {
+              "name": "endsWith",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, endPosition?: number) => boolean"
+            },
+            {
+              "name": "normalize",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (form: \"NFC\" | \"NFD\" | \"NFKC\" | \"NFKD\"): string; (form?: string): string; }"
+            },
+            {
+              "name": "repeat",
+              "optional": false,
+              "readonly": false,
+              "type": "(count: number) => string"
+            },
+            {
+              "name": "startsWith",
+              "optional": false,
+              "readonly": false,
+              "type": "(searchString: string, position?: number) => boolean"
+            },
+            {
+              "name": "anchor",
+              "optional": false,
+              "readonly": false,
+              "type": "(name: string) => string"
+            },
+            {
+              "name": "big",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "blink",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "bold",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "fixed",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "fontcolor",
+              "optional": false,
+              "readonly": false,
+              "type": "(color: string) => string"
+            },
+            {
+              "name": "fontsize",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (size: number): string; (size: string): string; }"
+            },
+            {
+              "name": "italics",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "link",
+              "optional": false,
+              "readonly": false,
+              "type": "(url: string) => string"
+            },
+            {
+              "name": "small",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "strike",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "sub",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "sup",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "padStart",
+              "optional": false,
+              "readonly": false,
+              "type": "(maxLength: number, fillString?: string) => string"
+            },
+            {
+              "name": "padEnd",
+              "optional": false,
+              "readonly": false,
+              "type": "(maxLength: number, fillString?: string) => string"
+            },
+            {
+              "name": "trimEnd",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimStart",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimLeft",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "trimRight",
+              "optional": false,
+              "readonly": false,
+              "type": "() => string"
+            },
+            {
+              "name": "matchAll",
+              "optional": false,
+              "readonly": false,
+              "type": "(regexp: RegExp) => RegExpStringIterator<RegExpExecArray>"
+            },
+            {
+              "name": "replaceAll",
+              "optional": false,
+              "readonly": false,
+              "type": "{ (searchValue: string | RegExp, replaceValue: string): string; (searchValue: string | RegExp, replacer: (substring: string, ...args: any[]) => string): string; }"
+            },
+            {
+              "name": "at",
+              "optional": false,
+              "readonly": false,
+              "type": "(index: number) => string | undefined"
+            },
+            {
+              "name": "__@iterator@83",
+              "optional": false,
+              "readonly": false,
+              "type": "() => StringIterator<string>"
+            }
+          ],
+          "syntax": {
+            "union": true,
+            "intersection": false,
+            "tuple": false,
+            "indexSignature": false,
+            "conditional": false,
+            "mapped": false,
+            "unknown": false,
+            "any": false,
+            "never": false,
+            "uniqueSymbol": false,
+            "brand": false
+          }
+        },
+        {
           "name": "wasmRestoreDecoder",
           "namespace": {
             "value": true,
@@ -16027,11 +16409,11 @@
         "adaptRuntimeCommand",
         "assertJsonValue",
         "assertParsedAt",
-        "cloneAndFreeze",
         "command",
         "createWasmRestoreDecoder",
         "decider",
         "defineTag",
+        "deliveryPolicyFromDomain",
         "deserializePortableSnapshot",
         "domain",
         "done",
@@ -16788,7 +17170,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "class",
-              "text": "export declare class ClaimLedgerExecutor { private readonly transport; private readonly defaultRetries; private readonly defaultBudget?; constructor(options: ClaimLedgerExecutorOptions); execute(command: CommandLike, options?: ExecuteOptions): Promise<ExecuteResult>; }",
+              "text": "export declare class ClaimLedgerExecutor { private readonly transport; private readonly defaultRetries?; private readonly defaultBudget?; constructor(options: ClaimLedgerExecutorOptions); execute(command: ClientCommand, options?: ExecuteOptions): Promise<ExecuteResult>; }",
               "typeParameters": []
             }
           ],
@@ -16819,7 +17201,7 @@
             },
             {
               "name": "defaultRetries",
-              "optional": false,
+              "optional": true,
               "readonly": true,
               "type": "any"
             },
@@ -16833,7 +17215,7 @@
               "name": "execute",
               "optional": false,
               "readonly": false,
-              "type": "(command: CommandLike, options?: ExecuteOptions) => Promise<ExecuteResult>"
+              "type": "(command: ClientCommand, options?: ExecuteOptions) => Promise<ExecuteResult>"
             }
           ],
           "syntax": {
@@ -16987,11 +17369,11 @@
             {
               "file": "dist/index.d.ts",
               "kind": "type",
-              "text": "export type ClientCommandDecision = { readonly kind: \"committed\" | \"done\"; readonly value?: JsonValue; readonly envelope?: Partial<CommitEnvelope>; } | { readonly kind: \"noop\"; readonly reason?: string; } | { readonly kind: \"rejected\"; readonly error: string; readonly code?: string; } | { readonly kind: \"invalid\"; readonly error: string; readonly code?: string; };",
+              "text": "export type ClientCommandDecision = { readonly kind: \"committed\" | \"done\"; readonly value?: JsonValue; } | { readonly kind: \"noop\"; readonly reason?: string; } | { readonly kind: \"rejected\"; readonly error: string; readonly code?: string; } | { readonly kind: \"invalid\"; readonly error: string; readonly code?: string; };",
               "typeParameters": []
             }
           ],
-          "type": "{ readonly kind: \"committed\" | \"done\"; readonly value?: JsonValue; readonly envelope?: Partial<CommitEnvelope>; } | { readonly kind: \"noop\"; readonly reason?: string; } | { readonly kind: \"rejected\"; readonly error: string; readonly code?: string; } | { readonly kind: \"invalid\"; readonly error: string; readonly code?: string; }",
+          "type": "{ readonly kind: \"committed\" | \"done\"; readonly value?: JsonValue; } | { readonly kind: \"noop\"; readonly reason?: string; } | { readonly kind: \"rejected\"; readonly error: string; readonly code?: string; } | { readonly kind: \"invalid\"; readonly error: string; readonly code?: string; }",
           "signatures": {
             "call": [],
             "construct": []
@@ -17115,140 +17497,6 @@
             "conditional": true,
             "mapped": false,
             "unknown": true,
-            "any": false,
-            "never": false,
-            "uniqueSymbol": false,
-            "brand": false
-          }
-        },
-        {
-          "name": "CommandDefinition",
-          "namespace": {
-            "value": false,
-            "type": true,
-            "alias": true
-          },
-          "declarations": [
-            {
-              "file": "../dcb-core/dist/index.d.ts",
-              "kind": "interface",
-              "text": "export interface CommandDefinition<TInput = unknown, TState extends JsonValue = JsonValue> { readonly id: string; readonly name: string; readonly parseInput: (input: unknown) => TInput; readonly execute: (input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome<TState>; readonly handle: CommandDefinition<TInput, TState>[\"execute\"]; }",
-              "typeParameters": [
-                {
-                  "name": "TInput",
-                  "constraint": null,
-                  "default": "unknown",
-                  "const": false
-                },
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
-            }
-          ],
-          "type": null,
-          "signatures": {
-            "call": [],
-            "construct": []
-          },
-          "members": [
-            {
-              "name": "id",
-              "optional": false,
-              "readonly": true,
-              "type": "string"
-            },
-            {
-              "name": "name",
-              "optional": false,
-              "readonly": true,
-              "type": "string"
-            },
-            {
-              "name": "parseInput",
-              "optional": false,
-              "readonly": true,
-              "type": "(input: unknown) => TInput"
-            },
-            {
-              "name": "execute",
-              "optional": false,
-              "readonly": true,
-              "type": "(input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome<TState>"
-            },
-            {
-              "name": "handle",
-              "optional": false,
-              "readonly": true,
-              "type": "(input: unknown, options?: { readonly state?: Readonly<Record<string, JsonValue>>; }) => CommandOutcome<TState>"
-            }
-          ],
-          "syntax": {
-            "union": false,
-            "intersection": false,
-            "tuple": false,
-            "indexSignature": false,
-            "conditional": true,
-            "mapped": false,
-            "unknown": true,
-            "any": false,
-            "never": false,
-            "uniqueSymbol": false,
-            "brand": false
-          }
-        },
-        {
-          "name": "CommandOutcome",
-          "namespace": {
-            "value": false,
-            "type": true,
-            "alias": true
-          },
-          "declarations": [
-            {
-              "file": "../dcb-core/dist/index.d.ts",
-              "kind": "type",
-              "text": "export type CommandOutcome<TState extends JsonValue = JsonValue> = CommandCommitted<TState> | CommandNoop | CommandRejected;",
-              "typeParameters": [
-                {
-                  "name": "TState",
-                  "constraint": "JsonValue",
-                  "default": "JsonValue",
-                  "const": false
-                }
-              ]
-            }
-          ],
-          "type": "CommandCommitted<TState> | CommandNoop | CommandRejected",
-          "signatures": {
-            "call": [],
-            "construct": []
-          },
-          "members": [
-            {
-              "name": "kind",
-              "optional": false,
-              "readonly": true,
-              "type": "\"rejected\" | \"committed\" | \"noop\""
-            },
-            {
-              "name": "events",
-              "optional": false,
-              "readonly": true,
-              "type": "readonly AppendedEvent[] | readonly []"
-            }
-          ],
-          "syntax": {
-            "union": true,
-            "intersection": false,
-            "tuple": false,
-            "indexSignature": false,
-            "conditional": false,
-            "mapped": false,
-            "unknown": false,
             "any": false,
             "never": false,
             "uniqueSymbol": false,
@@ -17412,7 +17660,7 @@
             "mapped": false,
             "unknown": true,
             "any": false,
-            "never": false,
+            "never": true,
             "uniqueSymbol": false,
             "brand": false
           }
@@ -17885,11 +18133,11 @@
             {
               "file": "dist/executor.d.ts",
               "kind": "type",
-              "text": "export type ExecuteCommandResult = ExecutorCommitted | ExecutorConflict | Exclude<ExecuteResult, ExecuteCommitted | ExecuteConflict>;",
+              "text": "export type ExecuteCommandResult = ExecutorCommitted | ExecutorConflict | ExecutorRejected | Exclude<ExecuteResult, ExecuteCommitted | ExecuteConflict | ExecuteRejected>;",
               "typeParameters": []
             }
           ],
-          "type": "ExecutorCommitted | ExecutorConflict | Exclude<ExecuteResult, ExecuteCommitted | ExecuteConflict>",
+          "type": "ExecutorCommitted | ExecutorConflict | ExecutorRejected | Exclude<ExecuteResult, ExecuteCommitted | ExecuteConflict | ExecuteRejected>",
           "signatures": {
             "call": [],
             "construct": []
@@ -17924,12 +18172,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -17957,7 +18199,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface ExecuteCommitted extends ExecuteCommon { readonly kind: \"committed\"; readonly response: unknown; }",
+              "text": "export interface ExecuteCommitted extends ExecuteCommon { readonly kind: \"committed\"; readonly response: unknown; readonly value?: DomainJsonValue; }",
               "typeParameters": []
             }
           ],
@@ -17980,6 +18222,12 @@
               "type": "unknown"
             },
             {
+              "name": "value",
+              "optional": true,
+              "readonly": true,
+              "type": "DomainJsonValue | undefined"
+            },
+            {
               "name": "attempts",
               "optional": false,
               "readonly": true,
@@ -18002,12 +18250,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18015,7 +18257,7 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": false,
+            "conditional": true,
             "mapped": false,
             "unknown": true,
             "any": false,
@@ -18035,7 +18277,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface ExecuteCommon { readonly attempts: number; readonly status?: number; readonly code?: string; readonly error?: string; readonly cause?: unknown; }",
+              "text": "export interface ExecuteCommon { readonly attempts: number; readonly status?: number; readonly code?: string; readonly error?: string; }",
               "typeParameters": []
             }
           ],
@@ -18068,12 +18310,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18083,7 +18319,7 @@
             "indexSignature": false,
             "conditional": false,
             "mapped": false,
-            "unknown": true,
+            "unknown": false,
             "any": false,
             "never": false,
             "uniqueSymbol": false,
@@ -18101,7 +18337,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "interface",
-              "text": "export interface ExecuteConflict extends ExecuteCommon { readonly kind: \"conflict\"; readonly response?: unknown; }",
+              "text": "export interface ExecuteConflict extends ExecuteCommon { readonly kind: \"conflict\"; }",
               "typeParameters": []
             }
           ],
@@ -18116,12 +18352,6 @@
               "optional": false,
               "readonly": true,
               "type": "\"conflict\""
-            },
-            {
-              "name": "response",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             },
             {
               "name": "attempts",
@@ -18146,12 +18376,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18159,9 +18383,9 @@
             "intersection": false,
             "tuple": false,
             "indexSignature": false,
-            "conditional": true,
+            "conditional": false,
             "mapped": false,
-            "unknown": true,
+            "unknown": false,
             "any": false,
             "never": false,
             "uniqueSymbol": false,
@@ -18218,12 +18442,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18296,12 +18514,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18434,12 +18646,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18506,12 +18712,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18578,12 +18778,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18650,12 +18844,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18722,12 +18910,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18794,12 +18976,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             }
           ],
           "syntax": {
@@ -18850,6 +19026,12 @@
               "type": "unknown"
             },
             {
+              "name": "value",
+              "optional": true,
+              "readonly": true,
+              "type": "DomainJsonValue | undefined"
+            },
+            {
               "name": "attempts",
               "optional": false,
               "readonly": true,
@@ -18872,12 +19054,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             },
             {
               "name": "writtenEvents",
@@ -18946,12 +19122,6 @@
               "type": "\"conflict\""
             },
             {
-              "name": "response",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
-            },
-            {
               "name": "attempts",
               "optional": false,
               "readonly": true,
@@ -18974,12 +19144,6 @@
               "optional": true,
               "readonly": true,
               "type": "string | undefined"
-            },
-            {
-              "name": "cause",
-              "optional": true,
-              "readonly": true,
-              "type": "unknown"
             },
             {
               "name": "conflicts",
@@ -20074,7 +20238,7 @@
             {
               "file": "dist/index.d.ts",
               "kind": "class",
-              "text": "export declare class SerializedDcbClient implements SerializedDcbTransport { readonly baseUrl: string; private readonly fetchImpl; constructor(baseUrl: string, fetchImpl?: typeof fetch); readTagState(request: { readonly tagStateId: string; }, signal?: AbortSignal): Promise<ReadonlyTagStateResponse>; readTagLatestSortable(request: { readonly tag: string; }, signal?: AbortSignal): Promise<TagLatestSortableResponse>; query(request: QueryRequest, signal?: AbortSignal): Promise<QueryResponse>; listQuery(request: ListQueryRequest, signal?: AbortSignal): Promise<ListQueryResponse>; readonly tagLatestSortable: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse>; readonly tagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse>; commit(request: CommitEnvelope, signal?: AbortSignal): Promise<unknown>; private readResponse; }",
+              "text": "export declare class SerializedDcbClient implements SerializedDcbTransport { readonly baseUrl: string; private readonly fetchImpl; constructor(baseUrl: string, fetchImpl?: typeof fetch); readTagState(request: { readonly tagStateId: string; }, signal?: AbortSignal): Promise<ReadonlyTagStateResponse>; readTagLatestSortable(request: { readonly tag: string; }, signal?: AbortSignal): Promise<TagLatestSortableResponse>; query(request: QueryRequest, signal?: AbortSignal): Promise<QueryResponse>; listQuery(request: ListQueryRequest, signal?: AbortSignal): Promise<ListQueryResponse>; readonly tagLatestSortable: (request: { readonly tag: string; }, signal?: AbortSignal) => Promise<TagLatestSortableResponse>; readonly tagState: (request: { readonly tagStateId: string; }, signal?: AbortSignal) => Promise<ReadonlyTagStateResponse>; commit(request: CommitEnvelope, signal?: AbortSignal): Promise<CommitHttpResult>; private readResponse; private httpResult; }",
               "typeParameters": []
             }
           ],
@@ -20155,10 +20319,16 @@
               "name": "commit",
               "optional": false,
               "readonly": false,
-              "type": "(request: CommitEnvelope, signal?: AbortSignal) => Promise<unknown>"
+              "type": "(request: CommitEnvelope, signal?: AbortSignal) => Promise<CommitHttpResult>"
             },
             {
               "name": "readResponse",
+              "optional": false,
+              "readonly": false,
+              "type": "any"
+            },
+            {
+              "name": "httpResult",
               "optional": false,
               "readonly": false,
               "type": "any"
@@ -20171,7 +20341,7 @@
             "indexSignature": false,
             "conditional": false,
             "mapped": false,
-            "unknown": true,
+            "unknown": false,
             "any": false,
             "never": false,
             "uniqueSymbol": false,
@@ -20598,6 +20768,13 @@
     {
       "package": "@sekiban/dcb-client",
       "file": "dist/executor.d.ts",
+      "name": "ExecutorRejected",
+      "kind": "type",
+      "text": "export type ExecutorRejected = ExecuteRejected & { readonly rejectKind?: RejectKind; readonly details?: unknown; };"
+    },
+    {
+      "package": "@sekiban/dcb-client",
+      "file": "dist/executor.d.ts",
       "name": "P",
       "kind": "TypeParameter",
       "text": "P extends ProjectorLike"
@@ -20605,9 +20782,9 @@
     {
       "package": "@sekiban/dcb-client",
       "file": "dist/index.d.ts",
-      "name": "CommandLike",
+      "name": "ClientCommand",
       "kind": "type",
-      "text": "type CommandLike = ((context: ClientCommandContext, input?: unknown) => ClientCommandDecision | Promise<ClientCommandDecision>) | CommandDefinition;"
+      "text": "type ClientCommand = (context: ClientCommandContext, input?: unknown) => ClientCommandDecision | Promise<ClientCommandDecision>;"
     },
     {
       "package": "@sekiban/dcb-core",
@@ -20723,76 +20900,6 @@
     },
     {
       "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
-      "file": "dist/index.d.ts",
-      "name": "TState",
-      "kind": "TypeParameter",
-      "text": "TState extends JsonValue = JsonValue"
-    },
-    {
-      "package": "@sekiban/dcb-core",
       "file": "dist/materializedView.d.ts",
       "name": "TEvent",
       "kind": "TypeParameter",
@@ -20838,7 +20945,7 @@
       "file": "dist/bridge.d.ts",
       "name": "LegacyEventDefinition",
       "kind": "interface",
-      "text": "interface LegacyEventDefinition { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly eventType?: string; readonly parse?: (payload: unknown) => unknown; readonly create?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string; }; readonly construct?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string; }; }"
+      "text": "interface LegacyEventDefinition { readonly name?: string; readonly eventName?: string; readonly eventPayloadName?: string; readonly eventType?: string; readonly parse?: (payload: unknown) => unknown; readonly create?: (payload: unknown) => { readonly payload?: unknown; }; readonly construct?: (payload: unknown) => { readonly payload?: unknown; }; }"
     },
     {
       "package": "@sekiban/dcb-domain",
@@ -21795,13 +21902,6 @@
     {
       "package": "@sekiban/dcb-domain",
       "file": "dist/types.d.ts",
-      "name": "T",
-      "kind": "TypeParameter",
-      "text": "T"
-    },
-    {
-      "package": "@sekiban/dcb-domain",
-      "file": "dist/types.d.ts",
       "name": "tagFamilyBrand",
       "kind": "variable",
       "text": "tagFamilyBrand: unique symbol"
@@ -21877,11 +21977,11 @@
       "adaptRuntimeCommand",
       "assertJsonValue",
       "assertParsedAt",
-      "cloneAndFreeze",
       "command",
       "createWasmRestoreDecoder",
       "decider",
       "defineTag",
+      "deliveryPolicyFromDomain",
       "deserializePortableSnapshot",
       "domain",
       "done",
@@ -21946,5 +22046,5 @@
       "preflightCommit"
     ]
   },
-  "publicSurfaceHash": "99e97a72fa864a15c842dc1bfb5cf050eae773b100dc584a3acc57554421cf39"
+  "publicSurfaceHash": "22efba80d75f7d2869549849f3451735d0fd69309fb379f4be66017bb2c31ed1"
 }

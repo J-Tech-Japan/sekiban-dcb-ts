@@ -122,11 +122,12 @@ const expectations = new Map([
   ["tag-does-not-widen-family", /TS2322: Type 'true' is not assignable to type 'false'/],
   ["event-does-not-widen-name", /TS2322: Type 'true' is not assignable to type 'false'/],
   ["tag-families-do-not-mix", /TS2322: Type 'Tag<"room">' is not assignable to type 'Tag<"user">'/],
+  ["domain-status-switch-missing-conflict-is-not-exhaustive", /TS2322: Type '"conflict"' is not assignable to type 'never'/],
 ]);
 
 const expectedErrors = `
 import type { ExecuteResult, ListQueryRequest, SekibanExecutor } from "@sekiban/dcb-client";
-import { event, tagFamily, type Tag, type TagFamily } from "@sekiban/dcb-domain";
+import { event, tagFamily, type ExecuteCommandResult, type Tag, type TagFamily } from "@sekiban/dcb-domain";
 import { z } from "zod";
 
 // Identity, not mutual assignability: this form distinguishes any, unions and variance.
@@ -231,7 +232,37 @@ const nameWidened: Equals<typeof opened.name, string> = true;
 // @ts-expect-error [tag-families-do-not-mix]
 const userTag: Tag<"user"> = roomTag;
 
-void [facadeKinds, executorResultKinds, facadeKindWidened, executorResultKindWidened, familyIsLiteral, familyWidened, tagIsLiteral, tagWidened, nameIsLiteral, nameWidened, userTag];
+type DomainStatuses = ExecuteCommandResult["status"];
+type DomainStatusKinds = "accepted" | "discarded" | "unknown" | "rejected" | "conflict";
+const domainStatusesMatch: Equals<DomainStatuses, DomainStatusKinds> = true;
+
+export function describeDomainStatus(result: ExecuteCommandResult): string {
+  switch (result.status) {
+    case "accepted": return "accepted";
+    case "discarded": return "discarded";
+    case "unknown": return "unknown";
+    case "rejected": return "rejected";
+    case "conflict": return "conflict";
+    default: {
+      const unreachable: never = result.status;
+      return unreachable;
+    }
+  }
+}
+
+export function describeDomainStatusMissingConflict(result: ExecuteCommandResult): string {
+  switch (result.status) {
+    case "accepted": case "discarded": case "unknown": case "rejected":
+      return result.status;
+    default: {
+      // @ts-expect-error [domain-status-switch-missing-conflict-is-not-exhaustive]
+      const unreachable: never = result.status;
+      return unreachable;
+    }
+  }
+}
+
+void [facadeKinds, executorResultKinds, facadeKindWidened, executorResultKindWidened, familyIsLiteral, familyWidened, tagIsLiteral, tagWidened, nameIsLiteral, nameWidened, userTag, domainStatusesMatch, describeDomainStatus, describeDomainStatusMissingConflict];
 `;
 
 // Control: a directive over a line that compiles must itself be an error, or the

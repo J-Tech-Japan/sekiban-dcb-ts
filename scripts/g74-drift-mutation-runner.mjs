@@ -51,7 +51,7 @@ const MUTANTS = [
   { id: "reachable-nonexported-optional-to-required", category: "reachable-type", expectedSections: ["reachableDeclarations"], edits: [
     { package: "dcb-domain", file: "dist/bridge.d.ts", search: "interface LegacyEventDefinition {\n    readonly name?: string;", replace: "interface LegacyEventDefinition {\n    readonly name: string;", expectedMatches: 1 }] },
   { id: "reachable-nonexported-parameter-widening", category: "reachable-type", expectedSections: ["reachableDeclarations"], edits: [
-    { package: "dcb-client", file: CLIENT_DTS, search: "| Promise<ClientCommandDecision>) | CommandDefinition;", replace: "| Promise<ClientCommandDecision>) | CommandDefinition<any, any>;", expectedMatches: 1 }] },
+    { package: "dcb-client", file: "dist/executor.d.ts", search: "execute<C extends CommandDefinition>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions)", replace: "execute<C extends CommandDefinition<any, any>>(command: C, input: CommandInput<C>, options?: ExecuteCommandOptions)", expectedMatches: 1 }] },
   { id: "brand-identity-collapse", category: "brand", expectedSections: ["reachableDeclarations"], edits: [
     { package: "dcb-domain", file: "dist/types.d.ts", search: "declare const parsedBoundaryBrand: unique symbol;", replace: "declare const parsedBoundaryBrand: typeof eventPayloadBrand;", expectedMatches: 1 }] },
   { id: "engine-floor-change", category: "package-fact", expectedSections: ["packages"], edits: [
@@ -67,7 +67,7 @@ const MUTANTS = [
   { id: "internal-dependency-loosened", category: "package-fact", expectedSections: ["packages"], edits: [
     { package: "dcb-client", file: "package.json", search: '"@sekiban/dcb-core": "0.2.0"', replace: '"@sekiban/dcb-core": "^0.2.0"', expectedMatches: 1 }] },
   { id: "reference-lib-directive", category: "declaration-file", expectedSections: ["declarationFiles"], edits: [
-    { package: "dcb-client", file: CLIENT_DTS, search: "import type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", replace: "/// <reference lib=\"dom\" />\nimport type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", expectedMatches: 1 }] },
+    { package: "dcb-client", file: CLIENT_DTS, search: "import type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", replace: "/// <reference lib=\"dom\" />\nimport type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput } from \"@sekiban/dcb-core\";", expectedMatches: 1 }] },
   { id: "global-augmentation", category: "declaration-file", expectedSections: ["declarationFiles"], edits: [
     { package: "dcb-client", file: CLIENT_DTS, search: 'export { ClientError } from "./errors.js";', replace: 'export { ClientError } from "./errors.js";\ndeclare global { interface Array<T> { readonly g74Augmented?: T; } }', expectedMatches: 1 }] },
   { id: "type-only-value-reexport", category: "export-kind", expectedSections: ["entryPoints"], edits: [

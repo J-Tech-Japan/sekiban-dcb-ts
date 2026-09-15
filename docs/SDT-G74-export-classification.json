@@ -12,6 +12,7 @@
     "TagWriteResult": "public",
     "ExecutorCommitted": "public",
     "ExecutorConflict": "public",
+    "ExecutorRejected": "public",
     "ExecuteCommandResult": "public",
     "SekibanExecutor": "public",
     "createInProcessTransport": "public",

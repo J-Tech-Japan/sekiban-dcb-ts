@@ -9,15 +9,15 @@
     "reason": "The pre-G84 workflow-run command leaves were intentionally replaced by the lane manifest; their exact baseline command text remains hashed and reported by the checker."
   },
   "addedManifestCommands": {
-    "count": 134,
-    "entrySetSha256": "de3f1d92629c8cc7717832124864bbde1746cd6771359d28ef1f0f00e1d38250",
-    "idSetSha256": "408104385bd7e6fb1f4f4263544ed48a17ff7cbc8ea08511d1bc574cb53674f3",
+    "count": 135,
+    "entrySetSha256": "dd203f4668f146977351b1331536d0594649bc648e94bdf3d708bfc44a5ba73e",
+    "idSetSha256": "8c5858d229fe000954ea27ad232034c978da7c172c1bd63aba03667358933ad7",
     "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
   },
   "addedManifestClosure": {
-    "count": 60,
-    "entrySetSha256": "a9c0ff5858ccba457e2eadc461d91271427e3a741997ef07691b38976b135db7",
-    "idSetSha256": "e526d1c7e97da3545ec115468f860bd6e88cdba12a0f5b2261a77517d3b94597",
+    "count": 61,
+    "entrySetSha256": "6dda22af500b9b12dc929782618037eeff1cbff9071e98423d2f2449148fd064",
+    "idSetSha256": "832b9433cfc8eb910da5199712436077e5bc706ef321c1032e9d5d5ed7c6fb0b",
     "reason": "These npm/workspace leaves are the exact recursive package-script closure of the reviewed manifest commands, not an untracked command source."
   },
   "addedWorkflowSteps": {
