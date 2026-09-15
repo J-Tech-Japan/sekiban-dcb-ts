@@ -12,7 +12,7 @@ on surface hash `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261d
 | issue | [#151](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/151) |
 | branch | `claude/sdt-g74-implementation-w281` |
 | rebase base | `184f6b5d2142a675993f31d22840ddb1f97779b8` (SDT-G89, #184) |
-| candidate head | `7df648cf0e89d2d2364a54004fc93b78072c887f` (docs commit will advance; surface hash identity unchanged) |
+| candidate head | `0d6a5e42a2f48b901408c48c88f3022c49f2c965` |
 | contract label | `executor-facade-v1` |
 | carrying version | `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, `@sekiban/dcb-client@0.2.0` (selected, not published) |
 | public surface hash | `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db` |
