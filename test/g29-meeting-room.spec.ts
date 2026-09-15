@@ -178,6 +178,22 @@ describe("SDT-G29 meeting-room authoring portability", () => {
     expect(reservationProjector!.apply(reservationProjector!.initialState(), { ...event, eventType: "RoomReserved", provenance: "g32" })).toMatchObject({ status: "reserved" });
   });
 
+  it("SDT-G89 AC4: keeps composed polling family-safe when stored eventTags name a foreign family", () => {
+    const composed = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
+    const roomProjector = composed.projectors.resolve("RoomProjector");
+    const reservationProjector = composed.projectors.resolve("ReservationProjector");
+    const event = {
+      eventId: g32EventId("foreign"),
+      suid: g32Suid("foreign"),
+      payload: JSON.stringify({ reservationId: "foreign", roomId: "room", userId: "user" }),
+      eventTags: ["reservation:foreign"],
+      eventType: "RoomReserved",
+      provenance: "g32" as const,
+    };
+    expect(roomProjector!.apply(roomProjector!.initialState(), event)).toEqual(roomProjector!.initialState());
+    expect(reservationProjector!.apply(reservationProjector!.initialState(), event)).toMatchObject({ status: "reserved" });
+  });
+
   it("dispatches materializers by durable G32 identity and never payload-sniffs", () => {
     const payload = (value: unknown) => JSON.stringify(value);
     const canonical = {

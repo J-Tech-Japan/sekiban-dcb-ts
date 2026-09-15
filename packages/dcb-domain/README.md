@@ -94,8 +94,9 @@ helpers for the `0.1.x` line:
 
 - Main entrypoint: `domain`, `event`, `eventUnion`, `projector`, `stateUnion`,
   `command`, `done`, `none`, `reject`, `read`, `readExists`, `Session`,
-  portable-snapshot serialization, the five boundary parsers, and the
-  runtime-domain bridge (`toRuntimeDomain`).
+  portable-snapshot serialization, the five boundary parsers, `deliveryPolicyFromDomain`,
+  and the runtime-domain bridge (`toRuntimeDomain`, `adaptRuntimeCommand`,
+  `RuntimeProjectionEvent`, split `RuntimeCommandPort` result types).
 - Testing entrypoint: `given`, `evolveTable`, and `evolve` from
   `@sekiban/dcb-domain/testing`.
 - No deep imports beyond `.` and `./testing` are supported.

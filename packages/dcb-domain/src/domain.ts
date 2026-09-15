@@ -33,9 +33,9 @@ function effectiveDeliveryClass(view: DomainViewDefinition): ViewDeliveryClass {
 export function deliveryPolicyFromDomain(
   domainValue: { readonly views?: readonly DomainViewDefinition[] },
 ): Readonly<Record<string, ViewDeliveryClass>> {
-  const policy: Record<string, ViewDeliveryClass> = {};
+  const policy = Object.create(null) as Record<string, ViewDeliveryClass>;
   for (const view of domainValue.views ?? []) {
-    if (Object.prototype.hasOwnProperty.call(policy, view.id)) {
+    if (view.id in policy) {
       throw new DomainRegistrationError(`View ${view.id} is declared more than once`, [view.id]);
     }
     policy[view.id] = effectiveDeliveryClass(view);

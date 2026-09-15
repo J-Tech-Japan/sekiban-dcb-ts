@@ -842,6 +842,11 @@ export function createSekibanExecutor(
         return failureResult(new ClientError("invalid_command_input", errorText(error)), 1);
       }
       const attempts = committing ? commitAttempts : commitAttempts + 1;
+      // Adapter-backed live read-through that observes conflicting heads for
+      // the same tag is a transport-classified incoherence, not a handler bug.
+      if (authoringCode === "INCOHERENT_SNAPSHOT" && readMode === "read-through" && executeOptions.snapshots === undefined) {
+        return failureResult(new ClientError("incoherent_read_snapshot", errorText(error)), attempts);
+      }
       // Any other authoring error from the handler or the domain layer is a
       // definite refusal; nothing was sent for it.
       if (isDomainAuthoringError(error)) {

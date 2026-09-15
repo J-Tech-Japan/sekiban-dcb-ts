@@ -1,6 +1,7 @@
 import {
   assertJsonValue,
   DomainAuthoringError,
+  normalizeTag,
   type CandidateEnvelope,
   type CommitCandidateEvent,
   type FixedNow,
@@ -14,8 +15,6 @@ import { deliveryPolicyFromDomain, type AuthoringDomain, type DomainViewDefiniti
 import type { ProjectorDefinition } from "./state";
 
 export interface RuntimeProjectionEvent {
-  readonly eventId?: string;
-  readonly suid?: string;
   readonly eventType: string;
   readonly eventPayloadName?: string;
   readonly payload: unknown;
@@ -86,23 +85,37 @@ export interface RuntimeCommandAttemptContext {
   readonly allocation?: RuntimeAllocationVector;
 }
 
-export type RuntimeCommandPortResult =
+export type RuntimePortBarrierResult =
+  | { readonly kind: "accepted" }
+  | { readonly kind: "consistency-conflict" }
+  | { readonly kind: "unknown"; readonly error?: unknown }
+  | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
+
+export type RuntimePortAdmitResult =
   | { readonly kind: "accepted"; readonly attemptId?: string }
-  | { readonly kind: "consistency-conflict"; readonly error?: unknown }
+  | { readonly kind: "consistency-conflict" }
+  | { readonly kind: "unknown"; readonly error?: unknown }
+  | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
+
+export type RuntimePortCommitResult =
+  | { readonly kind: "accepted"; readonly attemptId?: string }
+  | { readonly kind: "consistency-conflict" }
   | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
-  | { readonly kind: "rejected"; readonly error?: unknown; readonly reason?: string; readonly code?: string };
+  | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
+
+export type RuntimeCommandPortResult = RuntimePortBarrierResult | RuntimePortAdmitResult | RuntimePortCommitResult;
 
 export interface RuntimeCommandPort {
   /** Read-only conflict barrier. A conflict here must not enter any write port. */
-  readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  readonly conflictBarrier?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimePortBarrierResult> | RuntimePortBarrierResult;
   /** Admission write gate runs after the read-only conflict barrier and before allocation. */
-  readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  readonly admit?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimePortAdmitResult> | RuntimePortAdmitResult;
   /** Allocation is deliberately after admission and receives no durable id from the authoring log. */
   readonly allocate?: (candidate: RuntimeCommandCandidateEnvelope) => Promise<RuntimeAllocationVector> | RuntimeAllocationVector;
   /** Commit receives the one allocated vector and the same canonical G27 event identity. */
-  readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimePortCommitResult> | RuntimePortCommitResult;
   /** An unknown outcome is reconciled against the same immutable candidate/attempt/vector, never resubmitted as new work. */
-  readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimeCommandPortResult) => Promise<RuntimeCommandPortResult> | RuntimeCommandPortResult;
+  readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult) => Promise<RuntimePortCommitResult> | RuntimePortCommitResult;
 }
 
 export interface RuntimeCommandExecutionOptions {
@@ -163,8 +176,13 @@ interface LegacyDomainDefinition {
   readonly views?: readonly DomainViewDefinition[];
 }
 
+function isAuthoringEventDefinition(definition: EventDefinition | LegacyEventDefinition): definition is EventDefinition {
+  return typeof (definition as EventDefinition).tags === "function";
+}
+
 function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): RuntimeEventDefinition {
-  const name = definition.name ?? definition.eventPayloadName;
+  const legacy = definition as LegacyEventDefinition;
+  const name = definition.name ?? legacy.eventName ?? definition.eventPayloadName;
   if (name === undefined || name.length === 0 || name.includes(":")) throw new DomainAuthoringError("EVENT_NAME_INVALID", "Runtime event name is invalid");
   const eventPayloadName = definition.eventPayloadName ?? name;
   if (eventPayloadName.length === 0 || eventPayloadName.includes(":")) throw new DomainAuthoringError("EVENT_NAME_INVALID", "Runtime event payload name is invalid");
@@ -177,13 +195,25 @@ function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): 
       : definition.parse(payload);
     return assertJsonValue(parsed, "event-construction");
   };
-  const create = (payload: unknown): RuntimeEventValue => Object.freeze({
-    eventName: name,
-    eventPayloadName,
-    eventType,
-    payload: parse(payload),
-    tags: Object.freeze([]),
-  });
+  const create = (payload: unknown): RuntimeEventValue => {
+    const parsed = parse(payload);
+    if (isAuthoringEventDefinition(definition)) {
+      const rawTags = definition.tags(parsed as Parameters<EventDefinition["tags"]>[0]);
+      if (!Array.isArray(rawTags)) throw new DomainAuthoringError("EVENT_TAGS_INVALID", `Runtime event ${name} tags must be an array`);
+      return Object.freeze({
+        eventName: name,
+        eventPayloadName,
+        eventType,
+        payload: parsed,
+        tags: Object.freeze([...rawTags]),
+      });
+    }
+    return Object.freeze({
+      eventType,
+      payload: parsed,
+      tags: Object.freeze([]),
+    });
+  };
   return Object.freeze({
     name,
     eventName: name,
@@ -209,12 +239,36 @@ function runtimeProjectorFrom(
     if (registered === undefined || !eventTypes.includes(event.eventType)) {
       throw new DomainAuthoringError("EVENT_TYPE_UNREGISTERED", `Runtime projector received ${event.eventType}`);
     }
-    const syntheticTag = definition.tag.of("__runtime__");
+    if (event.eventPayloadName !== undefined && event.eventPayloadName !== event.eventType) {
+      throw new DomainAuthoringError(
+        "CANONICAL_EVENT_IDENTITY_INVALID",
+        `Runtime projection event ${event.eventType} carried mismatched eventPayloadName ${event.eventPayloadName}`,
+      );
+    }
+    if (event.provenance !== undefined && event.provenance !== "g32") {
+      throw new DomainAuthoringError(
+        "RUNTIME_EVENT_PROVENANCE_INVALID",
+        `Runtime projection event ${event.eventType} carried unsupported provenance ${event.provenance}`,
+      );
+    }
+    let tags: readonly ReturnType<typeof definition.tag.of>[];
+    if (event.eventTags === undefined) {
+      // A runtime that carries no tags relies on the host's per-tag routing
+      // before apply; keep the documented synthetic family tag as legacy.
+      tags = [definition.tag.of("__runtime__")];
+    } else if (event.eventTags.length === 0) {
+      throw new DomainAuthoringError(
+        "RUNTIME_EVENT_TAGS_EMPTY",
+        `Runtime projection event ${event.eventType} declared an empty eventTags list`,
+      );
+    } else {
+      tags = event.eventTags.map((tagId) => normalizeTag(tagId));
+    }
     const next = definition.apply(state, {
       eventType: event.eventType,
       eventName: registered.name,
       payload: registered.parse(event.payload),
-      tags: [syntheticTag],
+      tags: [...tags],
       ordinal: "runtime",
     });
     return assertJsonValue(next, "state-persistence");
@@ -304,19 +358,19 @@ function defaultRuntimeSnapshots(options: RuntimeCommandExecutionOptions): Snaps
 async function commitThroughRuntimePort(
   envelope: CandidateEnvelope,
   port: RuntimeCommandPort | undefined,
-): Promise<RuntimeCommandPortResult> {
+): Promise<RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult> {
   if (port === undefined) return { kind: "accepted" };
   const candidate = runtimeCandidateFrom(envelope);
   const barrier = port.conflictBarrier === undefined ? { kind: "accepted" as const } : await port.conflictBarrier(candidate);
   if (barrier.kind !== "accepted") {
     return barrier.kind === "unknown" && port.reconcile !== undefined
-      ? await port.reconcile(attemptContext(candidate, undefined, barrier.attemptId), barrier)
+      ? await port.reconcile(attemptContext(candidate, undefined, undefined), barrier)
       : barrier;
   }
   const admitted = port.admit === undefined ? { kind: "accepted" as const } : await port.admit(candidate);
   if (admitted.kind !== "accepted") {
     return admitted.kind === "unknown" && port.reconcile !== undefined
-      ? await port.reconcile(attemptContext(candidate, undefined, admitted.attemptId), admitted)
+      ? await port.reconcile(attemptContext(candidate, undefined, undefined), admitted)
       : admitted;
   }
   const allocation = freezeAllocation(port.allocate === undefined ? undefined : await port.allocate(candidate));
@@ -340,7 +394,18 @@ function runtimeEventsFrom(result: ExecuteCommandResult): readonly RuntimeComman
     })));
 }
 
-function runtimeOutcomeFrom(result: ExecuteCommandResult): RuntimeCommandOutcome {
+function portRejectionFields(portResult: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult | undefined): { readonly reason?: string; readonly code?: string } {
+  if (portResult?.kind !== "rejected") return {};
+  return {
+    ...(portResult.reason === undefined ? {} : { reason: portResult.reason }),
+    ...(portResult.code === undefined ? {} : { code: portResult.code }),
+  };
+}
+
+function runtimeOutcomeFrom(
+  result: ExecuteCommandResult,
+  lastPortResult?: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult,
+): RuntimeCommandOutcome {
   if (result.status === "accepted" && result.decision.kind === "done") {
     return Object.freeze({
       kind: "committed" as const,
@@ -365,10 +430,11 @@ function runtimeOutcomeFrom(result: ExecuteCommandResult): RuntimeCommandOutcome
     });
   }
   if (result.status === "rejected") {
+    const portFields = portRejectionFields(lastPortResult);
     return Object.freeze({
       kind: "rejected" as const,
-      reason: result.decision.kind === "reject" ? result.decision.reason : "Command was rejected",
-      code: result.decision.kind === "reject" ? result.decision.code : "command_rejected",
+      reason: portFields.reason ?? (result.decision.kind === "reject" ? result.decision.reason : "Command was rejected"),
+      code: portFields.code ?? (result.decision.kind === "reject" ? result.decision.code : "command_rejected"),
       events: Object.freeze([]) as readonly [],
     });
   }
@@ -383,12 +449,17 @@ function runtimeOutcomeFrom(result: ExecuteCommandResult): RuntimeCommandOutcome
 /** Adapt an authoring command into the existing runtime's three-outcome contract. */
 export function adaptRuntimeCommand(command: CommandDefinition): RuntimeCommandDefinition {
   const execute = async (value: unknown, options: RuntimeCommandExecutionOptions = {}): Promise<RuntimeCommandOutcome> => {
+    let lastPortResult: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult | undefined;
     const result = await executeCommand(command, value, {
       timeProvider: { now: () => options.now ?? 0 },
       snapshots: defaultRuntimeSnapshots(options),
-      commit: (envelope) => commitThroughRuntimePort(envelope, options.runtimePort),
+      commit: async (envelope) => {
+        const portResult = await commitThroughRuntimePort(envelope, options.runtimePort);
+        lastPortResult = portResult;
+        return portResult;
+      },
     });
-    return runtimeOutcomeFrom(result);
+    return runtimeOutcomeFrom(result, lastPortResult);
   };
   return Object.freeze({
     id: command.id,
