@@ -38,6 +38,7 @@ export const FAILURE_KINDS: Readonly<Record<string, FailureKind>> = Object.freez
   invalid_execute_options: "invalid",
   invalid_query_request: "invalid",
   "scope.mismatch": "invalid",
+  unsupported_command: "invalid",
   unsupported_capability: "invalid",
   unsupported_consistency_mode: "invalid",
 });

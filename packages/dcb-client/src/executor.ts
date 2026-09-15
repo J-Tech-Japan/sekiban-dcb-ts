@@ -32,6 +32,7 @@ import {
 import { classifyFailure, commitReplyError, failureKindForCode } from "./classification.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { sanitizeTransportError } from "./errors.js";
+import { v1Envelope } from "./wire.js";
 
 /** The small Worker-side binding surface needed by the in-process adapter. */
 export interface RuntimeBindings {
@@ -117,13 +118,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isHttpResult(value: unknown): value is CommitHttpResult {
   return isRecord(value) && typeof value.status === "number" && "body" in value;
-}
-
-function base64Json(value: unknown): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(value));
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }
 
 function decodeJson(value: unknown): unknown {
@@ -301,21 +295,6 @@ async function responseResult(response: Response): Promise<CommitHttpResult> {
   return { status: response.status, headers, body };
 }
 
-function v1Envelope(request: CommitEnvelope): Record<string, unknown> {
-  return {
-    version: 1,
-    eventCandidates: request.candidates.map((candidate) => ({
-      payload: base64Json(candidate.payload),
-      eventPayloadName: candidate.eventPayloadName,
-      tags: [...candidate.tags],
-    })),
-    consistencyTags: request.consistency.map((entry) => ({
-      tag: entry.tag,
-      lastSortableUniqueId: entry.lastSortableUniqueId,
-    })),
-  };
-}
-
 function fetcherFrom(bindings: RuntimeBindings): Fetcher {
   const selected = bindings.fetch ?? bindings.RUNTIME?.fetch ?? bindings.runtime?.fetch;
   if (selected === undefined) throw new ClientError("transport", "In-process runtime fetch binding is missing");
@@ -331,7 +310,7 @@ interface HttpTransportOptions {
 }
 
 function makeHttpTransport(options: HttpTransportOptions): SerializedDcbTransport {
-  const baseUrl = options.baseUrl.replace(/\/$/, "");
+  const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const fetchImpl: Fetcher = options.fetch ?? globalThis.fetch.bind(globalThis);
   const headers = { "content-type": "application/json", ...(options.headers ?? {}) };
   const call = async (path: string, body: unknown, signal?: AbortSignal): Promise<CommitHttpResult> => {
@@ -785,13 +764,17 @@ export function createSekibanExecutor(
           committing = true;
           // A dispatched commit that expires or is aborted is an unknown
           // outcome: it rejects out of executeCommand and is never retried.
-          const raw = await run(async () => {
-            try {
-              return await transport.commit(envelopeFor(candidate), signal);
-            } catch (error) {
-              throw sanitizeTransportError(error, { fallbackCode: "transport" });
+          let raw: unknown;
+          try {
+            raw = await run(() => transport.commit(envelopeFor(candidate), signal));
+          } catch (error) {
+            const publicError = sanitizeTransportError(error, { fallbackCode: "transport" });
+            if (failureKindForCode(publicError.code) === "conflict") {
+              committing = false;
+              return { kind: "consistency-conflict" };
             }
-          });
+            throw publicError;
+          }
           lastResponse = raw;
           const attemptResult = commitAttemptResult(raw);
           committing = false;
@@ -831,6 +814,10 @@ export function createSekibanExecutor(
           ...(decision.details === undefined ? {} : { details: decision.details }),
         };
       }
+      const decisionKind = (result.decision as { readonly kind?: unknown }).kind;
+      if (result.envelope === undefined && !["done", "none", "reject"].includes(String(decisionKind))) {
+        return failureResult(new ClientError("invalid_command_result", "Command did not return a recognised decision"), result.attempts);
+      }
       // The commit closure accepts, retries a conflict or throws; any other
       // status cannot be trusted as a commit.
       return failureResult(new ClientError("unknown_outcome", "The command outcome is unknown"), result.attempts);
@@ -846,19 +833,19 @@ export function createSekibanExecutor(
       }
       // An invalid retry count is refused before any read or commit.
       if (authoringCode === "EXECUTE_OPTIONS_INVALID") {
-        return { kind: "invalid", attempts: 0, code: "invalid_execute_options", error: errorText(error) };
+        return failureResult(new ClientError("invalid_execute_options", errorText(error)), 0);
       }
       // Command input validation is a typed application rejection, not a
       // transport failure. The executor facade must preserve the public
       // invalid-command contract used by the meeting-room API.
       if (authoringCode === "COMMAND_INPUT_INVALID") {
-        return { kind: "invalid", attempts: 1, code: "invalid_command_input", error: errorText(error) };
+        return failureResult(new ClientError("invalid_command_input", errorText(error)), 1);
       }
       const attempts = committing ? commitAttempts : commitAttempts + 1;
       // Any other authoring error from the handler or the domain layer is a
       // definite refusal; nothing was sent for it.
       if (isDomainAuthoringError(error)) {
-        return { kind: "invalid", attempts, code: "domain_authoring_error", error: error.code };
+        return failureResult(new ClientError("domain_authoring_error", error.code), attempts);
       }
       return failureResult(error, attempts);
     }

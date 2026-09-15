@@ -43,6 +43,7 @@ const classifications = Object.freeze({
   timeout: { class: "deadline-or-unknown", action: "reconcile a command; retry a read only under a renewed budget" },
   transport: { class: "malformed-or-unknown", action: "inspect/reconcile; do not infer definiteness from the transport class" },
   unknown_outcome: { class: "deadline-or-unknown", action: "reconcile the logical operation; never blindly reissue" },
+  unsupported_command: { class: "definite-refusal", action: "pass a ClaimLedgerExecutor command function instead of a dcb-core command object" },
   unsupported_capability: { class: "definite-refusal", action: "fix configuration or use a transport with the capability" },
   unsupported_consistency_mode: { class: "definite-refusal", action: "move consistency to listQuery or remove it" },
 });
