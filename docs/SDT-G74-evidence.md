@@ -12,7 +12,7 @@ regenerated surface hash. No npm publication or release operation is claimed.
 | issue | [#151](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/151) |
 | branch | `claude/sdt-g74-implementation-w281` |
 | rebase base | `184f6b5d2142a675993f31d22840ddb1f97779b8` (SDT-G89, #184) |
-| candidate head | *(set at push — see IMPL-FIX2-SUMMARY.md)* |
+| candidate head | `37cbf8508297dcd0c916dad671cb441034663716` |
 | contract label | `executor-facade-v1` |
 | carrying version | `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, `@sekiban/dcb-client@0.2.0` (selected, not published) |
 | public surface hash | `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db` |
