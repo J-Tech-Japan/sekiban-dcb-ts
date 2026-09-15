@@ -12,7 +12,7 @@ on surface hash `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261d
 | issue | [#151](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/151) |
 | branch | `claude/sdt-g74-implementation-w281` |
 | rebase base | `184f6b5d2142a675993f31d22840ddb1f97779b8` (SDT-G89, #184) |
-| candidate head | `f5ce7e517e8b44a6d2eade824f948a32071c8b6d` |
+| candidate head | `7df648cf0e89d2d2364a54004fc93b78072c887f` (docs commit will advance; surface hash identity unchanged) |
 | contract label | `executor-facade-v1` |
 | carrying version | `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, `@sekiban/dcb-client@0.2.0` (selected, not published) |
 | public surface hash | `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db` |
@@ -126,11 +126,6 @@ Status: **posted** on GitHub; owner acknowledgements **missing** (window open un
 | Sekiban | new #1247 | https://github.com/J-Tech-Japan/Sekiban/issues/1247 | posted |
 
 Exact hash consulted: `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`. PR #176 remains parked until AC10 is satisfied.
-
-## AC10 consumer consultation — **missing**
-
-Valid posts carrying hash `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`
-have **not** been posted. The withdrawn consultation template was deleted.
 
 ## Process (AC11)
 
