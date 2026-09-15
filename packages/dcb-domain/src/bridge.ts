@@ -215,6 +215,8 @@ function runtimeEventFrom(definition: EventDefinition | LegacyEventDefinition): 
       });
     }
     return Object.freeze({
+      eventName: name,
+      eventPayloadName,
       eventType,
       payload: parsed,
       tags: Object.freeze([]),

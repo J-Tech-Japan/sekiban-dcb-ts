@@ -1391,7 +1391,7 @@ describe("SDT-G89 runtime bridge contract", () => {
     expect(legacy).toEqual({ kind: "placed", orderId: "g89" });
   });
 
-  it("AC5: registers legacy eventName and omits name fields from legacy create()", () => {
+  it("AC5: registers legacy eventName and supplies names on bridged create()", () => {
     const legacyDomain = toRuntimeDomain({
       events: [{ eventName: "LegacyOnly", parse: (payload: unknown) => payload }],
       projectors: [],
@@ -1399,9 +1399,13 @@ describe("SDT-G89 runtime bridge contract", () => {
     });
     expect(legacyDomain.eventByName.get("LegacyOnly")?.name).toBe("LegacyOnly");
     const created = legacyDomain.events[0]!.create({ value: 1 });
-    expect(created).toEqual({ eventType: "LegacyOnly", payload: { value: 1 }, tags: [] });
-    expect(created).not.toHaveProperty("eventName");
-    expect(created).not.toHaveProperty("eventPayloadName");
+    expect(created).toEqual({
+      eventName: "LegacyOnly",
+      eventPayloadName: "LegacyOnly",
+      eventType: "LegacyOnly",
+      payload: { value: 1 },
+      tags: [],
+    });
   });
 
   it("AC6: bridged authoring events keep derived tags on create() and construct()", () => {
