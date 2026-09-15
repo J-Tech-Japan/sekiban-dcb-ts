@@ -111,6 +111,7 @@
         {"id": "g29-authoring-doc-red", "command": "npm run test:g29:authoring-doc:forced-red", "env": {"SDT_G29_AUTHORING_DOC_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g29-sample", "command": "npm run test:g29:sample"},
         {"id": "g29-sample-red", "command": "npm run test:g29:sample:forced-red", "env": {"SDT_G29_SAMPLE_FORCE_FAILURE": "1"}, "expect": "red"},
+        {"id": "g89-doorbell-guard", "command": "npm run test:g89:doorbell-guard"},
         {"id": "g29-witness", "command": "npm run test:g29:witness"},
         {"id": "g29-witness-red", "command": "npm run test:g29:witness:forced-red", "env": {"SDT_G29_WITNESS_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g31", "command": "npm run test:g31"},

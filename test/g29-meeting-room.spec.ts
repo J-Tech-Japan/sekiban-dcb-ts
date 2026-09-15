@@ -180,18 +180,25 @@ describe("SDT-G29 meeting-room authoring portability", () => {
 
   it("SDT-G89 AC4: keeps composed polling family-safe when stored eventTags name a foreign family", () => {
     const composed = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
-    const roomProjector = composed.projectors.resolve("RoomProjector");
     const reservationProjector = composed.projectors.resolve("ReservationProjector");
-    const event = {
+    const reservationInitial = reservationProjector!.initialState();
+    const payload = JSON.stringify({ reservationId: "foreign", roomId: "room", userId: "user" });
+    const base = {
       eventId: g32EventId("foreign"),
       suid: g32Suid("foreign"),
-      payload: JSON.stringify({ reservationId: "foreign", roomId: "room", userId: "user" }),
-      eventTags: ["reservation:foreign"],
+      payload,
       eventType: "RoomReserved",
       provenance: "g32" as const,
     };
-    expect(roomProjector!.apply(roomProjector!.initialState(), event)).toEqual(roomProjector!.initialState());
-    expect(reservationProjector!.apply(reservationProjector!.initialState(), event)).toMatchObject({ status: "reserved" });
+    expect(
+      reservationProjector!.apply(reservationInitial, { ...base, eventTags: ["room:foreign"] }),
+    ).toEqual(reservationInitial);
+    expect(
+      reservationProjector!.apply(reservationInitial, { ...base, eventTags: ["reservation:foreign"] }),
+    ).toMatchObject({ status: "reserved" });
+    expect(() =>
+      reservationProjector!.apply(reservationInitial, { ...base, eventTags: [] }),
+    ).toThrowError(expect.objectContaining({ code: "RUNTIME_EVENT_TAGS_EMPTY" }));
   });
 
   it("dispatches materializers by durable G32 identity and never payload-sniffs", () => {

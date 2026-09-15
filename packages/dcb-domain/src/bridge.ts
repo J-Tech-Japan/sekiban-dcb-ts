@@ -98,7 +98,13 @@ export type RuntimePortAdmitResult =
   | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
 
 export type RuntimePortCommitResult =
-  | { readonly kind: "accepted"; readonly attemptId?: string }
+  | { readonly kind: "accepted" }
+  | { readonly kind: "consistency-conflict" }
+  | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
+  | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
+
+export type RuntimePortReconcileResult =
+  | { readonly kind: "accepted" }
   | { readonly kind: "consistency-conflict" }
   | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
   | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
@@ -115,7 +121,7 @@ export interface RuntimeCommandPort {
   /** Commit receives the one allocated vector and the same canonical G27 event identity. */
   readonly commit?: (candidate: RuntimeCommandCandidateEnvelope, allocation?: RuntimeAllocationVector) => Promise<RuntimePortCommitResult> | RuntimePortCommitResult;
   /** An unknown outcome is reconciled against the same immutable candidate/attempt/vector, never resubmitted as new work. */
-  readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult) => Promise<RuntimePortCommitResult> | RuntimePortCommitResult;
+  readonly reconcile?: (context: RuntimeCommandAttemptContext, outcome: RuntimePortCommitResult | RuntimePortAdmitResult | RuntimePortBarrierResult) => Promise<RuntimePortReconcileResult> | RuntimePortReconcileResult;
 }
 
 export interface RuntimeCommandExecutionOptions {
@@ -165,8 +171,8 @@ interface LegacyEventDefinition {
   readonly eventPayloadName?: string;
   readonly eventType?: string;
   readonly parse?: (payload: unknown) => unknown;
-  readonly create?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string };
-  readonly construct?: (payload: unknown) => { readonly payload?: unknown; readonly eventName?: string; readonly eventPayloadName?: string };
+  readonly create?: (payload: unknown) => { readonly payload?: unknown };
+  readonly construct?: (payload: unknown) => { readonly payload?: unknown };
 }
 
 interface LegacyDomainDefinition {

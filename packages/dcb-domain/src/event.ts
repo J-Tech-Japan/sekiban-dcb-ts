@@ -94,8 +94,8 @@ export interface EventDefinition<
 }
 
 export interface RuntimeEventValue {
-  readonly eventName?: string;
-  readonly eventPayloadName?: string;
+  readonly eventName: string;
+  readonly eventPayloadName: string;
   readonly eventType: string;
   readonly payload: JsonValue;
   readonly tags: readonly Tag[];

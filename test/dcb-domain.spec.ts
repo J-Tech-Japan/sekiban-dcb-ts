@@ -36,6 +36,7 @@ import {
   UndeclaredReadError,
   type DecisionLog,
   type DomainViewDefinition,
+  type RuntimePortCommitResult,
   type Tag,
 } from "@sekiban/dcb-domain";
 import {
@@ -941,16 +942,34 @@ describe("SDT-G88 command outcomes and authoring options", () => {
     expect(outcome).toMatchObject({ kind: "rejected", code: "consistency_conflict", events: [] });
     expect(commits).toBe(2);
     let barriers = 0;
+    let barrierAdmits = 0;
+    let barrierAllocates = 0;
+    let barrierCommits = 0;
     const barrierOutcome = await runtimeCommand.execute({ orderId: "g88-runtime-barrier-conflict" }, {
       runtimePort: {
         conflictBarrier: () => {
           barriers += 1;
           return { kind: "consistency-conflict" as const };
         },
+        admit: () => {
+          barrierAdmits += 1;
+          return { kind: "accepted" as const };
+        },
+        allocate: () => {
+          barrierAllocates += 1;
+          return { candidates: [{ ordinal: "0", suid: "suid-barrier" }] };
+        },
+        commit: () => {
+          barrierCommits += 1;
+          return { kind: "accepted" as const };
+        },
       },
     });
     expect(barrierOutcome).toMatchObject({ kind: "rejected", code: "consistency_conflict", events: [] });
     expect(barriers).toBe(2);
+    expect(barrierAdmits).toBe(0);
+    expect(barrierAllocates).toBe(0);
+    expect(barrierCommits).toBe(0);
   });
 
   it("AC5: leaves the discriminator to the zod union while states() keeps its option", () => {
@@ -1273,16 +1292,43 @@ describe("SDT-G89 runtime bridge contract", () => {
     expect(commitOutcome).toMatchObject({ kind: "rejected", code: "commit_code", reason: "COMMIT_REASON" });
   });
 
-  it("AC2: reads admit attemptId last for reconcile and forwards unknown.error", async () => {
+  it.each([
+    {
+      label: "commit unknown attemptId wins",
+      commitAttemptId: "commit-unknown-attempt" as string | undefined,
+      allocationAttemptId: "allocation-attempt" as string | undefined,
+      expectedAttemptId: "commit-unknown-attempt",
+    },
+    {
+      label: "allocation attemptId when commit id absent",
+      commitAttemptId: undefined,
+      allocationAttemptId: "allocation-attempt",
+      expectedAttemptId: "allocation-attempt",
+    },
+    {
+      label: "admit attemptId when commit and allocation ids absent",
+      commitAttemptId: undefined,
+      allocationAttemptId: undefined,
+      expectedAttemptId: "admit-attempt",
+    },
+  ])("AC2: reconcile attempt id precedence — $label", async ({ commitAttemptId, allocationAttemptId, expectedAttemptId }) => {
     const unknownError = { marker: "g89-unknown-error" };
     let reconcileOutcome: unknown;
     let reconcileContextAttemptId: string | undefined;
     await runtimeCommand.execute({ orderId: "g89-attempts" }, {
       runtimePort: {
-        conflictBarrier: () => ({ kind: "accepted" as const, attemptId: "barrier-attempt" }),
+        conflictBarrier: () => ({ kind: "accepted" as const }),
         admit: () => ({ kind: "accepted" as const, attemptId: "admit-attempt" }),
-        allocate: () => ({ candidates: [{ ordinal: "0", suid: "suid-1" }], allocatorLineageId: "lineage" }),
-        commit: () => ({ kind: "unknown" as const, error: unknownError }),
+        allocate: () => ({
+          candidates: [{ ordinal: "0", suid: "suid-1" }],
+          allocatorLineageId: "lineage",
+          ...(allocationAttemptId === undefined ? {} : { attemptId: allocationAttemptId }),
+        }),
+        commit: () => ({
+          kind: "unknown" as const,
+          error: unknownError,
+          ...(commitAttemptId === undefined ? {} : { attemptId: commitAttemptId }),
+        }),
         reconcile: (context, outcome) => {
           reconcileContextAttemptId = context.attemptId;
           reconcileOutcome = outcome;
@@ -1290,8 +1336,16 @@ describe("SDT-G89 runtime bridge contract", () => {
         },
       },
     });
-    expect(reconcileContextAttemptId).toBe("admit-attempt");
+    expect(reconcileContextAttemptId).toBe(expectedAttemptId);
     expect(reconcileOutcome).toMatchObject({ kind: "unknown", error: unknownError });
+  });
+
+  it("AC2: commit accepted result does not declare attemptId", () => {
+    const accepted: RuntimePortCommitResult = { kind: "accepted" };
+    expect(accepted).not.toHaveProperty("attemptId");
+    // @ts-expect-error SDT-G89 commit accepted must not carry attemptId; bridge reads unknown.attemptId only.
+    const invalid: RuntimePortCommitResult = { kind: "accepted", attemptId: "unused" };
+    expect(invalid).toBeDefined();
   });
 
   it("AC3: passes the exact allocated vector into commit and reconcile", async () => {

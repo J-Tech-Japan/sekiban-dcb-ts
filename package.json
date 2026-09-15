@@ -115,6 +115,7 @@
     "test:g29:authoring-doc": "node scripts/g29-authoring-doc-check.mjs",
     "test:g29:authoring-doc:forced-red": "npm run test:g29:authoring-doc && node -e \"if (process.env.SDT_G29_AUTHORING_DOC_FORCE_FAILURE === '1') throw new Error('SDT-G29 authoring doc forced-red CI wiring proof')\"",
     "test:g29:sample": "npm run build:packages && vitest run --config vitest.config.ts test/g29-meeting-room.spec.ts test/meeting-room.spec.ts",
+    "test:g89:doorbell-guard": "node scripts/g89-doorbell-policy-guard.mjs",
   "test:g29:sample:forced-red": "npm run test:g29:sample && node -e \"if (process.env.SDT_G29_SAMPLE_FORCE_FAILURE === '1') throw new Error('SDT-G29 sample forced-red CI wiring proof')\"",
   "test:g29:witness": "vitest run --config vitest.config.ts test/g29-witness.spec.ts",
   "test:g29:witness:forced-red": "npm run test:g29:witness && node -e \"if (process.env.SDT_G29_WITNESS_FORCE_FAILURE === '1') throw new Error('SDT-G29 witness forced-red CI wiring proof')\"",

@@ -242,7 +242,7 @@ export interface RuntimeCommitAllocationLike {
 }
 
 export type RuntimeCommitPortResult =
-  | { readonly kind: "accepted"; readonly attemptId?: string }
+  | { readonly kind: "accepted" }
   | { readonly kind: "consistency-conflict" }
   | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
   | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
@@ -338,7 +338,7 @@ export function createRuntimeCommitPort(
         registeredEventParsers: options.registeredEventParsers,
       });
       const body = await responseBody(response);
-      if (response.ok) return { kind: "accepted", attemptId: attemptIdFromResponse(body) };
+      if (response.ok) return { kind: "accepted" };
       const code = typeof body?.code === "string" ? body.code : undefined;
       if (code === "consistency_conflict" || response.status === 409) {
         return { kind: "consistency-conflict" };
