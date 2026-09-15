@@ -421,7 +421,7 @@ Every declared option below is mapped to production implementation and existing 
 | --- | --- | --- |
 | `createSekibanExecutor(transport, options?)` | builds the facade over one adapter | `test/g57-executor.spec.ts` AC1–AC3 |
 | `options.serviceId` | when both it and `transport.serviceId` are set and differ, every `execute` returns `invalid` / `scope.mismatch` without committing | `test/g57-executor.spec.ts:382` |
-| `options.clock` | time source for command decisions; defaults to `Date.now` | behavioural coverage: none dedicated at freeze head `73cbd8a98a8ed91d7d862ea3726cc5b92d3b05d8`; related coverage: used at `test/g57-executor.spec.ts:190`; status: documented freeze gap; not designated for removal |
+| `options.clock` | time source for command decisions; defaults to `Date.now` | behavioural coverage: none dedicated at freeze head `5d623e020152e69f9c1f0a9934e5aa5b69f547be`; related coverage: used at `test/g57-executor.spec.ts:190`; status: documented freeze gap; not designated for removal |
 | `execute(command, input, options?)` | runs the command against snapshots or reads, commits, and returns `ExecuteCommandResult` with nine `kind` values | `test/g57-executor.spec.ts` AC1–AC3; exhaustiveness in the packed consumer fixture |
 | `ExecuteCommandOptions.snapshots` | an array of `PortableSnapshot` or a `SnapshotReader`; covered cells are not read | `test/g57-executor.spec.ts:178`, `:269` |
 | `ExecuteCommandOptions.readMode` | `read-through` (default) or `snapshot-only`; snapshot-only makes zero reads, fails closed on an uncovered claim and forces zero conflict retries | `test/g57-executor.spec.ts:178` |
@@ -435,7 +435,7 @@ Every declared option below is mapped to production implementation and existing 
 | `ReadOptions.consistency` | not in the type; runtime refusal `unsupported_consistency_mode` / `400` | `test/g71-read-contract.spec.ts:414`; packed consumer compile rejection |
 | `listQuery(request, options?)` | returns the page and durable `readHead` when supplied | `test/g71-read-contract.spec.ts:460`, `:499`, `:543`, `:648`; `test/g71-composition.spec.ts:255` |
 | `ListQueryOptions.consistency` | `safe` or `unsafe` written into `queryParamsJson` | `test/g71-read-contract.spec.ts:414`; `test/g71-composition.spec.ts:255` |
-| `ListQueryOptions.signal` | forwarded to `transport.listQuery` | behavioural coverage: none dedicated at freeze head `73cbd8a98a8ed91d7d862ea3726cc5b92d3b05d8`; related coverage: `packages/dcb-client/src/executor.ts:731`; status: documented freeze gap; not designated for removal |
+| `ListQueryOptions.signal` | forwarded to `transport.listQuery` | behavioural coverage: none dedicated at freeze head `5d623e020152e69f9c1f0a9934e5aa5b69f547be`; related coverage: `packages/dcb-client/src/executor.ts:731`; status: documented freeze gap; not designated for removal |
 | facade HTTP 400/422/500/503 and thrown errors | classified through the shared table (`invalid`, `rejected`, `transport`, `unavailable`, `timeout`, `partial`, `conflict`) | `test/g78-error-classification.spec.ts`; `test/g57-executor.spec.ts:775` |
 | code-less commit HTTP 5xx | `timeout` / `unknown_outcome` | `test/g78-error-classification.spec.ts` matrix rows |
 | post-dispatch `timeout`, `transport`, commit-side `unavailable` | outcome-unknown; reconcile before retry; no blind reissue | `test/g76-regression-matrix.spec.ts`; policy below |
