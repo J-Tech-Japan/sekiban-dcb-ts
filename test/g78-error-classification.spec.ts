@@ -93,6 +93,7 @@ const g86ParityRows: readonly G86ParityRow[] = [
   { reply: "503 no code", commit: async () => ({ status: 503, body: { error: "unavailable" } }), expected: { kind: "timeout", code: "unknown_outcome", status: 503 } },
   { reply: "503 projection_unavailable", commit: async () => ({ status: 503, body: { code: "projection_unavailable", error: "unavailable" } }), expected: { kind: "unavailable", code: "projection_unavailable", status: 503 } },
   { reply: "504 no code", commit: async () => ({ status: 504, body: { error: "gateway timeout" } }), expected: { kind: "timeout", code: "unknown_outcome", status: 504 } },
+  { reply: "non-HTTP value", commit: async () => ({ writtenEvents: [] }), expected: { kind: "timeout", code: "unknown_outcome" } },
   { reply: "thrown TypeError", commit: async () => { throw new TypeError("fetch failed"); }, expected: { kind: "transport", code: "transport" } },
   { reply: "thrown AbortError", commit: async () => { throw abortError(); }, expected: { kind: "timeout", code: "aborted" } },
   {
@@ -333,5 +334,36 @@ describe("SDT-G78 public error classification", () => {
   it("AC3/AC4: rejects malformed public responses without turning them into absence or refusal", async () => {
     const malformed = createSekibanExecutor(baseTransport({ query: async () => ({ resultJson: 42 as unknown as string }) }));
     await expect(malformed.query(queryRequest)).rejects.toMatchObject({ code: "invalid_query_response" });
+  });
+
+  it("SDT-G87 AC11: rejects a bogus discarded decision without committing", async () => {
+    let commits = 0;
+    const bogusCommand = command({
+      id: "g87-bogus-decision",
+      input: z.object({}),
+      reads: () => readSet(),
+      handle: () => ({ kind: "bogus" }) as never,
+    });
+    const result = await createSekibanExecutor(baseTransport({
+      commit: async () => {
+        commits += 1;
+        return { status: 200, body: {} };
+      },
+    })).execute(bogusCommand, {});
+    expect(result).toMatchObject({ kind: "transport", code: "invalid_command_result" });
+    expect(commits).toBe(0);
+  });
+
+  it("SDT-G87 AC11: retries a thrown consistency conflict through the facade", async () => {
+    let commits = 0;
+    const result = await createSekibanExecutor(baseTransport({
+      commit: async () => {
+        commits += 1;
+        if (commits === 1) throw new ClientError("consistency_conflict", "conflict", { status: 409 });
+        return { status: 200, body: { writtenEvents: [] } };
+      },
+    })).execute(g86AppendCommand, { id: "thrown-conflict" }, { maxConflictRetries: 1 });
+    expect(result).toMatchObject({ kind: "committed", attempts: 2 });
+    expect(commits).toBe(2);
   });
 });

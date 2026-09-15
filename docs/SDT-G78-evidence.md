@@ -108,6 +108,7 @@ The source-derived classification table is:
 | `timeout` | deadline/unknown | caller budget expired; reconcile commands | `index.ts` controlled execution |
 | `transport` | malformed/unknown | transport failed without a definite refusal | `executor.ts`/`index.ts` boundary |
 | `unknown_outcome` | deadline/unknown | commit acknowledgement is not certain; reconcile | `executor.ts`/`index.ts` result mapping |
+| `unsupported_command` | definite-refusal | ClaimLedgerExecutor received a command value it cannot execute with ledger claims; pass a command function | `index.ts` executor guard |
 | `unsupported_capability` | definite-refusal | required authority capability is absent | `executor.ts` capability guard |
 | `unsupported_consistency_mode` | definite-refusal | consistency supplied outside list-query | `executor.ts` lane guard |
 

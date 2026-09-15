@@ -1,7 +1,5 @@
 import type {
   AppendedEvent,
-  CommandDefinition,
-  CommandOutcome,
   EventDefinition,
   JsonValue,
   TagDefinition,
@@ -12,6 +10,7 @@ import type { JsonValue as DomainJsonValue } from "@sekiban/dcb-domain";
 import { classifyFailure, commitReplyError } from "./classification.js";
 import { awaitControlled, totalBudgetMsProblem } from "./control.js";
 import { ClientError, sanitizeTransportError } from "./errors.js";
+import { v1Envelope } from "./wire.js";
 
 export { ClientError } from "./errors.js";
 
@@ -53,6 +52,11 @@ export interface CommitEnvelope {
 
 export interface CommitHttpResult {
   readonly status: number;
+  /**
+   * Filled by every built-in HTTP adapter for every HTTP response. Headers
+   * remain transport metadata and are never copied into ClientError or
+   * executor results.
+   */
   readonly headers?: Readonly<Record<string, string>>;
   readonly body?: unknown;
 }
@@ -161,8 +165,8 @@ export class SerializedDcbClient implements SerializedDcbTransport {
   readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(baseUrl: string, fetchImpl: typeof fetch = globalThis.fetch) {
-    this.baseUrl = baseUrl.replace(/\/$/, "");
+  constructor(baseUrl: string, fetchImpl: typeof fetch = globalThis.fetch.bind(globalThis)) {
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.fetchImpl = fetchImpl;
   }
 
@@ -215,27 +219,34 @@ export class SerializedDcbClient implements SerializedDcbTransport {
   readonly tagLatestSortable = this.readTagLatestSortable.bind(this);
   readonly tagState = this.readTagState.bind(this);
 
-  async commit(request: CommitEnvelope, signal?: AbortSignal): Promise<unknown> {
+  async commit(request: CommitEnvelope, signal?: AbortSignal): Promise<CommitHttpResult> {
     const response = await this.fetchImpl(`${this.baseUrl}/api/sekiban/serialized/commit`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(request),
+      body: JSON.stringify(v1Envelope(request)),
       signal,
     });
-    return this.readResponse(response);
+    return this.httpResult(response);
   }
 
   private async readResponse(response: Response, requestedTagStateId?: string): Promise<unknown> {
+    const result = await this.httpResult(response);
+    if (!response.ok) {
+      throw sanitizeTransportError(result, { fallbackCode: "http_error", status: response.status });
+    }
+    return requestedTagStateId === undefined ? result.body : normalizeSnapshot(result.body, requestedTagStateId);
+  }
+
+  private async httpResult(response: Response): Promise<CommitHttpResult> {
     let body: unknown;
     try {
       body = await response.json();
     } catch {
-      throw sanitizeTransportError({ status: response.status }, { fallbackCode: "transport", status: response.status });
+      body = { code: "transport", error: `HTTP ${response.status}` };
     }
-    if (!response.ok) {
-      throw sanitizeTransportError({ status: response.status, body }, { fallbackCode: "http_error", status: response.status });
-    }
-    return requestedTagStateId === undefined ? body : normalizeSnapshot(body, requestedTagStateId);
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => { headers[key] = value; });
+    return { status: response.status, headers, body };
   }
 }
 
@@ -327,13 +338,18 @@ export interface ClientCommandContext {
 }
 
 export type ClientCommandDecision =
-  | { readonly kind: "committed" | "done"; readonly value?: JsonValue; readonly envelope?: Partial<CommitEnvelope> }
+  | { readonly kind: "committed" | "done"; readonly value?: JsonValue }
   | { readonly kind: "noop"; readonly reason?: string }
   | { readonly kind: "rejected"; readonly error: string; readonly code?: string }
   | { readonly kind: "invalid"; readonly error: string; readonly code?: string };
 
 export interface ExecuteOptions {
   readonly input?: unknown;
+  /**
+   * Defaults to 0 for ClaimLedgerExecutor. Values above 1 are accepted but
+   * capped at the specified one-retry/two-attempt limit. SekibanExecutor
+   * instead defaults to 1 and does not impose this cap.
+   */
   readonly maxConflictRetries?: number;
   readonly signal?: AbortSignal;
   readonly totalBudgetMs?: number;
@@ -344,7 +360,6 @@ export interface ExecuteCommon {
   readonly status?: number;
   readonly code?: string;
   readonly error?: string;
-  readonly cause?: unknown;
 }
 export interface ExecuteCommitted extends ExecuteCommon {
   readonly kind: "committed";
@@ -354,7 +369,7 @@ export interface ExecuteCommitted extends ExecuteCommon {
 }
 export interface ExecuteNoop extends ExecuteCommon { readonly kind: "noop"; readonly reason?: string; }
 export interface ExecuteRejected extends ExecuteCommon { readonly kind: "rejected"; readonly error: string; }
-export interface ExecuteConflict extends ExecuteCommon { readonly kind: "conflict"; readonly response?: unknown; }
+export interface ExecuteConflict extends ExecuteCommon { readonly kind: "conflict"; }
 export interface ExecutePartial extends ExecuteCommon { readonly kind: "partial"; readonly partial: unknown; }
 export interface ExecuteTimeout extends ExecuteCommon { readonly kind: "timeout"; }
 export interface ExecuteUnavailable extends ExecuteCommon { readonly kind: "unavailable"; }
@@ -364,13 +379,16 @@ export type ExecuteResult = ExecuteCommitted | ExecuteNoop | ExecuteRejected | E
 
 export interface ClaimLedgerExecutorOptions {
   readonly transport: SerializedDcbTransport;
+  /**
+   * Defaults to 0. Non-negative safe integers are accepted, but values above
+   * 1 are capped at the specified one-retry/two-attempt limit.
+   */
   readonly maxConflictRetries?: number;
   readonly totalBudgetMs?: number;
 }
 
-type CommandLike =
-  | ((context: ClientCommandContext, input?: unknown) => ClientCommandDecision | Promise<ClientCommandDecision>)
-  | CommandDefinition;
+type ClientCommand =
+  (context: ClientCommandContext, input?: unknown) => ClientCommandDecision | Promise<ClientCommandDecision>;
 
 const eventPayloadName = (event: EventDefinition | string): string => typeof event === "string" ? event : event.eventPayloadName;
 
@@ -388,40 +406,70 @@ const classifyError = (error: unknown, attempts: number): ExecuteResult => {
 };
 
 function classifyCommitResponse(value: unknown, attempts: number): ExecuteResult {
-  if (value instanceof Response) {
-    return { kind: "transport", attempts, code: "transport", error: "Transport request failed" };
-  }
   if (isRecord(value) && typeof value.status === "number" && "body" in value) {
     const status = value.status;
     const body = value.body;
     if (status >= 200 && status < 300) return { kind: "committed", attempts, status, response: body };
     return classifyError(commitReplyError({ ...value, status }), attempts);
   }
-  if (isRecord(value) && typeof value.code === "string") {
-    return classifyError(sanitizeTransportError(value), attempts);
+  return classifyError(new ClientError("unknown_outcome", "The command outcome is unknown"), attempts);
+}
+
+function maxConflictRetriesProblem(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return undefined;
+  return `maxConflictRetries must be undefined or a non-negative safe integer; received ${String(value)}`;
+}
+
+function combinedSignal(primary: AbortSignal | undefined, secondary: AbortSignal | undefined): AbortSignal | undefined {
+  if (primary === undefined) return secondary;
+  if (secondary === undefined || secondary === primary) return primary;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (primary.aborted || secondary.aborted) abort();
+  else {
+    primary.addEventListener("abort", abort, { once: true });
+    secondary.addEventListener("abort", abort, { once: true });
   }
-  return { kind: "committed", attempts, status: 200, response: value };
+  return controller.signal;
+}
+
+/** Internal seams: tests control Math.random and timers without a public option. */
+const conflictRetryRandom = (): number => Math.random();
+const conflictRetrySleep = (delayMs: number, signal: AbortSignal | undefined, deadline: number | undefined): Promise<void> =>
+  awaitControlled(() => new Promise<void>((resolve) => setTimeout(resolve, delayMs)), signal, deadline);
+
+async function waitBeforeConflictRetry(signal: AbortSignal | undefined, deadline: number | undefined): Promise<void> {
+  const remaining = deadline === undefined ? undefined : deadline - Date.now();
+  if (remaining !== undefined && remaining <= 0) throw new ClientError("timeout", "Execution budget expired");
+  const delayMs = Math.min(conflictRetryRandom() * 50, remaining ?? 50);
+  await conflictRetrySleep(delayMs, signal, deadline);
+  if (deadline !== undefined && Date.now() >= deadline) throw new ClientError("timeout", "Execution budget expired");
 }
 
 export class ClaimLedgerExecutor {
   private readonly transport: SerializedDcbTransport;
-  private readonly defaultRetries: number;
+  private readonly defaultRetries?: number;
   private readonly defaultBudget?: number;
 
   constructor(options: ClaimLedgerExecutorOptions) {
     this.transport = options.transport;
-    this.defaultRetries = Math.min(1, Math.max(0, options.maxConflictRetries ?? 0));
+    this.defaultRetries = options.maxConflictRetries;
     this.defaultBudget = options.totalBudgetMs;
   }
 
-  async execute(command: CommandLike, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+  async execute(command: ClientCommand, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+    if (typeof command !== "function") {
+      return classifyError(new ClientError("unsupported_command", "ClaimLedgerExecutor accepts only command functions"), 0);
+    }
     // A non-finite or out-of-range budget would reach setTimeout and report a
     // dispatched commit as a timeout; refuse it before any call.
     const budgetProblem = totalBudgetMsProblem(options.totalBudgetMs) ?? totalBudgetMsProblem(this.defaultBudget);
-    if (budgetProblem !== undefined) {
-      return classifyError(new ClientError("invalid_execute_options", budgetProblem), 0);
+    const retriesProblem = maxConflictRetriesProblem(options.maxConflictRetries) ?? maxConflictRetriesProblem(this.defaultRetries);
+    if (budgetProblem !== undefined || retriesProblem !== undefined) {
+      return classifyError(new ClientError("invalid_execute_options", budgetProblem ?? retriesProblem!), 0);
     }
-    const maxRetries = Math.min(1, Math.max(0, options.maxConflictRetries ?? this.defaultRetries));
+    const maxRetries = Math.min(1, options.maxConflictRetries ?? this.defaultRetries ?? 0);
     const deadline = options.totalBudgetMs === undefined && this.defaultBudget === undefined
       ? undefined
       : Date.now() + (options.totalBudgetMs ?? this.defaultBudget ?? 0);
@@ -436,10 +484,10 @@ export class ClaimLedgerExecutor {
       try {
         const attemptCandidates: CommitCandidate[] = [];
         context = {
-          readTagState: (tagStateId, signal) => ledger.readTagState(tagStateId, signal),
-          state: async (tagStateId, signal) => (await ledger.readTagState(tagStateId, signal)).payload,
+          readTagState: (tagStateId, signal) => ledger.readTagState(tagStateId, combinedSignal(options.signal, signal)),
+          state: async (tagStateId, signal) => (await ledger.readTagState(tagStateId, combinedSignal(options.signal, signal))).payload,
           assertEmpty: async (tagStateId, signal) => {
-            const snapshot = await ledger.readTagState(tagStateId, signal);
+            const snapshot = await ledger.readTagState(tagStateId, combinedSignal(options.signal, signal));
             const emptyPayload = snapshot.payload === null || snapshot.payload === undefined ||
               (isRecord(snapshot.payload) && Object.keys(snapshot.payload).length === 0) ||
               (isRecord(snapshot.payload) && snapshot.payload.status === "empty") ||
@@ -462,33 +510,25 @@ export class ClaimLedgerExecutor {
           get claims() { return ledger.snapshots; },
           get candidates() { return Object.freeze([...attemptCandidates]); },
         };
-        if (typeof command === "function") {
-          decision = await awaitControlled(() => command(context, options.input), options.signal, deadline);
-        } else {
-          const outcome = await awaitControlled(() => command.execute(options.input), options.signal, deadline);
-          decision = outcome.kind === "committed"
-            ? { kind: "committed", value: outcome.value }
-            : outcome.kind === "noop"
-              ? { kind: "noop", reason: outcome.reason }
-              : { kind: "rejected", error: outcome.reason, code: outcome.code };
-        }
+        decision = await awaitControlled(() => command(context, options.input), options.signal, deadline);
         if (!decision || typeof decision !== "object") throw new ClientError("invalid_command_result", "Command did not return a decision");
         if (decision.kind === "noop") return { kind: "noop", attempts, reason: decision.reason };
         if (decision.kind === "rejected") return { kind: "rejected", attempts, error: decision.error, code: decision.code };
         if (decision.kind === "invalid") return { kind: "invalid", attempts, error: decision.error, code: decision.code };
+        if (decision.kind !== "committed" && decision.kind !== "done") {
+          throw new ClientError("invalid_command_result", "Command did not return a recognised decision");
+        }
         const candidates = context.candidates;
         if (candidates.length === 0) return { kind: "noop", attempts, reason: "command appended no events" };
         // Claims retain the §5.3 tag-state spelling internally, but the commit
         // envelope is a §3.1 wire value and must use lastSortableUniqueId.
         // An empty tag head is the explicit V1 assert-empty sentinel and must
         // survive this adapter byte-for-byte.
-        const consistency = decision.envelope?.consistency ?? context.claims
-          .map((claim) => ({
-            tag: claim.tag,
-            lastSortableUniqueId: claim.lastSortedUniqueId,
-          }));
+        const consistency = context.claims.map((claim) => ({
+          tag: claim.tag,
+          lastSortableUniqueId: claim.lastSortedUniqueId,
+        }));
         const envelope: CommitEnvelope = Object.freeze({
-          ...(decision.envelope ?? {}),
           candidates,
           consistency: Object.freeze(consistency.map((entry) => ({
             tag: normalizeTag(entry.tag),
@@ -509,11 +549,28 @@ export class ClaimLedgerExecutor {
           deadline,
         );
         const classified = classifyCommitResponse(result, attempts);
-        if (classified.kind === "conflict" && attempts <= maxRetries) continue;
+        if (classified.kind === "conflict" && attempts <= maxRetries) {
+          try {
+            await waitBeforeConflictRetry(options.signal, deadline);
+          } catch (waitError) {
+            return classifyError(waitError, attempts);
+          }
+          continue;
+        }
+        if (classified.kind === "committed" && decision.value !== undefined) {
+          return { ...classified, value: decision.value };
+        }
         return classified;
       } catch (error) {
         const classified = classifyError(error, attempts);
-        if (classified.kind === "conflict" && attempts <= maxRetries) continue;
+        if (classified.kind === "conflict" && attempts <= maxRetries) {
+          try {
+            await waitBeforeConflictRetry(options.signal, deadline);
+          } catch (waitError) {
+            return classifyError(waitError, attempts);
+          }
+          continue;
+        }
         return classified;
       }
     }
@@ -526,7 +583,7 @@ export const createClaimLedgerExecutor = (options: ClaimLedgerExecutorOptions): 
 export const createSerializedDcbClient = (baseUrl: string, fetchImpl?: typeof fetch): SerializedDcbClient =>
   new SerializedDcbClient(baseUrl, fetchImpl);
 
-export type { AppendedEvent, CommandDefinition, CommandOutcome, EventDefinition, JsonValue, TagDefinition, TagInput };
+export type { AppendedEvent, EventDefinition, JsonValue, TagDefinition, TagInput };
 
 export type { SekibanCloudTransportOptions } from "./cloud-contract.js";
 export * from "./executor.js";
