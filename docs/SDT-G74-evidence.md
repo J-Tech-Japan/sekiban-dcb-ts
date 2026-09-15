@@ -12,7 +12,7 @@ regenerated surface hash. No npm publication or release operation is claimed.
 | issue | [#151](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/151) |
 | branch | `claude/sdt-g74-implementation-w281` |
 | rebase base | `184f6b5d2142a675993f31d22840ddb1f97779b8` (SDT-G89, #184) |
-| candidate head | `3f5e71bbd7c4fe4328d4e79ea4278b3edd79704d` |
+| candidate head | `bb7bdc1b0d9dbe3dd3897c12894872209349f9b0` (docs-only alignment may lag one commit; surface identity is the hash) |
 | contract label | `executor-facade-v1` |
 | carrying version | `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, `@sekiban/dcb-client@0.2.0` (selected, not published) |
 | public surface hash | `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db` |
@@ -113,7 +113,19 @@ npm run test:g40:tiers    # exit 0
 git diff --check          # clean
 ```
 
-Hosted CI (`ci-foundation` / `foundation-g74`): pending at push time.
+Hosted CI at `bb7bdc1b0d9dbe3dd3897c12894872209349f9b0`: `ci-foundation` SUCCESS, `ci-pr-cheap` SUCCESS, `verify` SUCCESS, `dcb-domain-release-preflight` SUCCESS (runs 35032484488 / 35032484482).
+
+## AC10 consultation posts (2026-09-15T23:01:56Z)
+
+Status: **posted** on GitHub; owner acknowledgements **missing** (window open until 2026-09-18T17:00:00Z). Orca mailbox delivery pending operator wake (mailbox deadline 2026-09-16T17:00:00Z).
+
+| consumer | venue | URL | ack status |
+|---|---|---|---|
+| SekibanWasmRuntime | #283 | https://github.com/J-Tech-Japan/SekibanWasmRuntime/issues/283#issuecomment-5689253773 | posted |
+| SekibanAsAService | #1914 | https://github.com/J-Tech-Japan/SekibanAsAService/issues/1914#issuecomment-5689254043 | posted |
+| Sekiban | new #1247 | https://github.com/J-Tech-Japan/Sekiban/issues/1247 | posted |
+
+Exact hash consulted: `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`. PR #176 remains parked until AC10 is satisfied.
 
 ## AC10 consumer consultation — **missing**
 
