@@ -502,6 +502,22 @@ describe("SDT-G46 TagStateDO", () => {
     expect((await result(rebuilt)).version).toBe(0);
   });
 
+  it("SDT-G89 AC9(b): reports schema-invalid restored state as tag_state_cache_corrupt", async () => {
+    const value = scope("g89-schema-invalid");
+    const state = identity(value);
+    await installSource(state, sourceHarness([]));
+    expect((await readTagStateObject(state)).status).toBe(200);
+    await runInDurableObject(tagStateStub(state), (_instance, durableState) => {
+      durableState.storage.sql.exec(
+        "UPDATE tag_state_cache SET state_json = ?1, phase = 'READY' WHERE singleton = 1",
+        JSON.stringify({ kind: "placed" }),
+      );
+    });
+    const corrupt = await readTagStateObject(state);
+    expect(corrupt.status).toBe(409);
+    expect((await result(corrupt)).code).toBe("tag_state_cache_corrupt");
+  });
+
   it("reports detected cache corruption as a typed non-success rather than an empty projection", async () => {
     const value = scope("g46-cache-corruption");
     const state = identity(value);

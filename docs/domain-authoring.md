@@ -208,7 +208,7 @@ export const cancelReservationCommand = command({
 | Evolve | pure event-to-state function | `evolve((state, event) => ...)` | Evolve has no clock, network, allocator, or side effect. |
 | Command | `Decide` / declared read set | `command({ input, reads, handle })` | `read(...)` and `readSet(...)` are the complete snapshot authority for a session. |
 | Terminal result | committed, no-op, rejected | `done(...)`, `none(...)`, `reject(...)` | The bridge maps these to the existing `committed|noop|rejected` runtime contract. |
-| Runtime bridge | host runtime adapter | `toRuntimeDomain(authoredDomain)` | The bridge is structural; the five V1 endpoint bytes are unchanged. |
+| Runtime bridge | host runtime adapter | `toRuntimeDomain(authoredDomain)` | The bridge is structural; the five V1 endpoint bytes are unchanged. When `eventTags` are absent on a runtime projection event, the host may rely on per-tag routing before apply and the bridge keeps a synthetic family tag as a documented legacy path; an explicitly empty `eventTags` array throws `RUNTIME_EVENT_TAGS_EMPTY`. |
 
 ## Meeting-room example
 

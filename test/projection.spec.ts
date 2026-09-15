@@ -3,12 +3,20 @@ import { describe, expect, it } from "vitest";
 
 import { processDownstreamDelivery } from "../packages/dcb-runtime/src/downstream/DownstreamAdapter";
 import type { DownstreamOutboxMessage, PipelineClock } from "../packages/dcb-runtime/src/downstream/types";
+import { composeRuntime } from "../packages/dcb-runtime/src/composition";
 import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
-import { tagStateIdentityFrom, TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
-import { PUBLISHED_SAFE_WINDOW_MS, ProjectionRuntime, projectionIdFor, safeWindowMs } from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import { ProjectorRegistry, tagStateIdentityFrom, TEST_TAG_STATE_PROJECTOR } from "../packages/dcb-runtime/src/projection/ProjectorRegistry";
+import {
+  PUBLISHED_SAFE_WINDOW_MS,
+  ProjectionCheckpointCorruption,
+  ProjectionRuntime,
+  projectionIdFor,
+  safeWindowMs,
+} from "../packages/dcb-runtime/src/projection/ProjectionRuntime";
+import type { PipelineStore, ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
+import { meetingRoomDomain, meetingRoomRuntimeConfig } from "../samples/meeting-room/src/domain";
 import type { Env as WorkerEnv } from "../packages/dcb-runtime/src/index";
 import { PostgresEventStore } from "../packages/dcb-runtime/src/store/PostgresEventStore";
-import type { ProjectionCheckpoint } from "../packages/dcb-runtime/src/store/types";
 import { g32Message, g32Suid, g32SuidAt } from "./helpers/g32-fixtures";
 
 // This file exercises the PostgreSQL allocator binding. Keep its service
@@ -347,6 +355,46 @@ describe("SDT-G8 live projection", () => {
     const observer = postgresStore();
     await observer.initialize();
     expect(await observer.readProjectionCheckpoint(SERVICE_ID, projectionIdFor(identity))).toBeUndefined();
+  });
+
+  it("SDT-G89 AC9(b): maps zod-invalid checkpoint state to ProjectionCheckpointCorruption", async () => {
+    const composed = composeRuntime(meetingRoomDomain, meetingRoomRuntimeConfig);
+    const reservationProjector = composed.projectors.resolve("ReservationProjector");
+    if (reservationProjector === undefined) throw new Error("ReservationProjector missing from composed runtime");
+    const registry = new ProjectorRegistry([reservationProjector]);
+    const tag = "reservation:g89-checkpoint";
+    const identity = tagStateIdentityFrom(`${tag}:ReservationProjector`, registry).value!;
+    const checkpoint: ProjectionCheckpoint = {
+      serviceId: "g89-checkpoint-service",
+      projectionId: projectionIdFor(identity),
+      lastSuid: "g89-suid",
+      stateJson: JSON.stringify({ status: "reserved" }),
+      version: 1,
+      updatedAt: 0,
+    };
+    const store = {
+      initialize: async (): Promise<void> => undefined,
+      readAllEvents: async (): Promise<[]> => [],
+      currentLagBound: async (): Promise<number> => 0,
+      listProjectionTags: async (): Promise<string[]> => [tag],
+      readProjectionCheckpoint: async (): Promise<ProjectionCheckpoint> => checkpoint,
+      advanceProjectionCheckpoint: async (): Promise<boolean> => true,
+      projectionLag: async () => ({
+        serviceId: checkpoint.serviceId,
+        projectionId: checkpoint.projectionId,
+        tag,
+        checkpointSuid: checkpoint.lastSuid,
+        headSuid: checkpoint.lastSuid,
+        behindEvents: 0,
+      }),
+      appendDeliveryIncident: async (): Promise<void> => undefined,
+    } as unknown as PipelineStore;
+    const runtime = new ProjectionRuntime(store, registry);
+    await expect(runtime.catchUp(checkpoint.serviceId, identity, 0)).rejects.toSatisfy((error: unknown) => {
+      if (!(error instanceof ProjectionCheckpointCorruption)) return false;
+      expect(error.cause).toBeDefined();
+      return true;
+    });
   });
 
   it("runs the scheduled polling entry point through every registered projection", async () => {

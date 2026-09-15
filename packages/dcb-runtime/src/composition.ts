@@ -120,6 +120,25 @@ function jsonBytes(value: unknown): string {
   return btoa(binary);
 }
 
+interface RuntimeBridgedProjectorLike {
+  readonly projectorId: string;
+  readonly subscribedEventTypes: readonly string[];
+  readonly apply: (
+    state: JsonValue,
+    event: {
+      readonly eventType: string;
+      readonly payload: unknown;
+      readonly eventPayloadName?: string;
+      readonly eventTags?: readonly string[];
+      readonly provenance?: "g32";
+    },
+  ) => JsonValue;
+}
+
+function isRuntimeBridgedProjector(definition: ProjectorDefinition): definition is ProjectorDefinition & RuntimeBridgedProjectorLike {
+  return "projectorId" in definition && "reduce" in definition;
+}
+
 function projectorFromDefinition(
   definition: ProjectorDefinition,
   config: RuntimeWorkerConfig,
@@ -135,6 +154,15 @@ function projectorFromDefinition(
     // projector must therefore turn an event from another family into a
     // state-preserving no-op before the authored bridge sees it.
     if (!definition.subscribedEventTypes.includes(normalizedEventType)) return state;
+    if (isRuntimeBridgedProjector(definition)) {
+      return definition.apply(state, {
+        eventType: normalizedEventType,
+        eventPayloadName: eventName,
+        payload,
+        eventTags: event.eventTags,
+        provenance: event.provenance,
+      });
+    }
     return definition.apply(state, {
       eventName,
       eventPayloadName: eventName,
@@ -214,10 +242,10 @@ export interface RuntimeCommitAllocationLike {
 }
 
 export type RuntimeCommitPortResult =
-  | { readonly kind: "accepted"; readonly attemptId?: string }
-  | { readonly kind: "consistency-conflict"; readonly error?: unknown }
+  | { readonly kind: "accepted" }
+  | { readonly kind: "consistency-conflict" }
   | { readonly kind: "unknown"; readonly error?: unknown; readonly attemptId?: string }
-  | { readonly kind: "rejected"; readonly error?: unknown; readonly reason?: string; readonly code?: string };
+  | { readonly kind: "rejected"; readonly reason?: string; readonly code?: string };
 
 export interface RuntimeCommitPort {
   readonly commit: (
@@ -310,10 +338,10 @@ export function createRuntimeCommitPort(
         registeredEventParsers: options.registeredEventParsers,
       });
       const body = await responseBody(response);
-      if (response.ok) return { kind: "accepted", attemptId: attemptIdFromResponse(body) };
+      if (response.ok) return { kind: "accepted" };
       const code = typeof body?.code === "string" ? body.code : undefined;
       if (code === "consistency_conflict" || response.status === 409) {
-        return { kind: "consistency-conflict", error: body };
+        return { kind: "consistency-conflict" };
       }
       if (response.status === 504 || response.status >= 500) {
         return {
@@ -326,7 +354,6 @@ export function createRuntimeCommitPort(
         kind: "rejected",
         ...(code === undefined ? {} : { code }),
         ...(typeof body?.error === "string" ? { reason: body.error } : {}),
-        error: body,
       };
     },
   });

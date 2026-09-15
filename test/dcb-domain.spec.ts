@@ -36,6 +36,7 @@ import {
   UndeclaredReadError,
   type DecisionLog,
   type DomainViewDefinition,
+  type RuntimePortCommitResult,
   type Tag,
 } from "@sekiban/dcb-domain";
 import {
@@ -934,23 +935,41 @@ describe("SDT-G88 command outcomes and authoring options", () => {
       runtimePort: {
         commit: () => {
           commits += 1;
-          return { kind: "consistency-conflict" as const, error: { code: "consistency_conflict" } };
+          return { kind: "consistency-conflict" as const };
         },
       },
     });
     expect(outcome).toMatchObject({ kind: "rejected", code: "consistency_conflict", events: [] });
     expect(commits).toBe(2);
     let barriers = 0;
+    let barrierAdmits = 0;
+    let barrierAllocates = 0;
+    let barrierCommits = 0;
     const barrierOutcome = await runtimeCommand.execute({ orderId: "g88-runtime-barrier-conflict" }, {
       runtimePort: {
         conflictBarrier: () => {
           barriers += 1;
           return { kind: "consistency-conflict" as const };
         },
+        admit: () => {
+          barrierAdmits += 1;
+          return { kind: "accepted" as const };
+        },
+        allocate: () => {
+          barrierAllocates += 1;
+          return { candidates: [{ ordinal: "0", suid: "suid-barrier" }] };
+        },
+        commit: () => {
+          barrierCommits += 1;
+          return { kind: "accepted" as const };
+        },
       },
     });
     expect(barrierOutcome).toMatchObject({ kind: "rejected", code: "consistency_conflict", events: [] });
     expect(barriers).toBe(2);
+    expect(barrierAdmits).toBe(0);
+    expect(barrierAllocates).toBe(0);
+    expect(barrierCommits).toBe(0);
   });
 
   it("AC5: leaves the discriminator to the zod union while states() keeps its option", () => {
@@ -1233,5 +1252,175 @@ describe("SDT-G86 supplied snapshot state validation", () => {
     await expect(runtimeCommand.execute({ orderId: "g86-runtime" }, { state: { "order:g86-runtime": { kind: "empty" } }, runtimePort }))
       .resolves.toMatchObject({ kind: "committed", value: { orderId: "g86-runtime" } });
     expect(commits).toBe(1);
+  });
+});
+
+describe("SDT-G89 runtime bridge contract", () => {
+  const placeOrder = command({
+    id: "g89-place-order",
+    input: z.object({ orderId: z.string() }),
+    reads: (input) => read(orderProjector, order.of(input.orderId)),
+    handle: (input, context) => {
+      context.append(placed, placed.make(input));
+      return done({ orderId: input.orderId });
+    },
+  });
+  const runtimeCommand = adaptRuntimeCommand(placeOrder);
+
+  it("AC1: reports a port rejection reason and code from the port result, not the unwrapped error", async () => {
+    const barrierOutcome = await runtimeCommand.execute({ orderId: "g89-barrier" }, {
+      runtimePort: {
+        conflictBarrier: () => ({
+          kind: "rejected" as const,
+          code: "barrier_code",
+          reason: "BARRIER_REASON",
+          error: { code: "x", error: "y" },
+        }),
+      },
+    });
+    expect(barrierOutcome).toMatchObject({ kind: "rejected", code: "barrier_code", reason: "BARRIER_REASON" });
+    const commitOutcome = await runtimeCommand.execute({ orderId: "g89-commit" }, {
+      runtimePort: {
+        commit: () => ({
+          kind: "rejected" as const,
+          code: "commit_code",
+          reason: "COMMIT_REASON",
+          error: { code: "x", error: "y" },
+        }),
+      },
+    });
+    expect(commitOutcome).toMatchObject({ kind: "rejected", code: "commit_code", reason: "COMMIT_REASON" });
+  });
+
+  it.each([
+    {
+      label: "commit unknown attemptId wins",
+      commitAttemptId: "commit-unknown-attempt" as string | undefined,
+      allocationAttemptId: "allocation-attempt" as string | undefined,
+      expectedAttemptId: "commit-unknown-attempt",
+    },
+    {
+      label: "allocation attemptId when commit id absent",
+      commitAttemptId: undefined,
+      allocationAttemptId: "allocation-attempt",
+      expectedAttemptId: "allocation-attempt",
+    },
+    {
+      label: "admit attemptId when commit and allocation ids absent",
+      commitAttemptId: undefined,
+      allocationAttemptId: undefined,
+      expectedAttemptId: "admit-attempt",
+    },
+  ])("AC2: reconcile attempt id precedence — $label", async ({ commitAttemptId, allocationAttemptId, expectedAttemptId }) => {
+    const unknownError = { marker: "g89-unknown-error" };
+    let reconcileOutcome: unknown;
+    let reconcileContextAttemptId: string | undefined;
+    await runtimeCommand.execute({ orderId: "g89-attempts" }, {
+      runtimePort: {
+        conflictBarrier: () => ({ kind: "accepted" as const }),
+        admit: () => ({ kind: "accepted" as const, attemptId: "admit-attempt" }),
+        allocate: () => ({
+          candidates: [{ ordinal: "0", suid: "suid-1" }],
+          allocatorLineageId: "lineage",
+          ...(allocationAttemptId === undefined ? {} : { attemptId: allocationAttemptId }),
+        }),
+        commit: () => ({
+          kind: "unknown" as const,
+          error: unknownError,
+          ...(commitAttemptId === undefined ? {} : { attemptId: commitAttemptId }),
+        }),
+        reconcile: (context, outcome) => {
+          reconcileContextAttemptId = context.attemptId;
+          reconcileOutcome = outcome;
+          return { kind: "accepted" as const };
+        },
+      },
+    });
+    expect(reconcileContextAttemptId).toBe(expectedAttemptId);
+    expect(reconcileOutcome).toMatchObject({ kind: "unknown", error: unknownError });
+  });
+
+  it("AC2: commit accepted result does not declare attemptId", () => {
+    const accepted: RuntimePortCommitResult = { kind: "accepted" };
+    expect(accepted).not.toHaveProperty("attemptId");
+    // @ts-expect-error SDT-G89 commit accepted must not carry attemptId; bridge reads unknown.attemptId only.
+    const invalid: RuntimePortCommitResult = { kind: "accepted", attemptId: "unused" };
+    expect(invalid).toBeDefined();
+  });
+
+  it("AC3: passes the exact allocated vector into commit and reconcile", async () => {
+    const vector = {
+      candidates: [{ ordinal: "7", suid: "suid-vector" }],
+      allocatorLineageId: "g89-lineage",
+      attemptId: "vector-attempt",
+    };
+    let commitVector: unknown;
+    let reconcileVector: unknown;
+    await runtimeCommand.execute({ orderId: "g89-vector" }, {
+      runtimePort: {
+        allocate: () => vector,
+        commit: (_candidate, allocation) => {
+          commitVector = allocation;
+          return { kind: "unknown" as const, error: { retry: true } };
+        },
+        reconcile: (context) => {
+          reconcileVector = context.allocation;
+          return { kind: "accepted" as const };
+        },
+      },
+    });
+    expect(commitVector).toEqual(vector);
+    expect(reconcileVector).toEqual(vector);
+  });
+
+  it("AC4: validates projection event facts and folds by non-empty eventTags", () => {
+    const runtime = toRuntimeDomain(domain({ events: [placed, cancelled], projectors: [orderProjector] }));
+    const projector = runtime.projectors[0]!;
+    const base = { eventType: "OrderPlaced", payload: { orderId: "g89" } };
+    expect(() => projector.apply({ kind: "empty" }, { ...base, eventPayloadName: "Other", provenance: "g32" }))
+      .toThrowError(expect.objectContaining({ code: "CANONICAL_EVENT_IDENTITY_INVALID" }));
+    expect(() => projector.apply({ kind: "empty" }, { ...base, provenance: "pre-g27" as never }))
+      .toThrowError(expect.objectContaining({ code: "RUNTIME_EVENT_PROVENANCE_INVALID" }));
+    expect(() => projector.apply({ kind: "empty" }, { ...base, eventTags: [], provenance: "g32" }))
+      .toThrowError(expect.objectContaining({ code: "RUNTIME_EVENT_TAGS_EMPTY" }));
+    const foreignTag = projector.apply({ kind: "empty" }, { ...base, eventTags: ["audit:foreign"], provenance: "g32" });
+    expect(foreignTag).toEqual({ kind: "empty" });
+    const placedState = projector.apply({ kind: "empty" }, { ...base, eventTags: ["order:g89"], provenance: "g32" });
+    expect(placedState).toEqual({ kind: "placed", orderId: "g89" });
+    const legacy = projector.apply({ kind: "empty" }, base);
+    expect(legacy).toEqual({ kind: "placed", orderId: "g89" });
+  });
+
+  it("AC5: registers legacy eventName and supplies names on bridged create()", () => {
+    const legacyDomain = toRuntimeDomain({
+      events: [{ eventName: "LegacyOnly", parse: (payload: unknown) => payload }],
+      projectors: [],
+      commands: [],
+    });
+    expect(legacyDomain.eventByName.get("LegacyOnly")?.name).toBe("LegacyOnly");
+    const created = legacyDomain.events[0]!.create({ value: 1 });
+    expect(created).toEqual({
+      eventName: "LegacyOnly",
+      eventPayloadName: "LegacyOnly",
+      eventType: "LegacyOnly",
+      payload: { value: 1 },
+      tags: [],
+    });
+  });
+
+  it("AC6: bridged authoring events keep derived tags on create() and construct()", () => {
+    const runtime = toRuntimeDomain(domain({ events: [placed, cancelled], projectors: [orderProjector] }));
+    const runtimePlaced = runtime.events.find((event) => event.eventType === "OrderPlaced")!;
+    const created = runtimePlaced.create({ orderId: "room1" });
+    expect(created.tags.map((tag) => tag.id)).toEqual(["order:room1"]);
+    expect(runtimePlaced.construct({ orderId: "room1" }).tags.map((tag) => tag.id)).toEqual(["order:room1"]);
+  });
+
+  it("AC9(a): deliveryPolicyFromDomain keeps a __proto__ view id", () => {
+    const policy = deliveryPolicyFromDomain({
+      views: [{ id: "__proto__", source: orderProjector.id, deliveryClass: "queued" }],
+    });
+    expect(policy.__proto__).toBe("queued");
+    expect(Object.keys(policy)).toEqual(["__proto__"]);
   });
 });

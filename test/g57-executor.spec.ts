@@ -17,7 +17,9 @@ import {
   read,
   readExists,
   readSet,
+  projector,
   reject,
+  stateUnion,
   tagFamily,
   type PortableSnapshot,
   type SnapshotReader,
@@ -855,4 +857,93 @@ describe("SDT-G86 executor facade budget, cancellation, scope and results", () =
     expect(commits).toBe(1);
     await expect(payloadExecutor(validState).readState(roomProjector, roomTag("room-1"))).resolves.toMatchObject({ exists: true, head: "suid-g86", state: validState });
   });
+
+  const g89ProbeState = stateUnion(z.object({ count: z.number().int().nonnegative() }), { initial: { count: 0 } });
+  const g89SharedFamily = tagFamily("g89shared");
+  const g89ProbeProjectorA = projector({
+    id: "G89ProbeA",
+    tag: g89SharedFamily,
+    events: [],
+    state: g89ProbeState,
+    handlers: {},
+  });
+  const g89ProbeProjectorB = projector({
+    id: "G89ProbeB",
+    tag: g89SharedFamily,
+    events: [],
+    state: g89ProbeState,
+    handlers: {},
+  });
+  const g89SharedTag = g89SharedFamily.of("probe");
+  const g89IncoherentProbe = command({
+    id: "g89-incoherent-probe",
+    input: z.object({}),
+    reads: () => readSet(
+      read(g89ProbeProjectorA, g89SharedTag),
+      read(g89ProbeProjectorB, g89SharedTag),
+    ),
+    handle: () => done(),
+  });
+
+  it("SDT-G89 AC11: classifies adapter-backed live read-through INCOHERENT_SNAPSHOT as transport without committing", async () => {
+    let commits = 0;
+    const stableHead = "suid-a";
+    const heads = { G89ProbeA: "suid-a", G89ProbeB: "suid-b" };
+    const emptyProbeState = { count: 0 };
+    const executor = createSekibanExecutor(fixtureTransport({
+      readTagLatestSortable: async () => ({ exists: true, lastSortableUniqueId: stableHead }),
+      readTagState: async ({ tagStateId }) => {
+        const projectorId = tagStateId.split(":").at(-1) ?? "G89ProbeA";
+        const head = heads[projectorId as keyof typeof heads] ?? stableHead;
+        const projector = projectorId === "G89ProbeB" ? g89ProbeProjectorB : g89ProbeProjectorA;
+        return {
+          ...emptyState(projector, g89SharedTag),
+          payload: encoded(emptyProbeState),
+          version: 1,
+          lastSortedUniqueId: head,
+        };
+      },
+      commit: async () => {
+        commits += 1;
+        return { status: 200, body: { writtenEvents: [], tagWriteResults: [] } };
+      },
+    }));
+    const mismatch = await executor.execute(g89IncoherentProbe, {}, { readMode: "read-through" });
+    expect(mismatch).toMatchObject({ kind: "transport", code: "incoherent_read_snapshot", attempts: 1 });
+    expect(commits).toBe(0);
+
+    heads.G89ProbeB = stableHead;
+    const recovered = await executor.execute(g89IncoherentProbe, {}, { readMode: "read-through" });
+    expect(recovered).toMatchObject({ kind: "committed", attempts: 1 });
+    expect(commits).toBe(1);
+  });
+
+  it("SDT-G89 AC11: keeps supplied-snapshot INCOHERENT_SNAPSHOT on invalid / domain_authoring_error", async () => {
+    let commits = 0;
+    const emptyProbeState = { count: 0 };
+    const conflictingReader: SnapshotReader = {
+      read: (projector) => ({
+        projectorId: projector.id,
+        tag: g89SharedTag,
+        head: projector.id === "G89ProbeA" ? "head-a" : "head-b",
+        state: emptyProbeState,
+        exists: true,
+      }),
+    };
+    const executor = createSekibanExecutor(fixtureTransport({
+      commit: async () => {
+        commits += 1;
+        return { status: 200, body: {} };
+      },
+    }));
+    for (const readMode of ["snapshot-only", "read-through"] as const) {
+      const result = await executor.execute(g89IncoherentProbe, {}, {
+        readMode,
+        snapshots: conflictingReader,
+      });
+      expect(result, readMode).toMatchObject({ kind: "invalid", code: "domain_authoring_error", error: "INCOHERENT_SNAPSHOT" });
+    }
+    expect(commits).toBe(0);
+  });
+
 });

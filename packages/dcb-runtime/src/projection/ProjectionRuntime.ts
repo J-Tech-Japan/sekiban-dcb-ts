@@ -30,6 +30,14 @@ export {
 };
 
 const MAX_CHECKPOINT_CAS_RETRIES = 8;
+
+export class ProjectionCheckpointCorruption extends Error {
+  constructor(cause?: unknown) {
+    super("Projection checkpoint state failed validation");
+    this.name = "ProjectionCheckpointCorruption";
+    if (cause !== undefined) this.cause = cause;
+  }
+}
 /**
  * Live projection identities have independent checkpoints. A bounded worker
  * pool prevents a large retained tag set from monopolizing one cron
@@ -228,7 +236,12 @@ function orderViolationIncident(serviceId: string, event: StoredEvent, previousS
 }
 
 function stateFromCheckpoint(projector: TagStateProjector, checkpoint: ProjectionCheckpoint | undefined): unknown {
-  return checkpoint === undefined ? projector.initialState() : projector.deserializeState(checkpoint.stateJson);
+  if (checkpoint === undefined) return projector.initialState();
+  try {
+    return projector.deserializeState(checkpoint.stateJson);
+  } catch (error) {
+    throw new ProjectionCheckpointCorruption(error);
+  }
 }
 
 function projectionEventFromStored(event: StoredEvent): ProjectionEvent {
