@@ -1,9 +1,9 @@
 # SDT-G74 implementation evidence
 
-Status: **candidate ready; AC10 consultation missing.** Pull request
+Status: **candidate ready; AC10 GitHub consultations posted; acknowledgements missing.** Pull request
 [#176](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/176) remains
-**parked — do not merge** until consumer acknowledgements arrive on the
-regenerated surface hash. No npm publication or release operation is claimed.
+**parked — do not merge** until valid AC10 acknowledgements or silence waivers satisfy the consult gate
+on surface hash `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db`. No npm publication or release operation is claimed.
 
 ## Provenance
 
@@ -12,7 +12,7 @@ regenerated surface hash. No npm publication or release operation is claimed.
 | issue | [#151](https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/151) |
 | branch | `claude/sdt-g74-implementation-w281` |
 | rebase base | `184f6b5d2142a675993f31d22840ddb1f97779b8` (SDT-G89, #184) |
-| candidate head | `bb7bdc1b0d9dbe3dd3897c12894872209349f9b0` (docs-only alignment may lag one commit; surface identity is the hash) |
+| candidate head | `f5ce7e517e8b44a6d2eade824f948a32071c8b6d` |
 | contract label | `executor-facade-v1` |
 | carrying version | `@sekiban/dcb-core@0.2.0`, `@sekiban/dcb-domain@0.2.0`, `@sekiban/dcb-client@0.2.0` (selected, not published) |
 | public surface hash | `309b82c3731718d0b381f81c25344b184707bfbbb698511775e62ee7c1f261db` |
