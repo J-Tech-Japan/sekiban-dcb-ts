@@ -142,7 +142,9 @@ class MeasurementStoreFixture {
     readAllEvents: async (_serviceId: string, since: string): Promise<StoredEvent[]> =>
       this.events.filter((event) => since.length === 0 || event.suid > since),
     currentLagBound: async (): Promise<number> => 0,
-    listProjectionTags: async (): Promise<string[]> => [this.events[0]?.tag ?? "orders:g77-ac6"],
+    listProjectionTags: async (): Promise<string[]> => [
+      this.events[0]?.eventTags[0] ?? this.events[0]?.tags[0] ?? "orders:g77-ac6",
+    ],
     readProjectionCheckpoint: async (): Promise<{ lastSuid: string } | undefined> => this.checkpoint,
     advanceProjectionCheckpoint: async (input: {
       expectedLastSuid: string | null;
@@ -155,7 +157,7 @@ class MeasurementStoreFixture {
     projectionLag: async () => ({
       serviceId: this.serviceId,
       projectionId: "g77-ac6",
-      tag: this.events[0]?.tag ?? "orders:g77-ac6",
+      tag: this.events[0]?.eventTags[0] ?? this.events[0]?.tags[0] ?? "orders:g77-ac6",
       checkpointSuid: this.checkpoint?.lastSuid ?? "",
       headSuid: this.events.at(-1)?.suid ?? "",
       behindEvents: 0,
@@ -276,7 +278,7 @@ async function measureSafePassOnce(
 ): Promise<G77Ac6SampleMetrics> {
   const events = [projectionEvent(serviceId, seed)];
   const fixture = new MeasurementStoreFixture(serviceId, events);
-  const tag = events[0]!.tag;
+  const tag = events[0]!.eventTags[0] ?? events[0]!.tags[0] ?? "orders:g77-ac6";
   const lineageId = (await readCertificate(serviceId)).allocatorLineageId;
 
   const storageBefore = await snapshotAllocatorStorage(serviceId);

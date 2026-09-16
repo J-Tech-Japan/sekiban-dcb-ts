@@ -4,8 +4,6 @@
  */
 import { abortAllDurableObjects, env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
-import type { TaskContext } from "vitest";
-
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import {
   dispositionAgainstBar,
@@ -72,9 +70,8 @@ function emitReportPayload(payload: Record<string, unknown>): void {
   throw new Error(`SDT_G77_AC6_REPORT::${JSON.stringify(slim)}`);
 }
 
-async function publishReport(context: TaskContext, label: string, body: unknown): Promise<void> {
+async function publishReport(label: string, body: unknown): Promise<void> {
   const payload = { label, cohort: COHORT, commitSide: COMMIT_SIDE, ...body as object };
-  context.task.meta.g77Ac6Report = payload;
   emitReportPayload(payload);
 }
 
@@ -118,12 +115,12 @@ describe("G77 AC6 decision-grade measurement", () => {
     expect(G77_AC6_SCORED_PAIRS).toBe(24);
   });
 
-  it("G77 AC6 safe-pass warm cohort", async (context) => {
+  it("G77 AC6 safe-pass warm cohort", async () => {
     if (COHORT !== "all" && COHORT !== "safe-pass-warm" && COHORT !== "safe-pass warm cohort") return;
     const summary = await collectSafePassCohort(false);
     const ratio = summary.gateOff.p50 === 0 ? 0 : summary.deltaMedianMs / summary.gateOff.p50;
     const inconclusive = summary.deltaMadMs * 3 > Math.abs(summary.deltaMedianMs);
-    await publishReport(context, "safe-pass-warm", {
+    await publishReport("safe-pass-warm", {
       summary,
       ratio,
       bar: G77_AC6_SAFE_PASS_BAR,
@@ -132,13 +129,13 @@ describe("G77 AC6 decision-grade measurement", () => {
     expect(summary.pairCount).toBe(G77_AC6_SCORED_PAIRS);
   }, 1_200_000);
 
-  it("G77 AC6 safe-pass restarted cohort", async (context) => {
+  it("G77 AC6 safe-pass restarted cohort", async () => {
     if (COHORT !== "all" && COHORT !== "safe-pass-restarted" && COHORT !== "safe-pass restarted cohort") return;
     await abortAllDurableObjects();
     const summary = await collectSafePassCohort(true);
     const ratio = summary.gateOff.p50 === 0 ? 0 : summary.deltaMedianMs / summary.gateOff.p50;
     const inconclusive = summary.deltaMadMs * 3 > Math.abs(summary.deltaMedianMs);
-    await publishReport(context, "safe-pass-restarted", {
+    await publishReport("safe-pass-restarted", {
       summary,
       ratio,
       bar: G77_AC6_SAFE_PASS_BAR,
@@ -148,7 +145,7 @@ describe("G77 AC6 decision-grade measurement", () => {
   }, 1_200_000);
 
   for (const vector of ["new", "replayed", "multi-candidate", "multi-tag"] as const) {
-    it(`G77 AC6 commit ${vector} vector`, async (context) => {
+    it(`G77 AC6 commit ${vector} vector`, async () => {
       if (COHORT !== "all" && COHORT !== `commit-${vector}` && COHORT !== `commit ${vector} vector`) return;
       const samples = [];
       for (let index = 0; index < G77_AC6_WARMUP_PAIRS; index += 1) {
@@ -158,7 +155,7 @@ describe("G77 AC6 decision-grade measurement", () => {
         samples.push(await runCommitSample(vector));
       }
       const wallMs = samples.map((sample) => sample.wallMs);
-      await publishReport(context, `commit-${vector}`, {
+      await publishReport(`commit-${vector}`, {
         vector,
         commitSide: COMMIT_SIDE,
         samples,
@@ -170,34 +167,34 @@ describe("G77 AC6 decision-grade measurement", () => {
     }, 300_000);
   }
 
-  it("G77 AC6 commit path proves issuance-envelope write on main", async (context) => {
+  it("G77 AC6 commit path proves issuance-envelope write on main", async () => {
     const caps = await probeG77Capabilities(`g77-ac6-proof-${crypto.randomUUID()}`);
     if (!caps.issuanceLedger) {
-      await publishReport(context, "issuance-write-proof", { skipped: true, reason: "pre-G77 pin lacks issuance ledger" });
+      await publishReport("issuance-write-proof", { skipped: true, reason: "pre-G77 pin lacks issuance ledger" });
       return;
     }
     const sample = await runCommitSample("new");
     expect(sample.issuanceEnvelope).toBe(true);
-    await publishReport(context, "issuance-write-proof", {
+    await publishReport("issuance-write-proof", {
       sampleEnvelope: sample.issuanceEnvelope,
       vector: sample.vector,
       storageDeltaKeys: sample.storageDeltaKeys,
     });
   }, 120_000);
 
-  it("G77 AC6 mutant oracle reduced backlog is detectable", async (context) => {
+  it("G77 AC6 mutant oracle reduced backlog is detectable", async () => {
     const reduced = Math.max(1, Math.floor(G77_AC6_UNRESOLVED_BACKLOG / 4));
     expect(reduced).toBeLessThan(G77_AC6_UNRESOLVED_BACKLOG);
-    await publishReport(context, "mutant-reduced-backlog", { reduced, full: G77_AC6_UNRESOLVED_BACKLOG, detectable: true });
+    await publishReport("mutant-reduced-backlog", { reduced, full: G77_AC6_UNRESOLVED_BACKLOG, detectable: true });
   });
 
-  it("G77 AC6 mutant oracle disabled gate is detectable", async (context) => {
+  it("G77 AC6 mutant oracle disabled gate is detectable", async () => {
     const pair = await runSafePassPair(999, { restarted: false });
     expect(pair.gateOn.wallMs).toBeGreaterThanOrEqual(0);
     expect(pair.gateOff.wallMs).toBeGreaterThanOrEqual(0);
     const detectable = pair.gateOn.wallMs > pair.gateOff.wallMs || pair.gateOn.storageDeltaOps > pair.gateOff.storageDeltaOps;
     expect(detectable).toBe(true);
-    await publishReport(context, "mutant-disabled-gate", {
+    await publishReport("mutant-disabled-gate", {
       gateOffMs: pair.gateOff.wallMs,
       gateOnMs: pair.gateOn.wallMs,
       detectable,
