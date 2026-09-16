@@ -185,3 +185,68 @@ The npm registration and OIDC requirements are documented at
 https://docs.npmjs.com/trusted-publishers/. The implementation deliberately
 stops before the operator-only registration, secret removal, tag, and publish
 boundaries.
+
+## AC7 — trusted-path 0.2.0 release proof (operator ruling 2026-09-15 / 2026-09-16)
+
+Operator ruling: prove the trusted-publishing switch with a real matched-set
+publish of **0.2.0** (not 0.1.1). Tag push and publish are operator/gh actions;
+this section records the verification afterwards. No token fallback was used.
+
+### Trigger
+
+- Annotated tag: `dcb-v0.2.0`
+- Tag object message: `SDT-G72 AC7: matched-set 0.2.0 via trusted publishing`
+- Target commit: `9878fff31b60a478a38480b1eeb38b38f6007d5d` (main tip after G77 merge #185)
+- Tag ref SHA: `ae18dd3b379b8211bcf2ce2e9d873f59a42dbec2`
+
+### Release run
+
+- URL: https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35070569044
+- Event: `push` (tag)
+- Conclusion: `success`
+- Head SHA: `9878fff31b60a478a38480b1eeb38b38f6007d5d`
+
+Observed authentication branch in the publish job log (not the token branch,
+not credential-free dry-run):
+
+~~~text
+authentication branch: trusted-publishing (GitHub Actions OIDC; NPM_TOKEN omitted)
+~~~
+
+Publish outcomes from the same run:
+
+~~~text
++ @sekiban/dcb-core@0.2.0
++ @sekiban/dcb-domain@0.2.0
++ @sekiban/dcb-client@0.2.0
+~~~
+
+npm briefly reported "Your package is being processed…" for domain/client;
+registry read-back caught up within about two minutes.
+
+### Registry read-back
+
+Executed after propagation (UTC 2026-09-16 ≈ 07:53):
+
+~~~text
+npm view @sekiban/dcb-core@0.2.0 version   -> 0.2.0 (dist-tag latest)
+npm view @sekiban/dcb-domain@0.2.0 version -> 0.2.0 (dist-tag latest)
+npm view @sekiban/dcb-client@0.2.0 version -> 0.2.0 (dist-tag latest)
+~~~
+
+### Clean install confirmation
+
+Executed in an empty directory with only the public registry:
+
+~~~text
+npm init -y
+npm install @sekiban/dcb-core@0.2.0 @sekiban/dcb-domain@0.2.0 @sekiban/dcb-client@0.2.0 \
+  --registry https://registry.npmjs.org/
+~~~
+
+`npm ls --depth=0` resolved all three together at 0.2.0. ESM import of each
+package entry succeeded (`type: module` + `exports`).
+
+AC7 is therefore satisfied: the 0.2.0 matched-set release authenticated on the
+trusted-publishing path, all three versions are readable from the registry,
+and a clean install resolves them together.
