@@ -259,9 +259,10 @@ export async function reconcileIssuanceBatch(
     return { processed, rearmAt: now };
   }
   const retryAt = now + RECONCILE_RETRY_MS;
-  const nextDueAt = existingSchedule?.nextDueAt === undefined
-    ? retryAt
-    : Math.min(existingSchedule.nextDueAt, retryAt);
+  const scheduled = existingSchedule?.nextDueAt;
+  const nextDueAt = scheduled !== undefined && scheduled > now
+    ? Math.min(scheduled, retryAt)
+    : retryAt;
   await storage.put(ISSUANCE_RECOVERY_KEY, {
     nextDueAt,
     cursor: null,

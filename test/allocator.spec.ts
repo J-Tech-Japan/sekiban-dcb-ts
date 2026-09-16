@@ -288,7 +288,7 @@ describe("AllocatorDurableObject", () => {
     expect(certificate.unresolvedCount).toBe(1);
   });
 
-  it("G77 sustained allocations do not postpone an earlier recovery alarm", async () => {
+  it("G77 sustained allocations do not postpone an earlier recovery alarm", { timeout: 15_000 }, async () => {
     const serviceId = `g77-alarm-monotonic-${crypto.randomUUID()}`;
     const firstAttempt = newAttempt();
     const beforeFirst = Date.now();
@@ -309,7 +309,9 @@ describe("AllocatorDurableObject", () => {
     expect(firstProbe.alarmAt).not.toBeNull();
     const firstGraceDue = firstProbe.alarmAt!;
     expect(firstGraceDue).toBeGreaterThanOrEqual(beforeFirst + ISSUANCE_NEVER_CONTACTED_GRACE_MS - 250);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Space traffic so an unconditional setAlarm(now + grace) on the second allocation
+    // would postpone the alarm past firstGraceDue by far more than the tolerance below.
+    await new Promise((resolve) => setTimeout(resolve, 4_000));
     const second = await namedAllocatorRequest(serviceId, "/allocate", {
       attemptId: newAttempt(),
       serviceId,
@@ -326,6 +328,62 @@ describe("AllocatorDurableObject", () => {
     );
     expect(afterSecondProbe.alarmAt).not.toBeNull();
     expect(afterSecondProbe.alarmAt!).toBeLessThanOrEqual(firstGraceDue + 250);
+  });
+
+  it("G77 reconciliation schedule advances past-due nextDueAt at ~1 Hz", { timeout: 15_000 }, async () => {
+    const serviceId = `g77-schedule-advance-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:schedule-spin";
+    await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    const afterSeed = await runInDurableObject(allocatorDo, async (_instance, state) => {
+      const pastDue = Date.now() - 5_000;
+      await state.storage.put("issuance:recovery-schedule", {
+        nextDueAt: pastDue,
+        cursor: null,
+        attempts: 1,
+      });
+      await state.storage.setAlarm(pastDue);
+      const result = await reconcileIssuanceBatch(state.storage, { TAG: tagNamespace }, serviceId, async (evidence) => {
+        await state.storage.transaction(async (txn) => {
+          await applyTargetResolution(txn, evidence);
+        });
+        return true;
+      });
+      const now = Date.now();
+      expect(result.rearmAt).toBeGreaterThan(now);
+      expect(result.rearmAt).toBeLessThanOrEqual(now + 1_100);
+      return (await state.storage.get<{ attempts: number }>("issuance:recovery-schedule"))?.attempts ?? 0;
+    });
+    const attemptsBefore = afterSeed;
+    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    const attemptsAfter = await runInDurableObject(allocatorDo, async (_instance, state) =>
+      (await state.storage.get<{ attempts: number }>("issuance:recovery-schedule"))?.attempts ?? 0);
+    expect(attemptsAfter - attemptsBefore).toBeLessThanOrEqual(5);
+    await runInDurableObject(allocatorDo, async (_instance, state) => {
+      const schedule = await state.storage.get<{ nextDueAt: number }>("issuance:recovery-schedule");
+      expect(schedule?.nextDueAt).toBeDefined();
+      const now = Date.now();
+      // A past-due schedule stuck from the first fire would be many seconds behind;
+      // a healthy ~1 Hz loop stays within one retry window of now.
+      expect(now - schedule!.nextDueAt).toBeLessThan(2_000);
+      expect(schedule!.nextDueAt).toBeLessThanOrEqual(now + 1_500);
+    });
   });
 
   it("G77 recovery alarm stops after all issuances resolve", async () => {

@@ -36,7 +36,7 @@ npm run measure:g77
 npx vitest run --config vitest.config.ts test/g62-global-completeness.spec.ts -t "G77 P14"
 ```
 
-Post-implementation vitest: **62 passed** in `test:g77` (34 matrix + 16 allocator incl. 4 G77 mutant oracles, F12 irrevocable-fence regression, never-contacted grace oracles, and B7/B8/B9 recovery-alarm + inspect oracles).
+Post-implementation vitest: **63 passed** in `test:g77` (34 matrix + 17 allocator incl. 4 G77 mutant oracles, F12 irrevocable-fence regression, never-contacted grace oracles, and B7/B8/B9/B10 recovery-alarm + inspect oracles).
 
 ## Frozen matrix receipts (pre-producer)
 
@@ -139,6 +139,7 @@ The trusted allocator producer registers every new-format allocation as an immut
 - **B7 closed:** recovery alarm arming follows `ISSUANCE_RECOVERY_KEY.nextDueAt` via `syncIssuanceRecoveryAlarm` / `shouldArmIssuanceRecovery`; sustained membership allocations no longer overwrite an earlier pending alarm (`test/allocator.spec.ts` *G77 sustained allocations do not postpone an earlier recovery alarm*).
 - **B8 closed:** reconciliation stops re-arming when `unresolvedCount === 0` and calls `deleteAlarm()` (`test/allocator.spec.ts` *G77 recovery alarm stops after all issuances resolve*).
 - **B9 closed:** `inspectG77Target` is read-only — it no longer calls `ensureSqlTag`, so never-written tags stay 404 through inspection (`test/allocator.spec.ts` *G77 inspect of never-written tag leaves public reads absent*).
+- **B10 closed:** after a reconcile pass with unresolved work, `reconcileIssuanceBatch` advances a past-due `nextDueAt` to `now + RECONCILE_RETRY_MS` instead of re-arming an already-due alarm every pass (`test/allocator.spec.ts` *G77 reconciliation schedule advances past-due nextDueAt at ~1 Hz*).
 - **M10 closed:** non-bypass `reconcileIssuanceBatch` grace oracle pins the reconciler's never-contacted grace check (`test/allocator.spec.ts` *G77 non-bypass reconcile honors never-contacted grace*).
 - **B3 (AC5 boundary):** with no migration cut installed (`migration === undefined`), `computeClosedPrefixSuid` still publishes the raw `allocatedWatermark` as a `ready` inclusive prefix over legacy `attempt:` history whose append status was never tracked. The cut-before-new-format rule is not enforced at allocation time; opted-in consumers remain blocked only after a cut is installed.
 - **B4 (AC3 boundary):** certificate/coverage composition binding for LiveProjectionWorker is not implemented; `test/g62-global-completeness.spec.ts` G77 P14 receipt is vacuous (fresh certificate vs older snapshot only). Either implement the binding or treat P14 as an unmet boundary.
