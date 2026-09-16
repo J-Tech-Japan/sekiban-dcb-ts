@@ -6,7 +6,6 @@ import { DEPLOYED_PROJECTOR_REGISTRY } from "../../packages/dcb-runtime/src/proj
 import type { SafeViewCoverageContext } from "../../packages/dcb-runtime/src/projection/ProjectionRuntime";
 import type { StoredEvent } from "../../packages/dcb-runtime/src/store/types";
 import {
-  allocatorPost,
   allocatorStub,
   candidateEventId,
   commitRequest,

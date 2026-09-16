@@ -3,7 +3,7 @@
  * SDT-G91 decision-grade G77 AC6 measurement runner.
  * Replaces scripts/g77-cost-measure.mjs portable whole-process proxy.
  */
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -21,12 +21,6 @@ const envWithPath = { ...process.env, PATH: `${process.env.HOME}/.local/bin:${pr
 
 function git(args, cwd = root) {
   return spawnSync("git", args, { cwd, encoding: "utf8", env: envWithPath });
-}
-
-function percentile(values, ratio) {
-  const sorted = [...values].sort((left, right) => left - right);
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
-  return sorted[index];
 }
 
 function median(values) {
@@ -192,11 +186,6 @@ try {
   git(["worktree", "remove", "--force", pinnedRoot], root);
 }
 
-const warmSummary = warmRun.report.summary;
-const restartedSummary = restartedRun.report.summary;
-const warmRatio = warmSummary.gateOff.p50 === 0 ? 0 : warmRun.report.ratio;
-const restartedRatio = restartedSummary.gateOff.p50 === 0 ? 0 : restartedRun.report.ratio;
-
 const commitDispositions = {};
 const commitMetrics = {};
 for (const vector of COMMIT_VECTORS) {
@@ -224,7 +213,7 @@ const protocol = {
   backend: "cloudflare vitest workerd (Miniflare)",
   runnerShape: "vitest run --config vitest.config.ts --maxWorkers=1 --no-file-parallelism",
   warmUpPolicy: `${warmRun.report.summary ? 4 : 4} interleaved gate-off/gate-on pairs excluded before scoring`,
-  sampleCount: `${warmSummary.pairCount} scored safe-pass pairs; ${COMMIT_VECTORS.length} commit vectors x ${commitReports.main.new.samples.length} scored samples`,
+  sampleCount: `${warmRun.report.summary.pairCount} scored safe-pass pairs; ${COMMIT_VECTORS.length} commit vectors x ${commitReports.main.new.samples.length} scored samples`,
   cohortOrdering: "interleaved gate-off then gate-on per pair; commit vectors run warm-up then scored on pinned then main worktrees",
   statisticalMethod: "paired delta median with MAD*3 inconclusive guard; p95 from >=24 scored samples per arm",
   resolvedHistory: 30,

@@ -9,7 +9,6 @@ import type { TaskContext } from "vitest";
 import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import {
   dispositionAgainstBar,
-  G77_AC6_COMMIT_P95_BAR,
   G77_AC6_LEGACY_PRECUT,
   G77_AC6_PINNED_MAIN,
   G77_AC6_RESOLVED_HISTORY,
@@ -18,15 +17,12 @@ import {
   G77_AC6_UNRESOLVED_BACKLOG,
   G77_AC6_WARMUP_PAIRS,
   median,
-  medianAbsoluteDeviation,
   percentile,
   runCommitSample,
   runSafePassPair,
   summarizeSafePassPairs,
-  type G77Ac6CommitVector,
 } from "./helpers/g77-ac6-measurement";
-import { probeG77Capabilities, probeIssuanceRegistration } from "./helpers/g77-fixtures";
-import { g32EventId } from "./helpers/g32-fixtures";
+import { probeG77Capabilities } from "./helpers/g77-fixtures";
 // @ts-expect-error Vite raw import keeps this test on the ordinary G32 baseline.
 import g32Migration from "../migrations/d1/g32/0001_dcb_events.sql?raw";
 
