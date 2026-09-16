@@ -26,7 +26,7 @@ export function evaluateFailedDryRun(result, { packageName: name, version, recei
     stderr: result.stderr,
     ...receiptExtras,
   };
-  if (failure.kind === "version-collision") {
+  if (failure.kind === "version-collision" && result.signal == null) {
     receipt.classification = failure;
     return {
       exitCode: 0,
@@ -64,6 +64,21 @@ function selfTest() {
   assert.equal(collision.output.outcome, "version-already-published");
   assert.equal(collision.output.failure.kind, "version-collision");
 
+  const signalCollisionResult = {
+    status: 1,
+    signal: "SIGTERM",
+    stdout: "",
+    stderr: "npm error You cannot publish over the previously published versions: 0.2.0",
+  };
+  const signalCollision = evaluateFailedDryRun(signalCollisionResult, {
+    packageName,
+    version: "0.2.0",
+  });
+  assert.notEqual(signalCollision.exitCode, 0, "signal+collision must fail-closed");
+  assert.equal(signalCollision.output.status, "FAIL");
+  assert.equal(signalCollision.output.failure.kind, "version-collision");
+  assert.equal(signalCollision.output.receipt.signal, "SIGTERM");
+
   const invalidPackagingResult = {
     status: 1,
     signal: null,
@@ -99,6 +114,7 @@ function selfTest() {
     failureClassifier: "npm-publish-dry-run-classifier",
     fixtures: {
       versionCollision: { result: "pass", outcome: collision.output.outcome },
+      signalCollision: { result: "fail", kind: signalCollision.output.failure.kind, signal: "SIGTERM" },
       invalidPackaging: { result: "fail", kind: invalidPackaging.output.failure.kind },
       genericFailure: { result: "fail", kind: genericFailure.output.failure.kind },
     },

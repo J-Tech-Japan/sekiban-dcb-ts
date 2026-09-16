@@ -104,9 +104,112 @@ function assertCommandShape() {
   };
 }
 
+export function evaluateMatchedSetDryRunFailure(result, { packageName, version, receiptExtras = {} } = {}) {
+  const failure = classifyPublishFailure(result, { packageName, version });
+  const receipt = {
+    package: packageName,
+    version,
+    status: result.status,
+    signal: result.signal,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    ...receiptExtras,
+  };
+  if (failure.kind === "version-collision" && result.signal == null) {
+    receipt.classification = failure;
+    return {
+      exitCode: 0,
+      output: {
+        status: "PASS",
+        guard: "dcb-matched-set-publish-dry-run",
+        outcome: "version-already-published",
+        failure,
+        receipt,
+      },
+    };
+  }
+  return {
+    exitCode: result.status ?? 1,
+    output: { status: "FAIL", failure, receipt },
+  };
+}
+
+function assertCollisionEvaluationFixtures() {
+  const collisionResult = {
+    status: 1,
+    signal: null,
+    stdout: "",
+    stderr: "npm error You cannot publish over the previously published versions: 0.2.0",
+  };
+  const collision = evaluateMatchedSetDryRunFailure(collisionResult, {
+    packageName: "@sekiban/dcb-core",
+    version: "0.2.0",
+    receiptExtras: { cwd: "packages/dcb-core", command: "npm publish --dry-run --provenance --access public" },
+  });
+  assert.equal(collision.exitCode, 0, "version-collision must PASS");
+  assert.equal(collision.output.status, "PASS");
+  assert.equal(collision.output.outcome, "version-already-published");
+  assert.equal(collision.output.failure.kind, "version-collision");
+
+  const signalCollisionResult = {
+    status: 1,
+    signal: "SIGTERM",
+    stdout: "",
+    stderr: "npm error You cannot publish over the previously published versions: 0.2.0",
+  };
+  const signalCollision = evaluateMatchedSetDryRunFailure(signalCollisionResult, {
+    packageName: "@sekiban/dcb-core",
+    version: "0.2.0",
+  });
+  assert.notEqual(signalCollision.exitCode, 0, "signal+collision must fail-closed");
+  assert.equal(signalCollision.output.status, "FAIL");
+  assert.equal(signalCollision.output.failure.kind, "version-collision");
+  assert.equal(signalCollision.output.receipt.signal, "SIGTERM");
+
+  const invalidPackagingResult = {
+    status: 1,
+    signal: null,
+    stdout: "",
+    stderr: "npm error code EJSONPARSE: Unexpected token in package.json (also saw a stale collision warning)",
+  };
+  const invalidPackaging = evaluateMatchedSetDryRunFailure(invalidPackagingResult, {
+    packageName: "@sekiban/dcb-core",
+    version: "0.2.0",
+  });
+  assert.notEqual(invalidPackaging.exitCode, 0, "invalid-packaging must fail-closed");
+  assert.equal(invalidPackaging.output.status, "FAIL");
+  assert.equal(invalidPackaging.output.failure.kind, "invalid-packaging");
+
+  const genericFailureResult = {
+    status: 1,
+    signal: null,
+    stdout: "",
+    stderr: "npm error code E401 Incorrect or missing password.",
+  };
+  const genericFailure = evaluateMatchedSetDryRunFailure(genericFailureResult, {
+    packageName: "@sekiban/dcb-core",
+    version: "0.2.0",
+  });
+  assert.notEqual(genericFailure.exitCode, 0, "generic publish failure must fail-closed");
+  assert.equal(genericFailure.output.status, "FAIL");
+  assert.equal(genericFailure.output.failure.kind, "publish-or-environment-failure");
+
+  return {
+    versionCollision: { result: "pass", outcome: collision.output.outcome },
+    signalCollision: { result: "fail", kind: signalCollision.output.failure.kind, signal: "SIGTERM" },
+    invalidPackaging: { result: "fail", kind: invalidPackaging.output.failure.kind },
+    genericFailure: { result: "fail", kind: genericFailure.output.failure.kind },
+  };
+}
+
 const argv = process.argv.slice(2);
 if (argv.includes("--self-test")) {
-  console.log(JSON.stringify({ status: "PASS", guard: "publish-command-shape", ...assertCommandShape() }, null, 2));
+  console.log(JSON.stringify({
+    status: "PASS",
+    guard: "dcb-matched-set-publish-dry-run",
+    commandShape: assertCommandShape(),
+    fixtures: assertCollisionEvaluationFixtures(),
+  }, null, 2));
   process.exit(0);
 }
 
@@ -136,23 +239,17 @@ for (const [name, relativeDirectory] of packages) {
   };
   receipts.push(receipt);
   if (result.status !== 0) {
-    const failure = classifyPublishFailure(result, { packageName: name, version: manifest.version });
-    // After a matched-set version is on the registry, dry-run correctly exits
-    // nonzero with a version collision. That is an expected gate outcome, not a
-    // packaging failure (see classifier module header). Other kinds stay fail-closed.
-    if (failure.kind === "version-collision") {
-      receipt.classification = failure;
-      console.log(JSON.stringify({
-        status: "PASS",
-        guard: "dcb-matched-set-publish-dry-run",
-        outcome: "version-already-published",
-        failure,
-        receipt,
-      }, null, 2));
+    const evaluated = evaluateMatchedSetDryRunFailure(result, {
+      packageName: name,
+      version: manifest.version,
+      receiptExtras: { cwd: relativeDirectory, command },
+    });
+    if (evaluated.exitCode === 0) {
+      console.log(JSON.stringify(evaluated.output, null, 2));
       continue;
     }
-    console.error(JSON.stringify({ status: "FAIL", failure, receipt }, null, 2));
-    process.exit(result.status ?? 1);
+    console.error(JSON.stringify(evaluated.output, null, 2));
+    process.exit(evaluated.exitCode);
   }
 }
 
