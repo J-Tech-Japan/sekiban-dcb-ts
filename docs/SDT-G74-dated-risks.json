@@ -4,9 +4,9 @@
     {
       "key": "allocator-ordering-gap",
       "risk": "allocator-to-source ordering gap",
-      "observedBasis": "SDT-G69 #133 closed not_planned 2026-09-10; SDT-G70 #137 closed not_planned 2026-09-09; remainder SDT-G77 #154 open at 2026-09-14T09:23:55Z",
-      "disposition": "open; v1 adds no ordering guarantee",
-      "evidence": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/issues/154"
+      "observedBasis": "SDT-G69 #133 closed not_planned 2026-09-10; SDT-G70 #137 closed not_planned 2026-09-09; SDT-G77 #154 closed 2026-09-15 (PR #185); certificate-gated safe-view advance landed with default false",
+      "disposition": "closed for v1 scope; v1 adds no general ordering guarantee beyond the G77 certificate producer",
+      "evidence": "docs/SDT-G70C-evidence.md; https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/185"
     },
     {
       "key": "safe-lane-latency",
@@ -53,9 +53,9 @@
     {
       "key": "published-graph",
       "risk": "published graph",
-      "observedBasis": "registry check 2026-09-14T09:23:55Z: core/domain/client list only 0.1.0; runtime E404; candidate source 0.2.0",
-      "disposition": "comparison facts; no publication claimed",
-      "evidence": "docs/SDT-G74-0.1.0-receipt.json"
+      "observedBasis": "registry check 2026-09-16: @sekiban/dcb-core@0.2.0, @sekiban/dcb-domain@0.2.0, @sekiban/dcb-client@0.2.0 published; 0.1.0 remains on registry; runtime publish tracked separately",
+      "disposition": "0.2.0 matched set published; 0.1.0 retained as historical baseline",
+      "evidence": "docs/SDT-G90-evidence.md § Post-0.2.0 g64 dry-run adaptation; docs/SDT-G74-0.1.0-receipt.json"
     }
   ]
 }
