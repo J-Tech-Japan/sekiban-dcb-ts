@@ -336,6 +336,57 @@ describe("SDT-G62 local completeness frontier soundness", () => {
     })}`);
   });
 
+  it("G77 P14: fresh certificate must not pair with an older incompatible snapshot", async () => {
+    const serviceId = `g62-g77-p14-${crypto.randomUUID()}`;
+    const namespace = (env as unknown as { ALLOCATOR?: DurableObjectNamespace }).ALLOCATOR;
+    if (namespace === undefined) throw new Error("G62 G77 composition needs allocator binding");
+    const allocatorStub = namespace.get(scopeIdFor(namespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    await allocatorStub.fetch(new Request("https://allocator.test/allocate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        attemptId: `g62-p14-seed:${crypto.randomUUID()}`,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: g32EventId("g62-p14-seed") }],
+      }),
+    }));
+    const certificateResponse = await allocatorStub.fetch(
+      new Request(`https://allocator.test/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificateResponse.status).toBe(200);
+    const certificate = await certificateResponse.json<{
+      closedPrefixSuid: string | null;
+      status: string;
+    }>();
+    const scopeA = { serviceId, tag: `room:g62:p14-a:${crypto.randomUUID()}` };
+    await configureRealSource(scopeA);
+    const messageA = await appendAndRecordRealSource(scopeA, "g62-p14-a", g32SuidAt(20_000, "g62-p14-a"), 20_001);
+    const source = sourceWithRows(() => [factFrom(messageA, 1)]);
+    const scanner = new GlobalCompletenessReconciler(
+      database(),
+      sourceNamespace(source),
+      G44_SCANNER_VERSION,
+      { globalReceiptMatcher: async () => true },
+    );
+    const oldCoverage = await scanner.coverage(serviceId, 20_002);
+    const scopeB = { serviceId, tag: `room:g62:p14-b:${crypto.randomUUID()}` };
+    await appendAndRecordRealSource(scopeB, "g62-p14-b", g32SuidAt(20_001, "g62-p14-b"), 20_003);
+    const laterCoverage = await scanner.coverage(serviceId, 20_004);
+    expect(oldCoverage.kind).toBeTruthy();
+    expect(laterCoverage.kind).toBeTruthy();
+    console.error(`G77_P14_CERTIFICATE_SNAPSHOT ${JSON.stringify({
+      certificatePrefix: certificate.closedPrefixSuid,
+      oldSnapshotKind: oldCoverage.kind,
+      oldSnapshotFrontier: oldCoverage.frontierSuid,
+      laterSnapshotKind: laterCoverage.kind,
+      laterTagArrived: scopeB.tag,
+    })}`);
+  });
+
   it("AC3: a gap in a start-of-pass partition prevents frontier advancement", async () => {
     const serviceId = `g62-ac3-${crypto.randomUUID()}`;
     const tag = `room:g62:gap:${crypto.randomUUID()}`;

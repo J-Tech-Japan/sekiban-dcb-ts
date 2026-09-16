@@ -76,9 +76,9 @@ export function checkG75Sources(sources = sourceMap()) {
     "const safeViewAdvance = options.safeViewAdvance === true || options.requireClosedPrefixCertificate === true;",
     "validatedClosedPrefixSuid({",
     "validatedSafeViewCoverageMaximumSuid(options.safeViewCoverage, serviceId)",
-    "closedPrefixCertificate: options.closedPrefixCertificate",
+    "options.closedPrefixCertificate ?? await acquireClosedPrefixCertificate(env, serviceId)",
     "requireClosedPrefixCertificate: true",
-    "closedPrefixSuid,\n        options.closedPrefixCertificate,",
+    "closedPrefixSuid,\n                closedPrefixCertificate,",
     "safeViewCoverage: options.safeViewCoverage",
   ], "safe-view boundary");
   requireAbsent(files.materializedView, [

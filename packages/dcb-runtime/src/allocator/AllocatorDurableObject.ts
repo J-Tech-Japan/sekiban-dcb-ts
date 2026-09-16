@@ -3,7 +3,27 @@ import type {
   AllocationCandidate,
   AllocationVector,
   AllocatorState,
+  ClosedPrefixCertificate,
 } from "./types";
+import {
+  IssuanceLedgerError,
+  ISSUANCE_COUNT_KEY,
+  ISSUANCE_MIGRATION_KEY,
+  applyTargetResolution,
+  buildCertificateSnapshot,
+  completeMigrationProofInTransaction,
+  countUnresolvedEntries,
+  pageLegacyInventoryInTransaction,
+  parseCandidateMembership,
+  parseTargetResolutionEvidence,
+  registerIssuanceInTransaction,
+  registrationProbe,
+  syncIssuanceRecoveryAlarm,
+  envelopeKey,
+  type IssuanceEnvelope,
+  type IssuanceMigrationState,
+} from "./IssuanceLedger";
+import { reconcileIssuanceBatch, verifyTargetResolutionEvidence } from "./IssuanceReconciler";
 import {
   allocateOrderRange,
   diagnosticAllocatedAt,
@@ -33,6 +53,7 @@ type JsonObject = Record<string, unknown>;
 interface AllocateInput {
   attemptId: string;
   candidates: AllocationCandidate[];
+  candidateMembership: ReadonlyMap<number, { tags: readonly string[]; pinnedWriterEpoch: number }>;
   faultInjection?: "between-vector-and-watermark";
   serviceId?: string;
   bootstrapCommandId?: string;
@@ -118,6 +139,7 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
   }
 
   const candidates: AllocationCandidate[] = [];
+  const candidateMembership = new Map<number, { tags: readonly string[]; pinnedWriterEpoch: number }>();
   for (const rawCandidate of value.candidates) {
     if (
       !isObject(rawCandidate) ||
@@ -125,6 +147,10 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
       !isNonEmptyString(rawCandidate.eventId)
     ) {
       return { error: "each candidate needs a non-negative candidateIndex and non-empty eventId" };
+    }
+    const membership = parseCandidateMembership(rawCandidate);
+    if (membership !== undefined) {
+      candidateMembership.set(rawCandidate.candidateIndex, membership);
     }
     candidates.push({
       candidateIndex: rawCandidate.candidateIndex,
@@ -148,10 +174,20 @@ function allocateFrom(value: unknown): { value?: AllocateInput; error?: string }
     return { error: "unsupported faultInjection" };
   }
 
-  const bootstrap = isNonEmptyString(value.serviceId) && isNonEmptyString(value.bootstrapCommandId) && isNonNegativeInteger(value.bootstrapEpoch)
-    ? { serviceId: value.serviceId, bootstrapCommandId: value.bootstrapCommandId, bootstrapEpoch: value.bootstrapEpoch }
-    : {};
-  return { value: { attemptId: value.attemptId, candidates: ordered, faultInjection, ...bootstrap } };
+  const serviceId = isNonEmptyString(value.serviceId) ? value.serviceId : undefined;
+  const bootstrapCommandId = isNonEmptyString(value.bootstrapCommandId) ? value.bootstrapCommandId : undefined;
+  const bootstrapEpoch = isNonNegativeInteger(value.bootstrapEpoch) ? value.bootstrapEpoch : undefined;
+  return {
+    value: {
+      attemptId: value.attemptId,
+      candidates: ordered,
+      candidateMembership,
+      faultInjection,
+      ...(serviceId !== undefined ? { serviceId } : {}),
+      ...(bootstrapCommandId !== undefined ? { bootstrapCommandId } : {}),
+      ...(bootstrapEpoch !== undefined ? { bootstrapEpoch } : {}),
+    },
+  };
 }
 
 /**
@@ -165,10 +201,39 @@ export class AllocatorDurableObject implements DurableObject {
 
   constructor(
     private readonly ctx: DurableObjectState,
-    private readonly env?: { BOOTSTRAP?: DurableObjectNamespace },
+    private readonly env?: { BOOTSTRAP?: DurableObjectNamespace; TAG?: DurableObjectNamespace; ALLOCATOR?: DurableObjectNamespace },
     private readonly orderClock: OrderClock = systemOrderClock,
     private readonly nativeTracing: NativeTracing = noOpNativeTracing,
   ) {}
+
+  async alarm(): Promise<void> {
+    const serviceId = await this.serviceIdFromState();
+    try {
+      if (serviceId !== undefined && this.env?.TAG !== undefined) {
+        await reconcileIssuanceBatch(this.ctx.storage, { TAG: this.env.TAG }, serviceId, async (evidence) => {
+          try {
+            await this.ctx.storage.transaction(async (txn) => {
+              await applyTargetResolution(txn, evidence);
+            });
+            return true;
+          } catch {
+            return false;
+          }
+        });
+      }
+    } finally {
+      await this.rearmIssuanceRecoveryIfNeeded();
+    }
+  }
+
+  private async rearmIssuanceRecoveryIfNeeded(): Promise<void> {
+    await syncIssuanceRecoveryAlarm(this.ctx.storage, Date.now());
+  }
+
+  private async serviceIdFromState(): Promise<string | undefined> {
+    const state = await this.ctx.storage.get<AllocatorState & { serviceId?: string }>(STATE_KEY);
+    return state?.serviceId;
+  }
 
   async fetch(request: Request): Promise<Response> {
     // Must run before the first await in every handler admission.
@@ -197,7 +262,12 @@ export class AllocatorDurableObject implements DurableObject {
         },
         () => body === undefined
           ? error(400, "invalid_allocation", "Request body must be JSON")
-          : this.allocate(body, activation, observation),
+          : this.allocate(
+            body,
+            activation,
+            observation,
+            request.headers.get("x-sdt-g77-suppress-recovery-alarm") === "1",
+          ),
       );
     }
     if (request.method === "GET" && url.pathname === "/state") {
@@ -242,20 +312,236 @@ export class AllocatorDurableObject implements DurableObject {
       );
     }
     if (request.method === "POST" && url.pathname === "/seed-after") return this.seedAfter(request);
+    if (request.method === "GET" && url.pathname === "/__internal/g77/capabilities") {
+      return json({
+        issuanceLedger: true,
+        certificateRoute: true,
+        resolveRoute: true,
+        reconcilerRoute: true,
+        migrationCut: true,
+        legacyInventoryRoute: true,
+        migrationProofRoute: true,
+        reconcileNowRoute: true,
+      });
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/__internal/g77/registration/")) {
+      return this.registrationStatus(url.pathname);
+    }
+    if (request.method === "GET" && url.pathname === "/__internal/g77/certificate") {
+      return this.certificateSnapshot(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/resolve-target") {
+      return this.resolveTarget(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/migration-cut") {
+      return this.installMigrationCut(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/legacy-inventory-page") {
+      return this.pageLegacyInventory(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/migration-proof") {
+      return this.completeMigrationProof(request);
+    }
+    if (request.method === "GET" && url.pathname === "/__internal/g77/recovery-alarm") {
+      return json({
+        alarmAt: await this.ctx.storage.getAlarm(),
+        armedAt: await this.ctx.storage.get<number>("issuance:recovery-alarm-armed-at") ?? null,
+        unresolvedCount: await countUnresolvedEntries(this.ctx.storage),
+      });
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/reconcile-now") {
+      return this.reconcileNow();
+    }
     return error(404, "allocator_route_not_found", "Allocator route was not found");
+  }
+
+  private async registrationStatus(pathname: string): Promise<Response> {
+    const parts = pathname.split("/");
+    const candidateIndex = Number(parts.at(-1));
+    const attemptId = decodeURIComponent(parts.at(-2) ?? "");
+    if (!isNonEmptyString(attemptId) || !Number.isInteger(candidateIndex)) {
+      return error(400, "invalid_registration_probe", "Invalid registration probe path");
+    }
+    const probe = await this.ctx.storage.transaction(async (txn) =>
+      registrationProbe(txn, attemptId, candidateIndex));
+    return json(probe);
+  }
+
+  private async certificateSnapshot(request: Request): Promise<Response> {
+    const requestedServiceId = new URL(request.url).searchParams.get("serviceId");
+    if (!isNonEmptyString(requestedServiceId)) {
+      return error(400, "invalid_certificate_request", "serviceId is required");
+    }
+    try {
+      const certificate = await this.ctx.storage.transaction(async (txn) => {
+        const state = await txn.get<AllocatorState>(STATE_KEY);
+        if (state === undefined) throw new IssuanceLedgerError("allocator state missing");
+        const boundServiceId = state.serviceId;
+        if (boundServiceId !== undefined && boundServiceId !== requestedServiceId) {
+          throw new IssuanceLedgerError("certificate service scope does not match allocator binding");
+        }
+        const serviceId = boundServiceId ?? requestedServiceId;
+        return buildCertificateSnapshot(txn, txn, {
+          serviceId,
+          allocatorLineageId: state.allocatorLineageId,
+          allocatedWatermark: state.allocatedWatermark,
+          generatedAt: Date.now(),
+        });
+      });
+      return json(certificate satisfies ClosedPrefixCertificate);
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(409, "certificate_unavailable", failure.message);
+      }
+      return error(500, "certificate_failure", "Certificate snapshot failed");
+    }
+  }
+
+  private async resolveTarget(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json(); } catch { return error(400, "invalid_resolution", "JSON required"); }
+    let evidence;
+    try {
+      evidence = parseTargetResolutionEvidence(body);
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(409, "resolution_rejected", failure.message);
+      }
+      return error(400, "invalid_resolution", "Invalid resolution body");
+    }
+    try {
+      const serviceId = await this.serviceIdFromState();
+      if (serviceId === undefined || this.env?.TAG === undefined) {
+        return error(409, "resolution_rejected", "Tag verification prerequisites are unavailable");
+      }
+      const envelope = await this.ctx.storage.get<IssuanceEnvelope>(
+        envelopeKey(evidence.attemptId, evidence.candidateIndex),
+      );
+      if (envelope === undefined) {
+        return error(409, "resolution_rejected", "unknown issuance envelope");
+      }
+      try {
+        await verifyTargetResolutionEvidence({ TAG: this.env.TAG }, serviceId, evidence, envelope);
+      } catch (verificationFailure) {
+        const message = verificationFailure instanceof Error
+          ? verificationFailure.message
+          : "tag observation verification failed";
+        return error(409, "resolution_rejected", message);
+      }
+      const result = await this.ctx.storage.transaction(async (txn) =>
+        applyTargetResolution(txn, evidence));
+      return json(result);
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(409, "resolution_rejected", failure.message);
+      }
+      return error(500, "resolution_failure", "Target resolution failed");
+    }
+  }
+
+  private async pageLegacyInventory(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json(); } catch { return error(400, "invalid_inventory_page", "JSON required"); }
+    const pageSize = isObject(body) && typeof body.pageSize === "number" ? body.pageSize : 8;
+    const faultInjection = isObject(body) && body.faultInjection === "after-cursor-persist"
+      ? "after-cursor-persist" as const
+      : undefined;
+    try {
+      const result = await this.ctx.storage.transaction(async (txn) =>
+        pageLegacyInventoryInTransaction(txn, { pageSize, faultInjection }, this.ctx.storage));
+      return json(result);
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(503, "inventory_page_crash", failure.message);
+      }
+      return error(500, "inventory_page_failure", "Legacy inventory page failed");
+    }
+  }
+
+  private async completeMigrationProof(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json(); } catch { return error(400, "invalid_migration_proof", "JSON required"); }
+    if (!isObject(body) || !isNonEmptyString(body.migrationProofId)) {
+      return error(400, "invalid_migration_proof", "migrationProofId is required");
+    }
+    const boundEvidence = isObject(body.boundEvidence) ? body.boundEvidence : {};
+    try {
+      await this.ctx.storage.transaction(async (txn) =>
+        completeMigrationProofInTransaction(txn, {
+          migrationProofId: body.migrationProofId as string,
+          boundEvidence,
+        }));
+      return json({ completed: true, migrationProofId: body.migrationProofId });
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(409, "migration_proof_rejected", failure.message);
+      }
+      return error(500, "migration_proof_failure", "Migration proof completion failed");
+    }
+  }
+
+  private async reconcileNow(): Promise<Response> {
+    const serviceId = await this.serviceIdFromState();
+    if (serviceId === undefined || this.env?.TAG === undefined) {
+      return error(409, "reconcile_unavailable", "Reconciliation prerequisites are unavailable");
+    }
+    const result = await reconcileIssuanceBatch(
+      this.ctx.storage,
+      { TAG: this.env.TAG },
+      serviceId,
+      async (evidence) => {
+        try {
+          await this.ctx.storage.transaction(async (txn) => {
+            await applyTargetResolution(txn, evidence);
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { bypassNeverContactedGrace: true },
+    );
+    return json(result);
+  }
+
+  private async installMigrationCut(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json(); } catch { return error(400, "invalid_migration_cut", "JSON required"); }
+    const cutAt = isObject(body) && typeof body.cutAt === "number" ? body.cutAt : Date.now();
+    await this.ctx.storage.transaction(async (txn) => {
+      const existing = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
+      if (existing !== undefined) return;
+      await txn.put(ISSUANCE_MIGRATION_KEY, {
+        cutInstalledAt: cutAt,
+        legacyInventoryCursor: null,
+        inventoryComplete: false,
+        migrationProofId: null,
+      } satisfies IssuanceMigrationState);
+      const existingCount = await txn.get<number>(ISSUANCE_COUNT_KEY);
+      if (existingCount === undefined || existingCount === null) {
+        await txn.put(ISSUANCE_COUNT_KEY, 0);
+      }
+    });
+    return json({ installed: true, cutAt });
   }
 
   private async allocate(
     body: unknown,
     activation: DurableObjectActivationObservation,
     observation?: DurableObjectHandlerObservation,
+    suppressRecoveryAlarm = false,
   ): Promise<Response> {
     const parsed = allocateFrom(body);
     if (parsed.value === undefined) {
       return error(400, "invalid_allocation", parsed.error ?? "Invalid allocation request");
     }
     const input = parsed.value;
-    if (input.serviceId !== undefined && this.env?.BOOTSTRAP !== undefined) {
+    if (
+      input.serviceId !== undefined &&
+      input.bootstrapCommandId !== undefined &&
+      input.bootstrapEpoch !== undefined &&
+      this.env?.BOOTSTRAP !== undefined
+    ) {
       const admitted = await enterNativeCommitSpan(
         this.nativeTracing,
         "allocator.bootstrap.finalize",
@@ -345,15 +631,35 @@ export class AllocatorDurableObject implements DurableObject {
           // Diagnostic presentation only; ordering is the ordinal above.
           allocatedAt: diagnosticAllocatedAt(range.base),
         };
+        const migration = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
+        if (migration !== undefined) {
+          if (input.candidateMembership.size === 0) {
+            throw new IssuanceLedgerError("post-cut allocation requires canonical target membership");
+          }
+          if (input.serviceId === undefined) {
+            throw new IssuanceLedgerError("post-cut allocation requires service identity for issuance registration");
+          }
+        }
         const updatedState: AllocatorState = {
           schemaVersion: 5,
           allocatorLineageId: lineage,
           allocatedWatermark: range.watermark,
           bootstrapSeed: state.bootstrapSeed ?? null,
           lastRollbackWarningFingerprint: shouldWarn ? warningFingerprint : state.lastRollbackWarningFingerprint ?? null,
+          ...(input.serviceId !== undefined ? { serviceId: input.serviceId } : state.serviceId !== undefined ? { serviceId: state.serviceId } : {}),
         };
 
         await txn.put(attemptKey(input.attemptId), vector);
+        if (input.candidateMembership.size > 0 && input.serviceId !== undefined) {
+          await registerIssuanceInTransaction(txn, {
+            serviceId: input.serviceId,
+            allocatorLineageId: lineage,
+            attemptId: input.attemptId,
+            candidates,
+            candidateMembership: input.candidateMembership,
+            migration,
+          });
+        }
         if (input.faultInjection === "between-vector-and-watermark") {
           throw new AllocationTransactionFault("Simulated interruption before transaction commit");
         }
@@ -379,6 +685,9 @@ export class AllocatorDurableObject implements DurableObject {
           // already committed allocation result.
         }
       }
+      if (result.created && input.candidateMembership.size > 0 && !suppressRecoveryAlarm) {
+        await syncIssuanceRecoveryAlarm(this.ctx.storage, Date.now());
+      }
       return json(result.vector, result.created ? 201 : 200);
     } catch (failure) {
       if (failure instanceof AllocationTransactionFault) {
@@ -393,6 +702,9 @@ export class AllocatorDurableObject implements DurableObject {
       }
       if (failure instanceof SortableUniqueIdError) {
         return error(409, "allocator_suid_invalid", failure.message);
+      }
+      if (failure instanceof IssuanceLedgerError) {
+        return error(400, "issuance_registration_rejected", failure.message);
       }
       return error(500, "allocator_failure", "Allocator could not persist the full allocation vector");
     }

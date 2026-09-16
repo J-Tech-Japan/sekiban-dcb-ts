@@ -47,4 +47,6 @@ export interface AllocatorState {
   bootstrapSeed: { importId: string; leaseEpoch: number; highWatermark: string } | null;
   /** Durable rate-limit key for rollback warnings; it is not allocation authority. */
   lastRollbackWarningFingerprint?: string | null;
+  /** Service identity bound at first commit-scoped allocation; reconciler authority. */
+  serviceId?: string;
 }
