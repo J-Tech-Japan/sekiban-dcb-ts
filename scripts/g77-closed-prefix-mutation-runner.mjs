@@ -1,13 +1,20 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const vitest = [
+  resolve(root, "node_modules/vitest/vitest.mjs"),
+  resolve(root, "../node_modules/vitest/vitest.mjs"),
+].find((candidate) => existsSync(candidate));
+if (vitest === undefined) throw new Error("g77-closed-prefix-mutation-runner: vitest executable is unavailable");
+
 const files = {
-  allocator: path.join(root, "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"),
-  ledger: path.join(root, "packages/dcb-runtime/src/allocator/IssuanceLedger.ts"),
+  allocator: join(root, "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"),
+  ledger: join(root, "packages/dcb-runtime/src/allocator/IssuanceLedger.ts"),
 };
 const sources = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, readFileSync(file, "utf8")]));
 
@@ -17,24 +24,59 @@ const mutants = [
     file: "allocator",
     from: "await registerIssuanceInTransaction(txn, {",
     to: "void ({ // mutant: registration removed",
+    expectedTests: ["G77 registers issuance ledger facts atomically when membership is supplied"],
   },
   {
     name: "single-tag-resolved-early",
     file: "ledger",
     from: "if (!resolved) return { candidateResolved: false, duplicate: false };",
     to: "if (!resolved) return { candidateResolved: true, duplicate: false };",
+    expectedTests: ["G77 mutant oracle: multi-tag candidate stays unresolved until every target terminal"],
   },
   {
     name: "expired-writer-accepted",
     file: "ledger",
-    from: 'if (target.status !== "pending") {',
-    to: 'if (target.status !== "pending" || evidence.terminalStatus === "absent-and-irrevocably-fenced") {',
+    from: "envelope.pinnedWriterEpoch !== evidence.pinnedWriterEpoch",
+    to: "envelope.pinnedWriterEpoch !== evidence.pinnedWriterEpoch && false",
+    expectedTests: ["G77 rejects resolution with mismatched pinned writer epoch"],
   },
   {
     name: "wrong-prefix-watermark",
     file: "ledger",
     from: "return { closedPrefixSuid, unresolvedCount: count, status: \"ready\" };",
     to: "return { closedPrefixSuid: allocatedWatermark, unresolvedCount: count, status: \"ready\" };",
+    expectedTests: [
+      "G77 predecessor prefix excludes the least unresolved hole",
+      "G77 positive predecessor oracle with multi-candidate hole",
+    ],
+  },
+  {
+    name: "highest-completed-prefix",
+    file: "ledger",
+    from: `  const endKey = \`\${ISSUED_INDEX_PREFIX}\${exclusiveSuid}:\`;
+  const listed = await reader.list<{ suid: string }>({
+    prefix: ISSUED_INDEX_PREFIX,
+    end: endKey,
+    reverse: true,
+    limit: 1,
+  });
+  for (const [key, value] of listed) {
+    const suid = value?.suid ?? parseIndexEntry(key, ISSUED_INDEX_PREFIX)?.suid;
+    if (suid !== undefined && suid < exclusiveSuid) return suid;
+  }
+  return null;`,
+    to: `  const listed = await reader.list<{ suid: string }>({ prefix: ISSUED_INDEX_PREFIX, limit: 256 });
+  let best: string | null = null;
+  for (const [key, value] of listed) {
+    const suid = value?.suid ?? parseIndexEntry(key, ISSUED_INDEX_PREFIX)?.suid;
+    if (suid === undefined || suid >= exclusiveSuid) continue;
+    if (best === null || suid > best) best = suid;
+  }
+  return best;`,
+    expectedTests: [
+      "G77 positive predecessor oracle with multi-candidate hole",
+      "G77 predecessor lookup stays correct beyond 256 issuances",
+    ],
   },
 ];
 
@@ -42,6 +84,27 @@ function restore() {
   for (const [key, file] of Object.entries(files)) {
     writeFileSync(file, sources[key], "utf8");
   }
+}
+
+function runBuild() {
+  const result = spawnSync("npm", ["run", "build", "--workspace", "@sekiban/dcb-runtime", "--silent"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  return {
+    ok: (result.status ?? 1) === 0,
+    status: result.status,
+    output: `${result.stdout ?? ""}${result.stderr ?? ""}`,
+  };
+}
+
+function failingTestNames(report) {
+  if (!Array.isArray(report?.testResults)) return [];
+  return report.testResults.flatMap((file) =>
+    (file.assertionResults ?? [])
+      .filter((assertion) => assertion.status === "failed")
+      .map((assertion) => assertion.fullName ?? assertion.title ?? ""),
+  );
 }
 
 if (process.argv.includes("--self-test")) {
@@ -55,49 +118,81 @@ if (process.argv.includes("--self-test")) {
   process.exit(0);
 }
 
-const results = [];
-for (const mutant of mutants) {
-  const file = files[mutant.file];
-  const original = sources[mutant.file];
-  if (!original.includes(mutant.from)) {
-    results.push({ mutant: mutant.name, status: "skipped", reason: "anchor not found" });
-    continue;
+const reportDirectory = mkdtempSync(join(tmpdir(), "sdt-g77-mutation-"));
+let reportCounter = 0;
+
+function runOracle(mutant) {
+  const reportPath = join(reportDirectory, `${++reportCounter}-${mutant.name}.json`);
+  const result = spawnSync(process.execPath, [
+    vitest,
+    "run",
+    "--config",
+    "vitest.config.ts",
+    "--no-cache",
+    "test/allocator.spec.ts",
+    "test/g77-closed-prefix-producer.spec.ts",
+    "-t",
+    "G77|A04|B07|multi-tag|predecessor",
+    "--reporter=json",
+    "--outputFile",
+    reportPath,
+  ], {
+    cwd: root,
+    encoding: "utf8",
+    env: { ...process.env, CI: "1", PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+  });
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportPath, "utf8"));
+  } catch {
+    report = undefined;
   }
-  writeFileSync(file, original.replace(mutant.from, mutant.to), "utf8");
-  spawnSync("npx", ["esbuild", "src/cloudflare.ts", "--bundle", "--format=esm", "--platform=neutral", "--external:cloudflare:workers", "--outfile=dist/cloudflare.js"], {
-    cwd: path.join(root, "packages/dcb-runtime"),
-    encoding: "utf8",
-  });
-  spawnSync("npx", ["esbuild", "src/index.ts", "--bundle", "--format=esm", "--platform=neutral", "--external:postgres", "--external:cloudflare:workers", "--outfile=dist/index.js"], {
-    cwd: path.join(root, "packages/dcb-runtime"),
-    encoding: "utf8",
-  });
-  const run = spawnSync(
-    "npx",
-    [
-      "vitest",
-      "run",
-      "--config",
-      "vitest.config.ts",
-      "test/allocator.spec.ts",
-      "test/g77-closed-prefix-producer.spec.ts",
-      "-t",
-      "G77|A04|B07|multi-tag",
-    ],
-    {
-      cwd: root,
-      encoding: "utf8",
-      env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
-    },
-  );
+  return { status: result.status ?? 1, report, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+}
+
+const results = [];
+try {
+  for (const mutant of mutants) {
+    const file = files[mutant.file];
+    const original = sources[mutant.file];
+    if (!original.includes(mutant.from)) {
+      results.push({ mutant: mutant.name, status: "skipped", reason: "anchor not found" });
+      continue;
+    }
+    writeFileSync(file, original.replace(mutant.from, mutant.to), "utf8");
+    const build = runBuild();
+    if (!build.ok) {
+      restore();
+      results.push({
+        mutant: mutant.name,
+        status: "build-break",
+        buildStatus: build.status,
+      });
+      continue;
+    }
+    const run = runOracle(mutant);
+    restore();
+    runBuild();
+    const failures = failingTestNames(run.report);
+    const matched = mutant.expectedTests.filter((name) =>
+      failures.some((failure) => failure.includes(name)),
+    );
+    results.push({
+      mutant: mutant.name,
+      status: run.status === 0 ? "unexpected-green" : matched.length > 0 ? "red" : "unexpected-red",
+      exitCode: run.status,
+      failingTests: failures,
+      matchedTests: matched,
+    });
+  }
+} finally {
   restore();
-  results.push({
-    mutant: mutant.name,
-    status: run.status === 0 ? "unexpected-green" : "red",
-    exitCode: run.status,
-  });
+  runBuild();
+  rmSync(reportDirectory, { recursive: true, force: true });
 }
 
 console.log(JSON.stringify({ mutants: results }, null, 2));
-const unexpected = results.filter((entry) => entry.status === "unexpected-green");
+const unexpected = results.filter((entry) =>
+  entry.status === "unexpected-green" || entry.status === "unexpected-red" || entry.status === "build-break",
+);
 process.exit(unexpected.length === 0 ? 0 : 1);

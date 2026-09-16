@@ -1,4 +1,4 @@
-import { abortAllDurableObjects, env } from "cloudflare:test";
+import { abortAllDurableObjects, env, runInDurableObject } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { AllocatorDurableObject } from "../packages/dcb-runtime/src/allocator/AllocatorDurableObject";
@@ -19,6 +19,7 @@ import { applyG44D1Migration } from "./helpers/g44-d1-migration";
 import {
   G77_PINNED_MAIN,
   allocatorPost,
+  allocatorStub,
   candidateEventId,
   commitRequest,
   commitWorker,
@@ -240,29 +241,32 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect([200, 201]).toContain(highResponse.status);
       const lowVector = await readAllocation(serviceId, attemptLow);
       expect(lowVector.status).toBe(200);
-      const highVector = await readAllocation(serviceId, attemptHigh);
+      let highVector = await readAllocation(serviceId, attemptHigh);
       if (highVector.status !== 200) {
-        record(g77Receipt("A03", "PG", "high commit boundary reached; hole ordering deferred", {
-          highStatus: highResponse.status,
-          highAllocation: highVector.status,
-        }));
-        releaseLow?.();
-        await pendingLow.catch(() => undefined);
-        return;
+        const seeded = await allocatorPost(serviceId, "/allocate", {
+          attemptId: attemptHigh,
+          serviceId,
+          candidates: [{
+            candidateIndex: 0,
+            eventId: candidateEventId("a03-high"),
+            targetTags: [tagHigh],
+            pinnedWriterEpoch: 0,
+          }],
+        });
+        expect(seeded.status).toBe(201);
+        highVector = await readAllocation(serviceId, attemptHigh);
       }
+      expect(highVector.status).toBe(200);
       const lowSuid = (await lowVector.json<AllocationVector>()).candidates[0]!.suid;
       const highSuid = (await highVector.json<AllocationVector>()).candidates[0]!.suid;
       expect(lowSuid < highSuid).toBe(true);
       expect((await readTagState(serviceId, tagLow)).events).toEqual([]);
       expect((await readTagState(serviceId, tagHigh)).events.length).toBe(1);
-      const caps = await probeG77Capabilities(serviceId);
-      if (caps.certificateRoute) {
-        const certificate = await readCertificate(serviceId);
-        expect(certificate.unresolvedCount).toBeGreaterThan(0);
-        expect(certificate.closedPrefixSuid === null || certificate.closedPrefixSuid < lowSuid).toBe(true);
-        expect(certificate.closedPrefixSuid).not.toBe(highSuid);
-      }
-      record(g77Receipt("A03", caps.issuanceLedger ? "PG" : "BR", "prefix stays before lower unresolved hole", {
+      const certificate = await readCertificate(serviceId);
+      expect(certificate.unresolvedCount).toBeGreaterThan(0);
+      expect(certificate.closedPrefixSuid === null || certificate.closedPrefixSuid < lowSuid).toBe(true);
+      expect(certificate.closedPrefixSuid).not.toBe(highSuid);
+      record(g77Receipt("A03", "PG", "prefix stays before lower unresolved hole", {
         lowSuid, highSuid,
       }));
       releaseLow?.();
@@ -273,9 +277,11 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const serviceId = `g77-a04-${crypto.randomUUID()}`;
       const tagFirst = "room:g77:a04-first";
       const tagSecond = "room:g77:a04-second";
+      const attemptId = `g77-a04:${crypto.randomUUID()}`;
       const headFirst = await seedObservedTagHead(serviceId, tagFirst, "a04-first");
       const headSecond = await seedObservedTagHead(serviceId, tagSecond, "a04-second");
       const response = await commitWorker(serviceId).handle(commitRequest([tagFirst, tagSecond], {
+        attemptId,
         fault: "tag-append-last",
         consistencyHeads: [headFirst, headSecond],
       }));
@@ -285,12 +291,26 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect((await readTagState(serviceId, tagSecond)).events).toHaveLength(0);
       const beforeReconcile = await readCertificate(serviceId);
       expect(beforeReconcile.unresolvedCount).toBeGreaterThan(0);
-      const caps = await probeG77Capabilities(serviceId);
-      if (caps.reconcileNowRoute) {
-        await triggerReconcile(serviceId);
-      }
-      record(g77Receipt("A04", caps.resolveRoute ? "PG" : "BR", "mixed target facts without premature closure", {
+      await triggerReconcile(serviceId);
+      await triggerReconcile(serviceId);
+      const certificate = await readCertificate(serviceId);
+      expect(certificate.unresolvedCount).toBe(0);
+      await runInDurableObject(allocatorStub(serviceId), async (_instance, state) => {
+        const envelope = await state.storage.get<{ suid: string }>(`issuance:envelope:${attemptId}:0`);
+        expect(envelope).toBeTruthy();
+        const installed = await state.storage.get<{ status: string }>(
+          `issuance:target:${attemptId}:0:${tagFirst}`,
+        );
+        const absent = await state.storage.get<{ status: string }>(
+          `issuance:target:${attemptId}:0:${tagSecond}`,
+        );
+        expect(installed?.status).toBe("installed-and-covered");
+        expect(absent?.status).toBe("absent-and-irrevocably-fenced");
+        expect(await state.storage.get(`issuance:unresolved:${envelope!.suid}:${attemptId}:0`)).toBeUndefined();
+      });
+      record(g77Receipt("A04", "PG", "mixed closure resolves installed and fenced targets once", {
         status: response.status,
+        unresolvedCount: certificate.unresolvedCount,
       }));
     });
 
@@ -516,39 +536,29 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
     it("B01 issuance ledger registration port", async () => {
       const serviceId = `g77-b01-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
-      if (!caps.issuanceLedger) {
-        record(g77Receipt("B01", "MR", "no issuance ledger port", { caps }));
-        expect(caps.issuanceLedger).toBe(false);
-      } else {
-        expect(caps.issuanceLedger).toBe(true);
-      }
+      expect(caps.issuanceLedger).toBe(true);
+      record(g77Receipt("B01", "PG", "issuance ledger port present on implementation head", { caps }));
     });
 
     it("B05 certificate producer route", async () => {
       const serviceId = `g77-b05-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
-      if (!caps.certificateRoute) {
-        record(g77Receipt("B05", "MR", "no certificate route", { caps }));
-        expect(caps.certificateRoute).toBe(false);
-      }
+      expect(caps.certificateRoute).toBe(true);
+      record(g77Receipt("B05", "PG", "certificate route present on implementation head", { caps }));
     });
 
     it("B06 durable closure coordinator", async () => {
       const serviceId = `g77-b06-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
-      if (!caps.reconcilerRoute) {
-        record(g77Receipt("B06", "MR", "no closure coordinator", { caps }));
-        expect(caps.reconcilerRoute).toBe(false);
-      }
+      expect(caps.reconcilerRoute).toBe(true);
+      record(g77Receipt("B06", "PG", "closure coordinator present on implementation head", { caps }));
     });
 
     it("B09 per-target closure ledger", async () => {
       const serviceId = `g77-b09-${crypto.randomUUID()}`;
       const caps = await probeG77Capabilities(serviceId);
-      if (!caps.resolveRoute) {
-        record(g77Receipt("B09", "MR", "no per-target resolution port", { caps }));
-        expect(caps.resolveRoute).toBe(false);
-      }
+      expect(caps.resolveRoute).toBe(true);
+      record(g77Receipt("B09", "PG", "per-target resolution port present on implementation head", { caps }));
     });
 
     it("B06 restart coordinator resumes bounded reconciliation", async () => {
@@ -695,6 +705,74 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       expect(certificate.status).toBe("unreconciled");
       expect(certificate.closedPrefixSuid).toBeNull();
       record(g77Receipt("C05", "PG", "opted-in consumer blocked while migration unreconciled", {
+        status: certificate.status,
+      }));
+    });
+
+    it("C07 legacy inventory pages entire region before completion", async () => {
+      const serviceId = `g77-c07-${crypto.randomUUID()}`;
+      const pageSize = 8;
+      const attemptCount = pageSize * 3 + 2;
+      for (let index = 0; index < attemptCount; index += 1) {
+        const allocated = await allocatorPost(serviceId, "/allocate", {
+          attemptId: `g77-c07-${String(index).padStart(3, "0")}:${crypto.randomUUID()}`,
+          serviceId,
+          candidates: [{ candidateIndex: 0, eventId: candidateEventId(`c07-${index}`) }],
+        });
+        expect(allocated.status).toBe(201);
+      }
+      await runInDurableObject(allocatorStub(serviceId), async (_instance, state) => {
+        const attempts = await state.storage.list({ prefix: "attempt:" });
+        expect(attempts.size).toBe(attemptCount);
+      });
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      let complete = false;
+      let pages = 0;
+      while (!complete) {
+        const page = await allocatorPost(serviceId, "/__internal/g77/legacy-inventory-page", { pageSize });
+        expect(page.status).toBe(200);
+        const body = await page.json<{ inventoryComplete: boolean; pageCount: number }>();
+        complete = body.inventoryComplete;
+        pages += 1;
+        expect(pages).toBeLessThanOrEqual(Math.ceil(attemptCount / pageSize) + 1);
+      }
+      await runInDurableObject(allocatorStub(serviceId), async (_instance, state) => {
+        const inventoried = await state.storage.list({ prefix: "issuance:legacy-inventoried:" });
+        expect(inventoried.size).toBe(attemptCount);
+      });
+      record(g77Receipt("C07", "PG", "legacy inventory enumerates full region before completion", {
+        attemptCount,
+        pages,
+      }));
+    });
+
+    it("C08 unclassifiable legacy attempt keeps certificate unreconciled", async () => {
+      const serviceId = `g77-c08-${crypto.randomUUID()}`;
+      const attemptId = `g77-c08:${crypto.randomUUID()}`;
+      await allocatorPost(serviceId, "/allocate", {
+        attemptId,
+        serviceId,
+        candidates: [{
+          candidateIndex: 0,
+          eventId: candidateEventId("c08"),
+          targetTags: ["room:g77:c08"],
+          pinnedWriterEpoch: 0,
+        }],
+      });
+      await runInDurableObject(allocatorStub(serviceId), async (_instance, state) => {
+        await state.storage.delete(`issuance:target:${attemptId}:0:room:g77:c08`);
+      });
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      const inventory = await allocatorPost(serviceId, "/__internal/g77/legacy-inventory-page", { pageSize: 8 });
+      expect(inventory.status).toBe(200);
+      const certificate = await readCertificate(serviceId);
+      expect(certificate.status).toBe("unreconciled");
+      const proof = await allocatorPost(serviceId, "/__internal/g77/migration-proof", {
+        migrationProofId: "g77-c08-proof",
+        boundEvidence: { serviceId },
+      });
+      expect(proof.status).toBe(409);
+      record(g77Receipt("C08", "PG", "unclassifiable legacy region blocks ready certificate", {
         status: certificate.status,
       }));
     });

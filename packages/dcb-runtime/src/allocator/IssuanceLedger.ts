@@ -44,6 +44,7 @@ export interface IssuanceMigrationState {
   readonly legacyInventoryCursor: string | null;
   readonly inventoryComplete: boolean;
   readonly migrationProofId: string | null;
+  readonly legacyInventorySummary?: LegacyInventorySummary;
 }
 
 export interface IssuanceRecoverySchedule {
@@ -57,6 +58,12 @@ export interface AllocationCandidateWithMembership extends AllocationCandidate {
   readonly pinnedWriterEpoch?: number;
 }
 
+export interface TagResolutionObservation {
+  readonly terminalStatus: Exclude<TargetClosureStatus, "pending">;
+  readonly obligationDigest?: string;
+  readonly tombstoneEpoch?: number;
+}
+
 export interface TargetResolutionEvidence {
   readonly serviceId: string;
   readonly allocatorLineageId: string;
@@ -66,7 +73,26 @@ export interface TargetResolutionEvidence {
   readonly tag: string;
   readonly identityDigest: string;
   readonly pinnedWriterEpoch: number;
-  readonly terminalStatus: Exclude<TargetClosureStatus, "pending">;
+  readonly tagObservation: TagResolutionObservation;
+}
+
+export type LegacyAttemptClassification =
+  | "legacy-vector-only"
+  | "legacy-resolved-registration"
+  | "legacy-unresolved-registration"
+  | "legacy-unclassifiable-blocking";
+
+export interface LegacyInventoryRecord {
+  readonly inventoriedAt: number;
+  readonly classification: LegacyAttemptClassification;
+  readonly reason: string;
+}
+
+export interface LegacyInventorySummary {
+  readonly vectorOnly: number;
+  readonly resolvedRegistration: number;
+  readonly unresolvedRegistration: number;
+  readonly unclassifiableBlocking: number;
 }
 
 export class IssuanceLedgerError extends Error {
@@ -299,15 +325,18 @@ export async function predecessorIssuedSuid(
   exclusiveSuid: string,
 ): Promise<string | null> {
   assertSortableUniqueId(exclusiveSuid);
-  const listed = await reader.list<{ suid: string }>({ prefix: ISSUED_INDEX_PREFIX, limit: 256 });
-  let best: string | null = null;
+  const endKey = `${ISSUED_INDEX_PREFIX}${exclusiveSuid}:`;
+  const listed = await reader.list<{ suid: string }>({
+    prefix: ISSUED_INDEX_PREFIX,
+    end: endKey,
+    reverse: true,
+    limit: 1,
+  });
   for (const [key, value] of listed) {
     const suid = value?.suid ?? parseIndexEntry(key, ISSUED_INDEX_PREFIX)?.suid;
-    if (suid === undefined) continue;
-    if (suid >= exclusiveSuid) continue;
-    if (best === null || suid > best) best = suid;
+    if (suid !== undefined && suid < exclusiveSuid) return suid;
   }
-  return best;
+  return null;
 }
 
 export async function computeClosedPrefixSuid(
@@ -322,7 +351,7 @@ export async function computeClosedPrefixSuid(
   if (!Number.isSafeInteger(storedCount ?? 0) || (storedCount ?? 0) < 0) {
     throw new IssuanceLedgerError("missing or corrupt unresolved count");
   }
-  if (migration !== undefined && !migration.inventoryComplete) {
+  if (migration !== undefined && (!migration.inventoryComplete || legacyMigrationBlocks(migration))) {
     return { closedPrefixSuid: null, unresolvedCount: count, status: "unreconciled" };
   }
   if (count > 0) {
@@ -377,10 +406,81 @@ export async function buildCertificateSnapshot(
   };
 }
 
+function terminalStatusFromTagObservation(
+  observation: TagResolutionObservation,
+): Exclude<TargetClosureStatus, "pending"> {
+  if (observation.terminalStatus === "installed-and-covered") {
+    if (!isNonEmptyString(observation.obligationDigest)) {
+      throw new IssuanceLedgerError("installed resolution requires tag obligation digest");
+    }
+    return "installed-and-covered";
+  }
+  if (observation.terminalStatus === "absent-and-irrevocably-fenced") {
+    if (!isNonNegativeInteger(observation.tombstoneEpoch)) {
+      throw new IssuanceLedgerError("fenced resolution requires tag tombstone epoch");
+    }
+    return "absent-and-irrevocably-fenced";
+  }
+  throw new IssuanceLedgerError("tag observation terminal status is invalid");
+}
+
+export function parseTargetResolutionEvidence(raw: unknown): TargetResolutionEvidence {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new IssuanceLedgerError("resolution evidence body is invalid");
+  }
+  const value = raw as Record<string, unknown>;
+  const observationRaw = value.tagObservation;
+  if (typeof observationRaw !== "object" || observationRaw === null || Array.isArray(observationRaw)) {
+    throw new IssuanceLedgerError("tag observation artefact is required");
+  }
+  const observationValue = observationRaw as Record<string, unknown>;
+  const terminalStatus = observationValue.terminalStatus;
+  if (
+    terminalStatus !== "installed-and-covered" &&
+    terminalStatus !== "absent-and-irrevocably-fenced"
+  ) {
+    throw new IssuanceLedgerError("tag observation terminal status is invalid");
+  }
+  const tagObservation: TagResolutionObservation = {
+    terminalStatus,
+    ...(isNonEmptyString(observationValue.obligationDigest)
+      ? { obligationDigest: observationValue.obligationDigest }
+      : {}),
+    ...(isNonNegativeInteger(observationValue.tombstoneEpoch)
+      ? { tombstoneEpoch: observationValue.tombstoneEpoch }
+      : {}),
+  };
+  terminalStatusFromTagObservation(tagObservation);
+  if (
+    !isNonEmptyString(value.serviceId) ||
+    !isNonEmptyString(value.allocatorLineageId) ||
+    !isNonEmptyString(value.attemptId) ||
+    !isNonNegativeInteger(value.candidateIndex) ||
+    !isNonEmptyString(value.suid) ||
+    !isNonEmptyString(value.tag) ||
+    !isNonEmptyString(value.identityDigest) ||
+    !isNonNegativeInteger(value.pinnedWriterEpoch)
+  ) {
+    throw new IssuanceLedgerError("resolution evidence fields are incomplete");
+  }
+  return {
+    serviceId: value.serviceId,
+    allocatorLineageId: value.allocatorLineageId,
+    attemptId: value.attemptId,
+    candidateIndex: value.candidateIndex,
+    suid: value.suid,
+    tag: value.tag,
+    identityDigest: value.identityDigest,
+    pinnedWriterEpoch: value.pinnedWriterEpoch,
+    tagObservation,
+  };
+}
+
 export async function applyTargetResolution(
   txn: DurableObjectTransaction,
   evidence: TargetResolutionEvidence,
 ): Promise<{ candidateResolved: boolean; duplicate: boolean }> {
+  const terminalStatus = terminalStatusFromTagObservation(evidence.tagObservation);
   const envelope = await txn.get<IssuanceEnvelope>(
     envelopeKey(evidence.attemptId, evidence.candidateIndex),
   );
@@ -406,7 +506,7 @@ export async function applyTargetResolution(
   }
   await txn.put(targetKey(evidence.attemptId, evidence.candidateIndex, evidence.tag), {
     ...target,
-    status: evidence.terminalStatus,
+    status: terminalStatus,
   });
   const resolved = await allTargetsTerminal(txn, evidence.attemptId, evidence.candidateIndex, envelope);
   if (!resolved) return { candidateResolved: false, duplicate: false };
@@ -475,9 +575,125 @@ export async function registrationProbe(
   };
 }
 
+type StorageListReader = Pick<DurableObjectStorage, "list">;
+
+async function listAllAttemptKeys(reader: StorageListReader): Promise<string[]> {
+  const keys: string[] = [];
+  let start: string | undefined;
+  const scanLimit = 16;
+  while (true) {
+    const batch = await reader.list({
+      prefix: ATTEMPT_KEY_PREFIX,
+      limit: scanLimit,
+      ...(start !== undefined ? { start } : {}),
+    });
+    const rawKeys = [...batch.keys()];
+    const cursor = start;
+    const batchKeys = cursor === undefined
+      ? rawKeys
+      : rawKeys.filter((key) => key > cursor);
+    if (batchKeys.length === 0) break;
+    keys.push(...batchKeys);
+    if (batchKeys.length < scanLimit) break;
+    start = batchKeys[batchKeys.length - 1];
+  }
+  return keys.sort((left, right) => left.localeCompare(right));
+}
+
+function emptyLegacyInventorySummary(): LegacyInventorySummary {
+  return {
+    vectorOnly: 0,
+    resolvedRegistration: 0,
+    unresolvedRegistration: 0,
+    unclassifiableBlocking: 0,
+  };
+}
+
+function legacyMigrationBlocks(migration: IssuanceMigrationState): boolean {
+  const summary = migration.legacyInventorySummary;
+  if (summary === undefined) return false;
+  return summary.unclassifiableBlocking > 0 || summary.unresolvedRegistration > 0;
+}
+
+async function classifyLegacyAttempt(
+  txn: DurableObjectTransaction,
+  attemptKey: string,
+): Promise<{ classification: LegacyAttemptClassification; reason: string }> {
+  const attemptId = attemptKey.slice(ATTEMPT_KEY_PREFIX.length);
+  if (!isNonEmptyString(attemptId)) {
+    return {
+      classification: "legacy-unclassifiable-blocking",
+      reason: "attempt key is malformed",
+    };
+  }
+  const envelopes = await txn.list<IssuanceEnvelope>({ prefix: `${ENVELOPE_PREFIX}${attemptId}:` });
+  if ([...envelopes.keys()].length === 0) {
+    return {
+      classification: "legacy-vector-only",
+      reason: "pre-cut vector without issuance registration",
+    };
+  }
+  let sawPending = false;
+  let sawTerminal = false;
+  for (const [, envelope] of envelopes) {
+    if (envelope === undefined) {
+      return {
+        classification: "legacy-unclassifiable-blocking",
+        reason: "legacy envelope record is missing",
+      };
+    }
+    for (const tag of envelope.canonicalTargetTags) {
+      const target = await txn.get<TargetClosureRecord>(
+        targetKey(envelope.attemptId, envelope.candidateIndex, tag),
+      );
+      if (target === undefined) {
+        return {
+          classification: "legacy-unclassifiable-blocking",
+          reason: "legacy target closure record is missing",
+        };
+      }
+      if (target.status === "pending") sawPending = true;
+      else sawTerminal = true;
+    }
+  }
+  if (sawPending) {
+    return {
+      classification: "legacy-unresolved-registration",
+      reason: "legacy issuance registration remains unresolved",
+    };
+  }
+  if (sawTerminal) {
+    return {
+      classification: "legacy-resolved-registration",
+      reason: "legacy issuance registration is terminal",
+    };
+  }
+  return {
+    classification: "legacy-unclassifiable-blocking",
+    reason: "legacy attempt has no classifiable target facts",
+  };
+}
+
+function incrementLegacySummary(
+  summary: LegacyInventorySummary,
+  classification: LegacyAttemptClassification,
+): LegacyInventorySummary {
+  switch (classification) {
+    case "legacy-vector-only":
+      return { ...summary, vectorOnly: summary.vectorOnly + 1 };
+    case "legacy-resolved-registration":
+      return { ...summary, resolvedRegistration: summary.resolvedRegistration + 1 };
+    case "legacy-unresolved-registration":
+      return { ...summary, unresolvedRegistration: summary.unresolvedRegistration + 1 };
+    case "legacy-unclassifiable-blocking":
+      return { ...summary, unclassifiableBlocking: summary.unclassifiableBlocking + 1 };
+  }
+}
+
 export async function pageLegacyInventoryInTransaction(
   txn: DurableObjectTransaction,
   input: { pageSize: number; faultInjection?: "after-cursor-persist" },
+  reader: StorageListReader = txn,
 ): Promise<{
   pageCount: number;
   nextCursor: string | null;
@@ -491,27 +707,38 @@ export async function pageLegacyInventoryInTransaction(
   if (!Number.isSafeInteger(input.pageSize) || input.pageSize < 1) {
     throw new IssuanceLedgerError("inventory page size must be a positive integer");
   }
-  const listed = await txn.list({ prefix: ATTEMPT_KEY_PREFIX, limit: input.pageSize + 64 });
-  let pageCount = 0;
-  let lastProcessed: string | null = migration.legacyInventoryCursor;
-  for (const [key] of listed) {
-    if (migration.legacyInventoryCursor !== null && key <= migration.legacyInventoryCursor) continue;
-    if (pageCount >= input.pageSize) break;
-    pageCount += 1;
-    lastProcessed = key;
-    await txn.put(`${LEGACY_INVENTORIED_PREFIX}${key}`, { inventoriedAt: Date.now() });
+  const allAttemptKeys = await listAllAttemptKeys(reader);
+  const pendingKeys: string[] = [];
+  for (const key of allAttemptKeys) {
+    if (await txn.get(`${LEGACY_INVENTORIED_PREFIX}${key}`) === undefined) {
+      pendingKeys.push(key);
+    }
   }
-  const inventoryComplete = pageCount < input.pageSize;
+  const keysToProcess = pendingKeys.slice(0, input.pageSize);
+  let lastProcessed: string | null = migration.legacyInventoryCursor;
+  let summary = migration.legacyInventorySummary ?? emptyLegacyInventorySummary();
+  for (const key of keysToProcess) {
+    lastProcessed = key;
+    const classified = await classifyLegacyAttempt(txn, key);
+    summary = incrementLegacySummary(summary, classified.classification);
+    await txn.put(`${LEGACY_INVENTORIED_PREFIX}${key}`, {
+      inventoriedAt: Date.now(),
+      classification: classified.classification,
+      reason: classified.reason,
+    } satisfies LegacyInventoryRecord);
+  }
+  const inventoryComplete = pendingKeys.length <= input.pageSize;
   const updated: IssuanceMigrationState = {
     ...migration,
     legacyInventoryCursor: lastProcessed,
     inventoryComplete,
+    legacyInventorySummary: summary,
   };
   await txn.put(ISSUANCE_MIGRATION_KEY, updated);
   if (input.faultInjection === "after-cursor-persist") {
     throw new IssuanceLedgerError("simulated inventory page crash");
   }
-  return { pageCount, nextCursor: lastProcessed, inventoryComplete };
+  return { pageCount: keysToProcess.length, nextCursor: lastProcessed, inventoryComplete };
 }
 
 export async function completeMigrationProofInTransaction(
@@ -521,6 +748,9 @@ export async function completeMigrationProofInTransaction(
   const migration = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
   if (migration === undefined) throw new IssuanceLedgerError("migration cut is required");
   if (!migration.inventoryComplete) throw new IssuanceLedgerError("legacy inventory is incomplete");
+  if (legacyMigrationBlocks(migration)) {
+    throw new IssuanceLedgerError("legacy inventory contains blocking classifications");
+  }
   if (!isNonEmptyString(input.migrationProofId)) {
     throw new IssuanceLedgerError("migration proof id is required");
   }

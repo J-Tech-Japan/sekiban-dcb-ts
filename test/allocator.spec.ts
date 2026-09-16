@@ -7,6 +7,14 @@ import type {
   AllocatorState,
   ClosedPrefixCertificate,
 } from "../packages/dcb-runtime/src/allocator/types";
+import {
+  applyTargetResolution,
+  issuedIndexKey,
+  predecessorIssuedSuid,
+  unresolvedIndexKey,
+} from "../packages/dcb-runtime/src/allocator/IssuanceLedger";
+import { g32Suid } from "./helpers/g32-fixtures";
+import { reconcileIssuanceBatch } from "../packages/dcb-runtime/src/allocator/IssuanceReconciler";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 
 async function allocatorRequest(path: string, body?: unknown): Promise<Response> {
@@ -254,6 +262,230 @@ describe("AllocatorDurableObject", () => {
     expect(certificate.closedPrefixSuid).not.toBe(issuedSuid);
   });
 
+  it("G77 positive predecessor oracle with multi-candidate hole", async () => {
+    const serviceId = `g77-prefix-positive-${crypto.randomUUID()}`;
+    const tag = (suffix: string) => `room:g77:prefix-positive-${suffix}`;
+    const attemptOne = newAttempt();
+    const attemptTwo = newAttempt();
+    const attemptThree = newAttempt();
+    const vectorOne = await responseJson<AllocationVector>(await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId: attemptOne,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptOne}-event`,
+        targetTags: [tag("one")],
+        pinnedWriterEpoch: 0,
+      }],
+    }));
+    expect(vectorOne.candidates[0]!.suid).toBeTruthy();
+    const vectorTwo = await responseJson<AllocationVector>(await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId: attemptTwo,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptTwo}-event`,
+        targetTags: [tag("two")],
+        pinnedWriterEpoch: 0,
+      }],
+    }));
+    const vectorThree = await responseJson<AllocationVector>(await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId: attemptThree,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptThree}-event`,
+        targetTags: [tag("three")],
+        pinnedWriterEpoch: 0,
+      }],
+    }));
+    const suidOne = vectorOne.candidates[0]!.suid;
+    const suidTwo = vectorTwo.candidates[0]!.suid;
+    const suidThree = vectorThree.candidates[0]!.suid;
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    for (const [attemptId, tagName, candidateIndex] of [
+      [attemptOne, tag("one"), 0],
+      [attemptThree, tag("three"), 0],
+    ] as const) {
+      const envelope = await runInDurableObject(allocatorDo, async (_instance, state) =>
+        state.storage.get<{
+          serviceId: string;
+          allocatorLineageId: string;
+          suid: string;
+          identityDigest: string;
+          pinnedWriterEpoch: number;
+        }>(`issuance:envelope:${attemptId}:${candidateIndex}`));
+      expect(envelope).toBeTruthy();
+      const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tagName }));
+      await tagStub.fetch(new Request(`https://tag.test/acquire?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tagName)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ attemptId, epoch: 0, eventTags: [tagName], consistencyTags: [] }),
+      }));
+      await tagStub.fetch(new Request(`https://tag.test/cancel?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tagName)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ attemptId, epoch: 0, forceTombstone: true }),
+      }));
+      const inspect = await tagStub.fetch(new Request(`https://tag.test/__internal/g77/inspect-target?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tagName)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          eventId: `${attemptId}-event`,
+          suid: envelope!.suid,
+          attemptId,
+          pinnedWriterEpoch: 0,
+        }),
+      }));
+      expect(inspect.status).toBe(200);
+      const observation = await responseJson<{
+        terminalStatus: "installed-and-covered" | "absent-and-irrevocably-fenced";
+        tombstoneEpoch?: number;
+        obligationDigest?: string;
+      }>(inspect);
+      const resolve = await namedAllocatorRequest(serviceId, "/__internal/g77/resolve-target", {
+        serviceId: envelope!.serviceId,
+        allocatorLineageId: envelope!.allocatorLineageId,
+        attemptId,
+        candidateIndex,
+        suid: envelope!.suid,
+        tag: tagName,
+        identityDigest: envelope!.identityDigest,
+        pinnedWriterEpoch: envelope!.pinnedWriterEpoch,
+        tagObservation: observation.terminalStatus === "installed-and-covered"
+          ? {
+              terminalStatus: "installed-and-covered",
+              obligationDigest: observation.obligationDigest!,
+            }
+          : {
+              terminalStatus: "absent-and-irrevocably-fenced",
+              tombstoneEpoch: observation.tombstoneEpoch!,
+            },
+      });
+      expect(resolve.status).toBe(200);
+    }
+    const state = await responseJson<AllocatorState>(await namedAllocatorRequest(serviceId, "/state"));
+    const certificate = await responseJson<ClosedPrefixCertificate>(
+      await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificate.unresolvedCount).toBe(1);
+    expect(certificate.closedPrefixSuid).toBe(suidOne);
+    expect(certificate.closedPrefixSuid).not.toBe(suidTwo);
+    expect(certificate.closedPrefixSuid).not.toBe(suidThree);
+    expect(certificate.closedPrefixSuid).not.toBe(state.allocatedWatermark);
+  });
+
+  it("G77 predecessor lookup stays correct beyond 256 issuances", async () => {
+    const serviceId = `g77-prefix-window-${crypto.randomUUID()}`;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    await runInDurableObject(allocatorDo, async (_instance, state) => {
+      const issuedSuids: string[] = [];
+      for (let index = 0; index < 300; index += 1) {
+        const attemptId = `seed-${index}`;
+        const suid = g32Suid(`g77-predecessor-seed-${String(index).padStart(4, "0")}`);
+        issuedSuids.push(suid);
+        await state.storage.put(issuedIndexKey(suid, attemptId, 0), {
+          attemptId,
+          candidateIndex: 0,
+          suid,
+        });
+      }
+      const holeSuid = g32Suid("g77-predecessor-hole");
+      const holeAttempt = "seed-hole";
+      await state.storage.put(unresolvedIndexKey(holeSuid, holeAttempt, 0), {
+        attemptId: holeAttempt,
+        candidateIndex: 0,
+        suid: holeSuid,
+      });
+      let listReads = 0;
+      const reader = {
+        list: async (options: Parameters<DurableObjectStorage["list"]>[0]) => {
+          listReads += 1;
+          return state.storage.list(options);
+        },
+      };
+      const predecessor = await predecessorIssuedSuid(reader as DurableObjectStorage, holeSuid);
+      expect(predecessor).toBe(issuedSuids[issuedSuids.length - 1]!);
+      expect(listReads).toBe(1);
+    });
+  });
+
+  it("G77 inspection failure does not force-tombstone pending targets", async () => {
+    const serviceId = `g77-inspect-retry-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:inspect-retry";
+    await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    let inspectStatus = 503;
+    const forwardingTag = {
+      idFromName(name: string): DurableObjectId {
+        return tagNamespace.idFromName(name);
+      },
+      get(id: DurableObjectId): DurableObjectStub {
+        const realStub = tagNamespace.get(id);
+        return {
+          async fetch(request: Request): Promise<Response> {
+            const url = new URL(request.url);
+            if (url.pathname === "/__internal/g77/inspect-target") {
+              return new Response(JSON.stringify({ error: "unavailable", code: "tag_sql_unavailable" }), {
+                status: inspectStatus,
+              });
+            }
+            if (url.pathname === "/cancel") {
+              return new Response(JSON.stringify({ error: "blocked for test" }), { status: 409 });
+            }
+            return realStub.fetch(request);
+          },
+        } as unknown as DurableObjectStub;
+      },
+    } as unknown as DurableObjectNamespace;
+    await runInDurableObject(allocatorDo, async (_instance, state) => {
+      await reconcileIssuanceBatch(state.storage, { TAG: forwardingTag }, serviceId, async (evidence) => {
+        await state.storage.transaction(async (txn) => {
+          await applyTargetResolution(txn, evidence);
+        });
+        return true;
+      });
+      let target = await state.storage.get<{ status: string }>(`issuance:target:${attemptId}:0:${tag}`);
+      expect(target?.status).toBe("pending");
+      inspectStatus = 409;
+      await reconcileIssuanceBatch(state.storage, { TAG: forwardingTag }, serviceId, async (evidence) => {
+        await state.storage.transaction(async (txn) => {
+          await applyTargetResolution(txn, evidence);
+        });
+        return true;
+      });
+      target = await state.storage.get<{ status: string }>(`issuance:target:${attemptId}:0:${tag}`);
+      expect(target?.status).toBe("pending");
+    });
+  });
+
   it("G77 mutant oracle: multi-tag candidate stays unresolved until every target terminal", async () => {
     const serviceId = `g77-multi-oracle-${crypto.randomUUID()}`;
     const tagA = "room:g77:multi-a";
@@ -270,8 +502,13 @@ describe("AllocatorDurableObject", () => {
       }],
     });
     expect(allocate.status).toBe(201);
-    const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace; TAG: DurableObjectNamespace }).ALLOCATOR;
-    const allocatorDo = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "allocator", identity: "allocator" }));
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
     const envelope = await runInDurableObject(allocatorDo, async (_instance, state) =>
       state.storage.get<{
         serviceId: string;
@@ -281,6 +518,33 @@ describe("AllocatorDurableObject", () => {
         pinnedWriterEpoch: number;
       }>(`issuance:envelope:${attemptId}:0`));
     expect(envelope).toBeTruthy();
+    const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tagA }));
+    await tagStub.fetch(new Request(`https://tag.test/acquire?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tagA)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attemptId, epoch: 0, eventTags: [tagA], consistencyTags: [] }),
+    }));
+    await tagStub.fetch(new Request(`https://tag.test/cancel?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tagA)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attemptId, epoch: 0, forceTombstone: true }),
+    }));
+    const inspect = await tagStub.fetch(new Request(`https://tag.test/__internal/g77/inspect-target?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tagA)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        eventId: `${attemptId}-event`,
+        suid: envelope!.suid,
+        attemptId,
+        pinnedWriterEpoch: 0,
+      }),
+    }));
+    expect(inspect.status).toBe(200);
+    const observation = await responseJson<{
+      terminalStatus: "installed-and-covered" | "absent-and-irrevocably-fenced";
+      tombstoneEpoch?: number;
+      obligationDigest?: string;
+    }>(inspect);
     const resolve = await namedAllocatorRequest(serviceId, "/__internal/g77/resolve-target", {
       serviceId: envelope!.serviceId,
       allocatorLineageId: envelope!.allocatorLineageId,
@@ -290,10 +554,18 @@ describe("AllocatorDurableObject", () => {
       tag: tagA,
       identityDigest: envelope!.identityDigest,
       pinnedWriterEpoch: envelope!.pinnedWriterEpoch,
-      terminalStatus: "absent-and-irrevocably-fenced",
+      tagObservation: observation.terminalStatus === "installed-and-covered"
+        ? {
+            terminalStatus: "installed-and-covered",
+            obligationDigest: observation.obligationDigest!,
+          }
+        : {
+            terminalStatus: "absent-and-irrevocably-fenced",
+            tombstoneEpoch: observation.tombstoneEpoch!,
+          },
     });
     expect(resolve.status).toBe(200);
-    expect(await responseJson<{ candidateResolved: boolean }>(resolve)).toEqual({
+    expect(await responseJson<{ candidateResolved: boolean; duplicate: boolean }>(resolve)).toEqual({
       candidateResolved: false,
       duplicate: false,
     });
@@ -301,6 +573,49 @@ describe("AllocatorDurableObject", () => {
       await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
     );
     expect(certificate.unresolvedCount).toBe(1);
+  });
+
+  it("G77 rejects resolution with mismatched pinned writer epoch", async () => {
+    const serviceId = `g77-epoch-oracle-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:epoch-oracle";
+    await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const envelope = await runInDurableObject(
+      namespace.get(scopeIdFor(namespace, { serviceId, doClass: "allocator", identity: "allocator" })),
+      async (_instance, state) => state.storage.get<{
+        serviceId: string;
+        allocatorLineageId: string;
+        suid: string;
+        identityDigest: string;
+        pinnedWriterEpoch: number;
+      }>(`issuance:envelope:${attemptId}:0`),
+    );
+    expect(envelope).toBeTruthy();
+    const response = await namedAllocatorRequest(serviceId, "/__internal/g77/resolve-target", {
+      serviceId: envelope!.serviceId,
+      allocatorLineageId: envelope!.allocatorLineageId,
+      attemptId,
+      candidateIndex: 0,
+      suid: envelope!.suid,
+      tag,
+      identityDigest: envelope!.identityDigest,
+      pinnedWriterEpoch: envelope!.pinnedWriterEpoch + 1,
+      tagObservation: {
+        terminalStatus: "absent-and-irrevocably-fenced",
+        tombstoneEpoch: 0,
+      },
+    });
+    expect(response.status).toBe(409);
   });
 
   it("G77 fenced absence resolves a pending target without accepting expiry alone", async () => {
@@ -320,6 +635,11 @@ describe("AllocatorDurableObject", () => {
     expect(allocate.status).toBe(201);
     const namespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
     const tagStub = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "tag", identity: tag }));
+    await tagStub.fetch(new Request(`https://tag.test/acquire?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attemptId, epoch: 0, eventTags: [tag], consistencyTags: [] }),
+    }));
     await tagStub.fetch(new Request(`https://tag.test/cancel?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
       method: "POST",
       headers: { "content-type": "application/json" },

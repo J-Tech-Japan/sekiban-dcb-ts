@@ -15,12 +15,12 @@ import {
   completeMigrationProofInTransaction,
   pageLegacyInventoryInTransaction,
   parseCandidateMembership,
+  parseTargetResolutionEvidence,
   registerIssuanceInTransaction,
   registrationProbe,
   shouldArmIssuanceRecovery,
   type IssuanceMigrationState,
   type IssuanceRecoverySchedule,
-  type TargetResolutionEvidence,
 } from "./IssuanceLedger";
 import { reconcileIssuanceBatch } from "./IssuanceReconciler";
 import {
@@ -373,8 +373,15 @@ export class AllocatorDurableObject implements DurableObject {
   private async resolveTarget(request: Request): Promise<Response> {
     let body: unknown;
     try { body = await request.json(); } catch { return error(400, "invalid_resolution", "JSON required"); }
-    if (!isObject(body)) return error(400, "invalid_resolution", "Invalid resolution body");
-    const evidence = body as unknown as TargetResolutionEvidence;
+    let evidence;
+    try {
+      evidence = parseTargetResolutionEvidence(body);
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(409, "resolution_rejected", failure.message);
+      }
+      return error(400, "invalid_resolution", "Invalid resolution body");
+    }
     try {
       const result = await this.ctx.storage.transaction(async (txn) =>
         applyTargetResolution(txn, evidence));
@@ -396,7 +403,7 @@ export class AllocatorDurableObject implements DurableObject {
       : undefined;
     try {
       const result = await this.ctx.storage.transaction(async (txn) =>
-        pageLegacyInventoryInTransaction(txn, { pageSize, faultInjection }));
+        pageLegacyInventoryInTransaction(txn, { pageSize, faultInjection }, this.ctx.storage));
       return json(result);
     } catch (failure) {
       if (failure instanceof IssuanceLedgerError) {

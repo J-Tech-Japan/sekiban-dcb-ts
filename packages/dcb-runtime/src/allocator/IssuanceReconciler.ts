@@ -2,6 +2,7 @@ import { scopeIdFor } from "../scope/ScopeName";
 import type {
   IssuanceEnvelope,
   IssuanceRecoverySchedule,
+  TagResolutionObservation,
   TargetClosureRecord,
   TargetResolutionEvidence,
 } from "./IssuanceLedger";
@@ -17,8 +18,15 @@ import {
 export interface TagInspectResult {
   readonly terminalStatus: "installed-and-covered" | "absent-and-irrevocably-fenced";
   readonly eventId?: string;
+  readonly obligationDigest?: string;
   readonly tombstoneEpoch?: number;
 }
+
+export type TagInspectOutcome =
+  | { readonly kind: "terminal"; readonly result: TagInspectResult }
+  | { readonly kind: "absent-unfenced" }
+  | { readonly kind: "not-terminal-yet" }
+  | { readonly kind: "unreachable" };
 
 export interface IssuanceReconcilerEnv {
   readonly TAG: DurableObjectNamespace;
@@ -35,7 +43,7 @@ export async function inspectTagTarget(
   serviceId: string,
   tag: string,
   envelope: IssuanceEnvelope,
-): Promise<TagInspectResult | undefined> {
+): Promise<TagInspectOutcome> {
   const url = new URL("https://tag.internal/__internal/g77/inspect-target");
   url.searchParams.set("__serviceId", serviceId);
   url.searchParams.set("__tag", tag);
@@ -54,15 +62,20 @@ export async function inspectTagTarget(
       attemptId: envelope.attemptId,
     }),
   }));
-  if (response.status !== 200) return undefined;
-  const body = await response.json<TagInspectResult>();
+  if (response.status === 503) return { kind: "unreachable" };
+  if (response.status === 409) return { kind: "not-terminal-yet" };
+  if (response.status !== 200) return { kind: "unreachable" };
+  const body = await response.json<TagInspectResult & { inspectionStatus?: string }>();
+  if (body.inspectionStatus === "absent-but-unfenced") {
+    return { kind: "absent-unfenced" };
+  }
   if (
     body.terminalStatus !== "installed-and-covered" &&
     body.terminalStatus !== "absent-and-irrevocably-fenced"
   ) {
-    return undefined;
+    return { kind: "not-terminal-yet" };
   }
-  return body;
+  return { kind: "terminal", result: body };
 }
 
 export async function fenceAbsentTarget(
@@ -88,6 +101,19 @@ export async function fenceAbsentTarget(
     }),
   }));
   return response.status >= 200 && response.status < 300;
+}
+
+function tagObservationFromInspect(result: TagInspectResult): TagResolutionObservation {
+  if (result.terminalStatus === "installed-and-covered") {
+    return {
+      terminalStatus: "installed-and-covered",
+      ...(result.obligationDigest !== undefined ? { obligationDigest: result.obligationDigest } : {}),
+    };
+  }
+  return {
+    terminalStatus: "absent-and-irrevocably-fenced",
+    ...(result.tombstoneEpoch !== undefined ? { tombstoneEpoch: result.tombstoneEpoch } : {}),
+  };
 }
 
 export async function submitTargetResolution(
@@ -131,13 +157,16 @@ export async function reconcileIssuanceBatch(
         targetKey(parsed.attemptId, parsed.candidateIndex, tag),
       );
       if (target === undefined || target.status !== "pending") continue;
-      let inspect = await inspectTagTarget(env, serviceId, tag, envelope);
-      if (inspect === undefined) {
+      let outcome = await inspectTagTarget(env, serviceId, tag, envelope);
+      if (outcome.kind === "unreachable" || outcome.kind === "not-terminal-yet") {
+        continue;
+      }
+      if (outcome.kind === "absent-unfenced") {
         const fenced = await fenceAbsentTarget(env, serviceId, tag, envelope);
         if (!fenced) continue;
-        inspect = await inspectTagTarget(env, serviceId, tag, envelope);
+        outcome = await inspectTagTarget(env, serviceId, tag, envelope);
       }
-      if (inspect === undefined) continue;
+      if (outcome.kind !== "terminal") continue;
       const evidence: TargetResolutionEvidence = {
         serviceId: envelope.serviceId,
         allocatorLineageId: envelope.allocatorLineageId,
@@ -147,7 +176,7 @@ export async function reconcileIssuanceBatch(
         tag,
         identityDigest: envelope.identityDigest,
         pinnedWriterEpoch: envelope.pinnedWriterEpoch,
-        terminalStatus: inspect.terminalStatus,
+        tagObservation: tagObservationFromInspect(outcome.result),
       };
       const submitted = resolveTarget !== undefined
         ? await resolveTarget(evidence)

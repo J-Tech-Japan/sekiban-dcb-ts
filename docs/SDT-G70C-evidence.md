@@ -18,7 +18,10 @@ npm run build --workspace @sekiban/dcb-core --workspace @sekiban/dcb-domain
 npx vitest run --config vitest.config.ts test/g77-closed-prefix-producer.spec.ts
 ```
 
-Result: **16 passed** on pinned main before producer routes exist.
+Result: **16 passed** on pinned main before producer routes exist (captured at SHA
+`2fb1c1f7c603d56fb2a2b33db715a499ddfc8a99`; artefact-ordered rather than commit-ordered — the
+matrix spec and producer slice landed in one commit on this branch, so pre-producer receipts are
+preserved as frozen artefacts with the command above, not as an earlier commit replay).
 
 ## Post-implementation command
 
@@ -80,15 +83,18 @@ node scripts/g77-closed-prefix-mutation-runner.mjs
 | single-tag-resolved-early | **red** (exit 1) |
 | expired-writer-accepted | **red** (exit 1) |
 | wrong-prefix-watermark | **red** (exit 1) |
+| highest-completed-prefix | **red** (exit 1) |
 
 ## Predeclared AC6 measurement bars (fixed before results)
 
 | Metric | Bar |
 | --- | --- |
-| Safe-pass wall time (explicit opt-in proxy) | ≤ **+5%** vs same-head matrix vitest wall time |
-| Public commit p95 proxy | ≤ **+10%** vs repeated A01 pause samples on same head |
+| Safe-pass wall time (explicit opt-in proxy) | ≤ **+5%** vs pinned-main matrix vitest wall time |
+| Public commit p95 proxy | ≤ **+10%** vs pinned-main repeated A01 pause p95 |
 
-Run `npm run measure:g77` for JSON report. Latest local run: both bars **within** predeclared limits on the proxy workload (no timeout inflation).
+Run `npm run measure:g77` for JSON report. The script checks out pinned main in a separate worktree,
+runs warm/restarted matrix workloads and commit p95 samples in independent processes, and exits non-zero
+when a predeclared bar is exceeded.
 
 ## AC8 confirmation
 

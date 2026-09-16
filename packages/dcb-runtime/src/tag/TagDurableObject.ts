@@ -1313,8 +1313,14 @@ export class TagDurableObject implements DurableObject {
         WHERE service_id = ? AND event_id = ? ORDER BY obligation_sequence ASC LIMIT 1
       `, serviceId, body.eventId).toArray()[0];
       if (obligation !== undefined) {
-        return json({ terminalStatus: "installed-and-covered", eventId: body.eventId });
+        const obligationDigest = sqlString(obligation.event_digest, "tag_outbox_obligation.event_digest");
+        return json({
+          terminalStatus: "installed-and-covered",
+          eventId: body.eventId,
+          obligationDigest,
+        });
       }
+      return error(409, "target_not_terminal", "Target append is in flight under pinned writer authority");
     }
     const attemptId = isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
     if (attemptId !== undefined) {
@@ -1322,6 +1328,15 @@ export class TagDurableObject implements DurableObject {
       const tombstoneEpoch = tombstone === undefined ? undefined : sqlNumber(tombstone.epoch, "tag_tombstone.epoch");
       if (tombstoneEpoch !== undefined && pinnedWriterEpoch <= tombstoneEpoch) {
         return json({ terminalStatus: "absent-and-irrevocably-fenced", tombstoneEpoch });
+      }
+      const reservation = sql.exec<SqlRow>("SELECT attempt_id, expires_at FROM tag_reservation WHERE singleton = 1").toArray()[0];
+      if (reservation !== undefined &&
+        sqlString(reservation.attempt_id, "tag_reservation.attempt_id") === attemptId) {
+        return error(409, "target_not_terminal", "Active reservation holds writer authority");
+      }
+      const epoch = sql.exec<SqlRow>("SELECT attempt_id FROM tag_epoch WHERE attempt_id = ?", attemptId).toArray()[0];
+      if (epoch !== undefined) {
+        return json({ inspectionStatus: "absent-but-unfenced" });
       }
     }
     return error(409, "target_not_terminal", "Target is not terminal under pinned writer authority");
