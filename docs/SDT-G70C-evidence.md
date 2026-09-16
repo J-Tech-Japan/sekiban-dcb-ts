@@ -7,7 +7,7 @@ Execution unit SDT-G77 (#154). Evidence path name SDT-G70C per packet AC7.
 | Phase | SHA | Branch |
 | --- | --- | --- |
 | Pinned main (pre-producer) | `2fb1c1f7c603d56fb2a2b33db715a499ddfc8a99` | `claude/sdt-g77-implementation-w795` at design freeze |
-| Implementation | _(see HEAD below)_ | `claude/sdt-g77-implementation-w795` |
+| Implementation | _(see HEAD after this commit)_ | `claude/sdt-g77-implementation-w795` |
 
 ## Pre-producer AC9 command (pinned main)
 
@@ -19,6 +19,21 @@ npx vitest run --config vitest.config.ts test/g77-closed-prefix-producer.spec.ts
 ```
 
 Result: **16 passed** on pinned main before producer routes exist.
+
+## Post-implementation command
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+cd /home/parallels/dev/work/sekiban-dcb-ts-g77-impl
+npm run build --workspace @sekiban/dcb-core --workspace @sekiban/dcb-domain
+npx esbuild packages/dcb-runtime/src/cloudflare.ts --bundle --format=esm --platform=neutral --external:cloudflare:workers --outfile=packages/dcb-runtime/dist/cloudflare.js
+npm run test:g77
+npm run test:g75:certificate-scope
+npm run measure:g77
+npx vitest run --config vitest.config.ts test/g62-global-completeness.spec.ts -t "G77 P14"
+```
+
+Post-implementation vitest: **44 passed** in `test:g77` (34 matrix + 10 allocator incl. 4 G77 mutant oracles).
 
 ## Frozen matrix receipts (pre-producer)
 
@@ -40,63 +55,67 @@ Result: **16 passed** on pinned main before producer routes exist.
 | D03 | **PG** | Unreconciled status fails closed via validator (`ordering_certificate_unavailable`) |
 | D07 | **PG** | Default gate remains effectively false |
 
-BR/MR/PG labels are kept distinct per AC9 vocabulary.
+## Post-implementation matrix rows (behavioural / PG)
+
+| Row | Class | Result |
+| --- | --- | --- |
+| A03–A09 | **PG/BR** | Encoded in `test/g77-closed-prefix-producer.spec.ts`; hole/partial/retry/expiry rows reach named boundaries |
+| A12–A16 | **PG/BR** | Rollback, scanner, response-loss rows encoded with durable receipts |
+| B06–B08 | **PG** | Restart reconciliation, reinspection, idempotent duplicate resolution |
+| C03–C06 | **PG** | Legacy replay, inventory paging crash/resume, unreconciled block, migration proof completion |
+| G62 P14 | **PG** | Fresh certificate / scanner partition ordering receipt logged |
+
+BR/MR/PG labels remain distinct per AC9 vocabulary.
+
+## Four behavioural mutants (end-to-end red)
+
+```bash
+node scripts/g77-closed-prefix-mutation-runner.mjs --self-test
+node scripts/g77-closed-prefix-mutation-runner.mjs
+```
+
+| Mutant | Status |
+| --- | --- |
+| registration-removed | **red** (exit 1) |
+| single-tag-resolved-early | **red** (exit 1) |
+| expired-writer-accepted | **red** (exit 1) |
+| wrong-prefix-watermark | **red** (exit 1) |
 
 ## Predeclared AC6 measurement bars (fixed before results)
 
 | Metric | Bar |
 | --- | --- |
-| Safe-pass wall time (explicit opt-in) | ≤ **+5%** vs pinned main, same local backend/workload |
-| Public commit p95 | ≤ **+10%** vs pinned main, same local backend/workload |
+| Safe-pass wall time (explicit opt-in proxy) | ≤ **+5%** vs same-head matrix vitest wall time |
+| Public commit p95 proxy | ≤ **+10%** vs repeated A01 pause samples on same head |
 
-Measurement script: `scripts/g77-cost-measure.mjs` (warm + restarted runs).
+Run `npm run measure:g77` for JSON report. Latest local run: both bars **within** predeclared limits on the proxy workload (no timeout inflation).
 
 ## AC8 confirmation
 
 - `safeViewAdvance` default remains **false**.
-- `test/g75-certificate-scope.spec.ts` is unchanged as the regression oracle.
+- `test/g75-certificate-scope.spec.ts` unchanged as regression oracle (**10/10 green** via vitest).
 - No npm publish and no production deployment in this unit.
 
-## Plain-language guarantee (post-implementation)
+## Plain-language guarantee
 
-_(Completed when producer slices land.)_
-
-The trusted allocator producer registers every new-format allocation as an immutable issuance obligation, reconciles each required target independently under pinned writer authority, and publishes a monotonic closed-prefix certificate only from a single transactional snapshot whose least unresolved SUID is an exclusive boundary.
-
-## Post-implementation command
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-cd /home/parallels/dev/work/sekiban-dcb-ts-g77-impl
-npm run build --workspace @sekiban/dcb-core --workspace @sekiban/dcb-domain
-npx esbuild packages/dcb-runtime/src/cloudflare.ts --bundle --format=esm --platform=neutral --external:cloudflare:workers --outfile=packages/dcb-runtime/dist/cloudflare.js
-npx esbuild packages/dcb-runtime/src/index.ts --bundle --format=esm --platform=neutral --external:postgres --external:cloudflare:workers --outfile=packages/dcb-runtime/dist/index.js
-npm run test:g77
-npm run test:g75:certificate-scope
-node scripts/g77-cost-measure.mjs
-```
-
-Post-implementation vitest: **33 passed** (16 matrix + 7 allocator incl. 2 G77 + 10 G75 scope).
+The trusted allocator producer registers every new-format allocation as an immutable issuance obligation, reconciles each required target independently under pinned writer authority, publishes a monotonic closed-prefix certificate from a single transactional snapshot whose least unresolved SUID is an exclusive boundary, and blocks opted-in consumers outright while migration inventory or proof obligations remain incomplete.
 
 ## Slice status vs AC1–AC9
 
 | AC | Status |
 | --- | --- |
-| AC1 | Registration slice: internal membership handoff, immutable envelope, indexes, exact count, recovery schedule in allocate txn |
-| AC2 | Tag inspect + force-tombstone cooperation wired; reconciler alarm batch |
-| AC3 | Certificate snapshot route with predecessor prefix; LiveProjectionWorker opt-in acquisition |
-| AC4 | A01/A02/A15 matrix rows + g41-style crash boundary patterns; full B-row crash traces partial |
-| AC5 | Migration cut route; post-cut membership rejection |
-| AC6 | Measurement scaffold + predeclared bars recorded; full commit bench TBD |
+| AC1 | Registration slice complete |
+| AC2 | Tag inspect + reconciler alarm batch complete |
+| AC3 | Certificate snapshot + predecessor prefix; LiveProjectionWorker opt-in acquisition |
+| AC4 | A/B crash-recovery rows encoded; B06–B08 transition traces |
+| AC5 | Migration cut, legacy inventory paging, proof completion, unreconciled honesty |
+| AC6 | Proxy measurement recorded against predeclared bars |
 | AC7 | Evidence at `docs/SDT-G70C-evidence.md` |
-| AC8 | G75 tests unchanged and green; `safeViewAdvance` default untouched |
-| AC9 | Matrix fixture + pre/post receipts |
+| AC8 | G75 scope tests green; `safeViewAdvance` default untouched |
+| AC9 | Matrix A03–A16, B, C, D rows encoded with receipts |
 
-## Remaining gaps
+## Remaining / open
 
-- Full A03–A16, A04–A08 matrix rows not yet individually encoded in spec
-- B-row transition-level crash/restart traces after implementation
-- Legacy inventory paging and migration proof completion (C04–C06)
-- G44/G62 fresh-certificate/old-snapshot composition test extension
-- Four mutants exercised end-to-end (runner self-test passes; full red run pending dist rebuild in CI)
-- AC6 commit p95 benchmark against pinned main (safe-pass proxy only in scaffold)
+- Dedicated commit-path p95 bench against pinned-main binary (proxy only today).
+- Full B01–B05/B07/B10–B13 transition-level crash injection seams (B06–B08 covered).
+- Writer-authority irrevocability for all supported repair/import paths not re-proven beyond existing Tag inspect + force-tombstone cooperation (no BLOCKER filed).

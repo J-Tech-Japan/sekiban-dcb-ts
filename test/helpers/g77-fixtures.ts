@@ -1,7 +1,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { expect } from "vitest";
 
-import type { AllocationVector } from "../../packages/dcb-runtime/src/allocator/types";
+import type { AllocationVector, ClosedPrefixCertificate } from "../../packages/dcb-runtime/src/allocator/types";
 import { scopeIdFor } from "../../packages/dcb-runtime/src/scope/ScopeName";
 import { CommitWorker, type CommitWorkerEnv } from "../../packages/dcb-runtime/src/commit/CommitWorker";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./g32-fixtures";
@@ -105,8 +105,13 @@ export function commitRequest(
 export function commitWorker(
   serviceId: string,
   hooks: ConstructorParameters<typeof CommitWorker>[2] = {},
+  workerEnv: CommitWorkerEnv = env as unknown as CommitWorkerEnv,
 ): CommitWorker {
-  return new CommitWorker(env as unknown as CommitWorkerEnv, serviceId, hooks);
+  return new CommitWorker(workerEnv, serviceId, hooks);
+}
+
+export function commitWorkerEnv(overrides: Partial<CommitWorkerEnv> = {}): CommitWorkerEnv {
+  return { ...(env as unknown as CommitWorkerEnv), ...overrides };
 }
 
 export async function seedObservedTagHead(serviceId: string, tag: string, seed: string): Promise<string> {
@@ -154,12 +159,27 @@ export async function expireTagReservation(serviceId: string, tag: string, expir
   expect((await tagPost(serviceId, tag, "/debug/alarm", {})).status).toBe(200);
 }
 
+export async function readCertificate(serviceId: string): Promise<ClosedPrefixCertificate> {
+  const response = await allocatorGet(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`);
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
+export async function triggerReconcile(serviceId: string): Promise<{ processed: number; rearmAt: number }> {
+  const response = await allocatorPost(serviceId, "/__internal/g77/reconcile-now", {});
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
 export async function probeG77Capabilities(serviceId: string): Promise<{
   issuanceLedger: boolean;
   certificateRoute: boolean;
   resolveRoute: boolean;
   reconcilerRoute: boolean;
   migrationCut: boolean;
+  legacyInventoryRoute: boolean;
+  migrationProofRoute: boolean;
+  reconcileNowRoute: boolean;
   tagInspect: boolean;
 }> {
   const response = await allocatorGet(serviceId, "/__internal/g77/capabilities");
@@ -170,6 +190,9 @@ export async function probeG77Capabilities(serviceId: string): Promise<{
       resolveRoute: false,
       reconcilerRoute: false,
       migrationCut: false,
+      legacyInventoryRoute: false,
+      migrationProofRoute: false,
+      reconcileNowRoute: false,
       tagInspect: false,
     };
   }
@@ -184,6 +207,9 @@ export async function probeG77Capabilities(serviceId: string): Promise<{
     resolveRoute: body.resolveRoute === true,
     reconcilerRoute: body.reconcilerRoute === true,
     migrationCut: body.migrationCut === true,
+    legacyInventoryRoute: body.legacyInventoryRoute === true,
+    migrationProofRoute: body.migrationProofRoute === true,
+    reconcileNowRoute: body.reconcileNowRoute === true,
     tagInspect: tagBody.inspectTarget === true,
   };
 }
@@ -225,7 +251,7 @@ export function forwardingTagNamespace(
   appends: AppendCallFact[],
   handlers: {
     readonly acquire?: (tag: string, request: Request) => Promise<Response>;
-    readonly append?: (tag: string, request: Request) => Promise<Response>;
+    readonly append?: (tag: string, request: Request, realStub: DurableObjectStub) => Promise<Response>;
     readonly cancel?: (tag: string, request: Request) => Promise<Response>;
   } = {},
 ): DurableObjectNamespace {
@@ -243,7 +269,7 @@ export function forwardingTagNamespace(
           if (url.pathname === "/append") {
             const body = await request.clone().json<{ attemptId: string; epoch: number }>();
             appends.push({ tag, attemptId: body.attemptId, epoch: body.epoch });
-            if (handlers.append !== undefined) return handlers.append(tag, request);
+            if (handlers.append !== undefined) return handlers.append(tag, request, realStub);
           }
           if (url.pathname === "/acquire" && handlers.acquire !== undefined) {
             return handlers.acquire(tag, request);

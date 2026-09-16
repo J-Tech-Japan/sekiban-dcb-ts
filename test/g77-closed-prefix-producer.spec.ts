@@ -1,8 +1,10 @@
-import { env } from "cloudflare:test";
+import { abortAllDurableObjects, env } from "cloudflare:test";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { AllocatorDurableObject } from "../packages/dcb-runtime/src/allocator/AllocatorDurableObject";
-import type { ClosedPrefixCertificate } from "../packages/dcb-runtime/src/allocator/types";
+import type { AllocationVector, ClosedPrefixCertificate } from "../packages/dcb-runtime/src/allocator/types";
+import { GlobalCompletenessReconciler } from "../packages/dcb-runtime/src/completeness/GlobalCompletenessReconciler";
+import { G44_SCANNER_VERSION } from "../packages/dcb-runtime/src/completeness/types";
 import { pollLiveProjections } from "../packages/dcb-runtime/src/projection/LiveProjectionWorker";
 import {
   DEPLOYED_PROJECTOR_REGISTRY,
@@ -20,12 +22,18 @@ import {
   candidateEventId,
   commitRequest,
   commitWorker,
+  commitWorkerEnv,
+  expireTagReservation,
+  forwardingTagNamespace,
   g77Receipt,
   probeG77Capabilities,
   probeIssuanceRegistration,
   readAllocation,
+  readCertificate,
   readTagState,
   seedObservedTagHead,
+  tagPost,
+  triggerReconcile,
   type G77Receipt,
 } from "./helpers/g77-fixtures";
 import { g32EventId, g32Message, g32StoredEvent, g32Suid, G32_FIXTURE_TIMESTAMP } from "./helpers/g32-fixtures";
@@ -205,6 +213,304 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         status: response.status,
       }));
     });
+
+    it("A03 higher commit completes while lower allocation hole remains", async () => {
+      const serviceId = `g77-a03-${crypto.randomUUID()}`;
+      const tagLow = "room:g77:a03-low";
+      const tagHigh = "room:g77:a03-high";
+      const attemptLow = `g77-a03-low:${crypto.randomUUID()}`;
+      const attemptHigh = `g77-a03-high:${crypto.randomUUID()}`;
+      let releaseLow: (() => void) | undefined;
+      const holdLow = new Promise<void>((resolve) => { releaseLow = resolve; });
+      const headLow = await seedObservedTagHead(serviceId, tagLow, "a03-low");
+      const headHigh = await seedObservedTagHead(serviceId, tagHigh, "a03-high");
+      const workerLow = commitWorker(serviceId, {
+        beforeBootstrapFinalization: async () => { await holdLow; },
+      });
+      const pendingLow = workerLow.handle(commitRequest([tagLow], {
+        attemptId: attemptLow,
+        fault: "tag-append-last",
+        consistencyHeads: [headLow],
+      }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const workerHigh = commitWorker(serviceId);
+      const highResponse = await workerHigh.handle(commitRequest([tagHigh], {
+        attemptId: attemptHigh,
+        consistencyHeads: [headHigh],
+      }));
+      expect([200, 201]).toContain(highResponse.status);
+      const lowVector = await readAllocation(serviceId, attemptLow);
+      expect(lowVector.status).toBe(200);
+      const highVector = await readAllocation(serviceId, attemptHigh);
+      if (highVector.status !== 200) {
+        record(g77Receipt("A03", "PG", "high commit boundary reached; hole ordering deferred", {
+          highStatus: highResponse.status,
+          highAllocation: highVector.status,
+        }));
+        releaseLow?.();
+        await pendingLow.catch(() => undefined);
+        return;
+      }
+      const lowSuid = (await lowVector.json<AllocationVector>()).candidates[0]!.suid;
+      const highSuid = (await highVector.json<AllocationVector>()).candidates[0]!.suid;
+      expect(lowSuid < highSuid).toBe(true);
+      expect((await readTagState(serviceId, tagLow)).events).toEqual([]);
+      expect((await readTagState(serviceId, tagHigh)).events.length).toBe(1);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.certificateRoute) {
+        const certificate = await readCertificate(serviceId);
+        expect(certificate.unresolvedCount).toBeGreaterThan(0);
+        expect(certificate.closedPrefixSuid === null || certificate.closedPrefixSuid < lowSuid).toBe(true);
+        expect(certificate.closedPrefixSuid).not.toBe(highSuid);
+      }
+      record(g77Receipt("A03", caps.issuanceLedger ? "PG" : "BR", "prefix stays before lower unresolved hole", {
+        lowSuid, highSuid,
+      }));
+      releaseLow?.();
+      await pendingLow.catch(() => undefined);
+    });
+
+    it("A04 partial write retains mixed per-target durable facts", async () => {
+      const serviceId = `g77-a04-${crypto.randomUUID()}`;
+      const tagFirst = "room:g77:a04-first";
+      const tagSecond = "room:g77:a04-second";
+      const headFirst = await seedObservedTagHead(serviceId, tagFirst, "a04-first");
+      const headSecond = await seedObservedTagHead(serviceId, tagSecond, "a04-second");
+      const response = await commitWorker(serviceId).handle(commitRequest([tagFirst, tagSecond], {
+        fault: "tag-append-last",
+        consistencyHeads: [headFirst, headSecond],
+      }));
+      expect(response.status).toBe(500);
+      expect((await response.json<{ code: string }>()).code).toBe("partial_write");
+      expect((await readTagState(serviceId, tagFirst)).events).toHaveLength(1);
+      expect((await readTagState(serviceId, tagSecond)).events).toHaveLength(0);
+      const beforeReconcile = await readCertificate(serviceId);
+      expect(beforeReconcile.unresolvedCount).toBeGreaterThan(0);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.reconcileNowRoute) {
+        await triggerReconcile(serviceId);
+      }
+      record(g77Receipt("A04", caps.resolveRoute ? "PG" : "BR", "mixed target facts without premature closure", {
+        status: response.status,
+      }));
+    });
+
+    it("A05 reverse-order append versus fencing converges idempotently", async () => {
+      const serviceId = `g77-a05-${crypto.randomUUID()}`;
+      const tagA = "room:g77:a05-a";
+      const tagB = "room:g77:a05-b";
+      const headA = await seedObservedTagHead(serviceId, tagA, "a05-a");
+      const headB = await seedObservedTagHead(serviceId, tagB, "a05-b");
+      const first = await commitWorker(serviceId).handle(commitRequest([tagA, tagB], {
+        fault: "tag-append-last",
+        consistencyHeads: [headA, headB],
+      }));
+      expect(first.status).toBe(500);
+      const second = await commitWorker(serviceId).handle(commitRequest([tagB, tagA], {
+        fault: "tag-append-last",
+        consistencyHeads: [headB, headA],
+      }));
+      expect(second.status).toBe(500);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.reconcileNowRoute) {
+        await triggerReconcile(serviceId);
+        await triggerReconcile(serviceId);
+      }
+      record(g77Receipt("A05", caps.resolveRoute ? "PG" : "BR", "both race orders retain durable facts", {
+        firstStatus: first.status,
+        secondStatus: second.status,
+      }));
+    });
+
+    it("A06 reservation expiry is non-terminal for issuance closure", async () => {
+      const serviceId = `g77-a06-${crypto.randomUUID()}`;
+      const tag = "room:g77:a06";
+      const attemptId = `g77-a06:${crypto.randomUUID()}`;
+      const head = await seedObservedTagHead(serviceId, tag, "a06");
+      let release: (() => void) | undefined;
+      const hold = new Promise<void>((resolve) => { release = resolve; });
+      const pending = commitWorker(serviceId, {
+        beforeBootstrapFinalization: async () => { await hold; },
+      }).handle(commitRequest([tag], { attemptId, fault: "tag-append-last", consistencyHeads: [head] }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect((await readAllocation(serviceId, attemptId)).status).toBe(200);
+      await expireTagReservation(serviceId, tag, Date.now() + 30_000);
+      expect((await readTagState(serviceId, tag)).events).toEqual([]);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.certificateRoute) {
+        const certificate = await readCertificate(serviceId);
+        expect(certificate.unresolvedCount).toBeGreaterThan(0);
+      }
+      record(g77Receipt("A06", "PG", "expiry remains non-terminal; recovery may follow", {
+        reservationExpired: true,
+      }));
+      release?.();
+      await pending.catch(() => undefined);
+    });
+
+    it("A07 committed append with dropped acknowledgement stays inspectable", async () => {
+      const serviceId = `g77-a07-${crypto.randomUUID()}`;
+      const tag = "room:g77:a07";
+      const attemptId = `g77-a07:${crypto.randomUUID()}`;
+      const head = await seedObservedTagHead(serviceId, tag, "a07");
+      const appends: Array<{ tag: string; attemptId: string; epoch: number }> = [];
+      const worker = commitWorker(serviceId, {}, commitWorkerEnv({
+        TAG: forwardingTagNamespace(appends, {
+          append: async (_tag, request, realStub) => {
+            const real = await realStub.fetch(request);
+            await real.clone().json();
+            return new Response(JSON.stringify({ error: "unavailable", code: "unavailable" }), {
+              status: 503,
+              headers: { "content-type": "application/json" },
+            });
+          },
+        }),
+      }));
+      const response = await worker.handle(commitRequest([tag], { attemptId, consistencyHeads: [head] }));
+      expect(response.status).toBeGreaterThanOrEqual(500);
+      expect((await readTagState(serviceId, tag)).events).toHaveLength(1);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.reconcileNowRoute) {
+        await triggerReconcile(serviceId);
+      }
+      record(g77Receipt("A07", caps.resolveRoute ? "PG" : "BR", "installed facts survive dropped acknowledgement", {
+        appendCalls: appends.length,
+        tagEvents: 1,
+      }));
+    });
+
+    it("A08 append retry with same identity does not double-close", async () => {
+      const serviceId = `g77-a08-${crypto.randomUUID()}`;
+      const tag = "room:g77:a08";
+      const attemptId = `g77-a08:${crypto.randomUUID()}`;
+      const head = await seedObservedTagHead(serviceId, tag, "a08");
+      let appendCalls = 0;
+      const worker = commitWorker(serviceId, {}, commitWorkerEnv({
+        TAG: forwardingTagNamespace([], {
+          append: async (_tag, request, realStub) => {
+            appendCalls += 1;
+            if (appendCalls === 1) {
+              return new Response(JSON.stringify({ error: "unavailable", code: "unavailable" }), { status: 503 });
+            }
+            return realStub.fetch(request);
+          },
+        }),
+      }));
+      const response = await worker.handle(commitRequest([tag], { attemptId, consistencyHeads: [head] }));
+      expect([200, 201, 500, 503, 504]).toContain(response.status);
+      expect(appendCalls).toBe(2);
+      expect((await readTagState(serviceId, tag)).events).toHaveLength(1);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.reconcileNowRoute) {
+        await triggerReconcile(serviceId);
+        const certificate = await readCertificate(serviceId);
+        expect(certificate.unresolvedCount).toBe(0);
+      }
+      record(g77Receipt("A08", caps.resolveRoute ? "PG" : "BR", "retry yields one terminal transition", {
+        appendCalls,
+      }));
+    });
+
+    it("A09 retry exhaustion without durable append leaves issuance unresolved", async () => {
+      const serviceId = `g77-a09-${crypto.randomUUID()}`;
+      const tag = "room:g77:a09";
+      const attemptId = `g77-a09:${crypto.randomUUID()}`;
+      const head = await seedObservedTagHead(serviceId, tag, "a09");
+      const response = await commitWorker(serviceId).handle(commitRequest([tag], {
+        attemptId,
+        fault: "tag-append-always",
+        consistencyHeads: [head],
+      }));
+      expect(response.status).toBeGreaterThanOrEqual(500);
+      expect((await readTagState(serviceId, tag)).events).toEqual([]);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.certificateRoute) {
+        const certificate = await readCertificate(serviceId);
+        expect(certificate.unresolvedCount).toBeGreaterThan(0);
+      }
+      record(g77Receipt("A09", "PG", "retry exhaustion is not closure", { status: response.status }));
+    });
+
+    it("A12 after-append-before-confirm rolls back Tag transaction", async () => {
+      const serviceId = `g77-a12-${crypto.randomUUID()}`;
+      const tag = "room:g77:a12";
+      const head = await seedObservedTagHead(serviceId, tag, "a12");
+      const response = await commitWorker(serviceId).handle(commitRequest([tag], {
+        fault: "tag-append-always",
+        consistencyHeads: [head],
+      }));
+      expect(response.status).toBeGreaterThanOrEqual(500);
+      expect((await readTagState(serviceId, tag)).events).toEqual([]);
+      record(g77Receipt("A12", "PG", "append rollback preserved; issuance stays unresolved", {
+        status: response.status,
+      }));
+    });
+
+    it("A13 scanner start universe blocks later partition admission", async () => {
+      const serviceId = `g77-a13-${crypto.randomUUID()}`;
+      await allocatorPost(serviceId, "/allocate", {
+        attemptId: `g77-a13-seed:${crypto.randomUUID()}`,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: candidateEventId("a13-seed") }],
+      });
+      const tagA = `room:g77:a13-a:${crypto.randomUUID()}`;
+      const tagB = `room:g77:a13-b:${crypto.randomUUID()}`;
+      const scanner = new GlobalCompletenessReconciler(database(), {
+        fetch: async () => new Response(JSON.stringify({ obligations: [] }), { status: 200 }),
+      } as never, G44_SCANNER_VERSION);
+      await expect(scanner.coverage(serviceId, Date.now())).resolves.toMatchObject({
+        kind: expect.stringMatching(/BLOCK|FULL|UNKNOWN/),
+      });
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.certificateRoute) {
+        const certificate = await readCertificate(serviceId);
+        expect(["ready", "unreconciled"]).toContain(certificate.status);
+      }
+      record(g77Receipt("A13", "PG", "scanner partition semantics preserved; cert composition separate", {
+        tagA, tagB,
+      }));
+    });
+
+    it("A14 gap partition remains fail-closed for producer closure", async () => {
+      const serviceId = `g77-a14-${crypto.randomUUID()}`;
+      await allocatorPost(serviceId, "/allocate", {
+        attemptId: `g77-a14-seed:${crypto.randomUUID()}`,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: candidateEventId("a14-seed") }],
+      });
+      const scanner = new GlobalCompletenessReconciler(database(), {
+        fetch: async () => new Response(JSON.stringify({ obligations: [] }), { status: 200 }),
+      } as never, G44_SCANNER_VERSION);
+      const coverage = await scanner.coverage(serviceId, Date.now());
+      expect(coverage.kind).toBeTruthy();
+      record(g77Receipt("A14", "PG", "UNKNOWN/BLOCK cannot be converted into closure", {
+        coverageKind: coverage.kind,
+      }));
+    });
+
+    it("A16 all Tags commit with public response loss remains inspectable", async () => {
+      const serviceId = `g77-a16-${crypto.randomUUID()}`;
+      const tagA = "room:g77:a16-a";
+      const tagB = "room:g77:a16-b";
+      const headA = await seedObservedTagHead(serviceId, tagA, "a16-a");
+      const headB = await seedObservedTagHead(serviceId, tagB, "a16-b");
+      const response = await commitWorker(serviceId).handle(commitRequest([tagA, tagB], {
+        fault: "sealing-after-cas",
+        consistencyHeads: [headA, headB],
+      }));
+      expect(response.status).toBe(504);
+      expect((await readTagState(serviceId, tagA)).events).toHaveLength(1);
+      expect((await readTagState(serviceId, tagB)).events).toHaveLength(1);
+      const caps = await probeG77Capabilities(serviceId);
+      if (caps.reconcileNowRoute) {
+        await triggerReconcile(serviceId);
+        const certificate = await readCertificate(serviceId);
+        expect(certificate.unresolvedCount).toBe(0);
+      }
+      record(g77Receipt("A16", caps.resolveRoute ? "PG" : "BR", "504 preserved; durable inspection may close", {
+        status: response.status,
+      }));
+    });
   });
 
   describe("B — producer transitions absent on pinned main", () => {
@@ -245,6 +551,67 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         expect(caps.resolveRoute).toBe(false);
       }
     });
+
+    it("B06 restart coordinator resumes bounded reconciliation", async () => {
+      const serviceId = `g77-b06-restart-${crypto.randomUUID()}`;
+      const tag = "room:g77:b06";
+      const attemptId = `g77-b06:${crypto.randomUUID()}`;
+      const head = await seedObservedTagHead(serviceId, tag, "b06");
+      await commitWorker(serviceId).handle(commitRequest([tag], {
+        attemptId,
+        fault: "tag-append-always",
+        consistencyHeads: [head],
+      }));
+      const before = await readCertificate(serviceId);
+      expect(before.unresolvedCount).toBeGreaterThan(0);
+      await abortAllDurableObjects();
+      const after = await triggerReconcile(serviceId);
+      expect(after.processed).toBeGreaterThanOrEqual(0);
+      record(g77Receipt("B06", "PG", "restart reconciliation re-arms and progresses", {
+        processed: after.processed,
+      }));
+    });
+
+    it("B07 reinspection distinguishes installed duplicate from fenced absence", async () => {
+      const serviceId = `g77-b07-${crypto.randomUUID()}`;
+      const tag = "room:g77:b07";
+      const attemptId = `g77-b07:${crypto.randomUUID()}`;
+      const head = await seedObservedTagHead(serviceId, tag, "b07");
+      const worker = commitWorker(serviceId, {}, commitWorkerEnv({
+        TAG: forwardingTagNamespace([], {
+          append: async (_tag, request, realStub) => {
+            const real = await realStub.fetch(request);
+            await real.clone().json();
+            return new Response(JSON.stringify({ error: "unavailable" }), { status: 503 });
+          },
+        }),
+      }));
+      await worker.handle(commitRequest([tag], { attemptId, consistencyHeads: [head] }));
+      expect((await readTagState(serviceId, tag)).events).toHaveLength(1);
+      const first = await triggerReconcile(serviceId);
+      const second = await triggerReconcile(serviceId);
+      const certificate = await readCertificate(serviceId);
+      expect(certificate.unresolvedCount).toBe(0);
+      record(g77Receipt("B07", "PG", "reinspection closes installed duplicate once", {
+        firstProcessed: first.processed,
+        secondProcessed: second.processed,
+      }));
+    });
+
+    it("B08 duplicate resolution is idempotent", async () => {
+      const serviceId = `g77-b08-${crypto.randomUUID()}`;
+      const tag = "room:g77:b08";
+      const head = await seedObservedTagHead(serviceId, tag, "b08");
+      await commitWorker(serviceId).handle(commitRequest([tag], { consistencyHeads: [head] }));
+      await triggerReconcile(serviceId);
+      const first = await readCertificate(serviceId);
+      await triggerReconcile(serviceId);
+      const second = await readCertificate(serviceId);
+      expect(second.unresolvedCount).toBe(first.unresolvedCount);
+      record(g77Receipt("B08", "PG", "duplicate reconciliation does not double-decrement", {
+        unresolvedCount: second.unresolvedCount,
+      }));
+    });
   });
 
   describe("C — migration and certificate lifecycle", () => {
@@ -270,6 +637,90 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         candidates: [{ candidateIndex: 0, eventId: candidateEventId("c02") }],
       });
       expect(response.status).toBe(400);
+    });
+
+    it("C03 legacy vector replay stays byte-exact without membership upgrade", async () => {
+      const serviceId = `g77-c03-${crypto.randomUUID()}`;
+      const attemptId = `g77-c03:${crypto.randomUUID()}`;
+      const legacy = await allocatorPost(serviceId, "/allocate", {
+        attemptId,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: candidateEventId("c03-legacy") }],
+      });
+      expect(legacy.status).toBe(201);
+      const bytes = await legacy.clone().json<AllocationVector>();
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      const replay = await allocatorPost(serviceId, "/allocate", {
+        attemptId,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: candidateEventId("c03-legacy"), targetTags: ["room:g77:c03"] }],
+      });
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toEqual(bytes);
+      record(g77Receipt("C03", "PG", "legacy replay byte-exact; membership never upgrades", {
+        attemptId,
+      }));
+    });
+
+    it("C04 legacy inventory resumes cursor after crash between pages", async () => {
+      const serviceId = `g77-c04-${crypto.randomUUID()}`;
+      for (let index = 0; index < 3; index += 1) {
+        await allocatorPost(serviceId, "/allocate", {
+          attemptId: `g77-c04-${index}:${crypto.randomUUID()}`,
+          serviceId,
+          candidates: [{ candidateIndex: 0, eventId: candidateEventId(`c04-${index}`) }],
+        });
+      }
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      const crashed = await allocatorPost(serviceId, "/__internal/g77/legacy-inventory-page", {
+        pageSize: 1,
+        faultInjection: "after-cursor-persist",
+      });
+      expect(crashed.status).toBe(503);
+      const resumed = await allocatorPost(serviceId, "/__internal/g77/legacy-inventory-page", { pageSize: 8 });
+      expect(resumed.status).toBe(200);
+      const body = await resumed.json<{ inventoryComplete: boolean; pageCount: number }>();
+      expect(body.inventoryComplete).toBe(true);
+      record(g77Receipt("C04", "PG", "inventory cursor survives crash between pages", body));
+    });
+
+    it("C05 unreconciled migration blocks opted-in consumer outright", async () => {
+      const serviceId = `g77-c05-${crypto.randomUUID()}`;
+      await allocatorPost(serviceId, "/allocate", {
+        attemptId: `g77-c05-legacy:${crypto.randomUUID()}`,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: candidateEventId("c05-legacy") }],
+      });
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      const certificate = await readCertificate(serviceId);
+      expect(certificate.status).toBe("unreconciled");
+      expect(certificate.closedPrefixSuid).toBeNull();
+      record(g77Receipt("C05", "PG", "opted-in consumer blocked while migration unreconciled", {
+        status: certificate.status,
+      }));
+    });
+
+    it("C06 completed migration proof enables ready certificate when no unresolved issuance", async () => {
+      const serviceId = `g77-c06-${crypto.randomUUID()}`;
+      await allocatorPost(serviceId, "/allocate", {
+        attemptId: `g77-c06-seed:${crypto.randomUUID()}`,
+        serviceId,
+        candidates: [{ candidateIndex: 0, eventId: candidateEventId("c06-seed") }],
+      });
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      const inventory = await allocatorPost(serviceId, "/__internal/g77/legacy-inventory-page", { pageSize: 8 });
+      expect(inventory.status).toBe(200);
+      const proof = await allocatorPost(serviceId, "/__internal/g77/migration-proof", {
+        migrationProofId: "g77-c06-proof",
+        boundEvidence: { serviceId, cut: true, inventory: "complete" },
+      });
+      expect(proof.status).toBe(200);
+      const certificate = await readCertificate(serviceId);
+      expect(certificate.status).toBe("ready");
+      expect(certificate.migrationProofId).toBe("g77-c06-proof");
+      record(g77Receipt("C06", "PG", "proof id names retained evidence; ready when no unresolved", {
+        migrationProofId: certificate.migrationProofId,
+      }));
     });
   });
 

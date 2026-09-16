@@ -33,8 +33,8 @@ const mutants = [
   {
     name: "wrong-prefix-watermark",
     file: "ledger",
-    from: "return { closedPrefixSuid: allocatedWatermark, unresolvedCount: 0, status: \"ready\" };",
-    to: "return { closedPrefixSuid: allocatedWatermark, unresolvedCount: 0, status: \"ready\" }; // mutant anchor",
+    from: "return { closedPrefixSuid: predecessor, unresolvedCount: count, status: \"ready\" };",
+    to: "return { closedPrefixSuid: allocatedWatermark, unresolvedCount: count, status: \"ready\" };",
   },
 ];
 
@@ -72,11 +72,24 @@ for (const mutant of mutants) {
     cwd: path.join(root, "packages/dcb-runtime"),
     encoding: "utf8",
   });
-  const run = spawnSync("npx", ["vitest", "run", "--config", "vitest.config.ts", "test/allocator.spec.ts", "-t", "G77"], {
-    cwd: root,
-    encoding: "utf8",
-    env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
-  });
+  const run = spawnSync(
+    "npx",
+    [
+      "vitest",
+      "run",
+      "--config",
+      "vitest.config.ts",
+      "test/allocator.spec.ts",
+      "test/g77-closed-prefix-producer.spec.ts",
+      "-t",
+      "G77|A04|B07|multi-tag",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${process.env.HOME}/.local/bin:${process.env.PATH}` },
+    },
+  );
   restore();
   results.push({
     mutant: mutant.name,

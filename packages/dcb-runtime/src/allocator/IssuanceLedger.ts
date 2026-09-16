@@ -2,10 +2,13 @@ import type { AllocatedCandidate, AllocationCandidate, ClosedPrefixCertificate }
 import { assertSortableUniqueId } from "./SortableUniqueId";
 
 export const ISSUANCE_LEDGER_VERSION = 1;
+export const ATTEMPT_KEY_PREFIX = "attempt:";
 export const ISSUANCE_COUNT_KEY = "issuance:unresolved-count";
 export const ISSUANCE_RECOVERY_KEY = "issuance:recovery-schedule";
 export const ISSUANCE_MIGRATION_KEY = "issuance:migration";
+export const ISSUANCE_MIGRATION_PROOF_PREFIX = "issuance:migration-proof:";
 export const ISSUANCE_PREFIX_KEY = "issuance:closed-prefix";
+export const LEGACY_INVENTORIED_PREFIX = "issuance:legacy-inventoried:";
 export const ENVELOPE_PREFIX = "issuance:envelope:";
 export const TARGET_PREFIX = "issuance:target:";
 export const ISSUED_INDEX_PREFIX = "issuance:issued:";
@@ -263,10 +266,12 @@ export function shouldArmIssuanceRecovery(
   return schedule === undefined || schedule.nextDueAt > now;
 }
 
+type IssuanceIndexReader = Pick<DurableObjectStorage, "list">;
+
 export async function leastUnresolvedEntry(
-  txn: DurableObjectTransaction,
+  reader: IssuanceIndexReader,
 ): Promise<{ suid: string; attemptId: string; candidateIndex: number } | undefined> {
-  const listed = await txn.list<{ attemptId: string; candidateIndex: number; suid: string }>({
+  const listed = await reader.list<{ attemptId: string; candidateIndex: number; suid: string }>({
     prefix: UNRESOLVED_INDEX_PREFIX,
     limit: 1,
   });
@@ -278,11 +283,11 @@ export async function leastUnresolvedEntry(
 }
 
 export async function predecessorIssuedSuid(
-  txn: DurableObjectTransaction,
+  reader: IssuanceIndexReader,
   exclusiveSuid: string,
 ): Promise<string | null> {
   assertSortableUniqueId(exclusiveSuid);
-  const listed = await txn.list<{ suid: string }>({ prefix: ISSUED_INDEX_PREFIX, limit: 256 });
+  const listed = await reader.list<{ suid: string }>({ prefix: ISSUED_INDEX_PREFIX, limit: 256 });
   let best: string | null = null;
   for (const [key, value] of listed) {
     const suid = value?.suid ?? parseIndexEntry(key, ISSUED_INDEX_PREFIX)?.suid;
@@ -294,20 +299,25 @@ export async function predecessorIssuedSuid(
 }
 
 export async function computeClosedPrefixSuid(
+  reader: IssuanceIndexReader,
   txn: DurableObjectTransaction,
   allocatedWatermark: string | null,
   migration: IssuanceMigrationState | undefined,
 ): Promise<{ closedPrefixSuid: string | null; unresolvedCount: number; status: "ready" | "unreconciled" }> {
-  const count = await txn.get<number>(ISSUANCE_COUNT_KEY);
-  if (count === undefined || !Number.isSafeInteger(count) || count < 0) {
+  const storedCount = await txn.get<number>(ISSUANCE_COUNT_KEY);
+  const count = storedCount ?? 0;
+  if (!Number.isSafeInteger(count) || count < 0) {
     throw new IssuanceLedgerError("missing or corrupt unresolved count");
   }
   if (migration !== undefined && !migration.inventoryComplete) {
     return { closedPrefixSuid: null, unresolvedCount: count, status: "unreconciled" };
   }
-  const least = await leastUnresolvedEntry(txn);
-  if (least !== undefined) {
-    const predecessor = await predecessorIssuedSuid(txn, least.suid);
+  if (count > 0) {
+    const least = await leastUnresolvedEntry(reader);
+    if (least === undefined) {
+      throw new IssuanceLedgerError("corrupt unresolved index");
+    }
+    const predecessor = await predecessorIssuedSuid(reader, least.suid);
     return { closedPrefixSuid: predecessor, unresolvedCount: count, status: "ready" };
   }
   if (migration !== undefined && migration.migrationProofId === null) {
@@ -320,6 +330,7 @@ export async function computeClosedPrefixSuid(
 }
 
 export async function buildCertificateSnapshot(
+  reader: IssuanceIndexReader,
   txn: DurableObjectTransaction,
   input: {
     serviceId: string;
@@ -329,7 +340,7 @@ export async function buildCertificateSnapshot(
   },
 ): Promise<ClosedPrefixCertificate> {
   const migration = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
-  const prefix = await computeClosedPrefixSuid(txn, input.allocatedWatermark, migration);
+  const prefix = await computeClosedPrefixSuid(reader, txn, input.allocatedWatermark, migration);
   return {
     certificateVersion: 1,
     authority: "allocator-transaction",
@@ -385,6 +396,7 @@ export async function applyTargetResolution(
   await txn.put(ISSUANCE_COUNT_KEY, count - 1);
   const prefix = await computeClosedPrefixSuid(
     txn,
+    txn,
     await readWatermarkFromState(txn),
     await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY),
   );
@@ -438,6 +450,62 @@ export async function registrationProbe(
     exactCount: count !== undefined && Number.isSafeInteger(count),
     recoverySchedule: schedule !== undefined,
   };
+}
+
+export async function pageLegacyInventoryInTransaction(
+  txn: DurableObjectTransaction,
+  input: { pageSize: number; faultInjection?: "after-cursor-persist" },
+): Promise<{
+  pageCount: number;
+  nextCursor: string | null;
+  inventoryComplete: boolean;
+}> {
+  const migration = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
+  if (migration === undefined) throw new IssuanceLedgerError("migration cut is required");
+  if (migration.inventoryComplete) {
+    return { pageCount: 0, nextCursor: migration.legacyInventoryCursor, inventoryComplete: true };
+  }
+  if (!Number.isSafeInteger(input.pageSize) || input.pageSize < 1) {
+    throw new IssuanceLedgerError("inventory page size must be a positive integer");
+  }
+  const listed = await txn.list({ prefix: ATTEMPT_KEY_PREFIX, limit: input.pageSize + 64 });
+  let pageCount = 0;
+  let lastProcessed: string | null = migration.legacyInventoryCursor;
+  for (const [key] of listed) {
+    if (migration.legacyInventoryCursor !== null && key <= migration.legacyInventoryCursor) continue;
+    if (pageCount >= input.pageSize) break;
+    pageCount += 1;
+    lastProcessed = key;
+    await txn.put(`${LEGACY_INVENTORIED_PREFIX}${key}`, { inventoriedAt: Date.now() });
+  }
+  const inventoryComplete = pageCount < input.pageSize;
+  const updated: IssuanceMigrationState = {
+    ...migration,
+    legacyInventoryCursor: lastProcessed,
+    inventoryComplete,
+  };
+  await txn.put(ISSUANCE_MIGRATION_KEY, updated);
+  if (input.faultInjection === "after-cursor-persist") {
+    throw new IssuanceLedgerError("simulated inventory page crash");
+  }
+  return { pageCount, nextCursor: lastProcessed, inventoryComplete };
+}
+
+export async function completeMigrationProofInTransaction(
+  txn: DurableObjectTransaction,
+  input: { migrationProofId: string; boundEvidence: Record<string, unknown> },
+): Promise<void> {
+  const migration = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
+  if (migration === undefined) throw new IssuanceLedgerError("migration cut is required");
+  if (!migration.inventoryComplete) throw new IssuanceLedgerError("legacy inventory is incomplete");
+  if (!isNonEmptyString(input.migrationProofId)) {
+    throw new IssuanceLedgerError("migration proof id is required");
+  }
+  await txn.put(ISSUANCE_MIGRATION_KEY, {
+    ...migration,
+    migrationProofId: input.migrationProofId,
+  });
+  await txn.put(`${ISSUANCE_MIGRATION_PROOF_PREFIX}${input.migrationProofId}`, input.boundEvidence);
 }
 
 export function parseCandidateMembership(

@@ -7,10 +7,13 @@ import type {
 } from "./types";
 import {
   IssuanceLedgerError,
+  ISSUANCE_COUNT_KEY,
   ISSUANCE_MIGRATION_KEY,
   ISSUANCE_RECOVERY_KEY,
   applyTargetResolution,
   buildCertificateSnapshot,
+  completeMigrationProofInTransaction,
+  pageLegacyInventoryInTransaction,
   parseCandidateMembership,
   registerIssuanceInTransaction,
   registrationProbe,
@@ -301,6 +304,9 @@ export class AllocatorDurableObject implements DurableObject {
         resolveRoute: true,
         reconcilerRoute: true,
         migrationCut: true,
+        legacyInventoryRoute: true,
+        migrationProofRoute: true,
+        reconcileNowRoute: true,
       });
     }
     if (request.method === "GET" && url.pathname.startsWith("/__internal/g77/registration/")) {
@@ -314,6 +320,15 @@ export class AllocatorDurableObject implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/__internal/g77/migration-cut") {
       return this.installMigrationCut(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/legacy-inventory-page") {
+      return this.pageLegacyInventory(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/migration-proof") {
+      return this.completeMigrationProof(request);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/reconcile-now") {
+      return this.reconcileNow();
     }
     return error(404, "allocator_route_not_found", "Allocator route was not found");
   }
@@ -339,7 +354,7 @@ export class AllocatorDurableObject implements DurableObject {
       const certificate = await this.ctx.storage.transaction(async (txn) => {
         const state = await txn.get<AllocatorState>(STATE_KEY);
         if (state === undefined) throw new IssuanceLedgerError("allocator state missing");
-        return buildCertificateSnapshot(txn, {
+        return buildCertificateSnapshot(this.ctx.storage, txn, {
           serviceId,
           allocatorLineageId: state.allocatorLineageId,
           allocatedWatermark: state.allocatedWatermark,
@@ -372,6 +387,65 @@ export class AllocatorDurableObject implements DurableObject {
     }
   }
 
+  private async pageLegacyInventory(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json(); } catch { return error(400, "invalid_inventory_page", "JSON required"); }
+    const pageSize = isObject(body) && typeof body.pageSize === "number" ? body.pageSize : 8;
+    const faultInjection = isObject(body) && body.faultInjection === "after-cursor-persist"
+      ? "after-cursor-persist" as const
+      : undefined;
+    try {
+      const result = await this.ctx.storage.transaction(async (txn) =>
+        pageLegacyInventoryInTransaction(txn, { pageSize, faultInjection }));
+      return json(result);
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(503, "inventory_page_crash", failure.message);
+      }
+      return error(500, "inventory_page_failure", "Legacy inventory page failed");
+    }
+  }
+
+  private async completeMigrationProof(request: Request): Promise<Response> {
+    let body: unknown;
+    try { body = await request.json(); } catch { return error(400, "invalid_migration_proof", "JSON required"); }
+    if (!isObject(body) || !isNonEmptyString(body.migrationProofId)) {
+      return error(400, "invalid_migration_proof", "migrationProofId is required");
+    }
+    const boundEvidence = isObject(body.boundEvidence) ? body.boundEvidence : {};
+    try {
+      await this.ctx.storage.transaction(async (txn) =>
+        completeMigrationProofInTransaction(txn, {
+          migrationProofId: body.migrationProofId as string,
+          boundEvidence,
+        }));
+      return json({ completed: true, migrationProofId: body.migrationProofId });
+    } catch (failure) {
+      if (failure instanceof IssuanceLedgerError) {
+        return error(409, "migration_proof_rejected", failure.message);
+      }
+      return error(500, "migration_proof_failure", "Migration proof completion failed");
+    }
+  }
+
+  private async reconcileNow(): Promise<Response> {
+    const serviceId = await this.serviceIdFromState();
+    if (serviceId === undefined || this.env?.TAG === undefined) {
+      return error(409, "reconcile_unavailable", "Reconciliation prerequisites are unavailable");
+    }
+    const result = await reconcileIssuanceBatch(this.ctx.storage, { TAG: this.env.TAG }, serviceId, async (evidence) => {
+      try {
+        await this.ctx.storage.transaction(async (txn) => {
+          await applyTargetResolution(txn, evidence);
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    return json(result);
+  }
+
   private async installMigrationCut(request: Request): Promise<Response> {
     let body: unknown;
     try { body = await request.json(); } catch { return error(400, "invalid_migration_cut", "JSON required"); }
@@ -385,6 +459,10 @@ export class AllocatorDurableObject implements DurableObject {
         inventoryComplete: false,
         migrationProofId: null,
       } satisfies IssuanceMigrationState);
+      const existingCount = await txn.get<number>(ISSUANCE_COUNT_KEY);
+      if (existingCount === undefined || existingCount === null) {
+        await txn.put(ISSUANCE_COUNT_KEY, 0);
+      }
     });
     return json({ installed: true, cutAt });
   }

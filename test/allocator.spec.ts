@@ -1,10 +1,11 @@
-import { abortAllDurableObjects, env, SELF } from "cloudflare:test";
+import { abortAllDurableObjects, env, runInDurableObject, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 
 import type {
   AllocationCandidate,
   AllocationVector,
   AllocatorState,
+  ClosedPrefixCertificate,
 } from "../packages/dcb-runtime/src/allocator/types";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 
@@ -228,6 +229,108 @@ describe("AllocatorDurableObject", () => {
     expect(rolledBack.envelope).toBe(false);
     expect(rolledBack.unresolvedIndex).toBe(false);
     expect(rolledBack.issuedIndex).toBe(false);
+  });
+
+  it("G77 predecessor prefix excludes the least unresolved hole", async () => {
+    const serviceId = `g77-prefix-oracle-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const allocated = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: ["room:g77:prefix-only"],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(allocated.status).toBe(201);
+    const issuedSuid = (await responseJson<AllocationVector>(allocated)).candidates[0]!.suid;
+    const certificate = await responseJson<ClosedPrefixCertificate>(
+      await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificate.unresolvedCount).toBe(1);
+    expect(certificate.closedPrefixSuid).toBeNull();
+    expect(certificate.closedPrefixSuid).not.toBe(issuedSuid);
+  });
+
+  it("G77 mutant oracle: multi-tag candidate stays unresolved until every target terminal", async () => {
+    const serviceId = `g77-multi-oracle-${crypto.randomUUID()}`;
+    const tagA = "room:g77:multi-a";
+    const tagB = "room:g77:multi-b";
+    const attemptId = newAttempt();
+    const allocate = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tagA, tagB],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(allocate.status).toBe(201);
+    const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace; TAG: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "allocator", identity: "allocator" }));
+    const envelope = await runInDurableObject(allocatorDo, async (_instance, state) =>
+      state.storage.get<{
+        serviceId: string;
+        allocatorLineageId: string;
+        suid: string;
+        identityDigest: string;
+        pinnedWriterEpoch: number;
+      }>(`issuance:envelope:${attemptId}:0`));
+    expect(envelope).toBeTruthy();
+    const resolve = await namedAllocatorRequest(serviceId, "/__internal/g77/resolve-target", {
+      serviceId: envelope!.serviceId,
+      allocatorLineageId: envelope!.allocatorLineageId,
+      attemptId,
+      candidateIndex: 0,
+      suid: envelope!.suid,
+      tag: tagA,
+      identityDigest: envelope!.identityDigest,
+      pinnedWriterEpoch: envelope!.pinnedWriterEpoch,
+      terminalStatus: "absent-and-irrevocably-fenced",
+    });
+    expect(resolve.status).toBe(200);
+    expect(await responseJson<{ candidateResolved: boolean }>(resolve)).toEqual({
+      candidateResolved: false,
+      duplicate: false,
+    });
+    const certificate = await responseJson<ClosedPrefixCertificate>(
+      await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificate.unresolvedCount).toBe(1);
+  });
+
+  it("G77 fenced absence resolves a pending target without accepting expiry alone", async () => {
+    const serviceId = `g77-fence-oracle-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:fence-oracle";
+    const allocate = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(allocate.status).toBe(201);
+    const namespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const tagStub = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "tag", identity: tag }));
+    await tagStub.fetch(new Request(`https://tag.test/cancel?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ attemptId, epoch: 0, forceTombstone: true }),
+    }));
+    const reconcile = await namedAllocatorRequest(serviceId, "/__internal/g77/reconcile-now", {});
+    expect(reconcile.status).toBe(200);
+    const certificate = await responseJson<ClosedPrefixCertificate>(
+      await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificate.unresolvedCount).toBe(0);
   });
 
   it("continues from the persisted watermark and preserves an allocated vector across restart", async () => {
