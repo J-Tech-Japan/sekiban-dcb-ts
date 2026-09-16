@@ -1,0 +1,203 @@
+{
+  "label": "commit-replayed",
+  "cohort": "commit replayed vector",
+  "commitSide": "main",
+  "vector": "replayed",
+  "samples": [
+    {
+      "vector": "replayed",
+      "wallMs": 42,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1439,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 38,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 44,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 40,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 35,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 36,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 43,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 38,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 50,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 43,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 40,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 40,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 40,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 41,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 39,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 39,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 46,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 42,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1439,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 42,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 42,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 36,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1439,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 40,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 43,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    },
+    {
+      "vector": "replayed",
+      "wallMs": 48,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 10,
+      "storageDeltaBytes": 1441,
+      "storageDeltaOps": 10
+    }
+  ],
+  "p50": 40.5,
+  "p95": 48,
+  "issuanceEnvelopeRate": 1
+}

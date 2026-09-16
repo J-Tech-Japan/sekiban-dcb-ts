@@ -1,0 +1,203 @@
+{
+  "label": "commit-multi-candidate",
+  "cohort": "commit multi-candidate vector",
+  "commitSide": "main",
+  "vector": "multi-candidate",
+  "samples": [
+    {
+      "vector": "multi-candidate",
+      "wallMs": 83,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 83,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 90,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 105,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 123,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 163,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 132,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 118,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1548,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 130,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 149,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 151,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 142,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 150,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 153,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 169,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 167,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 191,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 191,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 200,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 202,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 203,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 228,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 220,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1548,
+      "storageDeltaOps": 11
+    },
+    {
+      "vector": "multi-candidate",
+      "wallMs": 248,
+      "issuanceEnvelope": true,
+      "storageDeltaKeys": 11,
+      "storageDeltaBytes": 1551,
+      "storageDeltaOps": 11
+    }
+  ],
+  "p50": 152,
+  "p95": 228,
+  "issuanceEnvelopeRate": 1
+}

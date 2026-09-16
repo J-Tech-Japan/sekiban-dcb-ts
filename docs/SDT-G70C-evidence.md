@@ -87,7 +87,7 @@ node scripts/g77-closed-prefix-mutation-runner.mjs
 
 ## AC6 decision-grade measurement (SDT-G91 — frozen protocol)
 
-Frozen before first scored sample on implementation head `ce411d4987038ada60c030410f0eea7b59f94d63`:
+Frozen before first scored sample on implementation head `85f12e2df048d279b5c57d312982412cf70c05f2`:
 
 | Field | Value |
 | --- | --- |
@@ -96,6 +96,7 @@ Frozen before first scored sample on implementation head `ce411d4987038ada60c030
 | Runner | `vitest run --config vitest.config.ts --maxWorkers=1 --no-file-parallelism` |
 | Warm-up | 4 interleaved gate-off/gate-on pairs excluded |
 | Scored samples | 24 pairs (safe-pass) / 24 samples per commit vector |
+| Within-pair order | alternating gate-off-first / gate-on-first by pair parity |
 | Resolved history | 30 reconciled allocations |
 | Unresolved backlog | 10 allocate-only issuances |
 | Legacy pre-cut | 5 legacy vectors inventoried before post-cut work |
@@ -111,23 +112,35 @@ Predeclared bars (findings only — never tuning targets):
 | Safe-pass paired median wall ratio (gate-on vs gate-off) | ≤ **+5%** |
 | Commit-path aggregate p95 ratio (main vs pinned) | ≤ **+10%** |
 
-### Recorded dispositions (`npm run measure:g77`, exit **3** — inconclusive finding only)
+### Recorded dispositions (`npm run measure:g77` at `85f12e2`, harness exit **3**)
 
-| Cohort / vector | Gate-off p50 / p95 (ms) | Gate-on p50 / p95 (ms) | Delta median (ms) | Ratio vs bar | Disposition |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Safe-pass warm | 2 / 3 | 2 / 2 | 0 | 0.0 vs +5% | **pass** |
-| Safe-pass restarted | 2 / 3 | 2 / 3 | −1 | −0.5 vs +5% | **inconclusive** |
-| Commit new | — | — | main p95 39 / pinned 39 | 0.0 vs +10% | **inconclusive** |
-| Commit replayed | — | — | main p95 45 / pinned 42 | +7.1% vs +10% | **pass** |
-| Commit multi-candidate | — | — | main p95 220 / pinned 226 | −2.7% vs +10% | **inconclusive** |
-| Commit multi-tag | — | — | main p95 229 / pinned 219 | +4.6% vs +10% | **inconclusive** |
-| Commit aggregate p95 | — | — | 132.5 / 130.5 | +1.5% vs +10% | **pass** |
+| Cohort / vector | Gate-off p50 / p95 (ms) | Gate-on p50 / p95 (ms) | Storage Δ keys / bytes / ops (off→on median) | Delta median (ms) | Ratio vs bar | Disposition |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Safe-pass warm | 2 / 3 | 2.5 / 4 | 0 / 0 / 0 → 0 / 0 / 0 | 1 | 0.5 vs +5% | **inconclusive** |
+| Safe-pass restarted | 1.5 / 3 | 2.5 / 3 | 0 / 0 / 0 → 0 / 0 / 0 | 1 | 0.6666666666666666 vs +5% | **inconclusive** |
+| Commit new | — | — | — | — | main p95 35 / pinned 29 (+20.689655172413793%) vs +10% | **exceed** |
+| Commit replayed | — | — | — | — | main p95 8 / pinned 7 (+14.285714285714285%) vs +10% | **inconclusive** |
+| Commit multi-candidate | — | — | — | — | main p95 145 / pinned 139 (+4.316546762589928%) vs +10% | **inconclusive** |
+| Commit multi-tag | — | — | — | — | main p95 141 / pinned 147 (−4.081632653061224%) vs +10% | **inconclusive** |
+| Commit aggregate p95 | — | — | — | — | 88 / 84 (+4.761904761904762%) vs +10% | **pass** |
 
-Issuance-envelope write on main commit path: **proved** (`targetTags` + `tag-append-last` pause; envelope present on main, absent at pinned tip for new vectors).
+Harness `findings` array (verbatim):
 
-Mutants (`node scripts/g77-ac6-measurement-mutation-runner.mjs`): omitted issuance write, hidden history scan, reduced backlog, disabled gate — all **red**.
+- `safe-pass-warm inconclusive (noise dominated)`
+- `safe-pass-restarted inconclusive (noise dominated)`
 
-Full machine report: `.artifacts/g77-ac6-full-report.json`.
+Issuance-envelope write on main commit path: **proved** (`targetTags` + `tag-append-last` pause; durable `issuance:envelope:` key present after commit).
+
+Mutants (`node scripts/g77-ac6-measurement-mutation-runner.mjs`, exit **0**, 4/4 **red** with matched tests):
+
+| Mutant | Matched failing test |
+| --- | --- |
+| omitted-issuance-write | G77 AC6 commit path proves issuance-envelope write on main |
+| hidden-history-scan | G77 AC6 seed enforces resolved history depth |
+| reduced-backlog | G77 AC6 seed enforces unresolved backlog floor |
+| disabled-gate | G77 AC6 mutant oracle disabled gate is detectable |
+
+Full machine report (committed): `.artifacts/g77-ac6-full-report.json`.
 
 ### Retired portable proxy (historical — not decision-grade)
 
