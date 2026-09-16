@@ -9,6 +9,7 @@ import type {
 } from "../packages/dcb-runtime/src/allocator/types";
 import {
   applyTargetResolution,
+  ISSUANCE_NEVER_CONTACTED_GRACE_MS,
   issuedIndexKey,
   predecessorIssuedSuid,
   shouldArmIssuanceRecovery,
@@ -233,6 +234,7 @@ describe("AllocatorDurableObject", () => {
   it("G77 arms recovery alarm after membership-carrying allocation", async () => {
     const serviceId = `g77-recovery-alarm-${crypto.randomUUID()}`;
     const attemptId = newAttempt();
+    const beforeAllocate = Date.now();
     const response = await namedAllocatorRequest(serviceId, "/allocate", {
       attemptId,
       serviceId,
@@ -251,8 +253,38 @@ describe("AllocatorDurableObject", () => {
       armedAt: number | null;
       unresolvedCount: number;
     }>(alarmProbe);
-    expect(probe.armedAt).not.toBeNull();
-    expect(typeof probe.armedAt).toBe("number");
+    expect(probe.alarmAt).not.toBeNull();
+    expect(probe.alarmAt!).toBeGreaterThanOrEqual(beforeAllocate + ISSUANCE_NEVER_CONTACTED_GRACE_MS - 250);
+    expect(probe.alarmAt!).toBeLessThanOrEqual(Date.now() + ISSUANCE_NEVER_CONTACTED_GRACE_MS + 250);
+    expect(probe.unresolvedCount).toBe(1);
+  });
+
+  it("G77 in-flight allocation stays pending during never-contacted grace without reconcile poke", async () => {
+    const serviceId = `g77-grace-pending-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:grace-pending";
+    const allocate = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(allocate.status).toBe(201);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const target = await runInDurableObject(
+      namespace.get(scopeIdFor(namespace, { serviceId, doClass: "allocator", identity: "allocator" })),
+      async (_instance, state) => state.storage.get<{ status: string }>(`issuance:target:${attemptId}:0:${tag}`),
+    );
+    expect(target?.status).toBe("pending");
+    const certificate = await responseJson<ClosedPrefixCertificate>(
+      await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificate.unresolvedCount).toBe(1);
   });
 
   it("shouldArmIssuanceRecovery is true only when schedule exists and is due", () => {

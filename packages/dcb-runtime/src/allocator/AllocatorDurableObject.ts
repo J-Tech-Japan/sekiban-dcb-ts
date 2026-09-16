@@ -9,6 +9,7 @@ import {
   IssuanceLedgerError,
   ISSUANCE_COUNT_KEY,
   ISSUANCE_MIGRATION_KEY,
+  ISSUANCE_NEVER_CONTACTED_GRACE_MS,
   ISSUANCE_RECOVERY_KEY,
   applyTargetResolution,
   buildCertificateSnapshot,
@@ -489,16 +490,22 @@ export class AllocatorDurableObject implements DurableObject {
     if (serviceId === undefined || this.env?.TAG === undefined) {
       return error(409, "reconcile_unavailable", "Reconciliation prerequisites are unavailable");
     }
-    const result = await reconcileIssuanceBatch(this.ctx.storage, { TAG: this.env.TAG }, serviceId, async (evidence) => {
-      try {
-        await this.ctx.storage.transaction(async (txn) => {
-          await applyTargetResolution(txn, evidence);
-        });
-        return true;
-      } catch {
-        return false;
-      }
-    });
+    const result = await reconcileIssuanceBatch(
+      this.ctx.storage,
+      { TAG: this.env.TAG },
+      serviceId,
+      async (evidence) => {
+        try {
+          await this.ctx.storage.transaction(async (txn) => {
+            await applyTargetResolution(txn, evidence);
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      { bypassNeverContactedGrace: true },
+    );
     return json(result);
   }
 
@@ -684,7 +691,7 @@ export class AllocatorDurableObject implements DurableObject {
         }
       }
       if (result.created && input.candidateMembership.size > 0 && !suppressRecoveryAlarm) {
-        const recoveryAlarmAt = Date.now();
+        const recoveryAlarmAt = Date.now() + ISSUANCE_NEVER_CONTACTED_GRACE_MS;
         await this.ctx.storage.put("issuance:recovery-alarm-armed-at", recoveryAlarmAt);
         await this.ctx.storage.setAlarm(recoveryAlarmAt);
       }

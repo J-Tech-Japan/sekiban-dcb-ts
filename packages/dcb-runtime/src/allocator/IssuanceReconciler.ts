@@ -8,6 +8,7 @@ import type {
 } from "./IssuanceLedger";
 import {
   DEFAULT_WRITER_EPOCH,
+  ISSUANCE_NEVER_CONTACTED_GRACE_MS,
   ISSUANCE_RECOVERY_KEY,
   UNRESOLVED_INDEX_PREFIX,
   envelopeKey,
@@ -24,7 +25,8 @@ export interface TagInspectResult {
 
 export type TagInspectOutcome =
   | { readonly kind: "terminal"; readonly result: TagInspectResult }
-  | { readonly kind: "absent-unfenced" }
+  | { readonly kind: "absent-never-contacted" }
+  | { readonly kind: "absent-but-unfenced" }
   | { readonly kind: "not-terminal-yet" }
   | { readonly kind: "unreachable" };
 
@@ -66,11 +68,11 @@ export async function inspectTagTarget(
   if (response.status === 409) return { kind: "not-terminal-yet" };
   if (response.status !== 200) return { kind: "unreachable" };
   const body = await response.json<TagInspectResult & { inspectionStatus?: string }>();
-  if (
-    body.inspectionStatus === "absent-but-unfenced" ||
-    body.inspectionStatus === "absent-never-contacted"
-  ) {
-    return { kind: "absent-unfenced" };
+  if (body.inspectionStatus === "absent-never-contacted") {
+    return { kind: "absent-never-contacted" };
+  }
+  if (body.inspectionStatus === "absent-but-unfenced") {
+    return { kind: "absent-but-unfenced" };
   }
   if (
     body.terminalStatus !== "installed-and-covered" &&
@@ -171,11 +173,20 @@ export async function submitTargetResolution(
   return response.status >= 200 && response.status < 300;
 }
 
+export interface ReconcileIssuanceBatchOptions {
+  /**
+   * Test/admin `/__internal/g77/reconcile-now` bypasses never-contacted grace so
+   * bounded-reconciliation oracles can fence immediately without advancing DO time.
+   */
+  readonly bypassNeverContactedGrace?: boolean;
+}
+
 export async function reconcileIssuanceBatch(
   storage: DurableObjectStorage,
   env: Pick<IssuanceReconcilerEnv, "TAG">,
   serviceId: string,
   resolveTarget?: (evidence: TargetResolutionEvidence) => Promise<boolean>,
+  options?: ReconcileIssuanceBatchOptions,
 ): Promise<{ processed: number; rearmAt: number }> {
   let processed = 0;
   const now = Date.now();
@@ -199,7 +210,16 @@ export async function reconcileIssuanceBatch(
       if (outcome.kind === "unreachable" || outcome.kind === "not-terminal-yet") {
         continue;
       }
-      if (outcome.kind === "absent-unfenced") {
+      if (outcome.kind === "absent-never-contacted") {
+        const issuedAtMs = envelope.issuedAtMs ?? 0;
+        if (
+          options?.bypassNeverContactedGrace !== true
+          && now - issuedAtMs < ISSUANCE_NEVER_CONTACTED_GRACE_MS
+        ) {
+          continue;
+        }
+      }
+      if (outcome.kind === "absent-never-contacted" || outcome.kind === "absent-but-unfenced") {
         const fenced = await fenceAbsentTarget(env, serviceId, tag, envelope);
         if (!fenced) continue;
         outcome = await inspectTagTarget(env, serviceId, tag, envelope);

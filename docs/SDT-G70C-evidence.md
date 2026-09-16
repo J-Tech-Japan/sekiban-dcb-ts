@@ -36,7 +36,7 @@ npm run measure:g77
 npx vitest run --config vitest.config.ts test/g62-global-completeness.spec.ts -t "G77 P14"
 ```
 
-Post-implementation vitest: **55 passed** in `test:g77` (34 matrix + 11 allocator incl. 4 G77 mutant oracles and F12 irrevocable-fence regression).
+Post-implementation vitest: **58 passed** in `test:g77` (34 matrix + 12 allocator incl. 4 G77 mutant oracles, F12 irrevocable-fence regression, and never-contacted grace oracle).
 
 ## Frozen matrix receipts (pre-producer)
 
@@ -125,7 +125,7 @@ The trusted allocator producer registers every new-format allocation as an immut
 | AC2 | Tag inspect + reconciler alarm batch complete |
 | AC3 | Certificate snapshot + predecessor prefix; LiveProjectionWorker opt-in acquisition |
 | AC4 | A/B crash-recovery rows encoded; B06–B08 transition traces |
-| AC5 | Migration cut, legacy inventory paging, proof completion, unreconciled honesty |
+| AC5 | Migration cut, legacy inventory paging, proof completion; see Remaining/open for unmet boundaries |
 | AC6 | Proxy measurement recorded against predeclared bars |
 | AC7 | Evidence at `docs/SDT-G70C-evidence.md` |
 | AC8 | G75 scope tests green; `safeViewAdvance` default untouched |
@@ -136,3 +136,7 @@ The trusted allocator producer registers every new-format allocation as an immut
 - Dedicated commit-path p95 bench against pinned-main binary (proxy only today).
 - Full B01–B05/B07/B10–B13 transition-level crash injection seams (B06–B08 covered).
 - **F12 closed:** force-tombstone now seals at `MAX_EPOCH` so append/acquire refuse every writer generation for the attempt while inspect still reports `absent-and-irrevocably-fenced` at the pinned tombstone epoch (`test/allocator.spec.ts` *G77 force-tombstoned target refuses append at pinned and higher writer epochs*).
+- **B3 (AC5 boundary):** with no migration cut installed (`migration === undefined`), `computeClosedPrefixSuid` still publishes the raw `allocatedWatermark` as a `ready` inclusive prefix over legacy `attempt:` history whose append status was never tracked. The cut-before-new-format rule is not enforced at allocation time; opted-in consumers remain blocked only after a cut is installed.
+- **B4 (AC3 boundary):** certificate/coverage composition binding for LiveProjectionWorker is not implemented; `test/g62-global-completeness.spec.ts` G77 P14 receipt is vacuous (fresh certificate vs older snapshot only). Either implement the binding or treat P14 as an unmet boundary.
+- **B5 (AC6 boundary):** commit-p95 proxy in `scripts/g77-cost-measure.mjs` allocates with no `targetTags`, so it never exercises the added issuance-envelope durable write; the row reports wall-time only.
+- **M8 (undisclosed):** `CommitWorker.cancelReservations` also sends `forceTombstone: true`, sealing cancelled attempts at `MAX_EPOCH` beyond the reconciler path.

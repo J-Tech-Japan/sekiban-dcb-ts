@@ -1,5 +1,13 @@
 import type { AllocatedCandidate, AllocationCandidate, ClosedPrefixCertificate } from "./types";
 import { assertSortableUniqueId } from "./SortableUniqueId";
+import { RESERVATION_WINDOW_MS } from "../tag/types";
+
+/**
+ * Minimum age before reconciler may force-tombstone a never-contacted target.
+ * Matches {@link RESERVATION_WINDOW_MS}: the writer has until tag reservation
+ * expiry to acquire; elapsed time is only a trigger to inspect and fence.
+ */
+export const ISSUANCE_NEVER_CONTACTED_GRACE_MS = RESERVATION_WINDOW_MS;
 
 export const ISSUANCE_LEDGER_VERSION = 1;
 export const ATTEMPT_KEY_PREFIX = "attempt:";
@@ -31,6 +39,8 @@ export interface IssuanceEnvelope {
   readonly canonicalTargetTags: readonly string[];
   readonly pinnedWriterEpoch: number;
   readonly identityDigest: string;
+  /** Wall time when the envelope was registered; drives never-contacted grace. */
+  readonly issuedAtMs: number;
 }
 
 export interface TargetClosureRecord {
@@ -178,6 +188,7 @@ export function buildEnvelope(input: {
   candidate: AllocatedCandidate;
   targetTags: readonly string[];
   pinnedWriterEpoch: number;
+  issuedAtMs: number;
 }): IssuanceEnvelope {
   const canonicalTargetTags = canonicalizeTargetTags(input.targetTags);
   assertSortableUniqueId(input.candidate.suid);
@@ -201,6 +212,7 @@ export function buildEnvelope(input: {
       canonicalTargetTags,
       pinnedWriterEpoch: input.pinnedWriterEpoch,
     }),
+    issuedAtMs: input.issuedAtMs,
   };
 }
 
@@ -246,6 +258,7 @@ export async function registerIssuanceInTransaction(
       candidate,
       targetTags: membership.tags,
       pinnedWriterEpoch: membership.pinnedWriterEpoch,
+      issuedAtMs: now,
     });
     const existing = await txn.get<IssuanceEnvelope>(envelopeKey(input.attemptId, candidate.candidateIndex));
     if (existing !== undefined) {
@@ -282,10 +295,11 @@ export async function registerIssuanceInTransaction(
     input.migration,
   );
   await txn.put(ISSUANCE_PREFIX_KEY, prefix.closedPrefixSuid);
+  const graceDueAt = now + ISSUANCE_NEVER_CONTACTED_GRACE_MS;
   const schedule = await txn.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
-  if (schedule === undefined || schedule.nextDueAt > now) {
+  if (schedule === undefined || schedule.nextDueAt > graceDueAt) {
     await txn.put(ISSUANCE_RECOVERY_KEY, {
-      nextDueAt: now,
+      nextDueAt: graceDueAt,
       cursor: schedule?.cursor ?? null,
       attempts: schedule?.attempts ?? 0,
     });
@@ -355,6 +369,9 @@ export async function computeClosedPrefixSuid(
   if (migration !== undefined && (!migration.inventoryComplete || legacyMigrationBlocks(migration))) {
     return { closedPrefixSuid: null, unresolvedCount: count, status: "unreconciled" };
   }
+  if (migration !== undefined && migration.migrationProofId === null) {
+    return { closedPrefixSuid: null, unresolvedCount: count, status: "unreconciled" };
+  }
   if (count > 0) {
     const least = await leastUnresolvedEntry(reader);
     if (least === undefined) {
@@ -372,9 +389,6 @@ export async function computeClosedPrefixSuid(
       closedPrefixSuid = null;
     }
     return { closedPrefixSuid, unresolvedCount: count, status: "ready" };
-  }
-  if (migration !== undefined && migration.migrationProofId === null) {
-    return { closedPrefixSuid: null, unresolvedCount: count, status: "unreconciled" };
   }
   if (allocatedWatermark === null) {
     return { closedPrefixSuid: null, unresolvedCount: 0, status: "ready" };

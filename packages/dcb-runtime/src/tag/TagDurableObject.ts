@@ -970,20 +970,6 @@ function requireG32TagRecord(record: TagRecord): TagRecord {
   return record;
 }
 
-/**
- * Public tag reads stay byte-empty until a real write-side contact leaves
- * observable history. G77 reconciler force-tombstone on never-contacted tags
- * persists only internal control rows and must not flip `/state` to 200.
- */
-function hasPublicTagDurableState(record: TagRecord): boolean {
-  return record.head !== ""
-    || record.events.length > 0
-    || record.fences.length > 0
-    || record.activeReservation !== null
-    || record.bootstrapAdmission !== null
-    || record.outbox.length > 0;
-}
-
 function changed(record: TagRecord, updates: Partial<TagRecord>): TagRecord {
   return {
     ...record,
@@ -1173,7 +1159,7 @@ export class TagDurableObject implements DurableObject {
       return this.traceCommitReadActor(request, tag, serviceId, activation, observation, async () => {
         observation.markFirstStorageRead();
         const record = this.readStoredRecord(tag);
-        if (record === undefined || !hasPublicTagDurableState(record)) {
+        if (record === undefined) {
           return error(404, "tag_not_found", "Tag has no durable state yet");
         }
         return record.tag === tag
@@ -1997,7 +1983,7 @@ export class TagDurableObject implements DurableObject {
       if (this.fallbackRecord !== undefined && this.fallbackRecord.tag !== tag) {
         throw new TagIdentityConflict();
       }
-      return this.fallbackRecord === undefined || !hasPublicTagDurableState(this.fallbackRecord)
+      return this.fallbackRecord === undefined
         ? undefined
         : {
           head: this.fallbackRecord.head,
@@ -2023,32 +2009,11 @@ export class TagDurableObject implements DurableObject {
       throw new Error("Tag SQL head/control mismatch");
     }
 
-    if (controlHead === "" && !this.tagHasPublicDurableStateBeyondEmptyHead(sql)) {
-      return undefined;
-    }
-
     return {
       head: controlHead,
       version: sqlNumber(control.version, "tag_control.version"),
       updatedAt: sqlString(control.updated_at, "tag_control.updated_at"),
     };
-  }
-
-  /** Presence beyond an empty head without deserializing the full Tag record. */
-  private tagHasPublicDurableStateBeyondEmptyHead(sql: SqlStorage): boolean {
-    const row = sql.exec<SqlRow>(`
-      SELECT
-        EXISTS(SELECT 1 FROM tag_event LIMIT 1) AS has_events,
-        EXISTS(SELECT 1 FROM tag_fence LIMIT 1) AS has_fences,
-        EXISTS(SELECT 1 FROM tag_reservation WHERE singleton = 1) AS has_reservation,
-        EXISTS(SELECT 1 FROM tag_bootstrap_admission WHERE singleton = 1) AS has_bootstrap,
-        EXISTS(SELECT 1 FROM tag_outbox_obligation LIMIT 1) AS has_outbox
-    `).one();
-    return sqlNumber(row.has_events, "has_events") === 1
-      || sqlNumber(row.has_fences, "has_fences") === 1
-      || sqlNumber(row.has_reservation, "has_reservation") === 1
-      || sqlNumber(row.has_bootstrap, "has_bootstrap") === 1
-      || sqlNumber(row.has_outbox, "has_outbox") === 1;
   }
 
   private async obligationArtifact(
