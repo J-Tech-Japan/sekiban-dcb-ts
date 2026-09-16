@@ -314,6 +314,40 @@ export function shouldArmIssuanceRecovery(
   return schedule !== undefined && schedule.nextDueAt <= now;
 }
 
+export const ISSUANCE_RECOVERY_ALARM_ARMED_KEY = "issuance:recovery-alarm-armed-at";
+
+type RecoveryAlarmStorage = Pick<
+  DurableObjectStorage,
+  "get" | "getAlarm" | "setAlarm" | "deleteAlarm" | "put" | "list"
+>;
+
+/**
+ * Align the durable recovery alarm with {@link ISSUANCE_RECOVERY_KEY}.nextDueAt without
+ * pushing a pending earlier alarm later while work remains outstanding.
+ */
+export async function syncIssuanceRecoveryAlarm(
+  storage: RecoveryAlarmStorage,
+  now: number,
+): Promise<void> {
+  if (await countUnresolvedEntries(storage) === 0) {
+    await storage.deleteAlarm();
+    return;
+  }
+  const schedule = await storage.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
+  if (schedule === undefined) return;
+  const dueAt = schedule.nextDueAt;
+  const currentAlarm = await storage.getAlarm();
+  if (currentAlarm !== null && currentAlarm <= dueAt) return;
+  if (
+    currentAlarm === null
+    || dueAt < currentAlarm
+    || shouldArmIssuanceRecovery(schedule, now)
+  ) {
+    await storage.put(ISSUANCE_RECOVERY_ALARM_ARMED_KEY, dueAt);
+    await storage.setAlarm(dueAt);
+  }
+}
+
 type IssuanceIndexReader = Pick<DurableObjectStorage, "list">;
 
 export async function countUnresolvedEntries(reader: IssuanceIndexReader): Promise<number> {

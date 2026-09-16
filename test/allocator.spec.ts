@@ -18,6 +18,7 @@ import {
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 import { reconcileIssuanceBatch } from "../packages/dcb-runtime/src/allocator/IssuanceReconciler";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
+import { tagRequest } from "./helpers/g77-fixtures";
 
 async function allocatorRequest(path: string, body?: unknown): Promise<Response> {
   const init =
@@ -285,6 +286,155 @@ describe("AllocatorDurableObject", () => {
       await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
     );
     expect(certificate.unresolvedCount).toBe(1);
+  });
+
+  it("G77 sustained allocations do not postpone an earlier recovery alarm", async () => {
+    const serviceId = `g77-alarm-monotonic-${crypto.randomUUID()}`;
+    const firstAttempt = newAttempt();
+    const beforeFirst = Date.now();
+    const first = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId: firstAttempt,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${firstAttempt}-event`,
+        targetTags: ["room:g77:alarm-stranded"],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(first.status).toBe(201);
+    const firstProbe = await responseJson<{ alarmAt: number | null }>(
+      await namedAllocatorRequest(serviceId, "/__internal/g77/recovery-alarm"),
+    );
+    expect(firstProbe.alarmAt).not.toBeNull();
+    const firstGraceDue = firstProbe.alarmAt!;
+    expect(firstGraceDue).toBeGreaterThanOrEqual(beforeFirst + ISSUANCE_NEVER_CONTACTED_GRACE_MS - 250);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const second = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId: newAttempt(),
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${crypto.randomUUID()}-event`,
+        targetTags: ["room:g77:alarm-traffic"],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(second.status).toBe(201);
+    const afterSecondProbe = await responseJson<{ alarmAt: number | null }>(
+      await namedAllocatorRequest(serviceId, "/__internal/g77/recovery-alarm"),
+    );
+    expect(afterSecondProbe.alarmAt).not.toBeNull();
+    expect(afterSecondProbe.alarmAt!).toBeLessThanOrEqual(firstGraceDue + 250);
+  });
+
+  it("G77 recovery alarm stops after all issuances resolve", async () => {
+    const serviceId = `g77-alarm-stop-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:alarm-stop";
+    await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await namedAllocatorRequest(serviceId, "/__internal/g77/reconcile-now", {});
+    }
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    const attemptsBefore = await runInDurableObject(allocatorDo, async (_instance, state) =>
+      (await state.storage.get<{ attempts: number }>("issuance:recovery-schedule"))?.attempts ?? 0);
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    const alarmProbe = await responseJson<{
+      alarmAt: number | null;
+      unresolvedCount: number;
+    }>(await namedAllocatorRequest(serviceId, "/__internal/g77/recovery-alarm"));
+    expect(alarmProbe.unresolvedCount).toBe(0);
+    expect(alarmProbe.alarmAt).toBeNull();
+    const attemptsAfter = await runInDurableObject(allocatorDo, async (_instance, state) =>
+      (await state.storage.get<{ attempts: number }>("issuance:recovery-schedule"))?.attempts ?? 0);
+    expect(attemptsAfter).toBe(attemptsBefore);
+  });
+
+  it("G77 inspect of never-written tag leaves public reads absent", async () => {
+    const serviceId = `g77-inspect-readonly-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:inspect-readonly";
+    await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect((await tagRequest(serviceId, tag, "/state")).status).toBe(404);
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tag }));
+    const envelope = await runInDurableObject(
+      allocatorNamespace.get(scopeIdFor(allocatorNamespace, { serviceId, doClass: "allocator", identity: "allocator" })),
+      async (_instance, state) => state.storage.get<{ eventId: string; suid: string }>(`issuance:envelope:${attemptId}:0`),
+    );
+    expect(envelope).toBeTruthy();
+    const inspect = await tagStub.fetch(new Request(`https://tag.test/__internal/g77/inspect-target?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        eventId: envelope!.eventId,
+        suid: envelope!.suid,
+        attemptId,
+        pinnedWriterEpoch: 0,
+      }),
+    }));
+    expect(inspect.status).toBe(200);
+    expect((await responseJson<{ inspectionStatus: string }>(inspect)).inspectionStatus).toBe("absent-never-contacted");
+    expect((await tagRequest(serviceId, tag, "/state")).status).toBe(404);
+    expect((await tagRequest(serviceId, tag, "/head-facts")).status).toBe(404);
+  });
+
+  it("G77 non-bypass reconcile honors never-contacted grace", async () => {
+    const serviceId = `g77-grace-reconcile-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:grace-reconcile";
+    await allocateG77(serviceId, {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    }, { suppressRecoveryAlarm: true });
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorNamespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const allocatorDo = allocatorNamespace.get(scopeIdFor(allocatorNamespace, {
+      serviceId,
+      doClass: "allocator",
+      identity: "allocator",
+    }));
+    await runInDurableObject(allocatorDo, async (_instance, state) => {
+      await reconcileIssuanceBatch(state.storage, { TAG: tagNamespace }, serviceId, async (evidence) => {
+        await state.storage.transaction(async (txn) => {
+          await applyTargetResolution(txn, evidence);
+        });
+        return true;
+      });
+      const target = await state.storage.get<{ status: string }>(`issuance:target:${attemptId}:0:${tag}`);
+      expect(target?.status).toBe("pending");
+    });
   });
 
   it("shouldArmIssuanceRecovery is true only when schedule exists and is due", () => {

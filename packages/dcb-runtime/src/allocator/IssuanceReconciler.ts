@@ -11,8 +11,10 @@ import {
   ISSUANCE_NEVER_CONTACTED_GRACE_MS,
   ISSUANCE_RECOVERY_KEY,
   UNRESOLVED_INDEX_PREFIX,
+  countUnresolvedEntries,
   envelopeKey,
   parseIndexEntry,
+  syncIssuanceRecoveryAlarm,
   targetKey,
 } from "./IssuanceLedger";
 
@@ -89,7 +91,7 @@ export async function fenceAbsentTarget(
   tag: string,
   envelope: IssuanceEnvelope,
 ): Promise<boolean> {
-  const url = new URL("https://tag.internal/cancel");
+  const url = new URL("https://tag.internal/__internal/g77/fence-absent-target");
   url.searchParams.set("__serviceId", serviceId);
   url.searchParams.set("__tag", tag);
   const response = await env.TAG.get(scopeIdFor(env.TAG, {
@@ -102,7 +104,6 @@ export async function fenceAbsentTarget(
     body: JSON.stringify({
       attemptId: envelope.attemptId,
       epoch: envelope.pinnedWriterEpoch ?? DEFAULT_WRITER_EPOCH,
-      forceTombstone: true,
     }),
   }));
   return response.status >= 200 && response.status < 300;
@@ -244,12 +245,28 @@ export async function reconcileIssuanceBatch(
       if (submitted) processed += 1;
     }
   }
-  const rearmAt = now + RECONCILE_RETRY_MS;
+  const existingSchedule = await storage.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
+  const attempts = (existingSchedule?.attempts ?? 0) + 1;
+  const unresolvedCount = await countUnresolvedEntries(storage);
+  if (unresolvedCount === 0) {
+    if (existingSchedule !== undefined) {
+      await storage.put(ISSUANCE_RECOVERY_KEY, {
+        ...existingSchedule,
+        attempts,
+      } satisfies IssuanceRecoverySchedule);
+    }
+    await storage.deleteAlarm();
+    return { processed, rearmAt: now };
+  }
+  const retryAt = now + RECONCILE_RETRY_MS;
+  const nextDueAt = existingSchedule?.nextDueAt === undefined
+    ? retryAt
+    : Math.min(existingSchedule.nextDueAt, retryAt);
   await storage.put(ISSUANCE_RECOVERY_KEY, {
-    nextDueAt: rearmAt,
+    nextDueAt,
     cursor: null,
-    attempts: ((await storage.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY))?.attempts ?? 0) + 1,
+    attempts,
   } satisfies IssuanceRecoverySchedule);
-  await storage.setAlarm(rearmAt);
-  return { processed, rearmAt };
+  await syncIssuanceRecoveryAlarm(storage, now);
+  return { processed, rearmAt: nextDueAt };
 }

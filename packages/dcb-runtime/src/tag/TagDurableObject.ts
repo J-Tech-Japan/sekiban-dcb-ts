@@ -1286,8 +1286,11 @@ export class TagDurableObject implements DurableObject {
       }
       return this.inspectG77Target(serviceId, tag, body);
     }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/fence-absent-target") {
+      return this.fenceAbsentG77Target(tag, body);
+    }
     if (request.method === "POST" && url.pathname === "/__internal/g77/capabilities") {
-      return json({ inspectTarget: true });
+      return json({ inspectTarget: true, fenceAbsentTarget: true });
     }
     return error(404, "tag_route_not_found", "Tag route was not found");
   }
@@ -1298,9 +1301,19 @@ export class TagDurableObject implements DurableObject {
       return error(400, "invalid_inspect_target", "eventId and suid are required");
     }
     const pinnedWriterEpoch = isNonNegativeInteger(body.pinnedWriterEpoch) ? body.pinnedWriterEpoch : 0;
+    const attemptId = isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
     const sql = this.sqlStorage();
     if (sql === undefined) return error(503, "tag_sql_unavailable", "Tag SQL storage is unavailable");
-    this.ensureSqlTag(tag);
+    const identity = sql.exec<SqlRow>("SELECT tag FROM tag_identity WHERE singleton = 1").toArray()[0];
+    if (identity === undefined) {
+      if (attemptId !== undefined) {
+        return json({ inspectionStatus: "absent-never-contacted" });
+      }
+      return error(409, "target_not_terminal", "Target is not terminal under pinned writer authority");
+    }
+    if (sqlString(identity.tag, "tag_identity.tag") !== tag) {
+      return error(409, "tag_identity_mismatch", "Tag identity does not match the inspected tag");
+    }
     const event = sql.exec<SqlRow>(`
       SELECT attempt_id, event_id, suid FROM tag_event
       WHERE service_id = ? AND event_id = ?
@@ -1322,7 +1335,6 @@ export class TagDurableObject implements DurableObject {
       }
       return error(409, "target_not_terminal", "Target append is in flight under pinned writer authority");
     }
-    const attemptId = isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
     if (attemptId !== undefined) {
       const tombstone = sql.exec<SqlRow>("SELECT epoch FROM tag_tombstone WHERE attempt_id = ?", attemptId).toArray()[0];
       const tombstoneEpoch = tombstone === undefined ? undefined : sqlNumber(tombstone.epoch, "tag_tombstone.epoch");
@@ -1341,6 +1353,19 @@ export class TagDurableObject implements DurableObject {
       return json({ inspectionStatus: "absent-never-contacted" });
     }
     return error(409, "target_not_terminal", "Target is not terminal under pinned writer authority");
+  }
+
+  /** Reconciler-only fence for never-contacted targets; creates durable tombstone state. */
+  private async fenceAbsentG77Target(tag: string, body: unknown): Promise<Response> {
+    const parsed = reservationFrom(body);
+    if (parsed.value === undefined) {
+      return error(400, "invalid_fence_target", parsed.error ?? "attemptId and epoch are required");
+    }
+    this.ensureSqlTag(tag);
+    const result = await this.cancelSql(tag, { ...parsed.value, forceTombstone: true });
+    return result.status >= 200 && result.status < 300
+      ? json(result.body)
+      : error(result.status, "fence_target_rejected", "Absent target fence was rejected");
   }
 
   async alarm(): Promise<void> {

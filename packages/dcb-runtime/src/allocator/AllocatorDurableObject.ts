@@ -9,8 +9,6 @@ import {
   IssuanceLedgerError,
   ISSUANCE_COUNT_KEY,
   ISSUANCE_MIGRATION_KEY,
-  ISSUANCE_NEVER_CONTACTED_GRACE_MS,
-  ISSUANCE_RECOVERY_KEY,
   applyTargetResolution,
   buildCertificateSnapshot,
   completeMigrationProofInTransaction,
@@ -20,10 +18,10 @@ import {
   parseTargetResolutionEvidence,
   registerIssuanceInTransaction,
   registrationProbe,
+  syncIssuanceRecoveryAlarm,
   envelopeKey,
   type IssuanceEnvelope,
   type IssuanceMigrationState,
-  type IssuanceRecoverySchedule,
 } from "./IssuanceLedger";
 import { reconcileIssuanceBatch, verifyTargetResolutionEvidence } from "./IssuanceReconciler";
 import {
@@ -229,10 +227,7 @@ export class AllocatorDurableObject implements DurableObject {
   }
 
   private async rearmIssuanceRecoveryIfNeeded(): Promise<void> {
-    if (await countUnresolvedEntries(this.ctx.storage) === 0) return;
-    const schedule = await this.ctx.storage.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
-    const rearmAt = Math.max(Date.now(), schedule?.nextDueAt ?? Date.now());
-    await this.ctx.storage.setAlarm(rearmAt);
+    await syncIssuanceRecoveryAlarm(this.ctx.storage, Date.now());
   }
 
   private async serviceIdFromState(): Promise<string | undefined> {
@@ -691,9 +686,7 @@ export class AllocatorDurableObject implements DurableObject {
         }
       }
       if (result.created && input.candidateMembership.size > 0 && !suppressRecoveryAlarm) {
-        const recoveryAlarmAt = Date.now() + ISSUANCE_NEVER_CONTACTED_GRACE_MS;
-        await this.ctx.storage.put("issuance:recovery-alarm-armed-at", recoveryAlarmAt);
-        await this.ctx.storage.setAlarm(recoveryAlarmAt);
+        await syncIssuanceRecoveryAlarm(this.ctx.storage, Date.now());
       }
       return json(result.vector, result.created ? 201 : 200);
     } catch (failure) {
