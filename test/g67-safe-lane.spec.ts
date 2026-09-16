@@ -853,5 +853,5 @@ describe("SDT-G67 event-driven safe lane", () => {
     expect(observations.every((observation) => observation.intervalMs >= 0)).toBe(true);
     expect(observations.every((observation) => observation.safeHead.length > 0)).toBe(true);
     console.log(`G67_AC3_OBSERVATIONS ${JSON.stringify(observations)}`);
-  }, 20_000);
+  }, 12_000);
 });
