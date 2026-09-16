@@ -1,7 +1,7 @@
 {
   "schema": "sdt-g40-ci-step-inventory-allowlist/v1",
   "baselineRef": "origin/main",
-  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin.",
+  "reviewedRule": "The G84 manifest is the reviewed authority: historical workflow-run leaves are replaced by manifest dispatch, manifest commands are additions, their recursively expanded package leaves are derived additions, and the retained PR workflow steps remain explicit. Every section is checked by exact normalized command text plus entry identity SHA-256; no wildcard command acceptance is used. SHA or URL rewrites are never allowlisted; the restored historical baseline command is the authority for the retained-history pin. SDT-G96 adds the reviewed cheap-lane command `npm run test:g93` (id `g93`) and its package-script closure leaf `node scripts/sdt-g93-workflow-package-guard.mjs`; that expands addedManifestCommands 135\u2192136 and addedManifestClosure 61\u219262.",
   "missingHistoricalWorkflow": {
     "count": 86,
     "entrySetSha256": "5075be9c3c2ce3a650056f6108361a0bfa0dde2a5851fe936c98c305539ded76",
@@ -9,15 +9,15 @@
     "reason": "The pre-G84 workflow-run command leaves were intentionally replaced by the lane manifest; their exact baseline command text remains hashed and reported by the checker."
   },
   "addedManifestCommands": {
-    "count": 135,
-    "entrySetSha256": "dd203f4668f146977351b1331536d0594649bc648e94bdf3d708bfc44a5ba73e",
-    "idSetSha256": "8c5858d229fe000954ea27ad232034c978da7c172c1bd63aba03667358933ad7",
+    "count": 136,
+    "entrySetSha256": "df95c0f3efe89b21adfccb79cd2000dfd220bee0a415fa2e9889c1752c7b4c67",
+    "idSetSha256": "fb9dceb8897e9664ae25225176f647e7bdb48002ae815c5b1b20b402112b3e1d",
     "reason": "Each manifest lane command is an explicitly reviewed G84 authority entry; changing its lane, command, environment or tier changes this exact set."
   },
   "addedManifestClosure": {
-    "count": 61,
-    "entrySetSha256": "70f4127f745191ef793adddb1f37b2bc04ae3484019b2885ab9f62157d5aa8e8",
-    "idSetSha256": "22bde5a4ce14435159ab2dddd282dccc72220b88282707f51eb12680d8fff7db",
+    "count": 62,
+    "entrySetSha256": "b428ddb5d0dfc2a7fb40ae432520dffcf866e7dce66d1ed3a781ebd5c4d2d6a0",
+    "idSetSha256": "7c2dd95251a61060afd9b83e9164e4f6dc2a5a732fe225a727431312d40e47ef",
     "reason": "These npm/workspace leaves are the exact recursive package-script closure of the reviewed manifest commands, not an untracked command source."
   },
   "addedWorkflowSteps": {

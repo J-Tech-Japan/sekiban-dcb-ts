@@ -72,7 +72,7 @@
       "name": "cheap",
       "tier": "pr",
       "services": ["postgres"],
-      "affectedPaths": ["package.json", "package-lock.json", "packages/**", "test/**", "scripts/**", "vitest*.ts", "tsconfig*.json"],
+      "affectedPaths": ["package.json", "package-lock.json", "packages/**", "test/**", "scripts/**", "vitest*.ts", "tsconfig*.json", ".github/workflows/**", "ci/lanes.json"],
       "commands": [
         {"id": "g28-build", "command": "npm run build:packages"},
         {"id": "g28-compile-fail", "command": "npm run test:g28:compile-fail"},
@@ -89,6 +89,7 @@
         {"id": "g28-package-red", "command": "npm run test:g28:boundary:package", "env": {"SDT_G28_BOUNDARY_FORCE_FAILURE_GATE": "package-manifest"}, "expect": "red"},
         {"id": "g64", "command": "npm run test:g64"},
         {"id": "g72", "command": "npm run test:g72:trusted-publishing"},
+        {"id": "g93", "command": "npm run test:g93"},
         {"id": "g64-red", "command": "npm run test:g64:forced-red", "env": {"SDT_G64_FORCE_FAILURE": "1"}, "expect": "red"},
         {"id": "g26", "command": "npm run test:g26"},
         {"id": "g27", "command": "npm run test:g27"},
