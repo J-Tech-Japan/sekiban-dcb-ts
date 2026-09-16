@@ -2541,14 +2541,27 @@ export class TagDurableObject implements DurableObject {
 
       if (input.forceTombstone === true) {
         if (!holdsReservation && tombstoneEpoch !== undefined && tombstoneEpoch >= input.epoch) {
+          sql.exec(
+            "UPDATE tag_epoch SET sealed_epoch = ? WHERE attempt_id = ? AND (sealed_epoch IS NULL OR sealed_epoch < ?)",
+            MAX_EPOCH,
+            input.attemptId,
+            MAX_EPOCH,
+          );
           await this.rearmScheduler(txn);
           return { status: 200, body: { status: "cancelled", idempotent: true, version } };
         }
+        // Force-tombstone records the pinned epoch for inspect/reconciler evidence
+        // and seals at MAX_EPOCH so no higher writer generation can append.
         sql.exec(`
           INSERT INTO tag_epoch (attempt_id, highest_epoch, sealed_epoch, confirmation_epoch)
           VALUES (?, ?, NULL, NULL)
           ON CONFLICT(attempt_id) DO UPDATE SET highest_epoch = MAX(highest_epoch, excluded.highest_epoch)
         `, input.attemptId, input.epoch);
+        sql.exec(
+          "UPDATE tag_epoch SET sealed_epoch = ? WHERE attempt_id = ?",
+          MAX_EPOCH,
+          input.attemptId,
+        );
         sql.exec(`
           INSERT INTO tag_tombstone (attempt_id, epoch) VALUES (?, ?)
           ON CONFLICT(attempt_id) DO UPDATE SET epoch = MAX(epoch, excluded.epoch)
@@ -2933,16 +2946,21 @@ export class TagDurableObject implements DurableObject {
       if (input.forceTombstone === true) {
         if (!holdsReservation && tombstone !== undefined && tombstone >= input.epoch) {
           record = await this.commitExpiryIfNeeded(txn, expiry);
+          const sealedEpoch = withMaxEpoch(record.sealedEpoch, input.attemptId, MAX_EPOCH);
+          if (sealedEpoch !== record.sealedEpoch) {
+            record = await this.commit(txn, record, { sealedEpoch });
+          }
           return { status: 200, body: { status: "cancelled", idempotent: true, version: record.version } };
         }
 
-        // The cancel barrier owns only its (attemptId, epoch) tuple. An
-        // unrelated active reservation must survive a delayed cancellation.
+        // Force-tombstone seals all writer epochs for the attempt while leaving
+        // unrelated active reservations untouched.
         record = advanceEpoch(record, input.attemptId, input.epoch);
         const updated = await this.commit(txn, record, {
           activeReservation: holdsReservation ? null : record.activeReservation,
           alarmDueAt: holdsReservation ? null : record.alarmDueAt,
           tombstones: withMaxEpoch(record.tombstones, input.attemptId, input.epoch),
+          sealedEpoch: withMaxEpoch(record.sealedEpoch, input.attemptId, MAX_EPOCH),
         });
         return { status: 200, body: { status: "cancelled", idempotent: false, version: updated.version } };
       }

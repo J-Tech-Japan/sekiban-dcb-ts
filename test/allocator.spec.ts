@@ -13,7 +13,7 @@ import {
   predecessorIssuedSuid,
   unresolvedIndexKey,
 } from "../packages/dcb-runtime/src/allocator/IssuanceLedger";
-import { g32Suid } from "./helpers/g32-fixtures";
+import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
 import { reconcileIssuanceBatch } from "../packages/dcb-runtime/src/allocator/IssuanceReconciler";
 import { scopeIdFor } from "../packages/dcb-runtime/src/scope/ScopeName";
 
@@ -679,6 +679,100 @@ describe("AllocatorDurableObject", () => {
       await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
     );
     expect(certificate.unresolvedCount).toBe(0);
+  });
+
+  it("G77 force-tombstoned target refuses append at pinned and higher writer epochs", async () => {
+    const serviceId = `g77-f12-irrevocable-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const eventId = g32EventId(`g77-f12:${attemptId}`);
+    const tag = "room:g77:f12-irrevocable";
+    const allocate = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(allocate.status).toBe(201);
+    const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
+    const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
+    const allocatorDo = namespace.get(scopeIdFor(namespace, { serviceId, doClass: "allocator", identity: "allocator" }));
+    const envelope = await runInDurableObject(allocatorDo, async (_instance, state) => state.storage.get<{
+      eventId: string;
+      suid: string;
+    }>(`issuance:envelope:${attemptId}:0`));
+    expect(envelope).toBeTruthy();
+    for (let index = 0; index < 5; index += 1) {
+      const reconcile = await namedAllocatorRequest(serviceId, "/__internal/g77/reconcile-now", {});
+      expect(reconcile.status).toBe(200);
+    }
+    const target = await runInDurableObject(allocatorDo, async (_instance, state) =>
+      state.storage.get<{ status: string }>(`issuance:target:${attemptId}:0:${tag}`));
+    expect(target?.status).toBe("absent-and-irrevocably-fenced");
+    const certificate = await responseJson<ClosedPrefixCertificate>(
+      await namedAllocatorRequest(serviceId, `/__internal/g77/certificate?serviceId=${encodeURIComponent(serviceId)}`),
+    );
+    expect(certificate.unresolvedCount).toBe(0);
+    expect(certificate.status).toBe("ready");
+    const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tag }));
+    const tombstoneFacts = await runInDurableObject(tagStub, async (_instance, state) => ({
+      tombstone: state.storage.sql.exec("SELECT epoch FROM tag_tombstone WHERE attempt_id = ?", attemptId).toArray(),
+      epoch: state.storage.sql.exec("SELECT highest_epoch, sealed_epoch FROM tag_epoch WHERE attempt_id = ?", attemptId).toArray(),
+    }));
+    expect(tombstoneFacts.tombstone).toEqual([{ epoch: 0 }]);
+    expect(tombstoneFacts.epoch[0]).toMatchObject({ highest_epoch: 0, sealed_epoch: 9007199254740991 });
+    const candidate = {
+      eventId: envelope!.eventId,
+      suid: envelope!.suid,
+      payload: JSON.stringify({ fixture: "g77-f12" }),
+      eventTags: [tag],
+      eventType: "G77F12Event",
+      provenance: "g32",
+      allocatorLineageId: "g77-f12-lineage",
+      timestamp: G32_FIXTURE_TIMESTAMP,
+    };
+    for (const epoch of [0, 1, 5] as const) {
+      const append = await tagStub.fetch(new Request(`https://tag.test/append?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ attemptId, epoch, candidates: [candidate] }),
+      }));
+      expect(append.status).toBe(409);
+      const body = await responseJson<{ reason: string }>(append);
+      expect(["tombstoned_epoch", "sealed_epoch"]).toContain(body.reason);
+      const acquire = await tagStub.fetch(new Request(`https://tag.test/acquire?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ attemptId, epoch, eventTags: [tag], consistencyTags: [] }),
+      }));
+      expect(acquire.status).toBe(409);
+    }
+    const inspect = await tagStub.fetch(new Request(`https://tag.test/__internal/g77/inspect-target?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        eventId: envelope!.eventId,
+        suid: envelope!.suid,
+        attemptId,
+        pinnedWriterEpoch: 0,
+      }),
+    }));
+    expect(inspect.status).toBe(200);
+    expect(await responseJson<{ terminalStatus: string }>(inspect)).toMatchObject({
+      terminalStatus: "absent-and-irrevocably-fenced",
+    });
+    const eventCount = await runInDurableObject(tagStub, async (_instance, state) =>
+      state.storage.sql.exec<{ count: number }>("SELECT COUNT(*) AS count FROM tag_event WHERE attempt_id = ?", attemptId).one().count);
+    expect(eventCount).toBe(0);
+    const obligationCount = await runInDurableObject(tagStub, async (_instance, state) =>
+      state.storage.sql.exec<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM tag_outbox_obligation WHERE event_id = ?",
+        envelope!.eventId,
+      ).one().count);
+    expect(obligationCount).toBe(0);
   });
 
   it("G77 in-flight target stays pending while never-contacted target can fence", async () => {

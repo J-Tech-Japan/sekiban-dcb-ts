@@ -36,7 +36,7 @@ npm run measure:g77
 npx vitest run --config vitest.config.ts test/g62-global-completeness.spec.ts -t "G77 P14"
 ```
 
-Post-implementation vitest: **44 passed** in `test:g77` (34 matrix + 10 allocator incl. 4 G77 mutant oracles).
+Post-implementation vitest: **55 passed** in `test:g77` (34 matrix + 11 allocator incl. 4 G77 mutant oracles and F12 irrevocable-fence regression).
 
 ## Frozen matrix receipts (pre-producer)
 
@@ -135,4 +135,4 @@ The trusted allocator producer registers every new-format allocation as an immut
 
 - Dedicated commit-path p95 bench against pinned-main binary (proxy only today).
 - Full B01–B05/B07/B10–B13 transition-level crash injection seams (B06–B08 covered).
-- Writer-authority irrevocability for all supported repair/import paths not re-proven beyond existing Tag inspect + force-tombstone cooperation (no BLOCKER filed).
+- **F12 closed:** force-tombstone now seals at `MAX_EPOCH` so append/acquire refuse every writer generation for the attempt while inspect still reports `absent-and-irrevocably-fenced` at the pinned tombstone epoch (`test/allocator.spec.ts` *G77 force-tombstoned target refuses append at pinned and higher writer epochs*).
