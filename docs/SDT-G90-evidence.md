@@ -102,3 +102,16 @@ Confirmed: no edits to G67 body, budget, safety factor, max rounds, G79, AC4 tim
 ## AC8 — process
 
 Worker claim: issue #186 already carried `intent-issue-in-progress`. PR targets `main` with `Closes #186`.
+
+
+## Hosted AC6 progress
+
+| # | Run | foundation-g73 / ci-foundation | Calibration outcome |
+|---|---|---|---|
+| 1 | https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35076720269 | ci-foundation **success** | `healthy-green-g69-path-timeout-red`; warm-up 16 / chunks 8×5; residual max 3.375 ≤ bound 7; 0 `CALIBRATION_INCONCLUSIVE` |
+
+Need ≥4 more fresh greens on the same final head after any follow-up commits.
+
+## Post-0.2.0 g64 dry-run adaptation (CI unblock)
+
+After `@sekiban/dcb-*@0.2.0` landed on npm, `scripts/dcb-matched-set-publish-dry-run.mjs` failed closed on expected `version-collision` (`You cannot publish over the previously published versions: 0.2.0`), red-failing `cheap/g64` on every PR. Classifier already documents collisions as expected after release; the dry-run harness now treats `failure.kind === "version-collision"` as PASS (`outcome: version-already-published`) and still fails closed on `invalid-packaging` and other kinds.
