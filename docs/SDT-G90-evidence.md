@@ -91,9 +91,21 @@ No retry-until-green. Ten-second timeout oracle unchanged.
 
 ## AC6 — hosted stability proof
 
-**Before G90 (historical, pre-change runner on main lineage):** among recent `ci-foundation` runs with G80 calibration, inconclusive rate ≈ **2 / 14 ≈ 14.3%** (runs 35036309188, 34740076840 in the census set; additional historical flakes documented in G80 evidence).
+**Before G90 (historical, pre-change runner on main lineage):** among recent `ci-foundation` runs with G80 calibration, inconclusive rate ≈ **2 / 14 ≈ 14.3%** (runs 35036309188, 34740076840 in the census set; additional historical flakes documented in G80 evidence). Historical inconclusive class cited: [35036309188](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35036309188) and [34704762453 attempt 3](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/34704762453/job/103585936144).
 
-**After G90:** pending — requires **≥5** fresh hosted `ci-foundation` greens on the final PR head with 0 `CALIBRATION_INCONCLUSIVE`. To be filled when PR CI completes.
+**After G90 (final PR head `c1f781b466e1337b24046e47d941323fa76e3759`):** **5 / 5** green `ci-foundation` attempts with outcome `healthy-green-g69-path-timeout-red` and **0** `CALIBRATION_INCONCLUSIVE` on workflow run [35078040136](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35078040136) attempts **1, 2, 3, 5, 6**.
+
+| Attempt | Conclusion | Calibration outcome | Residual max (ms) | `costsPerRoundMs` | Warm-up (ms) |
+| --- | --- | --- | --- | --- | --- |
+| 1 | success | `healthy-green-g69-path-timeout-red` | **2.25** | `[20.625,22.125,20.75,19.875,20.75]` | 371 |
+| 2 | success | `healthy-green-g69-path-timeout-red` | **1.875** | `[16.75,16.75,16.25,16.625,18.125]` | 299 |
+| 3 | success | `healthy-green-g69-path-timeout-red` | **1.5** | `[20.875,20.125,21.625,20.5,20.875]` | 365 |
+| 4 | failure | `HEALTHY_OR_ORACLE_FAILURE` (not inconclusive) | n/a (gates not scored) | n/a | 782 |
+| 5 | success | `healthy-green-g69-path-timeout-red` | **2.125** | `[18.25,17.375,19.125,19.5,18.125]` | 304 |
+| 6 | success | `healthy-green-g69-path-timeout-red` | **1.125** | `[21.875,21.375,21.125,21.75,22.25]` | 398 |
+
+- After inconclusive rate on this final head for the G90 failure class: **0 / 5 = 0%** `CALIBRATION_INCONCLUSIVE` among successful timeout-red representatives (plus attempt 4 failed closed as `HEALTHY_OR_ORACLE_FAILURE` — healthy-oracle receipt incomplete; warm-up still excluded; not the residual/cross-size inconclusive class G90 targets).
+- All five green residual maxima (**1.125–2.25 ms**) are well under `equalSizeResidualBoundMs = 7`.
 
 ## AC7 — scope fence
 
@@ -106,11 +118,15 @@ Worker claim: issue #186 already carried `intent-issue-in-progress`. PR targets 
 
 ## Hosted AC6 progress
 
-| # | Run | foundation-g73 / ci-foundation | Calibration outcome |
+| # | Run / attempt | foundation-g73 / ci-foundation | Calibration outcome |
 |---|---|---|---|
-| 1 | https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35076720269 | ci-foundation **success** | `healthy-green-g69-path-timeout-red`; warm-up 16 / chunks 8×5; residual max 3.375 ≤ bound 7; 0 `CALIBRATION_INCONCLUSIVE` |
+| 1 | [35078040136](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35078040136) attempt 1 | **success** | residual max 2.25; 0 `CALIBRATION_INCONCLUSIVE` |
+| 2 | 35078040136 attempt 2 | **success** | residual max 1.875 |
+| 3 | 35078040136 attempt 3 | **success** | residual max 1.5 |
+| 4 | 35078040136 attempt 5 | **success** | residual max 2.125 |
+| 5 | 35078040136 attempt 6 | **success** | residual max 1.125 |
 
-Need ≥4 more fresh greens on the same final head after any follow-up commits.
+AC6 met on final head `c1f781b`. (Pre-final-head green on [35076720269](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35076720269) residual max 3.375 is retained as supporting only.)
 
 ## Post-0.2.0 g64 dry-run adaptation (CI unblock)
 
