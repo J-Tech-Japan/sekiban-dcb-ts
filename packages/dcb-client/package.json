@@ -6,7 +6,7 @@
   "license": "Elastic-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/J-Tech-Japan/sekiban-dcb-ts.git",
+    "url": "git+https://github.com/J-Tech-Japan/sekiban-dcb-ts.git",
     "directory": "packages/dcb-client"
   },
   "homepage": "https://github.com/J-Tech-Japan/sekiban-dcb-ts/tree/main/packages/dcb-client#readme",
