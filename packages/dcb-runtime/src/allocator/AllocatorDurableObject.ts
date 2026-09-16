@@ -13,12 +13,12 @@ import {
   applyTargetResolution,
   buildCertificateSnapshot,
   completeMigrationProofInTransaction,
+  countUnresolvedEntries,
   pageLegacyInventoryInTransaction,
   parseCandidateMembership,
   parseTargetResolutionEvidence,
   registerIssuanceInTransaction,
   registrationProbe,
-  shouldArmIssuanceRecovery,
   envelopeKey,
   type IssuanceEnvelope,
   type IssuanceMigrationState,
@@ -209,17 +209,29 @@ export class AllocatorDurableObject implements DurableObject {
 
   async alarm(): Promise<void> {
     const serviceId = await this.serviceIdFromState();
-    if (serviceId === undefined || this.env?.TAG === undefined) return;
-    await reconcileIssuanceBatch(this.ctx.storage, { TAG: this.env.TAG }, serviceId, async (evidence) => {
-      try {
-        await this.ctx.storage.transaction(async (txn) => {
-          await applyTargetResolution(txn, evidence);
+    try {
+      if (serviceId !== undefined && this.env?.TAG !== undefined) {
+        await reconcileIssuanceBatch(this.ctx.storage, { TAG: this.env.TAG }, serviceId, async (evidence) => {
+          try {
+            await this.ctx.storage.transaction(async (txn) => {
+              await applyTargetResolution(txn, evidence);
+            });
+            return true;
+          } catch {
+            return false;
+          }
         });
-        return true;
-      } catch {
-        return false;
       }
-    });
+    } finally {
+      await this.rearmIssuanceRecoveryIfNeeded();
+    }
+  }
+
+  private async rearmIssuanceRecoveryIfNeeded(): Promise<void> {
+    if (await countUnresolvedEntries(this.ctx.storage) === 0) return;
+    const schedule = await this.ctx.storage.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
+    const rearmAt = Math.max(Date.now(), schedule?.nextDueAt ?? Date.now());
+    await this.ctx.storage.setAlarm(rearmAt);
   }
 
   private async serviceIdFromState(): Promise<string | undefined> {
@@ -254,7 +266,12 @@ export class AllocatorDurableObject implements DurableObject {
         },
         () => body === undefined
           ? error(400, "invalid_allocation", "Request body must be JSON")
-          : this.allocate(body, activation, observation),
+          : this.allocate(
+            body,
+            activation,
+            observation,
+            request.headers.get("x-sdt-g77-suppress-recovery-alarm") === "1",
+          ),
       );
     }
     if (request.method === "GET" && url.pathname === "/state") {
@@ -328,6 +345,13 @@ export class AllocatorDurableObject implements DurableObject {
     }
     if (request.method === "POST" && url.pathname === "/__internal/g77/migration-proof") {
       return this.completeMigrationProof(request);
+    }
+    if (request.method === "GET" && url.pathname === "/__internal/g77/recovery-alarm") {
+      return json({
+        alarmAt: await this.ctx.storage.getAlarm(),
+        armedAt: await this.ctx.storage.get<number>("issuance:recovery-alarm-armed-at") ?? null,
+        unresolvedCount: await countUnresolvedEntries(this.ctx.storage),
+      });
     }
     if (request.method === "POST" && url.pathname === "/__internal/g77/reconcile-now") {
       return this.reconcileNow();
@@ -503,6 +527,7 @@ export class AllocatorDurableObject implements DurableObject {
     body: unknown,
     activation: DurableObjectActivationObservation,
     observation?: DurableObjectHandlerObservation,
+    suppressRecoveryAlarm = false,
   ): Promise<Response> {
     const parsed = allocateFrom(body);
     if (parsed.value === undefined) {
@@ -658,12 +683,10 @@ export class AllocatorDurableObject implements DurableObject {
           // already committed allocation result.
         }
       }
-      if (result.created && input.candidateMembership.size > 0) {
-        const schedule = await this.ctx.storage.get<IssuanceRecoverySchedule>(ISSUANCE_RECOVERY_KEY);
-        const now = Date.now();
-        if (shouldArmIssuanceRecovery(schedule, now)) {
-          await this.ctx.storage.setAlarm(now);
-        }
+      if (result.created && input.candidateMembership.size > 0 && !suppressRecoveryAlarm) {
+        const recoveryAlarmAt = Date.now();
+        await this.ctx.storage.put("issuance:recovery-alarm-armed-at", recoveryAlarmAt);
+        await this.ctx.storage.setAlarm(recoveryAlarmAt);
       }
       return json(result.vector, result.created ? 201 : 200);
     } catch (failure) {

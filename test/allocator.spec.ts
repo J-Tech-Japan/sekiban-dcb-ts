@@ -11,6 +11,7 @@ import {
   applyTargetResolution,
   issuedIndexKey,
   predecessorIssuedSuid,
+  shouldArmIssuanceRecovery,
   unresolvedIndexKey,
 } from "../packages/dcb-runtime/src/allocator/IssuanceLedger";
 import { G32_FIXTURE_TIMESTAMP, g32EventId, g32Suid } from "./helpers/g32-fixtures";
@@ -29,18 +30,35 @@ async function allocatorRequest(path: string, body?: unknown): Promise<Response>
   return SELF.fetch(`https://allocator.test/allocator${path}`, init);
 }
 
-async function namedAllocatorRequest(name: string, path: string, body?: unknown): Promise<Response> {
+async function namedAllocatorRequest(
+  name: string,
+  path: string,
+  body?: unknown,
+  suppressRecoveryAlarm = false,
+): Promise<Response> {
   const init =
     body === undefined
       ? undefined
       : {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(suppressRecoveryAlarm ? { "x-sdt-g77-suppress-recovery-alarm": "1" } : {}),
+          },
           body: JSON.stringify(body),
         };
   const namespace = (env as unknown as { ALLOCATOR: DurableObjectNamespace }).ALLOCATOR;
   const stub = namespace.get(scopeIdFor(namespace, { serviceId: name, doClass: "allocator", identity: "allocator" }));
   return stub.fetch(`https://${name}.allocator.test${path}`, init);
+}
+
+async function allocateG77(
+  serviceId: string,
+  body: Record<string, unknown>,
+  options?: { suppressRecoveryAlarm?: boolean },
+): Promise<Response> {
+  const suppressRecoveryAlarm = options?.suppressRecoveryAlarm !== false;
+  return namedAllocatorRequest(serviceId, "/allocate", body, suppressRecoveryAlarm);
 }
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -212,6 +230,39 @@ describe("AllocatorDurableObject", () => {
     });
   });
 
+  it("G77 arms recovery alarm after membership-carrying allocation", async () => {
+    const serviceId = `g77-recovery-alarm-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const response = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: ["room:g77:recovery-alarm"],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(response.status).toBe(201);
+    const alarmProbe = await namedAllocatorRequest(serviceId, "/__internal/g77/recovery-alarm");
+    expect(alarmProbe.status).toBe(200);
+    const probe = await responseJson<{
+      alarmAt: number | null;
+      armedAt: number | null;
+      unresolvedCount: number;
+    }>(alarmProbe);
+    expect(probe.armedAt).not.toBeNull();
+    expect(typeof probe.armedAt).toBe("number");
+  });
+
+  it("shouldArmIssuanceRecovery is true only when schedule exists and is due", () => {
+    const schedule = { nextDueAt: 100, cursor: null, attempts: 0 };
+    expect(shouldArmIssuanceRecovery(undefined, 100)).toBe(false);
+    expect(shouldArmIssuanceRecovery(schedule, 99)).toBe(false);
+    expect(shouldArmIssuanceRecovery(schedule, 100)).toBe(true);
+    expect(shouldArmIssuanceRecovery(schedule, 101)).toBe(true);
+  });
+
   it("G77 rolls back issuance ledger facts with between-vector-and-watermark", async () => {
     const serviceId = `g77-rollback-${crypto.randomUUID()}`;
     const attemptId = newAttempt();
@@ -268,7 +319,7 @@ describe("AllocatorDurableObject", () => {
     const attemptOne = newAttempt();
     const attemptTwo = newAttempt();
     const attemptThree = newAttempt();
-    const vectorOne = await responseJson<AllocationVector>(await namedAllocatorRequest(serviceId, "/allocate", {
+    const vectorOne = await responseJson<AllocationVector>(await allocateG77(serviceId, {
       attemptId: attemptOne,
       serviceId,
       candidates: [{
@@ -279,7 +330,7 @@ describe("AllocatorDurableObject", () => {
       }],
     }));
     expect(vectorOne.candidates[0]!.suid).toBeTruthy();
-    const vectorTwo = await responseJson<AllocationVector>(await namedAllocatorRequest(serviceId, "/allocate", {
+    const vectorTwo = await responseJson<AllocationVector>(await allocateG77(serviceId, {
       attemptId: attemptTwo,
       serviceId,
       candidates: [{
@@ -289,7 +340,7 @@ describe("AllocatorDurableObject", () => {
         pinnedWriterEpoch: 0,
       }],
     }));
-    const vectorThree = await responseJson<AllocationVector>(await namedAllocatorRequest(serviceId, "/allocate", {
+    const vectorThree = await responseJson<AllocationVector>(await allocateG77(serviceId, {
       attemptId: attemptThree,
       serviceId,
       candidates: [{
@@ -425,7 +476,7 @@ describe("AllocatorDurableObject", () => {
     const serviceId = `g77-inspect-retry-${crypto.randomUUID()}`;
     const attemptId = newAttempt();
     const tag = "room:g77:inspect-retry";
-    await namedAllocatorRequest(serviceId, "/allocate", {
+    await allocateG77(serviceId, {
       attemptId,
       serviceId,
       candidates: [{
@@ -491,7 +542,7 @@ describe("AllocatorDurableObject", () => {
     const tagA = "room:g77:multi-a";
     const tagB = "room:g77:multi-b";
     const attemptId = newAttempt();
-    const allocate = await namedAllocatorRequest(serviceId, "/allocate", {
+    const allocate = await allocateG77(serviceId, {
       attemptId,
       serviceId,
       candidates: [{
@@ -579,7 +630,7 @@ describe("AllocatorDurableObject", () => {
     const serviceId = `g77-forged-oracle-${crypto.randomUUID()}`;
     const attemptId = newAttempt();
     const tag = "room:g77:forged-oracle";
-    await namedAllocatorRequest(serviceId, "/allocate", {
+    await allocateG77(serviceId, {
       attemptId,
       serviceId,
       candidates: [{
@@ -868,7 +919,7 @@ describe("AllocatorDurableObject", () => {
     const serviceId = `g77-epoch-oracle-${crypto.randomUUID()}`;
     const attemptId = newAttempt();
     const tag = "room:g77:epoch-oracle";
-    await namedAllocatorRequest(serviceId, "/allocate", {
+    await allocateG77(serviceId, {
       attemptId,
       serviceId,
       candidates: [{
@@ -889,9 +940,6 @@ describe("AllocatorDurableObject", () => {
       eventId: string;
     }>(`issuance:envelope:${attemptId}:0`));
     expect(envelope).toBeTruthy();
-    await runInDurableObject(allocatorDo, async (_instance, state) => {
-      await state.storage.deleteAlarm();
-    });
     const tagNamespace = (env as unknown as { TAG: DurableObjectNamespace }).TAG;
     const tagStub = tagNamespace.get(scopeIdFor(tagNamespace, { serviceId, doClass: "tag", identity: tag }));
     await tagStub.fetch(new Request(`https://tag.test/acquire?__serviceId=${encodeURIComponent(serviceId)}&__tag=${encodeURIComponent(tag)}`, {

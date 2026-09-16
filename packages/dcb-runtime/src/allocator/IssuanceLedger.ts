@@ -292,11 +292,12 @@ export async function registerIssuanceInTransaction(
   }
 }
 
+/** Arm when a recovery schedule exists and reconciliation is due (or overdue). */
 export function shouldArmIssuanceRecovery(
   schedule: IssuanceRecoverySchedule | undefined,
   now: number,
 ): boolean {
-  return schedule === undefined || schedule.nextDueAt > now;
+  return schedule !== undefined && schedule.nextDueAt <= now;
 }
 
 type IssuanceIndexReader = Pick<DurableObjectStorage, "list">;
