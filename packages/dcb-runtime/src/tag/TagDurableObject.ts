@@ -1280,7 +1280,48 @@ export class TagDurableObject implements DurableObject {
     if (request.method === "POST" && url.pathname === "/debug/clock") {
       return this.setClockOffset(tag, body);
     }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/inspect-target") {
+      return this.inspectG77Target(serviceId, tag, body);
+    }
+    if (request.method === "POST" && url.pathname === "/__internal/g77/capabilities") {
+      return json({ inspectTarget: true });
+    }
     return error(404, "tag_route_not_found", "Tag route was not found");
+  }
+
+  /** Identity-bound installed/absent inspection for G77 issuance reconciliation. */
+  private inspectG77Target(serviceId: string, tag: string, body: unknown): Response {
+    if (!isObject(body) || !isNonEmptyString(body.eventId) || !isNonEmptyString(body.suid)) {
+      return error(400, "invalid_inspect_target", "eventId and suid are required");
+    }
+    const pinnedWriterEpoch = isNonNegativeInteger(body.pinnedWriterEpoch) ? body.pinnedWriterEpoch : 0;
+    const sql = this.sqlStorage();
+    if (sql === undefined) return error(503, "tag_sql_unavailable", "Tag SQL storage is unavailable");
+    this.ensureSqlTag(tag);
+    const event = sql.exec<SqlRow>(`
+      SELECT attempt_id, event_id, suid FROM tag_event
+      WHERE service_id = ? AND event_id = ?
+    `, serviceId, body.eventId).toArray()[0];
+    if (event !== undefined &&
+      sqlString(event.event_id, "tag_event.event_id") === body.eventId &&
+      sqlString(event.suid, "tag_event.suid") === body.suid) {
+      const obligation = sql.exec<SqlRow>(`
+        SELECT event_digest FROM tag_outbox_obligation
+        WHERE service_id = ? AND event_id = ? ORDER BY obligation_sequence ASC LIMIT 1
+      `, serviceId, body.eventId).toArray()[0];
+      if (obligation !== undefined) {
+        return json({ terminalStatus: "installed-and-covered", eventId: body.eventId });
+      }
+    }
+    const attemptId = isNonEmptyString(body.attemptId) ? body.attemptId : undefined;
+    if (attemptId !== undefined) {
+      const tombstone = sql.exec<SqlRow>("SELECT epoch FROM tag_tombstone WHERE attempt_id = ?", attemptId).toArray()[0];
+      const tombstoneEpoch = tombstone === undefined ? undefined : sqlNumber(tombstone.epoch, "tag_tombstone.epoch");
+      if (tombstoneEpoch !== undefined && pinnedWriterEpoch <= tombstoneEpoch) {
+        return json({ terminalStatus: "absent-and-irrevocably-fenced", tombstoneEpoch });
+      }
+    }
+    return error(409, "target_not_terminal", "Target is not terminal under pinned writer authority");
   }
 
   async alarm(): Promise<void> {

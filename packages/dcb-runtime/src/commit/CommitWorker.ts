@@ -905,7 +905,7 @@ export class CommitWorker {
   }
 
   private async allocate(
-    candidates: Array<{ eventId: string }>,
+    candidates: Array<{ eventId: string; tags: string[] }>,
     attemptId: string,
     fault: CommitTestFault | undefined,
     bootstrapEpoch: number,
@@ -922,7 +922,12 @@ export class CommitWorker {
         serviceId: this.serviceId,
         bootstrapCommandId: attemptId,
         bootstrapEpoch,
-        candidates: candidates.map((candidate, candidateIndex) => ({ candidateIndex, eventId: candidate.eventId })),
+        candidates: candidates.map((candidate, candidateIndex) => ({
+          candidateIndex,
+          eventId: candidate.eventId,
+          targetTags: candidate.tags,
+          pinnedWriterEpoch: INITIAL_OWNER_EPOCH,
+        })),
         faultInjection: fault === "allocator-commit" ? "between-vector-and-watermark" : undefined,
       }, traceScope, "S08");
       if (result.response.status >= 200 && result.response.status < 300 && result.body !== undefined) {

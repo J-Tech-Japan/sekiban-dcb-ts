@@ -28,6 +28,8 @@ export interface LiveProjectionEnv {
   /** Non-secret service identity configured per deployment. */
   SDT_SERVICE_ID?: string;
   BOOTSTRAP?: DurableObjectNamespace;
+  /** Internal trusted certificate producer; never used on ordinary poll paths. */
+  ALLOCATOR?: DurableObjectNamespace;
 }
 
 export const LIVE_PROJECTION_POLL_OUTCOMES = [
@@ -112,6 +114,26 @@ function json(body: unknown, status = 200): Response {
 
 function error(status: number, code: string, message: string): Response {
   return json({ error: message, code }, status);
+}
+
+async function acquireClosedPrefixCertificate(
+  env: LiveProjectionEnv,
+  serviceId: string,
+): Promise<ClosedPrefixCertificate> {
+  if (env.ALLOCATOR === undefined) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  const url = new URL("https://projection.internal/__internal/g77/certificate");
+  url.searchParams.set("serviceId", serviceId);
+  const response = await env.ALLOCATOR.get(scopeIdFor(env.ALLOCATOR, {
+    serviceId,
+    doClass: "allocator",
+    identity: "allocator",
+  })).fetch(new Request(url));
+  if (!response.ok) {
+    throw new Error("ordering_certificate_unavailable");
+  }
+  return response.json() as Promise<ClosedPrefixCertificate>;
 }
 
 async function admitBootstrapRoute(env: LiveProjectionEnv, serviceId: string): Promise<void> {
@@ -214,10 +236,13 @@ export async function pollLiveProjections(
   const registry = options.registry ?? DEPLOYED_PROJECTOR_REGISTRY;
   const projectorIds = registry.registered().map((projector) => projector.id);
   const safeViewAdvance = options.safeViewAdvance === true || options.requireClosedPrefixCertificate === true;
+  const closedPrefixCertificate = safeViewAdvance
+    ? options.closedPrefixCertificate ?? await acquireClosedPrefixCertificate(env, serviceId)
+    : undefined;
   const closedPrefixSuid = safeViewAdvance
     ? validatedClosedPrefixSuid({
         closedPrefixSuid: options.closedPrefixSuid,
-        closedPrefixCertificate: options.closedPrefixCertificate,
+        closedPrefixCertificate,
         expectedServiceId: serviceId,
         expectedAllocatorLineageId: options.allocatorLineageId,
       }, serviceId)
@@ -246,7 +271,7 @@ export async function pollLiveProjections(
               {
                 maximumSuid: options.maximumSuid,
                 closedPrefixSuid,
-                closedPrefixCertificate: options.closedPrefixCertificate,
+                closedPrefixCertificate,
                 requireClosedPrefixCertificate: true,
                 expectedServiceId: serviceId,
                 expectedAllocatorLineageId: options.allocatorLineageId,
@@ -273,7 +298,7 @@ export async function pollLiveProjections(
         attemptedAt,
         options.maximumSuid,
         closedPrefixSuid,
-        options.closedPrefixCertificate,
+        closedPrefixCertificate,
         true,
         serviceId,
         options.allocatorLineageId,

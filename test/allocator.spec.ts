@@ -171,6 +171,65 @@ describe("AllocatorDurableObject", () => {
     expect((await allocatorState()).allocatedWatermark).toBe(ordered[ordered.length - 1]);
   });
 
+  it("G77 registers issuance ledger facts atomically when membership is supplied", async () => {
+    const serviceId = `g77-allocator-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const tag = "room:g77:allocator";
+    const response = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: [tag],
+        pinnedWriterEpoch: 0,
+      }],
+    });
+    expect(response.status).toBe(201);
+    const probe = await namedAllocatorRequest(serviceId, `/__internal/g77/registration/${encodeURIComponent(attemptId)}/0`);
+    expect(probe.status).toBe(200);
+    expect(await responseJson<{
+      envelope: boolean;
+      unresolvedIndex: boolean;
+      issuedIndex: boolean;
+      exactCount: boolean;
+      recoverySchedule: boolean;
+    }>(probe)).toEqual({
+      envelope: true,
+      unresolvedIndex: true,
+      issuedIndex: true,
+      exactCount: true,
+      recoverySchedule: true,
+    });
+  });
+
+  it("G77 rolls back issuance ledger facts with between-vector-and-watermark", async () => {
+    const serviceId = `g77-rollback-${crypto.randomUUID()}`;
+    const attemptId = newAttempt();
+    const response = await namedAllocatorRequest(serviceId, "/allocate", {
+      attemptId,
+      serviceId,
+      candidates: [{
+        candidateIndex: 0,
+        eventId: `${attemptId}-event`,
+        targetTags: ["room:g77:rollback"],
+        pinnedWriterEpoch: 0,
+      }],
+      faultInjection: "between-vector-and-watermark",
+    });
+    expect(response.status).toBe(503);
+    const probe = await namedAllocatorRequest(serviceId, `/__internal/g77/registration/${encodeURIComponent(attemptId)}/0`);
+    expect(probe.status).toBe(200);
+    const rolledBack = await responseJson<{
+      envelope: boolean;
+      unresolvedIndex: boolean;
+      issuedIndex: boolean;
+    }>(probe);
+    expect(rolledBack.envelope).toBe(false);
+    expect(rolledBack.unresolvedIndex).toBe(false);
+    expect(rolledBack.issuedIndex).toBe(false);
+  });
+
   it("continues from the persisted watermark and preserves an allocated vector across restart", async () => {
     const beforeRestartAttempt = newAttempt();
     const beforeRestart = await allocate(beforeRestartAttempt, allocationCandidates(beforeRestartAttempt, 1));
