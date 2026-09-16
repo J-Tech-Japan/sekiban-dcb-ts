@@ -30,6 +30,7 @@ import {
   probeG77Capabilities,
   probeIssuanceRegistration,
   readAllocation,
+  waitForAllocation,
   readCertificate,
   readTagState,
   seedObservedTagHead,
@@ -82,8 +83,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         fault: "tag-append-last",
         consistencyHeads: [head],
       }));
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      const allocation = await readAllocation(serviceId, attemptId);
+      const allocation = await waitForAllocation(serviceId, attemptId);
       expect(allocation.status).toBe(200);
       const tagState = await readTagState(serviceId, tag);
       expect(tagState.events).toEqual([]);
@@ -232,15 +232,14 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
         fault: "tag-append-last",
         consistencyHeads: [headLow],
       }));
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      const lowVector = await waitForAllocation(serviceId, attemptLow);
+      expect(lowVector.status).toBe(200);
       const workerHigh = commitWorker(serviceId);
       const highResponse = await workerHigh.handle(commitRequest([tagHigh], {
         attemptId: attemptHigh,
         consistencyHeads: [headHigh],
       }));
       expect([200, 201]).toContain(highResponse.status);
-      const lowVector = await readAllocation(serviceId, attemptLow);
-      expect(lowVector.status).toBe(200);
       let highVector = await readAllocation(serviceId, attemptHigh);
       if (highVector.status !== 200) {
         const seeded = await allocatorPost(serviceId, "/allocate", {
@@ -351,8 +350,7 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       const pending = commitWorker(serviceId, {
         beforeBootstrapFinalization: async () => { await hold; },
       }).handle(commitRequest([tag], { attemptId, fault: "tag-append-last", consistencyHeads: [head] }));
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      expect((await readAllocation(serviceId, attemptId)).status).toBe(200);
+      expect((await waitForAllocation(serviceId, attemptId)).status).toBe(200);
       await expireTagReservation(serviceId, tag, Date.now() + 30_000);
       expect((await readTagState(serviceId, tag)).events).toEqual([]);
       const caps = await probeG77Capabilities(serviceId);

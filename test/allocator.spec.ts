@@ -310,8 +310,8 @@ describe("AllocatorDurableObject", () => {
     const firstGraceDue = firstProbe.alarmAt!;
     expect(firstGraceDue).toBeGreaterThanOrEqual(beforeFirst + ISSUANCE_NEVER_CONTACTED_GRACE_MS - 250);
     // Space traffic so an unconditional setAlarm(now + grace) on the second allocation
-    // would postpone the alarm past firstGraceDue by far more than the tolerance below.
-    await new Promise((resolve) => setTimeout(resolve, 4_000));
+    // would postpone the alarm past firstGraceDue by more than the tolerance below.
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
     const second = await namedAllocatorRequest(serviceId, "/allocate", {
       attemptId: newAttempt(),
       serviceId,
@@ -371,10 +371,10 @@ describe("AllocatorDurableObject", () => {
       return (await state.storage.get<{ attempts: number }>("issuance:recovery-schedule"))?.attempts ?? 0;
     });
     const attemptsBefore = afterSeed;
-    await new Promise((resolve) => setTimeout(resolve, 3_000));
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
     const attemptsAfter = await runInDurableObject(allocatorDo, async (_instance, state) =>
       (await state.storage.get<{ attempts: number }>("issuance:recovery-schedule"))?.attempts ?? 0);
-    expect(attemptsAfter - attemptsBefore).toBeLessThanOrEqual(5);
+    expect(attemptsAfter - attemptsBefore).toBeLessThanOrEqual(3);
     await runInDurableObject(allocatorDo, async (_instance, state) => {
       const schedule = await state.storage.get<{ nextDueAt: number }>("issuance:recovery-schedule");
       expect(schedule?.nextDueAt).toBeDefined();

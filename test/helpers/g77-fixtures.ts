@@ -154,6 +154,22 @@ export async function readAllocation(serviceId: string, attemptId: string): Prom
   return allocatorGet(serviceId, `/attempts/${encodeURIComponent(attemptId)}`);
 }
 
+export async function waitForAllocation(
+  serviceId: string,
+  attemptId: string,
+  options: { readonly timeoutMs?: number; readonly intervalMs?: number } = {},
+): Promise<Response> {
+  const timeoutMs = options.timeoutMs ?? 3_000;
+  const intervalMs = options.intervalMs ?? 50;
+  const deadline = Date.now() + timeoutMs;
+  let response = await readAllocation(serviceId, attemptId);
+  while (response.status !== 200 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    response = await readAllocation(serviceId, attemptId);
+  }
+  return response;
+}
+
 export async function expireTagReservation(serviceId: string, tag: string, expiresAt: number): Promise<void> {
   expect((await tagPost(serviceId, tag, "/debug/clock", { nowMs: expiresAt + 1 })).status).toBe(200);
   expect((await tagPost(serviceId, tag, "/debug/alarm", {})).status).toBe(200);
