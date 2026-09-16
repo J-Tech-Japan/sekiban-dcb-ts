@@ -115,6 +115,7 @@ describe("G77 AC6 decision-grade measurement", () => {
     expect(G77_AC6_SCORED_PAIRS).toBe(24);
   });
 
+  describe.skipIf(!EMIT_REPORT)("measurement cohorts (SDT_G77_AC6_EMIT_REPORT=1 only)", () => {
   it("G77 AC6 safe-pass warm cohort", async () => {
     if (COHORT !== "all" && COHORT !== "safe-pass-warm" && COHORT !== "safe-pass warm cohort") return;
     const summary = await collectSafePassCohort(false);
@@ -200,4 +201,5 @@ describe("G77 AC6 decision-grade measurement", () => {
       detectable,
     });
   }, 600_000);
+  });
 });

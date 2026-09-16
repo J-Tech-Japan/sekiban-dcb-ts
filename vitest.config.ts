@@ -14,7 +14,7 @@ export default defineConfig({
   define: {
     __G32_PARITY_ARTIFACT_B64__: JSON.stringify(process.env.G32_PARITY_ARTIFACT_B64 ?? ""),
     __SDT_G77_AC6_EMIT_REPORT__: JSON.stringify(process.env.SDT_G77_AC6_EMIT_REPORT ?? ""),
-    __SDT_G77_AC6_COHORT__: JSON.stringify(process.env.SDT_G77_AC6_COHORT ?? "all"),
+    __SDT_G77_AC6_COHORT__: JSON.stringify(process.env.SDT_G77_AC6_COHORT ?? ""),
     __SDT_G77_AC6_COMMIT_SIDE__: JSON.stringify(process.env.SDT_G77_AC6_COMMIT_SIDE ?? "main"),
   },
   test: {
