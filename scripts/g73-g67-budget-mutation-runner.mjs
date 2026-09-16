@@ -28,7 +28,9 @@ const root = process.cwd();
 const testFile = "test/g67-safe-lane.spec.ts";
 const testName = "AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals";
 const mutationAnchor = "        await Promise.all(waiters);\n\n        const publicResponse = await publicFetch";
-const budgetMs = 10_000;
+// SDT-G94 measurement tip: 20 s observational ceiling only; permanent value selected after census.
+const budgetMs = 20_000;
+const vitestTimeoutMessage = () => `Test timed out in ${budgetMs}ms.`;
 const calibrationRounds = 32;
 const g69OperationsPerRound = 2;
 const safetyFactor = 1.5;
@@ -880,7 +882,7 @@ function requireHealthy(result) {
 }
 
 function requireTimeoutRegression(result) {
-  const timeoutMessage = "Test timed out in 10000ms.";
+  const timeoutMessage = vitestTimeoutMessage();
   const receiptErrors = Array.isArray(result.receiptTarget?.errors)
     ? result.receiptTarget.errors
     : [];
@@ -1350,7 +1352,7 @@ function runDurableRecordSelfTest() {
     },
     versions: { report: pinnedVitestVersion, receipt: pinnedVitestVersion, installed: pinnedVitestVersion },
     receiptFinalStatus: status,
-    failureMessages: status === "failed" ? ["Test timed out in 10000ms."] : [],
+    failureMessages: status === "failed" ? [vitestTimeoutMessage()] : [],
     collectionErrors: [],
     unhandledErrors: [],
     reportError: null,
@@ -1399,7 +1401,7 @@ function runDurableRecordSelfTest() {
     stage: "representative-attempt",
     metadata: selfTestMetadata,
     rounds: 512,
-    observation: observation({ status: "failed", durationMs: 10_001.125, directTiming: null }),
+    observation: observation({ status: "failed", durationMs: budgetMs + 1.125, directTiming: null }),
   });
   const successSummary = createDurableSummary(
     [healthyStage, calibrationStage, representativeStage],
@@ -1413,7 +1415,7 @@ function runDurableRecordSelfTest() {
       wholeTestAttribution: { signedDifferenceMs: 111.111, unit: "whole-test-ms-attribution-only" },
       representativeSelection: { status: "selected", rounds: 512, source: "conservative direct per-round lower bound" },
       attempts: [recordReference(representativeStage)],
-      semanticTimeout: { status: "exact-named-target-timeout", expected: "Test timed out in 10000ms.", received: "Test timed out in 10000ms." },
+      semanticTimeout: { status: "exact-named-target-timeout", expected: vitestTimeoutMessage(), received: vitestTimeoutMessage() },
     },
   );
   const successLines = [
@@ -1733,7 +1735,7 @@ function selfTest() {
     signal: null,
     spawnError: null,
     bodyStatus: "failed",
-    bodyDurationMs: 10_001,
+    bodyDurationMs: budgetMs + 1,
     receiptFinalStatus: "failed",
     vitestVersion: pinnedVitestVersion,
     receiptVitestVersion: pinnedVitestVersion,
@@ -1742,12 +1744,12 @@ function selfTest() {
       module: testFile,
       fullName: testName,
       state: "failed",
-      errors: [{ name: "Error", message: "Test timed out in 10000ms.", stack: "Error: Test timed out in 10000ms." }],
+      errors: [{ name: "Error", message: vitestTimeoutMessage(), stack: `Error: ${vitestTimeoutMessage()}` }],
     },
-    receiptTests: [{ module: testFile, fullName: testName, state: "failed", errors: [{ message: "Test timed out in 10000ms." }] }],
+    receiptTests: [{ module: testFile, fullName: testName, state: "failed", errors: [{ message: vitestTimeoutMessage() }] }],
     collectionErrors: [],
     unhandledErrors: [],
-    failureMessages: ["Test timed out in 10000ms."],
+    failureMessages: [vitestTimeoutMessage()],
     output: "",
   };
   requireTimeoutRegression(validTimeoutReceipt);
@@ -1768,7 +1770,7 @@ function selfTest() {
       ...validTimeoutReceipt,
       receiptTarget: {
         ...validTimeoutReceipt.receiptTarget,
-        errors: [{ name: "Error", message: "Hook timed out in 10000ms.", stack: "Error: Hook timed out in 10000ms." }],
+        errors: [{ name: "Error", message: `Hook timed out in ${budgetMs}ms.`, stack: `Error: Hook timed out in ${budgetMs}ms.` }],
       },
     }],
     ["selected-target assertion", {
@@ -1783,7 +1785,7 @@ function selfTest() {
       receiptTarget: {
         ...validTimeoutReceipt.receiptTarget,
         errors: [
-          { name: "Error", message: "Test timed out in 10000ms.", stack: "Error: Test timed out in 10000ms." },
+          { name: "Error", message: vitestTimeoutMessage(), stack: `Error: ${vitestTimeoutMessage()}` },
           { name: "AssertionError", message: "expected 32 to be 31", stack: "AssertionError: expected 32 to be 31" },
         ],
       },
@@ -1808,7 +1810,7 @@ function selfTest() {
       receiptTargetCount: 0,
       receiptTarget: undefined,
       receiptTests: [],
-      output: "Test timed out in 10000ms.",
+      output: vitestTimeoutMessage(),
     }],
     ["sanitized W226 STACK_TRACE_ERROR", w226StackTraceShape],
     ["signal termination", { ...validTimeoutReceipt, signal: "SIGTERM" }],
@@ -2074,7 +2076,7 @@ function main() {
           rounds: representativeRounds,
           stageId: attemptStage.stageId,
           canonicalDigest: attemptStage.canonicalDigest,
-          expected: "Test timed out in 10000ms.",
+          expected: vitestTimeoutMessage(),
           received: regression.receiptTarget?.errors?.[0]?.message?.split("\n", 1)[0] ?? null,
         };
         break;
