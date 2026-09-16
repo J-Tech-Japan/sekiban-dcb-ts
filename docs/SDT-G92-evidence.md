@@ -58,14 +58,39 @@ Classifier red mutant (`broken-manifest-as-version-collision`) remains correct v
 
 ## AC5 — after (G92 PR preflight green)
 
-<!-- Updated after hosted preflight completes on final PR head -->
-
 | Field | Value |
 | --- | --- |
-| PR | _pending_ |
-| Final head | _pending_ |
-| Workflow run | _pending_ |
-| Step outcome | _pending_ (`outcome: version-already-published` expected) |
+| PR | [#191](https://github.com/J-Tech-Japan/sekiban-dcb-ts/pull/191) |
+| Final head | `d8b7026` |
+| Workflow run | [35113543488](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35113543488) |
+| Step | Credential-free release-path dry-run proof |
+| Post-G92 status | `PASS` (exit 0) |
+| Outcome | `version-already-published` |
+| Package / version | `@sekiban/dcb-domain@0.2.0` |
+
+Collected success excerpt:
+
+```json
+{
+  "status": "PASS",
+  "guard": "dcb-domain-publish-dry-run",
+  "outcome": "version-already-published",
+  "failure": {
+    "kind": "version-collision",
+    "packageName": "@sekiban/dcb-domain",
+    "version": "0.2.0",
+    "reason": "target package version is already published"
+  }
+}
+```
+
+Hosted lane summary on final head `d8b7026`:
+
+| Lane | Run | Result |
+| --- | --- | --- |
+| `dcb-domain-release-preflight` | [35113543488](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35113543488) | **success** |
+| `ci-pr-cheap` | [35113543397](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35113543397) job [104853091281](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35113543397/job/104853091281) | **success** |
+| `ci-foundation` | [35113543397](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35113543397) job [104853090930](https://github.com/J-Tech-Japan/sekiban-dcb-ts/actions/runs/35113543397/job/104853090930) | failure (`CALIBRATION_INCONCLUSIVE` residual 44.125 > bound 7; unrelated to this script-only slice) |
 
 ## AC4 — caller consistency
 
