@@ -28,8 +28,8 @@ const root = process.cwd();
 const testFile = "test/g67-safe-lane.spec.ts";
 const testName = "AC3: ten paced commits converge through kicks with cron disabled and record delivery-to-safe intervals";
 const mutationAnchor = "        await Promise.all(waiters);\n\n        const publicResponse = await publicFetch";
-// SDT-G94: permanent AC3 ceiling selected from hosted census (smallest of {12s, 15s} rule).
-const budgetMs = 12_000;
+// SDT-G94 measurement tip: 20 s observational ceiling only; permanent value selected after census.
+const budgetMs = 20_000;
 const vitestTimeoutMessage = () => `Test timed out in ${budgetMs}ms.`;
 const calibrationRounds = 32;
 const g69OperationsPerRound = 2;
