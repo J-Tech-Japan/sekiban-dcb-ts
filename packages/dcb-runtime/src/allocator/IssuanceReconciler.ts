@@ -66,7 +66,10 @@ export async function inspectTagTarget(
   if (response.status === 409) return { kind: "not-terminal-yet" };
   if (response.status !== 200) return { kind: "unreachable" };
   const body = await response.json<TagInspectResult & { inspectionStatus?: string }>();
-  if (body.inspectionStatus === "absent-but-unfenced") {
+  if (
+    body.inspectionStatus === "absent-but-unfenced" ||
+    body.inspectionStatus === "absent-never-contacted"
+  ) {
     return { kind: "absent-unfenced" };
   }
   if (
@@ -114,6 +117,41 @@ function tagObservationFromInspect(result: TagInspectResult): TagResolutionObser
     terminalStatus: "absent-and-irrevocably-fenced",
     ...(result.tombstoneEpoch !== undefined ? { tombstoneEpoch: result.tombstoneEpoch } : {}),
   };
+}
+
+export function tagObservationMatchesInspect(
+  submitted: TagResolutionObservation,
+  result: TagInspectResult,
+): boolean {
+  if (submitted.terminalStatus !== result.terminalStatus) return false;
+  if (submitted.terminalStatus === "installed-and-covered") {
+    return submitted.obligationDigest === result.obligationDigest;
+  }
+  return submitted.tombstoneEpoch === result.tombstoneEpoch;
+}
+
+export async function verifyTargetResolutionEvidence(
+  env: TagReconciliationEnv,
+  serviceId: string,
+  evidence: TargetResolutionEvidence,
+  envelope: IssuanceEnvelope,
+): Promise<void> {
+  if (evidence.pinnedWriterEpoch !== envelope.pinnedWriterEpoch) {
+    throw new Error("resolution evidence pinned writer epoch does not match envelope");
+  }
+  const outcome = await inspectTagTarget(env, serviceId, evidence.tag, envelope);
+  if (outcome.kind !== "terminal") {
+    throw new Error("tag observation is not verified by live inspect");
+  }
+  if (!tagObservationMatchesInspect(evidence.tagObservation, outcome.result)) {
+    throw new Error("tag observation does not match live inspect");
+  }
+  if (
+    evidence.tagObservation.terminalStatus === "absent-and-irrevocably-fenced" &&
+    envelope.pinnedWriterEpoch > (evidence.tagObservation.tombstoneEpoch ?? -1)
+  ) {
+    throw new Error("fenced observation violates writer epoch rule");
+  }
 }
 
 export async function submitTargetResolution(

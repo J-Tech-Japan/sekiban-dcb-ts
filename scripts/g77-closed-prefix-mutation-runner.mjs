@@ -15,6 +15,7 @@ if (vitest === undefined) throw new Error("g77-closed-prefix-mutation-runner: vi
 const files = {
   allocator: join(root, "packages/dcb-runtime/src/allocator/AllocatorDurableObject.ts"),
   ledger: join(root, "packages/dcb-runtime/src/allocator/IssuanceLedger.ts"),
+  reconciler: join(root, "packages/dcb-runtime/src/allocator/IssuanceReconciler.ts"),
 };
 const sources = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, readFileSync(file, "utf8")]));
 
@@ -35,9 +36,9 @@ const mutants = [
   },
   {
     name: "expired-writer-accepted",
-    file: "ledger",
-    from: "envelope.pinnedWriterEpoch !== evidence.pinnedWriterEpoch",
-    to: "envelope.pinnedWriterEpoch !== evidence.pinnedWriterEpoch && false",
+    file: "reconciler",
+    from: "evidence.pinnedWriterEpoch !== envelope.pinnedWriterEpoch",
+    to: "evidence.pinnedWriterEpoch !== envelope.pinnedWriterEpoch && false",
     expectedTests: ["G77 rejects resolution with mismatched pinned writer epoch"],
   },
   {

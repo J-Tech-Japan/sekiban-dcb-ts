@@ -489,8 +489,7 @@ export async function applyTargetResolution(
     envelope.serviceId !== evidence.serviceId ||
     envelope.allocatorLineageId !== evidence.allocatorLineageId ||
     envelope.suid !== evidence.suid ||
-    envelope.identityDigest !== evidence.identityDigest ||
-    envelope.pinnedWriterEpoch !== evidence.pinnedWriterEpoch
+    envelope.identityDigest !== evidence.identityDigest
   ) {
     throw new IssuanceLedgerError("resolution evidence does not match immutable envelope");
   }
@@ -594,7 +593,7 @@ async function listAllAttemptKeys(reader: StorageListReader): Promise<string[]> 
       : rawKeys.filter((key) => key > cursor);
     if (batchKeys.length === 0) break;
     keys.push(...batchKeys);
-    if (batchKeys.length < scanLimit) break;
+    if (rawKeys.length < scanLimit) break;
     start = batchKeys[batchKeys.length - 1];
   }
   return keys.sort((left, right) => left.localeCompare(right));

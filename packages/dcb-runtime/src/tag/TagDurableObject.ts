@@ -1338,6 +1338,7 @@ export class TagDurableObject implements DurableObject {
       if (epoch !== undefined) {
         return json({ inspectionStatus: "absent-but-unfenced" });
       }
+      return json({ inspectionStatus: "absent-never-contacted" });
     }
     return error(409, "target_not_terminal", "Target is not terminal under pinned writer authority");
   }

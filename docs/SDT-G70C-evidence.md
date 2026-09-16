@@ -93,8 +93,19 @@ node scripts/g77-closed-prefix-mutation-runner.mjs
 | Public commit p95 proxy | ≤ **+10%** vs pinned-main repeated A01 pause p95 |
 
 Run `npm run measure:g77` for JSON report. The script checks out pinned main in a separate worktree,
-runs warm/restarted matrix workloads and commit p95 samples in independent processes, and exits non-zero
-when a predeclared bar is exceeded.
+installs dependencies, copies the portable `test/g77-cost-measure.spec.ts` proxy (G77 routes are absent
+at the pinned SHA), runs warm/restarted workloads and commit p95 samples in independent processes, and
+exits **0** when within bar or **2** when a predeclared bar is exceeded.
+
+Recorded run (portable proxy, 40-attempt backlog; implementation side includes G77 inventory/reconcile):
+
+| Metric | Pinned main | Implementation | Bar | Within bar |
+| --- | ---: | ---: | --- | --- |
+| Safe-pass wall (warm) | 1985 ms | 2282 ms | +5% | **no** (+15.0%) |
+| Safe-pass wall (restarted) | 1978 ms | 2459 ms | +5% | **no** (+24.3%) |
+| Commit p95 (A01 pause proxy) | 1953 ms | 1972 ms | +10% | yes (+1.0%) |
+
+Command: `npm run measure:g77` (exit 2 on this run — safe-pass bars exceeded, reported not tuned away).
 
 ## AC8 confirmation
 

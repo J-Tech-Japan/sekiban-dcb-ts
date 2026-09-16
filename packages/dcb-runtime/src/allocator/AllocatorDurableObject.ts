@@ -19,10 +19,12 @@ import {
   registerIssuanceInTransaction,
   registrationProbe,
   shouldArmIssuanceRecovery,
+  envelopeKey,
+  type IssuanceEnvelope,
   type IssuanceMigrationState,
   type IssuanceRecoverySchedule,
 } from "./IssuanceLedger";
-import { reconcileIssuanceBatch } from "./IssuanceReconciler";
+import { reconcileIssuanceBatch, verifyTargetResolutionEvidence } from "./IssuanceReconciler";
 import {
   allocateOrderRange,
   diagnosticAllocatedAt,
@@ -346,14 +348,19 @@ export class AllocatorDurableObject implements DurableObject {
   }
 
   private async certificateSnapshot(request: Request): Promise<Response> {
-    const serviceId = new URL(request.url).searchParams.get("serviceId");
-    if (!isNonEmptyString(serviceId)) {
+    const requestedServiceId = new URL(request.url).searchParams.get("serviceId");
+    if (!isNonEmptyString(requestedServiceId)) {
       return error(400, "invalid_certificate_request", "serviceId is required");
     }
     try {
       const certificate = await this.ctx.storage.transaction(async (txn) => {
         const state = await txn.get<AllocatorState>(STATE_KEY);
         if (state === undefined) throw new IssuanceLedgerError("allocator state missing");
+        const boundServiceId = state.serviceId;
+        if (boundServiceId !== undefined && boundServiceId !== requestedServiceId) {
+          throw new IssuanceLedgerError("certificate service scope does not match allocator binding");
+        }
+        const serviceId = boundServiceId ?? requestedServiceId;
         return buildCertificateSnapshot(txn, txn, {
           serviceId,
           allocatorLineageId: state.allocatorLineageId,
@@ -383,6 +390,24 @@ export class AllocatorDurableObject implements DurableObject {
       return error(400, "invalid_resolution", "Invalid resolution body");
     }
     try {
+      const serviceId = await this.serviceIdFromState();
+      if (serviceId === undefined || this.env?.TAG === undefined) {
+        return error(409, "resolution_rejected", "Tag verification prerequisites are unavailable");
+      }
+      const envelope = await this.ctx.storage.get<IssuanceEnvelope>(
+        envelopeKey(evidence.attemptId, evidence.candidateIndex),
+      );
+      if (envelope === undefined) {
+        return error(409, "resolution_rejected", "unknown issuance envelope");
+      }
+      try {
+        await verifyTargetResolutionEvidence({ TAG: this.env.TAG }, serviceId, evidence, envelope);
+      } catch (verificationFailure) {
+        const message = verificationFailure instanceof Error
+          ? verificationFailure.message
+          : "tag observation verification failed";
+        return error(409, "resolution_rejected", message);
+      }
       const result = await this.ctx.storage.transaction(async (txn) =>
         applyTargetResolution(txn, evidence));
       return json(result);
@@ -580,8 +605,13 @@ export class AllocatorDurableObject implements DurableObject {
           allocatedAt: diagnosticAllocatedAt(range.base),
         };
         const migration = await txn.get<IssuanceMigrationState>(ISSUANCE_MIGRATION_KEY);
-        if (migration !== undefined && input.candidateMembership.size === 0) {
-          throw new IssuanceLedgerError("post-cut allocation requires canonical target membership");
+        if (migration !== undefined) {
+          if (input.candidateMembership.size === 0) {
+            throw new IssuanceLedgerError("post-cut allocation requires canonical target membership");
+          }
+          if (input.serviceId === undefined) {
+            throw new IssuanceLedgerError("post-cut allocation requires service identity for issuance registration");
+          }
         }
         const updatedState: AllocatorState = {
           schemaVersion: 5,

@@ -709,10 +709,30 @@ describe("SDT-G77 AC9 frozen scenario matrix", () => {
       }));
     });
 
+    it("C02 post-cut allocation with membership but no serviceId rejected", async () => {
+      const serviceId = `g77-c02b-${crypto.randomUUID()}`;
+      const caps = await probeG77Capabilities(serviceId);
+      if (!caps.migrationCut) {
+        record(g77Receipt("C02", "MR", "membership/cut contract absent", { caps }));
+        return;
+      }
+      await allocatorPost(serviceId, "/__internal/g77/migration-cut", { cutAt: Date.now() });
+      const response = await allocatorPost(serviceId, "/allocate", {
+        attemptId: `g77-c02b:${crypto.randomUUID()}`,
+        candidates: [{
+          candidateIndex: 0,
+          eventId: candidateEventId("c02b"),
+          targetTags: ["room:g77:c02b"],
+          pinnedWriterEpoch: 0,
+        }],
+      });
+      expect(response.status).toBe(400);
+    });
+
     it("C07 legacy inventory pages entire region before completion", async () => {
       const serviceId = `g77-c07-${crypto.randomUUID()}`;
       const pageSize = 8;
-      const attemptCount = pageSize * 3 + 2;
+      const attemptCount = 40;
       for (let index = 0; index < attemptCount; index += 1) {
         const allocated = await allocatorPost(serviceId, "/allocate", {
           attemptId: `g77-c07-${String(index).padStart(3, "0")}:${crypto.randomUUID()}`,
