@@ -85,27 +85,73 @@ node scripts/g77-closed-prefix-mutation-runner.mjs
 | wrong-prefix-watermark | **red** (exit 1) |
 | highest-completed-prefix | **red** (exit 1) |
 
-## Predeclared AC6 measurement bars (fixed before results)
+## AC6 decision-grade measurement (SDT-G91 — frozen protocol)
+
+Frozen before first scored sample on implementation head `85f12e2df048d279b5c57d312982412cf70c05f2`:
+
+| Field | Value |
+| --- | --- |
+| Pre-G77 commit tip | `2fb1c1f7c603d56fb2a2b33db715a499ddfc8a99` |
+| Backend | cloudflare vitest workerd (Miniflare) |
+| Runner | `vitest run --config vitest.config.ts --maxWorkers=1 --no-file-parallelism` |
+| Warm-up | 4 interleaved gate-off/gate-on pairs excluded |
+| Scored samples | 24 pairs (safe-pass) / 24 samples per commit vector |
+| Within-pair order | alternating gate-off-first / gate-on-first by pair parity |
+| Resolved history | 30 reconciled allocations |
+| Unresolved backlog | 10 allocate-only issuances |
+| Legacy pre-cut | 5 legacy vectors inventoried before post-cut work |
+| Safe-pass comparison | same-head gate-off vs gate-on on current main |
+| Commit comparison | pinned pre-G77 tip vs current main, non-empty `targetTags` via `tag-append-last` pause |
+| Statistics | paired delta median; MAD×3 inconclusive guard; p95 from ≥24 samples |
+| Harness | `scripts/g77-ac6-measure.mjs` + `test/g77-ac6-measurement.spec.ts` (supersedes portable proxy) |
+
+Predeclared bars (findings only — never tuning targets):
 
 | Metric | Bar |
 | --- | --- |
-| Safe-pass wall time (explicit opt-in proxy) | ≤ **+5%** vs pinned-main matrix vitest wall time |
-| Public commit p95 proxy | ≤ **+10%** vs pinned-main repeated A01 pause p95 |
+| Safe-pass paired median wall ratio (gate-on vs gate-off) | ≤ **+5%** |
+| Commit-path aggregate p95 ratio (main vs pinned) | ≤ **+10%** |
 
-Run `npm run measure:g77` for JSON report. The script checks out pinned main in a separate worktree,
-installs dependencies, copies the portable `test/g77-cost-measure.spec.ts` proxy (G77 routes are absent
-at the pinned SHA), runs warm/restarted workloads and commit p95 samples in independent processes, and
-exits **0** when within bar or **2** when a predeclared bar is exceeded.
+### Recorded dispositions (`npm run measure:g77` at `85f12e2`, harness exit **2** — commit-new exceed)
 
-Recorded run (portable proxy, 40-attempt backlog; implementation side includes G77 inventory/reconcile):
+| Cohort / vector | Gate-off p50 / p95 (ms) | Gate-on p50 / p95 (ms) | Storage Δ keys / bytes / ops (off→on median) | Delta median (ms) | Ratio vs bar | Disposition |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Safe-pass warm | 2 / 3 | 2.5 / 4 | 0 / 0 / 0 → 0 / 0 / 0 | 1 | 0.5 vs +5% | **inconclusive** |
+| Safe-pass restarted | 1.5 / 3 | 2.5 / 3 | 0 / 0 / 0 → 0 / 0 / 0 | 1 | 0.6666666666666666 vs +5% | **inconclusive** |
+| Commit new | — | — | — | — | main p95 35 / pinned 29 (+20.689655172413793%) vs +10% | **exceed** |
+| Commit replayed | — | — | — | — | main p95 8 / pinned 7 (+14.285714285714285%) vs +10% | **inconclusive** |
+| Commit multi-candidate | — | — | — | — | main p95 145 / pinned 139 (+4.316546762589928%) vs +10% | **inconclusive** |
+| Commit multi-tag | — | — | — | — | main p95 141 / pinned 147 (−4.081632653061224%) vs +10% | **inconclusive** |
+| Commit aggregate p95 | — | — | — | — | 88 / 84 (+4.761904761904762%) vs +10% | **pass** |
+
+Harness `findings` array (verbatim):
+
+- `safe-pass-warm inconclusive (noise dominated)`
+- `safe-pass-restarted inconclusive (noise dominated)`
+- `commit-new p95 exceeded +10% bar (ratio 0.207)`
+
+Issuance-envelope write on main commit path: **proved** (`targetTags` + `tag-append-last` pause; durable `issuance:envelope:` key present after commit).
+
+Mutants (`node scripts/g77-ac6-measurement-mutation-runner.mjs`, exit **0**, 4/4 **red** with matched tests):
+
+| Mutant | Matched failing test |
+| --- | --- |
+| omitted-issuance-write | G77 AC6 commit path proves issuance-envelope write on main |
+| hidden-history-scan | G77 AC6 seed enforces resolved history depth |
+| reduced-backlog | G77 AC6 seed enforces unresolved backlog floor |
+| disabled-gate | G77 AC6 mutant oracle disabled gate is detectable |
+
+Full machine report (committed): `.artifacts/g77-ac6-full-report.json`.
+
+### Retired portable proxy (historical — not decision-grade)
+
+The pre-G91 portable whole-process proxy (`test/g77-cost-measure.spec.ts`, five-sample commit p95, no `targetTags`) recorded warm +15.0%, restarted +24.3%, commit +1.0% — retained below for lineage only:
 
 | Metric | Pinned main | Implementation | Bar | Within bar |
 | --- | ---: | ---: | --- | --- |
 | Safe-pass wall (warm) | 1985 ms | 2282 ms | +5% | **no** (+15.0%) |
 | Safe-pass wall (restarted) | 1978 ms | 2459 ms | +5% | **no** (+24.3%) |
 | Commit p95 (A01 pause proxy) | 1953 ms | 1972 ms | +10% | yes (+1.0%) |
-
-Command: `npm run measure:g77` (exit 2 on this run — safe-pass bars exceeded, reported not tuned away).
 
 ## AC8 confirmation
 
@@ -126,14 +172,14 @@ The trusted allocator producer registers every new-format allocation as an immut
 | AC3 | Certificate snapshot + predecessor prefix; LiveProjectionWorker opt-in acquisition |
 | AC4 | A/B crash-recovery rows encoded; B06–B08 transition traces |
 | AC5 | Migration cut, legacy inventory paging, proof completion; see Remaining/open for unmet boundaries |
-| AC6 | Proxy measurement recorded against predeclared bars |
+| AC6 | Decision-grade paired measurement recorded (SDT-G91); portable proxy retired |
 | AC7 | Evidence at `docs/SDT-G70C-evidence.md` |
 | AC8 | G75 scope tests green; `safeViewAdvance` default untouched |
 | AC9 | Matrix A03–A16, B, C, D rows encoded with receipts |
 
 ## Remaining / open
 
-- Dedicated commit-path p95 bench against pinned-main binary (proxy only today).
+- ~~Dedicated commit-path p95 bench against pinned-main binary (proxy only today).~~ **closed (SDT-G91)** — decision-grade harness exercises `targetTags` issuance write.
 - Full B01–B05/B07/B10–B13 transition-level crash injection seams (B06–B08 covered).
 - **F12 closed:** force-tombstone now seals at `MAX_EPOCH` so append/acquire refuse every writer generation for the attempt while inspect still reports `absent-and-irrevocably-fenced` at the pinned tombstone epoch (`test/allocator.spec.ts` *G77 force-tombstoned target refuses append at pinned and higher writer epochs*).
 - **B7 closed:** recovery alarm arming follows `ISSUANCE_RECOVERY_KEY.nextDueAt` via `syncIssuanceRecoveryAlarm` / `shouldArmIssuanceRecovery`; sustained membership allocations no longer overwrite an earlier pending alarm (`test/allocator.spec.ts` *G77 sustained allocations do not postpone an earlier recovery alarm*).
@@ -143,6 +189,6 @@ The trusted allocator producer registers every new-format allocation as an immut
 - **M10 closed:** non-bypass `reconcileIssuanceBatch` grace oracle pins the reconciler's never-contacted grace check (`test/allocator.spec.ts` *G77 non-bypass reconcile honors never-contacted grace*).
 - **B3 (AC5 boundary):** with no migration cut installed (`migration === undefined`), `computeClosedPrefixSuid` still publishes the raw `allocatedWatermark` as a `ready` inclusive prefix over legacy `attempt:` history whose append status was never tracked. The cut-before-new-format rule is not enforced at allocation time; opted-in consumers remain blocked only after a cut is installed.
 - **B4 (AC3 boundary):** certificate/coverage composition binding for LiveProjectionWorker is not implemented; `test/g62-global-completeness.spec.ts` G77 P14 receipt is vacuous (fresh certificate vs older snapshot only). Either implement the binding or treat P14 as an unmet boundary.
-- **B5 (AC6 boundary):** commit-p95 proxy in `scripts/g77-cost-measure.mjs` allocates with no `targetTags`, so it never exercises the added issuance-envelope durable write; the row reports wall-time only.
+- **B5 (AC6 boundary): closed (SDT-G91)** — `scripts/g77-ac6-measure.mjs` drives commit with non-empty `targetTags` and proves issuance-envelope write; portable proxy retired.
 - **M8 (undisclosed):** `CommitWorker.cancelReservations` also sends `forceTombstone: true`, sealing cancelled attempts at `MAX_EPOCH` beyond the reconciler path.
 - **Test escape hatch:** production `/allocate` honours `x-sdt-g77-suppress-recovery-alarm`; most G77 tests pass the header via `allocateG77` default — B7/B8 oracles deliberately omit it.
